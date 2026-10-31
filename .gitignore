@@ -1,0 +1,56 @@
+# Build trees. Everything CMake generates is disposable.
+/build/
+/build-*/
+/build_probe/
+/out/
+/cmake-build-*/
+
+# Compiler and linker scratch.
+*.obj
+*.o
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.lib
+*.log
+
+# IDE state
+.vs/
+.vscode/
+*.user
+CMakeUserPresets.json
+CMakeFiles/
+
+# Runtime output: crash dumps, logs, screenshots, settings.
+/crashes/
+/saves/
+*.dmp
+
+# Cooked asset output. The TOML sources and .femeta rows stay tracked; the
+# cooked payloads and packs are rebuilt by fby_fempak or the editor importer.
+*.fbin
+*.fempak
+*.ftex
+*.fpcm
+*.fbtmp
+
+# Runtime storage: logs, crash reports, caches and the editor ini.
+/Saved/
+
+# Editor environment state (the project descriptor and .femeta rows are the
+# authoritative settings, not this machine-local mirror).
+/editor.ini
+/imgui.ini
+
+# Project-local release key seed. The seed is a secret; only its identifier
+# belongs in a build report.
+.fbyrelease.seed
+
+# Default new-project location: Projects/ inside the engine root. The projects
+# themselves are user content, not engine source; the directory marker is tracked.
+/Projects/*
+!/Projects/.gitkeep
+
+# Python scratch used by the docs tooling.
+__pycache__/

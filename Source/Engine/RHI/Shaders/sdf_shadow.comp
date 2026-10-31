@@ -1,0 +1,110 @@
+#version 460
+// FemboyEngine 2.0 - screen-space SDF shadow mask (compute).
+//
+// One invocation per mask texel (half resolution). Each texel recovers its world
+// position from the same viewport transform the sprite vertex shader uses, then
+// sphere-traces the static field plus the dynamic casters toward the sun. The
+// result is a visibility value the sprite fragment shader multiplies in, so the
+// expensive march happens once per mask texel instead of once per pixel.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D uSdf;
+layout(set = 0, binding = 1, r16f) uniform image2D uShadow;
+
+layout(set = 0, binding = 2) uniform SdfShadowBlock
+{
+    vec4 camera;       // centre.xy, zoom, padding
+    vec4 viewport;     // width, height, 0, 0
+    vec4 fieldBounds;  // origin.xy, extent.xy
+    vec4 sun;          // direction towards the light.xy, softness, ambient
+    vec4 params;       // steps, occluderCount, occlusionRadius, occlusionStrength
+    vec4 encode;       // encodeScale, enabled, 0, 0
+    vec4 occluders[32];
+} sdf;
+
+const uint kMaxOccluders = 16u;
+
+float fieldDistance(vec2 world)
+{
+    const vec2 uv = (world - sdf.fieldBounds.xy) / max(sdf.fieldBounds.zw, vec2(0.0001));
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0)
+    {
+        return 1.0e6;
+    }
+    return texture(uSdf, uv).r * sdf.encode.x;
+}
+
+float occluderDistance(vec2 world, uint count)
+{
+    float best = 1.0e6;
+    for (uint index = 0u; index < count; ++index)
+    {
+        const vec4 shape = sdf.occluders[index * 2u];
+        const vec4 extents = sdf.occluders[index * 2u + 1u];
+        const vec2 local = world - shape.xy;
+        if (extents.z > 0.5)
+        {
+            const vec2 q = abs(local) - extents.xy;
+            best = min(best, length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));
+        }
+        else
+        {
+            best = min(best, length(local) - shape.z);
+        }
+    }
+    return best;
+}
+
+float visibility(vec2 world, uint count)
+{
+    const vec2 direction = normalize(sdf.sun.xy);
+    const float softness = max(sdf.sun.z, 0.001);
+    const uint steps = uint(max(sdf.params.x, 1.0));
+    float travelled = 0.5;
+    float ratio = 1.0;
+    for (uint index = 0u; index < steps; ++index)
+    {
+        const vec2 probe = world + direction * travelled;
+        const float distance = min(fieldDistance(probe), occluderDistance(probe, count));
+        if (distance <= 0.0)
+        {
+            return 0.0;
+        }
+        ratio = min(ratio, distance / (softness * travelled));
+        travelled += max(distance * 0.8, 0.5);
+        if (travelled > 4096.0)
+        {
+            break;
+        }
+    }
+    return clamp(ratio, 0.0, 1.0);
+}
+
+void main()
+{
+    const ivec2 size = imageSize(uShadow);
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= size.x || pixel.y >= size.y)
+    {
+        return;
+    }
+    if (sdf.encode.y < 0.5 || sdf.viewport.x <= 0.0 || sdf.viewport.y <= 0.0)
+    {
+        imageStore(uShadow, pixel, vec4(1.0));
+        return;
+    }
+    const vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    // Inverse of the sprite projection: gl_Position = (clip.x, -clip.y) and the
+    // fragment passes its NDC+0.5 as the sampling UV, so this is the exact match.
+    const vec2 ndc = uv * 2.0 - 1.0;
+    const float zoom = max(sdf.camera.z, 0.0001);
+    const vec2 world = vec2(sdf.camera.x + ndc.x * sdf.viewport.x * 0.5 / zoom,
+                            sdf.camera.y - ndc.y * sdf.viewport.y * 0.5 / zoom);
+    const uint available = min(uint(sdf.params.y + 0.5), kMaxOccluders);
+    // A texel inside a dynamic caster is that caster's own surface: keep it lit
+    // while it still shadows everything outside itself.
+    const uint count = occluderDistance(world, available) <= 0.0 ? 0u : available;
+    const float shadow = mix(sdf.sun.w, 1.0, visibility(world, count));
+    imageStore(uShadow, pixel, vec4(shadow));
+}

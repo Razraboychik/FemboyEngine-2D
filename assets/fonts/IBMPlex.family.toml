@@ -1,0 +1,17 @@
+# FemboyEngine2D - IBM Plex text family.
+#
+# One licence (SIL OFL 1.1, Reserved Font Name "Plex") and one visual language
+# for every style the engine can emit: regular, bold, italic, bold italic and
+# mono. The style slot selects the atlas page a glyph is painted from; the
+# regular face shapes every style, so glyph ids stay stable across the family.
+font_id = 10
+font_size = 32.0
+font_oversample = 1
+font_sdf = true
+atlas_size = 2048
+all_glyphs = false
+regular = "fonts/IBMPlexSans-Regular.ttf"
+bold = "fonts/IBMPlexSans-Bold.ttf"
+italic = "fonts/IBMPlexSans-Italic.ttf"
+bold_italic = "fonts/IBMPlexSans-BoldItalic.ttf"
+mono = "fonts/IBMPlexMono-Regular.ttf"

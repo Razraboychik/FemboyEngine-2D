@@ -1,0 +1,13 @@
+guid = "0xDD32970E0659D554"
+asset_id = "0x9AAA391A55983BC3"
+type = "texture"
+source = "atlas/orb.png"
+cooked = "atlas/orb.ftex"
+source_hash = "0x1EB3757CC2E7A444"
+cooked_hash = "0x79E4413A1A5C8AD6"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true

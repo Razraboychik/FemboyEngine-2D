@@ -1,0 +1,16 @@
+#pragma once
+// Generated at configure time: do not edit. The values describe the toolchain
+// and options this binary was compiled with, so an artifact can be traced back
+// to a build without relying on the directory name or a timestamp.
+
+#include <string_view>
+
+namespace Fby::Core::Detail
+{
+inline constexpr std::string_view kBuildCompiler = "@CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@";
+inline constexpr std::string_view kBuildType = "@CMAKE_BUILD_TYPE@";
+inline constexpr std::string_view kBuildPlatform = "@CMAKE_SYSTEM_NAME@";
+inline constexpr std::string_view kBuildFlags = "@FBY_BUILD_FLAGS_ESCAPED@";
+inline constexpr std::string_view kBuildDependencies = "@FBY_BUILD_DEPENDENCIES@";
+// End of namespace Fby::Core::Detail
+}

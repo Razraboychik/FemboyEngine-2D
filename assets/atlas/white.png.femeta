@@ -1,0 +1,13 @@
+guid = "0x7A5E0DBB24154C04"
+asset_id = "0xDB9976F806B939CF"
+type = "texture"
+source = "atlas/white.png"
+cooked = "atlas/white.ftex"
+source_hash = "0x5C2E8137751FCDC2"
+cooked_hash = "0xB566DB138C96B809"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true

@@ -1,0 +1,13 @@
+guid = "0xDB57CC551782F0EC"
+asset_id = "0x52F4379E140D17D7"
+type = "texture"
+source = "atlas/tiles.png"
+cooked = "atlas/tiles.ftex"
+source_hash = "0x5A098C59C930DF6C"
+cooked_hash = "0x9E42F9E3A93890E3"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true

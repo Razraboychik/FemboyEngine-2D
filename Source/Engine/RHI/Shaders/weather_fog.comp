@@ -1,0 +1,61 @@
+#version 460
+// FemboyEngine 2.0 - volumetric fog.
+//
+// A 24-step vertical raymarch through an exponential height fog. Density noise is
+// evaluated on the fly; there is no 3D texture and no CPU fog volume.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform WeatherBlock
+{
+    vec4 windAndTime;
+    vec4 atmosphere;
+    vec4 clouds;
+    vec4 precipitation;
+    vec4 fog;
+    vec4 fieldTransform;
+    vec4 fieldExtent;
+    vec4 volume;
+} weather;
+
+layout(set = 0, binding = 1, rgba16f) uniform image2D uFog;
+
+float hash(vec2 p)
+{
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float valueNoise(vec2 p)
+{
+    const vec2 i = floor(p);
+    const vec2 f = fract(p);
+    const vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+
+void main()
+{
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 size = imageSize(uFog);
+    if (pixel.x >= size.x || pixel.y >= size.y)
+    {
+        return;
+    }
+    const vec2 uv = (vec2(pixel) + 0.5) / max(weather.fieldExtent.xy, vec2(1.0));
+    const float time = weather.windAndTime.z;
+    float density = 0.0;
+    float transmittance = 1.0;
+    for (int i = 0; i < 24; ++i)
+    {
+        const float t = float(i) / 23.0;
+        const float height = mix(0.0, 1.0, t);
+        const float layer = weather.fog.x * exp(-height * weather.fog.y * 18.0);
+        const float noise = valueNoise(uv * 6.0 + vec2(time * 0.06, -height * 2.0) + weather.windAndTime.xy * 0.001);
+        const float densitySample = layer * (0.45 + noise * 0.55);
+        density += densitySample * transmittance;
+        transmittance *= 1.0 - densitySample * 0.12;
+    }
+    const vec3 color = mix(vec3(0.52, 0.60, 0.70), vec3(0.82, 0.86, 0.92), transmittance);
+    imageStore(uFog, pixel, vec4(color, clamp(density * 1.6, 0.0, 0.92)));
+}

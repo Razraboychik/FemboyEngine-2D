@@ -1,0 +1,90 @@
+#version 460
+// FemboyEngine 2.0 - display safety post-process.
+//
+// Two WCAG/EAA-oriented protections in one full-screen compute pass:
+//   1. flash guard: compare the current and previous frame's linear luminance
+//      per pixel and clamp a sudden delta to `threshold`. A fullscreen strobe
+//      that reaches the display is reduced to the residual gain.
+//   2. colour-vision correction: a linear-light 3x3 matrix for protanopia,
+//      deuteranopia or tritanopia, blended by `strength`.
+//
+// The pass is intentionally per-pixel and allocation-free. A production flash
+// guard also needs a frame-wide "area" term (a small bright region is not a
+// seizure risk); that is computed by the RHI's luminance reduction and arrives
+// in `frameMean`/`previousMean`.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(rgba8, set = 0, binding = 0) uniform image2D currentImage;
+layout(rgba8, set = 0, binding = 1) uniform image2D previousImage;
+layout(rgba8, set = 0, binding = 2) uniform image2D outputImage;
+
+layout(push_constant) uniform SafetyParams
+{
+    mat3 colorMatrix;
+    float threshold;      // max relative luminance delta per frame
+    float residualGain;   // gain applied above threshold
+    float strength;       // 0 = no CVD correction, 1 = full
+    float frameMean;      // current frame mean linear luminance
+    float previousMean;   // previous frame mean linear luminance
+    uint flags;           // bit 0 = flash guard, bit 1 = CVD
+} params;
+
+vec3 srgbToLinear(vec3 value)
+{
+    bvec3 cutoff = lessThanEqual(value, vec3(0.04045));
+    vec3 low = value / 12.92;
+    vec3 high = pow((value + 0.055) / 1.055, vec3(2.4));
+    return mix(high, low, cutoff);
+}
+
+vec3 linearToSrgb(vec3 value)
+{
+    bvec3 cutoff = lessThanEqual(value, vec3(0.0031308));
+    vec3 low = value * 12.92;
+    vec3 high = 1.055 * pow(value, vec3(1.0 / 2.4)) - 0.055;
+    return mix(high, low, cutoff);
+}
+
+float luminance(vec3 linearRgb)
+{
+    return dot(linearRgb, vec3(0.2126, 0.7152, 0.0722));
+}
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(currentImage);
+    if (pixel.x >= size.x || pixel.y >= size.y)
+    {
+        return;
+    }
+
+    vec4 current = imageLoad(currentImage, pixel);
+    vec4 previous = imageLoad(previousImage, pixel);
+    vec3 currentLinear = srgbToLinear(current.rgb);
+    vec3 previousLinear = srgbToLinear(previous.rgb);
+
+    float currentLuma = luminance(currentLinear);
+    float previousLuma = luminance(previousLinear);
+    float delta = abs(currentLuma - previousLuma);
+    // The frame-wide term catches a full-screen flash even when the local delta
+    // is spread over a texture; the max keeps the local protection conservative.
+    float globalDelta = abs(params.frameMean - params.previousMean);
+    float danger = max(delta, globalDelta * 0.75);
+
+    float gain = 1.0;
+    if ((params.flags & 1u) != 0u && danger > params.threshold)
+    {
+        float compressed = params.threshold + (danger - params.threshold) * params.residualGain;
+        gain = clamp(compressed / max(danger, 0.0001), 0.0, 1.0);
+    }
+    vec3 protectedLinear = currentLinear * gain;
+
+    if ((params.flags & 2u) != 0u && params.strength > 0.0)
+    {
+        vec3 corrected = clamp(params.colorMatrix * protectedLinear, 0.0, 1.0);
+        protectedLinear = mix(protectedLinear, corrected, params.strength);
+    }
+
+    imageStore(outputImage, pixel, vec4(linearToSrgb(protectedLinear), current.a));
+}

@@ -1,0 +1,29 @@
+// Localization pack: a FlatBuffers table baked into .fempak.
+//
+// The runtime never parses text: every string is addressed by a uint32 id and
+// looked up with a binary search over a sorted vector, so a lookup is a few
+// compares inside the memory-mapped buffer and allocates nothing.
+//
+//   flatc --cpp --scoped-enums -o generated engine/schemas/localization.fbs
+namespace Fby.Loc;
+
+table StringEntry {
+  // Stable id shared by every language: the code refers to this number, never
+  // to the English text.
+  id:uint (key);
+  text:string;
+}
+
+table LocaleTable {
+  code:string (key);          // "en", "ru", "ja", ...
+  entries:[StringEntry];
+}
+
+table LocalizationPack {
+  version:uint = 1;
+  default_locale:string;
+  locales:[LocaleTable];
+}
+
+root_type LocalizationPack;
+file_identifier "FBYL";

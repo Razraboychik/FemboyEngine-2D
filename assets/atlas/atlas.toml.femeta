@@ -1,0 +1,12 @@
+guid = "0x0EB883BC0F00923E"
+asset_id = "0xE1B06BEF525AFD51"
+type = "texture-array"
+source = "atlas/atlas.toml"
+source_hash = "0x7F913D62E55304EB"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true

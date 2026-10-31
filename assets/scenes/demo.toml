@@ -1,0 +1,90 @@
+# FemboyEngine2D demo scene.
+#
+# This is the authoring form. `fby_scene_tool toml2bin` cooks it to FlatBuffers
+# for shipping; the editor can load and save either form. Entity ids are local to
+# this file and are remapped on every load.
+version = 1
+name = "demo"
+author = "FemboyEngine"
+
+[[entity]]
+id = 0
+name = "camera"
+
+[[entity.components]]
+type = "Camera2D"
+Center = [640.0, 360.0]
+ViewSize = [1280.0, 720.0]
+Zoom = 1.0
+Rotation = 0.0
+
+[[entity]]
+id = 1
+name = "backdrop"
+
+[[entity.components]]
+type = "Transform2D"
+Position = [640.0, 360.0]
+Scale = [40.0, 22.5]
+Rotation = 0.0
+
+[[entity.components]]
+type = "Sprite2D"
+Size = [32.0, 32.0]
+UVMin = [0.0, 0.0]
+UVMax = [1.0, 1.0]
+Layer = 1
+Color = "#40286EFF"
+Flags = 0
+
+[[entity.components]]
+type = "DrawOrder"
+Layer = 0
+Depth = -10.0
+MaterialBucket = 0
+
+[[entity]]
+id = 2
+name = "orb"
+
+[[entity.components]]
+type = "Transform2D"
+Position = [640.0, 360.0]
+Scale = [4.0, 4.0]
+Rotation = 0.0
+
+[[entity.components]]
+type = "Sprite2D"
+Size = [64.0, 64.0]
+UVMin = [0.0, 0.0]
+UVMax = [1.0, 1.0]
+Layer = 2
+Color = "#FFFFFFFF"
+Flags = 4
+
+[[entity.components]]
+type = "DrawOrder"
+Layer = 1
+Depth = 0.0
+MaterialBucket = 0
+
+[[entity.components]]
+type = "Velocity"
+Value = [12.0, 0.0]
+
+[[entity.components]]
+type = "Lifetime"
+SecondsRemaining = 30.0
+
+[[entity]]
+id = 3
+name = "hidden-marker"
+
+[[entity.components]]
+type = "Transform2D"
+Position = [0.0, 0.0]
+Scale = [1.0, 1.0]
+Rotation = 0.0
+
+[[entity.components]]
+type = "Hidden"

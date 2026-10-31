@@ -1,0 +1,26 @@
+EXAMPLES
+* filter on runtime values/variables (not only types)
+* support to polymorphic types (see #859)
+
+DOC:
+* custom storage/view
+* update entity doc when the storage based model is in place
+* in-place O(1) release/destroy for non-orphaned entities, out-of-sync model
+* view: single vs multi type views are no longer a thing actually
+* bump entities, reserved bits on identifiers
+
+TODO:
+* work stealing job system (see #100) + mt scheduler based on const awareness for types
+* combine version-mask-vs-version-bits tricks with reserved bits to allow things like enabling/disabling
+* auto type info data from types if present
+* built-in no-pagination storage - no_pagination page size as limits::max
+* any cdynamic to support const ownership construction
+* meta non-const allow_cast overloads: (const int &) to (int &) is not allowed, but (const int &) to (double &) is allowed (support only for convertibles)
+* paged vector as a standalone class
+* resource: shared_from_this?
+* archetype-like a-là EnTT support (see my own notes)
+* organizer: view/storage only based model, no registry
+* explore "runtime" mode for hashed string where the source is copied internally
+* finish the imgui viewer/editor!
+* entity io
+* storage.cpp update_from_destructor triggers natvis errors

@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a feature or an improvement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What production or authoring problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the API, data layout and threading contract you expect.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core / ECS
+        - RHI / rendering
+        - Physics
+        - Animation
+        - Networking
+        - Assets / cooker
+        - Editor
+        - Scripting
+        - Audio
+        - UI
+        - Platform
+        - Documentation / build
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I understand 0.1 is an alpha line and the API may change.
+          required: true

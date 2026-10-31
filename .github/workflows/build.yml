@@ -1,0 +1,144 @@
+name: Build gate (compiler bring-up)
+
+# The authoritative build gate for 0.1.0-alpha.1 is the local clang-cl 23.1.4 run
+# (build/build.bat + build/ctest.bat). This workflow provisions the second opinion
+# and the Linux GCC agent; the jobs are allowed to fail while that agent is being
+# brought up, so a red run here is a signal, not a release blocker yet.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-clang-cl:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
+      - name: Dependency lock
+        run: python Source/Tools/Dev/CheckDependencyLock.py --build build --require
+      - name: Build
+        run: cmake --build build --parallel 8
+      - name: Pak reproducibility
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak.exe
+      - name: Release checklist
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.1.0-alpha.1 --out build/release-manifest.json
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  linux-clang:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --parallel 8
+      - name: Pak reproducibility
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
+      - name: Release checklist
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.1.0-alpha.1 --out build/release-manifest.json
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  linux-gcc:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --parallel 8
+      - name: Pak reproducibility
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  reproducible:
+    # Two independent builds of the same revision must cook identical archives.
+    # Soft until a green run has been observed on the runner.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+      - name: Configure first
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=OFF
+      - name: Build first
+        run: cmake --build build --target fby_fempak --parallel 8
+      - name: Configure second
+        run: cmake -S . -B build-repro -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=OFF
+      - name: Build second
+        run: cmake --build build-repro --target fby_fempak --parallel 8
+      - name: Compare cooked archives
+        run: python Source/Tools/Dev/ComparePakAcrossBuilds.py --first build/bin/tools/fby_fempak --second build-repro/bin/tools/fby_fempak --workdir build
+
+  linux-asan:
+    # Hard gate: AddressSanitizer plus LeakSanitizer on the text stack. A leak
+    # or a use-after-free fails the job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+      - name: Configure
+        run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
+      - name: Build
+        run: cmake --build build-asan --parallel 8
+      - name: Text stack under ASan and LSan
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
+          LSAN_OPTIONS: detect_leaks=1:report_objects=1
+        run: ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$"
+      - name: Full suite under ASan and LSan
+        continue-on-error: true
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
+          LSAN_OPTIONS: detect_leaks=1:report_objects=1
+        run: ctest --test-dir build-asan --output-on-failure --timeout 300
+
+  linux-ubsan:
+    # UndefinedBehaviorSanitizer with -fno-sanitize-recover=all: the first
+    # undefined operation aborts. Covers the parsers and the text stack.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+      - name: Configure
+        run: cmake -S . -B build-ubsan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_UBSAN=ON
+      - name: Build
+        run: cmake --build build-ubsan --parallel 8
+      - name: Parsers, text and core under UBSan
+        run: ctest --test-dir build-ubsan --output-on-failure --timeout 300 -R "^(fuzz_parsers|fuzz_noise|bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden)$"
+
+  windows-asan:
+    # Windows has no LeakSanitizer, so this job proves the memory errors and
+    # keeps detect_leaks=0 explicit instead of silent.
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure
+        run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
+      - name: Build
+        run: cmake --build build-asan --parallel 8
+      - name: Text stack under ASan
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1:allocator_may_return_null=1
+        run: ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$"

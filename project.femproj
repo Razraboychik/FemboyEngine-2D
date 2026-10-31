@@ -1,0 +1,54 @@
+# FemboyEngine2D project descriptor.
+format_version = 4
+
+[project]
+name = "FemboyEngine2D"
+version = "0.1.0-alpha.1"
+default_scene = "scenes/demo.toml"
+
+[simulation]
+fixed_update_hz = 120.0
+max_fixed_steps = 8
+
+[audio]
+master = 1.0
+sfx = 1.0
+music = 1.0
+
+[render]
+vsync = true
+texture_format = "bc7-srgb"
+max_texture_size = 2048
+
+[build]
+optimization = "O2"
+lto = false
+strip_debug_info = true
+unity_build = true
+native_arch = false
+
+[collision]
+player = "000000000000002f"
+enemy = "000000000000002f"
+bullet = "000000000000003b"
+water = "0000000000000037"
+sdf_terrain = "000000000000002f"
+default = "000000000000003f"
+
+[accessibility]
+blind_mode = false
+deaf_mode = false
+flash_guard = true
+flash_threshold = 0.2
+flash_gain = 0.35
+oled_pixel_shift = true
+oled_interval_seconds = 60.0
+
+[editor]
+ui_scale = 1.0
+show_demo = false
+auto_refresh_browser = true
+watch_assets = true
+show_grid = true
+save_ini_on_commit = true
+theme = "graphite"

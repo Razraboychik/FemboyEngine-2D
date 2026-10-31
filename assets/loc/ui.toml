@@ -1,0 +1,23 @@
+# FemboyEngine2D - source localization file.
+#
+# Human-editable input for the asset pipeline. fby_loc_tool compiles it into a
+# FlatBuffers pack that ships inside .fempak; the runtime only ever sees uint32
+# ids. Translators edit this file (or a web tool that speaks the same format).
+
+default = "en"
+
+[en]
+1001 = "New Game"
+1002 = "Continue"
+1003 = "Settings"
+1004 = "Quit"
+2001 = "Health"
+2002 = "Mana"
+
+[ru]
+1001 = "Новая игра"
+1002 = "Продолжить"
+1003 = "Настройки"
+1004 = "Выход"
+2001 = "Здоровье"
+2002 = "Мана"

@@ -1,0 +1,44 @@
+#version 460
+// FemboyEngine 2.0 - moving cloud shadow mask.
+//
+// The cloud density is advected again by the global wind and sampled with a small
+// Poisson offset, so shadows move independently of the screen-space cloud layer
+// and a tall tree receives the same mask as the ground under it.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D uClouds;
+
+layout(set = 0, binding = 1, r16f) uniform image2D uShadow;
+
+layout(set = 0, binding = 2) uniform WeatherBlock
+{
+    vec4 windAndTime;
+    vec4 atmosphere;
+    vec4 clouds;
+    vec4 precipitation;
+    vec4 fog;
+    vec4 fieldTransform;
+    vec4 fieldExtent;
+    vec4 volume;
+} weather;
+
+void main()
+{
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 size = imageSize(uShadow);
+    if (pixel.x >= size.x || pixel.y >= size.y)
+    {
+        return;
+    }
+    const vec2 uv = (vec2(pixel) + 0.5) / max(weather.fieldExtent.xy, vec2(1.0));
+    const vec2 drift = vec2(weather.windAndTime.x, weather.windAndTime.y) * weather.windAndTime.z * 0.0009;
+    const vec2 step = vec2(1.0) / max(weather.fieldExtent.xy, vec2(1.0));
+    float density = texture(uClouds, uv + drift * 0.35).a * 0.4;
+    density += texture(uClouds, uv + drift * 0.35 + step * 2.0).a * 0.15;
+    density += texture(uClouds, uv + drift * 0.35 - step * 2.0).a * 0.15;
+    density += texture(uClouds, uv + drift * 0.35 + vec2(step.y, -step.x) * 2.0).a * 0.15;
+    density += texture(uClouds, uv + drift * 0.35 - vec2(step.y, -step.x) * 2.0).a * 0.15;
+    const float shadow = clamp(1.0 - density * weather.clouds.w * 1.6, 0.0, 1.0);
+    imageStore(uShadow, pixel, vec4(shadow));
+}

@@ -1,0 +1,120 @@
+#version 450
+// FemboyEngine 2.0 - GPU linear blend skinning, ONE dispatch per frame.
+//
+// All dynamic bind-pose vertices are packed contiguously into the frame ring.
+// A vertex's `padding` word stores the index of its MeshSkinRange; the range
+// selects the bone palette slice. The dispatch covers the concatenation of
+// every skinned mesh, so draw count no longer equals dispatch count.
+//
+// Both the palette and the bind pose are full 4x4 transforms. The result keeps
+// x/y/z/w: a bone may lift a vertex out of the z=0 plane, and the mesh vertex
+// shader projects that through a full view-projection matrix.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct MeshVertex
+{
+    vec2 position;
+    vec2 uv;
+    uint color;
+    uint padding; // range index, written by the RHI during upload
+    uvec2 bones;
+    vec2 weights;
+};
+
+struct SkinnedVertex
+{
+    vec4 position; // homogeneous LBS result
+    vec2 uv;
+    uint color;
+    uint padding;
+};
+
+struct SkinRange
+{
+    uint boneOffset;
+    uint boneCount;
+};
+
+layout(set = 0, binding = 0) readonly buffer BindVertices
+{
+    MeshVertex vertices[];
+} bindVertices;
+
+layout(set = 0, binding = 1) writeonly buffer SkinnedVertices
+{
+    SkinnedVertex vertices[];
+} skinnedVertices;
+
+layout(set = 0, binding = 2) readonly buffer BoneMatrices
+{
+    mat4 bones[];
+} palette;
+
+layout(set = 0, binding = 3) readonly buffer SkinRanges
+{
+    SkinRange ranges[];
+} skinRanges;
+
+layout(push_constant) uniform Push
+{
+    uint vertexCount;
+    uint vertexOffset;
+    uint pad1;
+    uint pad2;
+} pc;
+
+void main()
+{
+    const uint index = gl_GlobalInvocationID.x;
+    if (index >= pc.vertexCount)
+    {
+        return;
+    }
+
+    // A frame records several viewports; each pass owns a contiguous range.
+    const uint inputIndex = index + pc.vertexOffset;
+    const MeshVertex vertex = bindVertices.vertices[inputIndex];
+    const SkinRange range = skinRanges.ranges[vertex.padding];
+
+    vec4 skinned = vec4(0.0);
+    float totalWeight = 0.0;
+
+    for (int influence = 0; influence < 2; ++influence)
+    {
+        const float weight = vertex.weights[influence];
+        if (weight <= 0.0)
+        {
+            continue;
+        }
+        const uint bone = vertex.bones[influence];
+        if (bone >= range.boneCount)
+        {
+            continue;
+        }
+        // Full 4x4. Never collapse this to a 2D mat3: the whole point of the
+        // 2.5D path is that a bone can contribute z and a tilted camera can see
+        // it.
+        const mat4 transform = palette.bones[range.boneOffset + bone];
+        skinned += (transform * vec4(vertex.position, 0.0, 1.0)) * weight;
+        totalWeight += weight;
+    }
+
+    // A vertex with no valid influence stays in bind pose instead of collapsing
+    // to the origin.
+    if (totalWeight <= 0.0)
+    {
+        skinned = vec4(vertex.position, 0.0, 1.0);
+    }
+    else
+    {
+        skinned /= totalWeight;
+    }
+
+    SkinnedVertex outputVertex;
+    outputVertex.position = skinned;
+    outputVertex.uv = vertex.uv;
+    outputVertex.color = vertex.color;
+    outputVertex.padding = 0;
+    skinnedVertices.vertices[inputIndex] = outputVertex;
+}

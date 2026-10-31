@@ -1,0 +1,87 @@
+// FemboyEngine2D - prefab descriptor schema (FlatBuffers).
+//
+// The cooker emits this binary form; PrefabSystem::LoadFlatBuffers() appends it
+// directly to a registry through the CommandBuffer. The TOML loader is an
+// authoring/import convenience and produces the same PrefabAsset POD.
+
+namespace Fby.Prefab;
+
+struct Vec2
+{
+    x:float;
+    y:float;
+}
+
+struct Transform2D
+{
+    position:Vec2;
+    scale:Vec2;
+    rotation:float;
+}
+
+struct PhysicsBodyDesc
+{
+    type:uint;
+    shape:uint;
+    halfExtents:Vec2;
+    radius:float;
+    mass:float;
+    density:float;
+    friction:float;
+    restitution:float;
+    linearDamping:float;
+    angularDamping:float;
+    gravityScale:float;
+    categoryBits:uint;
+    maskBits:uint;
+    groupIndex:int;
+    sensor:bool;
+    contactEvents:bool;
+    fixedRotation:bool;
+    bullet:bool;
+}
+
+struct CharacterDesc
+{
+    maxHealth:float;
+    maxStamina:float;
+    moveSpeed:float;
+    acceleration:float;
+    jumpVelocity:float;
+    damage:float;
+    fireInterval:float;
+    projectileSpeed:float;
+    invulnerabilitySeconds:float;
+    armor:float;
+    team:uint;
+    weaponArchetype:uint;
+}
+
+struct Sprite2D
+{
+    size:Vec2;
+    uvMin:Vec2;
+    uvMax:Vec2;
+    layer:uint;
+    color:uint;
+    flags:uint;
+}
+
+table PrefabEntity
+{
+    name:string;
+    flags:uint;
+    transform:Transform2D;
+    physics:PhysicsBodyDesc;
+    character:CharacterDesc;
+    sprite:Sprite2D;
+}
+
+table Prefab
+{
+    name:string;
+    version:uint;
+    entities:[PrefabEntity];
+}
+
+root_type Prefab;

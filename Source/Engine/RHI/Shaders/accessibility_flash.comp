@@ -1,0 +1,41 @@
+#version 460
+// FemboyEngine 2.0 - per-pixel flash guard.
+//
+// Runs on the scene image right before the accessibility composite. Each pixel
+// compares its luminance with the previous frame's value and clamps a sudden
+// delta to the residual gain, which is what makes a fullscreen strobe harmless.
+// The history image stores the clamped luminance, so the next frame compares
+// against what the display actually showed.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(rgba8, set = 0, binding = 0) uniform image2D ioColor;
+layout(r8, set = 0, binding = 1) uniform image2D ioHistory;
+
+layout(push_constant) uniform FlashPush
+{
+    // x = threshold, y = residual gain, z = enabled, w = reserved
+    vec4 params;
+} p;
+
+void main()
+{
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 size = imageSize(ioColor);
+    if (pixel.x >= size.x || pixel.y >= size.y)
+    {
+        return;
+    }
+
+    vec4 color = imageLoad(ioColor, pixel);
+    // The raw luminance is stored, never the clamped one: a static bright frame
+    // must stop being dimmed after the first frame instead of re-triggering.
+    const float rawLuminance = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+    const float previous = imageLoad(ioHistory, pixel).r;
+    if (p.params.z > 0.5 && previous > 0.0 && abs(rawLuminance - previous) > p.params.x)
+    {
+        color.rgb *= clamp(p.params.y, 0.0, 1.0);
+    }
+    imageStore(ioColor, pixel, color);
+    imageStore(ioHistory, pixel, vec4(rawLuminance, 0.0, 0.0, 0.0));
+}

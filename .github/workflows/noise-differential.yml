@@ -1,0 +1,58 @@
+# Differential gate for protocol v2.
+#
+# The vendored Noise XX vector (Source/Tests/Vectors/NoiseXxChaChaPolySha256Vector.hpp)
+# is what the engine conformance test compares against. This job proves that the
+# frozen bytes still come from noise-c: it builds the pinned upstream checkout,
+# replays the same inputs through it and compares the three handshake messages,
+# the handshake hash and the three transport ciphertexts byte for byte. The
+# transport ciphertexts are produced with the split keys, so a divergence in the
+# split fails the job as well.
+name: Noise differential
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  noise-c-vector:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out FemboyEngine
+        uses: actions/checkout@v4
+
+      - name: Check out pinned noise-c
+        uses: actions/checkout@v4
+        with:
+          repository: rweather/noise-c
+          ref: cfe25410979a87391bb9ac8d4d4bef64e9f268c6
+          path: noise-c
+
+      - name: Build noise-c
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+          cd noise-c
+          ./autogen.sh
+          ./configure
+          make -j"$(nproc)"
+
+      - name: Build the differential driver
+        run: |
+          cc -std=c99 -O2 -I noise-c/include \
+             -o noise-vector-driver Source/Tests/NoiseC/NoiseCVectorDriver.c \
+             noise-c/src/protocol/libnoiseprotocol.a -lm
+
+      - name: Generate the driver input
+        run: python3 Source/Tests/NoiseC/CompareNoiseCVector.py --write-input noise-vector-input.txt
+
+      - name: Run noise-c and compare with the vendored vector
+        run: |
+          ./noise-vector-driver noise-vector-input.txt > noise-c-output.txt
+          python3 Source/Tests/NoiseC/CompareNoiseCVector.py --compare noise-c-output.txt

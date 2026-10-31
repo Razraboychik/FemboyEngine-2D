@@ -1,0 +1,33 @@
+---
+# FemboyEngine2D C++ naming and block rules.
+Checks: '-*,readability-identifier-naming,readability-braces-around-statements'
+WarningsAsErrors: ''
+HeaderFilterRegex: '[/\\]Source[/\\].*\.(h|hpp)$'
+ExcludeHeaderFilterRegex: '[/\\]PluginAPI\.h$'
+CheckOptions:
+  - key: readability-identifier-naming.NamespaceCase
+    value: CamelCase
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.UnionCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConceptCase
+    value: CamelCase
+  - key: readability-identifier-naming.ParameterCase
+    value: CamelCase
+  - key: readability-identifier-naming.ParameterPrefix
+    value: 'In'
+  - key: readability-identifier-naming.LocalVariableCase
+    value: CamelCase
+  - key: readability-identifier-naming.LocalVariablePrefix
+    value: 'Scoped'
+  - key: readability-identifier-naming.MainFunctionCase
+    value: lower_case
+  - key: readability-braces-around-statements.ShortStatementLines
+    value: '0'

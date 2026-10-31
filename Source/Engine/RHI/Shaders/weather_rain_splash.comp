@@ -1,0 +1,57 @@
+#version 460
+// FemboyEngine 2.0 - splash aging.
+//
+// The rain shader appends splash records with atomicAdd; this pass ages them and
+// marks dead records by clearing their energy. No compaction is needed because
+// the splash draw reads a fixed capacity and discards zero-energy records.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct Splash
+{
+    vec4 state0;
+    vec4 color;
+};
+
+layout(std430, set = 0, binding = 0) buffer Splashes
+{
+    uint splashCount;
+    uint padding0;
+    uint padding1;
+    uint padding2;
+    Splash splashes[];
+} splashBuffer;
+
+layout(std430, set = 0, binding = 1) readonly buffer WeatherRead
+{
+    vec4 windAndTime;
+    vec4 atmosphere;
+    vec4 clouds;
+    vec4 precipitation;
+    vec4 fog;
+    vec4 fieldTransform;
+    vec4 fieldExtent;
+    vec4 volume;
+} weather;
+
+void main()
+{
+    const uint index = gl_GlobalInvocationID.x;
+    if (index >= uint(weather.fieldExtent.w))
+    {
+        return;
+    }
+    Splash splash = splashBuffer.splashes[index];
+    if (splash.state0.w <= 0.0)
+    {
+        return;
+    }
+    splash.state0.z += max(weather.windAndTime.w, 0.0);
+    splash.color.a *= 1.0 - clamp(splash.state0.z * 2.0, 0.0, 1.0);
+    if (splash.state0.z > 0.45)
+    {
+        splash.state0.w = 0.0;
+        splash.color.a = 0.0;
+    }
+    splashBuffer.splashes[index] = splash;
+}

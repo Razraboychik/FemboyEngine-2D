@@ -1,0 +1,37 @@
+# Normalize text, but never rewrite binary cook outputs.
+* text=auto
+
+# Vendored sources are not FemboyEngine2D code.
+/third_party/** linguist-vendored
+/libs/** linguist-vendored
+
+# Generated manuals and authoring notes are documentation.
+/Documentation/** linguist-documentation
+/Docs/** linguist-documentation
+/Man/** linguist-documentation
+
+# Cooked or packed assets are binary.
+*.fempak binary
+*.femarc binary
+*.ftex binary
+*.fbin binary
+*.fpcm binary
+*.spv binary
+*.png binary
+
+# C/C++/CMake/Markdown line endings stay LF in the repository.
+*.c text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.cpp text eol=lf
+*.cc text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+
+# Setup scripts are text: PowerShell and batch keep CRLF, shell scripts use LF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.sh text eol=lf
+*.command text eol=lf

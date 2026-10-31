@@ -1,0 +1,47 @@
+// FemboyEngine2D - binary scene/prefab schema.
+//
+// A component is an opaque blob plus the Mirror layout hash. The hash is what
+// makes a binary prefab safe to load: a blob written by a build whose
+// Transform2D had a different offset is rejected with both hashes instead of
+// being memcpy'd into the current struct.
+//
+// The TOML encoding is the authoring format; this one is the shipping format.
+// Both carry the same SceneData.
+namespace Fby.Scene.Fb;
+
+table Component
+{
+    type:string (required);
+    layout_hash:ulong;
+    data:[ubyte];
+}
+
+table Entity
+{
+    name:string;
+    components:[Component];
+}
+
+// P3 authoring anchors. The full chain/cloth/water state travels in
+// world_extension (Snapshot v3 WorldSnapshotV3); these records are the editor's
+// stable, human-inspectable view of the anchor points.
+table ChainAnchor
+{
+    chain_id:uint;
+    anchor_a:uint;
+    anchor_b:uint;
+    path_points:[float];
+}
+
+table Scene
+{
+    version:uint = 2;
+    name:string;
+    author:string;
+    entities:[Entity];
+    chain_anchors:[ChainAnchor];
+    world_extension:[ubyte];
+}
+
+root_type Scene;
+file_identifier "FBSC";

@@ -1,0 +1,128 @@
+#version 460
+// FemboyEngine 2.0 - GPU particle simulator.
+//
+// One dispatch advances every emitter. The CPU uploads:
+//   binding 0: ParticleEmitterGpu[]      (std430, 128 B per emitter)
+//   binding 1: ParticleStateGpu[]        (std430, 64 B per particle)
+//   binding 2: ParticleFrameGpu          (std140, time/dt/count)
+// and pushes exactly one uint32: the PCG32 seed. Spawn/integration/lifetime
+// never round-trip through the CPU, so a rollback replay that re-dispatches
+// with the same seed reproduces the same particles.
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer Emitters
+{
+    vec4 emitterParams[]; // 8 vec4 per emitter
+} emitters;
+
+layout(std430, binding = 1) buffer Particles
+{
+    vec4 particleParams[]; // 4 vec4 per particle
+} particles;
+
+layout(std140, binding = 2) uniform Frame
+{
+    float dt;
+    float time;
+    uint particleCount;
+    uint frameIndex;
+} frame;
+
+layout(push_constant) uniform Push
+{
+    uint seed;
+} push;
+
+const float PI = 3.14159265358979323846;
+const uint UINT_MAX = 0xFFFFFFFFu;
+
+// PCG32 (O'Neill). The engine uses the same constants on the CPU; keeping the
+// algorithm here means a particle replay and a gameplay replay disagree only if
+// the seed differs, never because two RNGs were implemented differently.
+uint pcgNext(inout uint state)
+{
+    state = state * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+uint pcgHash(uint value)
+{
+    uint state = value;
+    return pcgNext(state);
+}
+
+float randomFloat(inout uint state)
+{
+    return float(pcgNext(state)) * (1.0 / 4294967296.0);
+}
+
+vec2 rotate(vec2 value, float radians)
+{
+    float c = cos(radians);
+    float s = sin(radians);
+    return vec2(value.x * c - value.y * s, value.x * s + value.y * c);
+}
+
+void main()
+{
+    uint particleId = gl_GlobalInvocationID.x;
+    if (particleId >= frame.particleCount)
+    {
+        return;
+    }
+
+    uint base = particleId * 4u;
+    vec4 state0 = particles.particleParams[base + 0u]; // position, age, life
+    vec4 state1 = particles.particleParams[base + 1u]; // velocity, rotation, size
+    vec4 state2 = particles.particleParams[base + 2u]; // colour
+    vec4 state3 = particles.particleParams[base + 3u]; // id, emitter, flags, reserved
+
+    uint emitterIndex = uint(state3.y);
+    uint emitterBase = emitterIndex * 8u;
+    vec4 eOrigin = emitters.emitterParams[emitterBase + 0u]; // xy pos, z radius, w start time
+    vec4 eDirection = emitters.emitterParams[emitterBase + 1u]; // xy dir, z spread, w speedMin
+    vec4 eGravity = emitters.emitterParams[emitterBase + 2u]; // xy gravity, z speedMax, w lifeMin
+    vec4 eLifetime = emitters.emitterParams[emitterBase + 3u]; // x lifeMax, y maxParticles, z flags, w seed
+    vec4 eColorStart = emitters.emitterParams[emitterBase + 4u];
+    vec4 eColorEnd = emitters.emitterParams[emitterBase + 5u];
+    vec4 eSize = emitters.emitterParams[emitterBase + 6u]; // x start, y end, z rotation, w rotSpeed
+
+    bool recycle = (state0.w <= 0.0) || (state0.z >= state0.w);
+    if (recycle)
+    {
+        uint emitterSeed = uint(eLifetime.w);
+        uint randomState = pcgHash(push.seed ^ (particleId * 747796405u) ^ (frame.frameIndex * 2891336453u) ^
+                                   (emitterSeed + emitterIndex * 0x9E3779B9u));
+        float spread = eDirection.z * (randomFloat(randomState) * 2.0 - 1.0);
+        float speed = mix(eDirection.w, eGravity.z, randomFloat(randomState));
+        vec2 direction = normalize(eDirection.xy);
+        vec2 velocity = rotate(direction, spread) * speed;
+
+        vec2 position = eOrigin.xy + velocity * (randomFloat(randomState) * 0.05);
+        float life = mix(eGravity.w, eLifetime.x, randomFloat(randomState));
+        float size = mix(eSize.x, eSize.y, randomFloat(randomState));
+
+        state0 = vec4(position, 0.0, life);
+        state1 = vec4(velocity, eSize.z + (randomFloat(randomState) - 0.5) * 0.5, size);
+        state2 = eColorStart;
+        state3 = vec4(float(particleId), float(emitterIndex), eLifetime.z, 0.0);
+    }
+    else
+    {
+        state0.z += frame.dt;
+        vec2 velocity = state1.xy + eGravity.xy * frame.dt;
+        state0.xy += velocity * frame.dt;
+        state1.xy = velocity;
+        state1.z += eSize.w * frame.dt;
+
+        float lifeRatio = clamp(state0.z / max(state0.w, 0.0001), 0.0, 1.0);
+        state1.w = mix(eSize.x, eSize.y, lifeRatio);
+        state2 = mix(eColorStart, eColorEnd, lifeRatio);
+    }
+
+    particles.particleParams[base + 0u] = state0;
+    particles.particleParams[base + 1u] = state1;
+    particles.particleParams[base + 2u] = state2;
+    particles.particleParams[base + 3u] = state3;
+}

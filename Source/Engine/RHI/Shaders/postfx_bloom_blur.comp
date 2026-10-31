@@ -1,0 +1,37 @@
+#version 460
+// FemboyEngine 2.0 - separable 9-tap bloom blur.
+//
+// The pass is dispatched twice by the graph with a horizontal/vertical flag in
+// grainAndFlash.y; one shader, two dispatches, no second pipeline.
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D uBloomIn;
+layout(set = 0, binding = 1, rgba16f) uniform image2D uBloomOut;
+
+layout(set = 0, binding = 2) uniform PostFxBlock
+{
+    vec4 flagsAndCrt;
+    vec4 vignetteAndBloom;
+    vec4 exposureAndChromatic;
+    vec4 grainAndFlash;
+} fx;
+
+void main()
+{
+    const ivec2 size = imageSize(uBloomOut);
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= size.x || pixel.y >= size.y)
+    {
+        return;
+    }
+    const vec2 direction = fx.grainAndFlash.y > 0.5 ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    const vec2 texel = direction / vec2(size);
+    const vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    vec3 color = texture(uBloomIn, uv).rgb * 0.227027;
+    color += texture(uBloomIn, uv + texel * 1.384615).rgb * 0.316216;
+    color += texture(uBloomIn, uv - texel * 1.384615).rgb * 0.316216;
+    color += texture(uBloomIn, uv + texel * 3.230769).rgb * 0.070270;
+    color += texture(uBloomIn, uv - texel * 3.230769).rgb * 0.070270;
+    imageStore(uBloomOut, pixel, vec4(color, 1.0));
+}

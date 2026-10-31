@@ -1,0 +1,19 @@
+# FemboyEngine2D - texture-array atlas.
+#
+# A layer is one cooked .ftex file. Every layer must have the same dimensions;
+# the runtime uploads all of them as one Vulkan 2D array, which is why a frame
+# with sprites from every layer still needs one descriptor set and one draw call
+# per sort bucket. Layer 0 is reserved for the white texel used by solid quads.
+#
+# The source images live next to this file. `fby_fempak pack` converts them to
+# .ftex; the cooked pack contains this manifest plus the payloads, never a PNG.
+name = "main"
+width = 64
+height = 64
+srgb = false
+
+layers = [
+    { name = "white", source = "atlas/white.ftex" },
+    { name = "tiles", source = "atlas/tiles.ftex" },
+    { name = "orb",   source = "atlas/orb.ftex" },
+]

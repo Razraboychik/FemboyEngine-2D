@@ -1,0 +1,193 @@
+# FemboyEngine2D - third-party notice manifest.
+#
+# Single source of truth for shipped attribution. `Documentation/Tools/
+# GenerateThirdPartyNotices.py` turns this file into THIRD_PARTY_NOTICES.md and
+# the embedded Fby::Notices table. Every component that ends up in a shipped
+# binary must have an entry here; the notices test fails otherwise.
+#
+# license_file is relative to the repository root. When the file is absent the
+# component is still listed with its SPDX identifier and upstream URL.
+
+[[component]]
+name = "SDL3"
+version = "release-3.4.18"
+spdx = "Zlib"
+purpose = "Window, input, platform layer and Vulkan surface"
+copyright = "Copyright (c) 1997-2025 Sam Lantinga"
+url = "https://github.com/libsdl-org/SDL"
+
+[[component]]
+name = "Box2D"
+version = "v3.0.0"
+spdx = "MIT"
+purpose = "2D rigid-body physics"
+copyright = "Copyright (c) 2022 Erin Catto"
+url = "https://github.com/erincatto/box2d"
+license_file = "third_party/box2d-main/box2d-main/LICENSE"
+
+[[component]]
+name = "EnTT"
+version = "vendored"
+spdx = "MIT"
+purpose = "ECS registry and views"
+copyright = "Copyright (c) 2017-2026 Michele Caini, author of EnTT"
+url = "https://github.com/skypjack/entt"
+license_file = "third_party/entt-main/entt-main/LICENSE"
+
+[[component]]
+name = "toml++"
+version = "3.4.0"
+spdx = "MIT"
+purpose = "Project descriptor and scene TOML parser"
+copyright = "Copyright (c) Mark Gillard"
+url = "https://github.com/marzer/tomlplusplus"
+license_file = "third_party/tomlplusplus-master/tomlplusplus-master/LICENSE"
+
+[[component]]
+name = "FlatBuffers"
+version = "25.12.19"
+spdx = "Apache-2.0"
+purpose = "Localization and scene binary schemas"
+copyright = "Copyright (c) 2025 Google Inc."
+url = "https://github.com/google/flatbuffers"
+license_file = "third_party/flatbuffers-master/flatbuffers-master/LICENSE"
+
+[[component]]
+name = "miniaudio"
+version = "0.11.23"
+spdx = "MIT-0 OR Unlicense"
+purpose = "Audio device and mixer backend"
+copyright = "Copyright (c) David Reid"
+url = "https://github.com/mackron/miniaudio"
+license_file = "third_party/miniaudio-master/miniaudio-master/LICENSE"
+
+[[component]]
+name = "Opus"
+version = "vendored"
+spdx = "BSD-3-Clause"
+purpose = "Ogg Opus decoding and voice encoding"
+copyright = "Copyright 2001-2023 Xiph.Org, Skype Limited, Octasic, Jean-Marc Valin, Timothy B. Terriberry, CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozilla, Amazon"
+url = "https://github.com/xiph/opus"
+license_file = "third_party/opus-master/opus-main/COPYING"
+
+[[component]]
+name = "Vulkan-Headers"
+version = "v1.4.366"
+spdx = "Apache-2.0"
+purpose = "Vulkan API declarations"
+copyright = "Copyright (c) 2015-2025 The Khronos Group Inc."
+url = "https://github.com/KhronosGroup/Vulkan-Headers"
+
+[[component]]
+name = "glslang"
+version = "15.3.0"
+spdx = "BSD-3-Clause OR Apache-2.0"
+purpose = "Runtime GLSL to SPIR-V compilation"
+copyright = "Copyright (c) The Khronos Group Inc."
+url = "https://github.com/KhronosGroup/glslang"
+
+[[component]]
+name = "stb"
+version = "vendored"
+spdx = "MIT OR Unlicense"
+purpose = "Image and font decoding"
+copyright = "Copyright (c) Sean Barrett and contributors"
+url = "https://github.com/nothings/stb"
+
+[[component]]
+name = "Dear ImGui"
+version = "1.93.1"
+spdx = "MIT"
+purpose = "Editor user interface"
+copyright = "Copyright (c) 2014-2026 Omar Cornut"
+url = "https://github.com/ocornut/imgui"
+license_file = "third_party/imgui-master/imgui-master/LICENSE.txt"
+
+[[component]]
+name = "ImGuizmo"
+version = "vendored"
+spdx = "MIT"
+purpose = "Editor transform gizmo"
+copyright = "Copyright (c) 2016 Cedric Guillemet"
+url = "https://github.com/CedricGuillemet/ImGuizmo"
+license_file = "third_party/ImGuizmo-master/ImGuizmo-master/LICENSE"
+
+[[component]]
+name = "ImPlot"
+version = "vendored"
+spdx = "MIT"
+purpose = "Editor profiler plots"
+copyright = "Copyright (c) 2020 Evan Pezent"
+url = "https://github.com/epezent/implot"
+license_file = "third_party/ImPlot-master/implot-master/LICENSE"
+
+[[component]]
+name = "imnodes"
+version = "vendored"
+spdx = "MIT"
+purpose = "Editor node graph canvas"
+copyright = "Copyright (c) 2019 Johann Muszynski"
+url = "https://github.com/Nelarius/imnodes"
+license_file = "third_party/imnodes/LICENSE.md"
+
+[[component]]
+name = "LZMA SDK"
+version = "25.01"
+spdx = "Public Domain"
+purpose = "FemArchiver distribution compression"
+copyright = "Copyright (c) Igor Pavlov"
+url = "https://www.7-zip.org/sdk.html"
+
+[[component]]
+name = "RNNoise"
+version = "0.1.1"
+spdx = "BSD-3-Clause"
+purpose = "Neural speech denoise tier for the voice chain"
+copyright = "Copyright (c) 2017-2018 Mozilla, Xiph.Org, Jean-Marc Valin"
+url = "https://github.com/xiph/rnnoise"
+license_file = "third_party/rnnoise/COPYING"
+
+[[component]]
+name = "Monocypher"
+version = "4.0.2"
+spdx = "BSD-2-Clause OR CC0-1.0"
+purpose = "BLAKE2b, X25519 and EdDSA primitives for the network layer"
+copyright = "Copyright (c) 2017-2023 Loup Vaillant and contributors"
+url = "https://github.com/LoupVaillant/Monocypher"
+license_file = "third_party/monocypher/LICENCE.md"
+
+[[component]]
+name = "HarfBuzz"
+version = "15.0.0"
+spdx = "MIT"
+purpose = "OpenType shaping for complex scripts, ligatures and mark positioning"
+copyright = "Copyright (c) 2010-2023 Google, Inc. and HarfBuzz contributors"
+url = "https://github.com/harfbuzz/harfbuzz"
+license_file = "third_party/harfbuzz-download/harfbuzz-15.0.0/COPYING"
+
+[[component]]
+name = "SheenBidi"
+version = "3.0.0"
+spdx = "Apache-2.0"
+purpose = "Unicode Bidirectional Algorithm (UAX #9) runs"
+copyright = "Copyright (C) 2016-2025 Muhammad Tayyab Akram"
+url = "https://github.com/Tehreer/SheenBidi"
+license_file = "third_party/sheenbidi-download/SheenBidi-3.0.0/LICENSE"
+
+[[component]]
+name = "IBM Plex Sans / IBM Plex Mono"
+version = "IBM Plex 6.4.0"
+spdx = "OFL-1.1"
+purpose = "Default text family: regular, bold, italic, bold italic and mono slots"
+copyright = "Copyright (c) 2017 IBM Corp. with Reserved Font Name \"Plex\""
+url = "https://github.com/IBM/plex"
+license_file = "assets/fonts/IBMPlex-OFL.txt"
+
+[[component]]
+name = "Noto Sans Arabic/Devanagari/Thai/SC test fonts"
+version = "Google Fonts"
+spdx = "OFL-1.1"
+purpose = "Complex-script shaping and full-glyph SDF tests"
+copyright = "Copyright (c) Google Inc. and Noto contributors"
+url = "https://github.com/google/fonts"
+license_file = "assets/fonts/tests/OFL.txt"

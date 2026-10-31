@@ -1,0 +1,138 @@
+#version 460
+// FemboyEngine 2.0 - GPU rain/snow with SDF splash spawning.
+//
+// The CPU never reads or writes a droplet. Each invocation owns one particle,
+// integrates it with the global wind block and samples the terrain SDF. A drop
+// that crosses the surface appends one splash record with atomicAdd and respawns
+// at the top of the volume. 262144 drops cost one dispatch and no upload.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle
+{
+    vec4 state0; // xy position, z age, w life
+    vec4 state1; // xy velocity, z type (0 rain, 1 snow), w size
+    vec4 color;
+    vec4 seed;
+};
+
+layout(std430, set = 0, binding = 0) buffer Particles
+{
+    Particle particles[];
+} particleBuffer;
+
+struct Splash
+{
+    vec4 state0; // xy position, z age, w energy
+    vec4 color;
+};
+
+layout(std430, set = 0, binding = 1) buffer Splashes
+{
+    uint splashCount;
+    uint padding0;
+    uint padding1;
+    uint padding2;
+    Splash splashes[];
+} splashBuffer;
+
+layout(set = 0, binding = 2) uniform sampler2D uSdf;
+
+layout(set = 0, binding = 3) uniform WeatherBlock
+{
+    vec4 windAndTime;
+    vec4 atmosphere;
+    vec4 clouds;
+    vec4 precipitation;
+    vec4 fog;
+    vec4 fieldTransform;
+    vec4 fieldExtent;
+    vec4 volume;
+} weather;
+
+uint pcgNext(inout uint state)
+{
+    state = state * 747796405u + 2891336453u;
+    const uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float randomFloat(inout uint state)
+{
+    return float(pcgNext(state)) * (1.0 / 4294967296.0);
+}
+
+void spawnParticle(inout Particle particle, inout uint randomState)
+{
+    const bool snow = weather.precipitation.y > weather.precipitation.x;
+    const float fallSpeed = snow ? weather.volume.w : weather.volume.z;
+    const vec2 area = max(weather.volume.xy, vec2(1.0));
+    const vec2 origin = weather.fieldTransform.xy - area * 0.5;
+    const vec2 position = origin + vec2(randomFloat(randomState) * area.x, area.y * (0.75 + randomFloat(randomState) * 0.25));
+    const float life = snow ? mix(6.0, 14.0, randomFloat(randomState)) : mix(0.6, 1.4, randomFloat(randomState));
+    const float size = snow ? mix(1.2, 3.0, randomFloat(randomState)) : mix(0.7, 1.8, randomFloat(randomState));
+    const vec2 wind = weather.windAndTime.xy * (snow ? 0.85 : 0.35);
+    particle.state0 = vec4(position, 0.0, life);
+    particle.state1 = vec4(wind.x, -fallSpeed + wind.y, snow ? 1.0 : 0.0, size);
+    particle.color = snow ? vec4(0.92, 0.94, 1.0, 0.9) : vec4(0.63, 0.78, 1.0, 0.55);
+    particle.seed = vec4(float(randomState & 0xFFFFu), 0.0, 0.0, 0.0);
+}
+
+void main()
+{
+    const uint particleIndex = gl_GlobalInvocationID.x;
+    const uint particleCount = uint(weather.fieldExtent.z);
+    if (particleIndex >= particleCount)
+    {
+        return;
+    }
+    Particle particle = particleBuffer.particles[particleIndex];
+    uint seedState = uint(weather.windAndTime.z * 1000.0);
+    seedState ^= particleIndex * 747796405u;
+    seedState ^= uint(weather.clouds.x * 1000.0);
+    uint randomState = pcgNext(seedState);
+    if (particle.state0.w <= 0.0)
+    {
+        spawnParticle(particle, randomState);
+    }
+    const float dt = max(weather.windAndTime.w, 0.0);
+    const bool snow = particle.state1.z > 0.5;
+    const float drag = snow ? 1.8 : 0.6;
+    const vec2 wind = weather.windAndTime.xy * (snow ? 0.9 : 0.45);
+    vec2 velocity = particle.state1.xy;
+    velocity += (wind - velocity) * min(dt * drag, 1.0);
+    particle.state0.z += dt;
+    const vec2 previous = particle.state0.xy;
+    particle.state0.xy += velocity * dt;
+
+    const vec2 fieldSize = max(weather.fieldExtent.xy * weather.fieldTransform.zw, vec2(0.001));
+    const vec2 uv = (particle.state0.xy - weather.fieldTransform.xy) / fieldSize;
+    float surface = 1.0e6;
+    if (uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0)
+    {
+        surface = texture(uSdf, uv).r;
+    }
+    const vec2 previousUv = (previous - weather.fieldTransform.xy) / fieldSize;
+    const float previousSurface = (previousUv.x >= 0.0 && previousUv.y >= 0.0 && previousUv.x <= 1.0 && previousUv.y <= 1.0)
+                                      ? texture(uSdf, previousUv).r
+                                      : 1.0e6;
+    if (surface <= 0.0 && previousSurface > 0.0)
+    {
+        // W1: splashCount is a monotonically increasing atomic cursor, not an
+        // occupancy counter. Without the modulo it reaches capacity once and
+        // every later splash is silently discarded for the rest of the session.
+        // Wrapping the slot index makes the buffer a true ring: after capacity
+        // spawns the oldest record is overwritten and spawning keeps working.
+        const uint splashCapacity = max(uint(weather.fieldExtent.w), 1u);
+        const uint splashIndex = atomicAdd(splashBuffer.splashCount, 1u) % splashCapacity;
+        const float energy = clamp((previousSurface - surface) / max(particle.state1.w, 0.1), 0.0, 1.0);
+        splashBuffer.splashes[splashIndex].state0 = vec4(previous, 0.0, energy);
+        splashBuffer.splashes[splashIndex].color = vec4(0.75, 0.88, 1.0, 0.65 * energy);
+        spawnParticle(particle, randomState);
+    }
+    else if (particle.state0.z >= particle.state0.w)
+    {
+        spawnParticle(particle, randomState);
+    }
+    particleBuffer.particles[particleIndex] = particle;
+}

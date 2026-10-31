@@ -1,0 +1,59 @@
+---
+# FemboyEngine2D canonical C++ formatting.
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++26
+
+# Indentation and line width.
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+ContinuationIndentWidth: 4
+ConstructorInitializerIndentWidth: 4
+AccessModifierOffset: -4
+IndentCaseLabels: true
+IndentGotoLabels: false
+NamespaceIndentation: None
+
+# Allman braces and mandatory block bodies.
+BreakBeforeBraces: Allman
+InsertBraces: true
+RemoveBracesLLVM: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Empty
+AllowShortNamespacesOnASingleLine: false
+EmptyLineBeforeAccessModifier: LogicalBlock
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+
+# Pointers, references, operators and declarations.
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+BreakBeforeTernaryOperators: true
+BreakBeforeBinaryOperators: None
+AlignAfterOpenBracket: Align
+BinPackArguments: true
+BinPackParameters: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyBlock: false
+SortIncludes: Never
+IncludeBlocks: Preserve
+
+# Comments stay above the code they describe; trailing and aligned comments
+# are deliberately not encouraged by the formatter.
+ReflowComments: true
+AlignTrailingComments: false
+SpacesBeforeTrailingComments: 1
+CommentPragmas: '^NOLINT|^clang-format|^SPDX|^IWYU'
+FixNamespaceComments: false
+
+# Files end with exactly one newline.
+InsertNewlineAtEOF: true

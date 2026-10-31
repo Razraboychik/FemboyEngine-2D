@@ -1,0 +1,12 @@
+guid = "0x41C118D1536C7C1C"
+asset_id = "0x59793B0DD10FA413"
+type = "scene"
+source = "scenes/demo.toml"
+source_hash = "0xCAA17E1277F7B464"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
