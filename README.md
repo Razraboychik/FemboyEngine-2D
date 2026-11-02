@@ -7,6 +7,7 @@
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android-lightgrey.svg)]()
 [![Status: 0.1.0-alpha.1](https://img.shields.io/badge/status-0.1.0--alpha.1-blue.svg)]()
+[![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D is a compact, deterministic, data-oriented engine for 2D games:
 a hand-written Vulkan/Metal RHI, an EnTT-based ECS, a declarative parallel
