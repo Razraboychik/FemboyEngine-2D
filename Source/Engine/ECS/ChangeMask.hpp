@@ -23,7 +23,7 @@ enum class ChangeMaskBit : ChangeMask
     Sprite2D = 1ull << 1,
     DrawOrder = 1ull << 2,
     Velocity = 1ull << 3,
-    GameplayState = 1ull << 4,
+    GameplayTags = 1ull << 4,
     Animation = 1ull << 5,
     Audio = 1ull << 6,
     Physics = 1ull << 7,

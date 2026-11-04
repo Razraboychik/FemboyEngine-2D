@@ -1,4 +1,4 @@
-# FemboyEngine 0.1.0-alpha.1 — начало работы
+# FemboyEngine 0.2.0-alpha.1 — начало работы
 
 Этот документ описывает, что нужно установить и какие файлы должны лежать рядом с движком, чтобы запустить редактор, рантайм и инструменты разработки на Windows, Linux и macOS, а также какие инструменты нужны для сборки под Android и iOS.
 
@@ -27,7 +27,7 @@
 | GCC | 15 | 16.2.0 | второй компилятор для проверки переносимости |
 | Python | 3.11 | 3.13 | генерация документации и notices |
 | Git | 2.40 | — | клонирование и версионирование |
-| Vulkan Loader | 1.3 | 1.4 | рантайм на Windows и Linux |
+| Vulkan Loader | 1.4 | 1.4 | рантайм на Windows и Linux |
 | MoltenVK | 1.2 | — | Vulkan поверх Metal на macOS (либо Metal-бэкенд напрямую) |
 | 7-Zip | 21 | 25.01 | распаковка LZMA SDK (иначе используется встроенный FbyLZ) |
 | Android Studio | — | NDK r28c | Android SDK, NDK 28.2.13676358, compileSdk 35 |
@@ -38,29 +38,46 @@
 
 ## Быстрый старт: скрипты установки
 
-Скрипты лежат в каталоге `SetupScripts/` и делают одно и то же на своей платформе: ставят системные пакеты и раскладывают закреплённые версии сторонних библиотек в `third_party/`, после чего конфигурация CMake не требует сети. Часть библиотек уже входит в репозиторий (EnTT, ImGui, ImGuizmo, ImPlot, imnodes, FlatBuffers, toml++, Box2D, miniaudio, Opus, RNNoise, Monocypher, stb, HarfBuzz, SheenBidi); скрипт скачивает только те, что не хранятся в репозитории.
+Скрипты лежат в каталоге `SetupScripts/` и разделены по группам ПО. Скрипты
+«всё сразу» ставят всё; компонентные скрипты — только одну группу.
 
-Windows (PowerShell, из корня репозитория):
+| Группа | Windows | macOS | Linux |
+|---|---|---|---|
+| C++ toolchain, CMake и зависимости | `SetupScripts\SetupCpp.bat` | `./SetupScripts/SetupCpp.command` | `./SetupScripts/SetupCpp.sh` |
+| Архиватор 7-Zip | `SetupScripts\SetupArchiver.bat` | `./SetupScripts/SetupArchiver.command` | `./SetupScripts/SetupArchiver.sh` |
+| Опциональные SDK DLSS/FidelityFX/XeSS | `SetupScripts\SetupUpscalers.bat` | `./SetupScripts/SetupUpscalers.command` | `./SetupScripts/SetupUpscalers.sh` |
+
+Общие точки входа остаются `Setup.bat`, `Setup.command` и `Setup.sh`.
+C++-скрипты ставят компилятор, CMake, Ninja, Vulkan-заголовки и закреплённые
+зависимости. На Windows `SetupCpp` ставит официальный MSI LLVM 23.1.4 и
+проверяет версию `clang-cl`; Unix-скрипты ставят Clang из пакетного менеджера
+(19+). Скрипты архиватора ставят 7-Zip. Скрипты апскейлеров только
+проверяют или скачивают vendor SDK; они опциональны и никогда не входят в
+репозиторий движка.
+
+Полезные флаги: `--skip-system` — не трогать системные пакеты (образ CI уже
+содержит инструменты); `--force` — заново скачать C++-архивы. C++-скрипт
+создаёт `third_party/dependencies.lock` с версиями и хешами архивов. В конце
+он печатает отчёт о найденных мобильных инструментах: NDK, JDK и Xcode.
+
+### Из архива GitHub
+
+1. Открыть страницу репозитория и выбрать **Code > Download ZIP**.
+2. Распаковать архив в каталог без пробелов и не-ASCII символов.
+3. Запустить `SetupCpp` и `SetupArchiver` для своей ОС.
+4. При необходимости запустить `SetupUpscalers` и включить vendor backend.
+5. Настроить и собрать:
 
 ```
-SetupScripts\Setup.bat
+cmake --preset dev-clang
+cmake --build --preset dev-clang
+ctest --preset dev-clang --output-on-failure
 ```
 
-macOS (двойной щелчок в Finder или терминал):
-
-```
-./SetupScripts/Setup.command
-```
-
-Linux:
-
-```
-./SetupScripts/Setup.sh
-```
-
-Полезные флаги: `--skip-system` — не трогать системные пакеты (образ CI уже содержит инструменты); `--force` — заново скачать все архивы. В конце каждый скрипт печатает отчёт о найденных мобильных инструментах: NDK, JDK и Xcode.
-
-Скрипт создаёт `third_party/dependencies.lock` — фиксацию версий и SHA-256 скачанных архивов.
+В архиве нет vendor SDK. C++-скрипт ставит toolchain и раскладывает
+закреплённые исходники; archiver-скрипт ставит 7-Zip. Скрипты апскейлеров
+нужны только при явном включении DLSS/FidelityFX. Без них FSR1, core-путь
+FSR2 и собственная генерация кадров собираются и работают с runtime-fallback.
 
 ## Ручная установка
 
@@ -73,7 +90,7 @@ Linux:
 3. Установить CMake 3.31 и Ninja 1.12 (можно из поставки Build Tools).
 4. Установить Vulkan SDK 1.4 — он даёт `vulkan-1.dll` и `VULKAN_SDK`.
 5. Установить 7-Zip (по желанию).
-6. Скачать архивы, которые обычно качает скрипт: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.0.0`, RNNoise `0.1.1`, Monocypher `4.0.2` и распаковать их в те же каталоги `third_party/`, что создаёт скрипт. HarfBuzz и SheenBidi скачивать не нужно: они уже лежат в репозитории.
+6. Скачать архивы, которые обычно качает скрипт: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.2` и распаковать их в те же каталоги `third_party/`, что создаёт скрипт. HarfBuzz и SheenBidi скачивать не нужно: они уже лежат в репозитории.
 
 ### Linux
 
@@ -97,39 +114,160 @@ Xcode Command Line Tools обязательны: они дают `clang++`, Meta
 Из корня репозитория:
 
 ```
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
+cmake --build build-dev
+ctest --test-dir build-dev --output-on-failure
 ```
 
-На Windows те же команды выполняются в окружении `vcvars64` (это делает `build/build.bat`). Основные опции CMake: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
+На Windows те же команды выполняются в окружении `vcvars64`; зависимости и инструменты подготавливает `SetupScripts/SetupWindows.ps1`. Основные опции CMake: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
 
 Готовые исполняемые файлы раскладываются по назначению:
 
 | Каталог | Что внутри |
 |---|---|
-| `build/bin` | приложения: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, плагины платформ и `plugins/` |
-| `build/bin/tools` | консольные инструменты: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
-| `build/bin/tests` | тестовые исполняемые файлы (`fby_*_test`), их запускает `ctest` |
-| `build/bin/lib` | статические библиотеки |
-| `build/bin/plugins` | нативные плагины движка |
+| `build-dev/bin` | приложения: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, плагины платформ и `plugins/` |
+| `build-dev/bin/tools` | консольные инструменты: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
+| `build-dev/bin/tests` | тестовые исполняемые файлы (`fby_*_test`), их запускает `ctest` |
+| `build-dev/bin/lib` | статические библиотеки |
+| `build-dev/bin/plugins` | нативные плагины движка |
 
 Файлы `*.pdb` рядом с исполняемыми файлами — это отладочные символы, которые создаёт компилятор. Они нужны только отладчику и не требуются для запуска; в релизной поставке их можно не распространять.
 
+## Редактор кода и IDE
+
+Собственный текстовый редактор движку не нужен. Для разработки используется внешний редактор, который умеет читать CMake-проект и `compile_commands.json`.
+
+Рекомендуемый вариант:
+
+- **VS Code**;
+- расширение **clangd**;
+- расширение **CMake Tools**;
+- **CodeLLDB** или `cppdbg` для отладки;
+- RenderDoc для отладки GPU.
+
+CLion тоже подходит: он нативно понимает CMake и умеет запускать `fby_editor` и тесты. Visual Studio можно использовать как IDE, но не как MSVC-сборку; подробности ниже.
+
+### VS Code: настройка
+
+1. Установить VS Code.
+2. Установить расширения:
+   - `llvm-vs-code-extensions.vscode-clangd`;
+   - `ms-vscode.cmake-tools`;
+   - `vadimcn.vscode-lldb` либо `ms-vscode.cpptools` для `cppdbg`.
+3. Открыть корень репозитория (папку, в которой лежит `CMakePresets.json`).
+4. Отключить встроенный IntelliSense, иначе он будет конфликтовать с clangd:
+
+```json
+{
+  "C_Cpp.intelliSenseEngine": "disabled"
+}
+```
+
+5. Выбрать CMake-пресет `dev-clang` или `dev-clangcl`.
+6. Сконфигурировать проект:
+
+```bat
+cmake --preset dev-clang
+```
+
+7. Собрать:
+
+```bat
+cmake --build --preset dev-clang
+```
+
+8. Запустить тесты:
+
+```bat
+ctest --preset dev-clang
+```
+
+В репозитории уже лежат:
+
+- `CMakePresets.json` — пресеты;
+- `.clangd` — путь к базе компиляции;
+- `.vscode/settings.json` — настройки clangd и CMake Tools;
+- `.vscode/launch.json` — запуск редактора и `frame_composer` теста.
+
+### clangd
+
+clangd должен использовать тот же Clang, которым собирается проект. В настройках:
+
+```json
+{
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build-audit",
+    "--query-driver=C:/Users/<user>/AppData/Local/Programs/LLVM/bin/clang++.exe"
+  ]
+}
+```
+
+`--query-driver` нужен, чтобы clangd нашёл системные заголовки Windows SDK. Если используется другой build-каталог, заменить путь в `--compile-commands-dir` или в `.clangd`.
+
+Нельзя держать одновременно включёнными C/C++ IntelliSense и clangd: получится два разных набора диагностик и переходов.
+
+### Пресеты сборки
+
+| Пресет | Компилятор | Назначение |
+|---|---|---|
+| `dev-clang` | `clang++` | Debug, тесты, `compile_commands.json` |
+| `release-clang` | `clang++` | RelWithDebInfo, тесты |
+| `dev-clangcl` | `clang-cl` | Debug через проверенный Windows-toolchain |
+| `audit-clang` | `clang++` | существующий `build-audit` для clangd |
+
+Разные компиляторы должны использовать **разные build-каталоги**. Нельзя переконфигурировать `build-audit` с clang++ на clang-cl: CMakeCache останется от старого toolchain.
+
+### Отладка
+
+Для `cppdbg` используется gdb из MinGW/LLVM либо CodeLLDB с LLVM. Пример запуска:
+
+```json
+{
+  "name": "Editor (Debug)",
+  "type": "cppdbg",
+  "request": "launch",
+  "program": "${workspaceFolder}/build-dev/bin/fby_editor.exe",
+  "cwd": "${workspaceFolder}",
+  "MIMode": "gdb",
+  "miDebuggerPath": "gdb.exe"
+}
+```
+
+Для GPU-отладки использовать RenderDoc: он подключается к `fby_editor.exe` и снимает кадр без встраивания отладчика в редактор.
+
+## Поддержка MSVC
+
+**Сейчас — нет.** Проект сознательно собран вокруг Clang:
+
+- C++26 и строгие флаги проверяются на Clang 23.1.4;
+- clang-cl уже даёт Windows ABI, Windows SDK и MSVC-совместимый драйвер;
+- MSVC-компилятор (`cl.exe`) не требуется;
+- добавление MSVC означает второй набор флагов, предупреждений, поведения STL и C++26-фич, а также отдельную CI-матрицу.
+
+Это не значит, что MSVC «запрещён навсегда». Если он нужен как **необязательный второй компилятор**, делать это нужно отдельной задачей:
+
+1. добавить пресет `dev-msvc`;
+2. проверить C++26-фичи, используемые движком;
+3. добавить `FBY_COMPILER_MSVC` для различий флагов;
+4. добавить отдельный CI-job;
+5. не заменять Clang, а держать MSVC как дополнительную проверку.
+
+До этого основной и проверенный путь — **Clang / clang-cl**. Visual Studio можно использовать как IDE с toolchain clang-cl, но не как замену сборки на MSVC.
+
 ## Запуск редактора
 
-Редактор открывает проект из **текущего рабочего каталога**: он ищет `project.femproj`, поднимает виртуальную файловую систему на `assets/` и пишет настройки в `build/editor.ini`. Поэтому запускать его нужно из корня проекта (или из корня репозитория для демонстрационного проекта).
+Редактор открывает проект из **текущего рабочего каталога**: он ищет `project.femproj`, поднимает виртуальную файловую систему на `assets/`, пишет настройки проекта в `editor.ini` рядом с `project.femproj`, а раскладку ImGui хранит в `Saved/Config/editor.ini`. Поэтому запускать его нужно из корня проекта (или из корня репозитория для демонстрационного проекта).
 
 ```
 cd %USERPROFILE%\FemboyEngine
-build\bin\fby_editor.exe
+build-dev\bin\fby_editor.exe
 ```
 
 Linux и macOS:
 
 ```
 cd /path/to/project
-./build/bin/fby_editor
+./build-dev/bin/fby_editor
 ```
 
 Все изменяемые файлы движок складывает в `Saved/` в рабочем каталоге, поэтому каталог проекта остаётся чистым:
@@ -148,7 +286,7 @@ cd /path/to/project
 
 | Путь | Обязателен | Назначение |
 |---|---|---|
-| `build/bin/fby_editor` | да | сам редактор |
+| `build-dev/bin/fby_editor` | да | сам редактор |
 | `assets/` | да | шрифты, локализация, сцены, атласы, конфиги проекта |
 | `assets/fonts/IBMPlexSans-Regular.ttf`, `...-Bold.ttf`, `...-Italic.ttf`, `...-BoldItalic.ttf`, `IBMPlexMono-Regular.ttf` | да | семейство шрифтов редактора и текста сцены |
 | `assets/fonts/IBMPlex.family.toml` | да | манифест семейства: пять слотов стилей |
@@ -156,11 +294,11 @@ cd /path/to/project
 | `assets/loc/ui.fbin` | да | таблица локализации интерфейса |
 | `assets/scenes/*.toml` | да | сцены проекта |
 | `project.femproj` | да | описание проекта: сцена по умолчанию, симуляция, рендер, доступность |
-| `build/` | да | дерево сборки: там лежат исполняемые файлы и результаты сборки |
-| `build/bin/fby_sandbox` | нет | второй процесс для режима Play-in-Editor по сети |
+| `build-dev/` | да | дерево сборки CMake: там лежат исполняемые файлы и результаты сборки |
+| `build-dev/bin/fby_sandbox` | нет | второй процесс для режима Play-in-Editor по сети |
 | `Saved/` | создаётся | логи, отчёты о падениях, кэш и настройки редактора |
 | `Saved/Config/editor.ini` | создаётся | раскладка панелей и настройки редактора для этой машины |
-| `build/bin/plugins/` | нет | нативные плагины движка |
+| `build-dev/bin/plugins/` | нет | нативные плагины движка |
 | Vulkan Loader в системе | да | окно и GPU-рендер на Windows и Linux |
 | `Projects/` | нет | каталог по умолчанию для новых проектов |
 
@@ -170,11 +308,11 @@ cd /path/to/project
 
 ## Инструменты разработки
 
-Кроме редактора в `build/bin` собираются отдельные исполняемые файлы. Все они — обычные консольные программы, читают файлы и не требуют GUI.
+Кроме редактора в `build-dev/bin` собираются отдельные исполняемые файлы. Все они — обычные консольные программы, читают файлы и не требуют GUI.
 
 | Инструмент | Назначение | Что нужно из файлов |
 |---|---|---|
-| `fby_editor` | редактор: сцены, ассеты, PIE, предпросмотр текста | `assets/`, `project.femproj`, `build/` |
+| `fby_editor` | редактор: сцены, ассеты, PIE, предпросмотр текста | `assets/`, `project.femproj` |
 | `fby_sandbox` | песочница и клиент Play-in-Editor | `assets/` |
 | `fby_server` | выделенный сервер | каталог проекта по желанию |
 | `fby_lobby` | сервис лобби и матчмейкинга | не требуется |
@@ -187,9 +325,9 @@ cd /path/to/project
 | `fby_loc_tool` | проверка и сборка таблиц локализации | `.toml` локализации |
 | `fby_shaderc` | компиляция шейдеров в SPIR-V | `.vert`/`.frag`; вызывается сборкой автоматически |
 
-Инструменты лежат в `build/bin/tools`, тестовые исполняемые файлы — в `build/bin/tests`.
+Инструменты лежат в `build-dev/bin/tools`, тестовые исполняемые файлы — в `build-dev/bin/tests`.
 
-Скрипты-обёртки: `build/build.bat` (сборка), `build/ctest.bat` (тесты), `build/configure.bat` (конфигурация), `SetupScripts/*` (зависимости).
+Сборка и тесты запускаются через пресеты CMake; установка зависимостей — в `SetupScripts/*`.
 
 ## Ярлыки для быстрого запуска
 
@@ -197,7 +335,7 @@ cd /path/to/project
 
 ### Windows
 
-1. Правый щелчок по `build\bin\fby_editor.exe` → «Отправить» → «Рабочий стол (создать ярлык)».
+1. Правый щелчок по `build-dev\bin\fby_editor.exe` → «Отправить» → «Рабочий стол (создать ярлык)».
 2. Свойства ярлыка: «Рабочая папка» = корень проекта (например `%USERPROFILE%\FemboyEngine`), «Объект» = полный путь к `fby_editor.exe`.
 3. Переименовать ярлык в «FemboyEngine» и перетащить на панель задач или в меню «Пуск».
 4. Для отдельного проекта сделать второй ярлык с тем же «Объектом», но «Рабочей папкой» = папка проекта. Это и есть «выбор проекта» без диалога.

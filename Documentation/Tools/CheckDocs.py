@@ -16,7 +16,8 @@ Exit code 0 when no error was found. `--strict` turns the format warnings
 (missing DOCX/PDF) into errors, which is the release gate.
 
 Checks:
-  * every relative Markdown link in README.md and in every md file resolves;
+  * every relative Markdown link in the root and Documentation READMEs and in
+    every md file resolves;
   * every document name has an English and a Russian Markdown edition;
   * every generated Markdown has its DOCX, PDF and, when available, DjVu edition;
   * no `bilingual` directory survives anywhere in the format tree;
@@ -52,12 +53,15 @@ PAIRED_DOCUMENTS = (
     "FemboyEngineGettingStarted",
     "ViewportModes",
     "EditorSettingsReference",
+    "Physics",
+    "FemboyEngineFrameGeneration",
 )
 
 # Files that are allowed directly in Documentation/. Source documents live in
-# design/, style/, release/ and adr/; generated editions live in the format tree.
+# design/, style/ and adr/; generated editions live in the format tree.
 ROOT_FILES = {
     "README.md",
+    "README_RU.md",
     "ROADMAP.md",
 }
 
@@ -83,18 +87,7 @@ def DjvuExpected() -> bool:
 
 # Rendered formats expected per document stem. Every document ships as an
 # independent English and Russian edition.
-FORMAT_MATRIX = {
-    "FemboyEngineArchitecture": ("en", "ru"),
-    "FemboyEngineApplicationGuide": ("en", "ru"),
-    "FemboyEngineAPIReference": ("en", "ru"),
-    "FemboyEngineCompleteReference": ("en", "ru"),
-    "CMakeProjectManagement": ("en", "ru"),
-    "FemboyScript": ("en", "ru"),
-    "ProjectSettingsRecommendations": ("en", "ru"),
-    "FemboyEngineGettingStarted": ("en", "ru"),
-    "ViewportModes": ("en", "ru"),
-    "EditorSettingsReference": ("en", "ru"),
-}
+FORMAT_MATRIX = {stem: ("en", "ru") for stem in PAIRED_DOCUMENTS}
 TOC_ENTRY = re.compile(r"^(\d+)\. ")
 
 
@@ -103,8 +96,14 @@ def rel(path: pathlib.Path) -> str:
 
 
 def check_links(errors: list[str]) -> None:
-    sources = [DOCS / "README.md", DOCS / "ROADMAP.md"]
-    for directory in ("design", "style", "release", "adr"):
+    sources = [
+        ROOT / "README.md",
+        ROOT / "README_RU.md",
+        DOCS / "README.md",
+        DOCS / "README_RU.md",
+        DOCS / "ROADMAP.md",
+    ]
+    for directory in ("design", "style", "adr"):
         sources.extend(sorted((DOCS / directory).glob("*.md")))
     sources.extend(sorted(MD.rglob("*.md")))
     for source in sources:
@@ -129,6 +128,38 @@ def check_language_pairs(errors: list[str]) -> None:
         for path in (MD / "en" / f"{stem}_EN.md", MD / "ru" / f"{stem}_RU.md"):
             if not path.is_file():
                 errors.append(f"missing paired document: {rel(path)}")
+    for path in sorted((MD / "en").glob("*.md")):
+        if path.name.endswith("_EN.md"):
+            stem = path.name[:-6]
+            if stem not in PAIRED_DOCUMENTS:
+                errors.append(f"unpaired English document: {rel(path)}")
+    for path in sorted((MD / "ru").glob("*.md")):
+        if path.name.endswith("_RU.md"):
+            stem = path.name[:-6]
+            if stem not in PAIRED_DOCUMENTS:
+                errors.append(f"unpaired Russian document: {rel(path)}")
+
+
+def check_pair_structure(errors: list[str]) -> None:
+    """A translated edition must keep the same chapter and code-block skeleton."""
+    for stem in PAIRED_DOCUMENTS:
+        en = MD / "en" / f"{stem}_EN.md"
+        ru = MD / "ru" / f"{stem}_RU.md"
+        if not en.is_file() or not ru.is_file():
+            continue
+        en_text = en.read_text(encoding="utf-8")
+        ru_text = ru.read_text(encoding="utf-8")
+        for label, pattern in (
+            ("heading", r"^(#{1,6})\s+"),
+            ("code fence", r"^```"),
+            ("table row", r"^\|"),
+        ):
+            en_count = len(re.findall(pattern, en_text, re.MULTILINE))
+            ru_count = len(re.findall(pattern, ru_text, re.MULTILINE))
+            if en_count != ru_count:
+                errors.append(
+                    f"{stem}: English/Russian {label} count differs ({en_count}/{ru_count})"
+                )
 
 
 def check_formats(warnings: list[str]) -> None:
@@ -186,6 +217,7 @@ def main() -> int:
     warnings: list[str] = []
     check_links(errors)
     check_language_pairs(errors)
+    check_pair_structure(errors)
     check_layout(errors)
     check_formats(warnings)
     if not DjvuExpected():

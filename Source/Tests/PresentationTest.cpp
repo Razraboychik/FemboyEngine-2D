@@ -265,15 +265,18 @@ int TestLightSourceSystem()
     FBY_CHECK(ScopedSystem.DynamicLightCount() == 0);
     FBY_CHECK(ScopedSystem.StaticRebuildCount() == 1);
     FBY_CHECK(ScopedSystem.StaticCacheHitCount() == 0);
+    FBY_CHECK(ScopedSystem.GridBuildCount() == 1);
     FBY_CHECK(ScopedRegistry.try_get<Fby::Light2DResultComponent>(ScopedTargetEntity) != nullptr);
 
     (void)ScopedSystem.Run(ScopedRegistry, ScopedSettings, nullptr);
     FBY_CHECK(ScopedSystem.StaticRebuildCount() == 1);
     FBY_CHECK(ScopedSystem.StaticCacheHitCount() == 1);
+    FBY_CHECK(ScopedSystem.GridBuildCount() == 1);
 
     ScopedRegistry.get<Transform2D>(ScopedLamp).Position = Vector2D{60.0f, 0.0f};
     (void)ScopedSystem.Run(ScopedRegistry, ScopedSettings, nullptr);
     FBY_CHECK(ScopedSystem.StaticRebuildCount() == 2);
+    FBY_CHECK(ScopedSystem.GridBuildCount() == 2);
 
     Fby::WakeSleepingStatic(ScopedRegistry, ScopedLamp, Fby::kStaticWakeProgram);
     FBY_CHECK(ScopedRegistry.get<SleepingStaticComponent>(ScopedLamp).WakeCount == 1);

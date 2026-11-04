@@ -212,7 +212,16 @@ public:
     // Client size in pixels (not points): this is what the swapchain uses.
     [[nodiscard]] WindowExtent Size() const noexcept;
     // SDL_GetWindowDisplayScale() for the window's current monitor: 1.0 is a
+    // 100% display and 1.5 is a 150% display.
     [[nodiscard]] float DisplayScale() const noexcept;
+    // SDL_GetWindowPixelDensity(): pixels per window coordinate. Windows and
+    // X11 use physical pixels, so this is 1.0; macOS and Wayland report the
+    // backing buffer ratio here.
+    [[nodiscard]] float PixelDensity() const noexcept;
+    // The extra content scaling the UI must apply itself, at least 1.0. It is
+    // DisplayScale() / PixelDensity(): 1.5 on a 150% Windows or X11 display,
+    // 1.0 on a Retina macOS window where the framebuffer already scales.
+    [[nodiscard]] float ContentScale() const noexcept;
     [[nodiscard]] const InputState& Input() const noexcept
     {
         return MInput;

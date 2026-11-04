@@ -429,8 +429,7 @@ DecodeStatus VideoPlayer::PumpFrame()
     }
 
     WebmFrame ScopedFrame;
-    std::string ScopedDemuxError;
-    const DemuxStatus ScopedDemuxStatus = MDemuxer.NextFrame(ScopedFrame, &ScopedDemuxError);
+    const DemuxStatus ScopedDemuxStatus = MDemuxer.NextFrame(ScopedFrame, &MDemuxError);
     if (ScopedDemuxStatus != DemuxStatus::Frame)
     {
         ReleaseBuffer(ScopedBufferIndex);
@@ -439,7 +438,7 @@ DecodeStatus VideoPlayer::PumpFrame()
             MFinished.store(true, std::memory_order_release);
             return DecodeStatus::End;
         }
-        PublishError(ScopedDemuxError.empty() ? "WebM demux failed" : std::move(ScopedDemuxError));
+        PublishError(MDemuxError.empty() ? "WebM demux failed" : MDemuxError);
         return DecodeStatus::Error;
     }
 

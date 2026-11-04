@@ -42,13 +42,18 @@ if(FBY_IS_CLANG_CL)
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-padded>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-ctad-maybe-unsupported>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-nrvo>)
-    target_compile_definitions(fby_compiler_flags INTERFACE
-        _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(fby_compiler_flags INTERFACE
         $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>)
 else()
     target_compile_options(fby_compiler_flags INTERFACE /utf-8 /MP)
+endif()
+
+# Windows SDK headers define min/max macros unless NOMINMAX is set. This must
+# apply to every Windows compiler, not only clang-cl.
+if(WIN32)
+    target_compile_definitions(fby_compiler_flags INTERFACE
+        _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 endif()
 
 # Optimisation is per configuration and belongs to engine targets only.

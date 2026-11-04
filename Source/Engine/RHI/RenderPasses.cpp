@@ -13,8 +13,9 @@ namespace Fby::Rhi
 {
 namespace
 {
-// R8 field encoding shared with the Vulkan backend and the sprite shader.
-constexpr float kSdfEncodeScale = 1024.0f;
+// The field is R32F world-space distance; the scale stays neutral so the
+// shader-side contract does not change.
+constexpr float kSdfEncodeScale = 1.0f;
 }
 
 bool SdfShadowPass::Build(RenderGraph& InGraph, std::string_view InSdfResource,
@@ -75,7 +76,8 @@ void SdfShadowPass::RefreshConstants(const RenderGraphContext& InContext) noexce
                                       static_cast<float>(ScopedSdf.height) * ScopedSdf.cellSize.Y};
     MConstants.params = Vector4D{static_cast<float>(ScopedSdf.steps), static_cast<float>(ScopedSdf.occluderCount),
                                  ScopedSdf.occlusionRadius, ScopedSdf.occlusionStrength};
-    MConstants.encode = Vector4D{kSdfEncodeScale, ScopedSdf.enabled ? 1.0f : 0.0f, 0.0f, 0.0f};
+    MConstants.encode = Vector4D{kSdfEncodeScale, ScopedSdf.enabled ? 1.0f : 0.0f,
+                                 static_cast<float>(ScopedSdf.viewId), 0.0f};
     const std::uint32_t ScopedCount = std::min(ScopedSdf.occluderCount, kMaxSdfGpuOccluders);
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
     {

@@ -1,0 +1,115 @@
+#version 460
+// FemboyEngine2D - opaque sprite frustum culling.
+//
+// One invocation per RenderItem. Visible opaque items are appended to a stable
+// output list consumed by the indirect draw; transparent items stay on the CPU path.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct RenderItem
+{
+    vec2 Position;
+    vec2 Size;
+    vec2 UvMin;
+    vec2 UvMax;
+    uint Layer;
+    uint Color;
+    float Rotation;
+    uint Flags;
+};
+
+struct CullingConstants
+{
+    vec4 ViewBounds; // minX, minY, maxX, maxY
+    vec4 Viewport;   // width, height, padding, lodScale
+    uint ItemCount;
+    uint MaxVisible;
+    uint SourceOffset;
+    uint OutputOffset;
+    uint CounterOffset;
+    uint CommandOffset;
+    uint Reserved0;
+    uint Reserved1;
+    uint UseDepth;
+    uint Reserved2;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer Items
+{
+    RenderItem Values[];
+} ItemBuffer;
+
+layout(std430, set = 0, binding = 1) writeonly buffer VisibleItems
+{
+    RenderItem Values[];
+} VisibleBuffer;
+
+layout(std430, set = 0, binding = 2) buffer Counter
+{
+    uint Values[];
+} CounterBuffer;
+
+layout(set = 0, binding = 4) uniform sampler2D uDepth;
+layout(set = 0, binding = 5) uniform sampler2D uHiZ;
+
+layout(push_constant) uniform Constants
+{
+    CullingConstants Cull;
+} Push;
+
+const uint kDepthWrite = 1u << 9;
+
+void main()
+{
+    const uint Index = gl_GlobalInvocationID.x;
+    if (Index >= Push.Cull.ItemCount)
+    {
+        return;
+    }
+    const RenderItem Item = ItemBuffer.Values[Push.Cull.SourceOffset + Index];
+    if ((Item.Flags & kDepthWrite) == 0u)
+    {
+        return;
+    }
+    const vec2 Half = abs(Item.Size) * 0.5;
+    const float C = abs(cos(Item.Rotation));
+    const float S = abs(sin(Item.Rotation));
+    const vec2 Extent = vec2(C * Half.x + S * Half.y, S * Half.x + C * Half.y);
+    const vec2 Min = Item.Position - Extent;
+    const vec2 Max = Item.Position + Extent;
+    if (Max.x < Push.Cull.ViewBounds.x || Min.x > Push.Cull.ViewBounds.z ||
+        Max.y < Push.Cull.ViewBounds.y || Min.y > Push.Cull.ViewBounds.w)
+    {
+        return;
+    }
+    if (Push.Cull.UseDepth != 0u)
+    {
+        const vec2 center = (Push.Cull.ViewBounds.xy + Push.Cull.ViewBounds.zw) * 0.5;
+        const vec2 halfExtent = max((Push.Cull.ViewBounds.zw - Push.Cull.ViewBounds.xy) * 0.5, vec2(0.0001));
+        const vec2 screenMin = vec2((Min.x - center.x) / (halfExtent.x * 2.0) + 0.5,
+                                    1.0 - ((Max.y - center.y) / (halfExtent.y * 2.0) + 0.5));
+        const vec2 screenMax = vec2((Max.x - center.x) / (halfExtent.x * 2.0) + 0.5,
+                                    1.0 - ((Min.y - center.y) / (halfExtent.y * 2.0) + 0.5));
+        if (screenMax.x < 0.0 || screenMin.x > 1.0 || screenMax.y < 0.0 || screenMin.y > 1.0)
+        {
+            return;
+        }
+        const float itemDepth = float((Item.Flags >> 24u) & 0xFFu) / 255.0;
+        const vec2 tileUv = clamp((screenMin + screenMax) * 0.5, vec2(0.0), vec2(1.0));
+        const vec2 screenExtent = abs(screenMax - screenMin);
+        const float pixelExtent = max(screenExtent.x * Push.Cull.Viewport.x,
+                                      screenExtent.y * Push.Cull.Viewport.y);
+        const float lodScale = max(Push.Cull.Viewport.w, 1.0);
+        const float lod = clamp(floor(log2(max(pixelExtent / lodScale, 1.0))), 0.0, 4.0);
+        const float farthestDepth = textureLod(uHiZ, tileUv, lod).r;
+        if (farthestDepth < itemDepth - 0.002)
+        {
+            return;
+        }
+    }
+    const uint Slot = atomicAdd(CounterBuffer.Values[Push.Cull.CounterOffset], 1u);
+    if (Slot < Push.Cull.MaxVisible)
+    {
+        VisibleBuffer.Values[Push.Cull.OutputOffset + Slot] = Item;
+    }
+}

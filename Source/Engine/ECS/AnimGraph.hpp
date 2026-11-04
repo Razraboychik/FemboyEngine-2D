@@ -6,6 +6,7 @@
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/ECS/Skeleton.hpp"
 #include "Engine/ECS/SpriteAnimation.hpp"
+#include "Engine/Gameplay/GameplayTags.hpp"
 
 #include <array>
 #include <cstddef>
@@ -31,11 +32,11 @@ enum AnimConditionFlags : std::uint32_t
     AnimConditionStateTimeAtLeast = 1u << 0,
     // StateTime <= StateTimeThreshold
     AnimConditionStateTimeAtMost = 1u << 1,
-    // (GameplayState bits & TagsAny) != 0
+    // Any of TagsAny[0..TagsAnyCount) is present (hierarchical)
     AnimConditionTagsAny = 1u << 2,
-    // (GameplayState bits & TagsAll) == TagsAll
+    // All of TagsAll[0..TagsAllCount) are present (hierarchical)
     AnimConditionTagsAll = 1u << 3,
-    // (GameplayState bits & TagsAny) == 0; reuses TagsAny
+    // None of TagsAny[0..TagsAnyCount) is present
     AnimConditionTagsNone = 1u << 4,
     // Floats[FloatParam] >= FloatThreshold
     AnimConditionFloatAtLeast = 1u << 5,
@@ -48,9 +49,10 @@ struct AnimTransition
 {
     std::uint64_t FromState = kAnimAnyState;
     std::uint64_t ToState = 0;
-    // Tag masks read from the entity's GameplayState (uint64 keeps the engine's
-    std::uint64_t TagsAny = 0;
-    std::uint64_t TagsAll = 0;
+    // Up to two required and two any-tags per transition; the runtime resolves
+    // each id hierarchically through the project tag registry.
+    std::array<GameplayTag, 2> TagsAny{};
+    std::array<GameplayTag, 2> TagsAll{};
     // State-time threshold, seconds
     float StateTimeThreshold = 0.0f;
     // Float-parameter threshold
@@ -60,6 +62,8 @@ struct AnimTransition
     // Index into AnimStateComponent::Floats
     std::uint16_t FloatParam = 0;
     std::uint32_t Conditions = AnimConditionNone;
+    std::uint8_t TagsAnyCount = 0;
+    std::uint8_t TagsAllCount = 0;
     bool Enabled = true;
 };
 
@@ -159,9 +163,11 @@ static_assert(sizeof(AnimStateComponent) == 4096,
 // Captures the skeleton's current local pose as the rest pose if it has not been
 void AnimGraphCaptureRestPose(AnimStateComponent& InState, const SkeletonComponent& InSkeleton) noexcept;
 
-// True when every condition in the transition holds for the given state, tags
+// True when every condition in the transition holds. Tag conditions read the
+// entity's GameplayTagsComponent and resolve hierarchy through the registry.
 [[nodiscard]] bool AnimTransitionMatches(const AnimTransition& InTransition, const AnimStateComponent& InState,
-                                         std::uint64_t InTags) noexcept;
+                                         const GameplayTagsComponent* InTags,
+                                         const GameplayTagRegistry* InTagRegistry) noexcept;
 
 // Writes the blended local pose into the skeleton and runs one SkeletalAnimation evaluation,
 void AnimGraphApplySkeletal(AnimStateComponent& InState, SkeletonComponent& InSkeleton) noexcept;
@@ -174,9 +180,24 @@ void AnimGraphApplySpriteClip(const AnimStateComponent& InState, SpriteAnimation
 class AnimGraphSystem
 {
 public:
+    // Tag conditions require the project registry; the context overload takes
+    // it from SystemContext::gameplayTags.
+    void SetTagRegistry(const GameplayTagRegistry* InTags) noexcept
+    {
+        MTags = InTags;
+    }
+    [[nodiscard]] const GameplayTagRegistry* TagRegistry() const noexcept
+    {
+        return MTags;
+    }
+
     // One pass per update. Allocation-free; reads/writes only components.
     void Run(Ecs::SystemContext& InContext) const noexcept;
     void Run(Ecs::Registry& InRegistry, float InDt) const noexcept;
+
+private:
+    void RunWithTags(Ecs::Registry& InRegistry, float InDt, const GameplayTagRegistry* InTags) const noexcept;
+    const GameplayTagRegistry* MTags = nullptr;
 };
 
 void RegisterAnimGraphSystem(Ecs::Schedule& InSchedule);
@@ -198,8 +219,6 @@ FBY_REFLECT_COMPONENT(Fby::AnimStateComponent, "AnimStateComponent",
 FBY_REFLECT_COMPONENT(Fby::AnimTransition, "AnimTransition",
                       FBY_FIELD(Fby::AnimTransition, FromState, UInt64),
                       FBY_FIELD(Fby::AnimTransition, ToState, UInt64),
-                      FBY_FIELD(Fby::AnimTransition, TagsAny, UInt64),
-                      FBY_FIELD(Fby::AnimTransition, TagsAll, UInt64),
                       FBY_FIELD(Fby::AnimTransition, StateTimeThreshold, Float),
                       FBY_FIELD(Fby::AnimTransition, FloatThreshold, Float),
                       FBY_FIELD(Fby::AnimTransition, BlendDuration, Float),

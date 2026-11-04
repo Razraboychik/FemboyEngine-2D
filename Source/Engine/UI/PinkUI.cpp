@@ -874,7 +874,7 @@ bool EmitCustomQuad(void* InState, Rect InLocal, std::uint32_t InLayer, std::uin
 // OLED pixel shifter
 Vector2D OledOrbitOffset(std::uint32_t InStep) noexcept
 {
-    // Eight integer points on a 2-px circle. Step 0 is the neutral position so
+    // Eight integer points on a 2-px circle; index 0 is neutral.
     static constexpr std::array<Vector2D, OledShiftState::kSteps> ScopedKOrbit = {
         Vector2D{2.0f, 0.0f},  Vector2D{1.0f, 1.0f},   Vector2D{0.0f, 2.0f},  Vector2D{-1.0f, 1.0f},
         Vector2D{-2.0f, 0.0f}, Vector2D{-1.0f, -1.0f}, Vector2D{0.0f, -2.0f}, Vector2D{1.0f, -1.0f},

@@ -1,6 +1,6 @@
 # FemboyEngine2D — Практическое руководство
 
-*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-10-31*
+*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-04*
 
 ## 1. Для чего это руководство
 
@@ -12,26 +12,37 @@ FemboyEngine2D — двумерный движок, построенный во�
 - Требуемые знания: основы C++20, ECS на уровне EnTT и один графический API.
 - Не рассматривается: детали синхронизации Vulkan, сертификация консолей и юридическое подключение магазинов.
 
-> **Note / Примечание.** Движок проверяется 26 исполняемыми CTest-тестами. Новые наборы покрывают SDK-профиль и криптографию, мост магазинов, SDF-физику, стек рендера/погоды и путь data-driven префабов/DPI/темы. Перед тем как доверять локальному изменению, запустите ctest --test-dir build --output-on-failure.
+> **Примечание.** Движок проверяется полным набором CTest. Наборы покрывают SDK-профиль и криптографию, мост магазинов, SDF-физику, стек рендера/погоды и путь data-driven префабов/DPI/темы. Перед тем как доверять локальному изменению, запустите ctest --test-dir build --output-on-failure.
 
 ---
 
 ## 2. Установка и воспроизводимый тулчейн
 
-Скрипты установки в один клик ставят зафиксированные зависимости и раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в third_party/dependencies.lock.
+Скрипты установки разделены по группам ПО. C++-скрипты ставят зафиксированный toolchain и раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в third_party/dependencies.lock.
 
 ```cpp
 # Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts/Setup.bat
+SetupScripts\SetupCpp.bat
+SetupScripts\SetupArchiver.bat
+# optional vendor SDKs
+SetupScripts\SetupUpscalers.bat
 
 # Ubuntu / Debian
-./SetupScripts/Setup.sh
+./SetupScripts/SetupCpp.sh
+./SetupScripts/SetupArchiver.sh
+# optional vendor SDKs
+./SetupScripts/SetupUpscalers.sh
 
 # macOS (double-click in Finder also works)
-./SetupScripts/Setup.command
+./SetupScripts/SetupCpp.command
+./SetupScripts/SetupArchiver.command
+# optional vendor SDKs
+./SetupScripts/SetupUpscalers.command
 ```
 
-Зафиксированные версии: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.0.0 и LZMA SDK 25.01. Setup по возможности ставит системные пакеты; используйте --skip-system (или -SkipSystem в Windows) на CI-образе, где уже есть CMake, Ninja, Clang/GCC и Vulkan loader.
+Общие скрипты Setup.bat, Setup.sh и Setup.command остаются доступны.
+
+Зафиксированные версии: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.2.0 и LZMA SDK 25.01. Setup по возможности ставит системные пакеты; используйте --skip-system (или -SkipSystem в Windows) на CI-образе, где уже есть CMake, Ninja, Clang/GCC и Vulkan loader.
 
 ```cpp
 cmake -S . -B build -G Ninja \
@@ -45,7 +56,7 @@ ctest --test-dir build --output-on-failure
 
 Компилятор — часть контракта: требуется C++26, эталонный тулчейн — Clang 19+, поддерживается GCC 15+. Сборка определяет FBY_HAS_MDSPAN, FBY_HAS_FORMAT и FBY_HAS_JTHREAD пробой компилятора, а не по номеру версии. Наличие LZMA SDK тоже проверяется; без него писатель .femarc использует детерминированный кодек FbyLZ и сообщает об этом в логе кукера.
 
-> **Note / Примечание.** Setup никогда не изменяет исходники. Можно удалить third_party/<name>-src и повторить запуск с --force; lock-файл перегенерируется, а CMake-кэш не содержит машинно-зависимого пути.
+> **Примечание.** Setup никогда не изменяет исходники. Можно удалить third_party/<name>-src и повторить запуск с --force; lock-файл перегенерируется, а CMake-кэш не содержит машинно-зависимого пути.
 
 ---
 
@@ -126,7 +137,7 @@ Entity SpawnPlayer(ecs::Registry& registry, Vector2D spawn)
     registry.emplace<HealthComponent>(entity, HealthComponent{100.0f, 100.0f, 0.0f, 0});
     registry.emplace<InputComponent>(entity, InputComponent{});
     registry.emplace<WeaponComponent>(entity, WeaponComponent{0x51A7u, 0.0f, 0.12f, {18.0f, 0.0f}, 1});
-    registry.emplace<GameplayState>(entity, GameplayState{});
+    registry.emplace<GameplayTagsComponent>(entity, GameplayTagsComponent{});
     return entity;
 }
 
@@ -327,7 +338,7 @@ native_arch = false
 - Следите за FrameStats: items, batches, drawCalls, meshIndirectCalls. Рост числа батчей с числом сущностей означает фрагментацию данных, а не медленный GPU.
 - Render graph упорядочивает проходы; он не переупорядочивает draw внутри прохода. Держите список отрисовки отсортированным по pipeline/слою один раз за кадр.
 
-> **Note / Примечание.** Процедурный путь Pink UI полностью убирает текстурную память: круги, скруглённые прямоугольники и карты вычисляются из 64-байтной записи экземпляра в pink_sdf.vert/frag. Доска из 200 слотов — это два instanced-вызова (карты и тени), а не 200 переключений текстуры.
+> **Примечание.** Процедурный путь Pink UI полностью убирает текстурную память: круги, скруглённые прямоугольники и карты вычисляются из 64-байтной записи экземпляра в pink_sdf.vert/frag. Доска из 200 слотов — это два instanced-вызова (карты и тени), а не 200 переключений текстуры.
 
 ---
 
@@ -517,7 +528,7 @@ fby_fempak secure --in build/release/assets.fempak --out archives/game.femarc \
 
 Ключ передаётся через переменную окружения или 64-hex аргумент; nonce генерируется из SecureRng, если не задан. Build идемпотентен для фиксированного набора ключ/nonce/записи: таблица сортирована, строковая таблица стабильна, сжатый поток детерминирован. Изменение одного байта даёт Open() = AuthenticationFailed, а не полуразобранный архив.
 
-> **Note / Примечание.** LZMA SDK опционален. Если third_party/lzma-sdk/LzmaLib.h существует, CMake собирает энкодер и декодер 7-Zip; иначе лог сборки сообщает 'FbyLZ fallback is active', и архив остаётся валидным, но больше. Поставка должна фиксировать и проверять один кодек, а не переключать его каждый запуск.
+> **Примечание.** LZMA SDK опционален. Если third_party/lzma-sdk/LzmaLib.h существует, CMake собирает энкодер и декодер 7-Zip; иначе лог сборки сообщает 'FbyLZ fallback is active', и архив остаётся валидным, но больше. Поставка должна фиксировать и проверять один кодек, а не переключать его каждый запуск.
 
 ---
 
@@ -589,7 +600,7 @@ Materials.Shutdown(gpu);
 - Проверьте `SupportsRuntimeShaderPipelines()` при старте, а не угадывайте по невалидному хендлу.
 - Спрайты кукаются отдельно: `fby_matc <graph> --sprite` собирает контракт quad.vert, `DrawOrder::MaterialBucket` сортирует спрайт в материальный прогон, а `SetMaterialPipelines` сопоставляет бакет с id кэшированного пайплайна.
 
-> **Note / Примечание.** Справка: раздел 8 API reference перечисляет все типы и поля payload; глава 38 Complete Reference проходит кук, кэш и кадр; ADR 0002 фиксирует, почему рантайм не линкует glslang.
+> **Примечание.** Справка: раздел 8 API reference перечисляет все типы и поля payload; глава 38 Complete Reference проходит кук, кэш и кадр; ADR 0002 фиксирует, почему рантайм не линкует glslang.
 
 ---
 

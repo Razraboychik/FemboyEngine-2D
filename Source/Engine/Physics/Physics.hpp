@@ -168,6 +168,29 @@ public:
     // Applies a linear impulse in pixel-space units (converted internally to
     void ApplyImpulse(Ecs::Registry& InRegistry, Entity InEntity, Vector2D InImpulse, bool InWake = true);
 
+    // Sets the body velocity directly, in pixel-space units. Carrier groups use
+    // this instead of writing RigidBody2D.LinearVelocity, because that field is
+    // a readback of the solver state and is not pushed back into Box2D.
+    void SetLinearVelocity(Ecs::Registry& InRegistry, Entity InEntity, Vector2D InVelocity, bool InWake = true);
+    void SetAngularVelocity(Ecs::Registry& InRegistry, Entity InEntity, float InAngularVelocity, bool InWake = true);
+    // Locks the body's angular degree of freedom. This is how a Fixed transport
+    // root remains an elevator while still being allowed to translate.
+    void SetFixedRotation(Ecs::Registry& InRegistry, Entity InEntity, bool InFixed) noexcept;
+    // Enables continuous collision detection for fast carriers and cargo.
+    void SetBullet(Ecs::Registry& InRegistry, Entity InEntity, bool InBullet) noexcept;
+
+    // Applies an acceleration in pixel/s^2. The body mass is read from Box2D so
+    // a local gravity field accelerates light and heavy bodies equally.
+    void ApplyAcceleration(Ecs::Registry& InRegistry, Entity InEntity, Vector2D InAcceleration, bool InWake = true);
+
+    // Replaces world gravity immediately. Level systems call this when the
+    // authored mode or strength changes.
+    void SetGravity(Vector2D InGravity) noexcept;
+    [[nodiscard]] Vector2D Gravity() const noexcept
+    {
+        return MDesc.gravity;
+    }
+
     // World clock multiplier for the fixed step. Zero stops the whole world
     // without dropping bodies; per-entity TimeScaleComponent can freeze a
     // single body while the rest of the world keeps running.

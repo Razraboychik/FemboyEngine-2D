@@ -395,6 +395,12 @@ public:
 
     // Narrative Tree locale: "ru" selects Russian, everything else English.
     void SetNarrativeLocale(std::string_view InLocale) noexcept;
+    // The registry names tags in BlindMode narration and resolves hierarchy.
+    void SetGameplayTagRegistry(const GameplayTagRegistry* InTags) noexcept
+    {
+        MTags = InTags;
+        MNarrative.SetGameplayTagRegistry(InTags);
+    }
     // On-demand full scene narration (rebuilds the tree and publishes one
     void NarrateScene(Ecs::Registry& InRegistry) noexcept;
 
@@ -411,10 +417,10 @@ private:
     struct StateTrack
     {
         Entity entity = entt::null;
-        GameplayStateMask bits = 0;
+        GameplayTagMask tags{};
     };
 
-    void TrackGameplayState(Ecs::Registry& InRegistry) noexcept;
+    void TrackGameplayTags(Ecs::Registry& InRegistry) noexcept;
     void EmitContacts(Ecs::SystemContext& InContext) noexcept;
     void ApplyTtsLanguage() noexcept;
     [[nodiscard]] StateTrack* FindTrack(Entity InEntity) noexcept;
@@ -433,6 +439,7 @@ private:
     // Set when SetNarrativeLocale() changed the language off the main thread.
     bool MPendingVoiceLanguage = false;
     Ui::NarrativeTree MNarrative{};
+    const GameplayTagRegistry* MTags = nullptr;
     bool MNativeTtsAttached = false;
     bool MExternalTts = false;
     std::array<StateTrack, 64> MTracks{};

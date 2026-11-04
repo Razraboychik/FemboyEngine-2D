@@ -23,6 +23,9 @@ struct AtlasLayer
     std::string name;
     // Path inside the VFS, e.g. "atlas/tiles.ftex"
     std::string source;
+    // Unknown layers start as Blend; the cooked header refines this to Opaque
+    // or Cutout when the source alpha is binary.
+    TextureAlphaMode alphaMode = TextureAlphaMode::Blend;
 };
 
 struct AtlasDesc
@@ -36,6 +39,8 @@ struct AtlasDesc
     // Filled by Load/LoadFromManifest from the first cooked layer. The editor
     TextureFormat format = TextureFormat::Rgba8;
     std::vector<AtlasLayer> layers;
+    // Per-layer classification resolved from the cooked alpha flags.
+    std::vector<TextureAlphaMode> layerAlphaModes;
 };
 
 // Parses atlas.toml. Accepted forms for a layer:
@@ -75,6 +80,10 @@ public:
     [[nodiscard]] const AtlasDesc& Description() const noexcept
     {
         return MDesc;
+    }
+    [[nodiscard]] std::span<const TextureAlphaMode> LayerAlphaModes() const noexcept
+    {
+        return MDesc.layerAlphaModes;
     }
     [[nodiscard]] std::uint32_t LayerIndex(std::string_view InName) const noexcept;
 

@@ -7,6 +7,8 @@
 #include "Engine/Physics/Particles.hpp"
 #include "Engine/Physics/Cloth.hpp"
 #include "Engine/Physics/Fluid.hpp"
+#include "Engine/Gameplay/GameplaySnapshot.hpp"
+#include "Engine/Physics/Gravity.hpp"
 #include "Engine/Physics/PhysicsJoints.hpp"
 #include "Engine/UI/Hypertext.hpp"
 #include "Engine/UI/PinkUI.hpp"
@@ -719,6 +721,21 @@ void AddPhysicsCodecs(SnapshotSchema& InSchema)
             ScopedCopy.LinkLayer = ScopedComponent->LinkLayer;
             ScopedCopy.EnableLimit = ScopedComponent->EnableLimit;
             ScopedCopy.EnableMotor = ScopedComponent->EnableMotor;
+            ScopedCopy.SectionCount = ScopedComponent->SectionCount;
+            ScopedCopy.Sections = ScopedComponent->Sections;
+            ScopedCopy.DefaultBreakForce = ScopedComponent->DefaultBreakForce;
+            ScopedCopy.DefaultBreakTorque = ScopedComponent->DefaultBreakTorque;
+            ScopedCopy.BaseTension = ScopedComponent->BaseTension;
+            ScopedCopy.MaxTension = ScopedComponent->MaxTension;
+            ScopedCopy.TensionPerDistance = ScopedComponent->TensionPerDistance;
+            ScopedCopy.TensionDistance = ScopedComponent->TensionDistance;
+            ScopedCopy.StrengthEnabled = ScopedComponent->StrengthEnabled;
+            ScopedCopy.DefaultLowerSpringForce = ScopedComponent->DefaultLowerSpringForce;
+            ScopedCopy.DefaultUpperSpringForce = ScopedComponent->DefaultUpperSpringForce;
+            ScopedCopy.DefaultDamageRate = ScopedComponent->DefaultDamageRate;
+            ScopedCopy.DefaultDamageThreshold = ScopedComponent->DefaultDamageThreshold;
+            ScopedCopy.BrokenMaskLow = ScopedComponent->BrokenMaskLow;
+            ScopedCopy.BrokenMaskHigh = ScopedComponent->BrokenMaskHigh;
             // A value-initialized copy keeps padding zero instead of leaking
             // indeterminate bytes into the payload and the delta checksum.
             std::memcpy(InDestination.data(), &ScopedCopy, sizeof(ScopedCopy));
@@ -736,7 +753,7 @@ void AddPhysicsCodecs(SnapshotSchema& InSchema)
             return true;
         },
         +[](Registry& InRegistry, Entity InEntity) { InRegistry.remove<JointChainComponent>(InEntity); },
-        SnapshotTypeId("JointChainComponent/v3"));
+        SnapshotTypeId("JointChainComponent/v5"));
 }
 }
 
@@ -808,7 +825,6 @@ SnapshotSchema SnapshotSchema::BuiltIns()
     (void)ScopedSchema.Add<DrawOrder>();
     (void)ScopedSchema.Add<Camera2D>();
     (void)ScopedSchema.Add<Lifetime>();
-    (void)ScopedSchema.Add<GameplayState>();
     (void)ScopedSchema.Add<BigIntComponent>();
     (void)ScopedSchema.Add<DecimalComponent>();
     (void)ScopedSchema.Add<TextComponent>();
@@ -832,7 +848,10 @@ SnapshotSchema SnapshotSchema::BuiltIns()
     (void)ScopedSchema.Add<TimeScaleComponent>();
     (void)ScopedSchema.Add<SleepingStaticComponent>();
     (void)ScopedSchema.Add<LightSourceComponent>();
+    (void)ScopedSchema.Add<LevelGravityComponent>();
+    (void)ScopedSchema.Add<GravityBodyComponent>();
     Detail::AddPhysicsCodecs(ScopedSchema);
+    RegisterGameplaySnapshotCodecs(ScopedSchema);
     return ScopedSchema;
 }
 

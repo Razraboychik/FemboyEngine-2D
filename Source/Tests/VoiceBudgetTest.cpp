@@ -99,7 +99,14 @@ void TestAecBudget()
     const double ScopedSeconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - ScopedStart).count();
     std::printf("voice_budget_test: AEC 10s audio in %.3f s\n", ScopedSeconds);
-    FBY_CHECK(ScopedSeconds < 1.0);
+    // A debug build runs the same filter unoptimized; the budget is scaled so the
+    // check still catches algorithmic regressions instead of the build type.
+#if defined(NDEBUG)
+    constexpr double kAecBudgetSeconds = 1.0;
+#else
+    constexpr double kAecBudgetSeconds = 4.0;
+#endif
+    FBY_CHECK(ScopedSeconds < kAecBudgetSeconds);
 }
 
 void TestRnnoiseBudget()

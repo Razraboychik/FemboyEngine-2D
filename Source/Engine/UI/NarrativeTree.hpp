@@ -4,6 +4,7 @@
 #include "Engine/Core/Types.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Schedule.hpp"
+#include "Engine/Gameplay/GameplayTags.hpp"
 
 #include <array>
 #include <cstddef>
@@ -64,6 +65,11 @@ public:
     }
     // BCP-47-ish: any code starting with "ru" selects Russian, everything else
     void SetLocaleFromCode(std::string_view InCode) noexcept;
+    // Resolves tag ids to their authored paths; null omits tag details.
+    void SetGameplayTagRegistry(const GameplayTagRegistry* InTags) noexcept
+    {
+        MTags = InTags;
+    }
     [[nodiscard]] NarrativeLocale Locale() const noexcept
     {
         return MLocale;
@@ -86,15 +92,14 @@ public:
     // Bounded, localized descriptions. Return the number of characters written
     std::uint32_t DescribeEntity(Ecs::Registry& InRegistry, Entity InEntity, char* OutText,
                                  std::size_t InCapacity) const noexcept;
-    std::uint32_t DescribeStateChange(Ecs::Registry& InRegistry, Entity InEntity, std::uint32_t InBit, bool InGained,
-                                      char* OutText, std::size_t InCapacity) const noexcept;
+    std::uint32_t DescribeStateChange(Ecs::Registry& InRegistry, Entity InEntity, std::string_view InStateName,
+                                      bool InGained, char* OutText, std::size_t InCapacity) const noexcept;
     std::uint32_t DescribeContact(Ecs::Registry& InRegistry, Entity InA, Entity InB, std::uint32_t InContactType,
                                   float InSpeed, char* OutText, std::size_t InCapacity) const noexcept;
     std::uint32_t DescribeScene(Ecs::Registry& InRegistry, char* OutText, std::size_t InCapacity) const noexcept;
     std::uint32_t DescribeHierarchy(Ecs::Registry& InRegistry, Entity InEntity, char* OutText,
                                     std::size_t InCapacity) const noexcept;
 
-    [[nodiscard]] static std::string_view StateName(std::uint32_t InBit, NarrativeLocale InLocale) noexcept;
     [[nodiscard]] static std::string_view GroupName(NarrativeGroup InGroup, NarrativeLocale InLocale) noexcept;
     [[nodiscard]] static std::string_view ArchetypeName(NarrativeArchetype InArchetype,
                                                         NarrativeLocale InLocale) noexcept;
@@ -106,5 +111,6 @@ private:
     std::array<NarrativeNode, kMaxNodes> MNodes{};
     std::uint32_t MCount = 0;
     NarrativeLocale MLocale = NarrativeLocale::English;
+    const GameplayTagRegistry* MTags = nullptr;
 };
 }

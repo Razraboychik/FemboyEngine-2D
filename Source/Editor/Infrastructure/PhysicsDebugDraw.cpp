@@ -22,6 +22,7 @@ constexpr Color32 kColorDynamic{0xFF92D97Cu};
 constexpr Color32 kColorSensor{0xFF3DB3F2u};
 constexpr Color32 kColorVelocity{0xFFFFB662u};
 constexpr Color32 kColorRope{0xFF9E5DE8u};
+constexpr Color32 kColorRopeCut{0xFFFF5470u};
 constexpr Color32 kColorCloth{0xFFFF7D9Cu};
 constexpr Color32 kColorSdfNormal{0xFF7A5CFFu};
 constexpr Color32 kColorContact{0xFF66D1FFu};
@@ -180,8 +181,7 @@ void PhysicsDebugVisualizer::BuildRopes(Ecs::SystemContext& InContext, std::uint
     {
         return;
     }
-    const float ScopedPixelsPerMeter =
-        InContext.physics != nullptr ? InContext.physics->PixelsPerMeter() : 50.0f;
+    const float ScopedPixelsPerMeter = InContext.physics != nullptr ? InContext.physics->PixelsPerMeter() : 50.0f;
     auto ScopedView = InContext.registry.view<JointLinkComponent, RigidBody2D>();
     for (const Entity ScopedEntity : ScopedView)
     {
@@ -191,9 +191,20 @@ void PhysicsDebugVisualizer::BuildRopes(Ecs::SystemContext& InContext, std::uint
             Rotate(Vector2D{1.0f, 0.0f}, ScopedBody.Rotation) * (ScopedLink.HalfLength * ScopedPixelsPerMeter);
         const float ScopedRadius = std::max(1.0f, ScopedLink.Radius * ScopedPixelsPerMeter);
         // Capsule: a spine line plus a circle at both ends is the cheapest
-        AddLine(ScopedBody.Position - ScopedAxis, ScopedBody.Position + ScopedAxis, kColorRope, 2.0f);
-        AddCircle(ScopedBody.Position - ScopedAxis, ScopedRadius, kColorRope, 8);
-        AddCircle(ScopedBody.Position + ScopedAxis, ScopedRadius, kColorRope, 8);
+        const Vector2D ScopedStartTip = ScopedBody.Position - ScopedAxis;
+        const Vector2D ScopedEndTip = ScopedBody.Position + ScopedAxis;
+        AddLine(ScopedStartTip, ScopedEndTip, kColorRope, 2.0f);
+        AddCircle(ScopedStartTip, ScopedRadius, kColorRope, 8);
+        AddCircle(ScopedEndTip, ScopedRadius, kColorRope, 8);
+        // A free end is a cut in the chain and reads as a red ring.
+        if ((ScopedLink.Flags & JointLinkFreeStart) != 0)
+        {
+            AddCircle(ScopedStartTip, ScopedRadius + 2.0f, kColorRopeCut, 8);
+        }
+        if ((ScopedLink.Flags & JointLinkFreeEnd) != 0)
+        {
+            AddCircle(ScopedEndTip, ScopedRadius + 2.0f, kColorRopeCut, 8);
+        }
         ++MFrame.ropes;
     }
 }
@@ -208,8 +219,7 @@ void PhysicsDebugVisualizer::BuildCloth(Ecs::SystemContext& InContext, std::uint
     for (const Entity ScopedEntity : ScopedView)
     {
         const ClothComponent& ScopedComponent = InContext.registry.get<ClothComponent>(ScopedEntity);
-        const ClothHandle ScopedHandle{ScopedComponent.ClothIndex, ScopedComponent.Generation,
-                                       ScopedComponent.ClothID};
+        const ClothHandle ScopedHandle{ScopedComponent.ClothIndex, ScopedComponent.Generation, ScopedComponent.ClothID};
         if (!InContext.cloth->IsValid(ScopedHandle))
         {
             continue;

@@ -234,9 +234,21 @@ void TestSceneTomlRoundTrip()
 
     Fby::Editor::CommandStack ScopedCommands;
     FBY_CHECK(ScopedCommands.Initialize());
+    Fby::GameplayTagRegistry ScopedTags;
+    const Fby::GameplayTag ScopedGrounded = ScopedTags.Register("Character.State.Grounded");
     Fby::Editor::AnimationGraphCanvasPanel ScopedPanel;
     FBY_CHECK(ScopedPanel.Initialize(ScopedCommands, 12));
+    ScopedPanel.SetGameplayTagRegistry(&ScopedTags);
     ScopedPanel.SetScenePath(ScopedScene);
+    for (std::uint16_t ScopedLink = 0; ScopedLink < ScopedPanel.Document().LinkCount; ++ScopedLink)
+    {
+        if (ScopedPanel.Document().Links[ScopedLink].Kind == Fby::Editor::AnimationGraphLinkKind::Transition)
+        {
+            ScopedPanel.Document().Links[ScopedLink].Transition.TagsAny[0] = ScopedGrounded;
+            ScopedPanel.Document().Links[ScopedLink].Transition.TagsAnyCount = 1;
+            break;
+        }
+    }
     FBY_CHECK(ScopedPanel.CompileGraph());
     FBY_CHECK(ScopedPanel.SaveToSceneToml());
     const std::string ScopedFirstText = ReadText(ScopedScene);
@@ -264,6 +276,7 @@ void TestSceneTomlRoundTrip()
     FBY_CHECK(ScopedReloadCommands.Initialize());
     Fby::Editor::AnimationGraphCanvasPanel ScopedReloaded;
     FBY_CHECK(ScopedReloaded.Initialize(ScopedReloadCommands, 12));
+    ScopedReloaded.SetGameplayTagRegistry(&ScopedTags);
     ScopedReloaded.SetScenePath(ScopedScene);
     FBY_CHECK(ScopedReloaded.LoadFromSceneToml());
     FBY_CHECK(ScopedReloaded.Compiled());
@@ -273,6 +286,17 @@ void TestSceneTomlRoundTrip()
     FBY_CHECK(CountCompiledTransitions(ScopedReloaded.CompiledComponent()) == 2);
     FBY_CHECK(ScopedReloaded.CompiledComponent().Clips[0].State == 1);
     FBY_CHECK(ScopedReloaded.CompiledComponent().Floats[0] == 1.0f);
+    bool ScopedTagRoundtrip = false;
+    for (std::uint16_t ScopedLink = 0; ScopedLink < ScopedReloaded.Document().LinkCount; ++ScopedLink)
+    {
+        if (ScopedReloaded.Document().Links[ScopedLink].Kind == Fby::Editor::AnimationGraphLinkKind::Transition &&
+            ScopedReloaded.Document().Links[ScopedLink].Transition.TagsAnyCount == 1)
+        {
+            ScopedTagRoundtrip =
+                ScopedReloaded.Document().Links[ScopedLink].Transition.TagsAny[0] == ScopedGrounded;
+        }
+    }
+    FBY_CHECK(ScopedTagRoundtrip);
 
     std::filesystem::remove_all(ScopedDirectory, ScopedCode);
 }

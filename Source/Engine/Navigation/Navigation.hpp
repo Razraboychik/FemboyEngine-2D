@@ -15,6 +15,8 @@
 namespace Fby::Navigation
 {
 
+class NavMesh;
+
 inline constexpr std::uint32_t kNavMaxWidth = 128;
 inline constexpr std::uint32_t kNavMaxHeight = 128;
 inline constexpr std::uint32_t kNavMaxCells = kNavMaxWidth * kNavMaxHeight;
@@ -64,11 +66,45 @@ void ClearMap(NavMap& InMap, std::uint32_t InWidth, std::uint32_t InHeight, cons
 // Copies solid tiles as blocked cells and visible floor as cost 1.
 [[nodiscard]] bool BuildFromTilemap(const TilemapComponent& InTilemap, NavMap* OutMap) noexcept;
 
+// How a raw A* cell polyline becomes a movement path. None is the shortest
+// cell polyline; LineOfSight removes redundant corners; Chaikin and CatmullRom
+// round the remaining corners with increasing strength.
+enum class NavSmoothingMode : std::uint8_t
+{
+    None = 0,
+    LineOfSight = 1,
+    Chaikin = 2,
+    CatmullRom = 3,
+};
+
+struct NavPathOptions
+{
+    NavSmoothingMode Smoothing = NavSmoothingMode::LineOfSight;
+    // Chaikin/Catmull-Rom passes. 1..8; higher values cost more but stay inside
+    // the fixed 128-waypoint budget.
+    std::uint8_t SmoothingIterations = 2;
+    // 0 keeps the raw polyline, 1 is the full curve. Intermediate values blend
+    // towards the raw corners.
+    float SmoothingStrength = 0.8f;
+    // Deterministic route variation. RandomSeed makes the same query repeatable.
+    std::uint32_t RandomSeed = 0;
+    // Waypoint jitter in cells, 0 disables. Jitter stays on passable cells.
+    float RandomWaypointCells = 0.0f;
+    // Extra edge cost noise for route selection, 0 disables. Values around
+    // 0.1..2.0 produce different but still sensible routes.
+    float RandomCost = 0.0f;
+    bool RandomizeRoute = false;
+};
+
 struct NavPath
 {
     std::array<Grid::Cell, kMaxPathCells> Cells{};
+    // Fractional movement points produced by smoothing/jitter. When HasPoints
+    // is false the consumer uses cell centres from Cells.
+    std::array<Vector2D, kMaxPathCells> Points{};
     std::uint16_t Count = 0;
     bool Truncated = false;
+    bool HasPoints = false;
     std::uint32_t QueryId = 0;
 
     [[nodiscard]] bool Empty() const noexcept
@@ -94,9 +130,16 @@ public:
     [[nodiscard]] bool Find(const NavMap& InMap, Grid::Cell InStart, Grid::Cell InGoal, NavPath* OutPath,
                             bool InAllowPartial = false) noexcept;
 
+    // A* followed by the requested smoothing and deterministic route variation.
+    // The raw A* result remains in OutPath->Cells; Points carries the final
+    // movement positions.
+    [[nodiscard]] bool FindWithOptions(const NavMap& InMap, Grid::Cell InStart, Grid::Cell InGoal,
+                                       const NavPathOptions& InOptions, NavPath* OutPath,
+                                       bool InAllowPartial = false) noexcept;
+
     // Path with up to `InMaxCells` cells; the rest is dropped and Truncated set.
-    [[nodiscard]] bool FindLimited(const NavMap& InMap, Grid::Cell InStart, Grid::Cell InGoal,
-                                   std::uint16_t InMaxCells, NavPath* OutPath) noexcept;
+    [[nodiscard]] bool FindLimited(const NavMap& InMap, Grid::Cell InStart, Grid::Cell InGoal, std::uint16_t InMaxCells,
+                                   NavPath* OutPath) noexcept;
 
     [[nodiscard]] const PathStats& Stats() const noexcept
     {
@@ -130,6 +173,8 @@ private:
     std::uint32_t MHeapSize = 0;
     std::uint32_t MWidth = 0;
     std::uint32_t MHeight = 0;
+    std::uint32_t MRandomSeed = 0;
+    float MRandomCost = 0.0f;
     PathStats MStats{};
 };
 
@@ -147,7 +192,7 @@ struct NavAgentSettings
     float RepathInterval = 0.5f;
     // Repath when the target moved further than this.
     float RepathDistance = 8.0f;
-    // KNavAgentFlagActive and future authoring switches.
+    // KNavAgentFlagActive and reserved authoring switches.
     std::uint32_t Flags = 0;
     std::uint32_t Reserved = 0;
 };
@@ -155,6 +200,42 @@ struct NavAgentSettings
 static_assert(std::is_trivially_copyable_v<NavAgentSettings>);
 static_assert(std::is_standard_layout_v<NavAgentSettings>);
 static_assert(sizeof(NavAgentSettings) == 32);
+
+// Optional per-agent path shaping. Keep this separate from NavAgentSettings so
+// simple agents keep the compact 32-byte authoring record.
+struct NavAgentPathSettings
+{
+    // Stored as 32-bit fields so Mirror/TOML can serialize them without size
+    // special cases; ToOptions narrows them to the runtime enum.
+    std::uint32_t Smoothing = static_cast<std::uint32_t>(NavSmoothingMode::LineOfSight);
+    std::uint32_t SmoothingIterations = 2;
+    float SmoothingStrength = 0.8f;
+    std::uint32_t RandomSeed = 0;
+    float RandomWaypointCells = 0.0f;
+    float RandomCost = 0.0f;
+    bool RandomizeRoute = false;
+    std::uint8_t Reserved[3] = {};
+
+    [[nodiscard]] NavPathOptions ToOptions() const noexcept
+    {
+        NavPathOptions ScopedOptions;
+        ScopedOptions.Smoothing =
+            static_cast<NavSmoothingMode>(Smoothing > static_cast<std::uint32_t>(NavSmoothingMode::CatmullRom)
+                                              ? static_cast<std::uint32_t>(NavSmoothingMode::CatmullRom)
+                                              : Smoothing);
+        ScopedOptions.SmoothingIterations =
+            static_cast<std::uint8_t>(SmoothingIterations > 8 ? 8 : SmoothingIterations);
+        ScopedOptions.SmoothingStrength = SmoothingStrength;
+        ScopedOptions.RandomSeed = RandomSeed;
+        ScopedOptions.RandomWaypointCells = RandomWaypointCells;
+        ScopedOptions.RandomCost = RandomCost;
+        ScopedOptions.RandomizeRoute = RandomizeRoute;
+        return ScopedOptions;
+    }
+};
+
+static_assert(std::is_trivially_copyable_v<NavAgentPathSettings>);
+static_assert(std::is_standard_layout_v<NavAgentPathSettings>);
 
 // Runtime path state. Fixed capacity, no allocation; owned by the system's
 // Update and deliberately not reflected into the scene schema.
@@ -196,6 +277,16 @@ public:
     {
         return MFinder;
     }
+    // Optional polygon navmesh. When ready it replaces the grid A* for movement
+    // paths; the cost map stays the source of passability for both.
+    void SetNavigationMesh(const NavMesh* InMesh) noexcept
+    {
+        MNavMesh = InMesh;
+    }
+    [[nodiscard]] const NavMesh* NavigationMesh() const noexcept
+    {
+        return MNavMesh;
+    }
 
     // FixedUpdate. Writes Transform2D::Position of every agent.
     void Update(Ecs::Registry& InRegistry, float InDeltaSeconds) noexcept;
@@ -217,6 +308,7 @@ private:
     void EnsureRuntimeState(Ecs::Registry& InRegistry) noexcept;
 
     const NavMap* MMap = nullptr;
+    const NavMesh* MNavMesh = nullptr;
     PathFinder MFinder;
     std::uint32_t MRepathsThisFrame = 0;
 };
@@ -234,3 +326,12 @@ FBY_REFLECT_COMPONENT(Fby::Navigation::NavAgentSettings, "NavAgentSettings",
                       FBY_FIELD(Fby::Navigation::NavAgentSettings, RepathInterval, Float),
                       FBY_FIELD(Fby::Navigation::NavAgentSettings, RepathDistance, Float),
                       FBY_FIELD(Fby::Navigation::NavAgentSettings, Flags, UInt32))
+
+FBY_REFLECT_COMPONENT(Fby::Navigation::NavAgentPathSettings, "NavAgentPathSettings",
+                      FBY_FIELD(Fby::Navigation::NavAgentPathSettings, Smoothing, UInt32),
+                      FBY_FIELD(Fby::Navigation::NavAgentPathSettings, SmoothingIterations, UInt32),
+                      FBY_FIELD(Fby::Navigation::NavAgentPathSettings, SmoothingStrength, Float),
+                      FBY_FIELD(Fby::Navigation::NavAgentPathSettings, RandomSeed, UInt32),
+                      FBY_FIELD(Fby::Navigation::NavAgentPathSettings, RandomWaypointCells, Float),
+                      FBY_FIELD(Fby::Navigation::NavAgentPathSettings, RandomCost, Float),
+                      FBY_FIELD(Fby::Navigation::NavAgentPathSettings, RandomizeRoute, Bool))

@@ -1,8 +1,10 @@
-// FemboyEngine2D - FemStateTree implementation.
+// FemboyEngine2D - StateTree implementation.
 #include "Engine/ECS/StateTree.hpp"
 
 #include "Engine/ECS/CommandBuffer.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
+#include "Engine/Gameplay/GameplayAttributes.hpp"
+#include "Engine/Gameplay/GameplaySkills.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -33,21 +35,67 @@ namespace
 }
 
 [[nodiscard]] bool EvaluateCondition(const Ecs::Registry& InRegistry, Entity InEntity,
-                                     const StateTreeComponent& InState,
-                                     const StateTreeEvaluator& InEvaluator) noexcept
+                                     const StateTreeComponent& InState, const StateTreeEvaluator& InEvaluator,
+                                     const GameplayTagRegistry* InTags) noexcept
 {
+    const auto ScopedEntityTags = [&]() -> const GameplayTagsComponent*
+    {
+        return InRegistry.try_get<GameplayTagsComponent>(InEntity);
+    };
     switch (InEvaluator.Kind)
     {
         case StateTreeEvaluatorKind::AlwaysTrue:
             return true;
         case StateTreeEvaluatorKind::AlwaysFalse:
             return false;
-        case StateTreeEvaluatorKind::TagsAny:
-            return InEvaluator.TagMask != 0 && (InState.Tags & InEvaluator.TagMask) != 0;
-        case StateTreeEvaluatorKind::TagsAll:
-            return InEvaluator.TagMask != 0 && (InState.Tags & InEvaluator.TagMask) == InEvaluator.TagMask;
-        case StateTreeEvaluatorKind::TagsNone:
-            return InEvaluator.TagMask != 0 && (InState.Tags & InEvaluator.TagMask) == 0;
+        case StateTreeEvaluatorKind::GameplayTagsAny:
+        case StateTreeEvaluatorKind::GameplayTagsAll:
+        case StateTreeEvaluatorKind::GameplayTagsNone:
+        {
+            if (InTags == nullptr || InEvaluator.Tags.IsEmpty())
+            {
+                return false;
+            }
+            const GameplayTagsComponent* ScopedTags = ScopedEntityTags();
+            if (ScopedTags == nullptr)
+            {
+                return false;
+            }
+            if (InEvaluator.Kind == StateTreeEvaluatorKind::GameplayTagsAny)
+            {
+                return GameplayTagContainerHasAny(ScopedTags->Tags, *InTags, InEvaluator.Tags);
+            }
+            if (InEvaluator.Kind == StateTreeEvaluatorKind::GameplayTagsAll)
+            {
+                return GameplayTagContainerHasAll(ScopedTags->Tags, *InTags, InEvaluator.Tags);
+            }
+            return !GameplayTagContainerHasAny(ScopedTags->Tags, *InTags, InEvaluator.Tags);
+        }
+        case StateTreeEvaluatorKind::SkillReady:
+        {
+            const auto* ScopedSkills = InRegistry.try_get<GameplaySkillsComponent>(InEntity);
+            if (ScopedSkills == nullptr || InEvaluator.SkillSlot >= kMaxGameplaySkillSlots)
+            {
+                return false;
+            }
+            const GameplaySkillSlot& ScopedSlot = ScopedSkills->Slots[InEvaluator.SkillSlot];
+            return ScopedSlot.SkillId != 0 && ScopedSlot.State == GameplaySkillState::Ready &&
+                   ScopedSlot.CooldownRemaining <= 0.0f;
+        }
+        case StateTreeEvaluatorKind::AttributeBelow:
+        case StateTreeEvaluatorKind::AttributeAbove:
+        {
+            const auto* ScopedAttributes = InRegistry.try_get<GameplayAttributesComponent>(InEntity);
+            if (ScopedAttributes == nullptr || InEvaluator.AttributeId == 0 ||
+                InEvaluator.AttributeId > kMaxGameplayAttributes)
+            {
+                return false;
+            }
+            const float ScopedValue =
+                GameplayAttributeValue(*ScopedAttributes, GameplayAttribute{InEvaluator.AttributeId});
+            return InEvaluator.Kind == StateTreeEvaluatorKind::AttributeBelow ? ScopedValue < InEvaluator.Threshold
+                                                                            : ScopedValue >= InEvaluator.Threshold;
+        }
         case StateTreeEvaluatorKind::TargetWithinRadius:
         case StateTreeEvaluatorKind::TargetBeyondRadius:
         {
@@ -86,7 +134,8 @@ namespace
 // Descends from InNode to an enabled leaf. A group selects the first child whose
 [[nodiscard]] std::uint16_t SelectLeaf(const Ecs::Registry& InRegistry, Entity InEntity,
                                        const StateTreeComponent& InState, const StateTreeDefinition& InTree,
-                                       std::uint16_t InNode, std::uint32_t InDepth) noexcept
+                                       std::uint16_t InNode, std::uint32_t InDepth,
+                                       const GameplayTagRegistry* InTags) noexcept
 {
     if (InNode >= InTree.NodeCount || InDepth > kMaxStateTreeDepth)
     {
@@ -113,10 +162,10 @@ namespace
             {
                 ScopedFallback = ScopedChild;
             }
-            if (EvaluateCondition(InRegistry, InEntity, InState, ScopedCandidate.Evaluator))
+            if (EvaluateCondition(InRegistry, InEntity, InState, ScopedCandidate.Evaluator, InTags))
             {
                 const std::uint16_t ScopedLeaf =
-                    SelectLeaf(InRegistry, InEntity, InState, InTree, ScopedChild, InDepth + 1);
+                    SelectLeaf(InRegistry, InEntity, InState, InTree, ScopedChild, InDepth + 1, InTags);
                 if (ScopedLeaf != kStateTreeNone)
                 {
                     return ScopedLeaf;
@@ -127,7 +176,7 @@ namespace
     }
     if (ScopedFallback != kStateTreeNone)
     {
-        return SelectLeaf(InRegistry, InEntity, InState, InTree, ScopedFallback, InDepth + 1);
+        return SelectLeaf(InRegistry, InEntity, InState, InTree, ScopedFallback, InDepth + 1, InTags);
     }
     return kStateTreeNone;
 }
@@ -166,8 +215,8 @@ void BuildPath(const StateTreeDefinition& InTree, std::uint16_t InLeaf, StateTre
     ScopedCommand.Target = InState.Target;
     ScopedCommand.Position = InState.TargetPosition;
     ScopedCommand.Speed = InTask.Speed;
-    ScopedCommand.Range = InTask.Range;
     ScopedCommand.Flags = InTask.Flags;
+    ScopedCommand.ActionId = InTask.ActionId;
     ScopedCommand.TaskIndex = InNodeIndex;
     ScopedCommand.Sequence = InState.Ticks;
     return ScopedCommand;
@@ -212,9 +261,9 @@ void RunTask(Ecs::Registry& InRegistry, Entity InEntity, StateTreeComponent& InS
             EmitCommand(InRegistry, InEntity, InCommands,
                         MakeCommand(AICommandKind::Stop, InState, ScopedTask, InNodeIndex));
             return;
-        case StateTreeTaskKind::AttackTarget:
+        case StateTreeTaskKind::Action:
         {
-            AICommandComponent ScopedCommand = MakeCommand(AICommandKind::Attack, InState, ScopedTask, InNodeIndex);
+            AICommandComponent ScopedCommand = MakeCommand(AICommandKind::Action, InState, ScopedTask, InNodeIndex);
             ScopedCommand.Position = ResolveTargetPosition(InRegistry, InState);
             EmitCommand(InRegistry, InEntity, InCommands, ScopedCommand);
             return;
@@ -222,19 +271,40 @@ void RunTask(Ecs::Registry& InRegistry, Entity InEntity, StateTreeComponent& InS
         case StateTreeTaskKind::SetTag:
         case StateTreeTaskKind::ClearTag:
         {
-            // Tags are gameplay state, not movement intent: write the component
-            if (auto* ScopedGameplay = InRegistry.try_get<GameplayState>(InEntity); ScopedGameplay != nullptr)
+            // Tags are gameplay state, not movement intent: write the tag
+            // component in place so the next evaluator pass sees them.
+            auto* ScopedTags = InRegistry.try_get<GameplayTagsComponent>(InEntity);
+            if (ScopedTags == nullptr)
             {
+                ScopedTags = &InRegistry.emplace<GameplayTagsComponent>(InEntity);
+            }
+            for (std::uint32_t ScopedTagId = 1; ScopedTagId <= kMaxGameplayTags; ++ScopedTagId)
+            {
+                const GameplayTag ScopedTag{ScopedTagId};
+                if (!ScopedTask.Tags.Bits.Test(ScopedTag))
+                {
+                    continue;
+                }
                 if (ScopedTask.Kind == StateTreeTaskKind::SetTag)
                 {
-                    ScopedGameplay->Bits |= ScopedTask.TagMask;
+                    ScopedTags->BaseTags.Add(ScopedTag);
+                    ScopedTags->Tags.Add(ScopedTag);
                 }
                 else
                 {
-                    ScopedGameplay->Bits &= ~ScopedTask.TagMask;
+                    ScopedTags->BaseTags.Remove(ScopedTag);
+                    ScopedTags->Tags.Remove(ScopedTag);
                 }
-                InState.Tags = ScopedGameplay->Bits;
             }
+            ++ScopedTags->Revision;
+            return;
+        }
+        case StateTreeTaskKind::ActivateSkill:
+        {
+            AICommandComponent ScopedCommand = MakeCommand(AICommandKind::ActivateSkill, InState, ScopedTask, InNodeIndex);
+            ScopedCommand.Flags = ScopedTask.SkillSlot;
+            ScopedCommand.Position = ResolveTargetPosition(InRegistry, InState);
+            EmitCommand(InRegistry, InEntity, InCommands, ScopedCommand);
             return;
         }
     }
@@ -357,6 +427,12 @@ const StateTreeDefinition* StateTreeSystem::Tree(std::uint32_t InTreeId) const n
 
 void StateTreeSystem::Run(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuffer* InCommands) const noexcept
 {
+    RunWithTags(InRegistry, InDt, InCommands, MTags);
+}
+
+void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuffer* InCommands,
+                                  const GameplayTagRegistry* InTags) const noexcept
+{
     const float ScopedDt = std::isfinite(InDt) && InDt > 0.0f ? InDt : 0.0f;
     auto ScopedView = InRegistry.view<StateTreeComponent>();
     for (auto [ScopedEntity, ScopedState] : ScopedView.each())
@@ -371,22 +447,13 @@ void StateTreeSystem::Run(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuf
             continue;
         }
 
-        // One component read per entity per tick; every evaluator sees the same
-        if (const auto* ScopedGameplay = InRegistry.try_get<GameplayState>(ScopedEntity); ScopedGameplay != nullptr)
-        {
-            ScopedState.Tags = ScopedGameplay->Bits;
-        }
-        else
-        {
-            ScopedState.Tags = 0;
-        }
         ++ScopedState.Ticks;
         ScopedState.StateTime += ScopedDt;
 
         if (!ScopedState.Initialized)
         {
             const std::uint16_t ScopedLeaf =
-                SelectLeaf(InRegistry, ScopedEntity, ScopedState, *ScopedTree, ScopedTree->Root, 1);
+                SelectLeaf(InRegistry, ScopedEntity, ScopedState, *ScopedTree, ScopedTree->Root, 1, InTags);
             if (ScopedLeaf == kStateTreeNone)
             {
                 // A tree with no enabled leaf is broken data; stay inactive rather
@@ -400,7 +467,7 @@ void StateTreeSystem::Run(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuf
             // Only the active leaf is guarded each tick. A failing guard raises an
             if (ScopedState.CurrentLeaf >= ScopedTree->NodeCount ||
                 !EvaluateCondition(InRegistry, ScopedEntity, ScopedState,
-                                   ScopedTree->Nodes[ScopedState.CurrentLeaf].Evaluator))
+                                   ScopedTree->Nodes[ScopedState.CurrentLeaf].Evaluator, InTags))
             {
                 ScopedState.Triggers |= kStateTreeTriggerLeafFailed;
             }
@@ -427,18 +494,26 @@ void StateTreeSystem::Run(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuf
                 {
                     continue;
                 }
-                if (ScopedTransition.RequireTagsAll != 0 &&
-                    (ScopedState.Tags & ScopedTransition.RequireTagsAll) != ScopedTransition.RequireTagsAll)
+                if (const auto* ScopedTags = InRegistry.try_get<GameplayTagsComponent>(ScopedEntity);
+                    InTags != nullptr && ScopedTags != nullptr)
                 {
-                    continue;
+                    if (!ScopedTransition.RequireTags.IsEmpty() &&
+                        !GameplayTagContainerHasAll(ScopedTags->Tags, *InTags, ScopedTransition.RequireTags))
+                    {
+                        continue;
+                    }
+                    if (!ScopedTransition.ForbidTags.IsEmpty() &&
+                        GameplayTagContainerHasAny(ScopedTags->Tags, *InTags, ScopedTransition.ForbidTags))
+                    {
+                        continue;
+                    }
                 }
-                if (ScopedTransition.ForbidTagsAny != 0 &&
-                    (ScopedState.Tags & ScopedTransition.ForbidTagsAny) != 0)
+                else if (!ScopedTransition.RequireTags.IsEmpty())
                 {
                     continue;
                 }
                 const std::uint16_t ScopedLeaf =
-                    SelectLeaf(InRegistry, ScopedEntity, ScopedState, *ScopedTree, ScopedTransition.ToNode, 1);
+                    SelectLeaf(InRegistry, ScopedEntity, ScopedState, *ScopedTree, ScopedTransition.ToNode, 1, InTags);
                 if (ScopedLeaf == kStateTreeNone)
                 {
                     continue;
@@ -470,7 +545,7 @@ void StateTreeSystem::Run(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuf
 
 void StateTreeSystem::Run(Ecs::SystemContext& InContext) const noexcept
 {
-    Run(InContext.registry, InContext.dt, InContext.commands);
+    RunWithTags(InContext.registry, InContext.dt, InContext.commands, InContext.gameplayTags);
 }
 
 void RegisterStateTreeSystem(Ecs::Schedule& InSchedule, StateTreeSystem& InSystem)

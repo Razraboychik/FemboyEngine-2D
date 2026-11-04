@@ -522,9 +522,8 @@ bool AudioSystem::SetVoiceSpatial(std::uint32_t InVoice, float InVolume, float I
 
 void AudioSystem::Mix(float* Output, std::uint32_t InFrameCount) noexcept
 {
-    // The one audio-thread entry point. DspGraph::Process() drains commands,
+    // The one audio-thread entry point: run the mixer, then the stereo limiter.
     MMixer.Process(Output, InFrameCount);
-    // Safety stage. The device format this engine opens is stereo; a future
     MLimiter.Process(Output, InFrameCount, 2);
 
     if (MReferenceRing != nullptr && Output != nullptr)
@@ -733,7 +732,7 @@ void AudioSystem::SyncSourceComponents(Ecs::Registry& InRegistry, const AudioLis
         }
     }
 
-    // A component that was removed (or stopped playing) without our seeing it
+    // Sources removed or stopped between updates are detected here.
     for (SourceRuntime& ScopedRuntime : MSources)
     {
         if (ScopedRuntime.entity == 0xFFFFFFFFu || ScopedRuntime.stamp == MUpdateStamp)

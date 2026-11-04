@@ -18,3 +18,4 @@ set_target_properties(fby_sandbox PROPERTIES
 # Games start without a console window; the frame-time log still lands in
 # Saved/Logs. -DFBY_CONSOLE_APPS=ON keeps the console for development.
 fby_make_gui_app(fby_sandbox)
+fby_set_app_stack(fby_sandbox)

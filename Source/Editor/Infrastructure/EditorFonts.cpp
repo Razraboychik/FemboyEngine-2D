@@ -162,6 +162,16 @@ bool EditorFonts::Initialize(ImGuiIO& InIo, VirtualFileSystem* InVfs, WindowMana
     {
         MStatus.displayScale = 1.0f;
     }
+    MStatus.pixelDensity = InWindow != nullptr ? InWindow->PixelDensity() : 1.0f;
+    if (!(MStatus.pixelDensity > 0.0f))
+    {
+        MStatus.pixelDensity = 1.0f;
+    }
+    MStatus.contentScale = InWindow != nullptr ? InWindow->ContentScale() : 1.0f;
+    if (!(MStatus.contentScale > 0.0f))
+    {
+        MStatus.contentScale = 1.0f;
+    }
     if (MInitialized)
     {
         SetUiScale(MSpecUiScale);
@@ -188,7 +198,8 @@ bool EditorFonts::Initialize(ImGuiIO& InIo, VirtualFileSystem* InVfs, WindowMana
             }
             LogInfo("fonts", "{}: {:.1f} logical px from '{}' ({} bytes, mmap, {:.2f}x density)", RoleName(InRole),
                     static_cast<double>(InPixels), InPath, ScopedSource.bytes,
-                    static_cast<double>(MDynamicTextures ? 1.0f : MStatus.displayScale));
+                    static_cast<double>(MDynamicTextures ? 1.0f
+                                                         : MStatus.contentScale * MStatus.pixelDensity));
         }
         else if (!InPath.empty() && InRole != EditorFontRole::Bold)
         {
@@ -239,8 +250,12 @@ bool EditorFonts::Initialize(ImGuiIO& InIo, VirtualFileSystem* InVfs, WindowMana
     ProbeBakedAtlas(InVfs, InSpec.bakedInterAtlas);
     MInitialized = true;
 
-    LogInfo("fonts", "editor typography ready: {:.2f}x display scale, {:.2f}x UI scale, {} role(s), dynamic atlas {}",
-            static_cast<double>(MStatus.displayScale), static_cast<double>(MSpecUiScale),
+    LogInfo("fonts",
+            "editor typography ready: display {:.2f}x, pixel {:.2f}x, content {:.2f}x, ui {:.2f}x, "
+            "body {:.1f} px, {} role(s), dynamic atlas {}",
+            static_cast<double>(MStatus.displayScale), static_cast<double>(MStatus.pixelDensity),
+            static_cast<double>(MStatus.contentScale), static_cast<double>(MSpecUiScale),
+            static_cast<double>(MSpec.regularPx * MSpecUiScale * MStatus.contentScale),
             static_cast<unsigned>(MFonts.size()), MDynamicTextures ? "yes" : "no (legacy density)");
     return MFonts[0] != nullptr;
 }
@@ -328,8 +343,10 @@ ImFont* EditorFonts::LoadOne(ImGuiIO& InIo, VirtualFileSystem* InVfs, std::strin
     ScopedConfig.OversampleH = 0;
     ScopedConfig.OversampleV = 1;
     ScopedConfig.RasterizerMultiply = 1.0f;
-    // On a dynamic atlas ImGui bakes at the viewport pixel density itself;
-    ScopedConfig.RasterizerDensity = MDynamicTextures ? 1.0f : MStatus.displayScale;
+    // On a dynamic atlas ImGui bakes at the viewport pixel density itself; the
+    // legacy path has to bake the content scale and the backing density here.
+    ScopedConfig.RasterizerDensity =
+        MDynamicTextures ? 1.0f : MStatus.contentScale * MStatus.pixelDensity;
 
     const ImWchar* ScopedRanges = InIo.Fonts->GetGlyphRangesCyrillic();
     ImFont* ScopedFont = InIo.Fonts->AddFontFromMemoryTTF(const_cast<std::byte*>(ScopedBytes),
@@ -354,18 +371,25 @@ void EditorFonts::ApplyUiScale() const
     {
         return;
     }
+    // Windows and X11 already give the window size in physical pixels, so the
+    // content scale (display scale divided by pixel density) is the part the
+    // UI has to apply. macOS and Wayland return 1.0 here because the ImGui
+    // framebuffer scale already covers their backing density.
+    const float ScopedContentScale = MStatus.contentScale > 0.0f ? MStatus.contentScale : 1.0f;
+    const float ScopedScale = MSpecUiScale * ScopedContentScale;
     ImGuiStyle& ScopedStyle = ImGui::GetStyle();
     if (MDynamicTextures)
     {
         // 1.92+ global scale factors. io.FontGlobalScale is the deprecated path
-        ScopedStyle.FontScaleMain = MSpecUiScale;
+        // and must stay at 1.0 so the dynamic atlas bakes at the final size.
+        ScopedStyle.FontScaleMain = ScopedScale;
         MIO->FontGlobalScale = 1.0f;
         return;
     }
-    // Legacy density path: glyphs were baked at `displayScale` px and must be
+    // Legacy density path: the glyphs were baked at contentScale * pixelDensity
+    // and FontGlobalScale places them at the same content size.
     ScopedStyle.FontScaleMain = 1.0f;
-    const float ScopedDensity = MStatus.displayScale > 0.0f ? MStatus.displayScale : 1.0f;
-    MIO->FontGlobalScale = MSpecUiScale / ScopedDensity;
+    MIO->FontGlobalScale = ScopedScale;
 }
 
 void EditorFonts::SetSpec(const EditorFontSpec& InSpec) noexcept
@@ -476,15 +500,26 @@ void EditorFonts::RefreshDisplayScale(ImGuiIO& InIo, WindowManager* InWindow)
     {
         return;
     }
-    const float ScopedScale = InWindow->DisplayScale();
-    if (!(ScopedScale > 0.0f) || std::abs(ScopedScale - MStatus.displayScale) < 0.01f)
+    const float ScopedDisplayScale = InWindow->DisplayScale();
+    const float ScopedPixelDensity = InWindow->PixelDensity();
+    const float ScopedContentScale = InWindow->ContentScale();
+    const bool ScopedChanged =
+        std::abs(ScopedDisplayScale - MStatus.displayScale) >= 0.01f ||
+        std::abs(ScopedPixelDensity - MStatus.pixelDensity) >= 0.01f ||
+        std::abs(ScopedContentScale - MStatus.contentScale) >= 0.01f;
+    if (!ScopedChanged)
     {
         return;
     }
-    MStatus.displayScale = ScopedScale;
+    MStatus.displayScale = ScopedDisplayScale;
+    MStatus.pixelDensity = ScopedPixelDensity > 0.0f ? ScopedPixelDensity : 1.0f;
+    MStatus.contentScale = ScopedContentScale > 0.0f ? ScopedContentScale : 1.0f;
     ApplyUiScale();
-    LogInfo("fonts", "display scale changed to {:.2f}x; ImGui re-bakes glyphs at the new pixel density",
-            static_cast<double>(ScopedScale));
+    // A dynamic atlas re-bakes the glyphs when FontScaleMain changes, so the
+    // new density is picked up without an explicit ReloadFonts call.
+    LogInfo("fonts", "display {:.2f}x, pixel density {:.2f}x, content {:.2f}x; glyphs re-bake at the new size",
+            static_cast<double>(MStatus.displayScale), static_cast<double>(MStatus.pixelDensity),
+            static_cast<double>(MStatus.contentScale));
 }
 
 void EditorFonts::ProbeBakedAtlas(VirtualFileSystem* InVfs, std::string_view InPath)

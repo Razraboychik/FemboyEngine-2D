@@ -50,6 +50,9 @@ struct SdfCollisionDesc
     float restitution = 0.05f;
     // Upper bound on one body's impulse, pixels * mass / second
     float maxImpulse = 4000.0f;
+    // Upper bound on the depenetration speed, pixels / second. The correction is
+    // applied as a velocity, never as a transform teleport.
+    float maxPushSpeed = 2000.0f;
     // Extra probes along each collider axis, 0 = centre + corners
     std::uint32_t subSamples = 1;
     // Skip sensors and static/kinematic bodies
@@ -63,15 +66,47 @@ struct SdfContact
     Vector2D normal{0.0f, -1.0f};
     float penetration = 0.0f;
     float impulse = 0.0f;
+    // Pre-correction approach speed along the contact normal. Damage systems use
+    // it instead of the post-correction push-out speed.
+    float RelativeSpeed = 0.0f;
+    // 0.5 * mass * RelativeSpeed^2, in the engine's pixel/kilogram units.
+    float KineticEnergy = 0.0f;
+    float Mass = 0.0f;
     std::uint32_t sequence = 0;
 };
 
 static_assert(std::is_trivially_copyable_v<SdfContact>);
 
+// One point of a contact manifold. A body resolves against up to four points so
+// a box in a corner cannot flip between two normals from step to step.
+struct SdfContactPoint
+{
+    Vector2D Point{};
+    Vector2D Normal{0.0f, -1.0f};
+    float Penetration = 0.0f;
+    float Impulse = 0.0f;
+};
+
+static_assert(std::is_trivially_copyable_v<SdfContactPoint>);
+
+// The per-body manifold a solver would consume. Fixed size, no allocation.
+struct SdfContactManifold
+{
+    Entity entity = entt::null;
+    std::uint32_t Count = 0;
+    std::array<SdfContactPoint, 4> Points{};
+};
+
+static_assert(std::is_trivially_copyable_v<SdfContactManifold>);
+
+class SdfBrickMap;
+struct SdfBrickHeader;
+
 class SdfCollisionSystem
 {
 public:
     static constexpr std::uint32_t kMaxContacts = 1024;
+    static constexpr std::uint32_t kMaxManifolds = 256;
 
     SdfCollisionSystem() = default;
 
@@ -91,6 +126,20 @@ public:
     {
         return {MContacts.data(), MContactCount};
     }
+    [[nodiscard]] std::span<const SdfContactManifold> Manifolds() const noexcept
+    {
+        return {MManifolds.data(), MManifoldCount};
+    }
+    // Optional broadphase: a body whose centre brick is uniform outside and whose
+    // minimum distance exceeds the collider reach is skipped without sampling.
+    void SetBrickMap(const SdfBrickMap* InBricks) noexcept
+    {
+        MBricks = InBricks;
+    }
+    [[nodiscard]] std::uint32_t BroadphaseSkipped() const noexcept
+    {
+        return MBroadphaseSkipped;
+    }
     [[nodiscard]] std::uint32_t LastCorrected() const noexcept
     {
         return MLastCorrected;
@@ -104,6 +153,10 @@ private:
     SdfCollisionDesc MDesc{};
     std::array<SdfContact, kMaxContacts> MContacts{};
     std::uint32_t MContactCount = 0;
+    std::array<SdfContactManifold, kMaxManifolds> MManifolds{};
+    std::uint32_t MManifoldCount = 0;
+    const SdfBrickMap* MBricks = nullptr;
+    std::uint32_t MBroadphaseSkipped = 0;
     std::uint32_t MSequence = 0;
     std::uint32_t MLastCorrected = 0;
 };

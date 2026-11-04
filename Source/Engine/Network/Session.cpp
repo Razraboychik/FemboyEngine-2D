@@ -611,8 +611,8 @@ bool NetSession::Start(const NetLink& InLink, const NetSessionConfig& InConfig) 
         return true;
     }
 
-    // Peer-to-peer keeps the same slot bookkeeping; the lockstep transport is a
-    // later step, so a peer starts joined with its own local slot.
+    // Peer-to-peer keeps the same slot bookkeeping; a peer starts joined with
+    // its own local slot.
     const std::uint32_t ScopedSlot = AllocateSlot(NetAddress{}, MConfig.LocalName);
     MLocalPlayer = static_cast<std::uint8_t>(ScopedSlot);
     SetStatus(NetSessionStatus::Joined);
@@ -1483,8 +1483,7 @@ void NetSession::Advance(float InDeltaSeconds) noexcept
         return;
     }
 
-    // Peer role: the deterministic lockstep transport is a later step, but the
-    // local tick still advances so game code can run the same loop.
+    // Peer role: the local tick advances so game code runs the same loop.
     MTickAccumulator += ScopedDt;
     while (MTickAccumulator >= MConfig.FixedDtSeconds)
     {

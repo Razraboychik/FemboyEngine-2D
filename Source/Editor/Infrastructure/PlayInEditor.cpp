@@ -165,6 +165,10 @@ PlayInEditor::Services PlayInEditor::CaptureServices(const Ecs::SystemContext& I
     ScopedServices.physics = InContext.physics;
     ScopedServices.commands = InContext.commands;
     ScopedServices.frameArena = InContext.frameArena;
+    ScopedServices.gameplayTags = InContext.gameplayTags;
+    ScopedServices.gameplayAttributes = InContext.gameplayAttributes;
+    ScopedServices.gameplayEffects = InContext.gameplayEffects;
+    ScopedServices.gameplaySkills = InContext.gameplaySkills;
     return ScopedServices;
 }
 
@@ -228,12 +232,10 @@ PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs
     return Result::Ok;
 }
 
-PlayInEditor::Result PlayInEditor::StartMultiplayer(Ecs::Registry& InEditorWorld,
-                                                   const Ecs::SnapshotSchema& InSchema,
-                                                   const Ecs::SystemContext& InServices,
-                                                   std::uint32_t InClientCount, std::uint64_t InTick,
-                                                   const DeterministicRng* InRng,
-                                                   const ExternalClientDesc* InExternal) noexcept
+PlayInEditor::Result PlayInEditor::StartMultiplayer(Ecs::Registry& InEditorWorld, const Ecs::SnapshotSchema& InSchema,
+                                                    const Ecs::SystemContext& InServices, std::uint32_t InClientCount,
+                                                    std::uint64_t InTick, const DeterministicRng* InRng,
+                                                    const ExternalClientDesc* InExternal) noexcept
 {
     const Result ScopedStart = Start(InEditorWorld, InSchema, InServices, InTick, InRng);
     if (ScopedStart != Result::Ok)
@@ -284,11 +286,10 @@ PlayInEditor::Result PlayInEditor::StartMultiplayer(Ecs::Registry& InEditorWorld
         }
         Net::SnapshotSenderConfig ScopedSenderConfig{};
         Net::SnapshotReceiverConfig ScopedReceiverConfig{};
-        MPieNetworkUp =
-            MPieSender.Start(MPieReplicationHostEndpoint.Link(), MPieReplicationClientEndpoint.Address(),
-                             ScopedSenderConfig) &&
-            MPieReceiver.Start(MPieReplicationClientEndpoint.Link(), MPieReplicationHostEndpoint.Address(),
-                               ScopedReceiverConfig, &PlayInEditor::ApplyPieState, this);
+        MPieNetworkUp = MPieSender.Start(MPieReplicationHostEndpoint.Link(), MPieReplicationClientEndpoint.Address(),
+                                         ScopedSenderConfig) &&
+                        MPieReceiver.Start(MPieReplicationClientEndpoint.Link(), MPieReplicationHostEndpoint.Address(),
+                                           ScopedReceiverConfig, &PlayInEditor::ApplyPieState, this);
         if (MPieNetworkUp)
         {
             MPieSender.Tick(0);
@@ -347,7 +348,7 @@ bool PlayInEditor::StartExternalClient(const ExternalClientDesc& InDesc) noexcep
             continue;
         }
         const std::string ScopedArguments = "--pie-client --connect 127.0.0.1:" + std::to_string(ScopedHostPort) +
-                                             " --listen " + std::to_string(ScopedClientPort);
+                                            " --listen " + std::to_string(ScopedClientPort);
         void* ScopedProcess = LaunchSandboxProcess(InDesc.executable, ScopedArguments);
         if (ScopedProcess == nullptr)
         {
@@ -373,8 +374,7 @@ bool PlayInEditor::StartExternalClient(const ExternalClientDesc& InDesc) noexcep
         // fit the replication budget cannot be fixed by another port.
         if (!MExternalSender.PublishBaseline(MTick, MSnapshot, 0))
         {
-            LogWarn("pie", "PIE second copy baseline does not fit the replication budget ({} bytes)",
-                    MSnapshot.size());
+            LogWarn("pie", "PIE second copy baseline does not fit the replication budget ({} bytes)", MSnapshot.size());
             MExternalSender.Stop();
             ReleaseSandboxProcess(ScopedProcess);
             MExternalTransport.Close();
@@ -449,9 +449,9 @@ void PlayInEditor::KeepExternalClientAlive(float InDeltaSeconds) noexcept
     // not look like a stopped one.
     if (MExternalLastDeltaBytes > 0)
     {
-        (void)MExternalSender.PublishDelta(
-            MTick, MExternalBaselineTick,
-            std::span<const std::byte>(MClientDelta.data(), MExternalLastDeltaBytes), ScopedNowMs);
+        (void)MExternalSender.PublishDelta(MTick, MExternalBaselineTick,
+                                           std::span<const std::byte>(MClientDelta.data(), MExternalLastDeltaBytes),
+                                           ScopedNowMs);
     }
     else
     {
@@ -531,10 +531,10 @@ bool PlayInEditor::StartVoice() noexcept
     MPieVoiceHostSession.SetGraph(ScopedHostGraph);
     MPieVoiceClientSession.SetGraph(MPieVoiceClientGraph.get());
 
-    if (!MPieVoiceHost->Start(*ScopedHostGraph, ScopedHostReference, ScopedHostConfig,
-                              &VoiceNetworkBridge::SendThunk, &MPieVoiceHostBridge) ||
-        !MPieVoiceClient->Start(*MPieVoiceClientGraph, nullptr, ScopedClientConfig,
-                                &VoiceNetworkBridge::SendThunk, &MPieVoiceClientBridge) ||
+    if (!MPieVoiceHost->Start(*ScopedHostGraph, ScopedHostReference, ScopedHostConfig, &VoiceNetworkBridge::SendThunk,
+                              &MPieVoiceHostBridge) ||
+        !MPieVoiceClient->Start(*MPieVoiceClientGraph, nullptr, ScopedClientConfig, &VoiceNetworkBridge::SendThunk,
+                                &MPieVoiceClientBridge) ||
         !MPieVoiceHostBridge.StartLoopback(*MPieVoiceHost, MPieHostSession, MPieVoiceHostSession, 0, 1,
                                            MPieVoiceHostEndpoint.Link(), MPieVoiceClientEndpoint.Address()) ||
         !MPieVoiceClientBridge.StartLoopback(*MPieVoiceClient, MPieClientSession, MPieVoiceClientSession, 1, 0,
@@ -705,7 +705,8 @@ void PlayInEditor::Stop() noexcept
     MPieBaselineTick = 0;
     Scene::DestroyAllEntities(MWorld);
     Scene::DestroyAllEntities(MClientWorld);
-    MClientDelta.clear();    MMultiplayer = false;
+    MClientDelta.clear();
+    MMultiplayer = false;
     MClientCount = 0;
     MActive = false;
     MSnapshot = {};
@@ -723,6 +724,10 @@ Ecs::SystemContext PlayInEditor::MakeContext(Ecs::Registry& InRegistry) const no
     ScopedContext.physics = MServices.physics;
     ScopedContext.commands = MServices.commands;
     ScopedContext.frameArena = MServices.frameArena;
+    ScopedContext.gameplayTags = MServices.gameplayTags;
+    ScopedContext.gameplayAttributes = MServices.gameplayAttributes;
+    ScopedContext.gameplayEffects = MServices.gameplayEffects;
+    ScopedContext.gameplaySkills = MServices.gameplaySkills;
     return ScopedContext;
 }
 
@@ -792,17 +797,15 @@ bool PlayInEditor::SendClientInput(const PiePlayerInput& InInput) noexcept
     ScopedMessage[3] = std::byte{'I'};
     std::memcpy(ScopedMessage.data() + 4, &InInput, sizeof(PiePlayerInput));
     return MPieInputClientEndpoint.Link().Send(MPieInputHostEndpoint.Address(),
-                                               std::span<const std::byte>(ScopedMessage.data(),
-                                                                          ScopedMessage.size()));
+                                               std::span<const std::byte>(ScopedMessage.data(), ScopedMessage.size()));
 }
 
 void PlayInEditor::OnPieInput(void* InUser, const Net::NetAddress& InFrom,
-                             std::span<const std::byte> InMessage) noexcept
+                              std::span<const std::byte> InMessage) noexcept
 {
     auto* ScopedPie = static_cast<PlayInEditor*>(InUser);
-    if (ScopedPie == nullptr || InMessage.size() != 4 + sizeof(PiePlayerInput) ||
-        InMessage[0] != std::byte{'P'} || InMessage[1] != std::byte{'I'} ||
-        InMessage[2] != std::byte{'E'} || InMessage[3] != std::byte{'I'})
+    if (ScopedPie == nullptr || InMessage.size() != 4 + sizeof(PiePlayerInput) || InMessage[0] != std::byte{'P'} ||
+        InMessage[1] != std::byte{'I'} || InMessage[2] != std::byte{'E'} || InMessage[3] != std::byte{'I'})
     {
         return;
     }

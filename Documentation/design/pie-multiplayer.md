@@ -8,7 +8,7 @@ commands live in [editor-workflows.md](editor-workflows.md).
 ## Frame composition
 
 `Source/Editor/Infrastructure/FrameComposer.hpp/.cpp` owns the world-to-frame
-extraction that used to live in the editor application: sprites and tilemap
+extraction for the editor application: sprites and tilemap
 quads are key-sorted into batches, skinned and cloth meshes go through the mesh
 path, and the packet points into the composer's arrays. Every viewport keeps its
 own composer, so a second world never overwrites the first packet mid-frame.

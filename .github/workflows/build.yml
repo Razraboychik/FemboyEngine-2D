@@ -1,9 +1,9 @@
 name: Build gate (compiler bring-up)
 
-# The authoritative build gate for 0.1.0-alpha.1 is the local clang-cl 23.1.4 run
-# (build/build.bat + build/ctest.bat). This workflow provisions the second opinion
-# and the Linux GCC agent; the jobs are allowed to fail while that agent is being
-# brought up, so a red run here is a signal, not a release blocker yet.
+# The authoritative Windows gate is the ci-clangcl preset: RelWithDebInfo,
+# clang-cl 23.1.4, the full test suite, and a red run blocks the change. The
+# Linux jobs are the second opinion and stay advisory until both runners are
+# green on a hosted runner.
 
 on:
   workflow_dispatch:
@@ -13,25 +13,50 @@ on:
 permissions:
   contents: read
 
+env:
+  LLVM_VERSION: "23.1.4"
+
 jobs:
   windows-clang-cl:
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - name: Install LLVM ${{ env.LLVM_VERSION }}
+        shell: pwsh
+        run: |
+          $Installer = Join-Path $env:RUNNER_TEMP "LLVM-$env:LLVM_VERSION-win64.msi"
+          $Url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/LLVM-$env:LLVM_VERSION-win64.msi"
+          Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Installer
+          $Process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
+            "/i", "`"$Installer`"", "/qn", "/norestart", "ALLUSERS=1"
+          )
+          if ($Process.ExitCode -ne 0) { throw "LLVM installer failed with exit code $($Process.ExitCode)" }
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - uses: ilammy/msvc-dev-cmd@v1
+      - name: Verify LLVM ${{ env.LLVM_VERSION }}
+        shell: pwsh
+        run: |
+          $Clang = (Get-Command clang-cl).Source
+          if ($Clang -notlike "C:\Program Files\LLVM\bin\*") {
+            throw "Expected clang-cl from LLVM 23.1.4, got: $Clang"
+          }
+          $Version = (& $Clang --version | Select-Object -First 1)
+          if ($Version -notmatch [regex]::Escape($env:LLVM_VERSION)) {
+            throw "Expected LLVM $env:LLVM_VERSION, got: $Version"
+          }
+          $Version
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
+        run: cmake --preset ci-clangcl
       - name: Dependency lock
-        run: python Source/Tools/Dev/CheckDependencyLock.py --build build --require
+        run: python Source/Tools/Dev/CheckDependencyLock.py --build build-ci --require
       - name: Build
-        run: cmake --build build --parallel 8
+        run: cmake --build --preset ci-clangcl
       - name: Pak reproducibility
-        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak.exe
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-ci/bin/tools/fby_fempak.exe
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.1.0-alpha.1 --out build/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.2.0-alpha.1 --out build-ci/release-manifest.json
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --preset ci-clangcl
 
   linux-clang:
     runs-on: ubuntu-latest
@@ -47,7 +72,7 @@ jobs:
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.1.0-alpha.1 --out build/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.2.0-alpha.1 --out build/release-manifest.json
       - name: Test
         run: ctest --test-dir build --output-on-failure
 

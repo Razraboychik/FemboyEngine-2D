@@ -1,6 +1,6 @@
 # CMake Project and Engine Management
 
-Applies to FemboyEngine2D 0.1.0-alpha.1 and CMake 3.28 or newer.
+Applies to FemboyEngine2D 0.2.0-alpha.1 and CMake 3.28 or newer.
 
 ## Toolchain
 
@@ -34,10 +34,22 @@ video tests become an order of magnitude slower and can hit CI timeouts.
 |---|---|---|
 | `FBY_BUILD_EDITOR` | `ON` | Dear ImGui editor library and application. |
 | `FBY_BUILD_SANDBOX` | `ON` | Sandbox executable. |
+| `FBY_BUILD_SERVER` | `ON` | Dedicated server executable. |
+| `FBY_BUILD_LOBBY` | `ON` | Lobby service executable. |
 | `FBY_BUILD_TESTS` | `OFF` | Build the CTest suite. |
 | `FBY_BUILD_TOOLS` | `ON` | `fby_fempak`, `fby_aotc`, `fby_fontc`, `fby_scene_tool`. |
 | `FBY_BUILD_PLATFORM_PROVIDERS` | `ON` | Steam/EGS/GOG provider shared libraries. |
 | `FBY_RHI_BACKEND` | `auto` | `auto`, `vulkan`, `metal`, or `null`. |
+| `FBY_WITH_ASAN`, `FBY_WITH_UBSAN` | `OFF` | Sanitizer instrumentation for the engine and tests. |
+| `FBY_ASAN_LEAKS` | `ON` | LeakSanitizer at exit on Linux and macOS. |
+| `FBY_WITH_SCRIPT_VM` | `ON` | FemboyScript VM for editor and development builds. |
+| `FBY_WITH_RNNOISE` | `ON` | RNNoise neural denoise tier. |
+| `FBY_WITH_DLSS`, `FBY_WITH_FIDELITYFX`, `FBY_WITH_METALFX` | `OFF` | Vendor upscaler backends. |
+| `FBY_DLSS_ROOT` | `third_party/dlss` | Local NVIDIA DLSS SDK root; not tracked. |
+| `FBY_FIDELITYFX_ROOT` | `third_party/fidelityfx/Kits/FidelityFX` | Local AMD FidelityFX SDK root; not tracked. |
+| `FBY_REQUIRE_VENDOR_SDKS` | `OFF` | Missing vendor SDK becomes a configure error instead of a warning. |
+| `FBY_WITH_FSR1`, `FBY_WITH_FSR2`, `FBY_WITH_FRAME_GENERATION` | `OFF` | Compatibility flags; the features are core and runtime-gated. |
+| `FBY_CONSOLE_APPS` | `OFF` | Keep a console window for the editor and games. |
 
 The engine works without a Vulkan SDK: `FBY_RHI_BACKEND=null` and a null RHI
 build are supported for headless CI. If Vulkan headers are unavailable, the
@@ -149,7 +161,7 @@ ctest --test-dir build --output-on-failure
 python Source/Tools/Dev/CheckStyle.py
 ```
 
-The 38 tests are standalone executables with no test framework. They run
+The CTest suite builds standalone executables with no test framework. They run
 headless and can be launched individually from `build/bin`.
 
 ## RHI selection

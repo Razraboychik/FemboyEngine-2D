@@ -3,6 +3,7 @@
 // editor.ini section live here so the editor environment is one file.
 #pragma once
 
+#include "Engine/Core/Log.hpp"
 #include "Engine/RHI/ViewportModes.hpp"
 #include "Engine/UI/Accessibility.hpp"
 
@@ -27,6 +28,10 @@ struct EditorSettings
     float fontScriptPinInput = 18.0f;
     float fontScriptPinOutput = 18.0f;
     float fontSceneText = 18.0f;
+    // Per-category log journal limits. The editor applies them to the engine
+    // sink on commit; see LogRetention for the pruning and compaction rules.
+    std::uint32_t logMaxFiles = kRecommendedLogRetention.MaxFiles;
+    std::uint32_t logMaxLinesPerFile = kRecommendedLogRetention.MaxLinesPerFile;
     bool vsync = true;
     bool showDemoWindow = false;
     bool autoRefreshBrowser = true;

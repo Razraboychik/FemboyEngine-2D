@@ -96,6 +96,11 @@ public:
     // Returns false and fills `error` when the library is missing, the ABI does
     bool Load(const std::string& InPath, std::string* InError);
 
+    // Unloads the plugin that came from `path` (its systems leave the graph, its
+    // unload entry runs and the library closes) and loads it again. Other plugins
+    // are untouched. When `path` is not loaded this behaves like Load().
+    bool Reload(const std::string& InPath, std::string* InError);
+
     // Calls fby_plugin_unload on every plugin and closes the libraries.
     void UnloadAll();
 

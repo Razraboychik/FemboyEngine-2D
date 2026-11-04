@@ -199,6 +199,18 @@ bool CommandLog::PushWorldCommand(CommandType InType, Entity InEntity, std::span
     return true;
 }
 
+bool CommandLog::CutChain(Entity InEntity, std::uint32_t InChainId, std::uint16_t InConnection,
+                          std::uint64_t InTick) noexcept
+{
+    CommandCutChain ScopedPayload;
+    ScopedPayload.chainId = InChainId;
+    ScopedPayload.connection = InConnection;
+    return PushWorldCommand(CommandType::CutChain, InEntity,
+                            std::span<const std::byte>(reinterpret_cast<const std::byte*>(&ScopedPayload),
+                                                       sizeof(ScopedPayload)),
+                            InTick);
+}
+
 bool CommandLog::Replay(Registry& InRegistry, const SnapshotSchema& InSchema,
                         const CommandWorldCallbacks* InWorld) const
 {
@@ -356,6 +368,20 @@ bool CommandLog::ApplyUntil(Registry& InRegistry, const SnapshotSchema& InSchema
             case CommandType::EmitParticles:
                 if (InWorld == nullptr || InWorld->emitParticles == nullptr ||
                     !InWorld->emitParticles(InWorld->user, ScopedRecord.entity, ScopedPayload))
+                {
+                    return false;
+                }
+                break;
+            case CommandType::Carve:
+                if (InWorld == nullptr || InWorld->carve == nullptr ||
+                    !InWorld->carve(InWorld->user, ScopedRecord.entity, ScopedPayload))
+                {
+                    return false;
+                }
+                break;
+            case CommandType::CutChain:
+                if (InWorld == nullptr || InWorld->cutChain == nullptr ||
+                    !InWorld->cutChain(InWorld->user, ScopedRecord.entity, ScopedPayload))
                 {
                     return false;
                 }

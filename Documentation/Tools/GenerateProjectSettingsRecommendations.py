@@ -71,7 +71,7 @@ def ContentEn() -> list[tuple]:
             ["texture_format (art-driven)", "rgba8 pixel art; bc7 painted", "bc7-srgb; rgba8 for pixel art", "bc7-srgb desktop; astc4x4-srgb mobile"],
             ["max_texture_size", "1024", "2048", "4096"],
             ["build.optimization", "O2", "O2", "O3 (measure O2+LTO first)"],
-            ["build.link_time_optimization", "false for iteration", "true for release", "true for release"],
+            ["build.lto", "false for iteration", "true for release", "true for release"],
             ["build.strip_debug_info", "true for shipping", "true for shipping", "true for shipping"],
             ["build.unity_build", "true", "true", "true; disable only for build memory"],
             ["build.native_arch", "false", "false", "false"],
@@ -80,7 +80,7 @@ def ContentEn() -> list[tuple]:
             ["VT page/tile/layers/table", "-", "1024/64/2/128", "2048/64/4/256"],
             ["VT budget / prefetch", "-", "6 / 1", "8 / 2"],
             ["editor.ui_scale", "1.0", "1.0-1.25", "1.0-1.25"],
-            ["editor.vsync", "on", "on", "on; off only for latency profiling"],
+            ["render.vsync", "on", "on", "on; off only for latency profiling"],
             ["editor.window_mode", "1 borderless", "1 borderless", "1 borderless; 2 for perf checks"],
         ]),
         ("h2", "Simulation"),
@@ -96,7 +96,7 @@ def ContentEn() -> list[tuple]:
               "the simulation runs more steps, the frame gets slower and the next frame needs even "
               "more steps. Lower it, do not raise it, if you see that pattern in a profile."),
         ("h2", "Audio"),
-        ("h3", "masterVolume / sfxVolume / musicVolume"),
+        ("h3", "audio master / sfx / music"),
         ("p", "Keep the defaults at 1.0 and build headroom into the assets: mix music around -6 dBFS "
               "and leave peaks for explosions and UI. Boosting the master bus above 1.0 in the "
               "project to compensate for quiet assets clips the output and defeats the accessibility "
@@ -159,7 +159,7 @@ def ContentEn() -> list[tuple]:
               "compile time with diminishing returns. For large projects compare O2+LTO against O3 "
               "with a real profile: LTO usually wins more than the optimisation level. Never ship "
               "an O0 build."),
-        ("h3", "link_time_optimization"),
+        ("h3", "build.lto"),
         ("p", "Off while iterating: LTO makes incremental links slow. On for release builds. If link "
               "memory is a problem on CI, use thin LTO or keep unity builds on and split the largest "
               "translation units."),
@@ -326,7 +326,7 @@ def ContentRu() -> list[tuple]:
             ["texture_format (по арту)", "rgba8 пиксель-арт; bc7 рисованный", "bc7-srgb; rgba8 для пиксель-арта", "bc7-srgb десктоп; astc4x4-srgb мобильные"],
             ["max_texture_size", "1024", "2048", "4096"],
             ["build.optimization", "O2", "O2", "O3 (сначала измерьте O2+LTO)"],
-            ["build.link_time_optimization", "false на итерациях", "true на релизе", "true на релизе"],
+            ["build.lto", "false на итерациях", "true на релизе", "true на релизе"],
             ["build.strip_debug_info", "true на релизе", "true на релизе", "true на релизе"],
             ["build.unity_build", "true", "true", "true; выключать только при нехватке памяти сборки"],
             ["build.native_arch", "false", "false", "false"],
@@ -335,7 +335,7 @@ def ContentRu() -> list[tuple]:
             ["VT page/tile/layers/table", "-", "1024/64/2/128", "2048/64/4/256"],
             ["VT budget / prefetch", "-", "6 / 1", "8 / 2"],
             ["editor.ui_scale", "1.0", "1.0-1.25", "1.0-1.25"],
-            ["editor.vsync", "вкл", "вкл", "вкл; выключать только для замера задержки"],
+            ["render.vsync", "вкл", "вкл", "вкл; выключать только для замера задержки"],
             ["editor.window_mode", "1 borderless", "1 borderless", "1 borderless; 2 для замеров"],
         ]),
         ("h2", "Симуляция"),
@@ -352,7 +352,7 @@ def ContentRu() -> list[tuple]:
               "следующему нужно ещё больше шагов. Если видите такой профиль — уменьшайте, не "
               "увеличивайте."),
         ("h2", "Аудио"),
-        ("h3", "masterVolume / sfxVolume / musicVolume"),
+        ("h3", "Громкость master / sfx / music"),
         ("p", "Держите значения по умолчанию 1.0 и закладывайте запас в ассетах: музыку микшируйте "
               "около -6 dBFS и оставляйте пики для взрывов и UI. Поднимать master выше 1.0, чтобы "
               "компенсировать тихие ассеты, — это клиппинг на выходе и обход путей доступности и "
@@ -416,7 +416,7 @@ def ContentRu() -> list[tuple]:
               "время компиляции с убывающей отдачей. Для крупных проектов сравните O2+LTO и O3 на "
               "реальном профиле: LTO обычно даёт больше, чем уровень оптимизации. Никогда не "
               "выпускайте O0."),
-        ("h3", "link_time_optimization"),
+        ("h3", "build.lto"),
         ("p", "Выключено на итерациях: LTO замедляет инкрементальную линковку. Включено на релизе. "
               "Если на CI не хватает памяти под линковку, используйте thin LTO или оставьте unity "
               "build и разделите самые большие единицы трансляции."),

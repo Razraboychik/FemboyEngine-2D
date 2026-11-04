@@ -613,4 +613,161 @@ void PhysicsSystem::ApplyImpulse(Ecs::Registry& InRegistry, Entity InEntity, Vec
     b2Body_ApplyLinearImpulseToCenter(ScopedBodyId, ToBoxVelocity(InImpulse * ScopedTimeScale, MDesc.pixelsPerMeter),
                                       InWake);
 }
+
+void PhysicsSystem::SetLinearVelocity(Ecs::Registry& InRegistry, Entity InEntity, Vector2D InVelocity, bool InWake)
+{
+    if (MWorld == 0 || !InRegistry.valid(InEntity))
+    {
+        return;
+    }
+    auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity);
+    if (ScopedBody == nullptr || ScopedBody->Body == 0)
+    {
+        return;
+    }
+    const b2BodyId ScopedBodyId = b2LoadBodyId(ScopedBody->Body);
+    if (!b2Body_IsValid(ScopedBodyId))
+    {
+        return;
+    }
+    b2Body_SetLinearVelocity(ScopedBodyId, ToBoxVelocity(InVelocity, MDesc.pixelsPerMeter));
+    ScopedBody->LinearVelocity = InVelocity;
+    if (InWake)
+    {
+        b2Body_SetAwake(ScopedBodyId, true);
+    }
+}
+
+void PhysicsSystem::SetAngularVelocity(Ecs::Registry& InRegistry, Entity InEntity, float InAngularVelocity, bool InWake)
+{
+    if (MWorld == 0 || !InRegistry.valid(InEntity))
+    {
+        return;
+    }
+    auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity);
+    if (ScopedBody == nullptr || ScopedBody->Body == 0)
+    {
+        return;
+    }
+    const b2BodyId ScopedBodyId = b2LoadBodyId(ScopedBody->Body);
+    if (!b2Body_IsValid(ScopedBodyId))
+    {
+        return;
+    }
+    b2Body_SetAngularVelocity(ScopedBodyId, InAngularVelocity);
+    ScopedBody->AngularVelocity = InAngularVelocity;
+    if (InWake)
+    {
+        b2Body_SetAwake(ScopedBodyId, true);
+    }
+}
+
+void PhysicsSystem::SetFixedRotation(Ecs::Registry& InRegistry, Entity InEntity, bool InFixed) noexcept
+{
+    if (MWorld == 0 || !InRegistry.valid(InEntity))
+    {
+        return;
+    }
+    RigidBody2D* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity);
+    if (ScopedBody == nullptr)
+    {
+        return;
+    }
+    if (InFixed)
+    {
+        ScopedBody->Flags |= RigidBodyFixedRotation;
+    }
+    else
+    {
+        ScopedBody->Flags &= ~RigidBodyFixedRotation;
+    }
+    if (ScopedBody->Body == 0 || ScopedBody->Type == BodyType::Static)
+    {
+        return;
+    }
+    const b2BodyId ScopedBodyId = b2LoadBodyId(ScopedBody->Body);
+    if (!b2Body_IsValid(ScopedBodyId))
+    {
+        return;
+    }
+    b2MotionLocks ScopedLocks = b2Body_GetMotionLocks(ScopedBodyId);
+    ScopedLocks.angularZ = InFixed;
+    b2Body_SetMotionLocks(ScopedBodyId, ScopedLocks);
+    if (InFixed)
+    {
+        b2Body_SetAngularVelocity(ScopedBodyId, 0.0f);
+        ScopedBody->AngularVelocity = 0.0f;
+    }
+}
+
+void PhysicsSystem::SetBullet(Ecs::Registry& InRegistry, Entity InEntity, bool InBullet) noexcept
+{
+    if (MWorld == 0 || !InRegistry.valid(InEntity))
+    {
+        return;
+    }
+    RigidBody2D* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity);
+    if (ScopedBody == nullptr)
+    {
+        return;
+    }
+    if (InBullet)
+    {
+        ScopedBody->Flags |= RigidBodyBullet;
+    }
+    else
+    {
+        ScopedBody->Flags &= ~RigidBodyBullet;
+    }
+    if (ScopedBody->Body == 0 || ScopedBody->Type == BodyType::Static)
+    {
+        return;
+    }
+    const b2BodyId ScopedBodyId = b2LoadBodyId(ScopedBody->Body);
+    if (b2Body_IsValid(ScopedBodyId))
+    {
+        b2Body_SetBullet(ScopedBodyId, InBullet);
+    }
+}
+
+void PhysicsSystem::ApplyAcceleration(Ecs::Registry& InRegistry, Entity InEntity, Vector2D InAcceleration, bool InWake)
+{
+    if (MWorld == 0 || !InRegistry.valid(InEntity))
+    {
+        return;
+    }
+    auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity);
+    if (ScopedBody == nullptr || ScopedBody->Body == 0 || ScopedBody->Type != BodyType::Dynamic)
+    {
+        return;
+    }
+    const b2BodyId ScopedBodyId = b2LoadBodyId(ScopedBody->Body);
+    if (!b2Body_IsValid(ScopedBodyId))
+    {
+        return;
+    }
+    const float ScopedTimeScale = EntityTimeScale(InRegistry, InEntity);
+    if (ScopedTimeScale <= 0.0f || MDesc.pixelsPerMeter <= 0.0f)
+    {
+        return;
+    }
+    // F = m * a; Box2D works in metres, so divide the pixel acceleration by ppm.
+    const float ScopedMass = std::max(b2Body_GetMass(ScopedBodyId), 0.0f);
+    const b2Vec2 ScopedForce{ScopedMass * InAcceleration.X / MDesc.pixelsPerMeter,
+                             ScopedMass * InAcceleration.Y / MDesc.pixelsPerMeter};
+    b2Body_ApplyForceToCenter(ScopedBodyId, ScopedForce * ScopedTimeScale, InWake);
+}
+
+void PhysicsSystem::SetGravity(Vector2D InGravity) noexcept
+{
+    if (MDesc.gravity.X == InGravity.X && MDesc.gravity.Y == InGravity.Y)
+    {
+        return;
+    }
+    MDesc.gravity = InGravity;
+    if (MWorld != 0)
+    {
+        b2World_SetGravity(b2LoadWorldId(MWorld), b2Vec2{InGravity.X, InGravity.Y});
+    }
+}
 }

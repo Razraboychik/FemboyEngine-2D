@@ -298,7 +298,90 @@ void AppendBool(std::string& InDestination, bool InValue)
     InDestination += InValue ? "true" : "false";
 }
 
-void AppendTransitionFields(std::string& InDestination, const AnimTransition& InTransition, std::string_view InPrefix)
+// Two tag ids travel in one u64 so the TOML shape stays a scalar. Id zero is
+// empty; ids are resolved by the project tag registry at runtime.
+[[nodiscard]] std::uint64_t PackAnimTags(const std::array<GameplayTag, 2>& InTags) noexcept
+{
+    return static_cast<std::uint64_t>(InTags[0].Id) | (static_cast<std::uint64_t>(InTags[1].Id) << 32u);
+}
+
+void UnpackAnimTags(std::uint64_t InPacked, std::array<GameplayTag, 2>& OutTags, std::uint8_t& OutCount) noexcept
+{
+    OutTags[0].Id = static_cast<std::uint32_t>(InPacked);
+    OutTags[1].Id = static_cast<std::uint32_t>(InPacked >> 32u);
+    if (OutTags[0].Id == 0 && OutTags[1].Id != 0)
+    {
+        OutTags[0] = OutTags[1];
+        OutTags[1] = GameplayTag{};
+    }
+    OutCount = OutTags[0].Id == 0 ? 0 : (OutTags[1].Id == 0 ? 1 : 2);
+}
+
+[[nodiscard]] std::string AnimTagsToText(const std::array<GameplayTag, 2>& InTags, std::uint8_t InCount,
+                                         const GameplayTagRegistry* InRegistry)
+{
+    std::string ScopedText;
+    for (std::uint8_t ScopedI = 0; ScopedI < InCount && ScopedI < InTags.size(); ++ScopedI)
+    {
+        if (InTags[ScopedI].Id == 0)
+        {
+            continue;
+        }
+        if (!ScopedText.empty())
+        {
+            ScopedText += ", ";
+        }
+        if (InRegistry != nullptr)
+        {
+            ScopedText += std::string(InRegistry->Name(InTags[ScopedI]));
+        }
+        else
+        {
+            ScopedText += std::to_string(InTags[ScopedI].Id);
+        }
+    }
+    return ScopedText;
+}
+
+void AnimTextToTags(std::string_view InText, const GameplayTagRegistry* InRegistry, std::array<GameplayTag, 2>& OutTags,
+                    std::uint8_t& OutCount)
+{
+    OutTags = {};
+    OutCount = 0;
+    while (!InText.empty() && OutCount < OutTags.size())
+    {
+        while (!InText.empty() && (InText.front() == ' ' || InText.front() == '\t' || InText.front() == ','))
+        {
+            InText.remove_prefix(1);
+        }
+        if (InText.empty())
+        {
+            break;
+        }
+        const std::size_t ScopedEnd = InText.find(',');
+        std::string_view ScopedToken = InText.substr(0, ScopedEnd);
+        while (!ScopedToken.empty() && (ScopedToken.back() == ' ' || ScopedToken.back() == '\t'))
+        {
+            ScopedToken.remove_suffix(1);
+        }
+        if (!ScopedToken.empty() && InRegistry != nullptr)
+        {
+            const GameplayTag ScopedTag = InRegistry->Find(ScopedToken);
+            if (ScopedTag.IsValid())
+            {
+                OutTags[OutCount++] = ScopedTag;
+            }
+        }
+        if (ScopedEnd == std::string_view::npos)
+        {
+            break;
+        }
+        InText.remove_prefix(ScopedEnd + 1);
+    }
+}
+
+void AppendTransitionFields(std::string& InDestination, const AnimTransition& InTransition, std::string_view InPrefix,
+                            const GameplayTagRegistry* InRegistry)
 {
     InDestination += '\n';
     InDestination += InPrefix;
@@ -310,12 +393,14 @@ void AppendTransitionFields(std::string& InDestination, const AnimTransition& In
     AppendInt(InDestination, static_cast<std::int64_t>(InTransition.ToState));
     InDestination += '\n';
     InDestination += InPrefix;
-    InDestination += "tags_any = ";
-    AppendMask(InDestination, InTransition.TagsAny);
+    InDestination += "tags_any = \"";
+    InDestination += AnimTagsToText(InTransition.TagsAny, InTransition.TagsAnyCount, InRegistry);
+    InDestination += "\"";
     InDestination += '\n';
     InDestination += InPrefix;
-    InDestination += "tags_all = ";
-    AppendMask(InDestination, InTransition.TagsAll);
+    InDestination += "tags_all = \"";
+    InDestination += AnimTagsToText(InTransition.TagsAll, InTransition.TagsAllCount, InRegistry);
+    InDestination += "\"";
     InDestination += '\n';
     InDestination += InPrefix;
     InDestination += "state_time = ";
@@ -343,13 +428,37 @@ void AppendTransitionFields(std::string& InDestination, const AnimTransition& In
     InDestination += '\n';
 }
 
-void ReadTransitionFields(const toml::table& InTable, std::string_view InPrefix, AnimTransition& OutTransition)
+void ReadTransitionFields(const toml::table& InTable, std::string_view InPrefix, AnimTransition& OutTransition,
+                          const GameplayTagRegistry* InRegistry)
 {
-    const auto ScopedKey = [InPrefix](const char* InSuffix) { return std::string(InPrefix) + InSuffix; };
+    const auto ScopedKey = [InPrefix](const char* InSuffix)
+    {
+        return std::string(InPrefix) + InSuffix;
+    };
     OutTransition.FromState = ReadMask(InTable, ScopedKey("from_state"), OutTransition.FromState);
     OutTransition.ToState = ReadMask(InTable, ScopedKey("to_state"), OutTransition.ToState);
-    OutTransition.TagsAny = ReadMask(InTable, ScopedKey("tags_any"), OutTransition.TagsAny);
-    OutTransition.TagsAll = ReadMask(InTable, ScopedKey("tags_all"), OutTransition.TagsAll);
+    const toml::node* ScopedAnyNode = InTable.get(ScopedKey("tags_any"));
+    if (ScopedAnyNode != nullptr && ScopedAnyNode->is_string())
+    {
+        AnimTextToTags(ReadString(InTable, ScopedKey("tags_any"), ""), InRegistry, OutTransition.TagsAny,
+                       OutTransition.TagsAnyCount);
+    }
+    else
+    {
+        UnpackAnimTags(ReadMask(InTable, ScopedKey("tags_any"), PackAnimTags(OutTransition.TagsAny)),
+                       OutTransition.TagsAny, OutTransition.TagsAnyCount);
+    }
+    const toml::node* ScopedAllNode = InTable.get(ScopedKey("tags_all"));
+    if (ScopedAllNode != nullptr && ScopedAllNode->is_string())
+    {
+        AnimTextToTags(ReadString(InTable, ScopedKey("tags_all"), ""), InRegistry, OutTransition.TagsAll,
+                       OutTransition.TagsAllCount);
+    }
+    else
+    {
+        UnpackAnimTags(ReadMask(InTable, ScopedKey("tags_all"), PackAnimTags(OutTransition.TagsAll)),
+                       OutTransition.TagsAll, OutTransition.TagsAllCount);
+    }
     OutTransition.StateTimeThreshold = ReadFloat(InTable, ScopedKey("state_time"), OutTransition.StateTimeThreshold);
     OutTransition.FloatThreshold = ReadFloat(InTable, ScopedKey("float_threshold"), OutTransition.FloatThreshold);
     OutTransition.BlendDuration = ReadFloat(InTable, ScopedKey("duration"), OutTransition.BlendDuration);
@@ -515,6 +624,7 @@ void AnimationGraphCanvasPanel::ResetDocument() noexcept
     MCompiledClipNode.fill(0xFFFFu);
     MCompiledTransitionLink.fill(0xFFFFu);
     MAuthoredTransitionCount = 0;
+    MTagEditTarget = nullptr;
     MCompiledValid = false;
     MCompiledDirty = true;
     MSelectedNode = 0xFFFFu;
@@ -1017,7 +1127,7 @@ void AnimationGraphCanvasPanel::PurgeCanvasSelection() noexcept
 
 // CompileGraph: flat AnimStateComponent, fixed storage, no allocation
 bool AnimationGraphCanvasPanel::ValidateCompiledCycles(const AnimStateComponent& InCompiled,
-                                                        std::uint16_t InTransitionCount) noexcept
+                                                       std::uint16_t InTransitionCount) noexcept
 {
     const std::uint16_t ScopedStateCount =
         std::min<std::uint16_t>(static_cast<std::uint16_t>(InCompiled.ClipCount), kMaxAnimClips);
@@ -1046,9 +1156,8 @@ bool AnimationGraphCanvasPanel::ValidateCompiledCycles(const AnimStateComponent&
     // Adjacency of the "immediately hot" transitions: no tag/float dependency and
     std::array<std::uint32_t, kMaxAnimClips> ScopedHotEdges{};
     constexpr std::uint32_t kTimeBits = AnimConditionStateTimeAtLeast | AnimConditionStateTimeAtMost;
-    constexpr std::uint32_t kExternalBits =
-        AnimConditionTagsAny | AnimConditionTagsAll | AnimConditionTagsNone | AnimConditionFloatAtLeast |
-        AnimConditionFloatAtMost;
+    constexpr std::uint32_t kExternalBits = AnimConditionTagsAny | AnimConditionTagsAll | AnimConditionTagsNone |
+                                            AnimConditionFloatAtLeast | AnimConditionFloatAtMost;
     for (std::uint16_t ScopedI = 0; ScopedI < InTransitionCount; ++ScopedI)
     {
         const AnimTransition& ScopedTransition = InCompiled.Transitions[ScopedI];
@@ -1380,14 +1489,14 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
             return false;
         }
         if ((InTransition.Conditions & (AnimConditionTagsAny | AnimConditionTagsNone)) != 0 &&
-            InTransition.TagsAny == 0)
+            InTransition.TagsAnyCount == 0)
         {
-            SetStatus("Anim compile: %s has TagsAny/TagsNone with an empty mask", InOrigin);
+            SetStatus("Anim compile: %s has TagsAny/TagsNone with no tag", InOrigin);
             return false;
         }
-        if ((InTransition.Conditions & AnimConditionTagsAll) != 0 && InTransition.TagsAll == 0)
+        if ((InTransition.Conditions & AnimConditionTagsAll) != 0 && InTransition.TagsAllCount == 0)
         {
-            SetStatus("Anim compile: %s has TagsAll with an empty mask", InOrigin);
+            SetStatus("Anim compile: %s has TagsAll with no tag", InOrigin);
             return false;
         }
         if ((InTransition.Conditions & (AnimConditionFloatAtLeast | AnimConditionFloatAtMost)) != 0 &&
@@ -1485,8 +1594,7 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
         if (ScopedTransition.FromState == ScopedTransition.ToState)
         {
             SetStatus("Anim compile: blend node %u cross-fades state %llu into itself",
-                      static_cast<unsigned>(ScopedNode),
-                      static_cast<unsigned long long>(ScopedTransition.FromState));
+                      static_cast<unsigned>(ScopedNode), static_cast<unsigned long long>(ScopedTransition.FromState));
             return false;
         }
         if (ScopedParamLink != 0xFFFFu)
@@ -1938,7 +2046,8 @@ void AnimationGraphCanvasPanel::DrawCanvas()
                 ImGui::TextUnformatted("In");
                 ImNodes::EndInputAttribute();
                 ImGui::TextDisabled("state %llu", static_cast<unsigned long long>(ScopedNodeData.Clip.State));
-                ImGui::TextDisabled("bones %u / spriteAnimation %u+%u", static_cast<unsigned>(ScopedNodeData.Clip.KeyCount),
+                ImGui::TextDisabled("bones %u / spriteAnimation %u+%u",
+                                    static_cast<unsigned>(ScopedNodeData.Clip.KeyCount),
                                     static_cast<unsigned>(ScopedNodeData.Clip.SpriteStartFrame),
                                     static_cast<unsigned>(ScopedNodeData.Clip.SpriteFrameCount));
                 if (ScopedCurrent)
@@ -2156,7 +2265,10 @@ void AnimationGraphCanvasPanel::ProcessCanvasEvents()
                     }
                 }
                 std::sort(ScopedIds.begin(), ScopedIds.begin() + static_cast<std::ptrdiff_t>(ScopedIdCount),
-                          [](std::uint16_t InLeft, std::uint16_t InRight) { return InLeft > InRight; });
+                          [](std::uint16_t InLeft, std::uint16_t InRight)
+                          {
+                              return InLeft > InRight;
+                          });
                 for (std::size_t ScopedI = 0; ScopedI < ScopedIdCount; ++ScopedI)
                 {
                     (void)RemoveLink(ScopedIds[ScopedI]);
@@ -2477,29 +2589,39 @@ void AnimationGraphCanvasPanel::DrawTransitionFields(AnimTransition& InTransitio
         FinishInspectorEdit(true);
     }
 
-    ImU64 ScopedTagsAny = static_cast<ImU64>(InTransition.TagsAny);
-    const bool ScopedTagsAnyChanged = ImGui::InputScalar("TagsAny", ImGuiDataType_U64, &ScopedTagsAny, nullptr, nullptr,
-                                                         "%016llx", ImGuiInputTextFlags_CharsHexadecimal);
-    if (ScopedTagsAnyChanged && EnsureInspectorEdit("Edit animation TagsAny"))
+    if (MTagEditTarget != &InTransition)
     {
-        InTransition.TagsAny = static_cast<std::uint64_t>(ScopedTagsAny);
-        RecordEdit();
+        MTagsAnyText = {};
+        MTagsAllText = {};
+        const std::string ScopedAny = AnimTagsToText(InTransition.TagsAny, InTransition.TagsAnyCount, MTags);
+        const std::string ScopedAll = AnimTagsToText(InTransition.TagsAll, InTransition.TagsAllCount, MTags);
+        std::memcpy(MTagsAnyText.data(), ScopedAny.data(), std::min(ScopedAny.size(), MTagsAnyText.size() - 1u));
+        std::memcpy(MTagsAllText.data(), ScopedAll.data(), std::min(ScopedAll.size(), MTagsAllText.size() - 1u));
+        MTagEditTarget = &InTransition;
     }
-    if (ImGui::IsItemDeactivated())
+    ImGui::SetNextItemWidth(320.0f);
+    ImGui::InputTextWithHint("TagsAny", "Character.State.Grounded, Character.State.Airborne", MTagsAnyText.data(),
+                             MTagsAnyText.size());
+    if (ImGui::IsItemActivated())
     {
+        (void)EnsureInspectorEdit("Edit animation TagsAny");
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit() && Editing())
+    {
+        AnimTextToTags(MTagsAnyText.data(), MTags, InTransition.TagsAny, InTransition.TagsAnyCount);
+        RecordEdit();
         FinishInspectorEdit(true);
     }
-
-    ImU64 ScopedTagsAll = static_cast<ImU64>(InTransition.TagsAll);
-    const bool ScopedTagsAllChanged = ImGui::InputScalar("TagsAll", ImGuiDataType_U64, &ScopedTagsAll, nullptr, nullptr,
-                                                         "%016llx", ImGuiInputTextFlags_CharsHexadecimal);
-    if (ScopedTagsAllChanged && EnsureInspectorEdit("Edit animation TagsAll"))
+    ImGui::SetNextItemWidth(320.0f);
+    ImGui::InputTextWithHint("TagsAll", "Character.State.Attacking", MTagsAllText.data(), MTagsAllText.size());
+    if (ImGui::IsItemActivated())
     {
-        InTransition.TagsAll = static_cast<std::uint64_t>(ScopedTagsAll);
-        RecordEdit();
+        (void)EnsureInspectorEdit("Edit animation TagsAll");
     }
-    if (ImGui::IsItemDeactivated())
+    if (ImGui::IsItemDeactivatedAfterEdit() && Editing())
     {
+        AnimTextToTags(MTagsAllText.data(), MTags, InTransition.TagsAll, InTransition.TagsAllCount);
+        RecordEdit();
         FinishInspectorEdit(true);
     }
 
@@ -2730,8 +2852,7 @@ void AnimationGraphCanvasPanel::DrawPIEInspector()
         ImGui::TextDisabled("waiting for a PIE snapshot (publish after the simulation step)");
         return;
     }
-    ImGui::Text("CurrentState %llu | PreviousState %llu",
-                static_cast<unsigned long long>(ScopedFrame.CurrentState),
+    ImGui::Text("CurrentState %llu | PreviousState %llu", static_cast<unsigned long long>(ScopedFrame.CurrentState),
                 static_cast<unsigned long long>(ScopedFrame.PreviousState));
     ImGui::Text("BlendTime %.3f | BlendWeight %.3f", static_cast<double>(ScopedFrame.BlendTime),
                 static_cast<double>(ScopedFrame.BlendWeight));
@@ -2874,7 +2995,7 @@ bool AnimationGraphCanvasPanel::SaveToSceneToml()
         AppendInt(ScopedText, ScopedData.ParameterIndex);
         ScopedText += "\nparam_value = ";
         AppendFloat(ScopedText, ScopedData.ParameterValue);
-        AppendTransitionFields(ScopedText, ScopedData.Blend, "blend_");
+        AppendTransitionFields(ScopedText, ScopedData.Blend, "blend_", MTags);
         for (std::uint16_t ScopedKey = 0; ScopedKey < ScopedData.Clip.KeyCount; ++ScopedKey)
         {
             ScopedText += "\n[[anim_graph.node.key]]\nbone = ";
@@ -2905,7 +3026,7 @@ bool AnimationGraphCanvasPanel::SaveToSceneToml()
         AppendInt(ScopedText, ScopedData.FromPin);
         ScopedText += "\nto_pin = ";
         AppendInt(ScopedText, ScopedData.ToPin);
-        AppendTransitionFields(ScopedText, ScopedData.Transition, "t_");
+        AppendTransitionFields(ScopedText, ScopedData.Transition, "t_", MTags);
         ScopedText += '\n';
     }
     ScopedText += kBlockEnd;
@@ -2923,6 +3044,7 @@ bool AnimationGraphCanvasPanel::SaveToSceneToml()
 
 bool AnimationGraphCanvasPanel::LoadFromSceneToml()
 {
+    MTagEditTarget = nullptr;
     if (MScenePath.empty())
     {
         SetStatus("Anim load: no scene path is bound");
@@ -3001,16 +3123,14 @@ bool AnimationGraphCanvasPanel::LoadFromSceneToml()
         }
         ScopedNode.Clip.State = ReadMask(*ScopedTable, "clip_state", 0);
         ScopedNode.Clip.KeyCount = static_cast<std::uint16_t>(ReadInt(*ScopedTable, "clip_key_count", 0));
-        ScopedNode.Clip.SpriteStartFrame =
-            static_cast<std::uint32_t>(ReadInt(*ScopedTable, "clip_sprite_start", 0));
-        ScopedNode.Clip.SpriteFrameCount =
-            static_cast<std::uint32_t>(ReadInt(*ScopedTable, "clip_sprite_count", 0));
+        ScopedNode.Clip.SpriteStartFrame = static_cast<std::uint32_t>(ReadInt(*ScopedTable, "clip_sprite_start", 0));
+        ScopedNode.Clip.SpriteFrameCount = static_cast<std::uint32_t>(ReadInt(*ScopedTable, "clip_sprite_count", 0));
         ScopedNode.Clip.SpriteFrameDuration = ReadFloat(*ScopedTable, "clip_sprite_duration", 0.1f);
         ScopedNode.Clip.SpriteLooping = ReadBool(*ScopedTable, "clip_sprite_looping", true);
         ScopedNode.Clip.SpritePlaying = ReadBool(*ScopedTable, "clip_sprite_playing", true);
         ScopedNode.ParameterIndex = static_cast<std::uint16_t>(ReadInt(*ScopedTable, "param_index", 0));
         ScopedNode.ParameterValue = ReadFloat(*ScopedTable, "param_value", 0.0f);
-        ReadTransitionFields(*ScopedTable, "blend_", ScopedNode.Blend);
+        ReadTransitionFields(*ScopedTable, "blend_", ScopedNode.Blend, MTags);
         if (ScopedNode.Clip.KeyCount > kMaxAnimPoseKeys)
         {
             ScopedNode.Clip.KeyCount = kMaxAnimPoseKeys;
@@ -3060,7 +3180,7 @@ bool AnimationGraphCanvasPanel::LoadFromSceneToml()
             ScopedLink.ToNode = static_cast<std::uint16_t>(ReadInt(*ScopedTable, "to", 0));
             ScopedLink.FromPin = static_cast<std::uint8_t>(ReadInt(*ScopedTable, "from_pin", 0));
             ScopedLink.ToPin = static_cast<std::uint8_t>(ReadInt(*ScopedTable, "to_pin", 0));
-            ReadTransitionFields(*ScopedTable, "t_", ScopedLink.Transition);
+            ReadTransitionFields(*ScopedTable, "t_", ScopedLink.Transition, MTags);
         }
     }
 

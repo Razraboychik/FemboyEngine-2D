@@ -53,47 +53,61 @@ void TestConditionEvaluators()
     ScopedState.StateTime = 0.5f;
     ScopedState.Floats[2] = 0.75f;
 
+    Fby::GameplayTagRegistry ScopedTags;
+    const Fby::GameplayTag ScopedRoot = ScopedTags.Register("Character");
+    const Fby::GameplayTag ScopedGrounded = ScopedTags.Register("Character.State.Grounded");
+    const Fby::GameplayTag ScopedAirborne = ScopedTags.Register("Character.State.Airborne");
+    Fby::GameplayTagsComponent ScopedEntityTags;
+    ScopedEntityTags.Tags.Add(ScopedGrounded);
+
+    const auto ScopedMatches = [&ScopedState, &ScopedEntityTags, &ScopedTags](const Fby::AnimTransition& InTransition)
+    { return Fby::AnimTransitionMatches(InTransition, ScopedState, &ScopedEntityTags, &ScopedTags); };
+
     Fby::AnimTransition ScopedTime;
     ScopedTime.Conditions = Fby::AnimConditionStateTimeAtLeast;
     ScopedTime.StateTimeThreshold = 0.4f;
-    FBY_CHECK(Fby::AnimTransitionMatches(ScopedTime, ScopedState, 0));
+    FBY_CHECK(ScopedMatches(ScopedTime));
     ScopedTime.StateTimeThreshold = 0.6f;
-    FBY_CHECK(!Fby::AnimTransitionMatches(ScopedTime, ScopedState, 0));
+    FBY_CHECK(!ScopedMatches(ScopedTime));
 
-    Fby::AnimTransition ScopedTags;
-    ScopedTags.Conditions = Fby::AnimConditionTagsAll;
-    ScopedTags.TagsAll = 0b101u;
-    FBY_CHECK(Fby::AnimTransitionMatches(ScopedTags, ScopedState, 0b111u));
-    FBY_CHECK(!Fby::AnimTransitionMatches(ScopedTags, ScopedState, 0b001u));
+    Fby::AnimTransition ScopedAll;
+    ScopedAll.Conditions = Fby::AnimConditionTagsAll;
+    ScopedAll.TagsAll[0] = ScopedRoot;
+    ScopedAll.TagsAll[1] = ScopedGrounded;
+    ScopedAll.TagsAllCount = 2;
+    FBY_CHECK(ScopedMatches(ScopedAll));
+    ScopedAll.TagsAll[1] = ScopedAirborne;
+    FBY_CHECK(!ScopedMatches(ScopedAll));
 
     Fby::AnimTransition ScopedAny;
     ScopedAny.Conditions = Fby::AnimConditionTagsAny;
-    ScopedAny.TagsAny = 0b010u;
-    FBY_CHECK(Fby::AnimTransitionMatches(ScopedAny, ScopedState, 0b011u));
-    FBY_CHECK(!Fby::AnimTransitionMatches(ScopedAny, ScopedState, 0b100u));
+    ScopedAny.TagsAny[0] = ScopedAirborne;
+    ScopedAny.TagsAny[1] = ScopedGrounded;
+    ScopedAny.TagsAnyCount = 2;
+    FBY_CHECK(ScopedMatches(ScopedAny));
 
     Fby::AnimTransition ScopedNone;
     ScopedNone.Conditions = Fby::AnimConditionTagsNone;
-    ScopedNone.TagsAny = 0b100u;
-    FBY_CHECK(Fby::AnimTransitionMatches(ScopedNone, ScopedState, 0b011u));
-    FBY_CHECK(!Fby::AnimTransitionMatches(ScopedNone, ScopedState, 0b100u));
+    ScopedNone.TagsAny[0] = ScopedAirborne;
+    ScopedNone.TagsAnyCount = 1;
+    FBY_CHECK(ScopedMatches(ScopedNone));
 
     Fby::AnimTransition ScopedFloat;
     ScopedFloat.Conditions = Fby::AnimConditionFloatAtLeast;
     ScopedFloat.FloatParam = 2;
     ScopedFloat.FloatThreshold = 0.5f;
-    FBY_CHECK(Fby::AnimTransitionMatches(ScopedFloat, ScopedState, 0));
+    FBY_CHECK(ScopedMatches(ScopedFloat));
     ScopedFloat.FloatThreshold = 1.0f;
-    FBY_CHECK(!Fby::AnimTransitionMatches(ScopedFloat, ScopedState, 0));
+    FBY_CHECK(!ScopedMatches(ScopedFloat));
 
     // An empty condition set is inert: an unconditional transition would fire on
     Fby::AnimTransition ScopedUnconditional;
-    FBY_CHECK(!Fby::AnimTransitionMatches(ScopedUnconditional, ScopedState, 0));
+    FBY_CHECK(!ScopedMatches(ScopedUnconditional));
 
     // A guard with invalid parameter/index data fails closed.
     Fby::AnimTransition ScopedInvalidParam = ScopedFloat;
     ScopedInvalidParam.FloatParam = 99;
-    FBY_CHECK(!Fby::AnimTransitionMatches(ScopedInvalidParam, ScopedState, 0));
+    FBY_CHECK(!ScopedMatches(ScopedInvalidParam));
 }
 
 void TestStateMachine()
@@ -101,10 +115,13 @@ void TestStateMachine()
     Fby::Ecs::Registry ScopedRegistry;
     Fby::JobSystem ScopedJobs(1);
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
+    Fby::GameplayTagRegistry ScopedTags;
+    const Fby::GameplayTag ScopedGrounded = ScopedTags.Register("Character.State.Grounded");
+    ScopedContext.gameplayTags = &ScopedTags;
 
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     auto& ScopedSkeleton = ScopedRegistry.emplace<Fby::SkeletonComponent>(ScopedEntity, MakeSkeleton());
-    auto& ScopedGameplay = ScopedRegistry.emplace<Fby::GameplayState>(ScopedEntity);
+    auto& ScopedEntityTags = ScopedRegistry.emplace<Fby::GameplayTagsComponent>(ScopedEntity);
     auto& ScopedState = ScopedRegistry.emplace<Fby::AnimStateComponent>(ScopedEntity);
     auto& ScopedSpriteAnimation = ScopedRegistry.emplace<Fby::SpriteAnimationComponent>(ScopedEntity);
     auto& ScopedGrid = ScopedRegistry.emplace<Fby::SpriteSheetComponent>(ScopedEntity);
@@ -121,7 +138,8 @@ void TestStateMachine()
     ScopedState.Transitions[0].FromState = 0;
     ScopedState.Transitions[0].ToState = 1;
     ScopedState.Transitions[0].Conditions = Fby::AnimConditionTagsAny;
-    ScopedState.Transitions[0].TagsAny = Fby::GameplayStateBit(Fby::GameplayStateFlag::Grounded);
+    ScopedState.Transitions[0].TagsAny[0] = ScopedGrounded;
+    ScopedState.Transitions[0].TagsAnyCount = 1;
     ScopedState.Transitions[0].BlendDuration = 0.2f;
 
     // Idle to attack after 0.1 s, once the speed parameter reaches 1.0.
@@ -144,7 +162,8 @@ void TestStateMachine()
     FBY_CHECK(ScopedState.RestPoseCaptured);
 
     // Raise the tag: the first transition fires on the next tick.
-    ScopedGameplay.Bits |= Fby::GameplayStateBit(Fby::GameplayStateFlag::Grounded);
+    ScopedEntityTags.BaseTags.Add(ScopedGrounded);
+    ScopedEntityTags.Tags.Add(ScopedGrounded);
     ScopedContext.dt = 0.1f;
     ScopedGraph.Run(ScopedContext);
     FBY_CHECK(ScopedState.CurrentState == 1);

@@ -55,7 +55,8 @@ struct EditorFontSpec
     std::string monoPath = "fonts/IBMPlexMono-Regular.ttf";
     std::string bakedInterAtlas = "fonts/Inter.fbyfont";
 
-    // UI scale from EditorSettings. Applied through ImGuiStyle::FontScaleMain,
+    // UI scale from EditorSettings. Multiplied by the window content scale in
+    // ApplyUiScale, so a 150% display renders text at 1.5x of this size.
     float uiScale = 1.0f;
     // True when the editor is allowed to draw the embedded vector font if the
     bool allowEmbeddedVectorFallback = true;
@@ -69,6 +70,10 @@ struct EditorFontStatus
     std::uint32_t monoBytes = 0;
     std::uint32_t bakedGlyphs = 0;
     float displayScale = 1.0f;
+    float pixelDensity = 1.0f;
+    // DisplayScale() / PixelDensity(), the part of the DPI the UI applies
+    // itself. See WindowManager::ContentScale().
+    float contentScale = 1.0f;
     float bakedLineHeight = 0.0f;
     bool loadedFromVfs = false;
     bool embeddedVectorFallback = false;

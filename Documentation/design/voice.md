@@ -144,3 +144,35 @@ transport lives in [security.md](security.md).
   `voice_pipeline` (ring math, stream voices, session policy), `device_id`
   (hash/raw collision resolution) and `voice_device_panel` (live output apply
   failure policy without a started mixer).
+
+## Voice effects, conditions and spatial routing
+
+- The effect system lives in `VoiceEffects`. `VoiceEffectChain` is a fixed-state
+  serial chain of up to eight slots: mute, muffle, underwater, radio, pitch,
+  formant, distortion, ring modulation and whisper. Every slot owns its filter
+  and delay state, so activation and parameter changes never allocate or touch
+  the audio callback.
+- `VoiceEffectRack` combines an authored `VoiceEffectProfile` with an
+  underwater/radio condition path. It smooths the submerged and interference
+  blends, updates the reserved slots without dropping their history, and exposes
+  `VoiceConditionOutput` for HUD and gameplay reads. Oxygen is game data: the
+  rack passes `Oxygen01` through unchanged and never generates bubbles or
+  particle events.
+- Insertion points: `VoiceSystem` runs the uplink rack after the microphone
+  chain and before Opus; `VoiceChannel` exposes a decode sink, so the downlink
+  rack runs after Opus decode/PLC/FEC and before the participant ring and
+  talking-level measurement. A listener can therefore mute, mumble, pitch or
+  reposition one speaker without changing what the speaker transmits.
+- `VoiceSession` carries listener-side spatial placement:
+  `SetSpatialSettings`, `SetListenerPosition`, `SetParticipantPosition` and
+  `SetParticipantPositionOverride`. The override moves the decoded stream to a
+  held head while the original body position is ignored; `EvaluateVoiceSpatial`
+  applies the same distance/pan math to a game-owned voice.
+- Presets cover the common cases: `Muted`, `Mumbling`, `Underwater`, `Radio`,
+  `RadioMuted`, `Chipmunk`, `Deep`, `Robot` and `Whisper`. Every field remains
+  editable, and `Clamp`/`Issue` validate authored values.
+- Tests: `voice_effects` (presets and clamping, direct mute, muffle response,
+  pitch up/down, underwater condition readout, radio hard mute, spatial
+  gain/pan/override, custom chains, decode sink).
+- The full settings reference and the text-chat service contract are in
+  [chat.md](chat.md).

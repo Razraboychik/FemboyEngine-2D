@@ -44,6 +44,52 @@ struct Parent2D
     Entity Parent = entt::null;
 };
 
+// Transport groups are a separate transform graph from Parent2D: the root is a
+// kinematic carrier, and members may keep their own dynamic motion.
+inline constexpr std::uint32_t kTransportGroupEnabled = 1u << 0;
+inline constexpr std::uint32_t kTransportGroupAutoDetachOutside = 1u << 1;
+inline constexpr std::uint32_t kTransportRotationFixed = 0;
+inline constexpr std::uint32_t kTransportRotationAuthored = 1;
+inline constexpr std::uint32_t kTransportRotationPhysics = 2;
+inline constexpr std::uint32_t kCarrierModeRigid = 0;
+inline constexpr std::uint32_t kCarrierModeCarriedDynamic = 1;
+inline constexpr std::uint32_t kCarrierModeSupport = 2;
+inline constexpr std::uint32_t kCarrierFlagInheritRotation = 1u << 0;
+inline constexpr std::uint32_t kCarrierFlagDetachRequested = 1u << 1;
+
+struct TransportGroupComponent
+{
+    std::uint32_t GroupId = 0;
+    std::uint32_t ParentGroupId = 0;
+    std::uint32_t RotationPolicy = kTransportRotationFixed;
+    std::uint32_t Flags = kTransportGroupEnabled;
+    // Local-space bounds used by the optional auto-detach rule.
+    Vector2D BoundsMin{-1.0e9f, -1.0e9f};
+    Vector2D BoundsMax{1.0e9f, 1.0e9f};
+    // Runtime Box2D weld joint to the parent group; zero means none.
+    std::uint64_t ParentJoint = 0;
+};
+
+static_assert(std::is_trivially_copyable_v<TransportGroupComponent>);
+static_assert(std::is_standard_layout_v<TransportGroupComponent>);
+
+struct CarrierMemberComponent
+{
+    std::uint32_t GroupId = 0;
+    std::uint32_t Mode = kCarrierModeCarriedDynamic;
+    std::uint32_t Flags = kCarrierFlagInheritRotation;
+    Vector2D LocalPosition{};
+    float LocalRotation = 0.0f;
+    // Velocity relative to the carrier; used by CarriedDynamic and Support.
+    Vector2D RelativeVelocity{};
+    float RelativeAngularVelocity = 0.0f;
+    // Runtime Box2D weld joint for a Rigid member; zero means none.
+    std::uint64_t Joint = 0;
+};
+
+static_assert(std::is_trivially_copyable_v<CarrierMemberComponent>);
+static_assert(std::is_standard_layout_v<CarrierMemberComponent>);
+
 // Linear motion, integrated by the movement system on the fixed step.
 struct Velocity
 {
@@ -99,73 +145,6 @@ struct EditorSelected
 struct Hidden
 {
 };
-
-// Gameplay state tags
-using GameplayStateMask = std::uint64_t;
-
-enum class GameplayStateFlag : std::uint64_t
-{
-    None = 0,
-    Grounded = 1ull << 0,
-    Airborne = 1ull << 1,
-    Jumping = 1ull << 2,
-    Crouching = 1ull << 3,
-    Attacking = 1ull << 4,
-    Blocking = 1ull << 5,
-    Dashing = 1ull << 6,
-    Stunned = 1ull << 7,
-    Dead = 1ull << 8,
-    Invulnerable = 1ull << 9,
-    Aiming = 1ull << 10,
-    Reloading = 1ull << 11,
-    Interacting = 1ull << 12,
-    Hidden = 1ull << 13,
-    Frozen = 1ull << 14,
-    Carrying = 1ull << 15,
-};
-
-[[nodiscard]] constexpr GameplayStateMask GameplayStateBit(GameplayStateFlag InFlag) noexcept
-{
-    return static_cast<GameplayStateMask>(InFlag);
-}
-
-struct GameplayState
-{
-    GameplayStateMask Bits = 0;
-
-    [[nodiscard]] constexpr bool Has(GameplayStateFlag InFlag) const noexcept
-    {
-        return (Bits & GameplayStateBit(InFlag)) != 0;
-    }
-    [[nodiscard]] constexpr bool HasAny(GameplayStateMask InMask) const noexcept
-    {
-        return (Bits & InMask) != 0;
-    }
-    [[nodiscard]] constexpr bool HasAll(GameplayStateMask InMask) const noexcept
-    {
-        return (Bits & InMask) == InMask;
-    }
-    constexpr void Set(GameplayStateFlag InFlag) noexcept
-    {
-        Bits |= GameplayStateBit(InFlag);
-    }
-    constexpr void Clear(GameplayStateFlag InFlag) noexcept
-    {
-        Bits &= ~GameplayStateBit(InFlag);
-    }
-    constexpr void Toggle(GameplayStateFlag InFlag) noexcept
-    {
-        Bits ^= GameplayStateBit(InFlag);
-    }
-    constexpr void Assign(GameplayStateMask InMask) noexcept
-    {
-        Bits = InMask;
-    }
-};
-
-static_assert(std::is_trivially_copyable_v<GameplayState>);
-static_assert(std::is_standard_layout_v<GameplayState>);
-static_assert(sizeof(GameplayState) == 8);
 
 // Authoring name shown in the hierarchy and the inspector. Fixed-size and flat
 // like every other component, so snapshots and scene serialization stay
@@ -331,14 +310,30 @@ FBY_REFLECT_COMPONENT(Fby::Transform2D, "Transform2D", FBY_FIELD(Fby::Transform2
 
 FBY_REFLECT_COMPONENT(Fby::Velocity, "Velocity", FBY_FIELD(Fby::Velocity, Value, Vector2D))
 
+FBY_REFLECT_COMPONENT(Fby::TransportGroupComponent, "TransportGroupComponent",
+                      FBY_FIELD(Fby::TransportGroupComponent, GroupId, UInt32),
+                      FBY_FIELD(Fby::TransportGroupComponent, ParentGroupId, UInt32),
+                      FBY_FIELD(Fby::TransportGroupComponent, RotationPolicy, UInt32),
+                      FBY_FIELD(Fby::TransportGroupComponent, Flags, UInt32),
+                      FBY_FIELD(Fby::TransportGroupComponent, BoundsMin, Vector2D),
+                      FBY_FIELD(Fby::TransportGroupComponent, BoundsMax, Vector2D))
+
+FBY_REFLECT_COMPONENT(Fby::CarrierMemberComponent, "CarrierMemberComponent",
+                      FBY_FIELD(Fby::CarrierMemberComponent, GroupId, UInt32),
+                      FBY_FIELD(Fby::CarrierMemberComponent, Mode, UInt32),
+                      FBY_FIELD(Fby::CarrierMemberComponent, Flags, UInt32),
+                      FBY_FIELD(Fby::CarrierMemberComponent, LocalPosition, Vector2D),
+                      FBY_FIELD(Fby::CarrierMemberComponent, LocalRotation, Float),
+                      FBY_FIELD(Fby::CarrierMemberComponent, RelativeVelocity, Vector2D),
+                      FBY_FIELD(Fby::CarrierMemberComponent, RelativeAngularVelocity, Float))
+
 FBY_REFLECT_COMPONENT(Fby::Sprite2D, "Sprite2D", FBY_FIELD(Fby::Sprite2D, Size, Vector2D),
                       FBY_FIELD(Fby::Sprite2D, UVMin, Vector2D), FBY_FIELD(Fby::Sprite2D, UVMax, Vector2D),
                       FBY_FIELD(Fby::Sprite2D, Layer, UInt32), FBY_FIELD(Fby::Sprite2D, Color, Color32),
                       FBY_FIELD(Fby::Sprite2D, Flags, UInt32))
 
 FBY_REFLECT_COMPONENT(Fby::DrawOrder, "DrawOrder", FBY_FIELD(Fby::DrawOrder, Layer, UInt32),
-                      FBY_FIELD(Fby::DrawOrder, Depth, Float),
-                      FBY_FIELD(Fby::DrawOrder, MaterialBucket, UInt32))
+                      FBY_FIELD(Fby::DrawOrder, Depth, Float), FBY_FIELD(Fby::DrawOrder, MaterialBucket, UInt32))
 
 FBY_REFLECT_COMPONENT(Fby::Camera2D, "Camera2D", FBY_FIELD(Fby::Camera2D, Center, Vector2D),
                       FBY_FIELD(Fby::Camera2D, ViewSize, Vector2D), FBY_FIELD(Fby::Camera2D, Zoom, Float),
@@ -346,24 +341,18 @@ FBY_REFLECT_COMPONENT(Fby::Camera2D, "Camera2D", FBY_FIELD(Fby::Camera2D, Center
 
 FBY_REFLECT_COMPONENT(Fby::Lifetime, "Lifetime", FBY_FIELD(Fby::Lifetime, SecondsRemaining, Float))
 
-FBY_REFLECT_COMPONENT(Fby::GameplayState, "GameplayState", FBY_FIELD(Fby::GameplayState, Bits, UInt64))
-
 FBY_REFLECT_COMPONENT(Fby::NarrativeLabelComponent, "NarrativeLabelComponent",
                       FBY_FIELD(Fby::NarrativeLabelComponent, Name, String))
 
 FBY_REFLECT_COMPONENT(Fby::NameComponent, "NameComponent", FBY_FIELD(Fby::NameComponent, Value, String))
 
-FBY_REFLECT_COMPONENT(Fby::BigIntComponent, "BigIntComponent",
-                      FBY_FIELD(Fby::BigIntComponent, Value, Int128))
+FBY_REFLECT_COMPONENT(Fby::BigIntComponent, "BigIntComponent", FBY_FIELD(Fby::BigIntComponent, Value, Int128))
 
-FBY_REFLECT_COMPONENT(Fby::DecimalComponent, "DecimalComponent",
-                      FBY_FIELD(Fby::DecimalComponent, Value, Decimal))
+FBY_REFLECT_COMPONENT(Fby::DecimalComponent, "DecimalComponent", FBY_FIELD(Fby::DecimalComponent, Value, Decimal))
 
 FBY_REFLECT_COMPONENT(Fby::TextComponent, "TextComponent", FBY_FIELD(Fby::TextComponent, Asset, UInt64),
-                      FBY_FIELD(Fby::TextComponent, Block, UInt32),
-                      FBY_FIELD(Fby::TextComponent, Generation, UInt32),
-                      FBY_FIELD(Fby::TextComponent, Flags, UInt32),
-                      FBY_FIELD(Fby::TextComponent, Reserved, UInt32))
+                      FBY_FIELD(Fby::TextComponent, Block, UInt32), FBY_FIELD(Fby::TextComponent, Generation, UInt32),
+                      FBY_FIELD(Fby::TextComponent, Flags, UInt32), FBY_FIELD(Fby::TextComponent, Reserved, UInt32))
 FBY_REFLECT_COMPONENT(Fby::TextShapeComponent, "TextShapeComponent",
                       FBY_FIELD(Fby::TextShapeComponent, ShapeIndex, UInt32),
                       FBY_FIELD(Fby::TextShapeComponent, ShapeGeneration, UInt32),
@@ -382,17 +371,13 @@ FBY_REFLECT_COMPONENT(Fby::TextEffectComponent, "TextEffectComponent",
                       FBY_FIELD(Fby::TextEffectComponent, ShadowOffset, Vector2D),
                       FBY_FIELD(Fby::TextEffectComponent, OutlineWidth, Float))
 
-FBY_REFLECT_COMPONENT(Fby::TextFormatComponent, "TextFormatComponent",
-                      FBY_FIELD(Fby::TextFormatComponent, Value0, Int128),
-                      FBY_FIELD(Fby::TextFormatComponent, Value1, Int128),
-                      FBY_FIELD(Fby::TextFormatComponent, Value2, Int128),
-                      FBY_FIELD(Fby::TextFormatComponent, Value3, Int128),
-                      FBY_FIELD(Fby::TextFormatComponent, Spec0, UInt32),
-                      FBY_FIELD(Fby::TextFormatComponent, Spec1, UInt32),
-                      FBY_FIELD(Fby::TextFormatComponent, Spec2, UInt32),
-                      FBY_FIELD(Fby::TextFormatComponent, Spec3, UInt32),
-                      FBY_FIELD(Fby::TextFormatComponent, ValueCount, UInt32),
-                      FBY_FIELD(Fby::TextFormatComponent, Reserved, UInt32))
+FBY_REFLECT_COMPONENT(
+    Fby::TextFormatComponent, "TextFormatComponent", FBY_FIELD(Fby::TextFormatComponent, Value0, Int128),
+    FBY_FIELD(Fby::TextFormatComponent, Value1, Int128), FBY_FIELD(Fby::TextFormatComponent, Value2, Int128),
+    FBY_FIELD(Fby::TextFormatComponent, Value3, Int128), FBY_FIELD(Fby::TextFormatComponent, Spec0, UInt32),
+    FBY_FIELD(Fby::TextFormatComponent, Spec1, UInt32), FBY_FIELD(Fby::TextFormatComponent, Spec2, UInt32),
+    FBY_FIELD(Fby::TextFormatComponent, Spec3, UInt32), FBY_FIELD(Fby::TextFormatComponent, ValueCount, UInt32),
+    FBY_FIELD(Fby::TextFormatComponent, Reserved, UInt32))
 
 FBY_REFLECT_COMPONENT(Fby::TextConditionComponent, "TextConditionComponent",
                       FBY_FIELD(Fby::TextConditionComponent, Mask, UInt64),

@@ -42,6 +42,14 @@ bool VoiceSystem::Start(DspGraph& InGraph, FloatRing* InReferenceRing, const Voi
 
     MChain.Configure(MDspSettings, 48000);
     MAec.Configure(InConfig.Aec, 48000);
+    MCaptureRack = std::make_unique<VoiceEffectRack>();
+    MParticipantRacks = std::make_unique<std::array<VoiceEffectRack, kVoiceMaxPeers>>();
+    MCaptureRack->Configure(InConfig.UplinkEffects, 48000);
+    for (std::uint8_t ScopedPlayer = 0; ScopedPlayer < kVoiceMaxPeers; ++ScopedPlayer)
+    {
+        (*MParticipantRacks)[ScopedPlayer].Configure(VoiceEffectProfile{}, 48000);
+    }
+    MChannel.SetDecodeSink(&VoiceSystem::DecodeSinkThunk, this);
     MBound.fill(false);
     MVoices.fill(0);
     MStarted = true;
@@ -69,6 +77,8 @@ void VoiceSystem::Stop() noexcept
     MVoiceBus = kInvalidBus;
     MGraph = nullptr;
     MReferenceRing = nullptr;
+    MCaptureRack.reset();
+    MParticipantRacks.reset();
     MBound.fill(false);
     MVoices.fill(0);
     MStarted = false;
@@ -88,6 +98,74 @@ void VoiceSystem::SetDenoiseTier(VoiceDenoiseTier InTier) noexcept
 void VoiceSystem::SetAec(const VoiceAecSettings& InSettings) noexcept
 {
     MAec.Configure(InSettings, 48000);
+}
+
+void VoiceSystem::SetUplinkEffects(const VoiceEffectProfile& InProfile) noexcept
+{
+    if (MCaptureRack == nullptr)
+    {
+        return;
+    }
+    MCaptureRack->Configure(InProfile, 48000);
+}
+
+void VoiceSystem::SetParticipantEffects(std::uint8_t InPlayer, const VoiceEffectProfile& InProfile) noexcept
+{
+    if (InPlayer >= kVoiceMaxPeers || MParticipantRacks == nullptr)
+    {
+        return;
+    }
+    (*MParticipantRacks)[InPlayer].Configure(InProfile, 48000);
+}
+
+void VoiceSystem::SetLocalCondition(const VoiceConditionState& InState) noexcept
+{
+    if (MCaptureRack != nullptr)
+    {
+        MCaptureRack->SetConditionState(InState);
+    }
+}
+
+void VoiceSystem::SetParticipantCondition(std::uint8_t InPlayer, const VoiceConditionState& InState) noexcept
+{
+    if (InPlayer < kVoiceMaxPeers && MParticipantRacks != nullptr)
+    {
+        (*MParticipantRacks)[InPlayer].SetConditionState(InState);
+    }
+}
+
+const VoiceConditionOutput* VoiceSystem::ParticipantCondition(std::uint8_t InPlayer) const noexcept
+{
+    if (InPlayer >= kVoiceMaxPeers || MParticipantRacks == nullptr)
+    {
+        return nullptr;
+    }
+    return &(*MParticipantRacks)[InPlayer].Condition();
+}
+
+void VoiceSystem::AdvanceEffects(float InDeltaSeconds) noexcept
+{
+    if (MCaptureRack != nullptr)
+    {
+        MCaptureRack->Advance(InDeltaSeconds);
+    }
+    if (MParticipantRacks != nullptr)
+    {
+        for (VoiceEffectRack& ScopedRack : *MParticipantRacks)
+        {
+            ScopedRack.Advance(InDeltaSeconds);
+        }
+    }
+}
+
+void VoiceSystem::DecodeSinkThunk(void* InUser, std::uint8_t InPlayer, float* InSamples,
+                                  std::uint32_t InFrameCount) noexcept
+{
+    auto* ScopedVoice = static_cast<VoiceSystem*>(InUser);
+    if (ScopedVoice != nullptr && ScopedVoice->MParticipantRacks != nullptr && InPlayer < kVoiceMaxPeers)
+    {
+        (*ScopedVoice->MParticipantRacks)[InPlayer].Process(InSamples, InFrameCount);
+    }
 }
 
 bool VoiceSystem::StartCapture(AudioDeviceEnumerator& InDevices, const AudioDeviceInfo& InDevice,
@@ -123,8 +201,7 @@ bool VoiceSystem::SwitchInputDevice(AudioDeviceEnumerator& InDevices, const Audi
 
 void VoiceSystem::ProcessCapture() noexcept
 {
-    const std::uint32_t ScopedWanted =
-        std::min<std::uint32_t>(MConfig.MaxProcessFrames, MRawRing.AvailableRead());
+    const std::uint32_t ScopedWanted = std::min<std::uint32_t>(MConfig.MaxProcessFrames, MRawRing.AvailableRead());
     if (ScopedWanted == 0)
     {
         return;
@@ -147,6 +224,10 @@ void VoiceSystem::ProcessCapture() noexcept
         MAec.Process(MWorkBuffer.data(), MReferenceBuffer.data(), ScopedFrames);
     }
     MChain.Process(MWorkBuffer.data(), ScopedFrames);
+    if (MCaptureRack != nullptr)
+    {
+        MCaptureRack->Process(MWorkBuffer.data(), ScopedFrames);
+    }
     (void)MProcessedRing.Write(MWorkBuffer.data(), ScopedFrames);
 }
 
@@ -180,6 +261,7 @@ void VoiceSystem::Tick(float InDeltaSeconds, VoiceSession& InSession) noexcept
     {
         return;
     }
+    AdvanceEffects(InDeltaSeconds);
     ProcessCapture();
     MChannel.Tick(InDeltaSeconds, &InSession);
     BindParticipants(InSession);

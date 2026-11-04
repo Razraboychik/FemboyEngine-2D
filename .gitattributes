@@ -26,6 +26,9 @@
 *.cpp text eol=lf
 *.cc text eol=lf
 *.cmake text eol=lf
+*.vert text eol=lf
+*.frag text eol=lf
+*.comp text eol=lf
 CMakeLists.txt text eol=lf
 *.md text eol=lf
 *.py text eol=lf

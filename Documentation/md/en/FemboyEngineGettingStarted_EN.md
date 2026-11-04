@@ -1,4 +1,4 @@
-# FemboyEngine 0.1.0-alpha.1 — getting started
+# FemboyEngine 0.2.0-alpha.1 — getting started
 
 This document lists what to install and which files must sit next to the engine to run the editor, the runtime and the development tools on Windows, Linux and macOS, plus the toolchain needed for Android and iOS builds.
 
@@ -27,7 +27,7 @@ The editor is a desktop application. Games build for every platform listed above
 | GCC | 15 | 16.2.0 | second compiler for portability checks |
 | Python | 3.11 | 3.13 | documentation and notices generation |
 | Git | 2.40 | — | clone and version control |
-| Vulkan Loader | 1.3 | 1.4 | runtime on Windows and Linux |
+| Vulkan Loader | 1.4 | 1.4 | runtime on Windows and Linux |
 | MoltenVK | 1.2 | — | Vulkan over Metal on macOS (or the Metal backend directly) |
 | 7-Zip | 21 | 25.01 | unpack the LZMA SDK (otherwise the built-in FbyLZ is used) |
 | Android Studio | — | NDK r28c | Android SDK, NDK 28.2.13676358, compileSdk 35 |
@@ -38,29 +38,47 @@ The language standard is C++26, so an older compiler will not work even when its
 
 ## Quick start with the setup scripts
 
-The scripts live in `SetupScripts/`. Each one installs the system packages and materialises the pinned third-party versions into `third_party/`, so a later CMake configure needs no network. Several libraries already live in the repository (EnTT, ImGui, ImGuizmo, ImPlot, imnodes, FlatBuffers, toml++, Box2D, miniaudio, Opus, RNNoise, Monocypher, stb, HarfBuzz, SheenBidi); the script only fetches the ones that are not stored there.
+The scripts live in `SetupScripts/` and are split by software group. The
+one-click scripts install everything; the component scripts install one group.
 
-Windows (PowerShell, from the repository root):
+| Group | Windows | macOS | Linux |
+|---|---|---|---|
+| C++ toolchain, CMake and source dependencies | `SetupScripts\SetupCpp.bat` | `./SetupScripts/SetupCpp.command` | `./SetupScripts/SetupCpp.sh` |
+| 7-Zip archiver | `SetupScripts\SetupArchiver.bat` | `./SetupScripts/SetupArchiver.command` | `./SetupScripts/SetupArchiver.sh` |
+| Optional DLSS/FidelityFX/XeSS SDKs | `SetupScripts\SetupUpscalers.bat` | `./SetupScripts/SetupUpscalers.command` | `./SetupScripts/SetupUpscalers.sh` |
+
+The all-in-one entry points remain `Setup.bat`, `Setup.command` and `Setup.sh`.
+The C++ scripts install the compiler, CMake, Ninja, the Vulkan headers and the
+pinned source dependencies. On Windows, `SetupCpp` installs the official LLVM
+23.1.4 MSI and verifies the `clang-cl` version; the Unix scripts install the
+distribution Clang (19+). The archiver scripts install 7-Zip. The upscaler
+scripts only verify or download vendor SDKs; they are optional and never part
+of the engine repository.
+
+Useful flags: `--skip-system` leaves system packages alone (a CI image already
+has the tools); `--force` re-downloads every C++ archive. The C++ script writes
+`third_party/dependencies.lock` with the pinned versions and archive hashes.
+At the end it prints the mobile toolchain report: NDK, JDK and Xcode.
+
+### From a GitHub archive
+
+1. Open the repository page and choose **Code > Download ZIP**.
+2. Extract the archive to a directory without spaces or non-ASCII characters.
+3. Run `SetupCpp` and `SetupArchiver` for the host platform.
+4. Optionally run `SetupUpscalers` and enable a vendor backend.
+5. Configure and build:
 
 ```
-SetupScripts\Setup.bat
+cmake --preset dev-clang
+cmake --build --preset dev-clang
+ctest --preset dev-clang --output-on-failure
 ```
 
-macOS (double-click in Finder or run in a terminal):
-
-```
-./SetupScripts/Setup.command
-```
-
-Linux:
-
-```
-./SetupScripts/Setup.sh
-```
-
-Useful flags: `--skip-system` leaves the system packages alone (a CI image already has the tools); `--force` re-downloads every archive. At the end each script prints the mobile toolchain report: NDK, JDK and Xcode.
-
-The script writes `third_party/dependencies.lock` — the pinned versions with the SHA-256 of every downloaded archive.
+The archive contains no vendor SDK. The C++ script installs the toolchain and
+materialises the pinned sources; the archiver script installs 7-Zip. The
+upscaler scripts are only needed when a DLSS/FidelityFX backend is explicitly
+enabled. Without them, FSR1, the FSR2-compatible core path and custom frame
+generation build and run with runtime fallback.
 
 ## Manual installation
 
@@ -73,7 +91,7 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 3. Install CMake 3.31 and Ninja 1.12 (the Build Tools copy is fine).
 4. Install the Vulkan SDK 1.4 — it provides `vulkan-1.dll` and `VULKAN_SDK`.
 5. Install 7-Zip (optional).
-6. Download the archives the script would fetch and unpack them into the same `third_party/` directories: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.0.0`, RNNoise `0.1.1`, Monocypher `4.0.2`. HarfBuzz and SheenBidi need no download: they are already in the repository.
+6. Download the archives the script would fetch and unpack them into the same `third_party/` directories: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.2`. HarfBuzz and SheenBidi need no download: they are already in the repository.
 
 ### Linux
 
@@ -97,39 +115,160 @@ Xcode Command Line Tools are mandatory: they provide `clang++`, the Metal framew
 From the repository root:
 
 ```
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
+cmake --build build-dev
+ctest --test-dir build-dev --output-on-failure
 ```
 
-On Windows the same commands run inside a `vcvars64` environment; `build/build.bat` does that for you. Main CMake options: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
+On Windows the same commands run inside a `vcvars64` environment; `SetupScripts/SetupWindows.ps1` prepares the dependencies and the toolchain. Main CMake options: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
 
 The executables are grouped by purpose:
 
 | Directory | Contents |
 |---|---|
-| `build/bin` | applications: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, platform plugins and `plugins/` |
-| `build/bin/tools` | console tools: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
-| `build/bin/tests` | test executables (`fby_*_test`) that `ctest` runs |
-| `build/bin/lib` | static libraries |
-| `build/bin/plugins` | native engine plugins |
+| `build-dev/bin` | applications: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, platform plugins and `plugins/` |
+| `build-dev/bin/tools` | console tools: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
+| `build-dev/bin/tests` | test executables (`fby_*_test`) that `ctest` runs |
+| `build-dev/bin/lib` | static libraries |
+| `build-dev/bin/plugins` | native engine plugins |
 
 The `*.pdb` files next to the executables are debug symbols written by the compiler. They are only used by a debugger and are not needed to run anything; a release package does not have to ship them.
 
+## Code editor and IDE
+
+The engine does not ship its own text editor. Development uses an external editor that understands the CMake project and `compile_commands.json`.
+
+Recommended setup:
+
+- **VS Code**;
+- the **clangd** extension;
+- the **CMake Tools** extension;
+- **CodeLLDB** or `cppdbg` for debugging;
+- RenderDoc for GPU debugging.
+
+CLion also works: it understands CMake natively and can launch `fby_editor` and the tests. Visual Studio can be used as an IDE, but not as an MSVC build; see below.
+
+### VS Code setup
+
+1. Install VS Code.
+2. Install the extensions:
+   - `llvm-vs-code-extensions.vscode-clangd`;
+   - `ms-vscode.cmake-tools`;
+   - `vadimcn.vscode-lldb` or `ms-vscode.cpptools` for `cppdbg`.
+3. Open the repository root (the folder that contains `CMakePresets.json`).
+4. Disable the built-in IntelliSense; otherwise it competes with clangd:
+
+```json
+{
+  "C_Cpp.intelliSenseEngine": "disabled"
+}
+```
+
+5. Select the `dev-clang` or `dev-clangcl` CMake preset.
+6. Configure:
+
+```bat
+cmake --preset dev-clang
+```
+
+7. Build:
+
+```bat
+cmake --build --preset dev-clang
+```
+
+8. Run tests:
+
+```bat
+ctest --preset dev-clang
+```
+
+The repository already contains:
+
+- `CMakePresets.json` — the presets;
+- `.clangd` — compile-database path;
+- `.vscode/settings.json` — clangd and CMake Tools settings;
+- `.vscode/launch.json` — editor and `frame_composer` launch targets.
+
+### clangd
+
+clangd must use the same Clang that builds the project:
+
+```json
+{
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build-audit",
+    "--query-driver=C:/Users/<user>/AppData/Local/Programs/LLVM/bin/clang++.exe"
+  ]
+}
+```
+
+`--query-driver` lets clangd find the Windows SDK headers. If a different build directory is used, change `--compile-commands-dir` or `.clangd`.
+
+Do not enable C/C++ IntelliSense and clangd at the same time: that produces two different diagnostic and navigation stacks.
+
+### Build presets
+
+| Preset | Compiler | Purpose |
+|---|---|---|
+| `dev-clang` | `clang++` | Debug, tests, `compile_commands.json` |
+| `release-clang` | `clang++` | RelWithDebInfo, tests |
+| `dev-clangcl` | `clang-cl` | Debug with the validated Windows toolchain |
+| `audit-clang` | `clang++` | existing `build-audit` for clangd |
+
+Different compilers must use **different build directories**. Do not reconfigure `build-audit` from clang++ to clang-cl: the CMakeCache belongs to the old toolchain.
+
+### Debugging
+
+For `cppdbg`, use gdb from MinGW/LLVM; CodeLLDB uses LLVM's lldb. Example:
+
+```json
+{
+  "name": "Editor (Debug)",
+  "type": "cppdbg",
+  "request": "launch",
+  "program": "${workspaceFolder}/build-dev/bin/fby_editor.exe",
+  "cwd": "${workspaceFolder}",
+  "MIMode": "gdb",
+  "miDebuggerPath": "gdb.exe"
+}
+```
+
+Use RenderDoc for GPU debugging: attach it to `fby_editor.exe` and capture a frame without embedding a debugger in the editor.
+
+## MSVC support
+
+**No.** The project is deliberately built around Clang:
+
+- C++26 and the strict flag set are validated with Clang 23.1.4;
+- clang-cl already provides the Windows ABI, Windows SDK and an MSVC-compatible driver;
+- the MSVC compiler (`cl.exe`) is not required;
+- adding MSVC means a second set of flags, warnings, STL behavior and C++26 feature support, plus a separate CI matrix.
+
+That does not mean MSVC is forbidden forever. If it is needed as an **optional second compiler**, do it as a separate task:
+
+1. add a `dev-msvc` preset;
+2. verify the C++26 features used by the engine;
+3. add `FBY_COMPILER_MSVC` for flag differences;
+4. add a separate CI job;
+5. keep Clang as the primary toolchain, not a replacement.
+
+Until then, the primary and validated path is **Clang / clang-cl**. Visual Studio may be used as an IDE with the clang-cl toolchain, but not as an MSVC build replacement.
+
 ## Running the editor
 
-The editor opens the project from its **current working directory**: it looks for `project.femproj`, mounts `assets/` as the virtual file system and writes its settings to `build/editor.ini`. Start it from the project root (the repository root for the demo project).
+The editor opens the project from its **current working directory**: it looks for `project.femproj`, mounts `assets/` as the virtual file system, writes project editor settings to `editor.ini` next to `project.femproj`, and keeps the ImGui layout in `Saved/Config/editor.ini`. Start it from the project root (the repository root for the demo project).
 
 ```
 cd %USERPROFILE%\FemboyEngine
-build\bin\fby_editor.exe
+build-dev\bin\fby_editor.exe
 ```
 
 Linux and macOS:
 
 ```
 cd /path/to/project
-./build/bin/fby_editor
+./build-dev/bin/fby_editor
 ```
 
 Everything the engine writes at runtime goes to `Saved/` in the working directory, so the project directory stays clean:
@@ -148,7 +287,7 @@ Environment variables: `FBY_STORAGE_DIR` moves the `Saved/` root (for example to
 
 | Path | Required | Purpose |
 |---|---|---|
-| `build/bin/fby_editor` | yes | the editor itself |
+| `build-dev/bin/fby_editor` | yes | the editor itself |
 | `assets/` | yes | fonts, localization, scenes, atlases, project configs |
 | `assets/fonts/IBMPlexSans-Regular.ttf`, `...-Bold.ttf`, `...-Italic.ttf`, `...-BoldItalic.ttf`, `IBMPlexMono-Regular.ttf` | yes | the font family used by the editor and by scene text |
 | `assets/fonts/IBMPlex.family.toml` | yes | family manifest with the five style slots |
@@ -156,11 +295,11 @@ Environment variables: `FBY_STORAGE_DIR` moves the `Saved/` root (for example to
 | `assets/loc/ui.fbin` | yes | interface localization table |
 | `assets/scenes/*.toml` | yes | project scenes |
 | `project.femproj` | yes | project description: default scene, simulation, render, accessibility |
-| `build/` | yes | the build tree: executables and build results live there |
-| `build/bin/fby_sandbox` | no | second process for networked Play-in-Editor |
+| `build-dev/` | yes | the CMake build tree: executables and build results live there |
+| `build-dev/bin/fby_sandbox` | no | second process for networked Play-in-Editor |
 | `Saved/` | created | logs, crash reports, caches and editor settings |
 | `Saved/Config/editor.ini` | created | panel layout and editor settings for this machine |
-| `build/bin/plugins/` | no | native engine plugins |
+| `build-dev/bin/plugins/` | no | native engine plugins |
 | Vulkan Loader installed on the system | yes | window and GPU rendering on Windows and Linux |
 | `Projects/` | no | default location for new projects |
 
@@ -170,11 +309,11 @@ A project is a directory with a `project.femproj` file and `assets/`, `configs/`
 
 ## Development tools
 
-Besides the editor, `build/bin` contains separate executables. All of them are console programs that read files and need no GUI.
+Besides the editor, `build-dev/bin` contains separate executables. All of them are console programs that read files and need no GUI.
 
 | Tool | Purpose | Files it needs |
 |---|---|---|
-| `fby_editor` | editor: scenes, assets, PIE, text preview | `assets/`, `project.femproj`, `build/` |
+| `fby_editor` | editor: scenes, assets, PIE, text preview | `assets/`, `project.femproj` |
 | `fby_sandbox` | sandbox and Play-in-Editor client | `assets/` |
 | `fby_server` | dedicated server | project directory if configured |
 | `fby_lobby` | lobby and matchmaking service | none |
@@ -187,9 +326,9 @@ Besides the editor, `build/bin` contains separate executables. All of them are c
 | `fby_loc_tool` | validate and build localization tables | localization `.toml` |
 | `fby_shaderc` | compile shaders to SPIR-V | `.vert`/`.frag`; the build calls it automatically |
 
-The tools live in `build/bin/tools`; the test executables in `build/bin/tests`.
+The tools live in `build-dev/bin/tools`; the test executables in `build-dev/bin/tests`.
 
-Wrapper scripts: `build/build.bat` (build), `build/ctest.bat` (tests), `build/configure.bat` (configure), `SetupScripts/*` (dependencies).
+Build and test through the CMake presets; dependency setup lives in `SetupScripts/*`.
 
 ## Shortcuts for fast launching
 
@@ -197,7 +336,7 @@ The working directory is the only thing that distinguishes "launching the engine
 
 ### Windows
 
-1. Right-click `build\bin\fby_editor.exe` → Send to → Desktop (create shortcut).
+1. Right-click `build-dev\bin\fby_editor.exe` → Send to → Desktop (create shortcut).
 2. Open the shortcut properties: "Start in" = project root (for example `%USERPROFILE%\FemboyEngine`), "Target" = full path to `fby_editor.exe`.
 3. Rename it to "FemboyEngine" and drag it to the taskbar or the Start menu.
 4. For a specific project, create a second shortcut with the same target and "Start in" = the project folder. That is the project selection without a dialog.

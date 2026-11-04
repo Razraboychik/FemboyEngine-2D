@@ -221,6 +221,7 @@ bool TextureArrayAsset::LoadFromManifest(VirtualFileSystem& InVfs, Rhi::RHI& InG
             return false;
         }
         ScopedPixels.insert(ScopedPixels.end(), ScopedCooked->texels.begin(), ScopedCooked->texels.end());
+        ScopedDesc.layerAlphaModes.push_back(AlphaModeFromFlags(ScopedCooked->flags));
     }
 
     if (ScopedDesc.layers.size() > std::numeric_limits<std::uint32_t>::max() ||

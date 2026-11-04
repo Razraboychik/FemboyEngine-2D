@@ -135,7 +135,7 @@ callback whose quads are budgeted in the same pass. Hit-testing, focus and press
 state are allocation-free. `WidgetComponent` (16 bytes, Mirror-registered)
 attaches a canvas to an entity; `Update()` resolves world placement from
 `Transform2D`. The full element catalog, the focus contract, clipping and the
-remaining UI work are in [Widgets.md](../../design/Widgets.md).
+remaining UI work are in [Widgets.md](Widgets.md).
 
 ## 7. RHI additions
 
@@ -169,7 +169,7 @@ End-to-end checks performed on this machine (clang-cl 23, Ninja, Windows):
 
 * full `ninja` build: `fby_engine`, `fby_editor`, `fby_fempak`, `fby_sandbox`,
   `fby_aotc`, plugin samples and every test binary link;
-* `ctest`: 10/10 tests pass (rollback, mesh smoke, script VM/AOT, Pink UI, DSP
+* `ctest`: the full suite passes (rollback, mesh smoke, script VM/AOT, Pink UI, DSP
   mixer, audio cook, material graph, video, texture cook);
 * `fby_fempak cook --target desktop` on a 1024x1024 PNG produces a `.ftex`
   v2 with format `bc7-srgb`, 9 mips and BC7 mode-6 blocks (verified at the bit
@@ -182,13 +182,6 @@ End-to-end checks performed on this machine (clang-cl 23, Ninja, Windows):
   `AotModule` and observes the native update halving an EnTT `Velocity` — no VM
   involved.
 
-## 9. Known gaps
+## 9. Backlog
 
-The live backlog is [ROADMAP.md](../../ROADMAP.md); this chapter does not keep a
-second copy. The gaps that were listed here are closed or moved: the script
-text-language front end, the MaterialGraph node panel, the graph serializers and
-the video/UI registration in the sandbox all exist now. The remaining specifics
-are tracked as: per-frame texture uploads waiting on the device (transfer queue
-and `WaitIdle` removal in P1), no hardware VP9 decode (out of scope; libvpx is
-the system codec), `FrameExporter` PNG/GIF muxing (a tool step), and animation
-state machines/timelines (already in the tree).
+Open work is tracked in [ROADMAP.md](../ROADMAP.md).

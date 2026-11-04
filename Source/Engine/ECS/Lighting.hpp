@@ -4,6 +4,7 @@
 #include "Engine/Core/Mirror.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/LightGrid.hpp"
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/Physics/SdfCollision.hpp"
 
@@ -12,6 +13,9 @@
 
 namespace Fby
 {
+
+class SdfBrickMap;
+class SdfGiVolume;
 
 namespace Rhi
 {
@@ -130,6 +134,8 @@ struct LightingSettings
     // 0 disables, 1 fully darkens creases near solid geometry.
     float SdfAmbientOcclusion = 0.35f;
     float SdfOcclusionRadius = 32.0f;
+    // 0 disables the optional GI-probe occlusion term.
+    float SdfGiStrength = 0.0f;
     std::uint32_t Reserved = 0;
 };
 
@@ -141,7 +147,8 @@ public:
     // `InField` is optional: with it the solver adds SDF soft shadows and
     // ambient occlusion, without it lighting stays distance-only.
     [[nodiscard]] std::uint32_t Run(Ecs::Registry& InRegistry, const LightingSettings& InSettings,
-                                    const SdfField* InField = nullptr) noexcept;
+                                    const SdfField* InField = nullptr, const SdfBrickMap* InBricks = nullptr,
+                                    const SdfGiVolume* InGi = nullptr) noexcept;
 
     [[nodiscard]] std::uint32_t LightCount() const noexcept
     {
@@ -155,6 +162,10 @@ public:
     {
         return MShadowSamples;
     }
+    [[nodiscard]] std::uint32_t GridBuildCount() const noexcept
+    {
+        return MGridBuilds;
+    }
 
     // Field used by the graph-driven Tick path. The field must outlive the
     // system (it is a non-owning SdfField view).
@@ -165,6 +176,24 @@ public:
     [[nodiscard]] const SdfField* SdfFieldView() const noexcept
     {
         return MSdfField;
+    }
+    // Optional sparse acceleration for the same field. When null the dense
+    // field is sampled directly.
+    void SetSdfBrickMap(const SdfBrickMap* InBricks) noexcept
+    {
+        MSdfBrickMap = InBricks;
+    }
+    [[nodiscard]] const SdfBrickMap* SdfBrickMapView() const noexcept
+    {
+        return MSdfBrickMap;
+    }
+    void SetSdfGiVolume(SdfGiVolume* InGi) noexcept
+    {
+        MSdfGiVolume = InGi;
+    }
+    [[nodiscard]] const SdfGiVolume* SdfGiVolumeView() const noexcept
+    {
+        return MSdfGiVolume;
     }
 
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, LightingSystem& InSystem);
@@ -178,6 +207,13 @@ private:
     static void Tick(Ecs::SystemContext& InContext, void* InUser);
 
     const SdfField* MSdfField = nullptr;
+    const SdfBrickMap* MSdfBrickMap = nullptr;
+    SdfGiVolume* MSdfGiVolume = nullptr;
+    std::uint32_t MGISlice = 0;
+    LightGrid2D MLightGrid;
+    std::uint64_t MLightGridSignature = 0;
+    bool MLightGridValid = false;
+    std::uint32_t MGridBuilds = 0;
     std::uint32_t MLightCount = 0;
     std::uint32_t MLitCount = 0;
     std::uint32_t MShadowSamples = 0;

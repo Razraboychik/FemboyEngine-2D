@@ -6,7 +6,9 @@
 #include "SandboxOptions.hpp"
 
 #include "Engine/Assets/Localization.hpp"
+#include "Engine/Assets/TextureArray.hpp"
 #include "Engine/Assets/VFS.hpp"
+#include "Engine/Core/Splash.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/ParallelForEach.hpp"
@@ -17,12 +19,21 @@
 #include "Engine/RHI/RenderItem.hpp"
 #include "Engine/RHI/Sort.hpp"
 #include "Engine/Text/TextFontStack.hpp"
+#include "Engine/Text/TextRender.hpp"
 #include "Engine/Text/TextRuntime.hpp"
+#include "Engine/Text/TextShapedLayout.hpp"
 #include "Engine/UI/Accessibility.hpp"
 #include "Engine/UI/AccessibilityOverlay.hpp"
 #include "Engine/UI/PinkUI.hpp"
 
 #include <algorithm>
+#include <filesystem>
+
+#if defined(TOML_ENABLE_FORMATTERS)
+#undef TOML_ENABLE_FORMATTERS
+#endif
+#define TOML_ENABLE_FORMATTERS 1
+#include <toml.hpp>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -119,10 +130,13 @@ public:
     [[nodiscard]] Fby::Rhi::FramePacket Packet(const Fby::Rhi::CameraData& InCamera,
                                                Fby::Color32 InClear) const noexcept
     {
-        return Fby::Rhi::FramePacket{std::span<const Fby::Rhi::RenderItem>(MSorted.data(), MCount),
-                                     std::span<const Fby::Rhi::RenderKey>(MKeys.data(), MCount),
-                                     std::span<const Fby::Rhi::DrawBatch>(MBatches.data(), MBatches.size()), InCamera,
-                                     InClear};
+        Fby::Rhi::FramePacket ScopedPacket;
+        ScopedPacket.items = std::span<const Fby::Rhi::RenderItem>(MSorted.data(), MCount);
+        ScopedPacket.keys = std::span<const Fby::Rhi::RenderKey>(MKeys.data(), MCount);
+        ScopedPacket.batches = std::span<const Fby::Rhi::DrawBatch>(MBatches.data(), MBatches.size());
+        ScopedPacket.camera = InCamera;
+        ScopedPacket.clear = InClear;
+        return ScopedPacket;
     }
 
 private:
@@ -357,7 +371,7 @@ int main(int argc, char** argv)
         return 1;
     }
     Fby::WindowDesc ScopedWindowDesc;
-    ScopedWindowDesc.title = "FemboyEngine2D 1.0 - sandbox";
+    ScopedWindowDesc.title = "Femboy Engine 2D v" FBY_ENGINE_VERSION;
     ScopedWindowDesc.width = 1600;
     ScopedWindowDesc.height = 900;
     if (!ScopedWindow.Create(ScopedWindowDesc))
@@ -583,6 +597,38 @@ int main(int argc, char** argv)
         Fby::LogWarn("sandbox", "UI text font stack unavailable ({}); using the codepoint shaper", ScopedUiFontError);
         ScopedTextRuntime.SetShaper(&ScopedUiFallbackShaper);
     }
+    Fby::Assets::TextureArrayAsset ScopedSplashAtlas;
+    {
+        const std::string ScopedManifest =
+            "name = \"splash\"\nwidth = 1024\nheight = 1024\nsrgb = false\n"
+            "layers = [ { name = \"logo\", source = \"Logo.ftex\" } ]\n";
+        const auto* ScopedBytes = reinterpret_cast<const std::byte*>(ScopedManifest.data());
+        std::string ScopedSplashError;
+        if (!ScopedSplashAtlas.LoadFromManifest(
+                ScopedVfs, *ScopedGpu,
+                std::span<const std::byte>(ScopedBytes, ScopedManifest.size()), &ScopedSplashError))
+        {
+            Fby::LogWarn("sandbox", "splash logo unavailable: {}", ScopedSplashError);
+        }
+    }
+    bool ScopedShowSplash = true;
+    try
+    {
+        if (std::filesystem::exists("project.femproj"))
+        {
+            const toml::table ScopedTable = toml::parse_file("project.femproj");
+            if (const toml::table* ScopedProject = ScopedTable["project"].as_table())
+            {
+                ScopedShowSplash = (*ScopedProject)["show_splash"].value_or(true);
+            }
+        }
+    }
+    catch (const toml::parse_error&)
+    {
+        Fby::LogWarn("sandbox", "project.femproj could not be read; splash defaults to on");
+    }
+    Fby::SplashClock ScopedSplash(ScopedShowSplash);
+
     Fby::Ecs::SystemContext ScopedContext{ScopedWorld.registry, ScopedJobs, 0.0f, 0};
     ScopedContext.localization = &ScopedLocalization;
     ScopedContext.text = &ScopedTextRuntime.Service();
@@ -609,12 +655,26 @@ int main(int argc, char** argv)
     double ScopedStatsTimer = 0.0;
     std::uint32_t ScopedStatsFrames = 0;
     bool ScopedShowStats = true;
+    std::array<Fby::Rhi::RenderItem, Fby::Text::kMaxShapedGlyphs> ScopedSplashTextItems{};
+    std::array<Fby::Rhi::RenderKey, Fby::Text::kMaxShapedGlyphs> ScopedSplashTextKeys{};
+    std::uint32_t ScopedSplashTextCount = 0;
 
     while (ScopedWindow.PumpEvents() && !ScopedWindow.ShouldClose())
     {
         ScopedClock.Tick();
         float ScopedDt = static_cast<float>(ScopedClock.Delta());
         ScopedDt = std::min(ScopedDt, kMaxFrameTime);
+
+        if (!ScopedSplash.Done())
+        {
+            ScopedSplash.Tick(ScopedDt);
+            const Fby::InputState& ScopedSplashInput = ScopedWindow.Input();
+            if (ScopedSplashInput.mousePressed[0] || ScopedSplashInput.mousePressed[1] ||
+                ScopedSplashInput.textInputLength > 0)
+            {
+                ScopedSplash.Skip();
+            }
+        }
 
         if (ScopedWindow.Input().WasPressed(Fby::Key::Escape))
         {
@@ -731,6 +791,55 @@ int main(int argc, char** argv)
                 ScopedWorld.zoom};
             Fby::Color32 ScopedClear = Fby::Color32::FromBytes(10, 12, 20);
             Fby::Rhi::FramePacket ScopedFrame = ScopedExtract.Packet(ScopedCamera, ScopedClear);
+            if (!ScopedSplash.Done() && ScopedSplashAtlas.IsValid())
+            {
+                const auto ScopedAlpha = static_cast<std::uint8_t>(
+                    std::clamp(ScopedSplash.Opacity(), 0.0f, 1.0f) * 255.0f);
+                const Fby::Rhi::RenderItem ScopedLogo =
+                    Fby::Rhi::RenderItem::Quad({0.0f, 0.0f}, {512.0f, 512.0f},
+                                                Fby::Color32::FromBytes(255, 255, 255, ScopedAlpha).rgba);
+                const Fby::Rhi::RenderKey ScopedLogoKey{};
+                const Fby::Rhi::DrawBatch ScopedLogoBatch{0, 1, 0, 0};
+                ScopedFrame = Fby::Rhi::FramePacket{};
+                ScopedFrame.camera = ScopedCamera;
+                ScopedFrame.clear = Fby::Color32::FromBytes(6, 7, 12);
+                ScopedFrame.textureArray = ScopedSplashAtlas.Handle().id;
+                ScopedFrame.items = std::span<const Fby::Rhi::RenderItem>(&ScopedLogo, 1);
+                ScopedFrame.keys = std::span<const Fby::Rhi::RenderKey>(&ScopedLogoKey, 1);
+                ScopedFrame.batches = std::span<const Fby::Rhi::DrawBatch>(&ScopedLogoBatch, 1);
+
+                ScopedSplashTextCount = 0;
+                if (ScopedUiFontsReady)
+                {
+                    const std::string ScopedSplashLabel = "Femboy Engine 2D v" FBY_ENGINE_VERSION;
+                    Fby::Text::TextShapeParams ScopedShapeParams;
+                    ScopedShapeParams.FontId = 0;
+                    ScopedShapeParams.PixelSize = 32.0f;
+                    ScopedShapeParams.Script = Fby::Text::TextScript::Latin;
+                    Fby::Text::TextShapeResult ScopedShaped;
+                    if (ScopedUiFontStack.Shaper().Shape(ScopedSplashLabel, ScopedShapeParams, &ScopedShaped))
+                    {
+                        (void)Fby::Text::EnsureShapedGlyphPages(ScopedUiFontStack.Fonts(), ScopedShaped);
+                        Fby::Text::TextLayoutParams ScopedLayoutParams;
+                        ScopedLayoutParams.FontSize = 32.0f;
+                        ScopedLayoutParams.MaxWidth = 1200.0f;
+                        Fby::Text::ShapedLayoutResult ScopedLayout;
+                        if (Fby::Text::LayoutShapedGlyphs(ScopedSplashLabel, ScopedShaped, ScopedLayoutParams,
+                                                          &ScopedLayout))
+                        {
+                            Fby::Text::TextRenderParams ScopedRenderParams;
+                            ScopedRenderParams.Fonts = &ScopedUiFontStack.Fonts();
+                            ScopedRenderParams.FontAtlasIndex = 0;
+                            ScopedRenderParams.FontSize = 32.0f;
+                            ScopedRenderParams.Color = Fby::Color32::FromBytes(235, 238, 245, ScopedAlpha);
+                            Fby::Text::TextRenderStats ScopedTextStats;
+                            ScopedSplashTextCount = Fby::Text::BuildShapedTextRenderItems(
+                                ScopedLayout, ScopedShaped, Fby::Vector2D{-250.0f, -300.0f}, ScopedRenderParams,
+                                std::span<Fby::Rhi::RenderItem>(ScopedSplashTextItems), &ScopedTextStats);
+                        }
+                    }
+                }
+            }
             ScopedFrame.timeSeconds = static_cast<float>(ScopedClock.Elapsed());
             ScopedAccessibility.AdvanceCaptionClock(ScopedDt);
             (void)ScopedOverlay.Build(ScopedContext, ScopedAccessibility,
@@ -744,6 +853,19 @@ int main(int argc, char** argv)
             // enforced by the app's audio policy, the flags travel for the rest.
             ScopedAccessibility.ApplyToFrame(ScopedFrame);
             ScopedGpu->Submit(ScopedFrame);
+            if (!ScopedSplash.Done() && ScopedSplashTextCount > 0u &&
+                ScopedUiFontStack.Fonts().TextureArray().IsValid())
+            {
+                Fby::Rhi::FramePacket ScopedSplashText;
+                ScopedSplashText.textureArray = ScopedUiFontStack.Fonts().TextureArray().id;
+                ScopedSplashText.items = std::span<const Fby::Rhi::RenderItem>(ScopedSplashTextItems.data(),
+                                                                               ScopedSplashTextCount);
+                ScopedSplashText.keys = std::span<const Fby::Rhi::RenderKey>(ScopedSplashTextKeys.data(),
+                                                                             ScopedSplashTextCount);
+                const Fby::Rhi::DrawBatch ScopedSplashTextBatch{0, ScopedSplashTextCount, 0, 0};
+                ScopedSplashText.batches = std::span<const Fby::Rhi::DrawBatch>(&ScopedSplashTextBatch, 1);
+                (void)ScopedGpu->DrawOverlay(ScopedSplashText);
+            }
             ScopedGpu->EndFrame();
         }
 

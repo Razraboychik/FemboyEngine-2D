@@ -364,14 +364,14 @@ int main()
     PhysicsJointSystem ScopedJoints;
     FBY_CHECK(ScopedJoints.Initialize(ScopedPhysics));
     JointChainDesc ScopedChain;
-    ScopedChain.kind = JointChainKind::Rope;
-    ScopedChain.flags = JointChainPinStart;
-    ScopedChain.start = Vector2D{0.0f, 0.0f};
-    ScopedChain.end = Vector2D{0.0f, 64.0f};
-    ScopedChain.segmentCount = 4;
+    ScopedChain.Kind = JointChainKind::Rope;
+    ScopedChain.Flags = JointChainPinStart;
+    ScopedChain.Start = Vector2D{0.0f, 0.0f};
+    ScopedChain.End = Vector2D{0.0f, 64.0f};
+    ScopedChain.SegmentCount = 4;
     const JointChainHandle ScopedHandle = ScopedJoints.CreateChain(ScopedRegistry, ScopedChain);
     FBY_CHECK(ScopedHandle.IsValid());
-    FBY_CHECK(ScopedJoints.Info(ScopedHandle).chainId.IsValid());
+    FBY_CHECK(ScopedJoints.Info(ScopedHandle).ChainID.IsValid());
     FBY_CHECK(ScopedJoints.DestroyChain(ScopedRegistry, ScopedHandle));
 
     ClothSystem ScopedCloth;

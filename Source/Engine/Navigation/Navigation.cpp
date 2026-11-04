@@ -3,6 +3,7 @@
 
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
+#include "Engine/Navigation/NavMesh.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -21,6 +22,245 @@ constexpr std::uint32_t kMaxDeferredStates = 64;
 [[nodiscard]] float Heuristic(const Grid::GridDesc& InGrid, Grid::Cell InFrom, Grid::Cell InTo) noexcept
 {
     return Grid::CellDistance(InGrid.Mode, InFrom, InTo);
+}
+
+[[nodiscard]] std::uint32_t Hash32(std::uint32_t InValue) noexcept
+{
+    InValue ^= InValue >> 16u;
+    InValue *= 0x7FEB352Du;
+    InValue ^= InValue >> 15u;
+    InValue *= 0x846CA68Bu;
+    InValue ^= InValue >> 16u;
+    return InValue;
+}
+
+[[nodiscard]] float RandomUnit(std::uint32_t InSeed, std::uint32_t InIndex) noexcept
+{
+    return static_cast<float>(Hash32(InSeed ^ (InIndex * 0x9E3779B9u)) & 0x00FFFFFFu) / static_cast<float>(0x01000000u);
+}
+
+// Samples the segment often enough that a cell-sized wall is never skipped.
+[[nodiscard]] bool HasLineOfSight(const NavMap& InMap, Vector2D InFrom, Vector2D InTo) noexcept
+{
+    const float ScopedDx = InTo.X - InFrom.X;
+    const float ScopedDy = InTo.Y - InFrom.Y;
+    const float ScopedDistance = std::sqrt(ScopedDx * ScopedDx + ScopedDy * ScopedDy);
+    const float ScopedCell = std::max(std::min(InMap.Grid.CellSize.X, InMap.Grid.CellSize.Y), 0.001f);
+    const std::uint32_t ScopedSteps =
+        std::max(1u, static_cast<std::uint32_t>(std::ceil(ScopedDistance / (ScopedCell * 0.25f))));
+    for (std::uint32_t ScopedStep = 0; ScopedStep <= ScopedSteps; ++ScopedStep)
+    {
+        const float ScopedT = static_cast<float>(ScopedStep) / static_cast<float>(ScopedSteps);
+        const Vector2D ScopedSample{InFrom.X + ScopedDx * ScopedT, InFrom.Y + ScopedDy * ScopedT};
+        if (!InMap.Passable(Grid::WorldToCell(InMap.Grid, ScopedSample)))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void DeduplicatePoints(std::array<Vector2D, kMaxPathCells>& InPoints, std::uint16_t& InCount) noexcept
+{
+    std::uint16_t ScopedWrite = 0;
+    for (std::uint16_t ScopedRead = 0; ScopedRead < InCount; ++ScopedRead)
+    {
+        if (ScopedWrite > 0)
+        {
+            const Vector2D ScopedDelta = InPoints[ScopedRead] - InPoints[ScopedWrite - 1];
+            if (ScopedDelta.LengthSquared() <= 1.0e-6f)
+            {
+                continue;
+            }
+        }
+        InPoints[ScopedWrite++] = InPoints[ScopedRead];
+    }
+    InCount = ScopedWrite;
+}
+
+// Replaces points with the shortest in-corridor sequence of anchors. The
+// resulting polyline keeps the same walkable corridor as raw A* but drops every
+// redundant stair-step cell.
+void SimplifyLineOfSight(const NavMap& InMap, const std::array<Vector2D, kMaxPathCells>& InRaw,
+                         std::uint16_t InRawCount, std::array<Vector2D, kMaxPathCells>& OutPoints,
+                         std::uint16_t& OutCount) noexcept
+{
+    OutCount = 0;
+    if (InRawCount == 0)
+    {
+        return;
+    }
+    std::uint16_t ScopedAnchor = 0;
+    OutPoints[OutCount++] = InRaw[0];
+    while (ScopedAnchor + 1 < InRawCount)
+    {
+        std::uint16_t ScopedBest = ScopedAnchor + 1;
+        for (std::uint16_t ScopedCandidate = static_cast<std::uint16_t>(ScopedAnchor + 2); ScopedCandidate < InRawCount;
+             ++ScopedCandidate)
+        {
+            if (HasLineOfSight(InMap, InRaw[ScopedAnchor], InRaw[ScopedCandidate]))
+            {
+                ScopedBest = ScopedCandidate;
+            }
+            else
+            {
+                break;
+            }
+        }
+        if (OutPoints[OutCount - 1] != InRaw[ScopedBest])
+        {
+            OutPoints[OutCount++] = InRaw[ScopedBest];
+        }
+        ScopedAnchor = ScopedBest;
+    }
+}
+
+void SmoothChaikin(const std::array<Vector2D, kMaxPathCells>& InRaw, std::uint16_t InRawCount, float InStrength,
+                   std::uint8_t InIterations, std::array<Vector2D, kMaxPathCells>& OutPoints,
+                   std::uint16_t& OutCount) noexcept
+{
+    std::array<Vector2D, kMaxPathCells> ScopedScratch = InRaw;
+    std::uint16_t ScopedCount = InRawCount;
+    const float ScopedStrength = std::clamp(InStrength, 0.0f, 1.0f);
+    for (std::uint8_t ScopedIteration = 0; ScopedIteration < InIterations && ScopedCount > 2; ++ScopedIteration)
+    {
+        std::array<Vector2D, kMaxPathCells> ScopedNext{};
+        std::uint16_t ScopedWrite = 0;
+        ScopedNext[ScopedWrite++] = ScopedScratch[0];
+        for (std::uint16_t ScopedI = 0; ScopedI + 1 < ScopedCount && ScopedWrite + 2 < kMaxPathCells; ++ScopedI)
+        {
+            const Vector2D ScopedP0 = ScopedScratch[ScopedI];
+            const Vector2D ScopedP1 = ScopedScratch[ScopedI + 1];
+            ScopedNext[ScopedWrite++] = ScopedP0 + (ScopedP1 - ScopedP0) * (0.25f * ScopedStrength);
+            ScopedNext[ScopedWrite++] = ScopedP0 + (ScopedP1 - ScopedP0) * (0.75f * ScopedStrength);
+        }
+        if (ScopedWrite < kMaxPathCells)
+        {
+            ScopedNext[ScopedWrite++] = ScopedScratch[ScopedCount - 1];
+        }
+        ScopedScratch = ScopedNext;
+        ScopedCount = ScopedWrite;
+    }
+    OutPoints = ScopedScratch;
+    OutCount = ScopedCount;
+}
+
+void SmoothCatmullRom(const std::array<Vector2D, kMaxPathCells>& InRaw, std::uint16_t InRawCount, float InStrength,
+                      std::uint8_t InIterations, std::array<Vector2D, kMaxPathCells>& OutPoints,
+                      std::uint16_t& OutCount) noexcept
+{
+    if (InRawCount < 2)
+    {
+        OutPoints = InRaw;
+        OutCount = InRawCount;
+        return;
+    }
+    const float ScopedStrength = std::clamp(InStrength, 0.0f, 1.0f);
+    const std::uint32_t ScopedSubdivisions = std::clamp<std::uint32_t>(InIterations + 1u, 2u, 8u);
+    std::uint16_t ScopedWrite = 0;
+    OutPoints[ScopedWrite++] = InRaw[0];
+    for (std::uint16_t ScopedI = 0; ScopedI + 1 < InRawCount && ScopedWrite + ScopedSubdivisions < kMaxPathCells;
+         ++ScopedI)
+    {
+        const Vector2D ScopedP0 = InRaw[ScopedI == 0 ? 0 : static_cast<std::uint16_t>(ScopedI - 1)];
+        const Vector2D ScopedP1 = InRaw[ScopedI];
+        const Vector2D ScopedP2 = InRaw[ScopedI + 1];
+        const Vector2D ScopedP3 = InRaw[ScopedI + 2 < InRawCount ? static_cast<std::uint16_t>(ScopedI + 2)
+                                                                 : static_cast<std::uint16_t>(InRawCount - 1)];
+        for (std::uint32_t ScopedStep = 1; ScopedStep <= ScopedSubdivisions; ++ScopedStep)
+        {
+            const float ScopedT = static_cast<float>(ScopedStep) / static_cast<float>(ScopedSubdivisions);
+            const float ScopedT2 = ScopedT * ScopedT;
+            const float ScopedT3 = ScopedT2 * ScopedT;
+            const Vector2D ScopedCurve = (ScopedP1 * 2.0f + (ScopedP2 - ScopedP0) * ScopedT +
+                                          (ScopedP0 * 2.0f - ScopedP1 * 5.0f + ScopedP2 * 4.0f - ScopedP3) * ScopedT2 +
+                                          (ScopedP1 * 3.0f - ScopedP0 - ScopedP2 * 3.0f + ScopedP3) * ScopedT3) *
+                                         0.5f;
+            const Vector2D ScopedLinear = ScopedP1 + (ScopedP2 - ScopedP1) * ScopedT;
+            OutPoints[ScopedWrite++] = ScopedLinear + (ScopedCurve - ScopedLinear) * ScopedStrength;
+        }
+    }
+    OutCount = ScopedWrite;
+}
+
+// Smoothing must never cut a wall. If any generated segment is blocked, keep
+// the previously validated point list.
+void ApplySmoothingAndJitter(const NavMap& InMap, const NavPathOptions& InOptions, NavPath& InPath) noexcept
+{
+    if (InPath.Count == 0)
+    {
+        return;
+    }
+    std::array<Vector2D, kMaxPathCells> ScopedRaw{};
+    for (std::uint16_t ScopedI = 0; ScopedI < InPath.Count; ++ScopedI)
+    {
+        ScopedRaw[ScopedI] = Grid::CellToWorld(InMap.Grid, InPath.Cells[ScopedI]);
+    }
+    std::array<Vector2D, kMaxPathCells> ScopedPoints = ScopedRaw;
+    std::uint16_t ScopedPointCount = InPath.Count;
+
+    if (InOptions.Smoothing == NavSmoothingMode::LineOfSight)
+    {
+        SimplifyLineOfSight(InMap, ScopedRaw, InPath.Count, ScopedPoints, ScopedPointCount);
+    }
+    else if (InOptions.Smoothing == NavSmoothingMode::Chaikin)
+    {
+        std::array<Vector2D, kMaxPathCells> ScopedSimplified{};
+        std::uint16_t ScopedSimplifiedCount = 0;
+        SimplifyLineOfSight(InMap, ScopedRaw, InPath.Count, ScopedSimplified, ScopedSimplifiedCount);
+        SmoothChaikin(ScopedSimplified, ScopedSimplifiedCount, InOptions.SmoothingStrength,
+                      InOptions.SmoothingIterations, ScopedPoints, ScopedPointCount);
+    }
+    else if (InOptions.Smoothing == NavSmoothingMode::CatmullRom)
+    {
+        std::array<Vector2D, kMaxPathCells> ScopedSimplified{};
+        std::uint16_t ScopedSimplifiedCount = 0;
+        SimplifyLineOfSight(InMap, ScopedRaw, InPath.Count, ScopedSimplified, ScopedSimplifiedCount);
+        SmoothCatmullRom(ScopedSimplified, ScopedSimplifiedCount, InOptions.SmoothingStrength,
+                         InOptions.SmoothingIterations, ScopedPoints, ScopedPointCount);
+    }
+
+    // Validate each generated segment; a blocked segment falls back to the
+    // previous (already valid) point list.
+    bool ScopedValid = true;
+    for (std::uint16_t ScopedI = 0; ScopedI + 1 < ScopedPointCount; ++ScopedI)
+    {
+        if (!HasLineOfSight(InMap, ScopedPoints[ScopedI], ScopedPoints[ScopedI + 1]))
+        {
+            ScopedValid = false;
+            break;
+        }
+    }
+    if (!ScopedValid)
+    {
+        ScopedPoints = ScopedRaw;
+        ScopedPointCount = InPath.Count;
+    }
+
+    if (InOptions.RandomWaypointCells > 0.0f && ScopedPointCount > 2)
+    {
+        const float ScopedJitterX = InOptions.RandomWaypointCells * InMap.Grid.CellSize.X;
+        const float ScopedJitterY = InOptions.RandomWaypointCells * InMap.Grid.CellSize.Y;
+        for (std::uint16_t ScopedI = 1; ScopedI + 1 < ScopedPointCount; ++ScopedI)
+        {
+            const float ScopedRandomX = RandomUnit(InOptions.RandomSeed, ScopedI * 2u) * 2.0f - 1.0f;
+            const float ScopedRandomY = RandomUnit(InOptions.RandomSeed, ScopedI * 2u + 1u) * 2.0f - 1.0f;
+            const Vector2D ScopedCandidate{ScopedPoints[ScopedI].X + ScopedRandomX * ScopedJitterX,
+                                           ScopedPoints[ScopedI].Y + ScopedRandomY * ScopedJitterY};
+            if (InMap.Passable(Grid::WorldToCell(InMap.Grid, ScopedCandidate)) &&
+                HasLineOfSight(InMap, ScopedPoints[ScopedI - 1], ScopedCandidate) &&
+                HasLineOfSight(InMap, ScopedCandidate, ScopedPoints[ScopedI + 1]))
+            {
+                ScopedPoints[ScopedI] = ScopedCandidate;
+            }
+        }
+    }
+
+    DeduplicatePoints(ScopedPoints, ScopedPointCount);
+    InPath.Points = ScopedPoints;
+    InPath.Count = ScopedPointCount;
+    InPath.HasPoints = true;
+    InPath.Truncated = InPath.Truncated || ScopedPointCount >= kMaxPathCells;
 }
 }
 
@@ -236,14 +476,17 @@ bool PathFinder::Find(const NavMap& InMap, Grid::Cell InStart, Grid::Cell InGoal
                 continue;
             }
             const float ScopedStep = Grid::CellDistance(InMap.Grid.Mode, ScopedCell, ScopedNeighbour);
-            const float ScopedCandidate = MGScore[ScopedCurrent] + ScopedStep * static_cast<float>(ScopedCost);
+            float ScopedCandidate = MGScore[ScopedCurrent] + ScopedStep * static_cast<float>(ScopedCost);
+            if (MRandomCost > 0.0f)
+            {
+                ScopedCandidate += RandomUnit(MRandomSeed, ScopedNeighbourNode) * MRandomCost;
+            }
             if (ScopedCandidate >= MGScore[ScopedNeighbourNode])
             {
                 continue;
             }
             MGScore[ScopedNeighbourNode] = ScopedCandidate;
-            MFScore[ScopedNeighbourNode] =
-                ScopedCandidate + Heuristic(InMap.Grid, ScopedNeighbour, InGoal);
+            MFScore[ScopedNeighbourNode] = ScopedCandidate + Heuristic(InMap.Grid, ScopedNeighbour, InGoal);
             MParent[ScopedNeighbourNode] = ScopedCurrent;
             if (MInOpen[ScopedNeighbourNode] != 0)
             {
@@ -302,6 +545,32 @@ bool PathFinder::Find(const NavMap& InMap, Grid::Cell InStart, Grid::Cell InGoal
     return ScopedCount > 0;
 }
 
+bool PathFinder::FindWithOptions(const NavMap& InMap, Grid::Cell InStart, Grid::Cell InGoal,
+                                 const NavPathOptions& InOptions, NavPath* OutPath, bool InAllowPartial) noexcept
+{
+    MRandomSeed = InOptions.RandomSeed;
+    MRandomCost = InOptions.RandomizeRoute ? std::max(InOptions.RandomCost, 0.0f) : 0.0f;
+    const bool ScopedFound = Find(InMap, InStart, InGoal, OutPath, InAllowPartial);
+    MRandomSeed = 0;
+    MRandomCost = 0.0f;
+    if (!ScopedFound || OutPath == nullptr || OutPath->Count == 0)
+    {
+        return false;
+    }
+    // Find() wrote the raw cell polyline. Only the movement representation is
+    // replaced; the raw cells stay available for debug overlays and tests.
+    const std::uint16_t ScopedRawCount = OutPath->Count;
+    std::array<Grid::Cell, kMaxPathCells> ScopedRawCells = OutPath->Cells;
+    ApplySmoothingAndJitter(InMap, InOptions, *OutPath);
+    if (InOptions.Smoothing == NavSmoothingMode::None && InOptions.RandomWaypointCells <= 0.0f)
+    {
+        OutPath->Cells = ScopedRawCells;
+        OutPath->Count = ScopedRawCount;
+        OutPath->HasPoints = false;
+    }
+    return true;
+}
+
 bool PathFinder::FindLimited(const NavMap& InMap, Grid::Cell InStart, Grid::Cell InGoal, std::uint16_t InMaxCells,
                              NavPath* OutPath) noexcept
 {
@@ -346,7 +615,8 @@ Vector2D FollowPath(const NavMap& InMap, const NavPath& InPath, std::uint16_t* O
     std::uint16_t ScopedIndex = *OutIndex;
     while (ScopedIndex < InPath.Count)
     {
-        const Vector2D ScopedWaypoint = Grid::CellToWorld(InMap.Grid, InPath.Cells[ScopedIndex]);
+        const Vector2D ScopedWaypoint =
+            InPath.HasPoints ? InPath.Points[ScopedIndex] : Grid::CellToWorld(InMap.Grid, InPath.Cells[ScopedIndex]);
         const Vector2D ScopedDelta = ScopedWaypoint - ScopedPosition;
         const float ScopedDistance = std::sqrt(ScopedDelta.X * ScopedDelta.X + ScopedDelta.Y * ScopedDelta.Y);
         if (ScopedDistance <= ScopedRemaining)
@@ -413,8 +683,8 @@ void NavigationSystem::Update(Ecs::Registry& InRegistry, float InDeltaSeconds) n
         const Grid::Cell ScopedGoal = Grid::WorldToCell(MMap->Grid, ScopedSettings.Target);
         const Grid::Cell ScopedStart = Grid::WorldToCell(MMap->Grid, ScopedTransform.Position);
         const Vector2D ScopedTargetDelta = ScopedSettings.Target - ScopedAgent.LastTarget;
-        const bool ScopedTargetMoved = ScopedTargetDelta.LengthSquared() >
-                                       ScopedSettings.RepathDistance * ScopedSettings.RepathDistance;
+        const bool ScopedTargetMoved =
+            ScopedTargetDelta.LengthSquared() > ScopedSettings.RepathDistance * ScopedSettings.RepathDistance;
         // An agent standing on its target does not need a new path: this keeps
         // idle agents out of the per-frame A* budget entirely.
         const bool ScopedAtTarget = (ScopedAgent.Flags & kNavAgentFlagArrived) != 0 && !ScopedTargetMoved;
@@ -435,7 +705,16 @@ void NavigationSystem::Update(Ecs::Registry& InRegistry, float InDeltaSeconds) n
                 ScopedAgent.RepathTimer = ScopedSettings.RepathInterval;
                 if (MMap->Passable(ScopedGoal) && MMap->Passable(ScopedStart))
                 {
-                    if (MFinder.Find(*MMap, ScopedStart, ScopedGoal, &ScopedAgent.Path, true))
+                    const auto* ScopedPathSettings = InRegistry.try_get<NavAgentPathSettings>(ScopedEntity);
+                    const NavPathOptions ScopedPathOptions =
+                        ScopedPathSettings != nullptr ? ScopedPathSettings->ToOptions() : NavPathOptions{};
+                    const bool ScopedPathFound =
+                        MNavMesh != nullptr && MNavMesh->Ready()
+                            ? MNavMesh->FindPath(ScopedTransform.Position, ScopedSettings.Target, ScopedPathOptions,
+                                                 &ScopedAgent.Path)
+                            : MFinder.FindWithOptions(*MMap, ScopedStart, ScopedGoal, ScopedPathOptions,
+                                                      &ScopedAgent.Path, true);
+                    if (ScopedPathFound)
                     {
                         // The first waypoint is the centre of the cell the agent
                         // is already standing in. Skipping it prevents a periodic

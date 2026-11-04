@@ -24,6 +24,10 @@ class ClothSystem;
 class FluidWaveSystem;
 class PhysicsJointSystem;
 class CameraStackSystem;
+class GameplayTagRegistry;
+class GameplayAttributeRegistry;
+class GameplayEffectSystem;
+class GameplaySkillSystem;
 namespace Assets
 {
 class AssetDatabase;
@@ -108,6 +112,12 @@ struct SystemContext
     Text::TextShapeCache* textShapes = nullptr;
     Text::ITextShaper* textShaper = nullptr;
     LocalizationTable* localization = nullptr;
+    // Project-owned gameplay registries. Systems that read tags take them from
+    // the context; a world without gameplay leaves them null.
+    GameplayTagRegistry* gameplayTags = nullptr;
+    GameplayAttributeRegistry* gameplayAttributes = nullptr;
+    GameplayEffectSystem* gameplayEffects = nullptr;
+    GameplaySkillSystem* gameplaySkills = nullptr;
 };
 
 using SystemFunction = void (*)(SystemContext&, void*);

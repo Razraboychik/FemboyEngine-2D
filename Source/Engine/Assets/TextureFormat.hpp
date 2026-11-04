@@ -35,6 +35,30 @@ enum class TextureFormat : std::uint32_t
 inline constexpr std::uint32_t kTextureFlagSrgb = 1u << 0;
 // The cooked payload came from a source that had an alpha channel. The cooker
 inline constexpr std::uint32_t kTextureFlagAlpha = 1u << 1;
+// Alpha is binary (0 or 255) across the source; safe for alpha-test/depth.
+inline constexpr std::uint32_t kTextureFlagAlphaCutout = 1u << 2;
+// Alpha has intermediate values; the texture needs blending.
+inline constexpr std::uint32_t kTextureFlagAlphaBlend = 1u << 3;
+
+enum class TextureAlphaMode : std::uint8_t
+{
+    Opaque = 0,
+    Cutout = 1,
+    Blend = 2
+};
+
+[[nodiscard]] constexpr TextureAlphaMode AlphaModeFromFlags(std::uint32_t InFlags) noexcept
+{
+    if ((InFlags & kTextureFlagAlphaBlend) != 0u)
+    {
+        return TextureAlphaMode::Blend;
+    }
+    if ((InFlags & kTextureFlagAlphaCutout) != 0u)
+    {
+        return TextureAlphaMode::Cutout;
+    }
+    return TextureAlphaMode::Opaque;
+}
 
 [[nodiscard]] constexpr bool IsBlockCompressed(TextureFormat InFormat) noexcept
 {

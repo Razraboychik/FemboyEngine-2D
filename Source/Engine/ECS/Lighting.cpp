@@ -1,11 +1,15 @@
 // FemboyEngine2D - 2D lighting resolution.
 #include "Engine/ECS/Lighting.hpp"
 
+#include "Engine/ECS/LightGrid.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
+#include "Engine/Physics/SdfBrickMap.hpp"
+#include "Engine/Physics/SdfGi.hpp"
 #include "Engine/RHI/RHI.hpp"
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 
 namespace Fby
@@ -90,6 +94,7 @@ struct OccluderSample
 struct CombinedField
 {
     const SdfField* Static = nullptr;
+    const SdfBrickMap* Bricks = nullptr;
     const OccluderSample* Occluders = nullptr;
     std::uint32_t OccluderCount = 0;
     // The sprite being lit: its own occluder must not shadow it, otherwise an
@@ -98,11 +103,19 @@ struct CombinedField
 
     [[nodiscard]] bool Active() const noexcept
     {
-        return (Static != nullptr && Static->Valid()) || OccluderCount > 0;
+        return (Static != nullptr && Static->Valid()) || Bricks != nullptr || OccluderCount > 0;
     }
     [[nodiscard]] float Sample(Vector2D InPoint) const noexcept
     {
-        float ScopedDistance = (Static != nullptr && Static->Valid()) ? Static->Sample(InPoint) : 1.0e6f;
+        float ScopedDistance = 1.0e6f;
+        if (Bricks != nullptr && Bricks->BrickCount() > 0)
+        {
+            ScopedDistance = Bricks->Sample(InPoint);
+        }
+        else if (Static != nullptr && Static->Valid())
+        {
+            ScopedDistance = Static->Sample(InPoint);
+        }
         for (std::uint32_t ScopedI = 0; ScopedI < OccluderCount; ++ScopedI)
         {
             if (Occluders[ScopedI].Owner == Receiver)
@@ -165,13 +178,21 @@ struct CombinedField
 }
 
 std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSettings& InSettings,
-                                  const SdfField* InField) noexcept
+                                  const SdfField* InField, const SdfBrickMap* InBricks,
+                                  const SdfGiVolume* InGi) noexcept
 {
     std::array<LightSample, kMaxLightSamples> ScopedLights{};
     std::uint32_t ScopedLightCount = 0;
     // Result components are derived state: clear first so a sprite that loses its
     // light target (or a removed light) cannot keep a stale tint.
     InRegistry.clear<Light2DResultComponent>();
+    const SdfBrickMap* ScopedBricks = InBricks != nullptr ? InBricks : MSdfBrickMap;
+    const SdfGiVolume* ScopedGi = InGi != nullptr ? InGi : MSdfGiVolume;
+    if (MSdfGiVolume != nullptr && ScopedBricks != nullptr && ScopedBricks->BrickCount() > 0)
+    {
+        (void)MSdfGiVolume->Update(*ScopedBricks, MGISlice, 8u);
+        MGISlice = (MGISlice + 1u) % 8u;
+    }
     const std::uint32_t ScopedCapacity = std::min<std::uint32_t>(InSettings.MaxLights, kMaxLightSamples);
 
     // Dynamic shadow casters are gathered every frame; static terrain stays in
@@ -196,6 +217,7 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
     }
     CombinedField ScopedField;
     ScopedField.Static = InField;
+    ScopedField.Bricks = InBricks;
     ScopedField.Occluders = ScopedOccluders.data();
     ScopedField.OccluderCount = ScopedOccluderCount;
     const bool ScopedHasField = ScopedField.Active();
@@ -217,6 +239,30 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
         ScopedSample.blue = UnpackChannel(ScopedLight.Color.rgba, 16);
     }
     MLightCount = ScopedLightCount;
+    std::array<LightGridInput, kMaxLightSamples> ScopedGridInputs{};
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+    {
+        ScopedGridInputs[ScopedI].Position = ScopedLights[ScopedI].position;
+        ScopedGridInputs[ScopedI].Radius = ScopedLights[ScopedI].radius;
+    }
+    std::uint64_t ScopedGridSignature = 1469598103934665603ull;
+    const auto ScopedMixGrid = [](std::uint64_t InHash, float InValue)
+    {
+        return (InHash ^ std::bit_cast<std::uint32_t>(InValue)) * 1099511628211ull;
+    };
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+    {
+        ScopedGridSignature = ScopedMixGrid(ScopedGridSignature, ScopedGridInputs[ScopedI].Position.X);
+        ScopedGridSignature = ScopedMixGrid(ScopedGridSignature, ScopedGridInputs[ScopedI].Position.Y);
+        ScopedGridSignature = ScopedMixGrid(ScopedGridSignature, ScopedGridInputs[ScopedI].Radius);
+    }
+    if (!MLightGridValid || ScopedGridSignature != MLightGridSignature)
+    {
+        MLightGrid.Build(std::span<const LightGridInput>(ScopedGridInputs.data(), ScopedLightCount));
+        MLightGridSignature = ScopedGridSignature;
+        MLightGridValid = true;
+        ++MGridBuilds;
+    }
 
     const float ScopedAmbientStrength = std::max(InSettings.AmbientIntensity, 0.0f);
     const float ScopedAmbientRed = UnpackChannel(InSettings.Ambient.rgba, 0) * ScopedAmbientStrength;
@@ -234,8 +280,12 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
         float ScopedRed = ScopedAmbientRed;
         float ScopedGreen = ScopedAmbientGreen;
         float ScopedBlue = ScopedAmbientBlue;
-        for (std::uint32_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+        for (const std::uint32_t ScopedI : MLightGrid.Query(ScopedTransform.Position))
         {
+            if (ScopedI >= ScopedLightCount)
+            {
+                continue;
+            }
             const LightSample& ScopedSample = ScopedLights[ScopedI];
             const Vector2D ScopedDelta = ScopedTransform.Position - ScopedSample.position;
             const float ScopedDistance = std::sqrt(ScopedDelta.LengthSquared());
@@ -264,6 +314,17 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
             ScopedRed *= ScopedScale;
             ScopedGreen *= ScopedScale;
             ScopedBlue *= ScopedScale;
+        }
+        if (ScopedGi != nullptr && InSettings.SdfGiStrength > 0.0f)
+        {
+            if (const SdfGiProbe* ScopedProbe = ScopedGi->ProbeAt(ScopedTransform.Position))
+            {
+                const float ScopedStrength = std::clamp(InSettings.SdfGiStrength, 0.0f, 1.0f);
+                const float ScopedScale = 1.0f - ScopedProbe->Occlusion * ScopedStrength;
+                ScopedRed *= ScopedScale;
+                ScopedGreen *= ScopedScale;
+                ScopedBlue *= ScopedScale;
+            }
         }
         if (InSettings.Tonemap)
         {
@@ -388,7 +449,8 @@ void LightingSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
         return;
     }
     auto* ScopedSelf = static_cast<LightingSystem*>(InUser);
-    (void)ScopedSelf->Run(InContext.registry, ScopedSelf->Settings, ScopedSelf->SdfFieldView());
+    (void)ScopedSelf->Run(InContext.registry, ScopedSelf->Settings, ScopedSelf->SdfFieldView(),
+                          ScopedSelf->SdfBrickMapView(), ScopedSelf->SdfGiVolumeView());
 }
 
 bool LightingSystem::Register(Ecs::SystemGraph& InGraph, LightingSystem& InSystem)

@@ -228,6 +228,12 @@ private:
         PhysicsSystem* physics = nullptr;
         Ecs::CommandBuffer* commands = nullptr;
         FrameArena* frameArena = nullptr;
+        // Project-owned gameplay state shared with the editor world. PIE must
+        // use the same registry ids, not a private copy.
+        GameplayTagRegistry* gameplayTags = nullptr;
+        GameplayAttributeRegistry* gameplayAttributes = nullptr;
+        GameplayEffectSystem* gameplayEffects = nullptr;
+        GameplaySkillSystem* gameplaySkills = nullptr;
     };
 
     [[nodiscard]] static Services CaptureServices(const Ecs::SystemContext& InContext) noexcept;

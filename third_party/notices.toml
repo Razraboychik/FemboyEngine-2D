@@ -184,6 +184,33 @@ url = "https://github.com/IBM/plex"
 license_file = "assets/fonts/IBMPlex-OFL.txt"
 
 [[component]]
+name = "Intel XeSS SDK"
+version = "de0fb9c"
+spdx = "LicenseRef-Intel-XeSS"
+purpose = "Optional XeSS upscaling and XeSS Frame Generation backend"
+copyright = "Copyright (C) 2025 Intel Corporation"
+url = "https://github.com/intel/xess"
+license_file = "third_party/xess/LICENSE.txt"
+
+[[component]]
+name = "AMD FidelityFX SDK"
+version = "7539ae8"
+spdx = "LicenseRef-AMD-FidelityFX"
+purpose = "Optional FSR1/FSR2/FSR3 upscaling and frame-generation backend"
+copyright = "Copyright (C) Advanced Micro Devices, Inc."
+url = "https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK"
+license_file = "third_party/fidelityfx/Kits/FidelityFX/docs/license.md"
+
+[[component]]
+name = "NVIDIA DLSS SDK"
+version = "9981c63"
+spdx = "LicenseRef-NVIDIA-RTX-SDKs"
+purpose = "Optional DLSS upscaling and DLSS Frame Generation backend"
+copyright = "Copyright (c) NVIDIA Corporation"
+url = "https://github.com/NVIDIA/DLSS"
+license_file = "third_party/dlss/LICENSE.txt"
+
+[[component]]
 name = "Noto Sans Arabic/Devanagari/Thai/SC test fonts"
 version = "Google Fonts"
 spdx = "OFL-1.1"

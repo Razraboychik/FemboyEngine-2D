@@ -369,6 +369,21 @@ float WindowManager::DisplayScale() const noexcept
     return ScopedScale > 0.0f ? ScopedScale : 1.0f;
 }
 
+float WindowManager::PixelDensity() const noexcept
+{
+    if (MWindow == nullptr)
+    {
+        return 1.0f;
+    }
+    const float ScopedDensity = SDL_GetWindowPixelDensity(static_cast<SDL_Window*>(MWindow));
+    return ScopedDensity > 0.0f ? ScopedDensity : 1.0f;
+}
+
+float WindowManager::ContentScale() const noexcept
+{
+    return std::max(1.0f, DisplayScale() / PixelDensity());
+}
+
 void* WindowManager::NativeWindow() const noexcept
 {
     return MWindow;

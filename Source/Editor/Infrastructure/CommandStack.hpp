@@ -17,7 +17,10 @@ namespace Fby::Editor
 
 inline constexpr std::uint32_t kMaxCommandCodecs = 64;
 inline constexpr std::uint32_t kMaxUndoCommands = 512;
-inline constexpr std::uint32_t kMaxTrackedComponentBytes = 32768;
+// ProjectSettings now carries the full gameplay tag database and accessibility,
+// render and build policies. Keep the external-buffer cap above that image so
+// settings undo remains a normal command-stack transaction.
+inline constexpr std::uint32_t kMaxTrackedComponentBytes = 128u * 1024u;
 inline constexpr std::uint32_t kMaxTransactionEdits = 16;
 inline constexpr std::uint32_t kMaxSpawnedEntitiesPerTransaction = 32;
 // A spawn command stores the complete component image of one entity. The limit

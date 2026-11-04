@@ -58,8 +58,16 @@ namespace Fby::Rhi::Vk
     X(vkCmdEndRenderPass)                                                                                              \
     X(vkCmdPipelineBarrier)                                                                                            \
     X(vkCmdCopyBuffer)                                                                                                 \
+    X(vkCmdFillBuffer)                                                                                                 \
+    X(vkCreateQueryPool)                                                                                              \
+    X(vkDestroyQueryPool)                                                                                             \
+    X(vkGetQueryPoolResults)                                                                                          \
+    X(vkCmdResetQueryPool)                                                                                            \
+    X(vkCmdWriteTimestamp)                                                                                            \
+    X(vkCmdCopyImage)                                                                                                  \
     X(vkCmdCopyBufferToImage)                                                                                          \
     X(vkCmdCopyImageToBuffer)                                                                                          \
+    X(vkCmdBlitImage)                                                                                                  \
     X(vkCmdClearColorImage)                                                                                          \
     X(vkCmdBindPipeline)                                                                                               \
     X(vkCmdBindDescriptorSets)                                                                                         \
@@ -68,6 +76,7 @@ namespace Fby::Rhi::Vk
     X(vkCmdDraw)                                                       \
     X(vkCmdDrawIndexed)                                                                                                \
     X(vkCmdDrawIndexedIndirect)                                                                                        \
+    X(vkCmdDrawIndexedIndirectCount)                                                                                   \
     X(vkCmdDispatch)                                                                                                   \
     X(vkCmdPushConstants)                                                                                              \
     X(vkCmdSetViewport)                                                                                                \

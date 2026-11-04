@@ -1,5 +1,6 @@
 // FemboyEngine2D - 2D lighting tests: falloff, ambient, emissive, tonemap, SDF.
 #include "Engine/ECS/Lighting.hpp"
+#include "Engine/Physics/SdfBrickMap.hpp"
 #include "Engine/RHI/RHI.hpp"
 
 #include <array>
@@ -192,6 +193,8 @@ void TestSdfShadows()
     TestSdf ScopedWall;
     ScopedWall.Initialize(300.0f, 340.0f);
     FBY_CHECK(ScopedWall.Field.Valid());
+    Fby::SdfBrickMap ScopedBricks;
+    FBY_CHECK(ScopedBricks.Build(ScopedWall.Field, 64.0f));
 
     // Sprite between a wall and a lamp behind it.
     Fby::Ecs::Registry ScopedRegistry;
@@ -231,12 +234,20 @@ void TestSdfShadows()
     const std::uint32_t ScopedShadowed = LightColor(ScopedRegistry, ScopedSprite);
     FBY_CHECK(ScopedSystem.ShadowedSampleCount() > 0);
     FBY_CHECK(NearByte(ScopedShadowed, 0, 0, 3));
+    FBY_CHECK(ScopedSystem.GridBuildCount() == 1u);
+
+    // The sparse map drives the same shadow solve through its brick sampler.
+    (void)ScopedSystem.Run(ScopedRegistry, ScopedSettings, &ScopedWall.Field, &ScopedBricks);
+    const std::uint32_t ScopedBrickShadowed = LightColor(ScopedRegistry, ScopedSprite);
+    FBY_CHECK(ScopedSystem.ShadowedSampleCount() > 0);
+    FBY_CHECK(NearByte(ScopedBrickShadowed, 0, 0, 4));
 
     // A lamp on the open side lights the sprite.
     ScopedRegistry.get<Fby::Transform2D>(ScopedLight).Position = Fby::Vector2D{100.0f, 620.0f};
     (void)ScopedSystem.Run(ScopedRegistry, ScopedSettings, &ScopedWall.Field);
     const std::uint32_t ScopedOpen = LightColor(ScopedRegistry, ScopedSprite);
     FBY_CHECK(!NearByte(ScopedOpen, 0, 0, 3));
+    FBY_CHECK(ScopedSystem.GridBuildCount() == 2u);
 
     // Ambient occlusion darkens a sprite that sits in the wall's crease.
     ScopedSettings.SdfAmbientOcclusion = 1.0f;

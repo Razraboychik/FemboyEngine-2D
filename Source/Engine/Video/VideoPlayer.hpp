@@ -201,5 +201,8 @@ private:
     std::jthread MDecoderThread{};
     bool MThreadRunning = false;
     std::string MErrorText{};
+    // Demuxer error scratch. A local std::string in PumpFrame allocates a debug
+    // container proxy on every call, which breaks the no-allocation frame rule.
+    std::string MDemuxError{};
 };
 }

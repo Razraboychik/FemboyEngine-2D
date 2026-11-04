@@ -1,6 +1,6 @@
 # Project Settings Recommendations
 
-*FemboyEngine2D 0.1.0-alpha.1 - by game scale: light, medium, large*
+*FemboyEngine2D 0.2.0-alpha.1 - by game scale: light, medium, large*
 
 Every project descriptor (project.femproj) mixes three kinds of settings: gameplay simulation, shipping quality and build policy. The same numbers do not fit a two-week jam and a streaming open world. This guide gives one recommendation column per scale, explains the cost behind each value, and lists the mistakes that show up in profiles and bug reports. Treat the values as starting points and measure before shipping.
 
@@ -26,7 +26,7 @@ Every project descriptor (project.femproj) mixes three kinds of settings: gamepl
 | texture_format (art-driven) | rgba8 pixel art; bc7 painted | bc7-srgb; rgba8 for pixel art | bc7-srgb desktop; astc4x4-srgb mobile |
 | max_texture_size | 1024 | 2048 | 4096 |
 | build.optimization | O2 | O2 | O3 (measure O2+LTO first) |
-| build.link_time_optimization | false for iteration | true for release | true for release |
+| build.lto | false for iteration | true for release | true for release |
 | build.strip_debug_info | true for shipping | true for shipping | true for shipping |
 | build.unity_build | true | true | true; disable only for build memory |
 | build.native_arch | false | false | false |
@@ -35,7 +35,7 @@ Every project descriptor (project.femproj) mixes three kinds of settings: gamepl
 | VT page/tile/layers/table | - | 1024/64/2/128 | 2048/64/4/256 |
 | VT budget / prefetch | - | 6 / 1 | 8 / 2 |
 | editor.ui_scale | 1.0 | 1.0-1.25 | 1.0-1.25 |
-| editor.vsync | on | on | on; off only for latency profiling |
+| render.vsync | on | on | on; off only for latency profiling |
 | editor.window_mode | 1 borderless | 1 borderless | 1 borderless; 2 for perf checks |
 
 ## Simulation
@@ -50,7 +50,7 @@ The catch-up cap for a slow frame. 4 is fine for light scenes; 8 is the usual co
 
 ## Audio
 
-### masterVolume / sfxVolume / musicVolume
+### audio master / sfx / music
 
 Keep the defaults at 1.0 and build headroom into the assets: mix music around -6 dBFS and leave peaks for explosions and UI. Boosting the master bus above 1.0 in the project to compensate for quiet assets clips the output and defeats the accessibility and deaf-mode paths. Use the buses for balance and a limiter on the master.
 
@@ -101,7 +101,7 @@ Start from the named layers and disable every pair the game does not use. Each e
 
 O2 is the sane default for iteration and most shipping builds; O3 adds code size and compile time with diminishing returns. For large projects compare O2+LTO against O3 with a real profile: LTO usually wins more than the optimisation level. Never ship an O0 build.
 
-### link_time_optimization
+### build.lto
 
 Off while iterating: LTO makes incremental links slow. On for release builds. If link memory is a problem on CI, use thin LTO or keep unity builds on and split the largest translation units.
 

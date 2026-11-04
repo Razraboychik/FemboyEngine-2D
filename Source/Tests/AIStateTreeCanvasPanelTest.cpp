@@ -85,29 +85,26 @@ void TestFieldWiseComparison()
     Fby::StateTreeEvaluator ScopedA;
     Fby::StateTreeEvaluator ScopedB;
     FBY_CHECK(Fby::Editor::AIStateTreeEvaluatorFieldsEqual(ScopedA, ScopedB));
-    // Reserved is deliberately not in the inspector's field view.
-    ScopedB.Reserved = 0x7FFF;
-    FBY_CHECK(Fby::Editor::AIStateTreeEvaluatorFieldsEqual(ScopedA, ScopedB));
     ScopedB.Threshold = 12.0f;
     FBY_CHECK(!Fby::Editor::AIStateTreeEvaluatorFieldsEqual(ScopedA, ScopedB));
     ScopedB = ScopedA;
-    ScopedB.Kind = Fby::StateTreeEvaluatorKind::TagsAll;
+    ScopedB.Kind = Fby::StateTreeEvaluatorKind::GameplayTagsAll;
     FBY_CHECK(!Fby::Editor::AIStateTreeEvaluatorFieldsEqual(ScopedA, ScopedB));
 
     Fby::StateTreeTask ScopedTaskA;
     Fby::StateTreeTask ScopedTaskB;
     FBY_CHECK(Fby::Editor::AIStateTreeTaskFieldsEqual(ScopedTaskA, ScopedTaskB));
-    ScopedTaskB.Range = 64.0f;
+    ScopedTaskB.ActionId = 64;
     FBY_CHECK(!Fby::Editor::AIStateTreeTaskFieldsEqual(ScopedTaskA, ScopedTaskB));
 
     const Fby::AICommandComponent ScopedMove = Fby::Editor::AIStateTreeCommandFor(Fby::StateTreeTask{}, 3);
     FBY_CHECK(ScopedMove.Kind == static_cast<std::uint32_t>(Fby::AICommandKind::None));
-    Fby::StateTreeTask ScopedAttack;
-    ScopedAttack.Kind = Fby::StateTreeTaskKind::AttackTarget;
-    ScopedAttack.Range = 42.0f;
-    const Fby::AICommandComponent ScopedCommand = Fby::Editor::AIStateTreeCommandFor(ScopedAttack, 9);
-    FBY_CHECK(ScopedCommand.Kind == static_cast<std::uint32_t>(Fby::AICommandKind::Attack));
-    FBY_CHECK(ScopedCommand.Range == 42.0f);
+    Fby::StateTreeTask ScopedAction;
+    ScopedAction.Kind = Fby::StateTreeTaskKind::Action;
+    ScopedAction.ActionId = 42;
+    const Fby::AICommandComponent ScopedCommand = Fby::Editor::AIStateTreeCommandFor(ScopedAction, 9);
+    FBY_CHECK(ScopedCommand.Kind == static_cast<std::uint32_t>(Fby::AICommandKind::Action));
+    FBY_CHECK(ScopedCommand.ActionId == 42);
     FBY_CHECK(ScopedCommand.TaskIndex == 9);
 }
 
@@ -188,7 +185,8 @@ void TestDeadLoopCompile()
     FBY_CHECK(std::string_view(ScopedPanel.Status()).find("dead loop") != std::string_view::npos);
 
     // A closed loop that emits a task is a valid AI behaviour loop.
-    ScopedPanel.Document().Tree.Nodes[ScopedB].Task.Kind = Fby::StateTreeTaskKind::AttackTarget;
+    ScopedPanel.Document().Tree.Nodes[ScopedB].Task.Kind = Fby::StateTreeTaskKind::Action;
+    ScopedPanel.Document().Tree.Nodes[ScopedB].Task.ActionId = 1;
     FBY_CHECK(ScopedPanel.CompileTree());
 }
 
@@ -241,9 +239,14 @@ void TestSceneTomlRoundTrip()
 
     Fby::Editor::CommandStack ScopedCommands;
     FBY_CHECK(ScopedCommands.Initialize());
+    Fby::GameplayTagRegistry ScopedTags;
+    const Fby::GameplayTag ScopedAlertTag = ScopedTags.Register("Character.State.Alert");
     Fby::Editor::AIStateTreeCanvasPanel ScopedPanel;
     FBY_CHECK(ScopedPanel.Initialize(ScopedCommands, 21));
+    ScopedPanel.SetGameplayTagRegistry(&ScopedTags);
     ScopedPanel.SetScenePath(ScopedScene);
+    FBY_CHECK(ScopedPanel.Document().Tree.NodeCount > 0);
+    ScopedPanel.Document().Tree.Nodes[0].Evaluator.Tags.Add(ScopedAlertTag);
     FBY_CHECK(ScopedPanel.CompileTree());
     const std::uint16_t ScopedNodeCount = ScopedPanel.CompiledImage().Tree.NodeCount;
     const std::uint16_t ScopedTransitionCount = ScopedPanel.CompiledImage().Tree.TransitionCount;
@@ -277,6 +280,7 @@ void TestSceneTomlRoundTrip()
     FBY_CHECK(ScopedReloadCommands.Initialize());
     Fby::Editor::AIStateTreeCanvasPanel ScopedReloaded;
     FBY_CHECK(ScopedReloaded.Initialize(ScopedReloadCommands, 21));
+    ScopedReloaded.SetGameplayTagRegistry(&ScopedTags);
     ScopedReloaded.SetScenePath(ScopedScene);
     FBY_CHECK(ScopedReloaded.LoadCompiledFromSceneToml());
     FBY_CHECK(ScopedReloaded.Compiled());
@@ -284,6 +288,7 @@ void TestSceneTomlRoundTrip()
     FBY_CHECK(ScopedReloaded.CompiledImage().Tree.TransitionCount == ScopedTransitionCount);
     FBY_CHECK(ScopedReloaded.CompiledImage().Tree.TreeId == 21);
     FBY_CHECK(ScopedReloaded.CompiledImage().Tree.Nodes[0].Kind == Fby::StateTreeNodeKind::Root);
+    FBY_CHECK(ScopedReloaded.Document().Tree.Nodes[0].Evaluator.Tags.HasExact(ScopedAlertTag));
     FBY_CHECK(ReadText(ScopedScene).find("name = \"ai_canvas_test\"") != std::string::npos);
 
     std::filesystem::remove_all(ScopedDirectory, ScopedCode);

@@ -9,22 +9,49 @@
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/ECS/AnimationEvents.hpp"
 #include "Engine/Physics/Cloth.hpp"
+#include "Engine/Physics/Gravity.hpp"
 #include "Engine/Physics/ClothRenderSystem.hpp"
 #include "Engine/Physics/Physics.hpp"
 #include "Engine/Core/Log.hpp"
+#include "Engine/Core/Profiler.hpp"
+#include "Engine/Core/FrameArena.hpp"
+#include "Engine/ECS/CommandBuffer.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Skeleton.hpp"
 #include "Engine/ECS/SkeletonIk.hpp"
 #include "Engine/ECS/Lighting.hpp"
 #include "Engine/ECS/LightSource.hpp"
+#include "Engine/Physics/SdfBrickMap.hpp"
 #include "Engine/Physics/SdfCollision.hpp"
+#include "Engine/Physics/SdfAtlas.hpp"
+#include "Engine/Physics/SdfGi.hpp"
+#include "Engine/Physics/SdfGiAsset.hpp"
+#include "Engine/Physics/SdfSmoke.hpp"
+#include "Engine/Physics/SdfVolumeAsset.hpp"
+#include "Engine/Physics/SdfWorld.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/ECS/SpriteAnimation.hpp"
+#include "Engine/ECS/StateTree.hpp"
 #include "Engine/ECS/Tilemap.hpp"
+#include "Engine/AI/AIController.hpp"
+#include "Engine/Gameplay/GameplayEffects.hpp"
+#include "Engine/Gameplay/GameplaySkills.hpp"
+#include "Engine/Navigation/NavMesh.hpp"
+#include "Engine/Navigation/Navigation.hpp"
 #include "Engine/Script/ScriptSystem.hpp"
 #include "Engine/RHI/SkinningBridge.hpp"
 #include "Editor/Infrastructure/EditorSystem.hpp"
+#include "Editor/Panels/AIStateTreeCanvasPanel.hpp"
 #include "Editor/Infrastructure/FrameComposer.hpp"
+#include "Engine/RHI/Fsr2Pass.hpp"
+#include "Engine/RHI/DlssAdapter.hpp"
+#include "Engine/Core/WindowHost.hpp"
+#include "Engine/RHI/CustomFrameGenerator.hpp"
+#include "Engine/RHI/FidelityFxRuntime.hpp"
+#include "Engine/RHI/Fsr3FrameGenerator.hpp"
+#include "Engine/RHI/Fsr2Adapter.hpp"
+#include "Editor/Infrastructure/ResolvedRenderSettings.hpp"
+#include "Engine/RHI/OitPass.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
 #include "Editor/Panels/ProjectDashboard.hpp"
 #include "Editor/Panels/SettingsPanels.hpp"
@@ -76,11 +103,44 @@ struct EditorGameSystems
 {
     Fby::SpriteAnimationEventQueue spriteAnimationEvents;
     Fby::SkeletonSystem skeletonSystem;
+    // AI/navigation runtime. The map is built from the first tilemap in the
+    // world; a project can replace it with an SDF-baked NavMap or a custom one.
+    Fby::StateTreeSystem stateTree;
+    Fby::AI::AIControllerSystem aiController;
+    Fby::GravitySystem gravity;
+    Fby::AI::AIPerceptionSystem perception;
+    Fby::GameplayEffectSystem effects;
+    Fby::GameplaySkillSystem skills;
+    Fby::Navigation::NavigationSystem navigation;
+    Fby::Navigation::NavMap navMap;
+    Fby::Navigation::NavMesh navMesh;
+    bool navMapBuilt = false;
+    // The editor owns the authoring panel; the runtime tree is mirrored from it
+    // after a scene load or a recompile.
+    Fby::Editor::EditorSystem* editor = nullptr;
+    std::uint32_t runtimeTreeId = 0xFFFFFFFFu;
+    std::uint16_t runtimeTreeNodeCount = 0;
+    std::uint16_t runtimeTreeTransitionCount = 0;
+    // StateTree writes commands through this buffer; the AI pipeline applies and
+    // resets the arena once per fixed step.
+    std::array<std::byte, 64u << 10> commandArenaStorage{};
+    Fby::FrameArena commandArena{std::span<std::byte>(commandArenaStorage.data(), commandArenaStorage.size())};
+    Fby::Ecs::CommandBuffer commands;
+
+    EditorGameSystems()
+    {
+        commands.Initialize(&commandArena);
+    }
 };
 
 void EventsClear(Fby::Ecs::SystemContext&, void* InUser)
 {
     static_cast<EditorGameSystems*>(InUser)->spriteAnimationEvents.Clear();
+}
+
+void GravityStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    static_cast<EditorGameSystems*>(InUser)->gravity.Update(InContext);
 }
 
 void MovementSystem(Fby::Ecs::SystemContext& InContext, void*)
@@ -189,6 +249,73 @@ void SkeletalEvaluateSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
     static_cast<EditorGameSystems*>(InUser)->skeletonSystem.Run(InContext.registry);
 }
 
+void AIPerceptionStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    static_cast<EditorGameSystems*>(InUser)->perception.Update(InContext);
+}
+
+void StateTreeStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    auto* ScopedSystems = static_cast<EditorGameSystems*>(InUser);
+    if (ScopedSystems->editor != nullptr)
+    {
+        const auto& ScopedPanel = ScopedSystems->editor->AIStateTree();
+        if (ScopedPanel.HasCompiledImage())
+        {
+            const Fby::StateTreeDefinition& ScopedTree = ScopedPanel.CompiledImage().Tree;
+            if (ScopedTree.TreeId != ScopedSystems->runtimeTreeId ||
+                ScopedTree.NodeCount != ScopedSystems->runtimeTreeNodeCount ||
+                ScopedTree.TransitionCount != ScopedSystems->runtimeTreeTransitionCount)
+            {
+                ScopedSystems->stateTree.ClearTrees();
+                (void)ScopedSystems->stateTree.AddTree(ScopedTree);
+                ScopedSystems->runtimeTreeId = ScopedTree.TreeId;
+                ScopedSystems->runtimeTreeNodeCount = ScopedTree.NodeCount;
+                ScopedSystems->runtimeTreeTransitionCount = ScopedTree.TransitionCount;
+            }
+        }
+    }
+    ScopedSystems->stateTree.Run(InContext);
+}
+
+void AICommandApplySystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    if (InContext.commands != nullptr)
+    {
+        InContext.commands->Play(InContext.registry);
+        static_cast<EditorGameSystems*>(InUser)->commandArena.Reset();
+    }
+}
+
+void AIControllerStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    static_cast<EditorGameSystems*>(InUser)->aiController.Update(InContext);
+}
+
+void NavigationStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    auto* ScopedSystems = static_cast<EditorGameSystems*>(InUser);
+    if (!ScopedSystems->navMapBuilt)
+    {
+        auto ScopedTiles = InContext.registry.view<Fby::TilemapComponent>();
+        for (const Fby::Entity ScopedEntity : ScopedTiles)
+        {
+            if (Fby::Navigation::BuildFromTilemap(ScopedTiles.get<Fby::TilemapComponent>(ScopedEntity),
+                                                  &ScopedSystems->navMap))
+            {
+                ScopedSystems->navigation.SetMap(&ScopedSystems->navMap);
+                if (ScopedSystems->navMesh.Build(ScopedSystems->navMap))
+                {
+                    ScopedSystems->navigation.SetNavigationMesh(&ScopedSystems->navMesh);
+                }
+                ScopedSystems->navMapBuilt = true;
+                break;
+            }
+        }
+    }
+    ScopedSystems->navigation.Update(InContext.registry, InContext.dt);
+}
+
 void PhysicsInterpolateSystem(Fby::Ecs::SystemContext& InContext, void*)
 {
     if (InContext.physics != nullptr)
@@ -257,7 +384,8 @@ void SpawnFallbackWorld(Fby::Ecs::Registry& InRegistry)
 }
 
 // A four-cell horizontal flipbook cut from texture-array layer 1. The
-[[nodiscard]] Fby::Entity SpawnSpriteAnimationDemo(Fby::Ecs::Registry& InRegistry, Fby::Assets::AssetHandle InAtlasHandle)
+[[nodiscard]] Fby::Entity SpawnSpriteAnimationDemo(Fby::Ecs::Registry& InRegistry,
+                                                   Fby::Assets::AssetHandle InAtlasHandle)
 {
     const Fby::Entity ScopedEntity = InRegistry.create();
     Fby::Transform2D ScopedTransform;
@@ -471,8 +599,8 @@ int main(int argc, char** argv)
     ScopedWindowDesc.title = "FemboyEngine2D 1.0 - editor";
     ScopedWindowDesc.width = 1600;
     ScopedWindowDesc.height = 900;
-    // Measurement/debug hook: force a 1600x900 window instead of the borderless
-    // fullscreen default (used to read frame times at a fixed resolution).
+    // Measurement/debug hook: force a 1600x900 window for frame-time
+    // measurements at a fixed resolution.
     if (std::getenv("FBY_EDITOR_WINDOWED") != nullptr)
     {
         ScopedWindowDesc.mode = Fby::WindowMode::Windowed;
@@ -596,7 +724,8 @@ int main(int argc, char** argv)
         ScopedAtlasPath.empty() ? Fby::Assets::AssetHandle{}
                                 : ScopedAssetDb.EnsureMeta(ScopedAtlasId, Fby::AssetKind::SpriteSheet, ScopedAtlasPath);
     const Fby::Entity ScopedSpriteAnimationEntity = SpawnSpriteAnimationDemo(ScopedRegistry, ScopedAtlasHandle);
-    Fby::LogInfo("editor_app", "SpriteAnimation demo entity {}: 4 cells, 0.12 s/frame", entt::to_integral(ScopedSpriteAnimationEntity));
+    Fby::LogInfo("editor_app", "SpriteAnimation demo entity {}: 4 cells, 0.12 s/frame",
+                 entt::to_integral(ScopedSpriteAnimationEntity));
     const Fby::Entity ScopedPhysicsEntity = SpawnPhysicsDemo(ScopedRegistry);
     Fby::LogInfo("editor_app", "Box2D demo entity {}: dynamic crate over static ground",
                  entt::to_integral(ScopedPhysicsEntity));
@@ -609,8 +738,8 @@ int main(int argc, char** argv)
     Fby::Text::CodepointShaper ScopedUiFallbackShaper;
     std::string ScopedUiFontError;
     bool ScopedUiFontsReady = false;
-    if (ScopedUiFontStack.AddFont(ScopedVfs, "fonts/IBMPlexSans-Regular.ttf", 0, Fby::Text::TextScript::Latin,
-                                  32.0f, 1024, false, &ScopedUiFontError))
+    if (ScopedUiFontStack.AddFont(ScopedVfs, "fonts/IBMPlexSans-Regular.ttf", 0, Fby::Text::TextScript::Latin, 32.0f,
+                                  1024, false, &ScopedUiFontError))
     {
         ScopedUiFontsReady = ScopedUiFontStack.Fonts().MountToTextureArray(*ScopedGpu);
     }
@@ -620,7 +749,8 @@ int main(int argc, char** argv)
     }
     else
     {
-        Fby::LogWarn("editor_app", "UI text font stack unavailable ({}); using the codepoint shaper", ScopedUiFontError);
+        Fby::LogWarn("editor_app", "UI text font stack unavailable ({}); using the codepoint shaper",
+                     ScopedUiFontError);
         ScopedTextRuntime.SetShaper(&ScopedUiFallbackShaper);
     }
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry,  ScopedJobs,    0.0f,       0,
@@ -635,61 +765,193 @@ int main(int argc, char** argv)
         ScopedContext.fonts = &ScopedUiFontStack.Fonts();
     }
     EditorGameSystems ScopedGameSystems;
+    ScopedContext.commands = &ScopedGameSystems.commands;
 
     // The whole frame graph is function-pointer based. Dependencies are data:
     constexpr std::uint64_t kAfterEvents = 1ull << 0;
-    constexpr std::uint64_t kAfterMovement = 1ull << 1;
-    constexpr std::uint64_t kAfterPhysics = 1ull << 2;
-    constexpr std::uint64_t kAfterContacts = 1ull << 3;
-    constexpr std::uint64_t kAfterSpriteAnimation = 1ull << 4;
+    constexpr std::uint64_t kAfterGravity = 1ull << 1;
+    constexpr std::uint64_t kAfterMovement = 1ull << 2;
+    constexpr std::uint64_t kAfterPhysics = 1ull << 3;
+    constexpr std::uint64_t kAfterContacts = 1ull << 4;
+    constexpr std::uint64_t kAfterSpriteAnimation = 1ull << 5;
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "events_clear", &EventsClear, &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr, kAfterEvents);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "gravity", &GravityStepSystem, &ScopedGameSystems,
+                          kAfterEvents);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr,
+                          kAfterEvents | kAfterGravity);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, nullptr, kAfterMovement);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "contact_to_spriteAnimation", &ContactToSpriteAnimationSystem, &ScopedGameSystems,
-                          kAfterPhysics);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "spriteAnimation", &SpriteAnimationStepSystem, &ScopedGameSystems, kAfterContacts);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "skeletal_animate", &SkeletalAnimateSystem, nullptr, kAfterSpriteAnimation);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "contact_to_spriteAnimation", &ContactToSpriteAnimationSystem,
+                          &ScopedGameSystems, kAfterPhysics);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "spriteAnimation", &SpriteAnimationStepSystem,
+                          &ScopedGameSystems, kAfterContacts);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "skeletal_animate", &SkeletalAnimateSystem, nullptr,
+                          kAfterSpriteAnimation);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ik", &IkSystem, nullptr);
+    // AI pipeline order: StateTree writes intents, the command buffer applies
+    // them, the controller turns them into navigation/skill requests, and the
+    // navigation system moves the agents. Appended after the existing FixedUpdate
+    // nodes, so their relative order is the insertion order.
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_perception", &AIPerceptionStepSystem, &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "state_tree", &StateTreeStepSystem, &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_commands", &AICommandApplySystem, &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_controller", &AIControllerStepSystem, &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "navigation", &NavigationStepSystem, &ScopedGameSystems);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::PreUpdate, "audio", &AudioUpdateSystem);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "skeletal_evaluate", &SkeletalEvaluateSystem, &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "skeletal_evaluate", &SkeletalEvaluateSystem,
+                          &ScopedGameSystems);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "physics_interpolate", &PhysicsInterpolateSystem);
     Fby::LightingSystem ScopedLighting;
-    // A small authored SDF (a plank above the crate and the ground slab) so the
-    // demo scene shows the SDF soft-shadow path: the lamp above the plank does
-    // not light the crate underneath it. 8 world units per cell, origin (400,
-    // 250). The plank sits above the crate sprite's centre, so the crate is not
-    // inside the solid itself; the ground slab is below the ground sprite.
-    std::array<float, 128 * 96> ScopedSdfSamples{};
-    for (std::uint32_t ScopedY = 0; ScopedY < 96; ++ScopedY)
+    // The demo world field is a real `.fsdf` image: analytic sources bake it on
+    // the first run, the bake is cached under Saved/Worlds, and the lighting
+    // path reads the loaded asset instead of a hand-built array. 8 world units
+    // per cell, origin (400, 250). The plank sits above the crate sprite's
+    // centre, so the crate is not inside the solid itself; the ground slab is
+    // below the ground sprite.
+    Fby::SdfWorldDesc ScopedSdfDesc;
+    ScopedSdfDesc.Origin = Fby::Vector2D{400.0f, 250.0f};
+    ScopedSdfDesc.CellSize = Fby::Vector2D{8.0f, 8.0f};
+    ScopedSdfDesc.Width = 128;
+    ScopedSdfDesc.Height = 96;
+    ScopedSdfDesc.NarrowBand = 64.0f;
+    ScopedSdfDesc.OutsideDistance = 1000.0f;
+
+    const std::filesystem::path ScopedSdfPath = std::filesystem::path("Saved") / "Worlds" / "demo.fsdf";
+    std::vector<std::byte> ScopedSdfBytes;
     {
-        for (std::uint32_t ScopedX = 0; ScopedX < 128; ++ScopedX)
+        std::error_code ScopedCode;
+        if (std::filesystem::exists(ScopedSdfPath, ScopedCode))
         {
-            const float ScopedWorldX = 400.0f + (static_cast<float>(ScopedX) + 0.5f) * 8.0f;
-            const float ScopedWorldY = 250.0f + (static_cast<float>(ScopedY) + 0.5f) * 8.0f;
-            const auto ScopedBox = [](float InX, float InY, float InCenterX, float InCenterY, float InHalfX,
-                                      float InHalfY)
+            std::ifstream ScopedStream(ScopedSdfPath, std::ios::binary | std::ios::ate);
+            if (ScopedStream)
             {
-                const float ScopedQx = std::fabs(InX - InCenterX) - InHalfX;
-                const float ScopedQy = std::fabs(InY - InCenterY) - InHalfY;
-                const float ScopedOutX = std::max(ScopedQx, 0.0f);
-                const float ScopedOutY = std::max(ScopedQy, 0.0f);
-                return std::sqrt(ScopedOutX * ScopedOutX + ScopedOutY * ScopedOutY) +
-                       std::min(std::max(ScopedQx, ScopedQy), 0.0f);
-            };
-            const float ScopedCrate = ScopedBox(ScopedWorldX, ScopedWorldY, 900.0f, 478.0f, 44.0f, 8.0f);
-            const float ScopedGround = ScopedBox(ScopedWorldX, ScopedWorldY, 640.0f, 730.0f, 640.0f, 16.0f);
-            ScopedSdfSamples[static_cast<std::size_t>(ScopedY) * 128 + ScopedX] =
-                std::min(ScopedCrate, ScopedGround);
+                const std::streamsize ScopedSize = ScopedStream.tellg();
+                if (ScopedSize > 0)
+                {
+                    ScopedSdfBytes.resize(static_cast<std::size_t>(ScopedSize));
+                    ScopedStream.seekg(0, std::ios::beg);
+                    ScopedStream.read(reinterpret_cast<char*>(ScopedSdfBytes.data()), ScopedSize);
+                }
+            }
         }
     }
-    Fby::SdfField ScopedSdf;
-    ScopedSdf.samples = ScopedSdfSamples.data();
-    ScopedSdf.width = 128;
-    ScopedSdf.height = 96;
-    ScopedSdf.origin = Fby::Vector2D{400.0f, 250.0f};
-    ScopedSdf.cellSize = Fby::Vector2D{8.0f, 8.0f};
-    ScopedSdf.outsideDistance = 1000.0f;
+
+    Fby::SdfVolumeAsset ScopedSdfAsset;
+    std::string ScopedSdfError;
+    if (ScopedSdfBytes.empty() || !ScopedSdfAsset.Load(ScopedSdfBytes, &ScopedSdfError))
+    {
+        // First run or a stale cache: bake from the authored sources, write the
+        // image the next launch loads, then read it back through the loader.
+        Fby::SdfWorld ScopedBakeWorld;
+        (void)ScopedBakeWorld.Configure(ScopedSdfDesc);
+        (void)ScopedBakeWorld.AddBox(Fby::Vector2D{900.0f, 478.0f}, Fby::Vector2D{44.0f, 8.0f});
+        (void)ScopedBakeWorld.AddBox(Fby::Vector2D{640.0f, 730.0f}, Fby::Vector2D{640.0f, 16.0f});
+        (void)ScopedBakeWorld.BakeAll();
+        ScopedSdfBytes.clear();
+        if (ScopedBakeWorld.SaveAsset(&ScopedSdfBytes))
+        {
+            std::error_code ScopedCode;
+            std::filesystem::create_directories(ScopedSdfPath.parent_path(), ScopedCode);
+            std::ofstream ScopedStream(ScopedSdfPath, std::ios::binary | std::ios::trunc);
+            if (ScopedStream)
+            {
+                ScopedStream.write(reinterpret_cast<const char*>(ScopedSdfBytes.data()),
+                                   static_cast<std::streamsize>(ScopedSdfBytes.size()));
+            }
+        }
+        (void)ScopedSdfAsset.Load(ScopedSdfBytes, &ScopedSdfError);
+    }
+
+    std::vector<float> ScopedSdfSamples;
+    Fby::SdfField ScopedSdfField;
+    (void)ScopedSdfAsset.ExpandToField(&ScopedSdfSamples, &ScopedSdfField);
+    const Fby::SdfField& ScopedSdf = ScopedSdfField;
+    const Fby::SdfBrickMap& ScopedSdfBricks = ScopedSdfAsset.Bricks();
+    Fby::SdfGiVolume ScopedSdfGi;
+    (void)ScopedSdfGi.Build(ScopedSdfBricks, ScopedSdf.origin, Fby::Vector2D{64.0f, 64.0f}, 16, 12, 256.0f);
+
+    // Sparse brick atlas for the GPU: packed once from the world bricks and
+    // uploaded by the backend together with the dense field texture.
+    Fby::SdfAtlasImage ScopedSdfAtlas;
+    (void)Fby::PackSdfAtlas(ScopedSdfBricks, &ScopedSdfAtlas);
+
+    // The editor bakes GI into the probe grid and caches the result next to the
+    // world image. The sidecar carries the world hash, so a changed field rebakes
+    // instead of reusing stale probes. Smoke dims the bake before lighting sees it.
+    const std::uint64_t ScopedGiHash = Fby::HashSdfField(ScopedSdf);
+    const std::filesystem::path ScopedGiPath = std::filesystem::path("Saved") / "Worlds" / "demo.fsdgi";
+    Fby::SdfGiAsset ScopedSdfGiAsset;
+    {
+        std::vector<std::byte> ScopedGiBytes;
+        std::error_code ScopedGiCode;
+        if (std::filesystem::exists(ScopedGiPath, ScopedGiCode))
+        {
+            std::ifstream ScopedGiStream(ScopedGiPath, std::ios::binary | std::ios::ate);
+            if (ScopedGiStream)
+            {
+                const std::streamsize ScopedGiSize = ScopedGiStream.tellg();
+                if (ScopedGiSize > 0)
+                {
+                    ScopedGiBytes.resize(static_cast<std::size_t>(ScopedGiSize));
+                    ScopedGiStream.seekg(0, std::ios::beg);
+                    ScopedGiStream.read(reinterpret_cast<char*>(ScopedGiBytes.data()), ScopedGiSize);
+                }
+            }
+        }
+        std::string ScopedGiError;
+        const bool ScopedGiLoaded =
+            !ScopedGiBytes.empty() && ScopedSdfGiAsset.Load(ScopedGiBytes, ScopedGiHash, &ScopedGiError);
+        if (!ScopedGiLoaded)
+        {
+            Fby::SdfGiBakeSettings ScopedGiSettings;
+            ScopedGiSettings.SunDirection = Fby::Vector2D{0.4f, 0.9f};
+            if (ScopedSdfGiAsset.BakeMutable().Build(ScopedSdfBricks, ScopedSdf.origin, Fby::Vector2D{64.0f, 64.0f}, 16,
+                                                     12, ScopedGiSettings))
+            {
+                ScopedSdfGiAsset.SetWorldHash(ScopedGiHash);
+                std::vector<std::byte> ScopedSavedGi;
+                if (Fby::SdfGiAsset::Save(ScopedSdfGiAsset.Bake(), ScopedGiHash, &ScopedSavedGi))
+                {
+                    std::ofstream ScopedGiStream(ScopedGiPath, std::ios::binary | std::ios::trunc);
+                    if (ScopedGiStream)
+                    {
+                        ScopedGiStream.write(reinterpret_cast<const char*>(ScopedSavedGi.data()),
+                                             static_cast<std::streamsize>(ScopedSavedGi.size()));
+                    }
+                }
+            }
+        }
+    }
+    {
+        Fby::SdfSmokeDesc ScopedSmokeDesc;
+        ScopedSmokeDesc.Origin = ScopedSdf.origin;
+        ScopedSmokeDesc.CellSize = Fby::Vector2D{64.0f, 64.0f};
+        ScopedSmokeDesc.Width = 16;
+        ScopedSmokeDesc.Height = 12;
+        Fby::SdfSmokeField ScopedSmoke;
+        if (ScopedSmoke.Configure(ScopedSmokeDesc) &&
+            ScopedSmoke.AddDensityWorld(Fby::Vector2D{900.0f, 520.0f}, 24.0f, 0.6f))
+        {
+            ScopedSmoke.AttenuateGi(ScopedSdfGiAsset.BakeMutable(), Fby::Vector2D{0.4f, 0.9f}, 192.0f);
+        }
+    }
+    for (std::uint32_t ScopedGiY = 0; ScopedGiY < ScopedSdfGi.Height(); ++ScopedGiY)
+    {
+        for (std::uint32_t ScopedGiX = 0; ScopedGiX < ScopedSdfGi.Width(); ++ScopedGiX)
+        {
+            const Fby::SdfGiBakedProbe* ScopedBaked = ScopedSdfGiAsset.Bake().ProbeAt(ScopedGiX, ScopedGiY);
+            if (ScopedBaked == nullptr)
+            {
+                continue;
+            }
+            const std::array<float, Fby::SdfGiLobes> ScopedLobes{ScopedBaked->Direct[0], ScopedBaked->Indirect[0], 0.0f,
+                                                                 0.0f};
+            (void)ScopedSdfGi.SetProbeRadiance(static_cast<std::size_t>(ScopedGiY) * ScopedSdfGi.Width() + ScopedGiX,
+                                               ScopedLobes, 1.0f - ScopedBaked->SunVisibility, ScopedBaked->Openness);
+        }
+    }
     ScopedLighting.SetSdfField(&ScopedSdf);
+    ScopedLighting.SetSdfBrickMap(&ScopedSdfBricks);
+    ScopedLighting.SetSdfGiVolume(&ScopedSdfGi);
     Fby::LightSourceSystem ScopedLightSources;
     ScopedLightSources.SetSdfField(&ScopedSdf);
     ScopedLightSources.Settings.SdfAmbientOcclusion = 0.0f;
@@ -699,6 +961,7 @@ int main(int argc, char** argv)
     (void)ScopedLightingBridge;
     // Keep the demo readable: the shadow term is the point, the AO term is mild.
     ScopedLighting.Settings.SdfAmbientOcclusion = 0.15f;
+    ScopedLighting.Settings.SdfGiStrength = 0.35f;
     ScopedLighting.Settings.SdfSoftness = 18.0f;
     // SDF shadows are per-pixel in the renderer now; the CPU pass keeps only the
     // point-light tint so shadows are not applied twice.
@@ -706,9 +969,11 @@ int main(int argc, char** argv)
     ScopedLighting.Settings.SdfAmbientOcclusion = 0.0f;
     (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "lighting", &LightingStepSystem, &ScopedLightingBridge);
     (void)Fby::ClothRenderSystem::Register(ScopedGraph, ScopedClothRender);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "scripts", &ScriptSystem, &ScopedScripts, kAfterSpriteAnimation);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "scripts", &ScriptSystem, &ScopedScripts,
+                          kAfterSpriteAnimation);
 
     Fby::Editor::EditorSystem ScopedEditor;
+    Fby::Core::Profiler ScopedProfiler;
     Fby::Editor::EditorDesc ScopedEditorDesc;
     Fby::Core::InstallCrashHandler("fby_editor");
     Fby::SetLogCategory("editor");
@@ -726,9 +991,9 @@ int main(int argc, char** argv)
     // Play Multiplayer launches the sandbox from the editor's own directory, so
     // a second copy always matches this build; a missing binary falls back to
     // the local client world.
-    const std::filesystem::path ScopedEditorDirectory =
-        std::filesystem::path(argv[0]).has_parent_path() ? std::filesystem::path(argv[0]).parent_path()
-                                                         : std::filesystem::current_path();
+    const std::filesystem::path ScopedEditorDirectory = std::filesystem::path(argv[0]).has_parent_path()
+                                                            ? std::filesystem::path(argv[0]).parent_path()
+                                                            : std::filesystem::current_path();
     const std::filesystem::path ScopedSandboxPath =
         ScopedEditorDirectory / (std::string("fby_sandbox") + kExecutableSuffix);
     std::error_code ScopedPathError;
@@ -738,6 +1003,17 @@ int main(int argc, char** argv)
     {
         Fby::LogError("editor_app", "editor initialization failed");
         return 3;
+    }
+    // The Profiler panel draws phase rows from the shared profiler.
+    ScopedEditor.SetProfiler(&ScopedProfiler);
+    ScopedGameSystems.editor = &ScopedEditor;
+    if (ScopedContext.gameplayTags != nullptr && ScopedContext.gameplayAttributes != nullptr)
+    {
+        ScopedGameSystems.effects.Initialize(*ScopedContext.gameplayTags, *ScopedContext.gameplayAttributes);
+        ScopedGameSystems.skills.Initialize(*ScopedContext.gameplayTags, *ScopedContext.gameplayAttributes,
+                                            ScopedGameSystems.effects);
+        ScopedContext.gameplayEffects = &ScopedGameSystems.effects;
+        ScopedContext.gameplaySkills = &ScopedGameSystems.skills;
     }
     if (!ScopedEditor.Register(ScopedGraph))
     {
@@ -914,9 +1190,11 @@ int main(int argc, char** argv)
         {
             for (std::int64_t ScopedChunkX = -1; ScopedChunkX <= 8; ++ScopedChunkX)
             {
-                std::vector<std::byte> ScopedChunk(32ull + static_cast<std::size_t>(ScopedChunkPixels) * ScopedChunkPixels * 4u);
+                std::vector<std::byte> ScopedChunk(32ull + static_cast<std::size_t>(ScopedChunkPixels) *
+                                                               ScopedChunkPixels * 4u);
                 std::memcpy(ScopedChunk.data(), Fby::Rhi::kVirtualTextureChunkMagic, 8);
-                const std::uint32_t ScopedHeaderValues[6] = {1u, ScopedVtCfg.tileSize, ScopedVtCfg.chunkTiles, 0u, 0u, 0u};
+                const std::uint32_t ScopedHeaderValues[6] = {1u, ScopedVtCfg.tileSize, ScopedVtCfg.chunkTiles, 0u, 0u,
+                                                             0u};
                 std::memcpy(ScopedChunk.data() + 8, ScopedHeaderValues, sizeof(ScopedHeaderValues));
                 for (std::uint32_t ScopedY = 0; ScopedY < ScopedChunkPixels; ++ScopedY)
                 {
@@ -939,8 +1217,7 @@ int main(int argc, char** argv)
             }
         }
         std::string ScopedVtVfsError;
-        if (ScopedVtOk &&
-            !ScopedVtVfs.MountDirectory(ScopedChunkRoot.string(), 10, &ScopedVtVfsError))
+        if (ScopedVtOk && !ScopedVtVfs.MountDirectory(ScopedChunkRoot.string(), 10, &ScopedVtVfsError))
         {
             Fby::LogWarn("editor_app", "VT demo chunk mount failed: {}", ScopedVtVfsError);
             ScopedVtOk = false;
@@ -960,8 +1237,8 @@ int main(int argc, char** argv)
             ScopedVtTarget.TilesPerAxis = ScopedVtCfg.pageSize / ScopedVtCfg.tileSize;
             ScopedVtSystem = std::make_unique<Fby::Rhi::VirtualTextureSystem>();
             std::string ScopedStreamError;
-            if (!ScopedVtSystem->Initialize(ScopedStreamDesc, ScopedVtVfs, ".", &Fby::Rhi::UploadVirtualTextureTileToRhi,
-                                            &ScopedVtTarget))
+            if (!ScopedVtSystem->Initialize(ScopedStreamDesc, ScopedVtVfs, ".",
+                                            &Fby::Rhi::UploadVirtualTextureTileToRhi, &ScopedVtTarget))
             {
                 Fby::LogWarn("editor_app", "VT demo streaming init failed: {}", ScopedStreamError);
                 ScopedVtSystem.reset();
@@ -1021,6 +1298,50 @@ int main(int argc, char** argv)
     Fby::Rhi::SdfShadowPass ScopedShadowPass;
     Fby::Editor::FrameComposer ScopedExtract;
     Fby::Editor::FrameComposer ScopedPieExtract;
+    std::uint32_t ScopedLastCachedViewTarget = 0xFFFFFFFFu;
+    std::uint32_t ScopedLastCachedPieTarget = 0xFFFFFFFFu;
+    Fby::Rhi::OitPass ScopedOitPass;
+    Fby::Rhi::OitPass ScopedPieOitPass;
+    Fby::Rhi::RenderTargetHandle ScopedPieMotionTarget;
+    Fby::Rhi::Extent2D ScopedPieMotionExtent{};
+    Fby::Rhi::Fsr2Pass ScopedEditorFsr2;
+    Fby::Rhi::Fsr2Pass ScopedPieFsr2;
+    Fby::Rhi::DlssAdapter ScopedEditorDlss;
+    Fby::Rhi::Fsr2Adapter ScopedEditorFsr2Vendor;
+    Fby::Rhi::Fsr3FrameGenerator ScopedEditorFsr3Fg;
+    Fby::Rhi::RenderTargetHandle ScopedFsr3GeneratedTarget{};
+    Fby::Rhi::RenderTargetHandle ScopedDlssFgGeneratedTarget{};
+    bool ScopedDlssFgReady = false;
+    Fby::Rhi::CustomFrameGenerator ScopedEditorFrameGenerator;
+    Fby::Rhi::CustomFrameGenerator ScopedPieFrameGenerator;
+    Fby::Rhi::RenderTargetHandle ScopedGeneratedFrameTarget{};
+    Fby::WindowHost ScopedPieWindowHost;
+    Fby::WindowHost::Handle ScopedPieWindowHandle{};
+    Fby::Rhi::RenderTargetHandle ScopedPieWindowTarget{};
+    Fby::Rhi::TextureArrayHandle ScopedPieWindowTexture{};
+    Fby::Rhi::Extent2D ScopedPieWindowExtent{};
+    Fby::Rhi::Extent2D ScopedPieWindowTargetExtent{};
+    std::vector<std::byte> ScopedPieWindowReadback;
+    Fby::Rhi::RenderTargetHandle ScopedPieGeneratedFrameTarget{};
+    bool ScopedCustomFgReady = false;
+    bool ScopedFsr3FgReady = false;
+    Fby::Rhi::Extent2D ScopedGeneratedFrameExtent{};
+    Fby::Rhi::Extent2D ScopedPieGeneratedFrameExtent{};
+    std::uint64_t ScopedDlssFeatureKey = 0;
+    bool ScopedDlssFeatureCreated = false;
+    if (ScopedAtlas.IsValid())
+    {
+        ScopedExtract.SetOpaqueLayerModes(ScopedAtlas.LayerAlphaModes());
+        ScopedPieExtract.SetOpaqueLayerModes(ScopedAtlas.LayerAlphaModes());
+    }
+    ScopedExtract.SetSdfGiVolume(&ScopedSdfGi, ScopedLighting.Settings.SdfGiStrength);
+    ScopedPieExtract.SetSdfGiVolume(&ScopedSdfGi, ScopedLighting.Settings.SdfGiStrength);
+    if (ScopedGpu != nullptr && ScopedGpu->Info().clusteredLighting)
+    {
+        ScopedExtract.SetGpuLighting(true);
+        ScopedPieExtract.SetGpuLighting(true);
+    }
+    Fby::Vector4D ScopedSdfPreviousCamera{};
     // PIE is the shipped frame in the editor: captions compose into it and the
     // accessibility profile is applied exactly like a game applies it.
     Fby::AccessibilityOverlay ScopedPieOverlay;
@@ -1050,6 +1371,7 @@ int main(int argc, char** argv)
 
     while (!ScopedEditor.ShouldQuit() && ScopedWindow.PumpEvents())
     {
+        (void)ScopedPieWindowHost.PumpEvents();
         // The window close button goes through the editor so an unsaved scene
         // can ask Save/Discard/Cancel instead of disappearing silently.
         if (ScopedWindow.ShouldClose() && !ScopedCloseHandled)
@@ -1061,15 +1383,14 @@ int main(int argc, char** argv)
         float ScopedDt = static_cast<float>(ScopedClock.Delta());
         ScopedDt = std::min(ScopedDt, kMaxFrameTime);
 
-        // Escape is no longer an application shortcut: it used to close the
-        // whole editor and could lose unsaved work. Quitting is File > Quit.
+        // Escape is not an application shortcut; quitting is File > Quit.
         // F11 toggles borderless fullscreen. The dashboard and a project window
         // both honour it, so the editor is never stuck at the authored size.
         if (ScopedWindow.Input().WasPressed(Fby::Key::F11) && !ScopedEditor.WantsKeyboard())
         {
-            const Fby::WindowMode ScopedNextMode =
-                ScopedWindow.Mode() == Fby::WindowMode::BorderlessFullscreen ? Fby::WindowMode::Windowed
-                                                                             : Fby::WindowMode::BorderlessFullscreen;
+            const Fby::WindowMode ScopedNextMode = ScopedWindow.Mode() == Fby::WindowMode::BorderlessFullscreen
+                                                       ? Fby::WindowMode::Windowed
+                                                       : Fby::WindowMode::BorderlessFullscreen;
             if (!ScopedWindow.SetWindowMode(ScopedNextMode))
             {
                 Fby::LogWarn("editor_app", "could not toggle the window mode");
@@ -1110,7 +1431,10 @@ int main(int argc, char** argv)
         ++ScopedFrameIndex;
         ScopedContext.frameIndex = ScopedFrameIndex;
         ScopedContext.dt = ScopedDt;
-        ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
+        {
+            auto ScopedPhaseScope = ScopedProfiler.BeginRound(0);
+            ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
+        }
 
         // Project Settings owns the FixedUpdate rate. Reading it every frame
         const float ScopedFixedUpdateHz =
@@ -1118,12 +1442,15 @@ int main(int argc, char** argv)
         const float ScopedFixedStep = 1.0f / ScopedFixedUpdateHz;
         ScopedAccumulator += ScopedDt;
         int ScopedSteps = 0;
-        while (ScopedAccumulator >= ScopedFixedStep && ScopedSteps < kMaxFixedStepsPerFrame)
         {
-            ScopedContext.dt = ScopedFixedStep;
-            ScopedGraph.Run(Fby::Ecs::Phase::FixedUpdate, ScopedContext);
-            ScopedAccumulator -= ScopedFixedStep;
-            ++ScopedSteps;
+            auto ScopedPhaseScope = ScopedProfiler.BeginRound(1);
+            while (ScopedAccumulator >= ScopedFixedStep && ScopedSteps < kMaxFixedStepsPerFrame)
+            {
+                ScopedContext.dt = ScopedFixedStep;
+                ScopedGraph.Run(Fby::Ecs::Phase::FixedUpdate, ScopedContext);
+                ScopedAccumulator -= ScopedFixedStep;
+                ++ScopedSteps;
+            }
         }
         if (ScopedAccumulator >= ScopedFixedStep)
         {
@@ -1132,8 +1459,15 @@ int main(int argc, char** argv)
 
         ScopedContext.interpolationAlpha = std::clamp(ScopedAccumulator / ScopedFixedStep, 0.0f, 1.0f);
         ScopedContext.dt = ScopedDt;
-        ScopedGraph.Run(Fby::Ecs::Phase::PostUpdate, ScopedContext);
-        ScopedGraph.Run(Fby::Ecs::Phase::Render, ScopedContext);
+        {
+            auto ScopedPhaseScope = ScopedProfiler.BeginRound(2);
+            ScopedGraph.Run(Fby::Ecs::Phase::PostUpdate, ScopedContext);
+        }
+        {
+            auto ScopedPhaseScope = ScopedProfiler.BeginRound(3);
+            ScopedGraph.Run(Fby::Ecs::Phase::Render, ScopedContext);
+        }
+        ScopedProfiler.Record(4, ScopedDt * 1000.0f);
 
         const Fby::Rhi::Extent2D ScopedViewport =
             ScopedEditor.ViewportSize().width > 0
@@ -1147,9 +1481,8 @@ int main(int argc, char** argv)
         Fby::Ecs::Registry* ScopedPlayWorld = ScopedEditor.ActiveWorld();
         Fby::Ecs::Registry& ScopedRenderWorld = ScopedPlayWorld != nullptr ? *ScopedPlayWorld : ScopedRegistry;
         const float ScopedZoom = std::max(ScopedEditor.Camera().zoom, 0.05f);
-        const Fby::Vector2D ScopedViewHalf{
-            static_cast<float>(ScopedViewport.width) * 0.5f / ScopedZoom,
-            static_cast<float>(ScopedViewport.height) * 0.5f / ScopedZoom};
+        const Fby::Vector2D ScopedViewHalf{static_cast<float>(ScopedViewport.width) * 0.5f / ScopedZoom,
+                                           static_cast<float>(ScopedViewport.height) * 0.5f / ScopedZoom};
         const Fby::Vector2D ScopedViewMin = ScopedEditor.Camera().center - ScopedViewHalf;
         const Fby::Vector2D ScopedViewMax = ScopedEditor.Camera().center + ScopedViewHalf;
         Fby::Rhi::SdfLightingFrame ScopedSdfFrame;
@@ -1157,9 +1490,43 @@ int main(int argc, char** argv)
         ScopedExtract.SetViewportMode(static_cast<Fby::Rhi::ViewportMode>(
             Fby::Editor::ClampViewportViewMode(ScopedEditor.Config().Editor().viewportViewMode)));
         ScopedExtract.SetSdfField(&ScopedSdf);
+        const Fby::Editor::ProjectSettings& ScopedProjectSettings = ScopedEditor.ProjectSettings().Values();
+        const Fby::Rhi::FidelityFxRuntimeAvailability ScopedFidelityFxRuntime =
+            Fby::Rhi::DetectFidelityFxRuntime(Fby::Rhi::ExecutableDirectory());
+        const Fby::Rhi::BackendCapabilities ScopedBackendCaps =
+            Fby::Rhi::CapabilitiesFromDevice(ScopedGpu->Info(), {}, ScopedFidelityFxRuntime);
+        const Fby::Editor::ResolvedRenderSettings ScopedRenderSettings = Fby::Editor::ResolveRenderSettings(
+            ScopedProjectSettings, ScopedEditor.UserConfig(), {}, &ScopedBackendCaps);
+        ScopedExtract.SetOpaqueFrontToBack(ScopedProjectSettings.opaqueMode != Fby::Editor::OpaqueRenderMode::Off);
+        ScopedExtract.SetForceOpaqueCutout(ScopedProjectSettings.opaqueArtCutout);
+        ScopedExtract.SetOitMode(static_cast<std::uint8_t>(ScopedRenderSettings.oitMode));
+        ScopedGpu->SetOitMode(static_cast<std::uint8_t>(ScopedRenderSettings.oitMode));
+        ScopedGpu->SetUpscaleMode(static_cast<std::uint8_t>(ScopedRenderSettings.upscaleMode));
+        // Motion vectors are only produced while a temporal upscaler or frame
+        // generation consumes them; the extract skips the history walk otherwise.
+        ScopedExtract.SetTemporalState(ScopedRenderSettings.upscaleMode == Fby::Editor::UpscaleMode::Fsr2 ||
+                                       ScopedRenderSettings.frameGeneration != Fby::Editor::FrameGenerationMode::Off);
         ScopedExtract.BuildFramePacket(ScopedRenderWorld, ScopedCamera, Fby::Color32::FromBytes(12, 14, 22),
-                                       ScopedTextureArray, ScopedClothRender.Items(),
-                                       ScopedTilemapRender.Quads());
+                                       ScopedTextureArray, ScopedClothRender.Items(), ScopedTilemapRender.Quads());
+        if (ScopedEditor.ViewportMotionTarget().IsValid())
+        {
+            if (!ScopedExtract.Packet().historyValid)
+            {
+                (void)ScopedGpu->ClearMotionVectors(ScopedEditor.ViewportMotionTarget());
+            }
+            else if (!ScopedExtract.Packet().motionItems.empty())
+            {
+                (void)ScopedGpu->UploadMotionVectors(ScopedExtract.Packet().motionItems);
+                (void)ScopedGpu->RenderMotionVectors(
+                    ScopedEditor.ViewportMotionTarget(),
+                    static_cast<std::uint32_t>(ScopedExtract.Packet().motionItems.size()), ScopedCamera.center,
+                    ScopedExtract.Packet().previousCamera.center, ScopedCamera.zoom,
+                    ScopedExtract.Packet().previousCamera.zoom,
+                    {ScopedExtract.Packet().jitterX, ScopedExtract.Packet().jitterY},
+                    {ScopedExtract.Packet().previousJitterX, ScopedExtract.Packet().previousJitterY},
+                    ScopedCamera.viewport);
+            }
+        }
         if (ScopedVtDemo)
         {
             const Fby::Vector2D ScopedVtCenter = ScopedEditor.Camera().center;
@@ -1180,10 +1547,9 @@ int main(int argc, char** argv)
                 std::array<std::uint32_t, 256> ScopedFeedback{};
                 std::array<Fby::Rhi::VirtualTextureTileId, 256> ScopedRequests{};
                 std::uint32_t ScopedRequestCount = 0;
-                const std::uint32_t ScopedFeedbackCount =
-                    ScopedGpu->ReadVirtualTextureFeedback(ScopedFeedback);
-                for (std::uint32_t ScopedI = 0; ScopedI < ScopedFeedbackCount && ScopedRequestCount < ScopedRequests.size();
-                     ++ScopedI)
+                const std::uint32_t ScopedFeedbackCount = ScopedGpu->ReadVirtualTextureFeedback(ScopedFeedback);
+                for (std::uint32_t ScopedI = 0;
+                     ScopedI < ScopedFeedbackCount && ScopedRequestCount < ScopedRequests.size(); ++ScopedI)
                 {
                     std::int32_t ScopedTileX = 0;
                     std::int32_t ScopedTileY = 0;
@@ -1261,11 +1627,11 @@ int main(int argc, char** argv)
                 ScopedVtTotalMisses += ScopedVtStats.vfsMisses;
                 if (ScopedFrameIndex % 120 == 0)
                 {
-                    Fby::LogInfo("editor_app",
-                                 "VT stream: resident={} total uploads={} evictions={} misses={} deferred={} fps={:.1f}",
-                                 ScopedVtStats.residentTiles, ScopedVtTotalUploads, ScopedVtTotalEvictions,
-                                 ScopedVtTotalMisses, ScopedVtStats.spills,
-                                 1.0f / std::max(static_cast<float>(ScopedDt), 1.0e-6f));
+                    Fby::LogInfo(
+                        "editor_app",
+                        "VT stream: resident={} total uploads={} evictions={} misses={} deferred={} fps={:.1f}",
+                        ScopedVtStats.residentTiles, ScopedVtTotalUploads, ScopedVtTotalEvictions, ScopedVtTotalMisses,
+                        ScopedVtStats.spills, 1.0f / std::max(static_cast<float>(ScopedDt), 1.0e-6f));
                 }
             }
             // Keep the demo quad under the camera and make the tile under the
@@ -1276,8 +1642,7 @@ int main(int argc, char** argv)
             }
             const float ScopedVtTileWorld = ScopedVtWorldTile;
             ScopedExtract.SetVirtualTexture(
-                ScopedVtHandle,
-                Fby::Vector4D{ScopedVtTileWorld, 0.0f, 0.0f, 1.0f},
+                ScopedVtHandle, Fby::Vector4D{ScopedVtTileWorld, 0.0f, 0.0f, 1.0f},
                 Fby::Vector4D{static_cast<float>(ScopedVtTileSize), static_cast<float>(ScopedVtPageSize),
                               static_cast<float>(ScopedVtTableSize), static_cast<float>(ScopedVtTableSize)});
             ScopedExtract.SetVirtualTextureDebugMode(ScopedEditor.VirtualTextureDebugMode());
@@ -1288,6 +1653,21 @@ int main(int argc, char** argv)
         {
             if (Fby::BuildSdfLightingFrame(ScopedRenderWorld, &ScopedSdf, &ScopedSdfFrame))
             {
+                ScopedSdfFrame.camera =
+                    Fby::Vector4D{ScopedCamera.center.X, ScopedCamera.center.Y, ScopedCamera.zoom, 0.0f};
+                ScopedSdfFrame.viewport = Fby::Vector4D{ScopedCamera.viewport.X, ScopedCamera.viewport.Y, 0.0f, 0.0f};
+                ScopedSdfFrame.temporal = true;
+                ScopedSdfFrame.previousCamera = ScopedSdfPreviousCamera;
+                ScopedSdfPreviousCamera = ScopedSdfFrame.camera;
+                if (!ScopedSdfAtlas.Table.empty() && !ScopedSdfAtlas.Texels.empty())
+                {
+                    ScopedSdfFrame.brickTable = reinterpret_cast<const std::byte*>(ScopedSdfAtlas.Table.data());
+                    ScopedSdfFrame.brickCount = static_cast<std::uint32_t>(ScopedSdfAtlas.Table.size());
+                    ScopedSdfFrame.atlasTexels = ScopedSdfAtlas.Texels.data();
+                    ScopedSdfFrame.atlasWidth = ScopedSdfAtlas.Width;
+                    ScopedSdfFrame.atlasHeight = ScopedSdfAtlas.Height;
+                    ScopedSdfFrame.atlasColumns = ScopedSdfAtlas.Columns;
+                }
                 ScopedExtract.SetSdfLighting(ScopedSdfFrame);
                 if (!ScopedSdfLogged)
                 {
@@ -1364,9 +1744,35 @@ int main(int argc, char** argv)
                     ScopedPieState.center,
                     {static_cast<float>(ScopedPieViewport.width), static_cast<float>(ScopedPieViewport.height)},
                     ScopedPieState.zoom};
-                ScopedPieExtract.BuildFramePacket(*ScopedPieWorld, ScopedPieCamera,
-                                                  Fby::Color32::FromBytes(12, 14, 22), ScopedTextureArray, {},
-                                                  ScopedPieTilemapRender.Quads());
+                const Fby::Editor::ProjectSettings& ScopedPieSettings = ScopedEditor.ProjectSettings().Values();
+                if (!ScopedPieWindowHandle.IsValid())
+                {
+                    Fby::WindowDesc ScopedPieWindowDesc;
+                    ScopedPieWindowDesc.title = "FemboyEngine2D - PIE";
+                    ScopedPieWindowDesc.width = 800;
+                    ScopedPieWindowDesc.height = 450;
+                    ScopedPieWindowDesc.mode = Fby::WindowMode::Windowed;
+                    Fby::Rhi::DeviceDesc ScopedPieDeviceDesc;
+                    ScopedPieDeviceDesc.backend = Fby::Rhi::SelectDefaultBackend();
+                    ScopedPieDeviceDesc.size = {ScopedPieWindowDesc.width, ScopedPieWindowDesc.height};
+                    ScopedPieDeviceDesc.vsync = false;
+                    ScopedPieWindowHandle = ScopedPieWindowHost.Create(ScopedPieWindowDesc, ScopedPieDeviceDesc);
+                }
+                const Fby::Editor::ResolvedRenderSettings ScopedPieRenderSettings = Fby::Editor::ResolveRenderSettings(
+                    ScopedPieSettings, ScopedEditor.UserConfig(), {}, &ScopedBackendCaps);
+                ScopedPieExtract.SetOpaqueFrontToBack(ScopedPieSettings.opaqueMode !=
+                                                      Fby::Editor::OpaqueRenderMode::Off);
+                ScopedPieExtract.SetForceOpaqueCutout(ScopedPieSettings.opaqueArtCutout);
+                ScopedPieExtract.SetOitMode(static_cast<std::uint8_t>(ScopedPieRenderSettings.oitMode));
+                ScopedGpu->SetOitMode(static_cast<std::uint8_t>(ScopedPieRenderSettings.oitMode));
+                ScopedGpu->SetUpscaleMode(static_cast<std::uint8_t>(ScopedPieRenderSettings.upscaleMode));
+                // The PIE viewport feeds the same temporal consumers as the
+                // authoring viewport, so its motion history follows the same rule.
+                ScopedPieExtract.SetTemporalState(
+                    ScopedPieRenderSettings.upscaleMode == Fby::Editor::UpscaleMode::Fsr2 ||
+                    ScopedPieRenderSettings.frameGeneration != Fby::Editor::FrameGenerationMode::Off);
+                ScopedPieExtract.BuildFramePacket(*ScopedPieWorld, ScopedPieCamera, Fby::Color32::FromBytes(12, 14, 22),
+                                                  ScopedTextureArray, {}, ScopedPieTilemapRender.Quads());
                 // The PIE viewport is the shipped frame: it gets the project
                 // accessibility profile, while the authoring viewport keeps its
                 // own editor-window policy.
@@ -1383,37 +1789,494 @@ int main(int argc, char** argv)
                 {
                     Fby::AccessibilityKernel& ScopedKernel = *ScopedContext.accessibility;
                     ScopedKernel.AdvanceCaptionClock(ScopedDt);
-                    (void)ScopedPieOverlay.Build(
-                        ScopedContext, ScopedKernel,
-                        Fby::Vector2D{static_cast<float>(ScopedPieViewport.width),
-                                      static_cast<float>(ScopedPieViewport.height)});
-                    ScopedPieItems.resize(ScopedPiePacket.items.size() +
-                                          Fby::AccessibilityOverlay::kMaxOverlayItems);
-                    ScopedPieKeys.resize(ScopedPiePacket.keys.size() +
-                                         Fby::AccessibilityOverlay::kMaxOverlayItems);
+                    (void)ScopedPieOverlay.Build(ScopedContext, ScopedKernel,
+                                                 Fby::Vector2D{static_cast<float>(ScopedPieViewport.width),
+                                                               static_cast<float>(ScopedPieViewport.height)});
+                    ScopedPieItems.resize(ScopedPiePacket.items.size() + Fby::AccessibilityOverlay::kMaxOverlayItems);
+                    ScopedPieKeys.resize(ScopedPiePacket.keys.size() + Fby::AccessibilityOverlay::kMaxOverlayItems);
                     ScopedPieBatches.resize(ScopedPiePacket.batches.size() +
                                             Fby::AccessibilityOverlay::kMaxOverlayBatches);
-                    (void)ScopedPieOverlay.Compose(ScopedPiePacket, ScopedPieItems, ScopedPieKeys,
-                                                   ScopedPieBatches);
+                    (void)ScopedPieOverlay.Compose(ScopedPiePacket, ScopedPieItems, ScopedPieKeys, ScopedPieBatches);
                     // The offscreen target path runs the GPU composite pass, so the
                     // colour transform travels as packet flags only.
                     ScopedKernel.ApplyToFrame(ScopedPiePacket);
                 }
-                (void)ScopedGpu->RenderToTarget(ScopedPieTarget, ScopedPiePacket);
+                if (ScopedPieSettings.oitMode != Fby::Editor::OitMode::Off &&
+                    !ScopedPieExtract.OitPacket().items.empty() &&
+                    ScopedPieOitPass.Render(*ScopedGpu, ScopedPieExtract.OitPacket(), ScopedPieViewport))
+                {
+                    ScopedPiePacket.oitAccumulation = ScopedPieOitPass.Accumulation().id;
+                    ScopedPiePacket.oitRevealage = ScopedPieOitPass.Revealage().id;
+                }
+                if (ScopedPieMotionExtent.width != ScopedPieViewport.width ||
+                    ScopedPieMotionExtent.height != ScopedPieViewport.height)
+                {
+                    if (ScopedPieMotionTarget.IsValid())
+                    {
+                        ScopedGpu->DestroyRenderTarget(ScopedPieMotionTarget);
+                    }
+                    ScopedPieMotionTarget = ScopedGpu->CreateMotionVectorTarget(ScopedPieViewport);
+                    ScopedPieMotionExtent = ScopedPieViewport;
+                }
+                if (ScopedPieMotionTarget.IsValid() && !ScopedPiePacket.historyValid)
+                {
+                    (void)ScopedGpu->ClearMotionVectors(ScopedPieMotionTarget);
+                }
+                else if (ScopedPieMotionTarget.IsValid() && !ScopedPiePacket.motionItems.empty())
+                {
+                    (void)ScopedGpu->UploadMotionVectors(ScopedPiePacket.motionItems);
+                    (void)ScopedGpu->RenderMotionVectors(
+                        ScopedPieMotionTarget, static_cast<std::uint32_t>(ScopedPiePacket.motionItems.size()),
+                        ScopedPieCamera.center, ScopedPiePacket.previousCamera.center, ScopedPieCamera.zoom,
+                        ScopedPiePacket.previousCamera.zoom, {ScopedPiePacket.jitterX, ScopedPiePacket.jitterY},
+                        {ScopedPiePacket.previousJitterX, ScopedPiePacket.previousJitterY}, ScopedPieCamera.viewport);
+                }
+                const bool ScopedPieCached = ScopedEditor.ProjectSettings().Values().staticBakeEnabled &&
+                                             ScopedPiePacket.sceneStatic && !ScopedPiePacket.postFxEnabled &&
+                                             !ScopedPiePacket.sdf.enabled &&
+                                             ScopedLastCachedPieTarget == ScopedPieTarget.id;
+                if (!ScopedPieCached)
+                {
+                    (void)ScopedGpu->RenderToTarget(ScopedPieTarget, ScopedPiePacket);
+                    ScopedLastCachedPieTarget = ScopedPieTarget.id;
+                }
+                if (ScopedEditor.PieClientDisplayTarget().IsValid())
+                {
+                    if (ScopedPieRenderSettings.upscaleMode == Fby::Editor::UpscaleMode::Fsr2 &&
+                        ScopedPieFsr2.Ensure(*ScopedGpu, ScopedEditor.PieClientRenderSize(),
+                                             ScopedEditor.PieClientSize()))
+                    {
+                        (void)ScopedPieFsr2.Resolve(
+                            *ScopedGpu, ScopedPieTarget, ScopedPieMotionTarget, ScopedEditor.PieClientDisplayTarget(),
+                            !ScopedPiePacket.historyValid, ScopedEditor.UserConfig().fsr1Sharpness);
+                    }
+                    else if (ScopedEditor.PieClientFsr1Intermediate().IsValid())
+                    {
+                        (void)ScopedGpu->UpscaleRenderTarget(ScopedPieTarget, ScopedEditor.PieClientFsr1Intermediate(),
+                                                             Fby::Rhi::SpatialUpscaleMode::Fsr1);
+                        (void)ScopedGpu->RcasSharpen(ScopedEditor.PieClientFsr1Intermediate(),
+                                                     ScopedEditor.PieClientDisplayTarget(),
+                                                     ScopedEditor.UserConfig().fsr1Sharpness);
+                    }
+                    if (ScopedPieRenderSettings.frameGeneration == Fby::Editor::FrameGenerationMode::Custom &&
+                        !ScopedEditor.UserConfig().hudVisible)
+                    {
+                        const Fby::Rhi::Extent2D ScopedPieDisplayExtent = ScopedEditor.PieClientSize();
+                        if (ScopedPieGeneratedFrameTarget.IsValid() &&
+                            (ScopedPieGeneratedFrameExtent.width != ScopedPieDisplayExtent.width ||
+                             ScopedPieGeneratedFrameExtent.height != ScopedPieDisplayExtent.height))
+                        {
+                            ScopedGpu->DestroyRenderTarget(ScopedPieGeneratedFrameTarget);
+                            ScopedPieGeneratedFrameTarget = {};
+                            ScopedPieFrameGenerator.ResetHistory();
+                        }
+                        if (!ScopedPieGeneratedFrameTarget.IsValid() && ScopedPieDisplayExtent.width > 0 &&
+                            ScopedPieDisplayExtent.height > 0)
+                        {
+                            Fby::Rhi::RenderTargetDesc ScopedPieGeneratedDesc;
+                            ScopedPieGeneratedDesc.size = ScopedPieDisplayExtent;
+                            ScopedPieGeneratedDesc.srgb = false;
+                            ScopedPieGeneratedFrameTarget = ScopedGpu->CreateRenderTarget(ScopedPieGeneratedDesc);
+                            ScopedPieGeneratedFrameExtent = ScopedPieDisplayExtent;
+                        }
+                        if (ScopedPieGeneratedFrameTarget.IsValid() &&
+                            ScopedPieFrameGenerator.Initialize(*ScopedGpu, ScopedPieDisplayExtent,
+                                                               ScopedPieDisplayExtent))
+                        {
+                            Fby::Rhi::FrameGenerationInput ScopedPieFgInput;
+                            ScopedPieFgInput.Color = ScopedEditor.PieClientDisplayTarget();
+                            ScopedPieFgInput.Depth = ScopedPieTarget;
+                            ScopedPieFgInput.Motion = ScopedPieMotionTarget;
+                            ScopedPieFgInput.History = ScopedPieGeneratedFrameTarget;
+                            ScopedPieFgInput.Output = ScopedPieGeneratedFrameTarget;
+                            ScopedPieFgInput.RenderExtent = ScopedPieDisplayExtent;
+                            ScopedPieFgInput.OutputExtent = ScopedPieDisplayExtent;
+                            ScopedPieFgInput.ResetHistory = !ScopedPiePacket.historyValid;
+                            ScopedPieFgInput.HudSeparated = true;
+                            ScopedPieFgInput.Fps = ScopedDt > 0.0f ? 1.0f / ScopedDt : 60.0f;
+                            ScopedPieFgInput.DeltaMs = ScopedDt * 1000.0f;
+                            ScopedPieFgInput.RealFrame = true;
+                            if (ScopedPieFrameGenerator.Generate(*ScopedGpu, ScopedPieFgInput))
+                            {
+                                (void)ScopedGpu->CopyColorImage(ScopedPieGeneratedFrameTarget,
+                                                                ScopedEditor.PieClientDisplayTarget());
+                            }
+                        }
+                    }
+                }
             }
             if (ScopedTarget.IsValid())
             {
-                (void)ScopedGpu->RenderToTarget(ScopedTarget, ScopedExtract.Packet());
+                const bool ScopedViewCached =
+                    ScopedEditor.ProjectSettings().Values().staticBakeEnabled && ScopedExtract.Packet().sceneStatic &&
+                    !ScopedExtract.Packet().postFxEnabled && !ScopedExtract.Packet().sdf.enabled &&
+                    ScopedLastCachedViewTarget == ScopedTarget.id;
+                if (!ScopedViewCached)
+                {
+                    (void)ScopedGpu->RenderToTarget(ScopedTarget, ScopedExtract.Packet());
+                    ScopedLastCachedViewTarget = ScopedTarget.id;
+                }
+                bool ScopedFsr2VendorUsed = false;
+                if (ScopedRenderSettings.upscalerBackend == Fby::Editor::UpscalerBackendSetting::Fsr2 &&
+                    ScopedEditor.ViewportDisplayTarget().IsValid())
+                {
+                    Fby::Rhi::NativeTextureView ScopedColorView;
+                    Fby::Rhi::NativeTextureView ScopedDepthView;
+                    Fby::Rhi::NativeTextureView ScopedMotionView;
+                    Fby::Rhi::NativeTextureView ScopedOutputView;
+                    Fby::Rhi::RHI::NativeDeviceHandles ScopedNativeDevice;
+                    if (ScopedGpu->GetNativeDeviceHandles(ScopedNativeDevice) &&
+                        ScopedGpu->RenderTargetTexture(ScopedTarget, ScopedColorView) &&
+                        ScopedGpu->RenderTargetDepthTexture(ScopedTarget, ScopedDepthView) &&
+                        ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportMotionTarget(), ScopedMotionView) &&
+                        ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportDisplayTarget(), ScopedOutputView) &&
+                        ScopedEditorFsr2Vendor.Initialize(
+                            ScopedNativeDevice.Device, ScopedNativeDevice.PhysicalDevice,
+                            ScopedNativeDevice.DeviceProcAddr, ScopedEditor.ViewportRenderSize().width,
+                            ScopedEditor.ViewportRenderSize().height, ScopedEditor.ViewportSize().width,
+                            ScopedEditor.ViewportSize().height))
+                    {
+                        ScopedFsr2VendorUsed = ScopedEditorFsr2Vendor.Dispatch(
+                            ScopedGpu->CurrentCommandBuffer(), ScopedColorView.view, ScopedDepthView.view,
+                            ScopedMotionView.view, nullptr, ScopedOutputView.view,
+                            ScopedEditor.ViewportRenderSize().width, ScopedEditor.ViewportRenderSize().height,
+                            ScopedEditor.ViewportSize().width, ScopedEditor.ViewportSize().height,
+                            ScopedExtract.Packet().jitterX, ScopedExtract.Packet().jitterY,
+                            !ScopedExtract.Packet().historyValid);
+                    }
+                }
+                const bool ScopedDlssActive =
+                    ScopedRenderSettings.upscalerBackend == Fby::Editor::UpscalerBackendSetting::Dlss &&
+                    ScopedBackendCaps.Dlss;
+                if (ScopedFsr2VendorUsed)
+                {
+                }
+                else if (ScopedDlssActive)
+                {
+                    Fby::Rhi::NativeTextureView ScopedColorView;
+                    Fby::Rhi::NativeTextureView ScopedDepthView;
+                    Fby::Rhi::NativeTextureView ScopedMotionView;
+                    Fby::Rhi::NativeTextureView ScopedOutputView;
+                    const bool ScopedViews =
+                        ScopedGpu->RenderTargetTexture(ScopedTarget, ScopedColorView) &&
+                        ScopedGpu->RenderTargetDepthTexture(ScopedTarget, ScopedDepthView) &&
+                        ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportMotionTarget(), ScopedMotionView) &&
+                        ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportDisplayTarget(), ScopedOutputView);
+                    const std::uint64_t ScopedFeatureKey =
+                        (static_cast<std::uint64_t>(ScopedTarget.id) << 32) ^
+                        (static_cast<std::uint64_t>(ScopedEditor.ViewportDisplayTarget().id) << 16) ^
+                        (static_cast<std::uint64_t>(ScopedEditor.ViewportRenderSize().width) << 8) ^
+                        static_cast<std::uint64_t>(ScopedEditor.ViewportRenderSize().height);
+                    if (ScopedViews && ScopedEditorDlss.Initialize(*ScopedGpu) &&
+                        (ScopedDlssFeatureKey != ScopedFeatureKey))
+                    {
+                        if (ScopedEditorDlss.CreateFeature(
+                                ScopedGpu->CurrentCommandBuffer(), ScopedColorView.view, ScopedDepthView.view,
+                                ScopedMotionView.view, ScopedOutputView.view, ScopedEditor.ViewportRenderSize().width,
+                                ScopedEditor.ViewportRenderSize().height, ScopedEditor.UserConfig().dlssQuality))
+                        {
+                            ScopedDlssFeatureKey = ScopedFeatureKey;
+                            ScopedDlssFeatureCreated = true;
+                        }
+                    }
+                    if (ScopedDlssFeatureCreated && ScopedDlssFeatureKey == ScopedFeatureKey)
+                    {
+                        (void)ScopedGpu->TransitionRenderTargetLayout(
+                            ScopedEditor.ViewportDisplayTarget(), static_cast<int>(Fby::Rhi::ImageLayout::ShaderRead),
+                            static_cast<int>(Fby::Rhi::ImageLayout::General));
+                        ScopedEditorDlss.SetJitter(ScopedExtract.Packet().jitterX, ScopedExtract.Packet().jitterY);
+                        (void)ScopedEditorDlss.Evaluate(ScopedGpu->CurrentCommandBuffer());
+                        (void)ScopedGpu->TransitionRenderTargetLayout(
+                            ScopedEditor.ViewportDisplayTarget(), static_cast<int>(Fby::Rhi::ImageLayout::General),
+                            static_cast<int>(Fby::Rhi::ImageLayout::ShaderRead));
+                    }
+                }
+                else if (ScopedEditor.ViewportUpscaleActive())
+                {
+                    if (ScopedRenderSettings.upscaleMode == Fby::Editor::UpscaleMode::Fsr2)
+                    {
+                        if (ScopedEditorFsr2.Ensure(*ScopedGpu, ScopedEditor.ViewportRenderSize(),
+                                                    ScopedEditor.ViewportSize()))
+                        {
+                            (void)ScopedEditorFsr2.Resolve(
+                                *ScopedGpu, ScopedTarget, ScopedEditor.ViewportMotionTarget(),
+                                ScopedEditor.ViewportDisplayTarget(), !ScopedExtract.Packet().historyValid,
+                                ScopedEditor.UserConfig().fsr1Sharpness);
+                        }
+                    }
+                    else if (ScopedEditor.ViewportFsr1Intermediate().IsValid())
+                    {
+                        (void)ScopedGpu->UpscaleRenderTarget(ScopedTarget, ScopedEditor.ViewportFsr1Intermediate(),
+                                                             Fby::Rhi::SpatialUpscaleMode::Fsr1);
+                        (void)ScopedGpu->RcasSharpen(ScopedEditor.ViewportFsr1Intermediate(),
+                                                     ScopedEditor.ViewportDisplayTarget(),
+                                                     ScopedEditor.UserConfig().fsr1Sharpness);
+                    }
+                    else
+                    {
+                        (void)ScopedGpu->UpscaleRenderTarget(ScopedTarget, ScopedEditor.ViewportDisplayTarget(),
+                                                             Fby::Rhi::SpatialUpscaleMode::Fsr1);
+                    }
+                }
             }
 
             // The swapchain pass is UI-only: RenderToTarget already drew the
             Fby::Rhi::FramePacket ScopedMainPass;
+            if (ScopedProjectSettings.oitMode != Fby::Editor::OitMode::Off && !ScopedExtract.OitPacket().items.empty())
+            {
+                const Fby::Rhi::Extent2D ScopedOitExtent = ScopedEditor.ViewportSize();
+                if (ScopedOitPass.Render(*ScopedGpu, ScopedExtract.OitPacket(), ScopedOitExtent))
+                {
+                    ScopedMainPass.oitAccumulation = ScopedOitPass.Accumulation().id;
+                    ScopedMainPass.oitRevealage = ScopedOitPass.Revealage().id;
+                }
+            }
             ScopedMainPass.clear = Fby::Color32::FromBytes(18, 19, 26);
-            ScopedGpu->Submit(ScopedMainPass);
-            ScopedGpu->EndFrame();
+            const bool ScopedHudVisible = ScopedEditor.UserConfig().hudVisible;
+            ScopedGpu->SetUiVisible(ScopedHudVisible);
+            ScopedGpu->SetHudUpscale(ScopedEditor.UserConfig().hudUpscale == Fby::Editor::UpscaleMode::Nearest);
+            if (ScopedHudVisible && ScopedEditor.ViewportHudTarget().IsValid())
+            {
+                (void)ScopedGpu->RenderHudTarget();
+            }
+            const bool ScopedCustomFgActive =
+                ScopedRenderSettings.frameGeneration == Fby::Editor::FrameGenerationMode::Custom;
+            if (ScopedCustomFgActive)
+            {
+                const Fby::Rhi::Extent2D ScopedDisplayExtent = ScopedEditor.ViewportSize();
+                if (ScopedGeneratedFrameTarget.IsValid() &&
+                    (ScopedGeneratedFrameExtent.width != ScopedDisplayExtent.width ||
+                     ScopedGeneratedFrameExtent.height != ScopedDisplayExtent.height))
+                {
+                    ScopedGpu->DestroyRenderTarget(ScopedGeneratedFrameTarget);
+                    ScopedGeneratedFrameTarget = {};
+                    ScopedEditorFrameGenerator.ResetHistory();
+                }
+                if (!ScopedGeneratedFrameTarget.IsValid() && ScopedDisplayExtent.width > 0 &&
+                    ScopedDisplayExtent.height > 0)
+                {
+                    Fby::Rhi::RenderTargetDesc ScopedGeneratedDesc;
+                    ScopedGeneratedDesc.size = ScopedDisplayExtent;
+                    ScopedGeneratedDesc.srgb = false;
+                    ScopedGeneratedFrameTarget = ScopedGpu->CreateRenderTarget(ScopedGeneratedDesc);
+                    ScopedGeneratedFrameExtent = ScopedDisplayExtent;
+                }
+                if (ScopedGeneratedFrameTarget.IsValid() &&
+                    ScopedEditorFrameGenerator.Initialize(*ScopedGpu, ScopedDisplayExtent, ScopedDisplayExtent))
+                {
+                    Fby::Rhi::FrameGenerationInput ScopedFgInput;
+                    ScopedFgInput.Color = ScopedEditor.ViewportDisplayTarget();
+                    ScopedFgInput.Depth = ScopedTarget;
+                    ScopedFgInput.Motion = ScopedEditor.ViewportMotionTarget();
+                    ScopedFgInput.History = ScopedGeneratedFrameTarget;
+                    ScopedFgInput.Output = ScopedGeneratedFrameTarget;
+                    ScopedFgInput.RenderExtent = ScopedDisplayExtent;
+                    ScopedFgInput.OutputExtent = ScopedDisplayExtent;
+                    ScopedFgInput.ResetHistory = !ScopedExtract.Packet().historyValid;
+                    ScopedFgInput.HudSeparated = true;
+                    ScopedFgInput.Fps = ScopedDt > 0.0f ? 1.0f / ScopedDt : 60.0f;
+                    ScopedFgInput.DeltaMs = ScopedDt * 1000.0f;
+                    ScopedFgInput.RealFrame = true;
+                    ScopedCustomFgReady = ScopedEditorFrameGenerator.Generate(*ScopedGpu, ScopedFgInput);
+                }
+            }
+            else
+            {
+                ScopedCustomFgReady = false;
+            }
 
-            if (ScopedVtDemo && !ScopedVtChecked && ScopedFrameIndex > 30 &&
-                ScopedEditor.ViewportTarget().IsValid())
+            if (ScopedRenderSettings.frameGeneration == Fby::Editor::FrameGenerationMode::Fsr3 &&
+                ScopedBackendCaps.Fsr3FrameGeneration && ScopedEditor.ViewportDisplayTarget().IsValid())
+            {
+                const Fby::Rhi::Extent2D ScopedFsr3Extent = ScopedEditor.ViewportSize();
+                if (!ScopedFsr3GeneratedTarget.IsValid() && ScopedFsr3Extent.width > 0 && ScopedFsr3Extent.height > 0)
+                {
+                    Fby::Rhi::RenderTargetDesc ScopedFsr3Desc;
+                    ScopedFsr3Desc.size = ScopedFsr3Extent;
+                    ScopedFsr3Desc.srgb = false;
+                    ScopedFsr3GeneratedTarget = ScopedGpu->CreateRenderTarget(ScopedFsr3Desc);
+                }
+                if (ScopedFsr3GeneratedTarget.IsValid() &&
+                    ScopedEditorFsr3Fg.Initialize(*ScopedGpu, ScopedEditor.ViewportRenderSize(), ScopedFsr3Extent))
+                {
+                    Fby::Rhi::FrameGenerationInput ScopedFsr3Input;
+                    ScopedFsr3Input.Color = ScopedEditor.ViewportDisplayTarget();
+                    ScopedFsr3Input.Depth = ScopedTarget;
+                    ScopedFsr3Input.Motion = ScopedEditor.ViewportMotionTarget();
+                    ScopedFsr3Input.Output = ScopedFsr3GeneratedTarget;
+                    ScopedFsr3Input.RenderExtent = ScopedEditor.ViewportRenderSize();
+                    ScopedFsr3Input.OutputExtent = ScopedFsr3Extent;
+                    ScopedFsr3Input.ResetHistory = !ScopedExtract.Packet().historyValid;
+                    ScopedFsr3Input.HudSeparated = true;
+                    ScopedFsr3Input.Fps = ScopedDt > 0.0f ? 1.0f / ScopedDt : 60.0f;
+                    ScopedFsr3Input.DeltaMs = ScopedDt * 1000.0f;
+                    (void)ScopedGpu->TransitionRenderTargetLayout(ScopedFsr3GeneratedTarget,
+                                                                  static_cast<int>(Fby::Rhi::ImageLayout::ShaderRead),
+                                                                  static_cast<int>(Fby::Rhi::ImageLayout::General));
+                    ScopedFsr3FgReady = ScopedEditorFsr3Fg.Generate(*ScopedGpu, ScopedFsr3Input);
+                    if (ScopedFsr3FgReady)
+                    {
+                        (void)ScopedGpu->TransitionRenderTargetLayout(
+                            ScopedFsr3GeneratedTarget, static_cast<int>(Fby::Rhi::ImageLayout::General),
+                            static_cast<int>(Fby::Rhi::ImageLayout::ShaderRead));
+                    }
+                }
+            }
+            else
+            {
+                ScopedFsr3FgReady = false;
+            }
+            if (ScopedRenderSettings.frameGeneration == Fby::Editor::FrameGenerationMode::Dlss &&
+                ScopedBackendCaps.DlssFrameGeneration && ScopedEditor.ViewportDisplayTarget().IsValid())
+            {
+                const Fby::Rhi::Extent2D ScopedDlssFgExtent = ScopedEditor.ViewportSize();
+                if (!ScopedDlssFgGeneratedTarget.IsValid() && ScopedDlssFgExtent.width > 0 &&
+                    ScopedDlssFgExtent.height > 0)
+                {
+                    Fby::Rhi::RenderTargetDesc ScopedDlssFgDesc;
+                    ScopedDlssFgDesc.size = ScopedDlssFgExtent;
+                    ScopedDlssFgDesc.srgb = false;
+                    ScopedDlssFgGeneratedTarget = ScopedGpu->CreateRenderTarget(ScopedDlssFgDesc);
+                }
+                Fby::Rhi::NativeTextureView ScopedDlssBackbuffer;
+                Fby::Rhi::NativeTextureView ScopedDlssDepth;
+                Fby::Rhi::NativeTextureView ScopedDlssMotion;
+                Fby::Rhi::NativeTextureView ScopedDlssOutput;
+                if (ScopedDlssFgGeneratedTarget.IsValid())
+                {
+                    (void)ScopedGpu->TransitionRenderTargetLayout(ScopedDlssFgGeneratedTarget,
+                                                                  static_cast<int>(Fby::Rhi::ImageLayout::ShaderRead),
+                                                                  static_cast<int>(Fby::Rhi::ImageLayout::General));
+                }
+                if (ScopedDlssFgGeneratedTarget.IsValid() && ScopedEditorDlss.Initialize(*ScopedGpu) &&
+                    ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportDisplayTarget(), ScopedDlssBackbuffer) &&
+                    ScopedGpu->RenderTargetDepthTexture(ScopedTarget, ScopedDlssDepth) &&
+                    ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportMotionTarget(), ScopedDlssMotion) &&
+                    ScopedGpu->RenderTargetTexture(ScopedDlssFgGeneratedTarget, ScopedDlssOutput) &&
+                    ScopedEditorDlss.CreateFrameGeneration(ScopedGpu->CurrentCommandBuffer(), ScopedDlssBackbuffer.view,
+                                                           ScopedDlssDepth.view, ScopedDlssMotion.view,
+                                                           ScopedDlssBackbuffer.view, nullptr, ScopedDlssOutput.view,
+                                                           ScopedDlssFgExtent.width, ScopedDlssFgExtent.height))
+                {
+                    ScopedDlssFgReady = ScopedEditorDlss.EvaluateFrameGeneration(ScopedGpu->CurrentCommandBuffer());
+                    if (ScopedDlssFgReady)
+                    {
+                        (void)ScopedGpu->TransitionRenderTargetLayout(
+                            ScopedDlssFgGeneratedTarget, static_cast<int>(Fby::Rhi::ImageLayout::General),
+                            static_cast<int>(Fby::Rhi::ImageLayout::ShaderRead));
+                    }
+                }
+                else
+                {
+                    ScopedDlssFgReady = false;
+                }
+            }
+            else
+            {
+                ScopedDlssFgReady = false;
+            }
+            ScopedGpu->Submit(ScopedMainPass);
+            if (ScopedHudVisible && ScopedEditor.ViewportHudTarget().IsValid())
+            {
+                (void)ScopedGpu->CompositeHud();
+            }
+            ScopedGpu->EndFrame();
+            if (ScopedCustomFgReady)
+            {
+                (void)ScopedGpu->PresentGeneratedFrame(ScopedGeneratedFrameTarget);
+                ScopedCustomFgReady = false;
+            }
+            if (ScopedFsr3FgReady)
+            {
+                (void)ScopedGpu->PresentGeneratedFrame(ScopedFsr3GeneratedTarget);
+                ScopedFsr3FgReady = false;
+            }
+            if (ScopedDlssFgReady)
+            {
+                (void)ScopedGpu->PresentGeneratedFrame(ScopedDlssFgGeneratedTarget);
+                ScopedDlssFgReady = false;
+            }
+            if (ScopedPieWindowHandle.IsValid() && ScopedEditor.PieClientDisplayTarget().IsValid())
+            {
+                Fby::Rhi::RHI* ScopedPieGpu = ScopedPieWindowHost.Gpu(ScopedPieWindowHandle);
+                Fby::Rhi::Extent2D ScopedPieCaptureExtent{};
+                const Fby::Rhi::Extent2D ScopedPieSourceExtent = ScopedEditor.PieClientSize();
+                if (ScopedPieGpu != nullptr && ScopedPieSourceExtent.width > 0 && ScopedPieSourceExtent.height > 0)
+                {
+                    ScopedPieWindowReadback.resize(static_cast<std::size_t>(ScopedPieSourceExtent.width) *
+                                                   ScopedPieSourceExtent.height * 4u);
+                    if (ScopedGpu->CaptureRenderTarget(ScopedEditor.PieClientDisplayTarget(), ScopedPieWindowReadback,
+                                                       &ScopedPieCaptureExtent) &&
+                        ScopedPieCaptureExtent.width > 0 && ScopedPieCaptureExtent.height > 0)
+                    {
+                        if (ScopedPieWindowTexture.id == 0 ||
+                            ScopedPieWindowExtent.width != ScopedPieCaptureExtent.width ||
+                            ScopedPieWindowExtent.height != ScopedPieCaptureExtent.height)
+                        {
+                            if (ScopedPieWindowTexture.id != 0)
+                            {
+                                ScopedPieGpu->DestroyTextureArray(ScopedPieWindowTexture);
+                            }
+                            Fby::Rhi::TextureArrayDesc ScopedTextureDesc;
+                            ScopedTextureDesc.size = ScopedPieCaptureExtent;
+                            ScopedTextureDesc.layers = 1;
+                            ScopedTextureDesc.srgb = false;
+                            ScopedPieWindowTexture =
+                                ScopedPieGpu->CreateTextureArray(ScopedTextureDesc, ScopedPieWindowReadback);
+                            ScopedPieWindowExtent = ScopedPieCaptureExtent;
+                        }
+                        else
+                        {
+                            (void)ScopedPieGpu->UpdateTextureArrayLayer(ScopedPieWindowTexture, 0, 0,
+                                                                        ScopedPieWindowReadback);
+                        }
+                        if (ScopedPieWindowTexture.id != 0)
+                        {
+                            if (ScopedPieWindowTarget.id == 0 ||
+                                ScopedPieWindowTargetExtent.width != ScopedPieCaptureExtent.width ||
+                                ScopedPieWindowTargetExtent.height != ScopedPieCaptureExtent.height)
+                            {
+                                if (ScopedPieWindowTarget.id != 0)
+                                {
+                                    ScopedPieGpu->DestroyRenderTarget(ScopedPieWindowTarget);
+                                }
+                                Fby::Rhi::RenderTargetDesc ScopedTargetDesc;
+                                ScopedTargetDesc.size = ScopedPieCaptureExtent;
+                                ScopedTargetDesc.srgb = false;
+                                ScopedPieWindowTarget = ScopedPieGpu->CreateRenderTarget(ScopedTargetDesc);
+                                ScopedPieWindowTargetExtent = ScopedPieCaptureExtent;
+                            }
+                            if (ScopedPieWindowTarget.id != 0)
+                            {
+                                Fby::Rhi::RenderItem ScopedPieItem = Fby::Rhi::RenderItem::Quad(
+                                    {static_cast<float>(ScopedPieCaptureExtent.width) * 0.5f,
+                                     static_cast<float>(ScopedPieCaptureExtent.height) * 0.5f},
+                                    {static_cast<float>(ScopedPieCaptureExtent.width),
+                                     static_cast<float>(ScopedPieCaptureExtent.height)});
+                                Fby::Rhi::RenderKey ScopedPieKey{};
+                                Fby::Rhi::DrawBatch ScopedPieBatch{0, 1, 0, ScopedPieWindowTexture.id};
+                                Fby::Rhi::FramePacket ScopedPiePresent;
+                                ScopedPiePresent.items = {&ScopedPieItem, 1};
+                                ScopedPiePresent.keys = {&ScopedPieKey, 1};
+                                ScopedPiePresent.batches = {&ScopedPieBatch, 1};
+                                ScopedPiePresent.textureArray = ScopedPieWindowTexture.id;
+                                ScopedPiePresent.camera.center = ScopedPieItem.position;
+                                ScopedPiePresent.camera.viewport = ScopedPieItem.size;
+                                ScopedPiePresent.camera.zoom = 1.0f;
+                                if (ScopedPieGpu->BeginFrame())
+                                {
+                                    (void)ScopedPieGpu->RenderToTarget(ScopedPieWindowTarget, ScopedPiePresent);
+                                    ScopedPieGpu->PresentRenderTarget(ScopedPieWindowTarget);
+                                    ScopedPieGpu->Submit(ScopedPiePresent);
+                                    ScopedPieGpu->EndFrame();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (ScopedVtDemo && !ScopedVtChecked && ScopedFrameIndex > 30 && ScopedEditor.ViewportTarget().IsValid())
             {
                 ScopedVtChecked = true;
                 const Fby::Rhi::Extent2D ScopedVtExtent = ScopedEditor.ViewportSize();
@@ -1421,7 +2284,8 @@ int main(int argc, char** argv)
                 {
                     ScopedVtCapture.resize(static_cast<std::size_t>(ScopedVtExtent.width) * ScopedVtExtent.height * 4u);
                     Fby::Rhi::Extent2D ScopedCaptured{};
-                    if (ScopedGpu->CaptureRenderTarget(ScopedEditor.ViewportTarget(), ScopedVtCapture, &ScopedCaptured) &&
+                    if (ScopedGpu->CaptureRenderTarget(ScopedEditor.ViewportTarget(), ScopedVtCapture,
+                                                       &ScopedCaptured) &&
                         ScopedCaptured.width > 1 && ScopedCaptured.height > 1)
                     {
                         // The demo has a skinned sprite over the camera centre, so
@@ -1438,23 +2302,22 @@ int main(int argc, char** argv)
                         bool ScopedPixelOk = false;
                         for (const auto& ScopedProbe : ScopedProbes)
                         {
-                            const std::int32_t ScopedX =
-                                std::clamp(ScopedCenterX + ScopedProbe[0], 0,
-                                           static_cast<std::int32_t>(ScopedCaptured.width) - 1);
+                            const std::int32_t ScopedX = std::clamp(
+                                ScopedCenterX + ScopedProbe[0], 0, static_cast<std::int32_t>(ScopedCaptured.width) - 1);
                             const std::int32_t ScopedY =
                                 std::clamp(ScopedCenterY + ScopedProbe[1], 0,
                                            static_cast<std::int32_t>(ScopedCaptured.height) - 1);
-                            const std::size_t ScopedIndex =
-                                (static_cast<std::size_t>(ScopedY) * ScopedCaptured.width +
-                                 static_cast<std::size_t>(ScopedX)) * 4u;
+                            const std::size_t ScopedIndex = (static_cast<std::size_t>(ScopedY) * ScopedCaptured.width +
+                                                             static_cast<std::size_t>(ScopedX)) *
+                                                            4u;
                             const auto ScopedRed = static_cast<int>(ScopedVtCapture[ScopedIndex + 0]);
                             const auto ScopedGreen = static_cast<int>(ScopedVtCapture[ScopedIndex + 1]);
                             const auto ScopedBlue = static_cast<int>(ScopedVtCapture[ScopedIndex + 2]);
-                            const bool ScopedProbeOk = ScopedRed > 40 && ScopedRed > ScopedGreen * 3 / 2 &&
-                                                       ScopedRed > ScopedBlue * 2;
+                            const bool ScopedProbeOk =
+                                ScopedRed > 40 && ScopedRed > ScopedGreen * 3 / 2 && ScopedRed > ScopedBlue * 2;
                             ScopedPixelOk = ScopedPixelOk || ScopedProbeOk;
-                            Fby::LogInfo("editor_app", "VT sprite probe ({}, {}): r={} g={} b={} ({})",
-                                         ScopedProbe[0], ScopedProbe[1], ScopedRed, ScopedGreen, ScopedBlue,
+                            Fby::LogInfo("editor_app", "VT sprite probe ({}, {}): r={} g={} b={} ({})", ScopedProbe[0],
+                                         ScopedProbe[1], ScopedRed, ScopedGreen, ScopedBlue,
                                          ScopedProbeOk ? "ok" : "other");
                         }
                         Fby::LogInfo("editor_app", "VT sprite visual check: {} (items={})",
@@ -1467,14 +2330,13 @@ int main(int argc, char** argv)
                         if (ScopedFeedbackCount > 0)
                         {
                             (void)Fby::Rhi::UnpackVirtualTextureFeedback(ScopedFeedbackTiles[0], &ScopedFeedbackX,
-                                                                        &ScopedFeedbackY);
+                                                                         &ScopedFeedbackY);
                         }
-                        Fby::LogInfo("editor_app", "VT feedback: {} unique tiles (first {},{})",
-                                     ScopedFeedbackCount, ScopedFeedbackX, ScopedFeedbackY);
+                        Fby::LogInfo("editor_app", "VT feedback: {} unique tiles (first {},{})", ScopedFeedbackCount,
+                                     ScopedFeedbackX, ScopedFeedbackY);
                     }
                 }
             }
-
         }
 
         if (ScopedSmokeOpenPath != nullptr && ScopedSmokeOpenPath[0] != '\0' && !ScopedSmokeOpenDone &&
@@ -1527,6 +2389,54 @@ int main(int argc, char** argv)
     LogShutdownPhase("simulation");
     ScopedPluginHost.UnloadAll();
     LogShutdownPhase("plugins");
+    ScopedOitPass.Release(*ScopedGpu);
+    if (ScopedPieWindowHandle.IsValid())
+    {
+        if (Fby::Rhi::RHI* ScopedPieGpu = ScopedPieWindowHost.Gpu(ScopedPieWindowHandle))
+        {
+            if (ScopedPieWindowTexture.id != 0)
+            {
+                ScopedPieGpu->DestroyTextureArray(ScopedPieWindowTexture);
+            }
+            if (ScopedPieWindowTarget.id != 0)
+            {
+                ScopedPieGpu->DestroyRenderTarget(ScopedPieWindowTarget);
+            }
+        }
+        ScopedPieWindowHost.Destroy(ScopedPieWindowHandle);
+    }
+    ScopedPieFrameGenerator.Shutdown(*ScopedGpu);
+    if (ScopedPieGeneratedFrameTarget.IsValid())
+    {
+        ScopedGpu->DestroyRenderTarget(ScopedPieGeneratedFrameTarget);
+        ScopedPieGeneratedFrameTarget = {};
+    }
+    ScopedEditorFrameGenerator.Shutdown(*ScopedGpu);
+    if (ScopedGeneratedFrameTarget.IsValid())
+    {
+        ScopedGpu->DestroyRenderTarget(ScopedGeneratedFrameTarget);
+        ScopedGeneratedFrameTarget = {};
+    }
+    ScopedEditorFsr3Fg.Shutdown(*ScopedGpu);
+    if (ScopedFsr3GeneratedTarget.IsValid())
+    {
+        ScopedGpu->DestroyRenderTarget(ScopedFsr3GeneratedTarget);
+        ScopedFsr3GeneratedTarget = {};
+    }
+    if (ScopedDlssFgGeneratedTarget.IsValid())
+    {
+        ScopedGpu->DestroyRenderTarget(ScopedDlssFgGeneratedTarget);
+        ScopedDlssFgGeneratedTarget = {};
+    }
+    ScopedEditorFsr2Vendor.Shutdown();
+    ScopedEditorDlss.Shutdown(*ScopedGpu);
+    ScopedEditorFsr2.Release(*ScopedGpu);
+    ScopedPieFsr2.Release(*ScopedGpu);
+    ScopedPieOitPass.Release(*ScopedGpu);
+    if (ScopedPieMotionTarget.IsValid())
+    {
+        ScopedGpu->DestroyRenderTarget(ScopedPieMotionTarget);
+    }
     if (ScopedAtlas.IsValid())
     {
         ScopedAtlas.Release(*ScopedGpu);

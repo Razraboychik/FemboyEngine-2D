@@ -226,6 +226,7 @@ int main()
     ScopedSdfFrame.sdf.height = 8;
     ScopedSdfFrame.sdf.cellSize = Vector2D{8.0f, 8.0f};
     ScopedSdfFrame.sdf.enabled = true;
+    ScopedSdfFrame.sdf.viewId = 1;
     ScopedSdfFrame.sdf.steps = 8;
     ScopedSdfFrame.sdf.occluderCount = 1;
     ScopedSdfFrame.sdf.occluders[0].Shape = Vector4D{1.0f, 2.0f, 3.0f, 0.0f};
@@ -258,6 +259,7 @@ int main()
             FBY_CHECK(ScopedShadowRecords[ScopedI].constantsBytes == sizeof(SdfShadowConstants));
             const auto* ScopedConstants = static_cast<const SdfShadowConstants*>(ScopedShadowRecords[ScopedI].constants);
             FBY_CHECK(ScopedConstants->camera.Z == 1.0f);
+            FBY_CHECK(ScopedConstants->encode.Z == 1.0f);
             FBY_CHECK(ScopedConstants->occluders[0].Z == 3.0f);
         }
     }

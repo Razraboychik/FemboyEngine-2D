@@ -11,6 +11,11 @@
 #include <array>
 #include <cstdint>
 
+namespace Fby
+{
+class TransportGroupSystem;
+}
+
 namespace Fby::Script
 {
 
@@ -87,12 +92,15 @@ struct VmFault
 struct VmContext
 {
     Ecs::Registry& registry;
+    Entity self = entt::null;
     Ecs::CommandBuffer* commands = nullptr;
     DeterministicRng* rng = nullptr;
     BigNumberPool* bigNumbers = nullptr;
     DecimalPool* decimals = nullptr;
     float dt = 0.0f;
     std::uint64_t frameIndex = 0;
+    // Optional host service for transport_attach / transport_detach natives.
+    Fby::TransportGroupSystem* transport = nullptr;
     void* user = nullptr;
     // Prefab spawn is a host hook because prefab instantiation lives in the
     std::uint32_t (*spawn)(VmContext& InContext, std::uint32_t InPrefabId) noexcept = nullptr;

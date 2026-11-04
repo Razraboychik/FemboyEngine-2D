@@ -1033,6 +1033,14 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
         return false;
     }
 
+    bool ScopedHasTransparent = false;
+    bool ScopedHasTranslucent = false;
+    for (int ScopedPixel = 0; ScopedPixel < ScopedWidth * ScopedHeight; ++ScopedPixel)
+    {
+        const std::uint8_t ScopedAlpha = ScopedPixels[ScopedPixel * 4 + 3];
+        ScopedHasTransparent |= ScopedAlpha == 0u;
+        ScopedHasTranslucent |= ScopedAlpha > 0u && ScopedAlpha < 255u;
+    }
     const bool ScopedHasAlpha = ScopedChannels == 4 || ScopedChannels == 2;
     Assets::TextureFormat ScopedFormat = Assets::TextureFormat::Bc7Srgb;
     if (InOptions.target == CookTarget::Desktop)
@@ -1094,6 +1102,14 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
     if (ScopedHasAlpha)
     {
         ScopedFlags |= Assets::kTextureFlagAlpha;
+    }
+    if (ScopedHasTranslucent)
+    {
+        ScopedFlags |= Assets::kTextureFlagAlphaBlend;
+    }
+    else if (ScopedHasTransparent)
+    {
+        ScopedFlags |= Assets::kTextureFlagAlphaCutout;
     }
 
     Out->payload.clear();

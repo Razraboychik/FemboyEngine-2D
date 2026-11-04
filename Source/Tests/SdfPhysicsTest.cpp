@@ -1,6 +1,7 @@
 // FemboyEngine2D - mdspan SDF sampling and Box2D v3 push-out.
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Physics/Physics.hpp"
+#include "Engine/Physics/SdfBrickMap.hpp"
 #include "Engine/Physics/SdfCollision.hpp"
 
 #include <cmath>
@@ -17,7 +18,7 @@ std::uint32_t GFailures = 0;
         if (!(condition))                                                                                              \
         {                                                                                                              \
             std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition);                                  \
-            ++GFailures;                                                                                              \
+            ++GFailures;                                                                                               \
         }                                                                                                              \
     } while (false)
 }
@@ -62,6 +63,7 @@ int main()
     ScopedRegistry.emplace<Transform2D>(ScopedBody, ScopedTransform);
     RigidBody2D ScopedRigid{};
     ScopedRigid.Type = BodyType::Dynamic;
+    ScopedRigid.LinearVelocity = Vector2D{-120.0f, 0.0f};
     ScopedRegistry.emplace<RigidBody2D>(ScopedBody, ScopedRigid);
     Collider2D ScopedCollider{};
     ScopedCollider.HalfExtents = Vector2D{8.0f, 8.0f};
@@ -75,9 +77,47 @@ int main()
     FBY_CHECK(ScopedCorrected == 1);
     FBY_CHECK(ScopedSystem.Contacts().size() == 1);
     const RigidBody2D& ScopedAfter = ScopedRegistry.get<RigidBody2D>(ScopedBody);
-    FBY_CHECK(ScopedAfter.Position.X > 30.0f);
+    FBY_CHECK(ScopedAfter.LinearVelocity.X > 0.0f);
     FBY_CHECK(ScopedSystem.Contacts()[0].normal.X > 0.9f);
     FBY_CHECK(ScopedSystem.Contacts()[0].penetration > 0.0f);
+    FBY_CHECK(ScopedSystem.Contacts()[0].Mass > 0.0f);
+    FBY_CHECK(ScopedSystem.Contacts()[0].RelativeSpeed > 1.0f);
+    FBY_CHECK(ScopedSystem.Contacts()[0].KineticEnergy > 0.0f);
+
+    // The manifold carries one to four points for the same body, each with a
+    // positive depth and an outward normal.
+    FBY_CHECK(ScopedSystem.Manifolds().size() == 1);
+    if (!ScopedSystem.Manifolds().empty())
+    {
+        const SdfContactManifold& ScopedManifold = ScopedSystem.Manifolds()[0];
+        FBY_CHECK(ScopedManifold.entity == ScopedBody);
+        FBY_CHECK(ScopedManifold.Count >= 1 && ScopedManifold.Count <= 4);
+        bool ScopedDepthsValid = true;
+        bool ScopedNormalsValid = true;
+        for (std::uint32_t ScopedPointIndex = 0; ScopedPointIndex < ScopedManifold.Count; ++ScopedPointIndex)
+        {
+            if (ScopedManifold.Points[ScopedPointIndex].Penetration <= 0.0f)
+            {
+                ScopedDepthsValid = false;
+            }
+            if (ScopedManifold.Points[ScopedPointIndex].Normal.LengthSquared() < 0.25f)
+            {
+                ScopedNormalsValid = false;
+            }
+        }
+        FBY_CHECK(ScopedDepthsValid);
+        FBY_CHECK(ScopedNormalsValid);
+    }
+
+    // Depenetration is velocity based: physics integration carries the body out
+    // over the next frames instead of snapping it inside the contact frame.
+    for (std::uint32_t ScopedStep = 0; ScopedStep < 120; ++ScopedStep)
+    {
+        ScopedPhysics.Step(ScopedRegistry, 1.0f / 120.0f);
+        (void)ScopedSystem.Step(ScopedRegistry, ScopedPhysics, 1.0f / 120.0f);
+    }
+    const RigidBody2D& ScopedResolved = ScopedRegistry.get<RigidBody2D>(ScopedBody);
+    FBY_CHECK(ScopedResolved.Position.X > 55.0f);
 
     // A body outside the solid must not be modified.
     const Entity ScopedFree = ScopedRegistry.create();
@@ -95,10 +135,31 @@ int main()
     ScopedSystem.Step(ScopedRegistry, ScopedPhysics, 1.0f / 120.0f);
     FBY_CHECK(ScopedRegistry.get<RigidBody2D>(ScopedFree).Position == ScopedBefore);
 
+    // Brick broadphase: a body inside an empty brick that is farther than its
+    // reach is skipped before the sample grid runs.
+    {
+        SdfBrickMap ScopedBricks;
+        FBY_CHECK(ScopedBricks.Build(ScopedField));
+        ScopedSystem.SetBrickMap(&ScopedBricks);
+        const Entity ScopedFar = ScopedRegistry.create();
+        Transform2D ScopedFarTransform{};
+        ScopedFarTransform.Position = Vector2D{100.0f, 0.0f};
+        ScopedRegistry.emplace<Transform2D>(ScopedFar, ScopedFarTransform);
+        RigidBody2D ScopedFarRigid{};
+        ScopedFarRigid.Type = BodyType::Dynamic;
+        ScopedRegistry.emplace<RigidBody2D>(ScopedFar, ScopedFarRigid);
+        Collider2D ScopedFarCollider{};
+        ScopedFarCollider.HalfExtents = Vector2D{4.0f, 4.0f};
+        ScopedRegistry.emplace<Collider2D>(ScopedFar, ScopedFarCollider);
+        ScopedPhysics.EnsureBodies(ScopedRegistry);
+        (void)ScopedSystem.Step(ScopedRegistry, ScopedPhysics, 1.0f / 120.0f);
+        FBY_CHECK(ScopedSystem.BroadphaseSkipped() >= 1);
+        ScopedSystem.SetBrickMap(nullptr);
+    }
+
     // A body destroyed between steps must not leave its dead shape id in the
     // contact-end events: destroying a touching body makes Box2D push end-touch
-    // events, and reading them after the destroy used to assert in b2GetShape
-    // (this is the "editor closes when opening a project" crash).
+    // events, and reading them after the destroy must not touch the dead shape.
     {
         const std::uint32_t ScopedBodiesBefore = ScopedPhysics.LiveBodyCount();
         const Entity ScopedGround = ScopedRegistry.create();

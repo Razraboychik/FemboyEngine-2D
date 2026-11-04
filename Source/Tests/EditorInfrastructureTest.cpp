@@ -1,4 +1,4 @@
-// FemboyEngine2D - editor Step 1 infrastructure tests.
+// FemboyEngine2D - editor infrastructure tests.
 #include "Engine/Assets/AssetDatabase.hpp"
 #include "Engine/Assets/TextureFormat.hpp"
 #include "Engine/Assets/VFS.hpp"
@@ -177,6 +177,10 @@ void TestProjectCreationAndConfig()
         Check(Fby::Editor::LoadProject(ScopedLegacyRoot, nullptr, &ScopedLegacy), "load legacy project");
         Check(ScopedLegacy.editor.fontPanelBody == 18.0f, "legacy body migrates to 18 px");
         Check(ScopedLegacy.editor.fontPanelTitle == 24.0f, "legacy title migrates to 24 px");
+        Check(ScopedLegacy.editor.logMaxFiles == Fby::kRecommendedLogRetention.MaxFiles,
+              "legacy project gets the recommended log file count");
+        Check(ScopedLegacy.editor.logMaxLinesPerFile == Fby::kRecommendedLogRetention.MaxLinesPerFile,
+              "legacy project gets the recommended log line count");
 
         const std::string_view ScopedCustomProject =
             "format_version = 4\n"
@@ -190,12 +194,16 @@ void TestProjectCreationAndConfig()
             "font_script_node_title = 18.0\n"
             "font_script_pin_input = 16.0\n"
             "font_script_pin_output = 16.0\n"
-            "font_scene_text = 16.0\n";
+            "font_scene_text = 16.0\n"
+            "log_max_files = 7\n"
+            "log_max_lines = 1200\n";
         Check(WriteText(ScopedLegacyRoot / "project.femproj", ScopedCustomProject), "write custom project");
         Fby::Editor::ProjectConfig ScopedCustom;
         Check(Fby::Editor::LoadProject(ScopedLegacyRoot, nullptr, &ScopedCustom), "load custom project");
         Check(ScopedCustom.editor.fontPanelBody == 22.0f, "custom body size is kept");
         Check(ScopedCustom.editor.fontPanelTitle == 20.0f, "custom title size is kept");
+        Check(ScopedCustom.editor.logMaxFiles == 7, "custom log file count round-trips");
+        Check(ScopedCustom.editor.logMaxLinesPerFile == 1200, "custom log line count round-trips");
     }
 
     // Refuse traversal and a duplicate project file.
@@ -228,6 +236,8 @@ void TestProjectCreationAndConfig()
     ScopedStore.Editor().windowMode = 2;
     ScopedStore.Editor().windowWidth = 1920;
     ScopedStore.Editor().windowHeight = 1080;
+    ScopedStore.Editor().logMaxFiles = 12;
+    ScopedStore.Editor().logMaxLinesPerFile = 3456;
     Check(ScopedStore.PersistIfChanged(), "persist changed settings");
     Check(std::filesystem::is_regular_file(ScopedPaths.editorIni), "editor.ini mirrored");
 
@@ -258,6 +268,8 @@ void TestProjectCreationAndConfig()
     Check(ScopedReloaded.editor.windowMode == 2, "window mode persists in TOML");
     Check(ScopedReloaded.editor.windowWidth == 1920, "window width persists in TOML");
     Check(ScopedReloaded.editor.windowHeight == 1080, "window height persists in TOML");
+    Check(ScopedReloaded.editor.logMaxFiles == 12, "log file count persists in TOML");
+    Check(ScopedReloaded.editor.logMaxLinesPerFile == 3456, "log line count persists in TOML");
     Check(std::strcmp(Fby::WindowModeName(Fby::WindowMode::BorderlessFullscreen), "borderless fullscreen") == 0,
           "borderless mode has a stable name");
     Check(Fby::WindowModeName(Fby::WindowMode::ExclusiveFullscreen) != nullptr, "exclusive mode has a name");
@@ -266,6 +278,8 @@ void TestProjectCreationAndConfig()
     const std::string ScopedIniText((std::istreambuf_iterator<char>(ScopedIni)), std::istreambuf_iterator<char>());
     Check(ScopedIniText.find("[FemboyEditor]") != std::string::npos, "editor.ini has the settings section");
     Check(ScopedIniText.find("vsync = false") != std::string::npos, "editor.ini mirrors VSync");
+    Check(ScopedIniText.find("log_max_files = 12") != std::string::npos, "editor.ini mirrors the log file count");
+    Check(ScopedIniText.find("log_max_lines = 3456") != std::string::npos, "editor.ini mirrors the log line count");
 
     // Defaulted EditorSettings::operator== compares fields, not padding. A
     Fby::Editor::EditorSettings ScopedLeft{};
@@ -299,6 +313,17 @@ void TestProjectCreationAndConfig()
     Check(Fby::Editor::DecodeProjectToml(ScopedVtToml, &ScopedVtDecoded, &ScopedVtError), "VT TOML decodes");
     Check(ScopedVtDecoded.project.virtualTexture == ScopedVtConfig.project.virtualTexture,
           "VT settings roundtrip through TOML");
+
+    Check(ScopedVtConfig.project.gameplayTags.Add("Character.State.Stunned") >= 0,
+          "project tag database accepts a path");
+    const std::string ScopedTagToml = Fby::Editor::EncodeProjectToml(ScopedVtConfig);
+    Check(ScopedTagToml.find("gameplay_tags") != std::string::npos, "project TOML carries gameplay_tags");
+    Fby::Editor::ProjectConfig ScopedTagDecoded;
+    std::string ScopedTagError;
+    Check(Fby::Editor::DecodeProjectToml(ScopedTagToml, &ScopedTagDecoded, &ScopedTagError),
+          "tag TOML decodes");
+    Check(ScopedTagDecoded.project.gameplayTags == ScopedVtConfig.project.gameplayTags,
+          "project tag database roundtrips through TOML");
 
     Fby::Editor::VirtualTextureSettings ScopedLayout;
     ScopedLayout.pageSize = 1024;
@@ -718,7 +743,8 @@ void TestSettingsExternalTransaction()
     Check(ScopedTransaction.Record() == Fby::Editor::CommandStack::Result::Ok, "settings transaction records");
     Check(ScopedTransaction.Commit() == Fby::Editor::CommandStack::Result::Ok, "settings transaction commits");
     Check(ScopedCommands.CanUndo(), "settings commit is undoable");
-    Check(ScopedCommands.GetStats().bytesUsed < 128, "settings delta is sparse");
+    Check(ScopedCommands.GetStats().bytesUsed <= 2 * sizeof(Fby::Editor::ProjectSettings) + 64,
+          "settings transaction stores one pre-image and one post-image");
     Check(ScopedCommands.Undo(), "undo settings");
     Check(!Fby::AccessibilityHasFlag(ScopedSettings.accessibility.runtime.flags, Fby::AccessibilityBlindMode) &&
               ScopedSettings.accessibility.presentation.oledPixelShift && ScopedSettings.fixedUpdateHz == 120.0f,

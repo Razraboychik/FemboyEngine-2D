@@ -162,8 +162,8 @@ private:
 class Compiler
 {
 public:
-    Compiler(std::string_view InSource, const Scene::ComponentRegistry& InComponents, const TextCompileOptions& InOptions,
-             std::string* InError)
+    Compiler(std::string_view InSource, const Scene::ComponentRegistry& InComponents,
+             const TextCompileOptions& InOptions, std::string* InError)
         : MLexer(InSource), MComponents(InComponents), MOptions(InOptions), MError(InError)
     {
     }
@@ -281,6 +281,22 @@ private:
         if (InName == "get_frame_index")
         {
             return NativeId::GetFrameIndex;
+        }
+        if (InName == "transport_attach")
+        {
+            return NativeId::TransportAttach;
+        }
+        if (InName == "transport_detach")
+        {
+            return NativeId::TransportDetach;
+        }
+        if (InName == "transport_set_parent")
+        {
+            return NativeId::TransportSetParent;
+        }
+        if (InName == "transport_create")
+        {
+            return NativeId::TransportCreate;
         }
         if (InName == "BigIntFromInt")
         {
@@ -464,7 +480,7 @@ private:
             if (ScopedBinding.kind == static_cast<std::uint8_t>(Reflect::FieldKind::Float) && ScopedBinding.size == 4)
             {
                 Emit(OpCode::StoreFieldF, static_cast<std::uint8_t>(ScopedEntity),
-                              static_cast<std::uint8_t>(MLastRegister), static_cast<std::uint16_t>(ScopedFieldIndex));
+                     static_cast<std::uint8_t>(MLastRegister), static_cast<std::uint16_t>(ScopedFieldIndex));
                 return true;
             }
             Fail("text assignment supports float fields only");
@@ -517,7 +533,7 @@ private:
                         return false;
                     }
                     Emit(OpCode::MoveF, static_cast<std::uint8_t>(ScopedBase + ScopedArgument),
-                                  static_cast<std::uint8_t>(MLastRegister));
+                         static_cast<std::uint8_t>(MLastRegister));
                     ++ScopedArgument;
                 }
                 const std::uint16_t ScopedNativeIndex = MBuilder.AddNative(ScopedNative);
@@ -592,7 +608,7 @@ private:
             }
             const std::uint8_t ScopedDestination = Allocate();
             Emit(ScopedOp, ScopedDestination, static_cast<std::uint8_t>(ScopedLeft),
-                          static_cast<std::uint16_t>(MLastRegister));
+                 static_cast<std::uint16_t>(MLastRegister));
             MLastRegister = ScopedDestination;
         }
         return !MFailed;
@@ -626,7 +642,7 @@ private:
             }
             const std::uint8_t ScopedDestination = Allocate();
             Emit(ScopedOp, ScopedDestination, static_cast<std::uint8_t>(ScopedLeft),
-                          static_cast<std::uint16_t>(MLastRegister));
+                 static_cast<std::uint16_t>(MLastRegister));
             MLastRegister = ScopedDestination;
         }
         return !MFailed;
@@ -660,7 +676,7 @@ private:
             }
             const std::uint8_t ScopedDestination = Allocate();
             Emit(ScopedOp, ScopedDestination, static_cast<std::uint8_t>(ScopedLeft),
-                          static_cast<std::uint16_t>(MLastRegister));
+                 static_cast<std::uint16_t>(MLastRegister));
             MLastRegister = ScopedDestination;
         }
         return !MFailed;
@@ -745,7 +761,7 @@ private:
             {
                 const std::uint8_t ScopedDestination = Allocate();
                 Emit(OpCode::LoadFieldF, ScopedDestination, static_cast<std::uint8_t>(ScopedEntity),
-                              static_cast<std::uint16_t>(ScopedFieldIndex));
+                     static_cast<std::uint16_t>(ScopedFieldIndex));
                 MLastRegister = ScopedDestination;
                 return true;
             }
@@ -755,14 +771,14 @@ private:
                 if (ScopedSuffix == "X" || ScopedSuffix == "x")
                 {
                     Emit(OpCode::LoadFieldVec2, ScopedDestination, static_cast<std::uint8_t>(ScopedEntity),
-                                  static_cast<std::uint16_t>(ScopedFieldIndex));
+                         static_cast<std::uint16_t>(ScopedFieldIndex));
                     MLastRegister = ScopedDestination;
                     return true;
                 }
                 if (ScopedSuffix == "Y" || ScopedSuffix == "y")
                 {
                     Emit(OpCode::LoadFieldVec2, ScopedDestination, static_cast<std::uint8_t>(ScopedEntity),
-                                  static_cast<std::uint16_t>(ScopedFieldIndex));
+                         static_cast<std::uint16_t>(ScopedFieldIndex));
                     MLastRegister = static_cast<std::uint8_t>(ScopedDestination + 1);
                     return true;
                 }
@@ -808,7 +824,7 @@ private:
                     return false;
                 }
                 Emit(OpCode::MoveF, static_cast<std::uint8_t>(ScopedBase + ScopedArgument),
-                              static_cast<std::uint8_t>(MLastRegister));
+                     static_cast<std::uint8_t>(MLastRegister));
                 ++ScopedArgument;
             }
             Emit(OpCode::CallNative, ScopedBase, 0, MBuilder.AddNative(ScopedNative));
@@ -834,7 +850,9 @@ private:
         }
         const auto ScopedField = std::find_if(ScopedOps->fields.begin(), ScopedOps->fields.end(),
                                               [&InField](const Reflect::FieldDesc& InDesc)
-                                              { return InDesc.name == InField; });
+                                              {
+                                                  return InDesc.name == InField;
+                                              });
         if (ScopedField == ScopedOps->fields.end())
         {
             Fail("component '" + InComponent + "' has no field '" + InField + "'");

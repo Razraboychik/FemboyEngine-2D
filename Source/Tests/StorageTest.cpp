@@ -63,6 +63,22 @@ void SetStorageEnvironment(const std::string& InPath)
     }
     return ScopedCount;
 }
+
+[[nodiscard]] std::size_t CountLines(const std::filesystem::path& InPath)
+{
+    std::ifstream ScopedFile(InPath, std::ios::binary);
+    if (!ScopedFile)
+    {
+        return 0;
+    }
+    std::size_t ScopedLines = 0;
+    std::string ScopedLine;
+    while (std::getline(ScopedFile, ScopedLine))
+    {
+        ++ScopedLines;
+    }
+    return ScopedLines;
+}
 }
 
 int main()
@@ -144,6 +160,35 @@ int main()
     Check(CountPrefix(ScopedRotateDirectory, "rotate-") == 25, "the rotation fixture is in place");
     Fby::LogInfo("storage", "rotation trigger");
     Check(CountPrefix(ScopedRotateDirectory, "rotate-") == 20, "the sink keeps twenty files per category");
+
+    // Custom retention: the file count is pruned to the configured value and
+    // the line cap drops the oldest lines of an oversized file.
+    Fby::SetLogRetention(Fby::LogRetention{6, 1000});
+    const Fby::LogRetention ScopedLimits = Fby::GetLogRetention();
+    Check(ScopedLimits.MaxFiles == 6 && ScopedLimits.MaxLinesPerFile == 1000,
+          "the retention limits are stored");
+    Fby::SetLogCategory("limits");
+    const FileSystem::path ScopedLimitDirectory = Fby::Core::LogDirectory("limits");
+    Check(Fby::Core::EnsureDirectory(ScopedLimitDirectory), "the limit directory exists");
+    for (int ScopedIndex = 0; ScopedIndex < 12; ++ScopedIndex)
+    {
+        std::ofstream ScopedOld(ScopedLimitDirectory / ("limits-old-" + std::to_string(ScopedIndex) + ".log"));
+        ScopedOld << "old\n";
+    }
+    Fby::LogInfo("storage", "limits trigger");
+    Check(CountPrefix(ScopedLimitDirectory, "limits-") == 6, "the sink honors the configured file count");
+
+    Fby::LogInfo("storage", "oldest marker");
+    for (int ScopedIndex = 0; ScopedIndex < 1100; ++ScopedIndex)
+    {
+        Fby::LogInfo("storage", "filler line {}", ScopedIndex);
+    }
+    Fby::LogInfo("storage", "newest marker");
+    const FileSystem::path ScopedLimitedLog(Fby::CurrentLogFilePath());
+    Check(CountLines(ScopedLimitedLog) <= 1000, "the sink compacts a file to the line limit");
+    Check(FileContains(ScopedLimitedLog, "newest marker"), "the newest lines survive compaction");
+    Check(!FileContains(ScopedLimitedLog, "oldest marker"), "the oldest lines are dropped");
+    Fby::SetLogRetention(Fby::kRecommendedLogRetention);
 
     // A one-off cleanup test directory is not part of the deliverable. The sink
     // file must be closed first: Windows refuses to delete an open file.

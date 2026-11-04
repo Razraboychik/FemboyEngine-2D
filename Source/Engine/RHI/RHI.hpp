@@ -69,6 +69,44 @@ struct DeviceDesc
     std::uint32_t maxTextureUploadBytes = 32u << 20;
     // Upper bound on draw records (not draw calls) in one frame.
     std::uint32_t maxMeshDrawsPerFrame = 4096;
+    // Optional GPU clustered-lighting path. When false the renderer keeps the
+    // CPU lighting result and never allocates the cluster tables.
+    bool enableClusteredLighting = false;
+    // Optional depth prepass. When false the depth target is still cleared and
+    // bound, but no opaque prepass draws are recorded.
+    bool enableDepthPrepass = false;
+    // Optional GPU opaque culling. Requires compute storage buffers; failures
+    // fall back to the CPU depth batches.
+    bool enableGpuCulling = false;
+    // Optional Hi-Z tile/mip depth pyramid for main-pass occlusion.
+    bool enableHiZ = false;
+    // Screen-pixel size at which the culler steps to the next Hi-Z mip.
+    float hiZLodScale = 32.0f;
+
+    // Reuse culling, cluster and GI work across unchanged frames.
+    bool enableStaticCaches = true;
+};
+
+enum class SpatialUpscaleMode : std::uint8_t
+{
+    Nearest = 0,
+    Bilinear = 1,
+    Bicubic = 2,
+    Fsr1 = 3
+};
+
+struct UpscalerCaps
+{
+    // Source-resolution spatial upscalers.
+    bool nearest = true;
+    bool bilinear = true;
+    bool bicubic = false;
+    bool fsr1 = false;
+    // Temporal upscalers. All false until their backend is built.
+    bool fsr2 = false;
+    bool dlss = false;
+    bool frameGeneration = false;
+    bool motionVectors = false;
 };
 
 struct DeviceInfo
@@ -85,6 +123,24 @@ struct DeviceInfo
     std::uint32_t maxStaticMeshVertices = 0;
     std::uint32_t maxMeshDrawsPerFrame = 0;
     bool discrete = false;
+    // Optional Vulkan 1.2/1.3 capabilities used by the GPU-driven path.
+    bool descriptorIndexing = false;
+    bool drawIndirectCount = false;
+    bool timelineSemaphores = false;
+    bool synchronization2 = false;
+    bool clusteredLighting = false;
+    bool depthPrepass = false;
+    bool gpuCulling = false;
+    bool hiZ = false;
+    bool staticCaches = false;
+    bool timestamps = false;
+    std::uint8_t oitMode = 0;
+    std::uint8_t upscaleMode = 1;
+    UpscalerCaps upscalers{};
+    // 0 unknown, 1 NVIDIA, 2 AMD, 3 Intel, 4 Apple.
+    std::uint8_t gpuVendor = 0;
+    // 0 Windows, 1 Linux, 2 macOS, 3 other.
+    std::uint8_t platform = 3;
 };
 
 struct TextureArrayDesc
@@ -131,10 +187,21 @@ struct ShaderPipelineHandle
 };
 
 // Editor / offscreen presentation
+enum class RenderBlendMode : std::uint8_t
+{
+    Opaque = 0,
+    Additive = 1,
+    Reveal = 2
+};
+
 struct RenderTargetDesc
 {
     Extent2D size{};
     bool srgb = false;
+    RenderBlendMode blend = RenderBlendMode::Opaque;
+    // Use the swapchain format so the target's render pass stays compatible with
+    // pipelines created for the main pass (the HUD is drawn by the same UI pipeline).
+    bool matchSwapchainFormat = false;
 };
 
 struct RenderTargetHandle
@@ -148,10 +215,18 @@ struct RenderTargetHandle
     }
 };
 
+enum class ImageLayout : int
+{
+    General = 1,
+    ShaderRead = 5
+};
+
 struct NativeTextureView
 {
     // VkImageView on Vulkan
     void* view = nullptr;
+    // VkImage on Vulkan (vendor upscalers need both image and view)
+    void* image = nullptr;
     // VkImageLayout, passed back to the backend verbatim
     int layout = 0;
 };
@@ -193,7 +268,32 @@ struct FrameStats
     std::uint32_t skinDispatches = 0;
     std::uint32_t skinnedVertices = 0;
     std::uint32_t skinRanges = 0;
+    std::uint32_t clusterTilesX = 0;
+    std::uint32_t clusterTilesY = 0;
+    std::uint32_t clusterCount = 0;
+    std::uint32_t clusterLights = 0;
+    std::uint32_t clusterDispatches = 0;
+    std::uint32_t clusterCacheHits = 0;
+    std::uint32_t cullCacheHits = 0;
+    std::uint32_t depthItems = 0;
+    std::uint32_t depthDrawCalls = 0;
+    std::uint32_t culledItems = 0;
+    std::uint32_t gpuMainBatches = 0;
+    std::uint32_t gpuMainItems = 0;
+    std::uint32_t giProbes = 0;
+    std::uint32_t hizTiles = 0;
+    std::uint32_t hizMips = 0;
     std::uint64_t uploadedBytes = 0;
+    float gpuFrameMilliseconds = 0.0f;
+    float gpuDepthMilliseconds = 0.0f;
+    float gpuMainMilliseconds = 0.0f;
+    float gpuClusterMilliseconds = 0.0f;
+    float gpuPostFxMilliseconds = 0.0f;
+    bool deviceLost = false;
+    bool gpuTimestampsValid = false;
+    int gpuTimestampResult = 0;
+    std::uint32_t oitItems = 0;
+    std::uint8_t oitMode = 0;
 };
 
 // Data pushed to a pipeline for the whole dispatch. Constrained so a caller
@@ -249,6 +349,17 @@ public:
     [[nodiscard]] virtual bool VSyncEnabled() const noexcept
     {
         return false;
+    }
+
+    // Runtime policy switches. Backends that do not implement the pass still
+    // record the request in DeviceInfo so tools and diagnostics see it.
+    virtual void SetOitMode(std::uint8_t InMode)
+    {
+        (void)InMode;
+    }
+    virtual void SetUpscaleMode(std::uint8_t InMode)
+    {
+        (void)InMode;
     }
     virtual void WaitIdle() = 0;
 
@@ -407,6 +518,174 @@ public:
         (void)InHandle;
     }
     // Records a sprite pass into the target and leaves it in a sampleable
+    // Presents the target on the swapchain with a blit. Used by offscreen
+    // benchmarks and by a cached static frame, so the window never shows a
+    // black placeholder.
+    virtual void PresentRenderTarget(RenderTargetHandle InHandle)
+    {
+        (void)InHandle;
+    }
+
+    // Presents one extra frame from an offscreen target. Used by the custom
+    // frame generator between real frames; it acquires its own swapchain image.
+    // Vendor upscalers need explicit image layouts (XeSS writes in GENERAL).
+    [[nodiscard]] virtual bool TransitionRenderTargetLayout(RenderTargetHandle InHandle, int InOldLayout,
+                                                           int InNewLayout)
+    {
+        (void)InHandle;
+        (void)InOldLayout;
+        (void)InNewLayout;
+        return false;
+    }
+
+    [[nodiscard]] virtual bool PresentGeneratedFrame(RenderTargetHandle InHandle)
+    {
+        (void)InHandle;
+        return false;
+    }
+
+    // Wraps a completed render target as a one-layer texture array. The
+    // renderer uses this to draw a baked static layer as one sprite.
+    virtual TextureArrayHandle CreateTextureArrayFromRenderTarget(RenderTargetHandle InHandle)
+    {
+        (void)InHandle;
+        return {};
+    }
+
+    // Renders the UI callback into the selected HUD target, then composites it
+    // over the open scene pass. Both are no-ops when no HUD target is set.
+    virtual bool CopyColorImage(RenderTargetHandle InSource, RenderTargetHandle InDestination)
+    {
+        (void)InSource;
+        (void)InDestination;
+        return false;
+    }
+
+    virtual bool CopyDepth(RenderTargetHandle InSource, RenderTargetHandle InDestination)
+    {
+        (void)InSource;
+        (void)InDestination;
+        return false;
+    }
+
+    virtual bool TemporalResolve(RenderTargetHandle InCurrent, RenderTargetHandle InHistory,
+                                 RenderTargetHandle InMotion, RenderTargetHandle InDepth,
+                                 RenderTargetHandle InHistoryDepth, RenderTargetHandle InOutput,
+                                 float InHistoryWeight, float InMotionScale, bool InResetHistory)
+    {
+        (void)InCurrent;
+        (void)InHistory;
+        (void)InMotion;
+        (void)InDepth;
+        (void)InHistoryDepth;
+        (void)InOutput;
+        (void)InHistoryWeight;
+        (void)InMotionScale;
+        (void)InResetHistory;
+        return false;
+    }
+
+    virtual bool ClearMotionVectors(RenderTargetHandle InTarget)
+    {
+        (void)InTarget;
+        return false;
+    }
+
+    virtual bool RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t InCount,
+                                     Vector2D InCameraCenter, Vector2D InPreviousCameraCenter,
+                                     float InCameraZoom, float InPreviousCameraZoom, Vector2D InJitter,
+                                     Vector2D InPreviousJitter, Vector2D InViewport)
+    {
+        (void)InTarget;
+        (void)InCount;
+        (void)InCameraCenter;
+        (void)InPreviousCameraCenter;
+        (void)InCameraZoom;
+        (void)InPreviousCameraZoom;
+        (void)InJitter;
+        (void)InPreviousJitter;
+        (void)InViewport;
+        return false;
+    }
+
+    virtual bool UploadMotionVectors(std::span<const MotionVectorItem> InItems)
+    {
+        (void)InItems;
+        return false;
+    }
+
+    virtual bool RenderHudTarget()
+    {
+        return false;
+    }
+
+    virtual bool CompositeHud()
+    {
+        return false;
+    }
+
+    virtual void SetHudUpscale(bool InNearest)
+    {
+        (void)InNearest;
+    }
+
+    virtual void SetUiVisible(bool InVisible)
+    {
+        (void)InVisible;
+    }
+
+    // Selects the target that receives the UI when the HUD path is offscreen.
+    virtual void SetHudTarget(RenderTargetHandle InHandle)
+    {
+        (void)InHandle;
+    }
+
+    // Native-resolution HUD target. It is composited after scene upscaling and
+    // frame generation and never enters temporal history.
+    virtual RenderTargetHandle CreateHudTarget(Extent2D InSize)
+    {
+        RenderTargetDesc ScopedDesc;
+        ScopedDesc.size = InSize;
+        ScopedDesc.srgb = true;
+        ScopedDesc.matchSwapchainFormat = true;
+        return CreateRenderTarget(ScopedDesc);
+    }
+
+    // A non-sRGB target reserved for screen-space motion vectors.
+    virtual RenderTargetHandle CreateMotionVectorTarget(Extent2D InSize)
+    {
+        RenderTargetDesc ScopedDesc;
+        ScopedDesc.size = InSize;
+        ScopedDesc.srgb = false;
+        return CreateRenderTarget(ScopedDesc);
+    }
+
+    // Spatial upscale from a completed source target into a display target.
+    virtual bool RcasSharpen(RenderTargetHandle InSource, RenderTargetHandle InDestination, float InSharpness)
+    {
+        (void)InSource;
+        (void)InDestination;
+        (void)InSharpness;
+        return false;
+    }
+
+    virtual bool UpscaleRenderTarget(RenderTargetHandle InSource, RenderTargetHandle InDestination,
+                                     SpatialUpscaleMode InMode)
+    {
+        (void)InSource;
+        (void)InDestination;
+        (void)InMode;
+        return false;
+    }
+
+    // Draws a second packet into the already-open main pass without clearing.
+    // Used for splash text over the logo, which lives in another texture array.
+    virtual bool DrawOverlay(const FramePacket& InPacket)
+    {
+        (void)InPacket;
+        return false;
+    }
+
     virtual bool RenderToTarget(RenderTargetHandle InHandle, const FramePacket& InPacket)
     {
         (void)InHandle;
@@ -416,6 +695,40 @@ public:
     [[nodiscard]] virtual bool RenderTargetTexture(RenderTargetHandle InHandle, NativeTextureView& InView) const
     {
         (void)InHandle;
+        (void)InView;
+        return false;
+    }
+    // Depth view of an offscreen target. It stays in depth-stencil read-only
+    // layout after RenderToTarget and can feed temporal reprojection or Hi-Z.
+    [[nodiscard]] virtual void* CurrentCommandBuffer() const noexcept
+    {
+        return nullptr;
+    }
+
+    struct NativeDeviceHandles
+    {
+        void* Instance = nullptr;
+        void* PhysicalDevice = nullptr;
+        void* Device = nullptr;
+        void* DeviceProcAddr = nullptr;
+    };
+
+    [[nodiscard]] virtual bool GetNativeDeviceHandles(NativeDeviceHandles& OutHandles) const
+    {
+        (void)OutHandles;
+        return false;
+    }
+
+    [[nodiscard]] virtual bool RenderTargetDepthTexture(RenderTargetHandle InHandle, NativeTextureView& InView) const
+    {
+        (void)InHandle;
+        (void)InView;
+        return false;
+    }
+    // Depth view of the currently acquired swapchain image. Valid after the
+    // depth prepass; the next frame may rotate the image.
+    [[nodiscard]] virtual bool MainDepthTexture(NativeTextureView& InView) const
+    {
         (void)InView;
         return false;
     }

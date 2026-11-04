@@ -121,8 +121,7 @@ IdePalette& Palette()
 {
     return ImVec4(SrgbToLinear(static_cast<float>(InColor.R()) / 255.0f),
                   SrgbToLinear(static_cast<float>(InColor.G()) / 255.0f),
-                  SrgbToLinear(static_cast<float>(InColor.B()) / 255.0f),
-                  static_cast<float>(InColor.A()) / 255.0f);
+                  SrgbToLinear(static_cast<float>(InColor.B()) / 255.0f), static_cast<float>(InColor.A()) / 255.0f);
 }
 
 // WCAG 2.2: pick the nearest of black/white that reaches 4.5:1. A high-contrast
@@ -169,12 +168,12 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
     if (InSettings.highContrast)
     {
         constexpr float kMinimumRatio = 4.5f;
-        ScopedStyle.Colors[ImGuiCol_Text] = EnforceContrast(ScopedStyle.Colors[ImGuiCol_Text], ScopedBackground,
-                                                            kMinimumRatio);
+        ScopedStyle.Colors[ImGuiCol_Text] =
+            EnforceContrast(ScopedStyle.Colors[ImGuiCol_Text], ScopedBackground, kMinimumRatio);
         ScopedStyle.Colors[ImGuiCol_TextDisabled] =
             EnforceContrast(ScopedStyle.Colors[ImGuiCol_TextDisabled], ScopedBackground, kMinimumRatio);
-        ScopedStyle.Colors[ImGuiCol_TextSelectedBg] = EnforceContrast(
-            ScopedStyle.Colors[ImGuiCol_TextSelectedBg], ScopedBackground, kMinimumRatio);
+        ScopedStyle.Colors[ImGuiCol_TextSelectedBg] =
+            EnforceContrast(ScopedStyle.Colors[ImGuiCol_TextSelectedBg], ScopedBackground, kMinimumRatio);
         ScopedStyle.Colors[ImGuiCol_Border] =
             EnforceContrast(ScopedStyle.Colors[ImGuiCol_Border], ScopedBackground, 3.0f);
         ScopedStyle.Colors[ImGuiCol_NavCursor] = HexColor(kThemeAccentActive, 1.0f);
@@ -205,7 +204,8 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
     if (InSettings.flashGuard)
     {
         const float ScopedLuminance = SrgbRelativeLuminance(ToColor32(ScopedBackground));
-        const float ScopedGain = ScopedPalette.flash.Evaluate(ScopedLuminance, std::max(1.0e-4f, ImGui::GetIO().DeltaTime));
+        const float ScopedGain =
+            ScopedPalette.flash.Evaluate(ScopedLuminance, std::max(1.0e-4f, ImGui::GetIO().DeltaTime));
         if (ScopedGain < 1.0f)
         {
             const ImU32 ScopedBackgroundTargets[] = {ImGuiCol_WindowBg, ImGuiCol_ChildBg, ImGuiCol_PopupBg};
@@ -338,11 +338,165 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     {
         CopyProjectField(ScopedValues.version, sizeof(ScopedValues.version), ScopedVersion);
     }
+    std::array<char, sizeof(ScopedValues.studioName)> ScopedStudio{};
+    std::memcpy(ScopedStudio.data(), ScopedValues.studioName, sizeof(ScopedValues.studioName));
+    if (ImGui::InputText("Studio", ScopedStudio.data(), ScopedStudio.size()))
+    {
+        CopyProjectField(ScopedValues.studioName, sizeof(ScopedValues.studioName), ScopedStudio.data());
+    }
+    std::array<char, sizeof(ScopedValues.description)> ScopedDescription{};
+    std::memcpy(ScopedDescription.data(), ScopedValues.description, sizeof(ScopedValues.description));
+    if (ImGui::InputTextMultiline("Description", ScopedDescription.data(), ScopedDescription.size(),
+                                  ImVec2(0.0f, 54.0f)))
+    {
+        CopyProjectField(ScopedValues.description, sizeof(ScopedValues.description), ScopedDescription.data());
+    }
+    std::array<char, sizeof(ScopedValues.copyrightHeader)> ScopedCopyright{};
+    std::memcpy(ScopedCopyright.data(), ScopedValues.copyrightHeader, sizeof(ScopedValues.copyrightHeader));
+    if (ImGui::InputText("Copyright header", ScopedCopyright.data(), ScopedCopyright.size()))
+    {
+        CopyProjectField(ScopedValues.copyrightHeader, sizeof(ScopedValues.copyrightHeader), ScopedCopyright.data());
+    }
+    ImGui::Checkbox("Show splash on game launch", &ScopedValues.showSplash);
+    ImGui::TextDisabled("The splash shows the logo, engine version, studio and project description.");
     char ScopedScene[kProjectScenePathCapacity]{};
     std::memcpy(ScopedScene, ScopedValues.defaultScene, sizeof(ScopedScene));
     if (ImGui::InputText("Default scene", ScopedScene, sizeof(ScopedScene)))
     {
         CopyProjectField(ScopedValues.defaultScene, sizeof(ScopedValues.defaultScene), ScopedScene);
+    }
+
+    ImGui::SeparatorText("Gameplay Tags");
+    ImGui::TextDisabled("One project database. Definitions are global; per-entity values live on the entity.");
+    ImGui::TextDisabled("Ids follow list order and the runtime registry is rebuilt for every Apply.");
+    GameplayTagDatabase& ScopedTagDb = ScopedValues.gameplayTags;
+    if (MSelectedTag >= static_cast<int>(ScopedTagDb.Count))
+    {
+        MSelectedTag = ScopedTagDb.Count == 0 ? -1 : static_cast<int>(ScopedTagDb.Count - 1);
+    }
+
+    ImGui::InputTextWithHint("##tag_search", "Filter tags", MTagSearch.data(), MTagSearch.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Clear filter"))
+    {
+        MTagSearch = {};
+    }
+
+    std::array<std::uint16_t, GameplayTagDatabase::kCapacity> ScopedOrder{};
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedTagDb.Count; ++ScopedI)
+    {
+        ScopedOrder[ScopedI] = static_cast<std::uint16_t>(ScopedI);
+    }
+    std::sort(ScopedOrder.begin(), ScopedOrder.begin() + ScopedTagDb.Count,
+              [&ScopedTagDb](std::uint16_t InA, std::uint16_t InB)
+              {
+                  return ScopedTagDb.PathAt(InA) < ScopedTagDb.PathAt(InB);
+              });
+
+    ImGui::BeginChild("##gameplay_tag_list", ImVec2(0.0f, 180.0f), true);
+    const std::string_view ScopedFilter(MTagSearch.data());
+    for (std::uint32_t ScopedRank = 0; ScopedRank < ScopedTagDb.Count; ++ScopedRank)
+    {
+        const std::uint32_t ScopedIndex = ScopedOrder[ScopedRank];
+        const std::string_view ScopedPath = ScopedTagDb.PathAt(ScopedIndex);
+        if (!ScopedFilter.empty() && ScopedPath.find(ScopedFilter) == std::string_view::npos)
+        {
+            continue;
+        }
+        std::uint32_t ScopedDepth = 0;
+        for (const char ScopedChar : ScopedPath)
+        {
+            ScopedDepth += ScopedChar == '.' ? 1u : 0u;
+        }
+        ImGui::Indent(static_cast<float>(std::min(ScopedDepth, 8u)) * 10.0f);
+        const bool ScopedSelected = MSelectedTag == static_cast<int>(ScopedIndex);
+        if (ImGui::Selectable(std::string(ScopedPath).c_str(), ScopedSelected))
+        {
+            MSelectedTag = static_cast<int>(ScopedIndex);
+        }
+        ImGui::Unindent(static_cast<float>(std::min(ScopedDepth, 8u)) * 10.0f);
+    }
+    ImGui::EndChild();
+
+    if (MSelectedTag >= 0 && MSelectedTag < static_cast<int>(ScopedTagDb.Count))
+    {
+        const std::string_view ScopedSelectedPath = ScopedTagDb.PathAt(static_cast<std::uint32_t>(MSelectedTag));
+        if (MSelectedTag != MLastSelectedTag)
+        {
+            MRenameTagPath = {};
+            const std::size_t ScopedLength = std::min(ScopedSelectedPath.size(), MRenameTagPath.size() - 1u);
+            std::memcpy(MRenameTagPath.data(), ScopedSelectedPath.data(), ScopedLength);
+            MLastSelectedTag = MSelectedTag;
+        }
+        ImGui::Text("Selected: %.*s  (id %d)", static_cast<int>(ScopedSelectedPath.size()), ScopedSelectedPath.data(),
+                    MSelectedTag + 1);
+        const std::size_t ScopedDot = ScopedSelectedPath.rfind('.');
+        if (ScopedDot == std::string_view::npos)
+        {
+            ImGui::TextDisabled("Parent: <root>");
+        }
+        else
+        {
+            ImGui::TextDisabled("Parent: %.*s", static_cast<int>(ScopedDot), ScopedSelectedPath.data());
+        }
+        ImGui::SetNextItemWidth(320.0f);
+        ImGui::InputText("Rename to", MRenameTagPath.data(), MRenameTagPath.size());
+        ImGui::SameLine();
+        if (ImGui::Button("Rename"))
+        {
+            if (ScopedTagDb.Rename(static_cast<std::uint32_t>(MSelectedTag), MRenameTagPath.data()))
+            {
+                MNewTagPath = {};
+                MLastSelectedTag = -1;
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Add child"))
+        {
+            MNewTagPath = {};
+            const std::size_t ScopedLength = std::min(ScopedSelectedPath.size(), MNewTagPath.size() - 8u);
+            std::memcpy(MNewTagPath.data(), ScopedSelectedPath.data(), ScopedLength);
+            std::memcpy(MNewTagPath.data() + ScopedLength, ".NewTag", 7);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Delete subtree"))
+        {
+            if (ScopedTagDb.RemoveAt(static_cast<std::uint32_t>(MSelectedTag)))
+            {
+                MSelectedTag = -1;
+                MLastSelectedTag = -1;
+                MNewTagPath = {};
+            }
+        }
+        if (ImGui::IsItemHovered())
+        {
+            EditorTooltip(
+                "Deletes the selected tag and every child path.\nThe whole project settings transaction is undoable.");
+        }
+    }
+
+    ImGui::SetNextItemWidth(320.0f);
+    ImGui::InputTextWithHint("##new_tag", "New tag path, e.g. Character.State.Stunned", MNewTagPath.data(),
+                             MNewTagPath.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Add tag"))
+    {
+        const int ScopedAdded = ScopedTagDb.Add(MNewTagPath.data());
+        if (ScopedAdded >= 0)
+        {
+            MSelectedTag = ScopedAdded;
+            MLastSelectedTag = -1;
+            MNewTagPath = {};
+        }
+    }
+    if (!ScopedTagDb.LastError().empty())
+    {
+        ImGui::TextColored(ImVec4(0.95f, 0.36f, 0.31f, 1.0f), "%s", ScopedTagDb.LastError().data());
+    }
+    else
+    {
+        ImGui::TextDisabled("%u / %u tags. Add the parent path first or let the editor create it.", ScopedTagDb.Count,
+                            GameplayTagDatabase::kCapacity);
     }
 
     ImGui::SeparatorText("Simulation");
@@ -407,21 +561,112 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::SliderFloat("Motion scale", &ScopedProfile.presentation.motionScale, 0.0f, 1.0f, "%.2f");
     ImGui::SliderFloat("HUD fade after idle", &ScopedProfile.presentation.hudFadeAfterIdleSeconds, 0.0f, 120.0f,
                        "%.0f s");
-    ImGui::SliderFloat("Minimum contrast ratio", &ScopedProfile.presentation.minimumContrastRatio, 1.0f, 21.0f,
-                       "%.1f");
+    ImGui::SliderFloat("Minimum contrast ratio", &ScopedProfile.presentation.minimumContrastRatio, 1.0f, 21.0f, "%.1f");
 
     ImGui::SeparatorText("Cooker");
     (void)DrawCookFormatCombo(&ScopedValues.textureFormat);
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Art-driven: RGBA8 for pixel art, BC7 for painted desktop art, ASTC for mobile.\n"
-                          "Scale only changes max texture size and whether VT is needed.");
+                      "Scale only changes max texture size and whether VT is needed.");
     }
     int ScopedMaxTextureSize = static_cast<int>(ScopedValues.maxTextureSize);
     if (ImGui::SliderInt("Max texture size", &ScopedMaxTextureSize, 256, 8192))
     {
         ScopedValues.maxTextureSize = static_cast<std::uint32_t>(ScopedMaxTextureSize);
     }
+
+    ImGui::SeparatorText("Resolution");
+    ImGui::SliderFloat("Render scale", &ScopedValues.renderScale, 0.25f, 1.0f, "%.2f");
+    const char* ScopedUpscaleNames[5] = {"Nearest", "Bilinear", "Bicubic", "FSR1", "FSR2"};
+    const char* ScopedUpscaleTips[5] = {
+        "Integer pixel replication. Best for pixel art; blocky, no smoothing.",
+        "Linear filter. Cheap and soft; blurs fine detail.",
+        "Catmull-Rom style reconstruction. Sharper than bilinear; mild ringing.",
+        "AMD FidelityFX Super Resolution 1: spatial edge-aware upscale, no motion vectors.",
+        "FSR2-compatible temporal resolve with history and motion vectors."};
+    int ScopedUpscale = static_cast<int>(ScopedValues.upscaleMode);
+    if (ImGui::Combo("Upscale", &ScopedUpscale, ScopedUpscaleNames, 5))
+    {
+        ScopedValues.upscaleMode = static_cast<UpscaleMode>(ScopedUpscale);
+    }
+    if (ScopedValues.upscaleMode == UpscaleMode::Fsr2 && !MBackendCaps.Fsr2)
+    {
+        ScopedValues.upscaleMode = UpscaleMode::Fsr1;
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip(ScopedUpscaleTips[std::clamp(ScopedUpscale, 0, 4)]);
+    }
+
+    const bool ScopedTemporalCapable = MUpscalerCaps.motionVectors && (MUpscalerCaps.fsr2 || MUpscalerCaps.dlss);
+    if (ScopedTemporalCapable)
+    {
+        ImGui::Checkbox("Allow temporal upscaling", &ScopedValues.allowTemporalUpscale);
+        if (ImGui::IsItemHovered())
+        {
+            EditorTooltip("Project policy. Requires a compiled temporal backend and motion vectors.");
+        }
+        ImGui::BeginDisabled(!ScopedValues.allowTemporalUpscale);
+        const char* ScopedTemporalNames[4] = {"Off", "FSR2", "DLSS", "Auto"};
+        int ScopedTemporal = static_cast<int>(ScopedValues.temporalUpscale);
+        if (ImGui::Combo("Temporal upscaler", &ScopedTemporal, ScopedTemporalNames, 4))
+        {
+            ScopedValues.temporalUpscale = static_cast<TemporalUpscaleMode>(ScopedTemporal);
+        }
+        ImGui::EndDisabled();
+    }
+
+    ImGui::SeparatorText("Transparency");
+    const char* ScopedOitModeNames[3] = {"Off", "Weighted", "Accurate"};
+    const char* ScopedOitTips[3] = {
+        "Back-to-front alpha blending. Cheapest and correct for most 2D scenes.",
+        "Weighted Blended OIT: one order-independent approximation; cheap, but approximate.",
+        "Per-pixel linked-list OIT: exact order independence, high bandwidth. Not wired yet."};
+    int ScopedOitMode = static_cast<int>(ScopedValues.oitMode);
+    if (ImGui::Combo("OIT", &ScopedOitMode, ScopedOitModeNames, 3))
+    {
+        ScopedValues.oitMode = static_cast<OitMode>(ScopedOitMode);
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip(ScopedOitTips[std::clamp(ScopedOitMode, 0, 2)]);
+    }
+
+    ImGui::SeparatorText("Static layer bake");
+    ImGui::Checkbox("Enable static layer bake", &ScopedValues.staticBakeEnabled);
+    ImGui::BeginDisabled(!ScopedValues.staticBakeEnabled);
+    int ScopedBakeTile = static_cast<int>(ScopedValues.staticBakeTileSize);
+    if (ImGui::SliderInt("Bake tile size", &ScopedBakeTile, 64, 1024))
+    {
+        ScopedValues.staticBakeTileSize = static_cast<std::uint32_t>(ScopedBakeTile);
+    }
+    int ScopedBakeBudget = static_cast<int>(ScopedValues.staticBakeBudgetMB);
+    if (ImGui::SliderInt("Bake budget MB", &ScopedBakeBudget, 8, 1024))
+    {
+        ScopedValues.staticBakeBudgetMB = static_cast<std::uint32_t>(ScopedBakeBudget);
+    }
+    ImGui::EndDisabled();
+
+    ImGui::SeparatorText("Opaque main pass");
+    const char* ScopedOpaqueModeNames[3] = {"Off", "On", "Auto"};
+    int ScopedOpaqueMode = static_cast<int>(ScopedValues.opaqueMode);
+    if (ImGui::Combo("Front-to-back opaque", &ScopedOpaqueMode, ScopedOpaqueModeNames, 3))
+    {
+        ScopedValues.opaqueMode = static_cast<OpaqueRenderMode>(ScopedOpaqueMode);
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Auto enables depth-tested front-to-back drawing only when every sprite is opaque.\n"
+                      "Soft alpha edges are rendered as a hard cutoff; use Off for blended art.");
+    }
+    ImGui::Checkbox("Opaque art uses cutout alpha", &ScopedValues.opaqueArtCutout);
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip(
+            "Required for Auto. Enable only when opaque textures use binary alpha; soft blended edges need Off.");
+    }
+    ImGui::SliderFloat("Opaque alpha cutoff", &ScopedValues.opaqueAlphaCutoff, 0.0f, 1.0f, "%.2f");
 
     // AOT cook profile. The combo is the only place the level is authored;
     ImGui::SeparatorText("AOT Cook / Final Build");
@@ -448,7 +693,8 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
                            static_cast<int>(ScopedAdvice.warning.size()), ScopedAdvice.warning.data());
     }
 #if defined(_MSC_VER)
-    ImGui::TextDisabled("Resolved flags: %s  %s  %s", Build::OptimizationFlagMsvc(ScopedValues.build.optimization).data(),
+    ImGui::TextDisabled("Resolved flags: %s  %s  %s",
+                        Build::OptimizationFlagMsvc(ScopedValues.build.optimization).data(),
                         Build::LinkTimeOptimizationFlag(true).data(), Build::StripDebugFlag(true).data());
 #else
     ImGui::TextDisabled("Resolved flags: %s  %s  %s", Build::OptimizationFlag(ScopedValues.build.optimization).data(),
@@ -513,7 +759,8 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         }
         ImGui::EndTable();
     }
-    ImGui::TextWrapped("Masks are committed to live b2Shape filters after mouse release. The first six rows are named; the remaining 58 are reserved for game layers.");
+    ImGui::TextWrapped("Masks are committed to live b2Shape filters after mouse release. The first six rows are named; "
+                       "the remaining 58 are reserved for game layers.");
 
     ImGui::SeparatorText("Virtual Texture");
     VirtualTextureSettings& ScopedVt = ScopedValues.virtualTexture;
@@ -521,7 +768,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Opt-in: creates VT resources only for projects with streamed textures.\n"
-                          "Ordinary sprites keep sampling the atlas.");
+                      "Ordinary sprites keep sampling the atlas.");
     }
     ImGui::TextDisabled("Structural layout is baked into chunks: it applies when VT starts.");
     static constexpr std::uint32_t kLayerChoices[] = {1, 2, 4, 8};
@@ -537,7 +784,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Cache depth, not detail: 1-2 layers is enough for most 2D games.\n"
-                          "Each layer costs page_size^2 * 4 bytes (4 MiB at 1024).");
+                      "Each layer costs page_size^2 * 4 bytes (4 MiB at 1024).");
     }
     int ScopedPage = static_cast<int>(ScopedVt.pageSize);
     if (ImGui::Combo("Page size", &ScopedPage, "128\0 256\0 512\0 1024\0 2048\0 4096\0"))
@@ -547,7 +794,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Page resolution: 1024-2048 for production, 128 only for tests.\n"
-                          "Memory = page^2 * 4 bytes per layer.");
+                      "Memory = page^2 * 4 bytes per layer.");
     }
     int ScopedTile = static_cast<int>(ScopedVt.tileSize);
     if (ImGui::Combo("Tile size", &ScopedTile, "16\0 32\0 64\0 128\0"))
@@ -557,7 +804,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Page quantization: 64 is the sweet spot, 32-64 keeps zoom crisp.\n"
-                          "Must divide the page size.");
+                      "Must divide the page size.");
     }
     int ScopedChunk = static_cast<int>(ScopedVt.chunkTiles);
     if (ImGui::Combo("Chunk tiles", &ScopedChunk, "1\0 2\0 4\0 8\0"))
@@ -567,7 +814,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Tiles per cooked chunk file: 2-4 balances file count and I/O.\n"
-                          "Baked into chunk data, so changing it requires a rebake.");
+                      "Baked into chunk data, so changing it requires a rebake.");
     }
     int ScopedTable = static_cast<int>(ScopedVt.pageTableSize);
     if (ImGui::Combo("Page table", &ScopedTable, "16\0 32\0 64\0 128\0 256\0 512\0 1024\0"))
@@ -577,13 +824,13 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Addressable window: 128-256 is cheap (64-256 KiB).\n"
-                          "For bigger worlds shift the table origin, do not grow the table.");
+                      "For bigger worlds shift the table origin, do not grow the table.");
     }
     ImGui::DragFloat("World units / tile", &ScopedVt.worldTileSize, 1.0f, 1.0f, 4096.0f, "%.0f");
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Texel density: smaller streams more pages and looks sharper,\n"
-                          "larger streams fewer pages and looks blurrier.");
+                      "larger streams fewer pages and looks blurrier.");
     }
 
     ImGui::SeparatorText("Virtual Texture (runtime)");
@@ -595,7 +842,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Max page uploads per frame: 4-8 is steady.\n"
-                          "Raise for fast cameras, lower for tight frame budgets.");
+                      "Raise for fast cameras, lower for tight frame budgets.");
     }
     int ScopedPrefetch = static_cast<int>(ScopedVt.prefetchTiles);
     if (ImGui::SliderInt("Prefetch ring", &ScopedPrefetch, 0, 8))
@@ -605,13 +852,13 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Extra rings around the camera: 1 for panning, 2 for fast travel.\n"
-                          "Each ring costs additional uploads.");
+                      "Each ring costs additional uploads.");
     }
     ImGui::Checkbox("Streaming enabled", &ScopedVt.streamingEnabled);
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Off freezes current residency for debugging: resident pages stay\n"
-                          "usable, nothing is evicted or uploaded.");
+                      "usable, nothing is evicted or uploaded.");
     }
     int ScopedDebug = static_cast<int>(ScopedVt.debugMode);
     if (ImGui::Combo("Debug view", &ScopedDebug, "Off\0 Page id tint\0 Slot tint\0"))
@@ -621,7 +868,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Tints resident pages by page id or slot; magenta marks a tile\n"
-                          "that has no resident page.");
+                      "that has no resident page.");
     }
 
     ImGui::SeparatorText("Layout readout");
@@ -631,10 +878,10 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (ImGui::IsItemHovered())
     {
         EditorTooltip("Derived cost: slots = (page/tile)^2, page bytes = page^2 * 4,\n"
-                          "total = layers * page bytes.");
+                      "total = layers * page bytes.");
     }
-    ImGui::Text("page table %.1f KiB   world span %.0f units",
-                static_cast<double>(ScopedVt.PageTableBytes()) / 1024.0, static_cast<double>(ScopedVt.WorldSpan()));
+    ImGui::Text("page table %.1f KiB   world span %.0f units", static_cast<double>(ScopedVt.PageTableBytes()) / 1024.0,
+                static_cast<double>(ScopedVt.WorldSpan()));
     if (const char* ScopedIssue = ScopedVt.Issue(); ScopedIssue != nullptr)
     {
         ImGui::TextColored(ImVec4(0.95f, 0.36f, 0.31f, 1.0f), "Issue: %s", ScopedIssue);
@@ -690,6 +937,10 @@ void ProjectSettingsPanel::Apply(Ecs::SystemContext& InContext)
     if (InContext.physics != nullptr)
     {
         InContext.physics->ApplyCollisionFilterMatrix(InContext.registry, ScopedValues.collision);
+    }
+    if (InContext.gameplayTags != nullptr)
+    {
+        ScopedValues.gameplayTags.ApplyToRegistry(*InContext.gameplayTags);
     }
     MApplied = ScopedValues;
     MAppliedValid = true;
@@ -873,7 +1124,37 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::SliderFloat("Script input pins", &ScopedValues.fontScriptPinInput, 16.0f, 28.0f, "%.0f px");
     ImGui::SliderFloat("Script output pins", &ScopedValues.fontScriptPinOutput, 16.0f, 28.0f, "%.0f px");
     ImGui::SliderFloat("Scene text", &ScopedValues.fontSceneText, 16.0f, 40.0f, "%.0f px");
-    ImGui::TextDisabled("Font size changes apply after the font atlas is reloaded (next launch or hot reload).");
+    ImGui::TextDisabled("Font sizes are logical px; the window content scale multiplies them. The atlas reloads on "
+                        "the next frame.");
+
+    ImGui::SeparatorText("Logs");
+    int ScopedLogFiles = static_cast<int>(std::min<std::uint32_t>(ScopedValues.logMaxFiles, 512u));
+    if (ImGui::SliderInt("Files per category", &ScopedLogFiles, 1, 512))
+    {
+        ScopedValues.logMaxFiles = static_cast<std::uint32_t>(std::max(ScopedLogFiles, 1));
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("The newest files of each log category are kept. Older files are deleted when the sink opens "
+                      "or when this setting is applied.");
+    }
+    int ScopedLogLines = static_cast<int>(std::min<std::uint32_t>(ScopedValues.logMaxLinesPerFile, 2000000u));
+    if (ImGui::InputInt("Lines per file", &ScopedLogLines, 10000, 50000))
+    {
+        ScopedValues.logMaxLinesPerFile = static_cast<std::uint32_t>(std::clamp(ScopedLogLines, 1000, 2000000));
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("A file that reaches this many lines is compacted in place: the oldest lines are dropped and "
+                      "the newest ninety percent stay.");
+    }
+    if (ImGui::Button("Use recommended limits"))
+    {
+        ScopedValues.logMaxFiles = kRecommendedLogRetention.MaxFiles;
+        ScopedValues.logMaxLinesPerFile = kRecommendedLogRetention.MaxLinesPerFile;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Recommended: 20 files x 50,000 lines (about 6 MB per file).");
 
     ImGui::SeparatorText("Authoring");
     ImGui::Checkbox("Watch assets (OS watcher + hot reload)", &ScopedValues.watchAssets);
@@ -950,8 +1231,13 @@ void EditorSettingsPanel::Apply(Ecs::SystemContext& InContext)
                     WindowModeName(ScopedMode));
         }
     }
-    // 1.92+ global scale factor. EditorSystem::ApplySettings hands the same
-    ImGui::GetStyle().FontScaleMain = std::clamp(ScopedValues.uiScale, 0.75f, 2.0f);
+    // The font set owns the global font scale: EditorSystem reloads the atlas
+    // from the new EditorSettings on the next frame, so writing FontScaleMain
+    // here would race that path and break the legacy density fallback.
+    LogRetention ScopedRetention;
+    ScopedRetention.MaxFiles = ScopedValues.logMaxFiles;
+    ScopedRetention.MaxLinesPerFile = ScopedValues.logMaxLinesPerFile;
+    SetLogRetention(ScopedRetention);
     ApplyIdeAccessibility(MStore->Project().accessibility.editor);
     MApplied = ScopedValues;
     MAppliedValid = true;
