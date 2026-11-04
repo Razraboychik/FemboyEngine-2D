@@ -513,12 +513,12 @@ bool VirtualFileSystem::WriteFile(std::string_view InPath, std::span<const std::
                           std::to_string(ScopedCodeWin32) + ")");
     }
 #else
-    if (::rename(temporary.c_str(), physical.c_str()) != 0)
+    if (::rename(ScopedTemporary.c_str(), ScopedPhysical.c_str()) != 0)
     {
-        const std::string reason = std::strerror(errno);
-        fs::remove(temporary, code);
-        restoreOldFile();
-        return fail("cannot replace " + physical.string() + ": " + reason);
+        const std::string ScopedReason = std::strerror(errno);
+        fs::remove(ScopedTemporary, ScopedCode);
+        ScopedRestoreOldFile();
+        return ScopedFail("cannot replace " + ScopedPhysical.string() + ": " + ScopedReason);
     }
 #endif
 

@@ -168,8 +168,8 @@ namespace
     CloseHandle(ScopedProcess.hProcess);
     return static_cast<int>(ScopedExitCode);
 #else
-    const std::string redirected = command + " > " + Quote(logPath.string()) + " 2>&1";
-    return std::system(redirected.c_str());
+    const std::string ScopedRedirected = InCommand + " > " + Quote(InLogPath.string()) + " 2>&1";
+    return std::system(ScopedRedirected.c_str());
 #endif
 }
 
@@ -199,7 +199,7 @@ namespace
     {
         ScopedCommand += " -std=c++26 -O3 -shared";
 #if !defined(_WIN32)
-        command += " -fPIC";
+        ScopedCommand += " -fPIC";
 #endif
         ScopedCommand += " -I";
         ScopedCommand += Quote(InOptions.includeDirectory.string());
