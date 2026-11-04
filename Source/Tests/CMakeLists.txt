@@ -784,9 +784,7 @@ fby_add_engine_test(fby_render_weather_test render_weather RenderWeatherTest.cpp
 fby_add_engine_test(fby_render_ecs_test render_ecs RenderEcsTest.cpp)
 
 # Fast gate for the optimization work: culling, depth, clusters, SDF and GI.
-set_tests_properties(
-    frame_composer
-    frame_composer_benchmark
+set(ScopedOptimizationTests
     lighting
     light_grid
     gpu_lighting
@@ -807,8 +805,13 @@ set_tests_properties(
     sdf_composer_benchmark
     sdf_debris_benchmark
     render_weather
-    render_ecs
-    PROPERTIES LABELS "optimization")
+    render_ecs)
+
+if(TARGET fby_frame_composer_test)
+    list(APPEND ScopedOptimizationTests frame_composer frame_composer_benchmark)
+endif()
+
+set_tests_properties(${ScopedOptimizationTests} PROPERTIES LABELS "optimization")
 
 # Data-driven descriptors, transactional prefab spawn, Units DPI and theme palette.
 fby_add_engine_test(fby_data_driven_test data_driven DataDrivenTest.cpp)
