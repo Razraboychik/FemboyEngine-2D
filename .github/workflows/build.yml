@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON
       - name: Build
@@ -89,7 +89,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install toolchain
         run: |
-          apt-get install -y cmake ninja-build python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
+          apt-get install -y cmake ninja-build python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
           gcc --version | head -n1
           g++ --version | head -n1
       - name: Configure
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
       - name: Configure first
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=OFF
       - name: Build first
@@ -130,7 +130,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
       - name: Configure
         run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
@@ -155,7 +155,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev
       - name: Configure
         run: cmake -S . -B build-ubsan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_UBSAN=ON
       - name: Build
