@@ -1,11 +1,11 @@
 name: Install LLVM
-description: Install the pinned LLVM release with libc++ for the Linux gates.
+description: Install the LLVM 23.1 package with libc++ for the Linux gates.
 
 inputs:
   version:
-    description: Exact LLVM version to install.
+    description: Latest LLVM 23.1 package provided by apt.llvm.org.
     required: false
-    default: "23.1.4"
+    default: "23.1.6"
 
 runs:
   using: composite
@@ -14,6 +14,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        # apt.llvm.org currently serves 23.1.6 for the 23.1 branch; the
+        # authoritative Windows gate still uses the 23.1.4 MSI.
         version="${{ inputs.version }}"
         major="${version%%.*}"
         curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
