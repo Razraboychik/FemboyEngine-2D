@@ -54,7 +54,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and GCC 15+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer uses the deterministic FbyLZ codec and reports it in the cook log.
+The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and GCC 16+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer uses the deterministic FbyLZ codec and reports it in the cook log.
 
 > **Note.** Setup never modifies a source file. It is safe to delete third_party/<name>-src and re-run with --force; the lock file is regenerated and the CMake cache does not embed a machine-specific path.
 

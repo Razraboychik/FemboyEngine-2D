@@ -115,10 +115,10 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "The engine targets C++26 with GCC 15 or newer and Clang 19 or newer; the Windows release "
+                    "The engine targets C++26 with GCC 16 or newer and Clang 19 or newer; the Windows release "
                     "candidate is built with clang-cl against the MSVC standard library. Four rules are load "
                     "bearing and every public API is designed around them:",
-                    "Движок рассчитан на C++26 с GCC 15 или новее и Clang 19 или новее; релиз-кандидат под Windows "
+                    "Движок рассчитан на C++26 с GCC 16 или новее и Clang 19 или новее; релиз-кандидат под Windows "
                     "собирается clang-cl со стандартной библиотекой MSVC. Четыре правила являются несущими, и "
                     "каждый публичный API спроектирован вокруг них:",
                 ),

@@ -7,7 +7,7 @@
 Движку нужен C++26:
 
 - Windows: clang-cl 19+ с MSVC STL или MSVC 19.40+.
-- Linux: Clang 19+ или GCC 15+.
+- Linux: Clang 19+ или GCC 16+.
 - macOS/iOS: Apple Clang с поддержкой C++26.
 - Android: NDK r27+ с C++26-совместимым Clang.
 

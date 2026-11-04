@@ -60,7 +60,7 @@ Version 0.2.0-alpha.1 (Alpha) · 2026-11-04 · English
 
 This manual specifies the public surface of FemboyEngine2D: every header under Source/Engine and the editor infrastructure that a host links against. It is written against the release-candidate tree, so a symbol described here exists in the headers that ship with that tree, and the appendix index is generated from those headers on every run.
 
-The engine targets C++26 with GCC 15 or newer and Clang 19 or newer; the Windows release candidate is built with clang-cl against the MSVC standard library. Four rules are load bearing and every public API is designed around them:
+The engine targets C++26 with GCC 16 or newer and Clang 19 or newer; the Windows release candidate is built with clang-cl against the MSVC standard library. Four rules are load bearing and every public API is designed around them:
 
 - Simulation state is plain, trivially copyable data. No virtual calls, no owning pointers and no std::string belong in a component, snapshot or network payload.
 - Hot paths do not allocate. Frame scratch memory comes from FrameArena, logs go through fixed char buffers, and callbacks are function pointers plus void*, never std::function.
@@ -919,7 +919,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `InputState` | Core | `Source/Engine/Core/WindowManager.hpp` | 98 |
 | `JobSystem` | Core | `Source/Engine/Core/JobSystem.hpp` | 25 |
 | `Key` | Core | `Source/Engine/Core/WindowManager.hpp` | 30 |
-| `KeyLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 198 |
+| `KeyLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 203 |
 | `LoadedPlugin` | Core | `Source/Engine/Core/PluginHost.hpp` | 64 |
 | `LogLevel` | Core | `Source/Engine/Core/Log.hpp` | 13 |
 | `LogRetention` | Core | `Source/Engine/Core/Log.hpp` | 31 |
@@ -1980,8 +1980,9 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 102 |
 | `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 105 |
 | `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 109 |
-| `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 17 |
 | `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 19 |
+| `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 21 |
+| `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 24 |
 | `FBY_PLATFORM_ABI_VERSION` | `Source/Plugins/PlatformService/PlatformAPI.h` | 11 |
 | `FBY_PLATFORM_CALL` | `Source/Plugins/PlatformService/PlatformAPI.h` | 15 |
 | `FBY_PLATFORM_CALL` | `Source/Plugins/PlatformService/PlatformAPI.h` | 18 |

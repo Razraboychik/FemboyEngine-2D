@@ -98,7 +98,7 @@ Version 0.2.0-alpha.1 (Alpha) · 2026-11-04 · Russian
 
 Этот справочник описывает публичную поверхность FemboyEngine2D: все заголовки из Source/Engine и инфраструктуру редактора, с которой линкуется хост. Текст написан по дереву Release, поэтому описанный символ существует в поставляемых заголовках, а индекс в приложении генерируется из этих заголовков при каждом запуске.
 
-Движок рассчитан на C++26 с GCC 15 или новее и Clang 19 или новее; релиз-кандидат под Windows собирается clang-cl со стандартной библиотекой MSVC. Четыре правила являются несущими, и каждый публичный API спроектирован вокруг них:
+Движок рассчитан на C++26 с GCC 16 или новее и Clang 19 или новее; релиз-кандидат под Windows собирается clang-cl со стандартной библиотекой MSVC. Четыре правила являются несущими, и каждый публичный API спроектирован вокруг них:
 
 - Состояние симуляции — это простые trivially copyable данные. Ни виртуальных вызовов, ни владеющих указателей, ни std::string в компонентах, снапшотах и сетевых пакетах.
 - Горячие пути не выделяют память. Кадровая память берётся из FrameArena, логи пишутся в фиксированные char-буферы, а колбэки — это указатель на функцию плюс void*, никогда std::function.
@@ -2234,7 +2234,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `InputState` | Core | `Source/Engine/Core/WindowManager.hpp` | 98 |
 | `JobSystem` | Core | `Source/Engine/Core/JobSystem.hpp` | 25 |
 | `Key` | Core | `Source/Engine/Core/WindowManager.hpp` | 30 |
-| `KeyLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 198 |
+| `KeyLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 203 |
 | `LoadedPlugin` | Core | `Source/Engine/Core/PluginHost.hpp` | 64 |
 | `LogLevel` | Core | `Source/Engine/Core/Log.hpp` | 13 |
 | `LogRetention` | Core | `Source/Engine/Core/Log.hpp` | 31 |
@@ -3295,8 +3295,9 @@ ScopedMaterials.Shutdown(InRhi);
 | `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 102 |
 | `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 105 |
 | `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 109 |
-| `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 17 |
 | `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 19 |
+| `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 21 |
+| `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 24 |
 | `FBY_PLATFORM_ABI_VERSION` | `Source/Plugins/PlatformService/PlatformAPI.h` | 11 |
 | `FBY_PLATFORM_CALL` | `Source/Plugins/PlatformService/PlatformAPI.h` | 15 |
 | `FBY_PLATFORM_CALL` | `Source/Plugins/PlatformService/PlatformAPI.h` | 18 |

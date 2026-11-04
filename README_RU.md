@@ -148,10 +148,10 @@ SetupScripts/SetupUpscalers.bat
 ## Сборка
 
 Требования: CMake 3.28+, Ninja, Clang 19+ (clang-cl на Windows, clang++ на
-Unix) или GCC 15+. На Windows запускайте из оболочки, которая предоставляет
+Unix) или GCC 16+. На Windows запускайте из оболочки, которая предоставляет
 заголовки и библиотеки Windows SDK; сам компилятор MSVC не поддерживается.
 Скрипты установки ставят оба семейства компиляторов: clang-cl / clang++ для
-проверенной сборки и GCC 15+ (MinGW-w64 UCRT на Windows, Homebrew или пакет
+проверенной сборки и GCC 16+ (MinGW-w64 UCRT на Windows, Homebrew или пакет
 дистрибутива в остальных случаях) для второго мнения. На Windows `SetupCpp.bat`
 скачивает официальный MSI **LLVM 23.1.4** и проверяет версию `clang-cl`.
 Unix-скрипты ставят Clang из пакетного менеджера (19+); CI закрепляет LLVM

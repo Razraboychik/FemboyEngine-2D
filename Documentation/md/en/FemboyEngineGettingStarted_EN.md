@@ -6,8 +6,8 @@ This document lists what to install and which files must sit next to the engine 
 
 | Platform | Editor | Game runtime | Toolchain |
 |---|---|---|---|
-| Windows 10/11 x64 | yes | yes | clang-cl (primary), GCC 15+ (second opinion) |
-| Linux x64 | yes | yes | Clang 19+, GCC 15+ |
+| Windows 10/11 x64 | yes | yes | clang-cl (primary), GCC 16+ (second opinion) |
+| Linux x64 | yes | yes | Clang 19+, GCC 16+ |
 | macOS 13+ (Apple Silicon and Intel) | yes | yes | Apple Clang from Xcode, Metal backend |
 | Android 5.0+ (API 21) | no | yes, through SDL3 | NDK r28c, Android Gradle Plugin 8.7.3, Gradle 8.12 |
 | iOS 11+ | no | yes, through SDL3 | Xcode 16+, iOS SDK 14.2+ |
@@ -99,7 +99,7 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 sudo apt install build-essential clang cmake ninja-build git pkg-config libvulkan-dev vulkan-tools p7zip-full
 ```
 
-Then lay out the same archives as on Windows. GCC 15 comes from the distribution or a separate build; Clang is enough for the primary build.
+Then lay out the same archives as on Windows. GCC 16 comes from the distribution or a separate build; Clang is enough for the primary build.
 
 ### macOS
 

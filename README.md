@@ -150,10 +150,10 @@ upscaler SDKs are optional and are not part of the archive; see
 ## Build
 
 Requirements: CMake 3.28+, Ninja, Clang 19+ (clang-cl on Windows, clang++ on
-Unix) or GCC 15+. On Windows, run from a shell that provides the Windows SDK
+Unix) or GCC 16+. On Windows, run from a shell that provides the Windows SDK
 headers and libraries; the MSVC compiler itself is not a supported toolchain.
 The setup scripts install both compiler families: clang-cl / clang++ for the
-validated build and GCC 15+ (MinGW-w64 UCRT on Windows, Homebrew or the
+validated build and GCC 16+ (MinGW-w64 UCRT on Windows, Homebrew or the
 distribution package elsewhere) for the second-opinion toolchain. On Windows,
 `SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI and verifies the
 `clang-cl` version. The Unix scripts install the distribution Clang (19+); CI

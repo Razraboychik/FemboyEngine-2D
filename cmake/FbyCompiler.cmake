@@ -106,7 +106,7 @@ function(fby_probe_feature name source)
         message(FATAL_ERROR
             "FemboyEngine2D ${FBY_VERSION_STRING} requires a C++26 toolchain, but '${name}' does not compile.\n"
             "Probe source:\n${source}\n"
-            "Use Clang 19+ or GCC 15+, configured from a shell where the compiler can find "
+            "Use Clang 19+ or GCC 16+, configured from a shell where the compiler can find "
             "the platform headers and Windows SDK libraries.")
     endif()
     set(${name} TRUE CACHE INTERNAL "")

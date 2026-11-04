@@ -179,7 +179,7 @@ $Has7z = if ($Component -eq "All") {
     $null -ne (Get-Command "7z" -ErrorAction SilentlyContinue)
 }
 # Both compiler families are requirements: clang-cl is the validated build
-# toolchain, GCC 15+ is the second opinion used by the portability checks.
+# toolchain, GCC 16+ is the second opinion used by the portability checks.
 $HasClang = Ensure-Llvm
 $HasGcc = Ensure-Tool "g++" "BrechtSanders.WinLibs.POSIX.UCRT"
 if (-not ($HasCMake -and $HasNinja -and $HasGit)) {
@@ -194,10 +194,10 @@ if ($HasClang) {
 }
 if ($HasGcc) {
     $GccVersion = (& g++ -dumpfullversion 2>$null)
-    Report-Compiler "g++" $GccVersion 15
+    Report-Compiler "g++" $GccVersion 16
     $Lock.Add("gcc = $GccVersion")
 } else {
-    Write-Warning "g++ is missing. Install MinGW-w64 GCC 15+ or re-run without -SkipSystem."
+    Write-Warning "g++ is missing. Install MinGW-w64 GCC 16+ or re-run without -SkipSystem."
 }
 
 Write-Step "Vulkan SDK"
@@ -311,7 +311,7 @@ Write-Host "  iOS: needs macOS with Xcode 16 or newer; a Windows host cannot bui
 Write-Step "Done"
 Write-Host "  pinned lock : $LockPath"
 Write-Host "  clang-cl    : validated toolchain for the default build"
-Write-Host "  g++         : second-opinion toolchain (GCC 15+)"
+Write-Host "  g++         : second-opinion toolchain (GCC 16+)"
 Write-Host "  configure   : cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON"
 Write-Host "  build       : cmake --build build"
 Write-Host "  test        : ctest --test-dir build --output-on-failure"

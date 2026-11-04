@@ -6,8 +6,8 @@
 
 | Платформа | Редактор | Рантайм игр | Сборка |
 |---|---|---|---|
-| Windows 10/11 x64 | да | да | clang-cl (основной), GCC 15+ (проверочный) |
-| Linux x64 | да | да | Clang 19+, GCC 15+ |
+| Windows 10/11 x64 | да | да | clang-cl (основной), GCC 16+ (проверочный) |
+| Linux x64 | да | да | Clang 19+, GCC 16+ |
 | macOS 13+ (Apple Silicon и Intel) | да | да | Apple Clang из Xcode, Metal-бэкенд |
 | Android 5.0+ (API 21) | нет | да, через SDL3 | NDK r28c, Android Gradle Plugin 8.7.3, Gradle 8.12 |
 | iOS 11+ | нет | да, через SDL3 | Xcode 16+, iOS SDK 14.2+ |
@@ -98,7 +98,7 @@ FSR2 и собственная генерация кадров собирают�
 sudo apt install build-essential clang cmake ninja-build git pkg-config libvulkan-dev vulkan-tools p7zip-full
 ```
 
-Дополнительно раскладываются те же архивы, что и на Windows. GCC 15 ставится из дистрибутива или собирается отдельно; для основной сборки достаточно Clang.
+Дополнительно раскладываются те же архивы, что и на Windows. GCC 16 ставится из дистрибутива или собирается отдельно; для основной сборки достаточно Clang.
 
 ### macOS
 

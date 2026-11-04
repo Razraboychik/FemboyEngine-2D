@@ -7,7 +7,7 @@ Applies to FemboyEngine2D 0.2.0-alpha.1 and CMake 3.28 or newer.
 The engine requires C++26:
 
 - Windows: clang-cl 19+ with the MSVC STL, or MSVC 19.40+.
-- Linux: Clang 19+ or GCC 15+.
+- Linux: Clang 19+ or GCC 16+.
 - macOS/iOS: Apple Clang with C++26 support.
 - Android: NDK r27+ with a C++26-capable Clang.
 

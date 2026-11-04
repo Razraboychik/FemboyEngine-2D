@@ -108,10 +108,10 @@ install_system_linux() {
         sudo apt-get update
         if [[ "${RUN_CPP}" -eq 1 ]]; then
             sudo apt-get install -y --no-install-recommends ${CPP_APT}
-            if apt-cache show g++-15 >/dev/null 2>&1; then
-                sudo apt-get install -y --no-install-recommends g++-15 gcc-15
+            if apt-cache show g++-16 >/dev/null 2>&1; then
+                sudo apt-get install -y --no-install-recommends g++-16 gcc-16
             else
-                warn "g++-15 is not packaged here; the distribution g++ is installed instead"
+                warn "g++-16 is not packaged here; the distribution g++ is installed instead"
             fi
         fi
         if [[ "${RUN_ARCHIVER}" -eq 1 ]]; then
@@ -202,7 +202,7 @@ if command -v g++ >/dev/null 2>&1; then
     fi
     printf 'gcc = %s\n' "${GCC_VERSION}" >> "${LOCK}"
 else
-    warn "g++ is missing; GCC 15+ is the second-opinion toolchain"
+    warn "g++ is missing; GCC 16+ is the second-opinion toolchain"
 fi
 if [[ -n "${VULKAN_SDK:-}" ]]; then
     echo "  VULKAN_SDK=${VULKAN_SDK}"
