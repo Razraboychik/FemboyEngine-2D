@@ -807,11 +807,17 @@ set(ScopedOptimizationTests
     render_weather
     render_ecs)
 
-if(TARGET fby_frame_composer_test)
-    list(APPEND ScopedOptimizationTests frame_composer frame_composer_benchmark)
-endif()
+# Editor-only tests (frame composer, SDF bake) are absent in headless builds.
+set(ScopedPresentOptimizationTests)
+foreach(ScopedTest IN LISTS ScopedOptimizationTests)
+    if(TEST ${ScopedTest})
+        list(APPEND ScopedPresentOptimizationTests ${ScopedTest})
+    endif()
+endforeach()
 
-set_tests_properties(${ScopedOptimizationTests} PROPERTIES LABELS "optimization")
+if(ScopedPresentOptimizationTests)
+    set_tests_properties(${ScopedPresentOptimizationTests} PROPERTIES LABELS "optimization")
+endif()
 
 # Data-driven descriptors, transactional prefab spawn, Units DPI and theme palette.
 fby_add_engine_test(fby_data_driven_test data_driven DataDrivenTest.cpp)
