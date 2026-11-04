@@ -63,8 +63,9 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON
       - name: Build
@@ -107,8 +108,9 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3
       - name: Configure first
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=OFF
       - name: Build first
@@ -126,8 +128,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3
       - name: Configure
         run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
@@ -150,8 +153,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3
       - name: Configure
         run: cmake -S . -B build-ubsan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_UBSAN=ON
       - name: Build

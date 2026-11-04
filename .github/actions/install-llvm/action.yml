@@ -1,0 +1,34 @@
+name: Install LLVM
+description: Install the pinned LLVM release with libc++ for the Linux gates.
+
+inputs:
+  version:
+    description: Exact LLVM version to install.
+    required: false
+    default: "23.1.4"
+
+runs:
+  using: composite
+  steps:
+    - name: Install LLVM ${{ inputs.version }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="${{ inputs.version }}"
+        major="${version%%.*}"
+        curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+        chmod +x /tmp/llvm.sh
+        sudo /tmp/llvm.sh "$major"
+        sudo apt-get install -y "libc++-${major}-dev" "libc++abi-${major}-dev"
+        actual="$(clang-${major} --version | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+        if [[ "$actual" != "$version" ]]; then
+          echo "Expected LLVM $version, got $actual" >&2
+          exit 1
+        fi
+        bindir="${RUNNER_TEMP}/llvm-${version}-bin"
+        mkdir -p "$bindir"
+        ln -sf "/usr/bin/clang-${major}" "${bindir}/clang"
+        printf '#!/usr/bin/env bash\nexec /usr/bin/clang++-%s -stdlib=libc++ "$@"\n' "$major" > "${bindir}/clang++"
+        chmod +x "${bindir}/clang++"
+        "${bindir}/clang++" --version
+        echo "$bindir" >> "$GITHUB_PATH"
