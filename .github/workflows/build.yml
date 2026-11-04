@@ -69,7 +69,7 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON
       - name: Build
-        run: cmake --build build --parallel 8
+        run: cmake --build build --parallel 8 -- -k 0
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Release checklist
@@ -95,7 +95,7 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON
       - name: Build
-        run: cmake --build build --parallel 8
+        run: cmake --build build --parallel 8 -- -k 0
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Test
@@ -114,11 +114,11 @@ jobs:
       - name: Configure first
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=OFF
       - name: Build first
-        run: cmake --build build --target fby_fempak --parallel 8
+        run: cmake --build build --target fby_fempak --parallel 8 -- -k 0
       - name: Configure second
         run: cmake -S . -B build-repro -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=OFF
       - name: Build second
-        run: cmake --build build-repro --target fby_fempak --parallel 8
+        run: cmake --build build-repro --target fby_fempak --parallel 8 -- -k 0
       - name: Compare cooked archives
         run: python Source/Tools/Dev/ComparePakAcrossBuilds.py --first build/bin/tools/fby_fempak --second build-repro/bin/tools/fby_fempak --workdir build
 
@@ -134,7 +134,7 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
-        run: cmake --build build-asan --parallel 8
+        run: cmake --build build-asan --parallel 8 -- -k 0
       - name: Text stack under ASan and LSan
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
@@ -159,7 +159,7 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-ubsan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_UBSAN=ON
       - name: Build
-        run: cmake --build build-ubsan --parallel 8
+        run: cmake --build build-ubsan --parallel 8 -- -k 0
       - name: Parsers, text and core under UBSan
         run: ctest --test-dir build-ubsan --output-on-failure --timeout 300 -R "^(fuzz_parsers|fuzz_noise|bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden)$"
 
@@ -174,7 +174,7 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
-        run: cmake --build build-asan --parallel 8
+        run: cmake --build build-asan --parallel 8 -- -k 0
       - name: Text stack under ASan
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1:allocator_may_return_null=1
