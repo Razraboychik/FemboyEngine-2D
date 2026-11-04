@@ -15,6 +15,8 @@ permissions:
 
 env:
   LLVM_VERSION: "23.1.4"
+  SDL_VIDEODRIVER: dummy
+  SDL_AUDIODRIVER: dummy
 
 jobs:
   windows-clang-cl:
