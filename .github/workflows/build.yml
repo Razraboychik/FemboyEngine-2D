@@ -78,11 +78,19 @@ jobs:
 
   linux-gcc:
     runs-on: ubuntu-latest
+    container: gcc:15
     continue-on-error: true
     steps:
+      - name: Prepare container
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++
+        run: |
+          apt-get install -y cmake ninja-build python3
+          gcc --version | head -n1
+          g++ --version | head -n1
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON
       - name: Build

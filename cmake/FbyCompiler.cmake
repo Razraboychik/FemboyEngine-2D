@@ -104,7 +104,7 @@ function(fby_probe_feature name source)
     fby_try_compile_probe(${name} "${source}" ok)
     if(NOT ok)
         message(FATAL_ERROR
-            "FemboyEngine2D 0.1.0-alpha.1 requires a C++26 toolchain, but '${name}' does not compile.\n"
+            "FemboyEngine2D ${FBY_VERSION_STRING} requires a C++26 toolchain, but '${name}' does not compile.\n"
             "Probe source:\n${source}\n"
             "Use Clang 19+ or GCC 15+, configured from a shell where the compiler can find "
             "the platform headers and Windows SDK libraries.")
