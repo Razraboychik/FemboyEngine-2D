@@ -58,7 +58,7 @@ jobs:
       - name: Release checklist
         run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.2.0-alpha.1 --out build-ci/release-manifest.json
       - name: Test
-        run: ctest --preset ci-clangcl
+        run: ctest --preset ci-clangcl --output-on-failure --timeout 120
 
   linux-clang:
     env:
