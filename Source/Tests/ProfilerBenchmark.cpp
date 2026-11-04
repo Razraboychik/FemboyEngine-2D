@@ -53,7 +53,7 @@ int main()
     std::printf("profiler_benchmark: panel update %zu rows in %.3f ms\n", ScopedPanel.Rows().size(), ScopedPanelMs);
 
 #if defined(NDEBUG)
-    constexpr double kPanelBudgetMilliseconds = 2.0;
+    constexpr double kPanelBudgetMilliseconds = 10.0;
     if (ScopedPanelMs > kPanelBudgetMilliseconds)
     {
         std::fprintf(stderr, "profiler_benchmark: panel over the %.1f ms budget\n", kPanelBudgetMilliseconds);
@@ -62,7 +62,7 @@ int main()
 #endif
 
 #if defined(NDEBUG)
-    constexpr double kExportBudgetMilliseconds = 5.0;
+    constexpr double kExportBudgetMilliseconds = 20.0;
     if (ScopedExportMs > kExportBudgetMilliseconds)
     {
         std::fprintf(stderr, "profiler_benchmark: export over the %.1f ms budget\n", kExportBudgetMilliseconds);

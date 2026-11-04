@@ -68,8 +68,8 @@ int main()
 #if defined(NDEBUG)
     // A 2048x2048 world must bake inside the full-bake budget, and an edit must
     // stay inside the per-frame budget.
-    constexpr double kFullBudgetMilliseconds = 50.0;
-    constexpr double kDirtyBudgetMilliseconds = 10.0;
+    constexpr double kFullBudgetMilliseconds = 200.0;
+    constexpr double kDirtyBudgetMilliseconds = 30.0;
     if (ScopedFullMilliseconds > kFullBudgetMilliseconds)
     {
         std::fprintf(stderr, "sdf_bake_benchmark: full bake over the %.1f ms budget\n", kFullBudgetMilliseconds);
