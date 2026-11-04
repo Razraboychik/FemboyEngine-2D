@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Renders the authored reference manuals and checks them against the sources.
 
-The two manuals are authored Markdown, not content-model data:
+The manuals are authored Markdown, not content-model data:
 
     Documentation/md/en/ViewportModes_EN.md
     Documentation/md/ru/ViewportModes_RU.md
     Documentation/md/en/EditorSettingsReference_EN.md
     Documentation/md/ru/EditorSettingsReference_RU.md
+    Documentation/md/en/Physics_EN.md
+    Documentation/md/ru/Physics_RU.md
 
 This script renders each one into DOCX, PDF and DjVu. The DOCX is produced by
 MarkdownDocs.build_docx, the PDF by MarkdownDocs.build_pdf through the LibreOffice
@@ -25,6 +27,7 @@ viewport settings, so the manual cannot silently drop the keys it documents.
 
 Usage:
   python Documentation/Tools/GenerateReferenceDocs.py --skip-pdf
+  python Documentation/Tools/GenerateReferenceDocs.py --document Physics
   python Documentation/Tools/GenerateReferenceDocs.py --check
   python Documentation/Tools/GenerateReferenceDocs.py --node <node.exe> --lo-cli <cli.js>
 """
@@ -57,6 +60,8 @@ LoCliDefault = os.environ.get("FBY_LO_CLI", "")
 Documents = (
     {"Stem": "ViewportModes"},
     {"Stem": "EditorSettingsReference"},
+    {"Stem": "Physics"},
+    {"Stem": "FemboyEngineFrameGeneration"},
 )
 Languages = ("en", "ru")
 
@@ -239,11 +244,16 @@ def RenderDocument(InDocument: dict, InLanguage: str, InSkipPdf: bool) -> int:
 
 
 def RenderAll(InArguments) -> int:
-    """Renders both manuals in both languages."""
+    """Renders every manual in both languages, or the selected one."""
     DocPaths.EnsureLayout()
     ConfigurePdf(InArguments)
     ScopedFailures = 0
-    for ScopedDocument in Documents:
+    ScopedDocuments = Documents
+    if InArguments.Document:
+        ScopedDocuments = tuple(
+            ScopedDocument for ScopedDocument in Documents if ScopedDocument["Stem"] == InArguments.Document
+        )
+    for ScopedDocument in ScopedDocuments:
         for ScopedLanguage in Languages:
             ScopedFailures += RenderDocument(ScopedDocument, ScopedLanguage, InArguments.SkipPdf)
     if ScopedFailures:
@@ -279,6 +289,13 @@ def Main() -> int:
         dest="Check",
         action="store_true",
         help="verify the Markdown against the [editor] keys and EditorSettings fields",
+    )
+    parser.add_argument(
+        "--document",
+        dest="Document",
+        default="",
+        choices=[ScopedDocument["Stem"] for ScopedDocument in Documents],
+        help="render only the selected manual; omit to render every manual",
     )
     ScopedArguments = parser.parse_args()
     if ScopedArguments.Check:

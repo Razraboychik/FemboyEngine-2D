@@ -106,7 +106,7 @@ struct PIEAnimFrame
     float BlendTime = 0.0f;
     float StateTime = 0.0f;
     std::uint16_t LastTransition = kNoAnimTransition;
-    // Keeps the frame exactly one cache line; also reserves room for future
+    // Keeps the frame exactly one cache line; padding.
     std::array<std::byte, 34> Reserved{};
 };
 
@@ -134,6 +134,12 @@ public:
     void Shutdown() noexcept;
 
     void Draw(const char* InWindowTitle, bool* InOpen);
+
+    // Project tag database used to author transition tags by path.
+    void SetGameplayTagRegistry(const GameplayTagRegistry* InTags) noexcept
+    {
+        MTags = InTags;
+    }
 
     void SetScenePath(const std::filesystem::path& InPath);
     [[nodiscard]] const std::filesystem::path& ScenePath() const noexcept
@@ -302,6 +308,10 @@ private:
     std::array<std::byte, kMaxTrackedComponentBytes> MAfter{};
     std::array<char, kAnimationGraphNameBytes> MNameEditBuffer{};
     std::uint16_t MNameEditNode = 0xFFFFu;
+    const GameplayTagRegistry* MTags = nullptr;
+    std::array<char, 160> MTagsAnyText{};
+    std::array<char, 160> MTagsAllText{};
+    const void* MTagEditTarget = nullptr;
     std::filesystem::path MScenePath;
     const Ecs::Registry* MRuntimeWorld = nullptr;
     const Ecs::Registry* MSelectionWorld = nullptr;

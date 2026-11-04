@@ -7,10 +7,12 @@
 #include "Engine/Audio/VoiceAec.hpp"
 #include "Engine/Audio/VoiceChannel.hpp"
 #include "Engine/Audio/VoiceDsp.hpp"
+#include "Engine/Audio/VoiceEffects.hpp"
 #include "Engine/Audio/VoiceSession.hpp"
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 
@@ -25,6 +27,9 @@ struct VoiceSystemConfig
     bool IsRelayServer = false;
     VoiceDenoiseTier Denoise = VoiceDenoiseTier::Spectral;
     VoiceAecSettings Aec{};
+    // Optional default uplink chain. Participants start with a condition-capable
+    // empty profile and may be overridden per player after Start.
+    VoiceEffectProfile UplinkEffects{};
     // Maximum capture frames processed per Tick (keeps the frame budget).
     std::uint32_t MaxProcessFrames = 960;
 };
@@ -59,6 +64,20 @@ public:
     void SetDenoiseTier(VoiceDenoiseTier InTier) noexcept;
     void SetAec(const VoiceAecSettings& InSettings) noexcept;
 
+    // Uplink effects run after the microphone chain and before Opus encoding.
+    // Downlink effects run after decode and before the participant ring, so a
+    // listener can mute, muffle, reposition or pitch a speaker locally.
+    void SetUplinkEffects(const VoiceEffectProfile& InProfile) noexcept;
+    void SetParticipantEffects(std::uint8_t InPlayer, const VoiceEffectProfile& InProfile) noexcept;
+    void SetLocalCondition(const VoiceConditionState& InState) noexcept;
+    void SetParticipantCondition(std::uint8_t InPlayer, const VoiceConditionState& InState) noexcept;
+    [[nodiscard]] const VoiceConditionOutput& LocalCondition() const noexcept
+    {
+        static const VoiceConditionOutput ScopedEmpty{};
+        return MCaptureRack != nullptr ? MCaptureRack->Condition() : ScopedEmpty;
+    }
+    [[nodiscard]] const VoiceConditionOutput* ParticipantCondition(std::uint8_t InPlayer) const noexcept;
+
     [[nodiscard]] VoiceChannel& Channel() noexcept
     {
         return MChannel;
@@ -87,6 +106,9 @@ public:
 protected:
     void ProcessCapture() noexcept;
     void BindParticipants(VoiceSession& InSession) noexcept;
+    void AdvanceEffects(float InDeltaSeconds) noexcept;
+    static void DecodeSinkThunk(void* InUser, std::uint8_t InPlayer, float* InSamples,
+                                std::uint32_t InFrameCount) noexcept;
 
     DspGraph* MGraph = nullptr;
     BusId MVoiceBus = kInvalidBus;
@@ -97,6 +119,10 @@ protected:
     VoiceAec MAec{};
     VoiceDspChain MChain{};
     VoiceDspSettings MDspSettings{};
+    // Racks own the fixed delay memory of every effect slot, so they live on the
+    // heap and keep the host object small enough for a normal thread stack.
+    std::unique_ptr<VoiceEffectRack> MCaptureRack;
+    std::unique_ptr<std::array<VoiceEffectRack, kVoiceMaxPeers>> MParticipantRacks;
     FloatRing MRawRing{};
     FloatRing MProcessedRing{};
     std::array<float, 8192> MRawStorage{};

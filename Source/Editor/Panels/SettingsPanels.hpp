@@ -3,6 +3,8 @@
 
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
+#include "Engine/RHI/BackendCapabilities.hpp"
+#include "Engine/RHI/RHI.hpp"
 
 #include <array>
 #include <cstdint>
@@ -34,6 +36,14 @@ public:
     ProjectSettingsPanel() = default;
 
     void Initialize(CommandStack& InCommands, ProjectConfigStore& InStore, std::uint16_t InCodec) noexcept;
+    void SetUpscalerCaps(const Rhi::UpscalerCaps& InCaps) noexcept
+    {
+        MUpscalerCaps = InCaps;
+    }
+    void SetBackendCapabilities(const Rhi::BackendCapabilities& InCaps) noexcept
+    {
+        MBackendCaps = InCaps;
+    }
     // Draws the panel and applies/persists after a commit.
     void Draw(Ecs::SystemContext& InContext, bool* InOpen);
     // Pushes the current POD to AudioSystem/AccessibilityKernel; called after a
@@ -65,6 +75,15 @@ private:
     std::uint16_t MCodec = 0xFFFFu;
     InteractionTransaction MTransaction{};
     ProjectSettings MApplied{};
+    Rhi::UpscalerCaps MUpscalerCaps{};
+    Rhi::BackendCapabilities MBackendCaps{};
+    // Gameplay tag editor state. The database itself is inside ProjectSettings,
+    // so tag edits share the same undo transaction as the rest of the project.
+    std::array<char, 64> MNewTagPath{};
+    std::array<char, 64> MRenameTagPath{};
+    std::array<char, 64> MTagSearch{};
+    int MSelectedTag = -1;
+    int MLastSelectedTag = -1;
     bool MAppliedValid = false;
     bool MDirty = false;
 };

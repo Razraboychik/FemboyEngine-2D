@@ -1,0 +1,55 @@
+#version 460
+// FemboyEngine2D - clamp the visible counter after sprite culling.
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+struct CullingConstants
+{
+    vec4 ViewBounds;
+    vec4 Viewport;
+    uint ItemCount;
+    uint MaxVisible;
+    uint SourceOffset;
+    uint OutputOffset;
+    uint CounterOffset;
+    uint CommandOffset;
+    uint Reserved0;
+    uint Reserved1;
+    uint UseDepth;
+    uint Reserved2;
+};
+
+layout(std430, set = 0, binding = 2) buffer Counter
+{
+    uint Values[];
+} CounterBuffer;
+
+struct IndirectCommand
+{
+    uint IndexCount;
+    uint InstanceCount;
+    uint FirstIndex;
+    int VertexOffset;
+    uint FirstInstance;
+};
+
+layout(std430, set = 0, binding = 3) buffer IndirectCommands
+{
+    IndirectCommand Values[];
+} CommandBuffer;
+
+layout(push_constant) uniform Constants
+{
+    CullingConstants Cull;
+} Push;
+
+void main()
+{
+    const uint Count = min(CounterBuffer.Values[Push.Cull.CounterOffset], Push.Cull.MaxVisible);
+    CounterBuffer.Values[Push.Cull.CounterOffset] = Count;
+    CommandBuffer.Values[Push.Cull.CommandOffset].IndexCount = 6u;
+    CommandBuffer.Values[Push.Cull.CommandOffset].InstanceCount = Count;
+    CommandBuffer.Values[Push.Cull.CommandOffset].FirstIndex = 0u;
+    CommandBuffer.Values[Push.Cull.CommandOffset].VertexOffset = 0;
+    CommandBuffer.Values[Push.Cull.CommandOffset].FirstInstance = Push.Cull.OutputOffset;
+}

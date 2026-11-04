@@ -65,8 +65,12 @@ struct VoiceChannelStats
 class VoiceChannel
 {
 public:
-    using SendFn = bool (*)(void* InUser, std::uint8_t InToPlayer,
-                            std::span<const std::uint8_t> InPacket) noexcept;
+    using SendFn = bool (*)(void* InUser, std::uint8_t InToPlayer, std::span<const std::uint8_t> InPacket) noexcept;
+    // Decoded frames pass through this hook before they reach the participant
+    // ring. It is the downlink effect insertion point; the hook may modify the
+    // samples in place and runs before the talking-level measurement.
+    using DecodeSinkFn = void (*)(void* InUser, std::uint8_t InPlayer, float* InSamples,
+                                  std::uint32_t InFrameCount) noexcept;
 
     VoiceChannel() = default;
     ~VoiceChannel();
@@ -92,9 +96,14 @@ public:
         MCaptureRing = InRing;
     }
 
+    void SetDecodeSink(DecodeSinkFn InSink, void* InUser) noexcept
+    {
+        MDecodeSink = InSink;
+        MDecodeSinkUser = InUser;
+    }
+
     // Called by the transport with an authenticated packet from a peer.
-    [[nodiscard]] bool ReceivePacket(std::uint8_t InFromPlayer,
-                                     std::span<const std::uint8_t> InPacket) noexcept;
+    [[nodiscard]] bool ReceivePacket(std::uint8_t InFromPlayer, std::span<const std::uint8_t> InPacket) noexcept;
 
     // Encodes captured frames and plays decoded jitter frames. `InSession`
     // supplies mute/PTT gating and receives participant levels; it may be null.
@@ -134,6 +143,7 @@ protected:
 
     void EncodeCapture(VoiceSession* InSession) noexcept;
     void DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept;
+    void ApplyDecodeSink(std::uint8_t InPlayer, float* InSamples, std::uint32_t InFrameCount) noexcept;
     void SendPacket(std::span<const std::uint8_t> InPacket, std::uint8_t InExceptPlayer) noexcept;
     [[nodiscard]] bool InsertJitter(Peer& InPeer, std::uint16_t InSequence, std::uint16_t InSamples,
                                     std::uint8_t InFlags, std::span<const std::uint8_t> InPayload) noexcept;
@@ -147,6 +157,8 @@ protected:
     VoiceChannelConfig MConfig{};
     SendFn MSend = nullptr;
     void* MSendUser = nullptr;
+    DecodeSinkFn MDecodeSink = nullptr;
+    void* MDecodeSinkUser = nullptr;
     VoiceEncoder MEncoder{};
     FloatRing* MCaptureRing = nullptr;
     std::array<Peer, kVoiceMaxPeers> MPeers{};

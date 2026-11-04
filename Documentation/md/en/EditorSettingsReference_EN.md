@@ -1,6 +1,6 @@
 # Editor Settings Reference
 
-This document is the complete reference for the editor's own settings in FemboyEngine2D 0.1.0-alpha.1: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
+This document is the complete reference for the editor's own settings in FemboyEngine2D 0.2.0-alpha.1: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
 
 The settings are environment preferences, not gameplay. They are stored next to the project so a team reproduces the same authoring environment, they are mirrored to the editor INI for humans and legacy readers, and they never change how a shipped game behaves. No shipped runtime reads them.
 
@@ -43,6 +43,8 @@ Types are the TOML types written by the encoder and accepted by the decoder. "De
 | `[editor] font_script_pin_input` | `fontScriptPinInput` | `font_script_pin_input` | float | 18.0 | 16 through 40 px | Font size of an input pin label |
 | `[editor] font_script_pin_output` | `fontScriptPinOutput` | `font_script_pin_output` | float | 18.0 | 16 through 40 px | Font size of an output pin label |
 | `[editor] font_scene_text` | `fontSceneText` | `font_scene_text` | float | 18.0 | 16 through 64 px | Font size of text drawn in the scene view |
+| `[editor] log_max_files` | `logMaxFiles` | `log_max_files` | int | 20 | 1 through 512 | Newest journal files kept per log category; older files are deleted when the sink opens or the setting is applied |
+| `[editor] log_max_lines` | `logMaxLinesPerFile` | `log_max_lines` | int | 50000 | 1000 through 2000000 | Line count at which a journal file is compacted in place; the newest 90 percent are kept |
 | `[editor] show_demo` | `showDemoWindow` | `show_demo` | bool | false | true or false | Shows the Dear ImGui demo window; a development aid, not a shipping feature |
 | `[editor] auto_refresh_browser` | `autoRefreshBrowser` | `auto_refresh_browser` | bool | true | true or false | Refreshes the Content Browser when the asset database changes |
 | `[editor] watch_assets` | `watchAssets` | `watch_assets` | bool | true | true or false | Runs the OS file watcher and the hot-reload path |
@@ -115,11 +117,23 @@ These are the two keys introduced with the diagnostic viewport modes. Both are d
 | `save_ini_on_commit` | true | Rewrites the INI mirror after a commit. Turning it off leaves the mirror stale while the project file stays current |
 | `show_demo` | false | The ImGui demo window. Useful when building editor UI, noise otherwise |
 
-### 3.5 Theme
+### 3.5 Logs
+
+| Key | Default | Notes |
+|---|---|---|
+| `log_max_files` | 20 | The newest files of each category are kept; older files are deleted when the sink opens or the setting is applied |
+| `log_max_lines` | 50000 | A file that reaches this many lines is compacted in place: the oldest lines are dropped and the newest 90 percent stay |
+
+The panel exposes the same ranges as the file codec: a slider from 1 through 512
+files and a numeric field from 1,000 through 2,000,000 lines. The recommended
+20 files by 50,000 lines is roughly 6 MB per file. The live retention is applied
+to the engine sink on commit; the project file remains the source of truth.
+
+### 3.6 Theme
 
 `theme` stores the palette preset name. The 1.0 editor ships the built-in `graphite` palette; the value is persisted and mirrored so a future palette set can read it without a format change.
 
-### 3.6 Editor accessibility
+### 3.7 Editor accessibility
 
 The eight `ide_*` keys configure the editor window only; the game's own profile is a separate part of the project file.
 
@@ -156,7 +170,7 @@ The value is the `Rhi::ViewportMode` enumeration:
 |---|---|---|---|
 | 0 | Standard (Lit) | Standard | The shipped image |
 | 1 | Unlit / Wireframe | Unlit | Art, UV and pivot checks |
-| 2 | Collision Overlap | Collision | Collision participation audit |
+| 2 | Collision Overlap | Collision | Collision participation mask |
 | 3 | Shader Complexity / Overdraw | Overdraw | Fill and light cost |
 | 4 | Light Complexity | Lights | Number of lights per sprite |
 | 5 | SDF Visualizer | SDF | Baked distance field agreement |
@@ -195,6 +209,8 @@ font_script_node_title = 21.000000
 font_script_pin_input = 18.000000
 font_script_pin_output = 18.000000
 font_scene_text = 18.000000
+log_max_files = 20
+log_max_lines = 50000
 vsync = true
 show_demo = false
 auto_refresh_browser = true

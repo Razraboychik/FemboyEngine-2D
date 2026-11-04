@@ -424,6 +424,10 @@ std::string EncodeSceneToml(const SceneData& InScene)
             {
                 AppendFieldToml(ScopedOut, ScopedComponent, ScopedField);
             }
+            if (ScopedComponent.type->captureToml != nullptr)
+            {
+                ScopedOut += ScopedComponent.type->captureToml(ScopedComponent.data.data());
+            }
         }
     }
     return ScopedOut;
@@ -531,6 +535,43 @@ std::expected<SceneData, std::string> DecodeSceneToml(std::string_view InToml, c
                     {
                         return std::unexpected(FieldPath(ScopedEntityIndex, ScopedOps->name, ScopedField.name) + ": " +
                                                ScopedFieldError);
+                    }
+                }
+                if (ScopedOps->restoreToml != nullptr)
+                {
+                    for (const auto& [ScopedKey, ScopedNode] : *ScopedComponentTable)
+                    {
+                        const std::string_view ScopedKeyName = ScopedKey.str();
+                        if (ScopedKeyName == "type")
+                        {
+                            continue;
+                        }
+                        bool ScopedIsField = false;
+                        for (const Reflect::FieldDesc& ScopedField : ScopedOps->fields)
+                        {
+                            if (ScopedField.name == ScopedKeyName)
+                            {
+                                ScopedIsField = true;
+                                break;
+                            }
+                        }
+                        if (ScopedIsField)
+                        {
+                            continue;
+                        }
+                        const auto ScopedValue = ScopedNode.value<std::string>();
+                        if (!ScopedValue)
+                        {
+                            return std::unexpected(
+                                FieldPath(ScopedEntityIndex, ScopedOps->name, ScopedKeyName) + ": expected a string");
+                        }
+                        std::string ScopedExtraError;
+                        if (!ScopedOps->restoreToml(ScopedComponent.data.data(), ScopedKeyName, *ScopedValue,
+                                                    &ScopedExtraError))
+                        {
+                            return std::unexpected(FieldPath(ScopedEntityIndex, ScopedOps->name, ScopedKeyName) + ": " +
+                                                   ScopedExtraError);
+                        }
                     }
                 }
                 ScopedEntity.components.push_back(std::move(ScopedComponent));

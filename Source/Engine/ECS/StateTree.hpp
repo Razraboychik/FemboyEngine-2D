@@ -1,10 +1,11 @@
-// FemboyEngine2D - FemStateTree: flat, change-driven AI state trees.
+// FemboyEngine2D - StateTree: flat, change-driven AI state trees.
 #pragma once
 
 #include "Engine/Core/Mirror.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Schedule.hpp"
+#include "Engine/Gameplay/GameplayTags.hpp"
 
 #include <array>
 #include <cstddef>
@@ -22,17 +23,18 @@ inline constexpr std::uint16_t kStateTreeNone = 0xFFFFu;
 // Internal trigger raised when the active leaf's own condition turns false. An
 inline constexpr std::uint64_t kStateTreeTriggerLeafFailed = 1ull << 63;
 
-// Evaluators: pure data + a flat switch, no per-node object
+// Evaluators: pure data + a flat switch, no per-node object. Tag checks use the
+// project-owned hierarchical tag registry; a parent tag matches descendants.
 enum class StateTreeEvaluatorKind : std::uint8_t
 {
     AlwaysTrue = 0,
     AlwaysFalse,
-    // (Tags & TagMask) != 0
-    TagsAny,
-    // (Tags & TagMask) == TagMask (an empty mask is false)
-    TagsAll,
-    // (Tags & TagMask) == 0
-    TagsNone,
+    // Any tag in Tags is present (hierarchical)
+    GameplayTagsAny,
+    // Every tag in Tags is present (hierarchical)
+    GameplayTagsAll,
+    // No tag in Tags is present (hierarchical)
+    GameplayTagsNone,
     // Distance(entity, Target) <= Threshold
     TargetWithinRadius,
     // Distance(entity, Target) > Threshold
@@ -43,16 +45,26 @@ enum class StateTreeEvaluatorKind : std::uint8_t
     FloatAbove,
     // StateTime >= Threshold
     StateTimeAtLeast,
+    // The skill slot is ready (no cast, no cooldown)
+    SkillReady,
+    // Attribute below/above the threshold
+    AttributeBelow,
+    AttributeAbove,
 };
 
 struct StateTreeEvaluator
 {
     StateTreeEvaluatorKind Kind = StateTreeEvaluatorKind::AlwaysTrue;
-    std::uint64_t TagMask = 0;
+    // Required or forbidden tags, depending on Kind
+    GameplayTagContainer Tags{};
+    // Attribute id for AttributeBelow/AttributeAbove
+    std::uint32_t AttributeId = 0;
+    // Threshold for distance, float, state-time and attribute checks
     float Threshold = 0.0f;
     // Index into StateTreeComponent::Floats (0..3)
     std::uint16_t FloatIndex = 0;
-    std::uint16_t Reserved = 0;
+    // Skill slot for SkillReady (0..3)
+    std::uint16_t SkillSlot = 0;
 };
 
 static_assert(std::is_trivially_copyable_v<StateTreeEvaluator>);
@@ -63,19 +75,28 @@ enum class StateTreeTaskKind : std::uint8_t
     None = 0,
     MoveToTarget,
     Stop,
-    AttackTarget,
+    // Adds or removes every tag in Tags on the entity
     SetTag,
     ClearTag,
+    // Emits an ActivateSkill command; the gameplay layer owns the skill system
+    ActivateSkill,
+    // Developer-defined action routed by ActionId; the engine assigns no meaning
+    Action,
 };
 
 struct StateTreeTask
 {
     StateTreeTaskKind Kind = StateTreeTaskKind::None;
-    std::uint64_t TagMask = 0;
-    // Movement speed / attack range; interpretation belongs to the command
+    // Tags for SetTag/ClearTag
+    GameplayTagContainer Tags{};
+    // Movement speed; the command consumer owns the interpretation
     float Speed = 128.0f;
-    float Range = 32.0f;
     std::uint32_t Flags = 0;
+    // Skill slot for ActivateSkill
+    std::uint16_t SkillSlot = 0;
+    std::uint16_t Reserved = 0;
+    // Developer action id for Action
+    std::uint32_t ActionId = 0;
 };
 
 static_assert(std::is_trivially_copyable_v<StateTreeTask>);
@@ -119,8 +140,9 @@ struct StateTreeTransition
     std::uint64_t TriggerMask = 0;
     // Bits cleared when it fires (usually TriggerMask). LeafFailed is always
     std::uint64_t ConsumeMask = 0;
-    std::uint64_t RequireTagsAll = 0;
-    std::uint64_t ForbidTagsAny = 0;
+    // Hierarchical tag requirements and vetoes
+    GameplayTagContainer RequireTags{};
+    GameplayTagContainer ForbidTags{};
     bool Enabled = true;
     bool ConsumeAll = false;
 };
@@ -143,7 +165,10 @@ enum class AICommandKind : std::uint8_t
     None = 0,
     MoveTo,
     Stop,
-    Attack,
+    // Flags carries the skill slot; Target is the skill target
+    ActivateSkill,
+    // ActionId is data for a game-owned system; the engine assigns no meaning
+    Action,
 };
 
 // Stored as uint32 so Mirror can describe it with FieldKind::UInt32 (the
@@ -153,8 +178,8 @@ struct AICommandComponent
     Entity Target = entt::null;
     Vector2D Position{};
     float Speed = 0.0f;
-    float Range = 0.0f;
     std::uint32_t Flags = 0;
+    std::uint32_t ActionId = 0;
     std::uint32_t TaskIndex = 0;
     // Fixed-step tick that produced the command; consumers can drop stale ones.
     std::uint32_t Sequence = 0;
@@ -170,9 +195,9 @@ struct StateTreeComponent
     std::array<std::uint16_t, kMaxStateTreeDepth> ActiveStates{kStateTreeNone, kStateTreeNone, kStateTreeNone,
                                                                kStateTreeNone};
 
-    // Blackboard / trigger state
+    // Blackboard / trigger state. Tags are read from GameplayTagsComponent; the
+    // tree never duplicates the tag container per entity.
     std::uint64_t Triggers = 0;
-    std::uint64_t Tags = 0;
     Entity Target = entt::null;
     Vector2D TargetPosition{};
     std::array<float, 4> Floats{};
@@ -221,11 +246,26 @@ public:
     }
     [[nodiscard]] const StateTreeDefinition* Tree(std::uint32_t InTreeId) const noexcept;
 
+    // The registry is required for hierarchical tag checks. `Run(SystemContext)`
+    // takes it from the context; the raw overload uses the bound registry.
+    void SetTagRegistry(const GameplayTagRegistry* InTags) noexcept
+    {
+        MTags = InTags;
+    }
+    [[nodiscard]] const GameplayTagRegistry* TagRegistry() const noexcept
+    {
+        return MTags;
+    }
+
     // FixedUpdate pass. Allocation-free. Tasks write AICommandComponent through
     void Run(Ecs::SystemContext& InContext) const noexcept;
     void Run(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuffer* InCommands) const noexcept;
 
 private:
+    void RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuffer* InCommands,
+                     const GameplayTagRegistry* InTags) const noexcept;
+
+    const GameplayTagRegistry* MTags = nullptr;
     std::array<StateTreeDefinition, kMaxStateTrees> MTrees{};
     std::uint32_t MTreeCount = 0;
 };
@@ -244,7 +284,6 @@ FBY_REFLECT_COMPONENT(Fby::StateTreeComponent, "StateTreeComponent",
                       FBY_FIELD(Fby::StateTreeComponent, Ticks, UInt32),
                       FBY_FIELD(Fby::StateTreeComponent, TransitionsFired, UInt32),
                       FBY_FIELD(Fby::StateTreeComponent, Triggers, UInt64),
-                      FBY_FIELD(Fby::StateTreeComponent, Tags, UInt64),
                       FBY_FIELD(Fby::StateTreeComponent, Target, Entity),
                       FBY_FIELD(Fby::StateTreeComponent, TargetPosition, Vector2D),
                       FBY_FIELD(Fby::StateTreeComponent, Initialized, Bool),
@@ -255,7 +294,7 @@ FBY_REFLECT_COMPONENT(Fby::AICommandComponent, "AICommandComponent",
                       FBY_FIELD(Fby::AICommandComponent, Target, Entity),
                       FBY_FIELD(Fby::AICommandComponent, Position, Vector2D),
                       FBY_FIELD(Fby::AICommandComponent, Speed, Float),
-                      FBY_FIELD(Fby::AICommandComponent, Range, Float),
                       FBY_FIELD(Fby::AICommandComponent, Flags, UInt32),
+                      FBY_FIELD(Fby::AICommandComponent, ActionId, UInt32),
                       FBY_FIELD(Fby::AICommandComponent, TaskIndex, UInt32),
                       FBY_FIELD(Fby::AICommandComponent, Sequence, UInt32))

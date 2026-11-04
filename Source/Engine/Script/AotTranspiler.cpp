@@ -16,7 +16,7 @@ namespace Fby::Script
 namespace
 {
 // Sizes the destination from the actual formatted length, so a long symbol or
-// program name cannot silently truncate generated C++ (a 1.0 audit item).
+// program name cannot silently truncate generated C++.
 void AppendFormat(std::string& Out, const char* InFormat, ...)
 {
     va_list ScopedArguments;

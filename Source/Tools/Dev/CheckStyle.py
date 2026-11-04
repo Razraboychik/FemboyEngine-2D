@@ -43,7 +43,7 @@ REQUIRED_DIRECTORIES = [
 # Extra first-class modules. They are not in the required list because a
 # platform-less or weather-less build is valid, but they are allowed to live
 # directly under Source/Engine.
-OPTIONAL_ENGINE_MODULES = {"Weather", "Platform", "Navigation", "Text"}
+OPTIONAL_ENGINE_MODULES = {"Weather", "Platform", "Navigation", "Text", "AI", "Gameplay"}
 EDITOR_MODULES = {"Panels", "Infrastructure"}
 JUNK_PATTERNS = (
     "*.obj",
@@ -64,8 +64,10 @@ JUNK_PATTERNS = (
     "CMakeCache.txt",
     "CMakeUserPresets.json",
 )
-JUNK_DIRECTORIES = {".vs", ".vscode", ".idea", "out", "__pycache__", ".cache", "CMakeFiles"}
-SKIP_TREES = {".git", "build", "third_party", "Projects", "Saved"}
+JUNK_DIRECTORIES = {".vs", ".idea", "out", "__pycache__", ".cache", "CMakeFiles"}
+# .vscode is machine-local editor state and already ignored by .gitignore; it
+# must not make a clean checkout fail the style gate.
+SKIP_TREES = {".git", ".vscode", "build", "third_party", "Projects", "Saved"}
 SCRIPT_SUFFIXES = {".py", ".ps1", ".sh", ".command", ".cmake", ".yml", ".yaml", ".bat", ".cmd"}
 SCRIPT_ROOTS = ("Source", "SetupScripts", "cmake", ".github")
 
@@ -78,7 +80,8 @@ CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 NON_ASCII = re.compile(r"[^\x00-\x7F]")
 ASCII_ART = re.compile(r"[-=*#~_]{4,}|[\u2500-\u257F]")
 TYPE_DECLARATION = re.compile(
-    r"^\s*(?:template\s*<[^>\n]*>\s*)?(?:struct|class|union|concept|enum(?:\s+class)?)\s+([A-Za-z_]\w*)\b(.*)$"
+    r"^\s*(?:template\s*<[^>\n]*>\s*)?(?:struct|class|union|concept|enum(?:\s+class)?)\s+"
+    r"(?:alignas\([^)]*\)\s+)?([A-Za-z_]\w*)\b(.*)$"
 )
 ALIAS_DECLARATION = re.compile(r"^(?:template\s*<[^>\n]*>\s*)?using\s+([A-Za-z_]\w*)\s*=")
 NAMESPACE_DECLARATION = re.compile(r"^namespace\s+([A-Za-z_]\w*)\b")
@@ -448,7 +451,9 @@ def main() -> int:
                 failures.append(f"{relative}: {token} identifier remains")
         if re.search(r"\bdynamic_cast\b|\btypeid\b", masked):
             failures.append(f"{relative}: RTTI construct remains")
-        if re.search(r"\bInOut[A-Za-z0-9]*\b", masked):
+        # InOutput and InOuterCone are ordinary In-prefixed names; only the
+        # genuine in/out prefix (InOut, InOutSettings, ...) is rejected.
+        if re.search(r"\bInOut\b|\bInOut(?!(?:put|er))\w+\b", masked):
             failures.append(f"{relative}: InOut parameter name remains")
         if re.search(r"\bg_[A-Za-z0-9_]+\b", masked):
             failures.append(f"{relative}: g_ global name remains")

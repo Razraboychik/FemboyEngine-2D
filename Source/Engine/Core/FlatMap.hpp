@@ -13,8 +13,13 @@
 #include <version>
 #include <vector>
 
-#if defined(__cpp_lib_flat_map) && __cpp_lib_flat_map >= 202207L
+#if defined(__cpp_lib_flat_map) && __cpp_lib_flat_map >= 202207L && defined(__has_include)
+#if __has_include(<flat_map>)
+#include <flat_map>
 #define FBY_HAS_STD_FLAT_MAP 1
+#else
+#define FBY_HAS_STD_FLAT_MAP 0
+#endif
 #else
 #define FBY_HAS_STD_FLAT_MAP 0
 #endif

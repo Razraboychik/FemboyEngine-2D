@@ -111,6 +111,25 @@ void SceneDiagnosticsPanel::Sample(Ecs::SystemContext& InContext)
         ScopedSample.meshIndirectDraws = ScopedStats.meshIndirectCalls;
         ScopedSample.skinDispatches = ScopedStats.skinDispatches;
         ScopedSample.drawCalls = ScopedStats.drawCalls;
+        ScopedSample.depthItems = ScopedStats.depthItems;
+        ScopedSample.depthDrawCalls = ScopedStats.depthDrawCalls;
+        ScopedSample.culledItems = ScopedStats.culledItems;
+        ScopedSample.gpuMainBatches = ScopedStats.gpuMainBatches;
+        ScopedSample.gpuMainItems = ScopedStats.gpuMainItems;
+        ScopedSample.giProbes = ScopedStats.giProbes;
+        ScopedSample.hizTiles = ScopedStats.hizTiles;
+        ScopedSample.hizMips = ScopedStats.hizMips;
+        ScopedSample.clusterCount = ScopedStats.clusterCount;
+        ScopedSample.clusterLights = ScopedStats.clusterLights;
+        ScopedSample.clusterCacheHits = ScopedStats.clusterCacheHits;
+        ScopedSample.cullCacheHits = ScopedStats.cullCacheHits;
+        ScopedSample.oitItems = ScopedStats.oitItems;
+        ScopedSample.oitMode = ScopedStats.oitMode;
+        ScopedSample.gpuFrameMilliseconds = ScopedStats.gpuFrameMilliseconds;
+        ScopedSample.gpuDepthMilliseconds = ScopedStats.gpuDepthMilliseconds;
+        ScopedSample.gpuMainMilliseconds = ScopedStats.gpuMainMilliseconds;
+        ScopedSample.gpuClusterMilliseconds = ScopedStats.gpuClusterMilliseconds;
+        ScopedSample.gpuPostFxMilliseconds = ScopedStats.gpuPostFxMilliseconds;
         ScopedSample.items = ScopedStats.items;
         ScopedSample.batches = ScopedStats.batches;
         ScopedSample.textureBinds = ScopedStats.textureBinds;
@@ -268,6 +287,16 @@ void SceneDiagnosticsPanel::DrawSummary()
 
     ImGui::Text("MeshRenderItem %u   indirect %u   draw calls %u   items %u   batches %u", MLatest.meshItems,
                 MLatest.meshIndirectDraws, MLatest.drawCalls, MLatest.items, MLatest.batches);
+    ImGui::Text("GPU %.3f ms  depth %.3f  main %.3f  cluster %.3f  postfx %.3f", MLatest.gpuFrameMilliseconds,
+                MLatest.gpuDepthMilliseconds, MLatest.gpuMainMilliseconds, MLatest.gpuClusterMilliseconds,
+                MLatest.gpuPostFxMilliseconds);
+    ImGui::Text("depth items %u   depth draws %u   main visible %u   clusters %u   cluster lights %u   caches %u/%u",
+                MLatest.depthItems, MLatest.depthDrawCalls, MLatest.culledItems, MLatest.clusterCount,
+                MLatest.clusterLights, MLatest.cullCacheHits, MLatest.clusterCacheHits);
+    ImGui::Text("OIT mode %u   items %u", static_cast<unsigned>(MLatest.oitMode), MLatest.oitItems);
+    ImGui::Text("GPU main batches %u   GPU main items %u   GI probes %u   Hi-Z tiles %u / mips %u",
+                MLatest.gpuMainBatches, MLatest.gpuMainItems, MLatest.giProbes, MLatest.hizTiles,
+                MLatest.hizMips);
 
     std::uint32_t ScopedBusiest = 0;
     float ScopedBusiestValue = 0.0f;

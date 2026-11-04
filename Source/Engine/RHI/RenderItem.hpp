@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Engine/Core/Types.hpp"
+#include "Engine/RHI/GpuLighting.hpp"
 #include "Engine/RHI/Mesh.hpp"
 #include "Engine/RHI/PostProcess.hpp"
 
@@ -12,6 +13,30 @@
 
 namespace Fby::Rhi
 {
+
+inline constexpr std::uint32_t kDepthFlagShift = 24;
+inline constexpr std::uint32_t kDepthFlagMask = 0xFFu << kDepthFlagShift;
+inline constexpr std::uint32_t DepthWriteMask = 1u << 9;
+
+// Packs a normalized depth into the high byte and marks the item for the depth
+// prepass. A value of 0 is near, 1 is far.
+[[nodiscard]] inline std::uint32_t EncodeDepth(std::uint32_t InFlags, float InDepth,
+                                              bool InWriteDepth = true) noexcept
+{
+    const std::uint32_t ScopedBase = InFlags & ~(kDepthFlagMask | DepthWriteMask);
+    if (!InWriteDepth)
+    {
+        return ScopedBase;
+    }
+    const float ScopedClamped = InDepth < 0.0f ? 0.0f : (InDepth > 1.0f ? 1.0f : InDepth);
+    const std::uint32_t ScopedByte = static_cast<std::uint32_t>(ScopedClamped * 255.0f + 0.5f);
+    return ScopedBase | (ScopedByte << kDepthFlagShift) | DepthWriteMask;
+}
+
+[[nodiscard]] inline float DecodeDepth(std::uint32_t InFlags) noexcept
+{
+    return static_cast<float>((InFlags >> kDepthFlagShift) & 0xFFu) / 255.0f;
+}
 
 // Per-item switches. Anything that would otherwise need a second pipeline lives
 enum class RenderFlags : std::uint32_t
@@ -31,6 +56,12 @@ enum class RenderFlags : std::uint32_t
     // SDF-only rings. Bits 16..23 carry the normalized width/radius.
     SdfOutline = 1u << 7,
     SdfGlow = 1u << 8,
+    // Request depth-write in the depth prepass. The high byte carries the
+    // normalized depth so the 48-byte item layout stays unchanged.
+    DepthWrite = 1u << 9,
+    // Per-item OIT override for the transparent pass. The project setting is
+    // the default; emitters and sprites may force this item into OIT.
+    Oit = 1u << 10,
 };
 
 // Shader-facing bit for RenderFlags::VirtualTexture (quad.vert/frag).
@@ -284,6 +315,13 @@ struct SdfLightingFrame
     std::uint32_t height = 0;
     Vector2D origin{};
     Vector2D cellSize{1.0f, 1.0f};
+    // Camera used by the screen-space mask compute.
+    Vector4D camera{};
+    Vector4D viewport{};
+    // Optional previous-view mask blend with camera reprojection.
+    bool temporal = false;
+    // xy = previous centre, z = previous zoom, w reserved.
+    Vector4D previousCamera{};
     // Direction towards the sun/light, normalized by the backend.
     Vector2D sunDirection{0.25f, -1.0f};
     float softness = 24.0f;
@@ -294,6 +332,18 @@ struct SdfLightingFrame
     std::uint32_t occluderCount = 0;
     // Backends re-upload the field texture only when this changes.
     std::uint64_t fieldVersion = 0;
+    // Sparse atlas data for the same version: 32-byte brick headers (tile index,
+    // min/max distance, brick coords, state) and the packed 16x16 tiles in an
+    // R32F atlas of atlasColumns * 16 texels per side. Null means the backend
+    // keeps the dense resample.
+    const std::byte* brickTable = nullptr;
+    std::uint32_t brickCount = 0;
+    const float* atlasTexels = nullptr;
+    std::uint32_t atlasWidth = 0;
+    std::uint32_t atlasHeight = 0;
+    std::uint32_t atlasColumns = 0;
+    // Viewport slot for backends that keep several SDF views in flight.
+    std::uint32_t viewId = 0;
     bool enabled = false;
     std::array<SdfLightingOccluder, kMaxSdfGpuOccluders> occluders{};
 };
@@ -301,13 +351,42 @@ struct SdfLightingFrame
 static_assert(std::is_trivially_copyable_v<SdfLightingFrame>);
 
 // The only frame description the RHI accepts. Every span points into storage
+struct MotionVectorItem
+{
+    Vector2D position{};
+    Vector2D size{};
+    Vector2D previousPosition{};
+    Vector2D previousSize{};
+    float rotation = 0.0f;
+    float previousRotation = 0.0f;
+    // Screen-space motion in render pixels for the current frame.
+    Vector2D screenDelta{};
+    std::uint32_t flags = 0;
+
+    [[nodiscard]] constexpr bool IsReactive() const noexcept
+    {
+        return (flags & (1u << 2)) != 0u || (flags & (1u << 3)) != 0u || (flags & (1u << 10)) != 0u;
+    }
+};
+
 struct FramePacket
 {
     std::span<const RenderItem> items;
+    // Per-sprite previous/current transform used by temporal motion vectors.
+    std::span<const MotionVectorItem> motionItems;
     // Same length as items, ascending
     std::span<const RenderKey> keys;
     std::span<const DrawBatch> batches;
     CameraData camera{};
+    // Previous camera for camera-space motion reprojection.
+    CameraData previousCamera{};
+    // Sub-pixel camera jitter in render pixels and temporal history state.
+    float jitterX = 0.0f;
+    float jitterY = 0.0f;
+    float previousJitterX = 0.0f;
+    float previousJitterY = 0.0f;
+    bool historyValid = false;
+    std::uint64_t historyGeneration = 0;
     Color32 clear = Color32::Black();
     // Texture-array handle id (Rhi::TextureArrayHandle::id). The sentinel keeps
     std::uint32_t textureArray = 0xFFFFFFFFu;
@@ -331,6 +410,10 @@ struct FramePacket
     // GPU SDF shadows. Backends without a shadow path ignore it.
     SdfLightingFrame sdf{};
 
+    // Screen-space lights consumed by the clustered-lighting compute passes.
+    // Produced by FrameComposer from Light2D/LightSource components.
+    std::span<const GpuLight> lights{};
+
     // Virtual texture bound for items with RenderFlags::VirtualTexture.
     VirtualTextureHandle virtualTexture{};
     // (worldTileSize, tableOriginX, tableOriginY, enabled)
@@ -344,5 +427,38 @@ struct FramePacket
     // backend can skip the composite without inspecting the flag bits.
     PostFxSettings postFx{};
     bool postFxEnabled = false;
+
+    // Contiguous opaque runs for the depth prepass. Empty means "no prepass
+    // draws"; the main pass still consumes `batches`.
+    std::span<const DrawBatch> depthBatches{};
+
+    // When true, the sprite shader adds clustered GPU lighting and the extract
+    // leaves the CPU light tint unused.
+    bool gpuLighting = false;
+    // 0 off, 1 weighted blended, 2 accurate. The backend may ignore modes it
+    // does not implement; the field keeps the project/effect policy in the
+    // frame contract.
+    std::uint8_t oitMode = 0;
+    // Optional resolved OIT inputs. When both are valid the backend draws a
+    // fullscreen alpha-composited resolve after the opaque scene.
+    std::uint32_t oitAccumulation = 0xFFFFFFFFu;
+    std::uint32_t oitRevealage = 0xFFFFFFFFu;
+    // Opaque items are sorted front-to-back and drawn with depth test/write.
+    bool opaqueFrontToBack = false;
+    // Leading fully opaque batches that the main pass can consume from the
+    // GPU-culled list. Later batches keep the CPU order.
+    bool gpuOpaqueMain = false;
+    std::uint32_t gpuCulledBatchCount = 0;
+
+    // Items and camera are unchanged since the previous frame, so the previous
+    // Hi-Z and culling lists remain valid.
+    bool sceneStatic = false;
+    std::uint32_t sceneVersion = 0;
+    std::uint32_t lightVersion = 0;
+
+    // Optional SDF GI probe volume for the fragment shader.
+    std::span<const GpuGiProbe> giProbes{};
+    GpuGiVolumeHeader giHeader{};
+    std::uint32_t giVersion = 0;
 };
 }

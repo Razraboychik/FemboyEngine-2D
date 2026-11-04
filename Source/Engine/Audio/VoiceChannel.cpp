@@ -77,6 +77,8 @@ void VoiceChannel::Stop() noexcept
     MCaptureRing = nullptr;
     MSend = nullptr;
     MSendUser = nullptr;
+    MDecodeSink = nullptr;
+    MDecodeSinkUser = nullptr;
     MStats = VoiceChannelStats{};
     MSendSequence = 0;
     MCaptureAccumulatorMs = 0.0f;
@@ -176,8 +178,8 @@ bool VoiceChannel::ReceivePacket(std::uint8_t InFromPlayer, std::span<const std:
     return true;
 }
 
-bool VoiceChannel::InsertJitter(Peer& InPeer, std::uint16_t InSequence, std::uint16_t InSamples,
-                                std::uint8_t InFlags, std::span<const std::uint8_t> InPayload) noexcept
+bool VoiceChannel::InsertJitter(Peer& InPeer, std::uint16_t InSequence, std::uint16_t InSamples, std::uint8_t InFlags,
+                                std::span<const std::uint8_t> InPayload) noexcept
 {
     if (InPeer.HasLastSequence && !SequenceNewer(InSequence, InPeer.LastSequence))
     {
@@ -306,8 +308,7 @@ void VoiceChannel::SendPacket(std::span<const std::uint8_t> InPacket, std::uint8
     }
     for (std::uint8_t ScopedPlayer = 0; ScopedPlayer < kVoiceMaxPeers; ++ScopedPlayer)
     {
-        if (!MPeers[ScopedPlayer].Present || ScopedPlayer == InExceptPlayer ||
-            ScopedPlayer == MConfig.LocalPlayer)
+        if (!MPeers[ScopedPlayer].Present || ScopedPlayer == InExceptPlayer || ScopedPlayer == MConfig.LocalPlayer)
         {
             continue;
         }
@@ -326,8 +327,7 @@ void VoiceChannel::EncodeCapture(VoiceSession* InSession) noexcept
     }
     while (MCaptureRing->AvailableRead() >= kVoiceFrameSamples)
     {
-        const std::uint32_t ScopedRead =
-            MCaptureRing->Read(MCaptureScratch.data(), kVoiceFrameSamples);
+        const std::uint32_t ScopedRead = MCaptureRing->Read(MCaptureScratch.data(), kVoiceFrameSamples);
         if (ScopedRead != kVoiceFrameSamples)
         {
             break;
@@ -339,7 +339,7 @@ void VoiceChannel::EncodeCapture(VoiceSession* InSession) noexcept
         std::uint8_t* ScopedPacket = MPacketScratch.data();
         const std::uint32_t ScopedBytes =
             MEncoder.Encode(MCaptureScratch, std::span<std::uint8_t>(ScopedPacket + kVoicePacketHeaderBytes,
-                                                                    kVoiceMaxPacketBytes - kVoicePacketHeaderBytes));
+                                                                     kVoiceMaxPacketBytes - kVoicePacketHeaderBytes));
         if (ScopedBytes == 0)
         {
             continue;
@@ -354,12 +354,21 @@ void VoiceChannel::EncodeCapture(VoiceSession* InSession) noexcept
     }
 }
 
+void VoiceChannel::ApplyDecodeSink(std::uint8_t InPlayer, float* InSamples, std::uint32_t InFrameCount) noexcept
+{
+    if (MDecodeSink != nullptr && InSamples != nullptr && InFrameCount > 0)
+    {
+        MDecodeSink(MDecodeSinkUser, InPlayer, InSamples, InFrameCount);
+    }
+}
+
 void VoiceChannel::DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept
 {
     if (!InPeer.Present || !InPeer.Decoder.Ready())
     {
         return;
     }
+    const std::uint8_t ScopedPlayer = static_cast<std::uint8_t>(&InPeer - MPeers.data());
     // First-packet policy: hold playout for one 20 ms interval so a lower
     // out-of-order sequence can still become the first played frame. This stops
     // a jitter "future" packet from locking the stream to its sequence.
@@ -371,7 +380,6 @@ void VoiceChannel::DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept
         }
         InPeer.PlayoutStarted = true;
     }
-    const std::uint8_t ScopedPlayer = static_cast<std::uint8_t>(&InPeer - MPeers.data());
     JitterSlot* ScopedSlot = TakeNextJitter(InPeer);
 
     if (ScopedSlot == nullptr)
@@ -382,6 +390,7 @@ void VoiceChannel::DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept
             const std::uint32_t ScopedFrames = InPeer.Decoder.Conceal(MDecodeScratch);
             if (ScopedFrames > 0)
             {
+                ApplyDecodeSink(ScopedPlayer, MDecodeScratch.data(), ScopedFrames);
                 (void)InPeer.Ring.Write(MDecodeScratch.data(), ScopedFrames);
                 ++MStats.FramesConcealed;
             }
@@ -389,16 +398,17 @@ void VoiceChannel::DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept
         return;
     }
 
-    if (InPeer.HasLastSequence && SequenceNewer(ScopedSlot->Sequence,
-                                                static_cast<std::uint16_t>(InPeer.LastSequence + 1)))
+    if (InPeer.HasLastSequence &&
+        SequenceNewer(ScopedSlot->Sequence, static_cast<std::uint16_t>(InPeer.LastSequence + 1)))
     {
         // A hole: reconstruct the missing frame from the Opus FEC carried by the
         // next packet before falling back to concealment.
         JitterSlot* ScopedNext = FindNextSlot(InPeer);
         if (ScopedNext != nullptr &&
-            InPeer.Decoder.DecodeFec(
-                std::span<const std::uint8_t>(ScopedNext->Data.data(), ScopedNext->Bytes), MDecodeScratch) > 0)
+            InPeer.Decoder.DecodeFec(std::span<const std::uint8_t>(ScopedNext->Data.data(), ScopedNext->Bytes),
+                                     MDecodeScratch) > 0)
         {
+            ApplyDecodeSink(ScopedPlayer, MDecodeScratch.data(), kVoiceFrameSamples);
             (void)InPeer.Ring.Write(MDecodeScratch.data(), kVoiceFrameSamples);
             ++MStats.FramesFecRecovered;
             ++InPeer.LastSequence;
@@ -408,6 +418,7 @@ void VoiceChannel::DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept
         const std::uint32_t ScopedFrames = InPeer.Decoder.Conceal(MDecodeScratch);
         if (ScopedFrames > 0)
         {
+            ApplyDecodeSink(ScopedPlayer, MDecodeScratch.data(), ScopedFrames);
             (void)InPeer.Ring.Write(MDecodeScratch.data(), ScopedFrames);
             ++MStats.FramesConcealed;
         }
@@ -424,6 +435,7 @@ void VoiceChannel::DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept
     {
         return;
     }
+    ApplyDecodeSink(ScopedPlayer, MDecodeScratch.data(), ScopedFrames);
     (void)InPeer.Ring.Write(MDecodeScratch.data(), ScopedFrames);
     ++MStats.FramesDecoded;
     RecordFirstPlayed(ScopedSlot->Sequence);
@@ -435,8 +447,7 @@ void VoiceChannel::DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept
         {
             ScopedSum += static_cast<double>(MDecodeScratch[ScopedIndex]) * MDecodeScratch[ScopedIndex];
         }
-        const float ScopedRms =
-            static_cast<float>(std::sqrt(ScopedSum / static_cast<double>(ScopedFrames)));
+        const float ScopedRms = static_cast<float>(std::sqrt(ScopedSum / static_cast<double>(ScopedFrames)));
         InSession->SetParticipantLevel(ScopedPlayer, ScopedRms);
     }
 }

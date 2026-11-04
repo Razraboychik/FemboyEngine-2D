@@ -2,6 +2,7 @@
 #include "Engine/Physics/SdfCollision.hpp"
 
 #include "Engine/ECS/SystemGraph.hpp"
+#include "Engine/Physics/SdfBrickMap.hpp"
 
 #include <box2d/box2d.h>
 
@@ -12,14 +13,6 @@ namespace Fby
 {
 namespace
 {
-
-[[nodiscard]] b2Pos ToBox(Vector2D InValue, float InPixelsPerMeter) noexcept
-{
-    b2Pos ScopedResult{};
-    ScopedResult.x = static_cast<decltype(ScopedResult.x)>(InValue.X / InPixelsPerMeter);
-    ScopedResult.y = static_cast<decltype(ScopedResult.y)>(InValue.Y / InPixelsPerMeter);
-    return ScopedResult;
-}
 
 [[nodiscard]] b2Vec2 ToBoxVelocity(Vector2D InValue, float InPixelsPerMeter) noexcept
 {
@@ -35,8 +28,7 @@ namespace
 {
     const float ScopedCos = std::cos(InRadians);
     const float ScopedSin = std::sin(InRadians);
-    return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin,
-                    InValue.X * ScopedSin + InValue.Y * ScopedCos};
+    return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin, InValue.X * ScopedSin + InValue.Y * ScopedCos};
 }
 }
 
@@ -81,12 +73,12 @@ Vector2D SdfField::Gradient(Vector2D InWorld) const noexcept
 {
     const float ScopedStepX = std::max(cellSize.X, 0.001f);
     const float ScopedStepY = std::max(cellSize.Y, 0.001f);
-    const float ScopedDx = (Sample(Vector2D{InWorld.X + ScopedStepX, InWorld.Y}) -
-                            Sample(Vector2D{InWorld.X - ScopedStepX, InWorld.Y})) /
-                           (2.0f * ScopedStepX);
-    const float ScopedDy = (Sample(Vector2D{InWorld.X, InWorld.Y + ScopedStepY}) -
-                            Sample(Vector2D{InWorld.X, InWorld.Y - ScopedStepY})) /
-                           (2.0f * ScopedStepY);
+    const float ScopedDx =
+        (Sample(Vector2D{InWorld.X + ScopedStepX, InWorld.Y}) - Sample(Vector2D{InWorld.X - ScopedStepX, InWorld.Y})) /
+        (2.0f * ScopedStepX);
+    const float ScopedDy =
+        (Sample(Vector2D{InWorld.X, InWorld.Y + ScopedStepY}) - Sample(Vector2D{InWorld.X, InWorld.Y - ScopedStepY})) /
+        (2.0f * ScopedStepY);
     Vector2D ScopedNormal{ScopedDx, ScopedDy};
     const float ScopedLength = std::sqrt(ScopedNormal.LengthSquared());
     if (ScopedLength < 1.0e-6f)
@@ -101,6 +93,8 @@ void SdfCollisionSystem::Initialize(const SdfCollisionDesc& InDesc) noexcept
     MDesc = InDesc;
     MContacts.fill(SdfContact{});
     MContactCount = 0;
+    MManifolds.fill(SdfContactManifold{});
+    MManifoldCount = 0;
     MSequence = 0;
     MLastCorrected = 0;
 }
@@ -113,6 +107,8 @@ void SdfCollisionSystem::SetField(const SdfField& InField) noexcept
 std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, float InFixedDt) noexcept
 {
     MContactCount = 0;
+    MManifoldCount = 0;
+    MBroadphaseSkipped = 0;
     MLastCorrected = 0;
     if (!MField.Valid() || InFixedDt <= 0.0f)
     {
@@ -142,27 +138,77 @@ std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem&
         const Vector2D ScopedCenter{static_cast<float>(ScopedWorld.p.x) * ScopedPixelsPerMeter,
                                     static_cast<float>(ScopedWorld.p.y) * ScopedPixelsPerMeter};
         const float ScopedRotation = b2Rot_GetAngle(ScopedWorld.q);
+        // Brick broadphase: a uniform outside brick that is farther than the
+        // collider reach cannot produce a contact, so the sample grid is skipped.
+        if (MBricks != nullptr)
+        {
+            const SdfBrickHeader* ScopedHeader = MBricks->HeaderAt(ScopedCenter);
+            if (ScopedHeader != nullptr && ScopedHeader->State == SdfBrickState::Empty)
+            {
+                const float ScopedReach = std::sqrt(ScopedCollider.HalfExtents.X * ScopedCollider.HalfExtents.X +
+                                                    ScopedCollider.HalfExtents.Y * ScopedCollider.HalfExtents.Y) +
+                                          std::max(MField.cellSize.X, MField.cellSize.Y);
+                if (ScopedHeader->MinDistance > ScopedReach)
+                {
+                    ++MBroadphaseSkipped;
+                    continue;
+                }
+            }
+        }
         const std::uint32_t ScopedSamples = std::max(MDesc.subSamples, 1u) + 1u;
 
         float ScopedMinDistance = MField.outsideDistance;
         Vector2D ScopedDeepest = ScopedCenter;
         bool ScopedTouchedInside = false;
+        // Up to four deepest inside samples become the contact manifold points.
+        std::array<Vector2D, 4> ScopedManifoldPoints{};
+        std::array<float, 4> ScopedManifoldDepths{};
+        std::uint32_t ScopedManifoldPointsCount = 0;
         for (std::uint32_t ScopedIy = 0; ScopedIy < ScopedSamples; ++ScopedIy)
         {
-            const float ScopedY = -ScopedCollider.HalfExtents.Y +
-                                  (2.0f * ScopedCollider.HalfExtents.Y) * static_cast<float>(ScopedIy) /
-                                      static_cast<float>(ScopedSamples - 1);
+            const float ScopedY = -ScopedCollider.HalfExtents.Y + (2.0f * ScopedCollider.HalfExtents.Y) *
+                                                                      static_cast<float>(ScopedIy) /
+                                                                      static_cast<float>(ScopedSamples - 1);
             for (std::uint32_t ScopedIx = 0; ScopedIx < ScopedSamples; ++ScopedIx)
             {
-                const float ScopedX = -ScopedCollider.HalfExtents.X +
-                                      (2.0f * ScopedCollider.HalfExtents.X) * static_cast<float>(ScopedIx) /
-                                          static_cast<float>(ScopedSamples - 1);
+                const float ScopedX = -ScopedCollider.HalfExtents.X + (2.0f * ScopedCollider.HalfExtents.X) *
+                                                                          static_cast<float>(ScopedIx) /
+                                                                          static_cast<float>(ScopedSamples - 1);
                 const Vector2D ScopedLocal{ScopedX, ScopedY};
                 const Vector2D ScopedSample = ScopedCenter + Rotate(ScopedLocal, ScopedRotation);
                 const float ScopedDistance = MField.Sample(ScopedSample);
                 if (ScopedDistance < MField.outsideDistance)
                 {
                     ScopedTouchedInside = true;
+                }
+                if (ScopedDistance < 0.0f)
+                {
+                    const float ScopedDepth = -ScopedDistance;
+                    if (ScopedManifoldPointsCount < ScopedManifoldPoints.size())
+                    {
+                        ScopedManifoldPoints[ScopedManifoldPointsCount] = ScopedSample;
+                        ScopedManifoldDepths[ScopedManifoldPointsCount] = ScopedDepth;
+                        ++ScopedManifoldPointsCount;
+                    }
+                    else
+                    {
+                        // Keep the four deepest samples; a shallow one yields to a
+                        // deeper sample so the manifold spans the real contact.
+                        std::size_t ScopedShallowest = 0;
+                        for (std::size_t ScopedPointIndex = 1; ScopedPointIndex < ScopedManifoldPoints.size();
+                             ++ScopedPointIndex)
+                        {
+                            if (ScopedManifoldDepths[ScopedPointIndex] < ScopedManifoldDepths[ScopedShallowest])
+                            {
+                                ScopedShallowest = ScopedPointIndex;
+                            }
+                        }
+                        if (ScopedDepth > ScopedManifoldDepths[ScopedShallowest])
+                        {
+                            ScopedManifoldPoints[ScopedShallowest] = ScopedSample;
+                            ScopedManifoldDepths[ScopedShallowest] = ScopedDepth;
+                        }
+                    }
                 }
                 if (ScopedDistance < ScopedMinDistance)
                 {
@@ -188,7 +234,8 @@ std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem&
         Vector2D ScopedReflected = ScopedVelocity;
         if (ScopedInward < 0.0f)
         {
-            ScopedReflected = ScopedVelocity - ScopedNormal * (ScopedInward * (1.0f + std::clamp(MDesc.restitution, 0.0f, 1.0f)));
+            ScopedReflected =
+                ScopedVelocity - ScopedNormal * (ScopedInward * (1.0f + std::clamp(MDesc.restitution, 0.0f, 1.0f)));
         }
         const float ScopedImpulseMagnitude =
             std::min(ScopedPenetration * ScopedMass * 60.0f, std::max(MDesc.maxImpulse, 0.0f));
@@ -196,21 +243,24 @@ std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem&
         b2Body_SetLinearVelocity(ScopedBodyId, ToBoxVelocity(ScopedReflected, ScopedPixelsPerMeter));
         if (ScopedImpulseMagnitude > 0.0f)
         {
-            b2Body_ApplyLinearImpulseToCenter(ScopedBodyId,
-                                              ToBoxVelocity(ScopedNormal * ScopedImpulseMagnitude, ScopedPixelsPerMeter),
-                                              true);
+            b2Body_ApplyLinearImpulseToCenter(
+                ScopedBodyId, ToBoxVelocity(ScopedNormal * ScopedImpulseMagnitude, ScopedPixelsPerMeter), true);
         }
-        const Vector2D ScopedNewVelocity = ScopedReflected + ScopedNormal * (ScopedImpulseMagnitude / ScopedMass);
-        const Vector2D ScopedCorrected =
-            ScopedCenter + ScopedNormal * (ScopedPenetration * std::clamp(MDesc.pushOut, 0.0f, 1.0f));
-        b2Body_SetTransform(ScopedBodyId, ToBox(ScopedCorrected, ScopedPixelsPerMeter), ScopedWorld.q);
+        const float ScopedPushSpeed = std::min(ScopedPenetration * std::clamp(MDesc.pushOut, 0.0f, 1.0f) / InFixedDt,
+                                               std::max(MDesc.maxPushSpeed, 0.0f));
+        // Depenetration is a velocity, not a teleport: the body keeps its contact
+        // continuity (and CCD) and the solver integrates the correction over the
+        // next few steps instead of snapping.
+        const Vector2D ScopedNewVelocity =
+            ScopedReflected + ScopedNormal * (ScopedPushSpeed + ScopedImpulseMagnitude / ScopedMass);
+        b2Body_SetLinearVelocity(ScopedBodyId, ToBoxVelocity(ScopedNewVelocity, ScopedPixelsPerMeter));
 
         ScopedBody.PreviousPosition = ScopedBody.Position;
-        ScopedBody.Position = ScopedCorrected;
         ScopedBody.PreviousRotation = ScopedBody.Rotation;
+        ScopedBody.Position = ScopedCenter;
         ScopedBody.Rotation = ScopedRotation;
         ScopedBody.LinearVelocity = ScopedNewVelocity;
-        ScopedTransform.Position = ScopedCorrected;
+        ScopedTransform.Position = ScopedCenter;
         ScopedTransform.Rotation = ScopedRotation;
         ++MLastCorrected;
 
@@ -222,7 +272,30 @@ std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem&
             ScopedContact.normal = ScopedNormal;
             ScopedContact.penetration = ScopedPenetration;
             ScopedContact.impulse = ScopedImpulseMagnitude;
+            ScopedContact.RelativeSpeed = std::max(-ScopedInward, 0.0f);
+            ScopedContact.KineticEnergy = 0.5f * ScopedMass * ScopedContact.RelativeSpeed * ScopedContact.RelativeSpeed;
+            ScopedContact.Mass = ScopedMass;
             ScopedContact.sequence = ++MSequence;
+        }
+
+        if (MManifoldCount < kMaxManifolds && ScopedManifoldPointsCount > 0)
+        {
+            SdfContactManifold& ScopedManifold = MManifolds[MManifoldCount++];
+            ScopedManifold.entity = ScopedEntity;
+            ScopedManifold.Count = ScopedManifoldPointsCount;
+            const float ScopedPointImpulse = ScopedImpulseMagnitude / static_cast<float>(ScopedManifoldPointsCount);
+            for (std::uint32_t ScopedPointIndex = 0; ScopedPointIndex < ScopedManifoldPointsCount; ++ScopedPointIndex)
+            {
+                SdfContactPoint& ScopedPoint = ScopedManifold.Points[ScopedPointIndex];
+                ScopedPoint.Point = ScopedManifoldPoints[ScopedPointIndex];
+                ScopedPoint.Normal = MField.Gradient(ScopedPoint.Point);
+                if (ScopedPoint.Normal.LengthSquared() < 1.0e-8f)
+                {
+                    ScopedPoint.Normal = ScopedNormal;
+                }
+                ScopedPoint.Penetration = ScopedManifoldDepths[ScopedPointIndex];
+                ScopedPoint.Impulse = ScopedPointImpulse;
+            }
         }
     }
     return MLastCorrected;

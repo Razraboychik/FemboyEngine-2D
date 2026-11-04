@@ -566,10 +566,10 @@ AccessibilityKernel::StateTrack* AccessibilityKernel::FindTrack(Entity InEntity)
     return nullptr;
 }
 
-void AccessibilityKernel::TrackGameplayState(Ecs::Registry& InRegistry) noexcept
+void AccessibilityKernel::TrackGameplayTags(Ecs::Registry& InRegistry) noexcept
 {
-    auto ScopedView = InRegistry.view<GameplayState, Transform2D>();
-    for (auto [ScopedEntity, ScopedState, ScopedTransform] : ScopedView.each())
+    auto ScopedView = InRegistry.view<GameplayTagsComponent, Transform2D>();
+    for (auto [ScopedEntity, ScopedTags, ScopedTransform] : ScopedView.each())
     {
         StateTrack* ScopedTrack = FindTrack(ScopedEntity);
         if (ScopedTrack == nullptr)
@@ -580,30 +580,39 @@ void AccessibilityKernel::TrackGameplayState(Ecs::Registry& InRegistry) noexcept
             }
             ScopedTrack = &MTracks[MTrackCount++];
             ScopedTrack->entity = ScopedEntity;
-            ScopedTrack->bits = 0;
+            ScopedTrack->tags = GameplayTagMask{};
             char ScopedBuffer[kNarrativeTextBytes]{};
             (void)MNarrative.DescribeEntity(InRegistry, ScopedEntity, ScopedBuffer, sizeof(ScopedBuffer));
             PublishNarrative(1, ScopedEntity, ScopedTransform.Position, ScopedBuffer);
         }
 
-        const GameplayStateMask ScopedChanged = ScopedState.Bits ^ ScopedTrack->bits;
-        if (ScopedChanged == 0)
+        GameplayTagMask ScopedAdded = ScopedTags.Tags.Bits;
+        GameplayTagMask ScopedRemoved = ScopedTrack->tags;
+        for (std::uint32_t ScopedWord = 0; ScopedWord < kGameplayTagWords; ++ScopedWord)
+        {
+            ScopedAdded.Words[ScopedWord] &= ~ScopedTrack->tags.Words[ScopedWord];
+            ScopedRemoved.Words[ScopedWord] &= ~ScopedTags.Tags.Bits.Words[ScopedWord];
+        }
+        if (ScopedAdded.IsEmpty() && ScopedRemoved.IsEmpty())
         {
             continue;
         }
-        for (std::uint32_t ScopedBit = 0; ScopedBit < 16; ++ScopedBit)
+        for (std::uint32_t ScopedId = 1; ScopedId <= kMaxGameplayTags; ++ScopedId)
         {
-            const GameplayStateMask ScopedMask = 1ull << ScopedBit;
-            if ((ScopedChanged & ScopedMask) == 0)
+            const GameplayTag ScopedTag{ScopedId};
+            const bool ScopedGained = ScopedAdded.Test(ScopedTag);
+            const bool ScopedLost = ScopedRemoved.Test(ScopedTag);
+            if (!ScopedGained && !ScopedLost)
             {
                 continue;
             }
+            const std::string_view ScopedName = MTags != nullptr ? MTags->Name(ScopedTag) : std::string_view{};
             char ScopedBuffer[kNarrativeTextBytes]{};
-            (void)MNarrative.DescribeStateChange(InRegistry, ScopedEntity, ScopedBit, (ScopedState.Bits & ScopedMask) != 0,
-                                                ScopedBuffer, sizeof(ScopedBuffer));
+            (void)MNarrative.DescribeStateChange(InRegistry, ScopedEntity, ScopedName, ScopedGained, ScopedBuffer,
+                                                sizeof(ScopedBuffer));
             PublishNarrative(2, ScopedEntity, ScopedTransform.Position, ScopedBuffer);
         }
-        ScopedTrack->bits = ScopedState.Bits;
+        ScopedTrack->tags = ScopedTags.Tags.Bits;
     }
 }
 
@@ -631,7 +640,11 @@ void AccessibilityKernel::Update(Ecs::SystemContext& InContext) noexcept
     if (BlindMode())
     {
         MNarrative.Build(InContext.registry);
-        TrackGameplayState(InContext.registry);
+        if (InContext.gameplayTags != nullptr)
+        {
+            SetGameplayTagRegistry(InContext.gameplayTags);
+        }
+        TrackGameplayTags(InContext.registry);
         EmitContacts(InContext);
     // Speech is deliberately not flushed here: Update() is the simulation
     }

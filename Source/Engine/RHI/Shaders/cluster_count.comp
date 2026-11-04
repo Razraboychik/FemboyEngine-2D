@@ -1,0 +1,74 @@
+#version 460
+// FemboyEngine2D - first clustered-light pass.
+//
+// One invocation owns one screen cluster and counts the lights whose footprint
+// overlaps the cluster tile. A prefix-sum pass turns these counts into offsets.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct GpuLight
+{
+    vec4 PositionAndRadius;
+    vec4 ColorAndIntensity;
+    vec4 DirectionAndCone;
+    uint Type;
+    uint Flags;
+    uint ShadowIndex;
+    uint Reserved;
+};
+
+struct ClusterHeader
+{
+    uint Offset;
+    uint Count;
+    uint OverflowCount;
+    uint Flags;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer Lights
+{
+    GpuLight Items[];
+} LightBuffer;
+
+layout(std430, set = 0, binding = 1) writeonly buffer Headers
+{
+    ClusterHeader Items[];
+} HeaderBuffer;
+
+layout(push_constant) uniform ClusterConstants
+{
+    uvec2 Tiles;
+    uint LightCount;
+    uint MaxPerCluster;
+} Constants;
+
+void main()
+{
+    const uint Cluster = gl_GlobalInvocationID.x;
+    const uint ClusterCount = Constants.Tiles.x * Constants.Tiles.y;
+    if (Cluster >= ClusterCount)
+    {
+        return;
+    }
+    const uvec2 Tile = uvec2(Cluster % Constants.Tiles.x, Cluster / Constants.Tiles.x);
+    const vec2 Min = vec2(Tile) * 16.0;
+    const vec2 Max = Min + vec2(16.0);
+    uint LocalCount = 0u;
+    for (uint Index = 0u; Index < Constants.LightCount; ++Index)
+    {
+        const GpuLight Light = LightBuffer.Items[Index];
+        const vec2 Center = Light.PositionAndRadius.xy;
+        const float Radius = Light.PositionAndRadius.z;
+        const vec2 Closest = clamp(Center, Min, Max);
+        if (distance(Closest, Center) <= Radius)
+        {
+            ++LocalCount;
+        }
+    }
+    ClusterHeader Header;
+    Header.Offset = 0u;
+    Header.Count = min(LocalCount, Constants.MaxPerCluster);
+    Header.OverflowCount = LocalCount > Constants.MaxPerCluster ? LocalCount - Constants.MaxPerCluster : 0u;
+    Header.Flags = 0u;
+    HeaderBuffer.Items[Cluster] = Header;
+}

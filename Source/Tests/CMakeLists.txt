@@ -8,12 +8,19 @@ function(fby_link_asan target)
     endif()
 endfunction()
 
+# The text, shaper and editor tests keep large frame-level objects on the stack.
+# Give every test target the same 16 MiB reservation as the GUI applications.
+if(WIN32)
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        add_link_options("/STACK:16777216")
+    else()
+        add_link_options("LINKER:/STACK:16777216")
+    endif()
+endif()
+
 function(fby_add_engine_test target test_name source)
     add_executable(${target} ${source})
     target_link_libraries(${target} PRIVATE FemboyEngine2D::Engine)
-    if(MSVC)
-        target_link_options(${target} PRIVATE /STACK:16777216)
-    endif()
     fby_link_asan(${target})
     set_target_properties(${target} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
@@ -314,6 +321,20 @@ add_test(NAME rnnoise_mix COMMAND fby_voice_quality_test rnnoise_mix)
 add_test(NAME voice_fec COMMAND fby_voice_quality_test voice_fec)
 add_test(NAME jitter_init COMMAND fby_voice_quality_test jitter_init)
 
+# Voice effects: chains, presets, mute/muffle, pitch, underwater bubbles,
+# radio interference and listener-side spatial placement.
+add_executable(fby_voice_effects_test VoiceEffectsTest.cpp)
+target_link_libraries(fby_voice_effects_test PRIVATE FemboyEngine2D::Engine)
+if(TARGET Opus::opus)
+    target_link_libraries(fby_voice_effects_test PRIVATE Opus::opus)
+endif()
+if(TARGET fby::rnnoise)
+    target_link_libraries(fby_voice_effects_test PRIVATE fby::rnnoise)
+endif()
+set_target_properties(fby_voice_effects_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+add_test(NAME voice_effects COMMAND fby_voice_effects_test)
+
 # Shipped attribution: the generated Fby::Notices table and its license texts.
 fby_add_engine_test(fby_notices_test notices NoticesTest.cpp)
 
@@ -440,6 +461,12 @@ fby_add_engine_test(fby_navigation_test navigation NavigationTest.cpp)
 
 # 2D lighting: falloff, additive lights, ambient, emissive and tonemap.
 fby_add_engine_test(fby_lighting_test lighting LightingTest.cpp)
+# CPU light grid: per-cell light culling and oversized-grid fallback.
+fby_add_engine_test(fby_light_grid_test light_grid LightGridTest.cpp)
+# GPU light/cluster layout contracts consumed by the cluster compute passes.
+fby_add_engine_test(fby_gpu_lighting_test gpu_lighting GpuLightingTest.cpp)
+# GPU visibility contracts: indirect command and culling constants.
+fby_add_engine_test(fby_gpu_visibility_test gpu_visibility GpuVisibilityTest.cpp)
 
 # Viewport modes: metadata, help text, heat ramp and diagnostic tints.
 fby_add_engine_test(fby_viewport_mode_test viewport_modes ViewportModeTest.cpp)
@@ -506,6 +533,108 @@ if(TARGET fby_editor)
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME editor_infrastructure COMMAND fby_editor_infrastructure_test)
 
+    add_executable(fby_project_tag_config_test ProjectTagConfigTest.cpp)
+    target_link_libraries(fby_project_tag_config_test PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_project_tag_config_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME project_tag_config COMMAND fby_project_tag_config_test)
+
+    # FrameComposer retained order: content-only updates keep the previous sort.
+    add_executable(fby_frame_composer_test FrameComposerTest.cpp)
+    target_link_libraries(fby_frame_composer_test PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_frame_composer_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME frame_composer COMMAND fby_frame_composer_test)
+
+    # Scale harness: extract/sort/gather at 10k and 100k sprites.
+    add_executable(fby_frame_composer_benchmark FrameComposerBenchmark.cpp)
+    target_link_libraries(fby_frame_composer_benchmark PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_frame_composer_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME frame_composer_benchmark COMMAND fby_frame_composer_benchmark)
+
+    add_executable(fby_sdf_bake_benchmark SdfBakeBenchmark.cpp)
+    target_link_libraries(fby_sdf_bake_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_sdf_bake_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME sdf_bake_benchmark COMMAND fby_sdf_bake_benchmark)
+
+    add_executable(fby_flow_field_benchmark FlowFieldBenchmark.cpp)
+    target_link_libraries(fby_flow_field_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_flow_field_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME flow_field_benchmark COMMAND fby_flow_field_benchmark)
+
+    add_executable(fby_crowd_benchmark CrowdPoolBenchmark.cpp)
+    target_link_libraries(fby_crowd_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_crowd_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME crowd_benchmark COMMAND fby_crowd_benchmark)
+
+    add_executable(fby_crowd_render_benchmark CrowdRenderBenchmark.cpp)
+    target_link_libraries(fby_crowd_render_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_crowd_render_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME crowd_render_benchmark COMMAND fby_crowd_render_benchmark)
+
+    add_executable(fby_sdf_gi_benchmark SdfGiBakeBenchmark.cpp)
+    target_link_libraries(fby_sdf_gi_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_sdf_gi_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME sdf_gi_benchmark COMMAND fby_sdf_gi_benchmark)
+
+    add_executable(fby_sdf_smoke_benchmark SdfSmokeBenchmark.cpp)
+    target_link_libraries(fby_sdf_smoke_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_sdf_smoke_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME sdf_smoke_benchmark COMMAND fby_sdf_smoke_benchmark)
+
+    add_executable(fby_profiler_benchmark ProfilerBenchmark.cpp)
+    target_link_libraries(fby_profiler_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_profiler_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME profiler_benchmark COMMAND fby_profiler_benchmark)
+
+    add_executable(fby_replay_benchmark ReplayBenchmark.cpp)
+    target_link_libraries(fby_replay_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_replay_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME replay_benchmark COMMAND fby_replay_benchmark)
+
+    add_executable(fby_sdf_composer_benchmark SdfComposerBenchmark.cpp)
+    target_link_libraries(fby_sdf_composer_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_sdf_composer_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME sdf_composer_benchmark COMMAND fby_sdf_composer_benchmark)
+
+    add_executable(fby_sdf_debris_benchmark SdfDebrisBenchmark.cpp)
+    target_link_libraries(fby_sdf_debris_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_sdf_debris_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME sdf_debris_benchmark COMMAND fby_sdf_debris_benchmark)
+
+    fby_add_engine_test(fby_static_bake_test static_bake StaticBakeTest.cpp)
+    set_tests_properties(static_bake PROPERTIES LABELS optimization)
+    add_executable(fby_settings_test SettingsTest.cpp)
+    target_link_libraries(fby_settings_test PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_settings_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME settings COMMAND fby_settings_test)
+    set_tests_properties(settings PROPERTIES LABELS optimization)
+    fby_add_engine_test(fby_dynamic_resolution_test dynamic_resolution DynamicResolutionTest.cpp)
+    set_tests_properties(dynamic_resolution PROPERTIES LABELS optimization)
+
+    add_executable(fby_static_bake_gpu_test StaticBakeGpuTest.cpp)
+    target_link_libraries(fby_static_bake_gpu_test PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_static_bake_gpu_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+
+    # Manual GPU-timestamp A/B harness. It opens a window and is not part of CTest.
+    add_executable(fby_optimization_ab OptimizationAB.cpp)
+    target_link_libraries(fby_optimization_ab PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_optimization_ab PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+
 # Step 2: MaterialGraph Tilt25D/Distortion + SPIR-V, LogicGraph field nodes
     add_executable(fby_graph_editor_test GraphEditorTest.cpp)
     target_link_libraries(fby_graph_editor_test PRIVATE FemboyEngine2D::Editor)
@@ -551,6 +680,11 @@ endif()
 # Physics extensions: Box2D v3 rope/chain construction, Verlet cloth with
 fby_add_engine_test(fby_physics_fx_test physics_fx PhysicsFxTest.cpp)
 
+# Gameplay: manual tags, attributes, effects, skills, StateTree integration and
+fby_add_engine_test(fby_skills_test skills SkillsTest.cpp)
+fby_add_engine_test(fby_ai_test ai AITest.cpp)
+fby_add_engine_test(fby_gravity_test gravity GravityTest.cpp)
+
 # Narrative Tree: semantic, localized BlindMode descriptions (EN/RU templates,
 fby_add_engine_test(fby_narrative_tree_test narrative_tree NarrativeTreeTest.cpp)
 
@@ -591,9 +725,99 @@ endif()
 
 # Hybrid SDF physics: mdspan bilinear sampling, gradient normals and Box2D v3
 fby_add_engine_test(fby_sdf_physics_test sdf_physics SdfPhysicsTest.cpp)
+# Sparse SDF brick map: classification, payload packing and CPU trace reference.
+fby_add_engine_test(fby_sdf_brick_map_test sdf_brick_map SdfBrickMapTest.cpp)
+# SDF GI probes: directional openness, occlusion and out-of-grid lookup.
+fby_add_engine_test(fby_sdf_gi_test sdf_gi SdfGiTest.cpp)
+# Serialized SDF volume: .fsdf round trip, determinism and corruption rejection.
+fby_add_engine_test(fby_sdf_volume_test sdf_volume SdfVolumeAssetTest.cpp)
+# World SDF owner: full bake, incremental edits, registry sources and save/load.
+fby_add_engine_test(fby_sdf_world_test sdf_world SdfWorldTest.cpp)
+# Brick atlas packing: tile indices, uniform bricks and reference sampling.
+fby_add_engine_test(fby_sdf_atlas_test sdf_atlas SdfAtlasTest.cpp)
+# Destructible objects: CSG carve, op-list replay and fixed op capacity.
+fby_add_engine_test(fby_sdf_destructible_test sdf_destructible SdfDestructibleTest.cpp)
+# Pre-fracture: grid pieces reproduce the parent field exactly.
+fby_add_engine_test(fby_sdf_fracture_test sdf_fracture SdfFractureTest.cpp)
+# Debris spawn: deterministic fragments, speed range and cap.
+fby_add_engine_test(fby_sdf_debris_test sdf_debris SdfDebrisTest.cpp)
+# Damage model: material profile, parts, connections, impact and break state.
+fby_add_engine_test(fby_sdf_damage_test sdf_damage SdfDamageTest.cpp)
+# Transport groups: nested carriers, rigid/dynamic members, bounds and detach.
+fby_add_engine_test(fby_transport_groups_test transport_groups TransportGroupsTest.cpp)
+# Destruction commands: carve in the v4 command log, replay and cursor paths.
+fby_add_engine_test(fby_sdf_destruction_commands_test sdf_destruction_commands SdfDestructionCommandsTest.cpp)
+# End-to-end: world bake, carve, imprint, nav costs, GI bake, smoke and asset round trip.
+fby_add_engine_test(fby_sdf_pipeline_test sdf_pipeline SdfPipelineTest.cpp)
+# Navigation and crowd integration: a paged flow routes an agent through a gap.
+fby_add_engine_test(fby_nav_crowd_pipeline_test nav_crowd_pipeline NavCrowdPipelineTest.cpp)
+# Flow field: integer Dijkstra potential, flow directions, walls and costs.
+fby_add_engine_test(fby_flow_field_test flow_field FlowFieldTest.cpp)
+# Crowd pool: seek, separation, neighbour cap and determinism.
+fby_add_engine_test(fby_crowd_pool_test crowd_pool CrowdPoolTest.cpp)
+# Crowd render extract: one item per agent, group colors and span capping.
+fby_add_engine_test(fby_crowd_render_test crowd_render CrowdRenderTest.cpp)
+# Paged navigation: lazy pages, corridor across page boundaries and sealed pages.
+fby_add_engine_test(fby_paged_nav_test paged_nav PagedNavGridTest.cpp)
+# Baked GI: sun visibility, one bounce behind a wall and determinism.
+fby_add_engine_test(fby_sdf_gi_bake_test sdf_gi_bake SdfGiBakeTest.cpp)
+# Smoke: advection, transmittance, GI attenuation and determinism.
+fby_add_engine_test(fby_sdf_smoke_test sdf_smoke SdfSmokeTest.cpp)
+# Profiler: exact stats, ring overflow, nested scopes and determinism.
+fby_add_engine_test(fby_profiler_test profiler ProfilerTest.cpp)
+# Chrome trace export: names, timestamps, escaping and balance.
+fby_add_engine_test(fby_profiler_trace_test profiler_trace ProfilerTraceTest.cpp)
+# Profiler panel model: rows, sorting, cap and formatting.
+fby_add_engine_test(fby_profiler_panel_test profiler_panel ProfilerPanelTest.cpp)
+# Replay: keyframes, deterministic verification and save/load.
+fby_add_engine_test(fby_replay_test replay ReplayTest.cpp)
+# SDF composer: ordered CSG over the palette, bake and layer capacity.
+fby_add_engine_test(fby_sdf_composer_test sdf_composer SdfComposerTest.cpp)
+# Composer session: undo/redo over layer edits and the undo cap.
+fby_add_engine_test(fby_sdf_composer_session_test sdf_composer_session SdfComposerSessionTest.cpp)
+# ECS replay: snapshot keyframes, command payloads and divergence detection.
+fby_add_engine_test(fby_replay_ecs_test replay_ecs ReplayEcsTest.cpp)
 
 # Render graph, SDF shadow, camera post FX, GPU weather dispatch and card boards.
 fby_add_engine_test(fby_render_weather_test render_weather RenderWeatherTest.cpp)
+# Render ECS: packed transforms, chunk arena, stable handles and dirty blocks.
+fby_add_engine_test(fby_render_ecs_test render_ecs RenderEcsTest.cpp)
+
+# Fast gate for the optimization work: culling, depth, clusters, SDF and GI.
+set(ScopedOptimizationTests
+    lighting
+    light_grid
+    gpu_lighting
+    gpu_visibility
+    sdf_brick_map
+    sdf_gi
+    sdf_volume
+    sdf_world
+    sdf_bake_benchmark
+    flow_field
+    flow_field_benchmark
+    crowd_benchmark
+    crowd_render_benchmark
+    sdf_gi_benchmark
+    sdf_smoke_benchmark
+    profiler_benchmark
+    replay_benchmark
+    sdf_composer_benchmark
+    sdf_debris_benchmark
+    render_weather
+    render_ecs)
+
+# Editor-only tests (frame composer, SDF bake) are absent in headless builds.
+set(ScopedPresentOptimizationTests)
+foreach(ScopedTest IN LISTS ScopedOptimizationTests)
+    if(TEST ${ScopedTest})
+        list(APPEND ScopedPresentOptimizationTests ${ScopedTest})
+    endif()
+endforeach()
+
+if(ScopedPresentOptimizationTests)
+    set_tests_properties(${ScopedPresentOptimizationTests} PROPERTIES LABELS "optimization")
+endif()
 
 # Data-driven descriptors, transactional prefab spawn, Units DPI and theme palette.
 fby_add_engine_test(fby_data_driven_test data_driven DataDrivenTest.cpp)
@@ -612,6 +836,23 @@ if(TARGET fby_template_gen)
             -DOUTPUT_DIR=${CMAKE_BINARY_DIR}/template_smoke
             -DENGINE_ROOT=${FBY_ENGINE_SOURCE_ROOT}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/TemplateGenSmoke.cmake)
+endif()
+
+# GPU device tests need a real Vulkan adapter and a window. A machine without a
+# Vulkan device skips them, so the gate runs them and a developer machine runs the
+# real device path.
+
+# Every test executable gets the same 16 MiB stack reservation. Several suites
+# build large text, editor and render objects by value, and the manually
+# registered tests do not go through fby_add_engine_test.
+if(MSVC)
+    get_property(FbyTestTargets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(FbyTestTarget ${FbyTestTargets})
+        get_target_property(FbyTestTargetType ${FbyTestTarget} TYPE)
+        if(FbyTestTargetType STREQUAL "EXECUTABLE")
+            target_link_options(${FbyTestTarget} PRIVATE /STACK:16777216)
+        endif()
+    endforeach()
 endif()
 
 # Every test executable is instrumented in a sanitizer build, including the

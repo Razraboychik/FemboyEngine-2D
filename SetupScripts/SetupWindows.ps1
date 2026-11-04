@@ -6,20 +6,25 @@
 #
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\SetupWindows.ps1
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\SetupWindows.ps1 -SkipSystem -Force
+#   powershell -ExecutionPolicy Bypass -File SetupScripts\SetupWindows.ps1 -Component Cpp
+#   powershell -ExecutionPolicy Bypass -File SetupScripts\SetupWindows.ps1 -Component Archiver
+#   powershell -ExecutionPolicy Bypass -File SetupScripts\SetupWindows.ps1 -Component Upscalers
 #
 # Versions are the ones the CI slate validates:
-#   Clang            19+ (clang-cl, the validated Windows toolchain)
+#   LLVM             23.1.4 (clang-cl, the validated Windows toolchain)
 #   GCC              15+ (MinGW-w64, second-opinion toolchain)
 #   SDL3              release-3.4.18
 #   Vulkan-Headers    v1.4.366
 #   glslang           15.3.0
 #   miniaudio         0.11.23
-#   Box2D             v3.0.0
+#   Box2D             v3.2.0
 #   Monocypher        4.0.2
 #   LZMA SDK          25.01
 param(
     [switch]$SkipSystem,
-    [switch]$Force
+    [switch]$Force,
+    [ValidateSet("All", "Cpp", "Archiver", "Upscalers")]
+    [string]$Component = "All"
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,11 +34,12 @@ $Downloads = Join-Path $Root "build\_deps-download"
 New-Item -ItemType Directory -Force -Path $ThirdParty, $Downloads | Out-Null
 
 $Versions = [ordered]@{
+    Llvm        = "23.1.4"
     SDL         = "release-3.4.18"
     Vulkan      = "v1.4.366"
     Glslang     = "15.3.0"
     Miniaudio   = "0.11.23"
-    Box2D       = "v3.0.0"
+    Box2D       = "v3.2.0"
     Monocypher  = "4.0.2"
     Rnnoise     = "0.1.1"
     LzmaSdk     = "25.01"
@@ -68,6 +74,46 @@ function Ensure-Tool([string]$Name, [string]$WingetId) {
     return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Get-ClangVersion {
+    $Command = Get-Command clang-cl -ErrorAction SilentlyContinue
+    if ($null -eq $Command) {
+        return $null
+    }
+    return (& $Command.Source --version 2>$null | Select-Object -First 1)
+}
+
+function Ensure-Llvm {
+    $VersionText = Get-ClangVersion
+    if ($null -ne $VersionText -and $VersionText -match [regex]::Escape($Versions.Llvm)) {
+        Write-Host "  clang-cl : $VersionText"
+        return $true
+    }
+    if ($SkipSystem) {
+        Write-Warning "  clang-cl $($Versions.Llvm) is expected; found '$VersionText'. Continuing because -SkipSystem is set."
+        return $null -ne $VersionText
+    }
+    $Installer = Join-Path $Downloads "LLVM-$($Versions.Llvm)-win64.msi"
+    if ($Force -or -not (Test-Path $Installer)) {
+        $Url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$($Versions.Llvm)/LLVM-$($Versions.Llvm)-win64.msi"
+        Write-Host "  downloading LLVM $($Versions.Llvm)"
+        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Installer
+    }
+    Write-Host "  installing LLVM $($Versions.Llvm)"
+    $Process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
+        "/i", "`"$Installer`"", "/qn", "/norestart", "ALLUSERS=1"
+    )
+    if ($Process.ExitCode -ne 0) {
+        throw "LLVM installer failed with exit code $($Process.ExitCode)"
+    }
+    $env:Path = "C:\Program Files\LLVM\bin;$env:Path"
+    $VersionText = Get-ClangVersion
+    if ($null -eq $VersionText -or $VersionText -notmatch [regex]::Escape($Versions.Llvm)) {
+        throw "LLVM $($Versions.Llvm) was installed, but clang-cl reports '$VersionText'"
+    }
+    Write-Host "  clang-cl : $VersionText"
+    return $true
+}
+
 function Report-Compiler([string]$Name, [string]$VersionText, [int]$MinimumMajor) {
     if ([string]::IsNullOrWhiteSpace($VersionText)) {
         Write-Warning "  $Name version could not be read"
@@ -81,6 +127,21 @@ function Report-Compiler([string]$Name, [string]$VersionText, [int]$MinimumMajor
     if ($Major -gt 0 -and $Major -lt $MinimumMajor) {
         Write-Warning "  $Name $Major is below the supported minimum $MinimumMajor"
     }
+}
+
+if ($Component -eq "Upscalers") {
+    & (Join-Path $PSScriptRoot "SetupUpscalers.ps1")
+    exit $LASTEXITCODE
+}
+if ($Component -eq "Archiver") {
+    Write-Step "7-Zip"
+    $Has7z = Ensure-Tool "7z" "7zip.7zip"
+    if (-not $Has7z) {
+        Write-Error "7-Zip is required for the archiver component."
+        exit 1
+    }
+    Write-Host " 7-Zip is ready."
+    exit 0
 }
 
 function Get-Archive([string]$Url, [string]$FileName) {
@@ -112,10 +173,14 @@ Write-Step "Toolchain"
 $HasCMake = Ensure-Tool "cmake" "Kitware.CMake"
 $HasNinja = Ensure-Tool "ninja" "Ninja-build.Ninja"
 $HasGit = Ensure-Tool "git" "Git.Git"
-$Has7z = Ensure-Tool "7z" "7zip.7zip"
+$Has7z = if ($Component -eq "All") {
+    Ensure-Tool "7z" "7zip.7zip"
+} else {
+    $null -ne (Get-Command "7z" -ErrorAction SilentlyContinue)
+}
 # Both compiler families are requirements: clang-cl is the validated build
-# toolchain, GCC 15+ is the second opinion used by the portability checks.
-$HasClang = Ensure-Tool "clang-cl" "LLVM.LLVM"
+# toolchain, GCC 16+ is the second opinion used by the portability checks.
+$HasClang = Ensure-Llvm
 $HasGcc = Ensure-Tool "g++" "BrechtSanders.WinLibs.POSIX.UCRT"
 if (-not ($HasCMake -and $HasNinja -and $HasGit)) {
     throw "cmake, ninja and git are required"
@@ -129,10 +194,10 @@ if ($HasClang) {
 }
 if ($HasGcc) {
     $GccVersion = (& g++ -dumpfullversion 2>$null)
-    Report-Compiler "g++" $GccVersion 15
+    Report-Compiler "g++" $GccVersion 16
     $Lock.Add("gcc = $GccVersion")
 } else {
-    Write-Warning "g++ is missing. Install MinGW-w64 GCC 15+ or re-run without -SkipSystem."
+    Write-Warning "g++ is missing. Install MinGW-w64 GCC 16+ or re-run without -SkipSystem."
 }
 
 Write-Step "Vulkan SDK"
@@ -246,7 +311,7 @@ Write-Host "  iOS: needs macOS with Xcode 16 or newer; a Windows host cannot bui
 Write-Step "Done"
 Write-Host "  pinned lock : $LockPath"
 Write-Host "  clang-cl    : validated toolchain for the default build"
-Write-Host "  g++         : second-opinion toolchain (GCC 15+)"
+Write-Host "  g++         : second-opinion toolchain (GCC 16+)"
 Write-Host "  configure   : cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON"
 Write-Host "  build       : cmake --build build"
 Write-Host "  test        : ctest --test-dir build --output-on-failure"

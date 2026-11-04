@@ -42,13 +42,18 @@ if(FBY_IS_CLANG_CL)
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-padded>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-ctad-maybe-unsupported>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-nrvo>)
-    target_compile_definitions(fby_compiler_flags INTERFACE
-        _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(fby_compiler_flags INTERFACE
         $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>)
 else()
     target_compile_options(fby_compiler_flags INTERFACE /utf-8 /MP)
+endif()
+
+# Windows SDK headers define min/max macros unless NOMINMAX is set. This must
+# apply to every Windows compiler, not only clang-cl.
+if(WIN32)
+    target_compile_definitions(fby_compiler_flags INTERFACE
+        _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 endif()
 
 # Optimisation is per configuration and belongs to engine targets only.
@@ -99,9 +104,9 @@ function(fby_probe_feature name source)
     fby_try_compile_probe(${name} "${source}" ok)
     if(NOT ok)
         message(FATAL_ERROR
-            "FemboyEngine2D 0.1.0-alpha.1 requires a C++26 toolchain, but '${name}' does not compile.\n"
+            "FemboyEngine2D ${FBY_VERSION_STRING} requires a C++26 toolchain, but '${name}' does not compile.\n"
             "Probe source:\n${source}\n"
-            "Use Clang 19+ or GCC 15+, configured from a shell where the compiler can find "
+            "Use Clang 19+ or GCC 16+, configured from a shell where the compiler can find "
             "the platform headers and Windows SDK libraries.")
     endif()
     set(${name} TRUE CACHE INTERNAL "")

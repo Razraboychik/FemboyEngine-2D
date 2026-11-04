@@ -9,14 +9,17 @@ add_library(fby_editor STATIC
     Infrastructure/EditorSettings.cpp
     Infrastructure/EditorTypography.cpp
     Infrastructure/EditorSystem.cpp
+    Infrastructure/EditorWidgets.cpp
     Infrastructure/FrameComposer.cpp
     Infrastructure/MaterialGraphRuntime.cpp
     Infrastructure/PhysicsDebugDraw.cpp
     Infrastructure/PlayInEditor.cpp
     Infrastructure/ProjectConfig.cpp
+    Infrastructure/UserSettings.cpp
     Infrastructure/ReleaseCooker.cpp
     Infrastructure/TextureThumbnails.cpp
     Panels/AIStateTreeCanvasPanel.cpp
+    Panels/LevelSettingsPanel.cpp
     Panels/AnimationGraphCanvasPanel.cpp
     Panels/AnimationTimelinePanel.cpp
     Panels/ContentBrowserPanel.cpp
@@ -35,6 +38,7 @@ add_library(fby_editor STATIC
     Panels/SpriteAnimationPanel.cpp
     Panels/TilemapEditorPanel.cpp
     Panels/TextPreviewPanel.cpp
+    Panels/TransportGroupPanel.cpp
     Panels/VirtualTexturePanel.cpp
     Panels/VisualScriptPanel.cpp)
 

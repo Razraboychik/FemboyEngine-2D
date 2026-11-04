@@ -1,7 +1,10 @@
 #include "Engine/RHI/Vulkan/VulkanRHI.hpp"
+
+#include "Engine/RHI/GpuVisibility.hpp"
 #include "Engine/UI/Accessibility.hpp"
 
 #include "Engine/Core/Assert.hpp"
+#include "Engine/RHI/RenderPasses.hpp"
 #include "Engine/RHI/VirtualTextureFormat.hpp"
 #include "Engine/Core/Log.hpp"
 
@@ -28,6 +31,7 @@ std::unique_ptr<RHI> CreateVulkanRHI()
 
 #include <algorithm>
 #include <array>
+#include <unordered_map>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -44,7 +48,9 @@ constexpr std::uint32_t kAtlasSize = 128;
 constexpr std::uint32_t kAtlasLayers = 4;
 constexpr std::uint32_t kMaxMeshItemsPerFrame = 4096;
 // R8 distance encoding: world units per normalized texel value.
-constexpr float kSdfEncodeScale = 1024.0f;
+// R32F stores world-space distance directly; the shader multiply stays as a
+// single neutral scale so the layout contract does not change.
+constexpr float kSdfEncodeScale = 1.0f;
 
 // Matches the push constant block in quad.vert/frag (std430: three vec4s plus
 // the VT layout, each 16-byte aligned).
@@ -67,18 +73,61 @@ struct PushConstants
 
 static_assert(sizeof(PushConstants) == 96);
 
+struct HiZPushConstants
+{
+    std::uint32_t DepthWidth = 0;
+    std::uint32_t DepthHeight = 0;
+    std::uint32_t TileWidth = 16;
+    std::uint32_t TileHeight = 16;
+};
+
+static_assert(sizeof(HiZPushConstants) == 16);
+
+enum FrameTimestampIndex : std::uint32_t
+{
+    TimestampFrameStart = 0,
+    TimestampClusterStart,
+    TimestampClusterEnd,
+    TimestampDepthStart,
+    TimestampDepthEnd,
+    TimestampMainStart,
+    TimestampMainEnd,
+    TimestampPostFxStart,
+    TimestampPostFxEnd,
+    TimestampFrameEnd,
+    TimestampCount
+};
+
+[[nodiscard]] constexpr bool IsSrgbFormat(VkFormat InFormat) noexcept
+{
+    return InFormat == VK_FORMAT_R8G8B8A8_SRGB || InFormat == VK_FORMAT_B8G8R8A8_SRGB;
+}
+
+
 // Matches the SdfBlock UBO declared by quad.frag. `occluders` holds pairs:
 // shape (x, y, radius, 0) and extents (halfX, halfY, box, 0).
 struct SdfGpuBlock
 {
+    // Must match SdfShadowBlock in sdf_shadow.comp and SdfBlock in quad.frag
+    // (std430, 672 bytes).
+    Vector4D camera{};
+    Vector4D viewport{};
     Vector4D fieldBounds{};
     Vector4D sun{};
     Vector4D params{};
     Vector4D flags{};
+    Vector4D history{};
+    Vector4D historyCamera{};
+    // World origin.xy and cell size.xy of the field grid, so the atlas path can
+    // turn a world position into a cell without a second buffer.
+    Vector4D fieldGrid{};
+    // Brick size in cells, brick columns, brick rows, atlas columns.
+    Vector4D brickMeta{};
     Vector4D occluders[kMaxSdfGpuOccluders * 2]{};
 };
 
-static_assert(sizeof(SdfGpuBlock) == 4 * 16 + kMaxSdfGpuOccluders * 2 * 16);
+static_assert(sizeof(SdfGpuBlock) == 10 * 16 + kMaxSdfGpuOccluders * 2 * 16);
+static_assert(sizeof(SdfGpuBlock) == 672);
 
 // Matches mesh.vert (first 64 bytes) and the material extension consumed by
 struct MeshGraphicsPush
@@ -202,6 +251,7 @@ struct TextureArray
     std::uint32_t height = 0;
     Fby::Assets::TextureFormat format = Fby::Assets::TextureFormat::Rgba8;
     bool srgb = false;
+    bool borrowed = false;
 };
 
 // One runtime-compiled material pipeline. A VkPipeline is tied to a render pass,
@@ -225,9 +275,13 @@ struct RenderTarget
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipeline meshPipeline = VK_NULL_HANDLE;
+    VkImage depthImage = VK_NULL_HANDLE;
+    VkDeviceMemory depthMemory = VK_NULL_HANDLE;
+    VkImageView depthView = VK_NULL_HANDLE;
     VkFormat format = VK_FORMAT_UNDEFINED;
     Extent2D extent{};
     bool srgb = false;
+    Fby::Rhi::RenderBlendMode blend = Fby::Rhi::RenderBlendMode::Opaque;
     bool ownsRenderPass = true;
     // Accessibility composite: the scene renders here, then one fullscreen pass
     // samples this image and writes the corrected result into `image`.
@@ -240,7 +294,6 @@ struct RenderTarget
     VkImage flashImage = VK_NULL_HANDLE;
     VkDeviceMemory flashMemory = VK_NULL_HANDLE;
     VkImageView flashView = VK_NULL_HANDLE;
-    VkDescriptorSet flashSet = VK_NULL_HANDLE;
 };
 
 // Push block of accessibility_composite.frag: three matrix columns plus
@@ -249,9 +302,11 @@ struct AccessibilityCompositePush
 {
     float matrix[12]{};
     float safety[4]{};
+    // threshold, residual gain, enabled, reserved
+    float flashGuard[4]{};
 };
 
-static_assert(sizeof(AccessibilityCompositePush) == 64);
+static_assert(sizeof(AccessibilityCompositePush) == 80);
 
 [[nodiscard]] std::uint32_t FindMemoryType(const VkPhysicalDeviceMemoryProperties& InMemoryProperties,
                                            std::uint32_t InTypeBits, VkMemoryPropertyFlags InRequired)
@@ -265,6 +320,22 @@ static_assert(sizeof(AccessibilityCompositePush) == 64);
         }
     }
     return std::numeric_limits<std::uint32_t>::max();
+}
+
+// Pipelines that share a render pass with a depth attachment still need a
+// valid depth-stencil state. Sprites keep the test disabled.
+[[nodiscard]] VkPipelineDepthStencilStateCreateInfo MakeDepthStencilState() noexcept
+{
+    VkPipelineDepthStencilStateCreateInfo ScopedState{};
+    ScopedState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ScopedState.depthTestEnable = VK_FALSE;
+    ScopedState.depthWriteEnable = VK_FALSE;
+    ScopedState.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+    ScopedState.depthBoundsTestEnable = VK_FALSE;
+    ScopedState.stencilTestEnable = VK_FALSE;
+    ScopedState.minDepthBounds = 0.0f;
+    ScopedState.maxDepthBounds = 1.0f;
+    return ScopedState;
 }
 
 // Cooked texel format -> Vulkan format. The runtime uploads the cooker's blocks
@@ -402,6 +473,8 @@ public:
     void Resize(Extent2D InSize) override;
     [[nodiscard]] bool SetVSync(bool InEnabled) override;
     [[nodiscard]] bool VSyncEnabled() const noexcept override;
+    void SetOitMode(std::uint8_t InMode) override;
+    void SetUpscaleMode(std::uint8_t InMode) override;
     void WaitIdle() override;
 
     bool BeginFrame() override;
@@ -409,6 +482,7 @@ public:
     void EndFrame() override;
 
     TextureArrayHandle CreateTextureArray(const TextureArrayDesc& InDesc, std::span<const std::byte> InPixels) override;
+    TextureArrayHandle CreateTextureArrayFromRenderTarget(RenderTargetHandle InHandle) override;
     void DestroyTextureArray(TextureArrayHandle InHandle) override;
     VirtualTextureHandle CreateVirtualTexture(const VirtualTextureResourceDesc& InDesc) override;
     std::uint32_t ReadVirtualTextureFeedback(std::span<std::uint32_t> OutTiles) override;
@@ -435,12 +509,31 @@ public:
     [[nodiscard]] void* GetNativeFunction(const char* InName) const override;
     [[nodiscard]] RenderTargetHandle CreateRenderTarget(const RenderTargetDesc& InDesc) override;
     void DestroyRenderTarget(RenderTargetHandle InHandle) override;
+    void PresentRenderTarget(RenderTargetHandle InHandle) override;
+    [[nodiscard]] bool TransitionRenderTargetLayout(RenderTargetHandle InHandle, int InOldLayout,
+                                                    int InNewLayout) override;
+    [[nodiscard]] bool PresentGeneratedFrame(RenderTargetHandle InHandle) override;
     bool RenderToTarget(RenderTargetHandle InHandle, const FramePacket& InPacket) override;
     bool RecordComputePass(std::string_view InPipeline, const void* InConstants, std::uint32_t InConstantsBytes,
                            Extent2D InExtent) override;
     bool RecordGraphicsPass(std::string_view InPipeline, const void* InConstants, std::uint32_t InConstantsBytes,
                             Extent2D InExtent, std::uint32_t InInstanceCount) override;
     [[nodiscard]] bool RenderTargetTexture(RenderTargetHandle InHandle, NativeTextureView& InView) const override;
+    [[nodiscard]] void* CurrentCommandBuffer() const noexcept override
+    {
+        return MInFrame ? MCommandBuffers[MFrameIndex] : nullptr;
+    }
+    [[nodiscard]] bool GetNativeDeviceHandles(NativeDeviceHandles& OutHandles) const override
+    {
+        OutHandles.Instance = MInstance;
+        OutHandles.PhysicalDevice = MPhysical;
+        OutHandles.Device = MDevice;
+        OutHandles.DeviceProcAddr = reinterpret_cast<void*>(Vk::GetApi().vkGetDeviceProcAddr);
+        return MDevice != VK_NULL_HANDLE;
+    }
+    [[nodiscard]] bool RenderTargetDepthTexture(RenderTargetHandle InHandle,
+                                                NativeTextureView& InView) const override;
+    [[nodiscard]] bool MainDepthTexture(NativeTextureView& InView) const override;
     [[nodiscard]] bool TextureArrayLayerView(TextureArrayHandle InHandle, std::uint32_t InLayer,
                                              NativeTextureView& InView) const override;
     void SetUiRenderer(UiRenderCallback InCallback, void* InUser) override;
@@ -470,7 +563,6 @@ private:
     bool CreateRenderPass();
     bool CreateAccessibilityCompositeResources();
     void DestroyAccessibilityCompositeResources() noexcept;
-    bool CreateAccessibilityFlashResources();
     [[nodiscard]] bool FlashGuardWanted(const FrameAccessibility& InAccessibility) const noexcept;
     void RecordFlashGuard(VkCommandBuffer InCommandBuffer, VkImage InColorImage, VkDescriptorSet InSet,
                           Extent2D InExtent, VkImageLayout InFromLayout,
@@ -486,12 +578,61 @@ private:
     void RecordAccessibilityComposite(VkCommandBuffer InCommandBuffer, VkRenderPass InRenderPass,
                                       VkFramebuffer InFramebuffer, VkPipeline InPipeline,
                                       VkDescriptorSet InSet, Extent2D InExtent,
-                                      const FrameAccessibility& InAccessibility) noexcept;
+                                      const FrameAccessibility& InAccessibility, bool InHasDepth) noexcept;
     bool CreateFramebuffers();
+    bool CreateDepthPrepassResources();
+    bool CreateDepthPrepassFramebuffers();
+    void DestroyDepthPrepassFramebuffers() noexcept;
+    bool CreateCullResources();
+    void DestroyCullResources() noexcept;
+    [[nodiscard]] VkDeviceSize UploadPrepassInstances(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
+    void UpdateCullDepth(VkDescriptorSet InSet, VkImageView InView);
+    void RecordOpaqueCull(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket, VkDeviceSize InSourceBase);
+    void RecordMainCull(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket, VkDeviceSize InSourceBase);
+    bool CreateDepthImage(Extent2D InExtent, VkImage* OutImage, VkDeviceMemory* OutMemory, VkImageView* OutView);
+    bool CreateHiZResources();
+    void DestroyHiZResources() noexcept;
+    void RecordHiZ(VkCommandBuffer InCommandBuffer);
+    void DestroyDepthImage(VkImage* InImage, VkDeviceMemory* InMemory, VkImageView* InView) noexcept;
     bool CreateCommands();
     bool CreateSyncObjects();
     bool CreateDescriptors();
     bool CreatePipeline();
+    bool CreateOitResolveResources();
+    bool CreateUpscaleResources();
+    bool CreateHudResources();
+    bool CreateMotionResources();
+    bool CreateTemporalResources();
+    bool UploadMotionVectors(std::span<const MotionVectorItem> InItems) override;
+    bool CopyColorImage(RenderTargetHandle InSource, RenderTargetHandle InDestination) override;
+    bool CopyDepth(RenderTargetHandle InSource, RenderTargetHandle InDestination) override;
+    bool TemporalResolve(RenderTargetHandle InCurrent, RenderTargetHandle InHistory,
+                         RenderTargetHandle InMotion, RenderTargetHandle InDepth,
+                         RenderTargetHandle InHistoryDepth, RenderTargetHandle InOutput,
+                         float InHistoryWeight, float InMotionScale, bool InResetHistory) override;
+    bool ClearMotionVectors(RenderTargetHandle InTarget) override;
+    bool RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t InCount,
+                             Vector2D InCameraCenter, Vector2D InPreviousCameraCenter,
+                             float InCameraZoom, float InPreviousCameraZoom, Vector2D InJitter,
+                             Vector2D InPreviousJitter, Vector2D InViewport) override;
+    bool RenderHudTarget() override;
+    bool CompositeHud() override;
+    void SetHudUpscale(bool InNearest) override
+    {
+        MHudNearest = InNearest;
+    }
+    void SetUiVisible(bool InVisible) override
+    {
+        MUiVisible = InVisible;
+    }
+    bool RcasSharpen(RenderTargetHandle InSource, RenderTargetHandle InDestination, float InSharpness) override;
+    bool UpscaleRenderTarget(RenderTargetHandle InSource, RenderTargetHandle InDestination,
+                             SpatialUpscaleMode InMode) override;
+    bool DrawOverlay(const FramePacket& InPacket) override;
+    void SetHudTarget(RenderTargetHandle InHandle) override
+    {
+        MHudTargetId = InHandle.id;
+    }
     bool CreateGeometry();
     bool CreateInstanceRing();
     bool CreateBuiltInAtlas();
@@ -505,13 +646,23 @@ private:
     bool CreateOffscreenRenderPass();
     bool CreateSdfShadowResources();
     bool CreateSdfComputeResources();
+    bool CreateGiResources();
+    void DestroyGiResources() noexcept;
+    bool CreateClusterResources();
+    bool CreateClusterFallback();
+    void DestroyClusterFallback() noexcept;
+    void DestroyClusterResources() noexcept;
+    void WriteTimestamp(VkCommandBuffer InCommandBuffer, std::uint32_t InIndex, VkPipelineStageFlagBits InStage);
+    void RecordOitResolve(VkCommandBuffer InCommandBuffer, VkRenderPass InRenderPass, const FramePacket& InPacket);
+    void RecordClusters(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
     bool EnsureSdfMask(Extent2D InMaskExtent);
-    void UpdateSdfComputeSets(VkImageView InMaskView) const;
+    void UpdateSdfComputeSets();
     void DestroySdfMaskResources() noexcept;
     void DestroySdfShadowResources() noexcept;
     void WriteSdfDescriptors(VkDescriptorSet InSet) const;
-    void ApplySdfLighting(const SdfLightingFrame& InFrame);
+    [[nodiscard]] std::uint32_t ApplySdfLighting(const SdfLightingFrame& InFrame);
     void UploadSdfField();
+    void UploadSdfAtlas();
     bool CreateUploadArena(std::uint32_t InBytes);
     void DestroyMaterialPipelines() noexcept;
     [[nodiscard]] VkPipeline ResolveMaterialPipeline(std::uint32_t InId, bool InOffscreen,
@@ -523,13 +674,18 @@ private:
     void DestroyMeshResources() noexcept;
     void RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
     void DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
-                    bool InOffscreen, bool InSrgb);
+                    bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot);
 
     [[nodiscard]] bool CreateBuffer(VkDeviceSize InSize, VkBufferUsageFlags InUsage, VkMemoryPropertyFlags InProperties,
                                     VkBuffer* InBuffer, VkDeviceMemory* InMemory) const;
     [[nodiscard]] bool EnsureCaptureStaging(VkDeviceSize InBytes, VkBuffer* OutBuffer, VkDeviceMemory* OutMemory);
     [[nodiscard]] VkCommandBuffer BeginOneShot() const;
     void EndOneShot(VkCommandBuffer InCommand) const;
+    [[nodiscard]] bool WaitUploadFence() const;
+    [[nodiscard]] bool SubmitUpload(VkCommandBuffer InCommand);
+    // Brings a freshly created image to the layout its descriptors assume, so the
+    // first bind never references an image that is still UNDEFINED.
+    void InitImageLayout(VkImage InImage, VkImageLayout InLayout, std::uint32_t InLayers = 1);
     void TransitionImage(VkCommandBuffer InCommand, VkImage InImage, VkImageLayout InFrom, VkImageLayout InTo,
                          std::uint32_t InLayers = 1, std::uint32_t InMipLevels = 1) const;
     [[nodiscard]] TextureArray* FindTextureArray(std::uint32_t InId) noexcept;
@@ -544,11 +700,19 @@ private:
     [[nodiscard]] VkDescriptorSet DescriptorFor(std::uint32_t InId) noexcept;
     void DestroyTextureArrayResources(TextureArray& InArray) noexcept;
 
-    bool CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline);
+    bool CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline, bool InDepthTest = false,
+                               bool InBlendless = false,
+                               Fby::Rhi::RenderBlendMode InBlend = Fby::Rhi::RenderBlendMode::Opaque);
     [[nodiscard]] RenderTarget* FindRenderTarget(std::uint32_t InId) noexcept;
     void DestroyRenderTargetResources(RenderTarget& InTarget) noexcept;
-    void DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
-                    bool InOffscreen, bool InSrgb);
+    void RecordDepthPrepass(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket, bool InAccessibility);
+
+    void DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket, bool InOffscreen,
+                    bool InSrgb, std::uint32_t InSdfSlot, bool InDepthOnly = false);
+    void PreUploadInstances(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
+    // The shared sprite sets outlive a frame slot, so any rewrite has to wait for
+    // every command buffer that may still reference them.
+    void WaitAllInFlight();
 
     void DestroySwapchain();
     [[nodiscard]] bool RecreateSwapchain(Extent2D InSize);
@@ -570,60 +734,275 @@ private:
     VkDevice MDevice = VK_NULL_HANDLE;
     VkQueue MQueue = VK_NULL_HANDLE;
     std::uint32_t MQueueFamily = 0;
+    // Instance API version negotiated with the loader. Device feature chains must
+    // not use a version above it, or a strict layer rejects vkCreateDevice.
+    std::uint32_t MInstanceApiVersion = VK_API_VERSION_1_1;
 
     VkSwapchainKHR MSwapchain = VK_NULL_HANDLE;
     VkFormat MFormat = VK_FORMAT_UNDEFINED;
     VkExtent2D MExtent{};
     std::vector<VkImage> MImages;
     std::vector<VkImageView> MViews;
+    std::vector<VkImage> MDrawDepthImages;
+    std::vector<VkDeviceMemory> MDrawDepthMemories;
+    std::vector<VkImageView> MDrawDepthViews;
+    VkSampler MDepthSampler = VK_NULL_HANDLE;
+    VkImage MHiZImage = VK_NULL_HANDLE;
+    VkDeviceMemory MHiZMemory = VK_NULL_HANDLE;
+    VkImageView MHiZView = VK_NULL_HANDLE;
+    std::vector<VkImageView> MHiZStorageViews;
+    VkExtent2D MHiZExtent{};
+    std::uint32_t MHiZMipCount = 1;
+    bool MHiZReady = false;
+    VkSampler MHiZSampler = VK_NULL_HANDLE;
+    VkDescriptorSetLayout MHiZSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MHiZPool = VK_NULL_HANDLE;
+    VkDescriptorSet MHiZSet = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> MHiZMipSets;
+    VkPipelineLayout MHiZLayout = VK_NULL_HANDLE;
+    VkPipeline MHiZPipeline = VK_NULL_HANDLE;
+    VkPipeline MHiZMipPipeline = VK_NULL_HANDLE;
     VkRenderPass MRenderPass = VK_NULL_HANDLE;
+    VkRenderPass MHudOverlayPass = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> MFramebuffers;
+    std::vector<VkFramebuffer> MHudOverlayFramebuffers;
+    VkRenderPass MDepthPrepassRenderPass = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> MDepthPrepassFramebuffers;
+    VkPipeline MDepthPrepassPipeline = VK_NULL_HANDLE;
 
     VkCommandPool MCommandPool = VK_NULL_HANDLE;
     std::array<VkCommandBuffer, kMaxFramesInFlight> MCommandBuffers{};
     std::array<VkSemaphore, kMaxFramesInFlight> MImageAvailable{};
     std::array<VkFence, kMaxFramesInFlight> MInFlight{};
     std::vector<VkSemaphore> MRenderFinished;
+    std::array<VkQueryPool, kMaxFramesInFlight> MTimestampPools{};
+    bool MTimestampsReady = false;
+    float MTimestampPeriod = 0.0f;
 
     VkDescriptorSetLayout MDescriptorLayout = VK_NULL_HANDLE;
     VkDescriptorPool MDescriptorPool = VK_NULL_HANDLE;
     VkDescriptorSet MDescriptorSet = VK_NULL_HANDLE;
     VkPipelineLayout MPipelineLayout = VK_NULL_HANDLE;
     VkPipeline MPipeline = VK_NULL_HANDLE;
+    VkPipeline MPipelineOpaque = VK_NULL_HANDLE;
+    VkDescriptorSetLayout MOitResolveSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MOitResolvePool = VK_NULL_HANDLE;
+    VkDescriptorSet MOitResolveSet = VK_NULL_HANDLE;
+    VkPipelineLayout MOitResolveLayout = VK_NULL_HANDLE;
+    VkPipeline MOitResolvePipeline = VK_NULL_HANDLE;
+    std::unordered_map<VkRenderPass, VkPipeline> MOitResolvePipelines;
+    VkSampler MOitResolveSampler = VK_NULL_HANDLE;
+    VkDescriptorSetLayout MUpscaleSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MUpscalePool = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> MUpscaleSets{};
+    [[nodiscard]] VkDescriptorSet UpscaleSet() const noexcept
+    {
+        return MUpscaleSets[MFrameIndex];
+    }
+
+    // RCAS runs after the upscale in the same frame; a shared set would be updated
+    // after the command buffer already bound it.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> MRcasSets{};
+    [[nodiscard]] VkDescriptorSet RcasSet() const noexcept
+    {
+        return MRcasSets[MFrameIndex];
+    }
+
+    VkPipelineLayout MUpscaleLayout = VK_NULL_HANDLE;
+    VkSampler MUpscaleSampler = VK_NULL_HANDLE;
+    std::unordered_map<VkRenderPass, VkPipeline> MUpscalePipelines;
+    VkPipelineLayout MRcasLayout = VK_NULL_HANDLE;
+    std::unordered_map<VkRenderPass, VkPipeline> MRcasPipelines;
+    std::uint32_t MHudTargetId = 0xFFFFFFFFu;
+    VkDescriptorSetLayout MHudSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MHudPool = VK_NULL_HANDLE;
+    // One HUD set per frame slot: the composite rewrites it every frame, and a
+    // single shared set would be updated while earlier submissions still read it.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> MHudSets{};
+    [[nodiscard]] VkDescriptorSet HudSet() const noexcept
+    {
+        return MHudSets[MFrameIndex];
+    }
+    [[nodiscard]] VkDescriptorSet& HudSetRef() noexcept
+    {
+        return MHudSets[MFrameIndex];
+    }
+    VkPipelineLayout MHudLayout = VK_NULL_HANDLE;
+    VkSampler MHudSampler = VK_NULL_HANDLE;
+    VkSampler MHudNearestSampler = VK_NULL_HANDLE;
+    bool MHudNearest = false;
+    VkPipeline MHudPipeline = VK_NULL_HANDLE;
+    bool MSkipMainUi = false;
+    bool MInHudPass = false;
+    bool MUiVisible = true;
+    VkBuffer MMotionBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory MMotionMemory = VK_NULL_HANDLE;
+    std::uint32_t MMotionCapacity = 0;
+    std::uint32_t MMotionCount = 0;
+    void* MMotionMapped = nullptr;
+    VkDescriptorSetLayout MMotionSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MMotionPool = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> MMotionSets{};
+    [[nodiscard]] VkDescriptorSet MotionSet() const noexcept
+    {
+        return MMotionSets[MFrameIndex];
+    }
+
+    VkPipelineLayout MMotionLayout = VK_NULL_HANDLE;
+    std::unordered_map<VkRenderPass, VkPipeline> MMotionPipelines;
+    VkDescriptorSetLayout MTemporalSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MTemporalPool = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> MTemporalSets{};
+    [[nodiscard]] VkDescriptorSet TemporalSet() const noexcept
+    {
+        return MTemporalSets[MFrameIndex];
+    }
+
+    VkPipelineLayout MTemporalLayout = VK_NULL_HANDLE;
+    std::unordered_map<VkRenderPass, VkPipeline> MTemporalPipelines;
     TextureArray MAtlas{};
 
-    // GPU SDF shadows: static field texture, per-frame parameter block, sampler.
-    static constexpr std::uint32_t kSdfFieldSize = 256;
-    static constexpr std::uint32_t kSdfMaskFrames = 3;
-    static constexpr std::uint32_t kSdfShadowBlockBytes = 608;
+    // GPU SDF shadows: static field texture, per-view parameter blocks, sampler.
+    // The static field texture is a dense resample of the world field. The
+    // brick atlas will replace it; until that path lands, a 1024-side texture
+    // keeps large worlds from collapsing into a 256-texel field.
+    static constexpr std::uint32_t kSdfFieldSize = 1024;
+    // Two viewports are enough for editor and PIE; each frame gets its own slot.
+    static constexpr std::uint32_t SdfMaxViews = 2;
+    static constexpr std::uint32_t SdfViewSlots = kMaxFramesInFlight * SdfMaxViews;
+    static constexpr std::uint32_t kSdfShadowBlockBytes = 672;
+    // Dynamic uniform offsets must respect minUniformBufferOffsetAlignment.
+    // 256 is the largest value the Vulkan specification permits, so this stride
+    // is valid on every conformant device.
+    static constexpr std::uint32_t SdfBlockStride = 768;
+    static_assert(SdfBlockStride >= kSdfShadowBlockBytes);
+    static_assert((SdfBlockStride % 256u) == 0u);
     VkImage MSdfFieldImage = VK_NULL_HANDLE;
     VkDeviceMemory MSdfFieldMemory = VK_NULL_HANDLE;
     VkImageView MSdfFieldView = VK_NULL_HANDLE;
     VkSampler MSdfFieldSampler = VK_NULL_HANDLE;
+    // Sparse atlas: a grid of 16x16 brick tiles plus a header table. The sampling
+    // switch lands after the descriptors; until then the resources stay inert.
+    static constexpr std::uint32_t kSdfAtlasSize = 256;
+    static constexpr std::uint32_t kSdfTableCapacity = 256;
+    static constexpr std::uint32_t kSdfTableEntryBytes = 32;
+    VkBuffer MSdfTableBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory MSdfTableMemory = VK_NULL_HANDLE;
+    void* MSdfTableMapped = nullptr;
+    VkImage MSdfAtlasImage = VK_NULL_HANDLE;
+    VkDeviceMemory MSdfAtlasMemory = VK_NULL_HANDLE;
+    VkImageView MSdfAtlasView = VK_NULL_HANDLE;
+    VkSampler MSdfAtlasSampler = VK_NULL_HANDLE;
+    std::array<float, kSdfAtlasSize * kSdfAtlasSize> MSdfAtlasTexels{};
+    bool MSdfAtlasInitialized = false;
+    bool MSdfAtlasUploadPending = false;
     VkBuffer MSdfBlockBuffer = VK_NULL_HANDLE;
     VkDeviceMemory MSdfBlockMemory = VK_NULL_HANDLE;
     void* MSdfBlockMapped = nullptr;
-    std::array<std::uint8_t, kSdfFieldSize * kSdfFieldSize> MSdfFieldTexels{};
+    // The field is re-uploaded from the frame's own staging slice, so a later
+    // frame cannot overwrite bytes a pending command buffer still reads.
+    std::array<VkBuffer, kMaxFramesInFlight> MSdfFieldStagingBuffers{};
+    std::array<VkDeviceMemory, kMaxFramesInFlight> MSdfFieldStagingMemories{};
+    std::array<void*, kMaxFramesInFlight> MSdfFieldStagingMapped{};
+    std::array<float, kSdfFieldSize * kSdfFieldSize> MSdfFieldTexels{};
     std::uint64_t MSdfFieldVersion = 0;
     bool MSdfFieldUploadPending = false;
     bool MSdfFieldInitialized = false;
     bool MSdfEnabled = false;
 
-    // Screen-space shadow mask + compute pipeline.
+    // Screen-space shadow mask array + compute pipeline. Layer = frame slot.
     VkImage MSdfMaskImage = VK_NULL_HANDLE;
     VkDeviceMemory MSdfMaskMemory = VK_NULL_HANDLE;
     VkImageView MSdfMaskView = VK_NULL_HANDLE;
     VkSampler MSdfMaskSampler = VK_NULL_HANDLE;
     VkExtent2D MSdfMaskExtent{};
-    bool MSdfMaskValid = false;
+    std::array<bool, SdfViewSlots> MSdfMaskPublished{};
     VkDescriptorSetLayout MSdfComputeSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool MSdfComputePool = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, kSdfMaskFrames> MSdfComputeSets{};
-    std::array<VkBuffer, kSdfMaskFrames> MSdfComputeBuffers{};
-    std::array<VkDeviceMemory, kSdfMaskFrames> MSdfComputeMemories{};
-    std::array<void*, kSdfMaskFrames> MSdfComputeMapped{};
+    std::array<VkDescriptorSet, SdfViewSlots> MSdfComputeSets{};
+    std::array<VkBuffer, SdfViewSlots> MSdfComputeBuffers{};
+    std::array<VkDeviceMemory, SdfViewSlots> MSdfComputeMemories{};
+    std::array<void*, SdfViewSlots> MSdfComputeMapped{};
     VkPipelineLayout MSdfComputeLayout = VK_NULL_HANDLE;
     VkPipeline MSdfComputePipeline = VK_NULL_HANDLE;
+
+    // Clustered 2D lighting: one light list and one cluster table per in-flight
+    // frame. The light buffer is host-visible; headers and indices are GPU-only.
+    static constexpr std::uint32_t kClusterMaxLights = 1024;
+    // 8192 clusters cover 1920x1080 at a 16px tile (120 x 68). Larger views
+    // keep CPU lighting and skip the GPU cluster pass instead of growing this
+    // table without bound.
+    static constexpr std::uint32_t kClusterMaxCount = 8192;
+    static constexpr std::uint32_t kClusterMaxIndices = kClusterMaxCount * 64;
+    struct ClusterFrame
+    {
+        VkBuffer LightBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory LightMemory = VK_NULL_HANDLE;
+        void* LightMapped = nullptr;
+        VkBuffer HeaderBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory HeaderMemory = VK_NULL_HANDLE;
+        VkBuffer IndexBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory IndexMemory = VK_NULL_HANDLE;
+        VkDescriptorSet Set = VK_NULL_HANDLE;
+        std::uint32_t LightVersion = 0;
+    };
+    std::array<ClusterFrame, kMaxFramesInFlight> MClusterFrames{};
+    VkDescriptorSetLayout MClusterSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MClusterPool = VK_NULL_HANDLE;
+    VkPipelineLayout MClusterLayout = VK_NULL_HANDLE;
+    VkPipeline MClusterCountPipeline = VK_NULL_HANDLE;
+    VkPipeline MClusterPrefixPipeline = VK_NULL_HANDLE;
+    VkPipeline MClusterFillPipeline = VK_NULL_HANDLE;
+    bool MClusterRequested = true;
+    bool MClusterReady = false;
+    bool MClusterFallbackReady = false;
+    std::array<VkBuffer, 5> MClusterFallbackBuffers{};
+    std::array<VkDeviceMemory, 5> MClusterFallbackMemories{};
+    VkDescriptorSet MClusterFallbackSet = VK_NULL_HANDLE;
+    bool MDepthPrepassRequested = true;
+    bool MDepthPrepassReady = false;
+
+    static constexpr std::uint32_t kMaxCulledItems = 1u << 17;
+    static constexpr std::uint32_t kMaxCullBatches = 64;
+    struct CullFrame
+    {
+        VkBuffer VisibleBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory VisibleMemory = VK_NULL_HANDLE;
+        VkBuffer CounterBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory CounterMemory = VK_NULL_HANDLE;
+        VkBuffer CommandBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory CommandMemory = VK_NULL_HANDLE;
+        void* CommandMapped = nullptr;
+        VkBuffer ReadbackBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory ReadbackMemory = VK_NULL_HANDLE;
+        void* ReadbackMapped = nullptr;
+        VkDescriptorSet Set = VK_NULL_HANDLE;
+        std::uint32_t SceneVersion = 0;
+    };
+    static constexpr std::uint32_t kMaxGiProbes = 4096;
+    struct GiFrame
+    {
+        VkBuffer ProbeBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory ProbeMemory = VK_NULL_HANDLE;
+        void* ProbeMapped = nullptr;
+        VkBuffer HeaderBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory HeaderMemory = VK_NULL_HANDLE;
+        void* HeaderMapped = nullptr;
+        std::uint32_t Version = 0;
+    };
+    std::array<GiFrame, kMaxFramesInFlight> MGiFrames{};
+    bool MGiReady = false;
+    bool MVirtualTextureDirty = false;
+    std::array<CullFrame, kMaxFramesInFlight> MCullFrames{};
+    VkDescriptorSetLayout MCullSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MCullPool = VK_NULL_HANDLE;
+    VkPipelineLayout MCullLayout = VK_NULL_HANDLE;
+    VkPipeline MCullPipeline = VK_NULL_HANDLE;
+    VkPipeline MCullFinalizePipeline = VK_NULL_HANDLE;
+    bool MCullRequested = true;
+    bool MCullReady = false;
+
+    bool MClusterRecordedThisFrame = false;
 
     VkDescriptorSetLayout MMeshComputeSetLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout MMeshGraphicsSetLayout = VK_NULL_HANDLE;
@@ -677,8 +1056,22 @@ private:
     VkBuffer MIndexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory MIndexMemory = VK_NULL_HANDLE;
 
+    // Device-local vertex source plus one persistently mapped staging slice per
+    // frame. The staging buffer is never used as a vertex buffer.
     VkBuffer MInstanceBuffer = VK_NULL_HANDLE;
+    // Instance data is uploaded before any render pass opens: buffer copies and
+    // barriers are invalid inside a pass. Each packet is uploaded once and every
+    // pass that draws it reuses the same slice.
+    struct PreUploadedPacket
+    {
+        const void* packet = nullptr;
+        VkDeviceSize base = 0;
+        std::uint32_t count = 0;
+    };
+    std::vector<PreUploadedPacket> MPreUploadedPackets;
     VkDeviceMemory MInstanceMemory = VK_NULL_HANDLE;
+    VkBuffer MInstanceStagingBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory MInstanceStagingMemory = VK_NULL_HANDLE;
     void* MInstanceMapped = nullptr;
     std::uint32_t MInstanceCapacity = 0;
     std::uint32_t MFramesInFlight = 1;
@@ -701,13 +1094,14 @@ private:
     // True once Submit opened the swapchain pass; EndFrame uses it to avoid
     // presenting an image that was never written.
     bool MMainPassRecorded = false;
+    std::uint32_t MPresentTargetId = 0xFFFFFFFFu;
     // Set when a fence wait or a submit reports a device error; BeginFrame then
     // refuses to run so a reset-but-unsignalled fence can never hang the loop.
     bool MDeviceLost = false;
     // Set from FramePacket::accessibility in Submit/RenderToTarget and reset in
     bool MBlindFrame = false;
 
-    static constexpr std::uint32_t kMaxRenderTargets = 8;
+    static constexpr std::uint32_t kMaxRenderTargets = 16;
     std::vector<std::unique_ptr<RenderTarget>> MRenderTargets;
     std::vector<std::unique_ptr<VirtualTextureResource>> MVirtualTextures;
     std::vector<std::uint32_t> MFreeVirtualTextureIds;
@@ -733,6 +1127,7 @@ private:
     std::array<VkDeviceMemory, kFeedbackSlots> MVtFeedbackBufferMemory{};
     std::array<void*, kFeedbackSlots> MVtFeedbackMapped{};
     VkExtent2D MVtFeedbackExtent{};
+    Extent2D MVtFeedbackPendingExtent{};
     // Feedback images are frame-global; recreating them mid-frame would free
     // images that recorded commands still reference.
     bool MVtFeedbackRecordedThisFrame = false;
@@ -775,17 +1170,19 @@ private:
     VkImage MAccessibilitySwapImage = VK_NULL_HANDLE;
     VkDeviceMemory MAccessibilitySwapMemory = VK_NULL_HANDLE;
     VkImageView MAccessibilitySwapView = VK_NULL_HANDLE;
+    VkImage MAccessibilitySwapDepthImage = VK_NULL_HANDLE;
+    VkDeviceMemory MAccessibilitySwapDepthMemory = VK_NULL_HANDLE;
+    VkImageView MAccessibilitySwapDepthView = VK_NULL_HANDLE;
     VkFramebuffer MAccessibilitySwapFramebuffer = VK_NULL_HANDLE;
+    VkFramebuffer MAccessibilityDepthPrepassFramebuffer = VK_NULL_HANDLE;
     VkDescriptorSet MAccessibilitySwapSet = VK_NULL_HANDLE;
     // Per-pixel flash guard: luminance history per pixel + compute dispatch.
     VkPipeline MAccessibilityFlashPipeline = VK_NULL_HANDLE;
     VkPipelineLayout MAccessibilityFlashLayout = VK_NULL_HANDLE;
-    VkDescriptorSetLayout MAccessibilityFlashSetLayout = VK_NULL_HANDLE;
     bool MAccessibilityFlashReady = false;
     VkImage MAccessibilitySwapFlashImage = VK_NULL_HANDLE;
     VkDeviceMemory MAccessibilitySwapFlashMemory = VK_NULL_HANDLE;
     VkImageView MAccessibilitySwapFlashView = VK_NULL_HANDLE;
-    VkDescriptorSet MAccessibilitySwapFlashSet = VK_NULL_HANDLE;
     bool MAccessibilitySwapReady = false;
     bool MAccessibilitySwapActive = false;
     // Accessibility policy of the packet currently recorded into Submit().
@@ -797,6 +1194,10 @@ private:
     // Persistent host-visible staging arena for UpdateTextureArrayLayer: video
     VkBuffer MUploadBuffer = VK_NULL_HANDLE;
     VkDeviceMemory MUploadMemory = VK_NULL_HANDLE;
+    // One persistent upload command buffer and fence. Reusing the staging arena
+    // waits on this fence instead of waiting for the whole device.
+    VkCommandBuffer MUploadCommandBuffer = VK_NULL_HANDLE;
+    VkFence MUploadFence = VK_NULL_HANDLE;
     // Persistent readback buffer for CaptureRenderTarget; grows on demand.
     VkBuffer MCaptureStaging = VK_NULL_HANDLE;
     VkDeviceMemory MCaptureStagingMemory = VK_NULL_HANDLE;
@@ -812,6 +1213,9 @@ private:
 bool VulkanRHI::Initialize(const DeviceDesc& InDesc)
 {
     MDesc = InDesc;
+    MClusterRequested = InDesc.enableClusteredLighting;
+    MDepthPrepassRequested = InDesc.enableDepthPrepass;
+    MCullRequested = InDesc.enableGpuCulling;
     MDeviceLost = false;
     MInfo.backend = Backend::Vulkan;
     MFramesInFlight = std::clamp(InDesc.framesInFlight, 1u, kMaxFramesInFlight);
@@ -852,11 +1256,54 @@ bool VulkanRHI::Initialize(const DeviceDesc& InDesc)
     {
         return false;
     }
-    if (!CreateDescriptors() || !CreatePipeline() || !CreateGeometry() || !CreateInstanceRing() ||
-        !CreateBuiltInAtlas() || !CreateMeshResources() || !CreateStaticMeshArena() || !CreateMeshDescriptors() ||
-        !CreateMeshPipelines() || !CreateOffscreenRenderPass() || !CreateUploadArena(InDesc.maxTextureUploadBytes))
+    if (!CreateDescriptors() || !CreatePipeline() || !CreateDepthPrepassResources() || !CreateGeometry() ||
+        !CreateInstanceRing() || !CreateHiZResources() || !CreateBuiltInAtlas() || !CreateMeshResources() ||
+        !CreateStaticMeshArena() || !CreateMeshDescriptors() || !CreateMeshPipelines() ||
+        !CreateOffscreenRenderPass() || !CreateUploadArena(InDesc.maxTextureUploadBytes))
     {
         return false;
+    }
+    if (!CreateOitResolveResources())
+    {
+        LogInfo("vulkan", "OIT resolve unavailable; transparent resolve disabled");
+    }
+    if (!CreateUpscaleResources())
+    {
+        LogInfo("vulkan", "spatial upscale unavailable; bilinear fallback");
+    }
+    else
+    {
+        MInfo.upscalers.fsr1 = true;
+    }
+    if (!CreateHudResources())
+    {
+        LogInfo("vulkan", "HUD composite unavailable");
+    }
+    if (!CreateMotionResources())
+    {
+        LogInfo("vulkan", "motion vector pass unavailable");
+    }
+    else
+    {
+        MInfo.upscalers.motionVectors = true;
+    }
+    if (!CreateTemporalResources())
+    {
+        LogInfo("vulkan", "temporal resolve unavailable");
+    }
+    else
+    {
+        MInfo.upscalers.fsr2 = MInfo.upscalers.motionVectors && MInfo.upscalers.fsr1;
+        MInfo.upscalers.frameGeneration = MInfo.upscalers.motionVectors;
+    }
+    MHiZReady = MDesc.enableHiZ;
+    if (MCullRequested)
+    {
+        if (!CreateCullResources())
+        {
+            LogInfo("vulkan", "GPU culling unavailable; using CPU depth batches");
+            DestroyCullResources();
+        }
     }
     // The offscreen scene image and the swapchain composite pipelines are created
     // once the accessibility resources exist; without this they appeared only
@@ -923,6 +1370,23 @@ bool VulkanRHI::CreateInstance(const DeviceDesc& InDesc)
     ScopedApplication.pEngineName = "FemboyEngine";
     ScopedApplication.engineVersion = VK_MAKE_API_VERSION(0, 2, 0, 0);
     ScopedApplication.apiVersion = VK_API_VERSION_1_1;
+    std::uint32_t ScopedInstanceVersion = VK_API_VERSION_1_1;
+    if (ScopedApi.vkEnumerateInstanceVersion != nullptr)
+    {
+        (void)ScopedApi.vkEnumerateInstanceVersion(&ScopedInstanceVersion);
+    }
+    // Request the highest version the loader offers, capped at the newest one the
+    // headers know: the device feature chain below selects Vulkan12/13 structs
+    // when the physical device supports them, and the device version can never
+    // exceed the instance one. With the 1.4 SDK and driver installed the instance
+    // is created as Vulkan 1.4 and the 1.2/1.3 feature structs stay valid.
+#if defined(VK_API_VERSION_1_4)
+    constexpr std::uint32_t ScopedMaxApiVersion = VK_API_VERSION_1_4;
+#else
+    constexpr std::uint32_t ScopedMaxApiVersion = VK_API_VERSION_1_3;
+#endif
+    ScopedApplication.apiVersion = std::min(ScopedInstanceVersion, ScopedMaxApiVersion);
+    MInstanceApiVersion = ScopedApplication.apiVersion;
 
     VkInstanceCreateInfo ScopedCreateInfo{};
     ScopedCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -1034,6 +1498,17 @@ bool VulkanRHI::PickPhysicalDevice()
                 MInfo.apiVersion = ScopedProperties.apiVersion;
                 MInfo.discrete = ScopedProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
                 std::snprintf(MInfo.name, sizeof(MInfo.name), "%s", ScopedProperties.deviceName);
+                MInfo.gpuVendor = ScopedProperties.vendorID == 0x10DE ? 1
+                                : ScopedProperties.vendorID == 0x1002 || ScopedProperties.vendorID == 0x1022 ? 2
+                                : ScopedProperties.vendorID == 0x8086 ? 3
+                                : 0;
+#if defined(_WIN32)
+                MInfo.platform = 0;
+#elif defined(__linux__)
+                MInfo.platform = 1;
+#elif defined(__APPLE__)
+                MInfo.platform = 2;
+#endif
             }
             break;
         }
@@ -1063,9 +1538,21 @@ bool VulkanRHI::CreateDevice()
     // The indirect mesh path uses firstInstance as the draw-record index, which
     VkPhysicalDeviceVulkan11Features ScopedVulkan11{};
     ScopedVulkan11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+    VkPhysicalDeviceVulkan12Features ScopedVulkan12{};
+    ScopedVulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    VkPhysicalDeviceVulkan13Features ScopedVulkan13{};
+    ScopedVulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    const std::uint32_t ScopedDeviceApiVersion = std::min(MInfo.apiVersion, MInstanceApiVersion);
+    const bool ScopedVulkan12Available = ScopedDeviceApiVersion >= VK_API_VERSION_1_2;
+    const bool ScopedVulkan13Available = ScopedDeviceApiVersion >= VK_API_VERSION_1_3;
+    ScopedVulkan12.pNext = &ScopedVulkan11;
+    ScopedVulkan13.pNext = ScopedVulkan12Available ? static_cast<void*>(&ScopedVulkan12) : &ScopedVulkan11;
     VkPhysicalDeviceFeatures2 ScopedAvailable{};
     ScopedAvailable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    ScopedAvailable.pNext = &ScopedVulkan11;
+    ScopedAvailable.pNext = ScopedVulkan13Available
+                                ? static_cast<void*>(&ScopedVulkan13)
+                                : (ScopedVulkan12Available ? static_cast<void*>(&ScopedVulkan12)
+                                                           : static_cast<void*>(&ScopedVulkan11));
     ScopedApi.vkGetPhysicalDeviceFeatures2(MPhysical, &ScopedAvailable);
     if (ScopedVulkan11.shaderDrawParameters == VK_FALSE)
     {
@@ -1075,6 +1562,16 @@ bool VulkanRHI::CreateDevice()
     }
     ScopedVulkan11.shaderDrawParameters = VK_TRUE;
 
+    MInfo.descriptorIndexing = ScopedVulkan12Available && ScopedVulkan12.descriptorIndexing == VK_TRUE;
+
+    MInfo.drawIndirectCount = ScopedVulkan12Available && ScopedVulkan12.drawIndirectCount == VK_TRUE;
+    MInfo.timelineSemaphores = ScopedVulkan12Available && ScopedVulkan12.timelineSemaphore == VK_TRUE;
+    MInfo.synchronization2 = ScopedVulkan13Available && ScopedVulkan13.synchronization2 == VK_TRUE;
+    ScopedVulkan12.descriptorIndexing = MInfo.descriptorIndexing ? VK_TRUE : VK_FALSE;
+    ScopedVulkan12.drawIndirectCount = MInfo.drawIndirectCount ? VK_TRUE : VK_FALSE;
+    ScopedVulkan12.timelineSemaphore = MInfo.timelineSemaphores ? VK_TRUE : VK_FALSE;
+    ScopedVulkan13.synchronization2 = MInfo.synchronization2 ? VK_TRUE : VK_FALSE;
+
     // Texture compression: BC7 is core, ASTC LDR is optional. Enable the ASTC
     MDeviceFeatures = ScopedAvailable.features;
     MAstcLdrSupported = ScopedAvailable.features.textureCompressionASTC_LDR == VK_TRUE;
@@ -1083,7 +1580,10 @@ bool VulkanRHI::CreateDevice()
 
     VkDeviceCreateInfo ScopedCreateInfo{};
     ScopedCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    ScopedCreateInfo.pNext = &ScopedVulkan11;
+    ScopedCreateInfo.pNext = ScopedVulkan13Available
+                                 ? static_cast<void*>(&ScopedVulkan13)
+                                 : (ScopedVulkan12Available ? static_cast<void*>(&ScopedVulkan12)
+                                                            : static_cast<void*>(&ScopedVulkan11));
     ScopedCreateInfo.queueCreateInfoCount = 1;
     ScopedCreateInfo.pQueueCreateInfos = &ScopedQueueInfo;
     ScopedCreateInfo.enabledExtensionCount = 1;
@@ -1097,6 +1597,7 @@ bool VulkanRHI::CreateDevice()
         return false;
     }
     ScopedApi.vkGetDeviceQueue(MDevice, MQueueFamily, 0, &MQueue);
+    MInfo.drawIndirectCount = MInfo.drawIndirectCount && ScopedApi.vkCmdDrawIndexedIndirectCount != nullptr;
     return true;
 }
 
@@ -1276,6 +1777,35 @@ VkCommandBuffer VulkanRHI::BeginOneShot() const
     return ScopedCommand;
 }
 
+bool VulkanRHI::WaitUploadFence() const
+{
+    if (MUploadFence == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    return Vk::GetApi().vkWaitForFences(MDevice, 1, &MUploadFence, VK_TRUE,
+                                        std::numeric_limits<std::uint64_t>::max()) == VK_SUCCESS;
+}
+
+bool VulkanRHI::SubmitUpload(VkCommandBuffer InCommand)
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (MUploadFence == VK_NULL_HANDLE || InCommand == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (ScopedApi.vkEndCommandBuffer(InCommand) != VK_SUCCESS)
+    {
+        return false;
+    }
+    (void)ScopedApi.vkResetFences(MDevice, 1, &MUploadFence);
+    VkSubmitInfo ScopedSubmitInfo{};
+    ScopedSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    ScopedSubmitInfo.commandBufferCount = 1;
+    ScopedSubmitInfo.pCommandBuffers = &InCommand;
+    return ScopedApi.vkQueueSubmit(MQueue, 1, &ScopedSubmitInfo, MUploadFence) == VK_SUCCESS;
+}
+
 void VulkanRHI::EndOneShot(VkCommandBuffer InCommand) const
 {
     Vk::Api& ScopedApi = Vk::GetApi();
@@ -1309,9 +1839,15 @@ void VulkanRHI::TransitionImage(VkCommandBuffer InCommand, VkImage InImage, VkIm
     if (InFrom == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && InTo == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
     {
         ScopedSourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        ScopedDestinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        ScopedDestinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         ScopedBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    }
+    else if (InFrom == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && InTo == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
+        ScopedSourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        ScopedBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        ScopedBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     }
     else
     {
@@ -1320,6 +1856,26 @@ void VulkanRHI::TransitionImage(VkCommandBuffer InCommand, VkImage InImage, VkIm
 
     Vk::GetApi().vkCmdPipelineBarrier(InCommand, ScopedSourceStage, ScopedDestinationStage, 0, 0, nullptr, 0, nullptr,
                                       1, &ScopedBarrier);
+}
+
+void VulkanRHI::InitImageLayout(VkImage InImage, VkImageLayout InLayout, std::uint32_t InLayers)
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    const VkCommandBuffer ScopedCommand = BeginOneShot();
+    VkImageMemoryBarrier ScopedBarrier{};
+    ScopedBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ScopedBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    ScopedBarrier.newLayout = InLayout;
+    ScopedBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedBarrier.image = InImage;
+    ScopedBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, InLayers};
+    ScopedBarrier.srcAccessMask = 0;
+    ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    ScopedApi.vkCmdPipelineBarrier(ScopedCommand, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+                                   0, nullptr, 0, nullptr, 1, &ScopedBarrier);
+    EndOneShot(ScopedCommand);
 }
 
 bool VulkanRHI::CreateSwapchain(Extent2D InSize)
@@ -1404,22 +1960,41 @@ bool VulkanRHI::CreateRenderPass()
     ScopedColorRef.attachment = 0;
     ScopedColorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentDescription ScopedDepth{};
+    ScopedDepth.format = VK_FORMAT_D32_SFLOAT;
+    ScopedDepth.samples = VK_SAMPLE_COUNT_1_BIT;
+    ScopedDepth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    ScopedDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    ScopedDepth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    ScopedDepth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    ScopedDepth.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    ScopedDepth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+    VkAttachmentReference ScopedDepthRef{};
+    ScopedDepthRef.attachment = 1;
+    ScopedDepthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
     VkSubpassDescription ScopedSubpass{};
     ScopedSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     ScopedSubpass.colorAttachmentCount = 1;
     ScopedSubpass.pColorAttachments = &ScopedColorRef;
+    ScopedSubpass.pDepthStencilAttachment = &ScopedDepthRef;
 
     VkSubpassDependency ScopedDependency{};
     ScopedDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     ScopedDependency.dstSubpass = 0;
     ScopedDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    ScopedDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    ScopedDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    ScopedDependency.dstStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    ScopedDependency.dstAccessMask =
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 
     VkRenderPassCreateInfo ScopedCreateInfo{};
     ScopedCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    ScopedCreateInfo.attachmentCount = 1;
-    ScopedCreateInfo.pAttachments = &ScopedColor;
+    ScopedCreateInfo.attachmentCount = 2;
+    const VkAttachmentDescription ScopedAttachments[2] = {ScopedColor, ScopedDepth};
+    ScopedCreateInfo.pAttachments = ScopedAttachments;
     ScopedCreateInfo.subpassCount = 1;
     ScopedCreateInfo.pSubpasses = &ScopedSubpass;
     ScopedCreateInfo.dependencyCount = 1;
@@ -1430,19 +2005,136 @@ bool VulkanRHI::CreateRenderPass()
         LogError("vulkan", "vkCreateRenderPass failed");
         return false;
     }
+
+    VkAttachmentDescription ScopedOverlayColor = ScopedColor;
+    ScopedOverlayColor.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    ScopedOverlayColor.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    ScopedOverlayColor.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    VkAttachmentDescription ScopedOverlayDepth = ScopedDepth;
+    ScopedOverlayDepth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    ScopedOverlayDepth.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    ScopedOverlayDepth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    const VkAttachmentDescription ScopedOverlayAttachments[2] = {ScopedOverlayColor, ScopedOverlayDepth};
+    VkRenderPassCreateInfo ScopedOverlayInfo = ScopedCreateInfo;
+    ScopedOverlayInfo.pAttachments = ScopedOverlayAttachments;
+    if (Vk::GetApi().vkCreateRenderPass(MDevice, &ScopedOverlayInfo, nullptr, &MHudOverlayPass) != VK_SUCCESS)
+    {
+        LogError("vulkan", "HUD overlay render pass failed");
+        return false;
+    }
     return true;
+}
+
+bool VulkanRHI::CreateDepthImage(Extent2D InExtent, VkImage* OutImage, VkDeviceMemory* OutMemory,
+                                 VkImageView* OutView)
+{
+    if (OutImage == nullptr || OutMemory == nullptr || OutView == nullptr || InExtent.width == 0 ||
+        InExtent.height == 0)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkImageCreateInfo ScopedInfo{};
+    ScopedInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ScopedInfo.imageType = VK_IMAGE_TYPE_2D;
+    ScopedInfo.format = VK_FORMAT_D32_SFLOAT;
+    ScopedInfo.extent = {InExtent.width, InExtent.height, 1};
+    ScopedInfo.mipLevels = 1;
+    ScopedInfo.arrayLayers = 1;
+    ScopedInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    ScopedInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    ScopedInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                         VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    ScopedInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    ScopedInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    if (ScopedApi.vkCreateImage(MDevice, &ScopedInfo, nullptr, OutImage) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkMemoryRequirements ScopedRequirements{};
+    ScopedApi.vkGetImageMemoryRequirements(MDevice, *OutImage, &ScopedRequirements);
+    VkMemoryAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ScopedAllocate.allocationSize = ScopedRequirements.size;
+    ScopedAllocate.memoryTypeIndex =
+        FindMemoryType(MMemoryProperties, ScopedRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (ScopedAllocate.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
+        ScopedApi.vkAllocateMemory(MDevice, &ScopedAllocate, nullptr, OutMemory) != VK_SUCCESS ||
+        ScopedApi.vkBindImageMemory(MDevice, *OutImage, *OutMemory, 0) != VK_SUCCESS)
+    {
+        ScopedApi.vkDestroyImage(MDevice, *OutImage, nullptr);
+        *OutImage = VK_NULL_HANDLE;
+        if (*OutMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, *OutMemory, nullptr);
+            *OutMemory = VK_NULL_HANDLE;
+        }
+        return false;
+    }
+    VkImageViewCreateInfo ScopedView{};
+    ScopedView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ScopedView.image = *OutImage;
+    ScopedView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    ScopedView.format = VK_FORMAT_D32_SFLOAT;
+    ScopedView.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
+    if (ScopedApi.vkCreateImageView(MDevice, &ScopedView, nullptr, OutView) != VK_SUCCESS)
+    {
+        ScopedApi.vkDestroyImage(MDevice, *OutImage, nullptr);
+        ScopedApi.vkFreeMemory(MDevice, *OutMemory, nullptr);
+        *OutImage = VK_NULL_HANDLE;
+        *OutMemory = VK_NULL_HANDLE;
+        return false;
+    }
+    return true;
+}
+
+void VulkanRHI::DestroyDepthImage(VkImage* InImage, VkDeviceMemory* InMemory, VkImageView* InView) noexcept
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (InView != nullptr && *InView != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyImageView(MDevice, *InView, nullptr);
+        *InView = VK_NULL_HANDLE;
+    }
+    if (InImage != nullptr && *InImage != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyImage(MDevice, *InImage, nullptr);
+        *InImage = VK_NULL_HANDLE;
+    }
+    if (InMemory != nullptr && *InMemory != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkFreeMemory(MDevice, *InMemory, nullptr);
+        *InMemory = VK_NULL_HANDLE;
+    }
 }
 
 bool VulkanRHI::CreateFramebuffers()
 {
+    // A minimized or occluded window reports a zero extent. Creating images of
+    // size zero is invalid, so skip the whole pass; swapchain recreation calls
+    // this again once the extent returns.
+    if (MExtent.width == 0 || MExtent.height == 0 || MViews.empty())
+    {
+        return true;
+    }
     MFramebuffers.resize(MViews.size());
+    MDrawDepthImages.assign(MViews.size(), VK_NULL_HANDLE);
+    MDrawDepthMemories.assign(MViews.size(), VK_NULL_HANDLE);
+    MDrawDepthViews.assign(MViews.size(), VK_NULL_HANDLE);
     for (std::size_t ScopedI = 0; ScopedI < MViews.size(); ++ScopedI)
     {
+        if (!CreateDepthImage(Extent2D{MExtent.width, MExtent.height}, &MDrawDepthImages[ScopedI],
+                              &MDrawDepthMemories[ScopedI], &MDrawDepthViews[ScopedI]))
+        {
+            LogError("vulkan", "main depth image failed");
+            return false;
+        }
+        const VkImageView ScopedAttachments[2] = {MViews[ScopedI], MDrawDepthViews[ScopedI]};
         VkFramebufferCreateInfo ScopedCreateInfo{};
         ScopedCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         ScopedCreateInfo.renderPass = MRenderPass;
-        ScopedCreateInfo.attachmentCount = 1;
-        ScopedCreateInfo.pAttachments = &MViews[ScopedI];
+        ScopedCreateInfo.attachmentCount = 2;
+        ScopedCreateInfo.pAttachments = ScopedAttachments;
         ScopedCreateInfo.width = MExtent.width;
         ScopedCreateInfo.height = MExtent.height;
         ScopedCreateInfo.layers = 1;
@@ -1453,7 +2145,1034 @@ bool VulkanRHI::CreateFramebuffers()
             return false;
         }
     }
+    MHudOverlayFramebuffers.resize(MViews.size());
+    for (std::size_t ScopedI = 0; ScopedI < MViews.size(); ++ScopedI)
+    {
+        const VkImageView ScopedAttachments[2] = {MViews[ScopedI], MDrawDepthViews[ScopedI]};
+        VkFramebufferCreateInfo ScopedCreateInfo{};
+        ScopedCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        ScopedCreateInfo.renderPass = MHudOverlayPass;
+        ScopedCreateInfo.attachmentCount = 2;
+        ScopedCreateInfo.pAttachments = ScopedAttachments;
+        ScopedCreateInfo.width = MExtent.width;
+        ScopedCreateInfo.height = MExtent.height;
+        ScopedCreateInfo.layers = 1;
+        if (Vk::GetApi().vkCreateFramebuffer(MDevice, &ScopedCreateInfo, nullptr,
+                                             &MHudOverlayFramebuffers[ScopedI]) != VK_SUCCESS)
+        {
+            LogError("vulkan", "HUD overlay framebuffer failed");
+            return false;
+        }
+    }
     return true;
+}
+
+bool VulkanRHI::CreateDepthPrepassFramebuffers()
+{
+    DestroyDepthPrepassFramebuffers();
+    MDepthPrepassFramebuffers.resize(MDrawDepthViews.size());
+    for (std::size_t ScopedI = 0; ScopedI < MDrawDepthViews.size(); ++ScopedI)
+    {
+        VkFramebufferCreateInfo ScopedCreateInfo{};
+        ScopedCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        ScopedCreateInfo.renderPass = MDepthPrepassRenderPass;
+        ScopedCreateInfo.attachmentCount = 1;
+        ScopedCreateInfo.pAttachments = &MDrawDepthViews[ScopedI];
+        ScopedCreateInfo.width = MExtent.width;
+        ScopedCreateInfo.height = MExtent.height;
+        ScopedCreateInfo.layers = 1;
+        if (Vk::GetApi().vkCreateFramebuffer(MDevice, &ScopedCreateInfo, nullptr, &MDepthPrepassFramebuffers[ScopedI]) !=
+            VK_SUCCESS)
+        {
+            LogError("vulkan", "depth prepass framebuffer failed");
+            return false;
+        }
+    }
+    return true;
+}
+
+void VulkanRHI::DestroyDepthPrepassFramebuffers() noexcept
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    for (VkFramebuffer ScopedFramebuffer : MDepthPrepassFramebuffers)
+    {
+        ScopedApi.vkDestroyFramebuffer(MDevice, ScopedFramebuffer, nullptr);
+    }
+    MDepthPrepassFramebuffers.clear();
+}
+
+bool VulkanRHI::CreateHiZResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    MHiZExtent = {std::max(MExtent.width / 16u, 1u), std::max(MExtent.height / 16u, 1u)};
+    MHiZMipCount = 1;
+    for (std::uint32_t ScopedDim = std::max(MHiZExtent.width, MHiZExtent.height);
+         ScopedDim > 1u && MHiZMipCount < 5u; ScopedDim /= 2u)
+    {
+        ++MHiZMipCount;
+    }
+    VkImageCreateInfo ScopedImage{};
+    ScopedImage.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ScopedImage.imageType = VK_IMAGE_TYPE_2D;
+    ScopedImage.format = VK_FORMAT_R32_SFLOAT;
+    ScopedImage.extent = {MHiZExtent.width, MHiZExtent.height, 1};
+    ScopedImage.mipLevels = MHiZMipCount;
+    ScopedImage.arrayLayers = 1;
+    ScopedImage.samples = VK_SAMPLE_COUNT_1_BIT;
+    ScopedImage.tiling = VK_IMAGE_TILING_OPTIMAL;
+    ScopedImage.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ScopedImage.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    ScopedImage.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    if (ScopedApi.vkCreateImage(MDevice, &ScopedImage, nullptr, &MHiZImage) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkMemoryRequirements ScopedRequirements{};
+    ScopedApi.vkGetImageMemoryRequirements(MDevice, MHiZImage, &ScopedRequirements);
+    VkMemoryAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ScopedAllocate.allocationSize = ScopedRequirements.size;
+    ScopedAllocate.memoryTypeIndex =
+        FindMemoryType(MMemoryProperties, ScopedRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (ScopedAllocate.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
+        ScopedApi.vkAllocateMemory(MDevice, &ScopedAllocate, nullptr, &MHiZMemory) != VK_SUCCESS ||
+        ScopedApi.vkBindImageMemory(MDevice, MHiZImage, MHiZMemory, 0) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkImageViewCreateInfo ScopedView{};
+    ScopedView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ScopedView.image = MHiZImage;
+    ScopedView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    ScopedView.format = VK_FORMAT_R32_SFLOAT;
+    ScopedView.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, MHiZMipCount, 0, 1};
+    if (ScopedApi.vkCreateImageView(MDevice, &ScopedView, nullptr, &MHiZView) != VK_SUCCESS)
+    {
+        return false;
+    }
+    MHiZStorageViews.resize(MHiZMipCount, VK_NULL_HANDLE);
+    for (std::uint32_t ScopedMip = 0; ScopedMip < MHiZMipCount; ++ScopedMip)
+    {
+        ScopedView.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, ScopedMip, 1, 0, 1};
+        if (ScopedApi.vkCreateImageView(MDevice, &ScopedView, nullptr, &MHiZStorageViews[ScopedMip]) !=
+            VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    VkSamplerCreateInfo ScopedSampler{};
+    ScopedSampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    ScopedSampler.magFilter = VK_FILTER_NEAREST;
+    ScopedSampler.minFilter = VK_FILTER_NEAREST;
+    ScopedSampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    ScopedSampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSampler.maxLod = static_cast<float>(MHiZMipCount - 1u);
+    if (ScopedApi.vkCreateSampler(MDevice, &ScopedSampler, nullptr, &MHiZSampler) != VK_SUCCESS)
+    {
+        return false;
+    }
+    std::array<VkDescriptorSetLayoutBinding, 2> ScopedBindings{};
+    ScopedBindings[0] = {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    ScopedBindings[1] = {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    VkDescriptorSetLayoutCreateInfo ScopedSetInfo{};
+    ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ScopedSetInfo.bindingCount = 2;
+    ScopedSetInfo.pBindings = ScopedBindings.data();
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetInfo, nullptr, &MHiZSetLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+    std::array<VkDescriptorPoolSize, 2> ScopedPoolSizes{};
+    ScopedPoolSizes[0] = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MHiZMipCount};
+    ScopedPoolSizes[1] = {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, MHiZMipCount};
+    VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+    ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ScopedPoolInfo.maxSets = MHiZMipCount;
+    ScopedPoolInfo.poolSizeCount = 2;
+    ScopedPoolInfo.pPoolSizes = ScopedPoolSizes.data();
+    if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MHiZPool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorSetAllocateInfo ScopedSetAllocate{};
+    ScopedSetAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ScopedSetAllocate.descriptorPool = MHiZPool;
+    ScopedSetAllocate.descriptorSetCount = 1;
+    ScopedSetAllocate.pSetLayouts = &MHiZSetLayout;
+    if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedSetAllocate, &MHiZSet) != VK_SUCCESS)
+    {
+        return false;
+    }
+    MHiZMipSets.resize(MHiZMipCount > 0 ? MHiZMipCount - 1u : 0u, VK_NULL_HANDLE);
+    for (VkDescriptorSet& ScopedMipSet : MHiZMipSets)
+    {
+        if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedSetAllocate, &ScopedMipSet) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    VkPushConstantRange ScopedRange{};
+    ScopedRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    ScopedRange.size = sizeof(HiZPushConstants);
+    VkPipelineLayoutCreateInfo ScopedLayout{};
+    ScopedLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ScopedLayout.setLayoutCount = 1;
+    ScopedLayout.pSetLayouts = &MHiZSetLayout;
+    ScopedLayout.pushConstantRangeCount = 1;
+    ScopedLayout.pPushConstantRanges = &ScopedRange;
+    if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayout, nullptr, &MHiZLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkShaderModuleCreateInfo ScopedModuleInfo{};
+    ScopedModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    ScopedModuleInfo.codeSize = Shaders::hiz_tile.size() * sizeof(std::uint32_t);
+    ScopedModuleInfo.pCode = Shaders::hiz_tile.data();
+    VkShaderModule ScopedModule = VK_NULL_HANDLE;
+    if (ScopedApi.vkCreateShaderModule(MDevice, &ScopedModuleInfo, nullptr, &ScopedModule) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkComputePipelineCreateInfo ScopedPipeline{};
+    ScopedPipeline.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    ScopedPipeline.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    ScopedPipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    ScopedPipeline.stage.module = ScopedModule;
+    ScopedPipeline.stage.pName = "main";
+    ScopedPipeline.layout = MHiZLayout;
+    const VkResult ScopedResult =
+        ScopedApi.vkCreateComputePipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedPipeline, nullptr, &MHiZPipeline);
+    ScopedApi.vkDestroyShaderModule(MDevice, ScopedModule, nullptr);
+    if (ScopedResult != VK_SUCCESS)
+    {
+        return false;
+    }
+    MInfo.hiZ = MDesc.enableHiZ;
+    if (MHiZMipCount > 1)
+    {
+        ScopedModuleInfo.codeSize = Shaders::hiz_mip.size() * sizeof(std::uint32_t);
+        ScopedModuleInfo.pCode = Shaders::hiz_mip.data();
+        if (ScopedApi.vkCreateShaderModule(MDevice, &ScopedModuleInfo, nullptr, &ScopedModule) != VK_SUCCESS)
+        {
+            return false;
+        }
+        ScopedPipeline.stage.module = ScopedModule;
+        const VkResult ScopedMipResult =
+            ScopedApi.vkCreateComputePipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedPipeline, nullptr, &MHiZMipPipeline);
+        ScopedApi.vkDestroyShaderModule(MDevice, ScopedModule, nullptr);
+        if (ScopedMipResult != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void VulkanRHI::DestroyHiZResources() noexcept
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (MHiZPipeline != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipeline(MDevice, MHiZPipeline, nullptr);
+        MHiZPipeline = VK_NULL_HANDLE;
+    }
+    if (MHiZMipPipeline != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipeline(MDevice, MHiZMipPipeline, nullptr);
+        MHiZMipPipeline = VK_NULL_HANDLE;
+    }
+    if (MHiZLayout != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipelineLayout(MDevice, MHiZLayout, nullptr);
+        MHiZLayout = VK_NULL_HANDLE;
+    }
+    if (MHiZPool != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyDescriptorPool(MDevice, MHiZPool, nullptr);
+        MHiZPool = VK_NULL_HANDLE;
+    }
+    if (MHiZSetLayout != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MHiZSetLayout, nullptr);
+        MHiZSetLayout = VK_NULL_HANDLE;
+    }
+    if (MHiZSampler != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroySampler(MDevice, MHiZSampler, nullptr);
+        MHiZSampler = VK_NULL_HANDLE;
+    }
+    if (MHiZView != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyImageView(MDevice, MHiZView, nullptr);
+        MHiZView = VK_NULL_HANDLE;
+    }
+    for (VkImageView& ScopedView : MHiZStorageViews)
+    {
+        if (ScopedView != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyImageView(MDevice, ScopedView, nullptr);
+            ScopedView = VK_NULL_HANDLE;
+        }
+    }
+    MHiZStorageViews.clear();
+    MHiZMipSets.clear();
+    if (MHiZImage != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyImage(MDevice, MHiZImage, nullptr);
+        MHiZImage = VK_NULL_HANDLE;
+    }
+    if (MHiZMemory != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkFreeMemory(MDevice, MHiZMemory, nullptr);
+        MHiZMemory = VK_NULL_HANDLE;
+    }
+    MHiZSet = VK_NULL_HANDLE;
+    MHiZExtent = {};
+}
+
+void VulkanRHI::RecordHiZ(VkCommandBuffer InCommandBuffer)
+{
+    if (!MHiZReady || MHiZPipeline == VK_NULL_HANDLE || MHiZView == VK_NULL_HANDLE ||
+        MImageIndex >= MDrawDepthViews.size())
+    {
+        return;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorImageInfo ScopedDepth{};
+    ScopedDepth.sampler = MDepthSampler;
+    ScopedDepth.imageView = MDrawDepthViews[MImageIndex];
+    ScopedDepth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    VkDescriptorImageInfo ScopedTile{};
+    ScopedTile.imageView = MHiZStorageViews.empty() ? VK_NULL_HANDLE : MHiZStorageViews[0];
+    ScopedTile.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    std::array<VkWriteDescriptorSet, 2> ScopedWrites{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 2; ++ScopedIndex)
+    {
+        ScopedWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[ScopedIndex].dstSet = MHiZSet;
+        ScopedWrites[ScopedIndex].dstBinding = ScopedIndex;
+        ScopedWrites[ScopedIndex].descriptorCount = 1;
+    }
+    ScopedWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedWrites[0].pImageInfo = &ScopedDepth;
+    ScopedWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    ScopedWrites[1].pImageInfo = &ScopedTile;
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 2, ScopedWrites.data(), 0, nullptr);
+    TransitionImage(InCommandBuffer, MHiZImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 1,
+                    MHiZMipCount);
+    ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MHiZPipeline);
+    ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MHiZLayout, 0, 1, &MHiZSet,
+                                      0, nullptr);
+    HiZPushConstants ScopedPush{MExtent.width, MExtent.height, 16, 16};
+    ScopedApi.vkCmdPushConstants(InCommandBuffer, MHiZLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                 sizeof(ScopedPush), &ScopedPush);
+    ScopedApi.vkCmdDispatch(InCommandBuffer, (MHiZExtent.width + 7u) / 8u, (MHiZExtent.height + 7u) / 8u, 1);
+    MStats.hizTiles = MHiZExtent.width * MHiZExtent.height;
+    MStats.hizMips = MHiZMipCount;
+    VkMemoryBarrier ScopedBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT,
+                                  VK_ACCESS_SHADER_READ_BIT};
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &ScopedBarrier, 0, nullptr, 0,
+                                   nullptr);
+    for (std::uint32_t ScopedMip = 1; ScopedMip < MHiZMipCount && ScopedMip - 1 < MHiZMipSets.size(); ++ScopedMip)
+    {
+        VkDescriptorImageInfo ScopedSource{};
+        ScopedSource.sampler = MHiZSampler;
+        ScopedSource.imageView = MHiZStorageViews[ScopedMip - 1];
+        ScopedSource.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        VkDescriptorImageInfo ScopedDest{};
+        ScopedDest.imageView = MHiZStorageViews[ScopedMip];
+        ScopedDest.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        std::array<VkWriteDescriptorSet, 2> ScopedMipWrites{};
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < 2; ++ScopedIndex)
+        {
+            ScopedMipWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            ScopedMipWrites[ScopedIndex].dstSet = MHiZMipSets[ScopedMip - 1];
+            ScopedMipWrites[ScopedIndex].dstBinding = ScopedIndex;
+            ScopedMipWrites[ScopedIndex].descriptorCount = 1;
+        }
+        ScopedMipWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedMipWrites[0].pImageInfo = &ScopedSource;
+        ScopedMipWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        ScopedMipWrites[1].pImageInfo = &ScopedDest;
+        ScopedApi.vkUpdateDescriptorSets(MDevice, 2, ScopedMipWrites.data(), 0, nullptr);
+        ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MHiZMipPipeline);
+        ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MHiZLayout, 0, 1,
+                                          &MHiZMipSets[ScopedMip - 1], 0, nullptr);
+        const std::uint32_t ScopedSourceWidth = std::max(MHiZExtent.width >> (ScopedMip - 1u), 1u);
+        const std::uint32_t ScopedSourceHeight = std::max(MHiZExtent.height >> (ScopedMip - 1u), 1u);
+        const std::uint32_t ScopedDestWidth = std::max(MHiZExtent.width >> ScopedMip, 1u);
+        const std::uint32_t ScopedDestHeight = std::max(MHiZExtent.height >> ScopedMip, 1u);
+        HiZPushConstants ScopedMipPush{ScopedSourceWidth, ScopedSourceHeight, ScopedDestWidth, ScopedDestHeight};
+        ScopedApi.vkCmdPushConstants(InCommandBuffer, MHiZLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                     sizeof(ScopedMipPush), &ScopedMipPush);
+        ScopedApi.vkCmdDispatch(InCommandBuffer, (ScopedDestWidth + 7u) / 8u, (ScopedDestHeight + 7u) / 8u, 1);
+        ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &ScopedBarrier, 0, nullptr, 0,
+                                       nullptr);
+    }
+    TransitionImage(InCommandBuffer, MHiZImage, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1, MHiZMipCount);
+}
+
+bool VulkanRHI::CreateDepthPrepassResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+
+    VkSamplerCreateInfo ScopedSampler{};
+    ScopedSampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    ScopedSampler.magFilter = VK_FILTER_NEAREST;
+    ScopedSampler.minFilter = VK_FILTER_NEAREST;
+    ScopedSampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    ScopedSampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSampler.maxLod = 0.0f;
+    if (ScopedApi.vkCreateSampler(MDevice, &ScopedSampler, nullptr, &MDepthSampler) != VK_SUCCESS)
+    {
+        LogError("vulkan", "depth sampler failed");
+        return false;
+    }
+
+    VkAttachmentDescription ScopedDepth{};
+    ScopedDepth.format = VK_FORMAT_D32_SFLOAT;
+    ScopedDepth.samples = VK_SAMPLE_COUNT_1_BIT;
+    ScopedDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    ScopedDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    ScopedDepth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    ScopedDepth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    ScopedDepth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    ScopedDepth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    VkAttachmentReference ScopedDepthRef{};
+    ScopedDepthRef.attachment = 0;
+    ScopedDepthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkSubpassDescription ScopedSubpass{};
+    ScopedSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    ScopedSubpass.pDepthStencilAttachment = &ScopedDepthRef;
+    VkSubpassDependency ScopedDependency{};
+    ScopedDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    ScopedDependency.dstSubpass = 0;
+    ScopedDependency.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    ScopedDependency.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    ScopedDependency.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    VkRenderPassCreateInfo ScopedPassInfo{};
+    ScopedPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    ScopedPassInfo.attachmentCount = 1;
+    ScopedPassInfo.pAttachments = &ScopedDepth;
+    ScopedPassInfo.subpassCount = 1;
+    ScopedPassInfo.pSubpasses = &ScopedSubpass;
+    ScopedPassInfo.dependencyCount = 1;
+    ScopedPassInfo.pDependencies = &ScopedDependency;
+    if (ScopedApi.vkCreateRenderPass(MDevice, &ScopedPassInfo, nullptr, &MDepthPrepassRenderPass) != VK_SUCCESS)
+    {
+        LogError("vulkan", "depth prepass render pass failed");
+        return false;
+    }
+    if (!CreateDepthPrepassFramebuffers())
+    {
+        return false;
+    }
+
+    const auto ScopedMakeModule = [&ScopedApi, this](const auto& InBlob)
+    {
+        VkShaderModuleCreateInfo ScopedInfo{};
+        ScopedInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        ScopedInfo.codeSize = InBlob.size() * sizeof(std::uint32_t);
+        ScopedInfo.pCode = InBlob.data();
+        VkShaderModule ScopedModule = VK_NULL_HANDLE;
+        if (ScopedApi.vkCreateShaderModule(MDevice, &ScopedInfo, nullptr, &ScopedModule) != VK_SUCCESS)
+        {
+            return VkShaderModule{VK_NULL_HANDLE};
+        }
+        return ScopedModule;
+    };
+    const VkShaderModule ScopedVertex = ScopedMakeModule(Shaders::quad_vert);
+    const VkShaderModule ScopedFragment = ScopedMakeModule(Shaders::depth_only);
+    if (ScopedVertex == VK_NULL_HANDLE || ScopedFragment == VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyShaderModule(MDevice, ScopedVertex, nullptr);
+        ScopedApi.vkDestroyShaderModule(MDevice, ScopedFragment, nullptr);
+        return false;
+    }
+    VkPipelineShaderStageCreateInfo ScopedStages[2]{};
+    ScopedStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    ScopedStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    ScopedStages[0].module = ScopedVertex;
+    ScopedStages[0].pName = "main";
+    ScopedStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    ScopedStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    ScopedStages[1].module = ScopedFragment;
+    ScopedStages[1].pName = "main";
+
+    VkVertexInputBindingDescription ScopedBinding{};
+    ScopedBinding.binding = 0;
+    ScopedBinding.stride = sizeof(RenderItem);
+    ScopedBinding.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+    std::array<VkVertexInputAttributeDescription, 8> ScopedAttributes{};
+    ScopedAttributes[0] = {0, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<std::uint32_t>(offsetof(RenderItem, position))};
+    ScopedAttributes[1] = {1, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<std::uint32_t>(offsetof(RenderItem, size))};
+    ScopedAttributes[2] = {2, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<std::uint32_t>(offsetof(RenderItem, uvMin))};
+    ScopedAttributes[3] = {3, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<std::uint32_t>(offsetof(RenderItem, uvMax))};
+    ScopedAttributes[4] = {4, 0, VK_FORMAT_R32_UINT, static_cast<std::uint32_t>(offsetof(RenderItem, layer))};
+    ScopedAttributes[5] = {5, 0, VK_FORMAT_R32_UINT, static_cast<std::uint32_t>(offsetof(RenderItem, color))};
+    ScopedAttributes[6] = {6, 0, VK_FORMAT_R32_SFLOAT, static_cast<std::uint32_t>(offsetof(RenderItem, rotation))};
+    ScopedAttributes[7] = {7, 0, VK_FORMAT_R32_UINT, static_cast<std::uint32_t>(offsetof(RenderItem, flags))};
+    VkPipelineVertexInputStateCreateInfo ScopedVertexInput{};
+    ScopedVertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    ScopedVertexInput.vertexBindingDescriptionCount = 1;
+    ScopedVertexInput.pVertexBindingDescriptions = &ScopedBinding;
+    ScopedVertexInput.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(ScopedAttributes.size());
+    ScopedVertexInput.pVertexAttributeDescriptions = ScopedAttributes.data();
+    VkPipelineInputAssemblyStateCreateInfo ScopedAssembly{};
+    ScopedAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ScopedAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkPipelineViewportStateCreateInfo ScopedViewport{};
+    ScopedViewport.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    ScopedViewport.viewportCount = 1;
+    ScopedViewport.scissorCount = 1;
+    VkPipelineRasterizationStateCreateInfo ScopedRaster{};
+    ScopedRaster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    ScopedRaster.polygonMode = VK_POLYGON_MODE_FILL;
+    ScopedRaster.cullMode = VK_CULL_MODE_NONE;
+    ScopedRaster.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    ScopedRaster.lineWidth = 1.0f;
+    VkPipelineMultisampleStateCreateInfo ScopedMultisample{};
+    ScopedMultisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ScopedMultisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineColorBlendStateCreateInfo ScopedBlend{};
+    ScopedBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    VkPipelineDepthStencilStateCreateInfo ScopedDepthState{};
+    ScopedDepthState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ScopedDepthState.depthTestEnable = VK_TRUE;
+    ScopedDepthState.depthWriteEnable = VK_TRUE;
+    ScopedDepthState.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    ScopedDepthState.minDepthBounds = 0.0f;
+    ScopedDepthState.maxDepthBounds = 1.0f;
+    const VkDynamicState ScopedDynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo ScopedDynamic{};
+    ScopedDynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    ScopedDynamic.dynamicStateCount = 2;
+    ScopedDynamic.pDynamicStates = ScopedDynamicStates;
+    VkGraphicsPipelineCreateInfo ScopedInfo{};
+    ScopedInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    ScopedInfo.stageCount = 2;
+    ScopedInfo.pStages = ScopedStages;
+    ScopedInfo.pVertexInputState = &ScopedVertexInput;
+    ScopedInfo.pInputAssemblyState = &ScopedAssembly;
+    ScopedInfo.pViewportState = &ScopedViewport;
+    ScopedInfo.pRasterizationState = &ScopedRaster;
+    ScopedInfo.pMultisampleState = &ScopedMultisample;
+    ScopedInfo.pColorBlendState = &ScopedBlend;
+    ScopedInfo.pDepthStencilState = &ScopedDepthState;
+    ScopedInfo.pDynamicState = &ScopedDynamic;
+    ScopedInfo.layout = MPipelineLayout;
+    ScopedInfo.renderPass = MDepthPrepassRenderPass;
+    ScopedInfo.subpass = 0;
+    const VkResult ScopedResult =
+        ScopedApi.vkCreateGraphicsPipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedInfo, nullptr, &MDepthPrepassPipeline);
+    ScopedApi.vkDestroyShaderModule(MDevice, ScopedVertex, nullptr);
+    ScopedApi.vkDestroyShaderModule(MDevice, ScopedFragment, nullptr);
+    if (ScopedResult != VK_SUCCESS)
+    {
+        LogError("vulkan", "depth prepass pipeline failed: {}", static_cast<int>(ScopedResult));
+        return false;
+    }
+    MDepthPrepassReady = true;
+    MInfo.depthPrepass = MDepthPrepassRequested;
+    return true;
+}
+
+bool VulkanRHI::CreateCullResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (ScopedApi.vkCmdDrawIndexedIndirectCount == nullptr)
+    {
+        return false;
+    }
+    std::array<VkDescriptorSetLayoutBinding, 6> ScopedBindings{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 4; ++ScopedIndex)
+    {
+        ScopedBindings[ScopedIndex].binding = ScopedIndex;
+        ScopedBindings[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        ScopedBindings[ScopedIndex].descriptorCount = 1;
+        ScopedBindings[ScopedIndex].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    }
+    ScopedBindings[4].binding = 4;
+    ScopedBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedBindings[4].descriptorCount = 1;
+    ScopedBindings[4].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    ScopedBindings[5].binding = 5;
+    ScopedBindings[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedBindings[5].descriptorCount = 1;
+    ScopedBindings[5].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    VkDescriptorSetLayoutCreateInfo ScopedSetInfo{};
+    ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ScopedSetInfo.bindingCount = static_cast<std::uint32_t>(ScopedBindings.size());
+    ScopedSetInfo.pBindings = ScopedBindings.data();
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetInfo, nullptr, &MCullSetLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+    std::array<VkDescriptorPoolSize, 2> ScopedPoolSizes{};
+    ScopedPoolSizes[0] = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4u * kMaxFramesInFlight};
+    ScopedPoolSizes[1] = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u * kMaxFramesInFlight};
+    VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+    ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ScopedPoolInfo.maxSets = kMaxFramesInFlight;
+    ScopedPoolInfo.poolSizeCount = static_cast<std::uint32_t>(ScopedPoolSizes.size());
+    ScopedPoolInfo.pPoolSizes = ScopedPoolSizes.data();
+    if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MCullPool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkPushConstantRange ScopedRange{};
+    ScopedRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    ScopedRange.size = sizeof(GpuCullingConstants);
+    VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
+    ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ScopedLayoutInfo.setLayoutCount = 1;
+    ScopedLayoutInfo.pSetLayouts = &MCullSetLayout;
+    ScopedLayoutInfo.pushConstantRangeCount = 1;
+    ScopedLayoutInfo.pPushConstantRanges = &ScopedRange;
+    if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MCullLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+    const auto ScopedPipeline = [this, &ScopedApi](const auto& InCode, VkPipeline* OutPipeline)
+    {
+        VkShaderModuleCreateInfo ScopedInfo{};
+        ScopedInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        ScopedInfo.codeSize = InCode.size() * sizeof(std::uint32_t);
+        ScopedInfo.pCode = InCode.data();
+        VkShaderModule ScopedModule = VK_NULL_HANDLE;
+        if (ScopedApi.vkCreateShaderModule(MDevice, &ScopedInfo, nullptr, &ScopedModule) != VK_SUCCESS)
+        {
+            return false;
+        }
+        VkComputePipelineCreateInfo ScopedCreate{};
+        ScopedCreate.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        ScopedCreate.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        ScopedCreate.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        ScopedCreate.stage.module = ScopedModule;
+        ScopedCreate.stage.pName = "main";
+        ScopedCreate.layout = MCullLayout;
+        const VkResult ScopedResult =
+            ScopedApi.vkCreateComputePipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedCreate, nullptr, OutPipeline);
+        ScopedApi.vkDestroyShaderModule(MDevice, ScopedModule, nullptr);
+        return ScopedResult == VK_SUCCESS;
+    };
+    if (!ScopedPipeline(Shaders::sprite_cull, &MCullPipeline) ||
+        !ScopedPipeline(Shaders::sprite_cull_finalize, &MCullFinalizePipeline))
+    {
+        return false;
+    }
+    for (std::uint32_t ScopedFrame = 0; ScopedFrame < kMaxFramesInFlight; ++ScopedFrame)
+    {
+        CullFrame& ScopedCull = MCullFrames[ScopedFrame];
+        if (!CreateBuffer(static_cast<VkDeviceSize>(kMaxCulledItems) * sizeof(RenderItem),
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &ScopedCull.VisibleBuffer,
+                          &ScopedCull.VisibleMemory) ||
+            !CreateBuffer(static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(std::uint32_t),
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &ScopedCull.CounterBuffer, &ScopedCull.CounterMemory) ||
+            !CreateBuffer(static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(VkDrawIndexedIndirectCommand),
+                          VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &ScopedCull.CommandBuffer, &ScopedCull.CommandMemory) ||
+            !CreateBuffer(static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(std::uint32_t),
+                          VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &ScopedCull.ReadbackBuffer, &ScopedCull.ReadbackMemory))
+        {
+            return false;
+        }
+        if (ScopedApi.vkMapMemory(MDevice, ScopedCull.CommandMemory, 0, VK_WHOLE_SIZE, 0, &ScopedCull.CommandMapped) !=
+                VK_SUCCESS ||
+            ScopedApi.vkMapMemory(MDevice, ScopedCull.ReadbackMemory, 0, VK_WHOLE_SIZE, 0,
+                                  &ScopedCull.ReadbackMapped) != VK_SUCCESS)
+        {
+            return false;
+        }
+        *static_cast<std::uint32_t*>(ScopedCull.ReadbackMapped) = 0;
+        VkDrawIndexedIndirectCommand ScopedCommand{};
+        ScopedCommand.indexCount = 6;
+        ScopedCommand.instanceCount = 0;
+        ScopedCommand.firstInstance = 0;
+        std::memcpy(ScopedCull.CommandMapped, &ScopedCommand, sizeof(ScopedCommand));
+
+        VkDescriptorSetAllocateInfo ScopedAllocate{};
+        ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        ScopedAllocate.descriptorPool = MCullPool;
+        ScopedAllocate.descriptorSetCount = 1;
+        ScopedAllocate.pSetLayouts = &MCullSetLayout;
+        if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &ScopedCull.Set) != VK_SUCCESS)
+        {
+            return false;
+        }
+        VkDescriptorBufferInfo ScopedInfo[4]{};
+        ScopedInfo[0] = {MInstanceBuffer, 0, VK_WHOLE_SIZE};
+        ScopedInfo[1] = {ScopedCull.VisibleBuffer, 0, VK_WHOLE_SIZE};
+        ScopedInfo[2] = {ScopedCull.CounterBuffer, 0, VK_WHOLE_SIZE};
+        ScopedInfo[3] = {ScopedCull.CommandBuffer, 0, VK_WHOLE_SIZE};
+        VkDescriptorImageInfo ScopedDepthInfo{};
+        ScopedDepthInfo.sampler = MDepthSampler;
+        ScopedDepthInfo.imageView = MDrawDepthViews.empty() ? VK_NULL_HANDLE : MDrawDepthViews[0];
+        ScopedDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        VkDescriptorImageInfo ScopedHiZInfo{};
+        ScopedHiZInfo.sampler = MHiZSampler;
+        ScopedHiZInfo.imageView = MHiZView;
+        ScopedHiZInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkWriteDescriptorSet ScopedWrites[6]{};
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < 4; ++ScopedIndex)
+        {
+            ScopedWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            ScopedWrites[ScopedIndex].dstSet = ScopedCull.Set;
+            ScopedWrites[ScopedIndex].dstBinding = ScopedIndex;
+            ScopedWrites[ScopedIndex].descriptorCount = 1;
+            ScopedWrites[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            ScopedWrites[ScopedIndex].pBufferInfo = &ScopedInfo[ScopedIndex];
+        }
+        ScopedWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[4].dstSet = ScopedCull.Set;
+        ScopedWrites[4].dstBinding = 4;
+        ScopedWrites[4].descriptorCount = 1;
+        ScopedWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedWrites[4].pImageInfo = &ScopedDepthInfo;
+        ScopedWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[5].dstSet = ScopedCull.Set;
+        ScopedWrites[5].dstBinding = 5;
+        ScopedWrites[5].descriptorCount = 1;
+        ScopedWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedWrites[5].pImageInfo = &ScopedHiZInfo;
+        ScopedApi.vkUpdateDescriptorSets(MDevice, 6, ScopedWrites, 0, nullptr);
+    }
+    MCullReady = true;
+    MInfo.gpuCulling = true;
+    return true;
+}
+
+void VulkanRHI::DestroyCullResources() noexcept
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    MCullReady = false;
+    MInfo.gpuCulling = false;
+    for (CullFrame& ScopedFrame : MCullFrames)
+    {
+        if (ScopedFrame.CommandMapped != nullptr && ScopedFrame.CommandMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkUnmapMemory(MDevice, ScopedFrame.CommandMemory);
+            ScopedFrame.CommandMapped = nullptr;
+        }
+        if (ScopedFrame.ReadbackMapped != nullptr && ScopedFrame.ReadbackMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkUnmapMemory(MDevice, ScopedFrame.ReadbackMemory);
+            ScopedFrame.ReadbackMapped = nullptr;
+        }
+        if (ScopedFrame.ReadbackBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.ReadbackBuffer, nullptr);
+            ScopedFrame.ReadbackBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.ReadbackMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.ReadbackMemory, nullptr);
+            ScopedFrame.ReadbackMemory = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.CommandBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.CommandBuffer, nullptr);
+            ScopedFrame.CommandBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.CommandMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.CommandMemory, nullptr);
+            ScopedFrame.CommandMemory = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.VisibleBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.VisibleBuffer, nullptr);
+            ScopedFrame.VisibleBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.VisibleMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.VisibleMemory, nullptr);
+            ScopedFrame.VisibleMemory = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.CounterBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.CounterBuffer, nullptr);
+            ScopedFrame.CounterBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.CounterMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.CounterMemory, nullptr);
+            ScopedFrame.CounterMemory = VK_NULL_HANDLE;
+        }
+        ScopedFrame.Set = VK_NULL_HANDLE;
+    }
+    if (MCullFinalizePipeline != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipeline(MDevice, MCullFinalizePipeline, nullptr);
+        MCullFinalizePipeline = VK_NULL_HANDLE;
+    }
+    if (MCullPipeline != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipeline(MDevice, MCullPipeline, nullptr);
+        MCullPipeline = VK_NULL_HANDLE;
+    }
+    if (MCullLayout != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipelineLayout(MDevice, MCullLayout, nullptr);
+        MCullLayout = VK_NULL_HANDLE;
+    }
+    if (MCullPool != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyDescriptorPool(MDevice, MCullPool, nullptr);
+        MCullPool = VK_NULL_HANDLE;
+    }
+    if (MCullSetLayout != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MCullSetLayout, nullptr);
+        MCullSetLayout = VK_NULL_HANDLE;
+    }
+}
+
+VkDeviceSize VulkanRHI::UploadPrepassInstances(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket)
+{
+    const std::uint32_t ScopedCount = static_cast<std::uint32_t>(InPacket.items.size());
+    if (ScopedCount > MInstanceCapacity || MInstanceFrameCursor > MInstanceCapacity - ScopedCount)
+    {
+        return 0;
+    }
+    const VkDeviceSize ScopedSliceBytes = static_cast<VkDeviceSize>(MInstanceCapacity) * sizeof(RenderItem);
+    auto* ScopedSlice = static_cast<std::byte*>(MInstanceMapped) + ScopedSliceBytes * MFrameIndex +
+                        static_cast<std::size_t>(MInstanceFrameCursor) * sizeof(RenderItem);
+    std::memcpy(ScopedSlice, InPacket.items.data(), InPacket.items.size_bytes());
+    const VkDeviceSize ScopedBase =
+        static_cast<VkDeviceSize>(MFrameIndex) * MInstanceCapacity + MInstanceFrameCursor;
+    VkBufferCopy ScopedCopy{};
+    ScopedCopy.srcOffset = ScopedBase * sizeof(RenderItem);
+    ScopedCopy.dstOffset = ScopedCopy.srcOffset;
+    ScopedCopy.size = static_cast<VkDeviceSize>(InPacket.items.size_bytes());
+    Vk::GetApi().vkCmdCopyBuffer(InCommandBuffer, MInstanceStagingBuffer, MInstanceBuffer, 1, &ScopedCopy);
+    VkBufferMemoryBarrier ScopedBarrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    ScopedBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    ScopedBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedBarrier.buffer = MInstanceBuffer;
+    ScopedBarrier.offset = 0;
+    ScopedBarrier.size = VK_WHOLE_SIZE;
+    Vk::GetApi().vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0,
+                                      nullptr, 1, &ScopedBarrier, 0, nullptr);
+    MInstanceFrameCursor += ScopedCount;
+    ++MRecordedPassIndex;
+    MStats.uploadedBytes += InPacket.items.size_bytes();
+    return ScopedBase;
+}
+
+void VulkanRHI::UpdateCullDepth(VkDescriptorSet InSet, VkImageView InView)
+{
+    if (InSet == VK_NULL_HANDLE || InView == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    VkDescriptorImageInfo ScopedInfo{};
+    ScopedInfo.sampler = MDepthSampler;
+    ScopedInfo.imageView = InView;
+    ScopedInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    VkDescriptorImageInfo ScopedHiZ{};
+    ScopedHiZ.sampler = MHiZSampler;
+    ScopedHiZ.imageView = MHiZView;
+    ScopedHiZ.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkWriteDescriptorSet ScopedWrites[2]{};
+    ScopedWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrites[0].dstSet = InSet;
+    ScopedWrites[0].dstBinding = 4;
+    ScopedWrites[0].descriptorCount = 1;
+    ScopedWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedWrites[0].pImageInfo = &ScopedInfo;
+    ScopedWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrites[1].dstSet = InSet;
+    ScopedWrites[1].dstBinding = 5;
+    ScopedWrites[1].descriptorCount = 1;
+    ScopedWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedWrites[1].pImageInfo = &ScopedHiZ;
+    Vk::GetApi().vkUpdateDescriptorSets(MDevice, 2, ScopedWrites, 0, nullptr);
+}
+
+void VulkanRHI::RecordOpaqueCull(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket,
+                                VkDeviceSize InSourceBase)
+{
+    if (!MCullReady || MFrameIndex >= MCullFrames.size())
+    {
+        return;
+    }
+    CullFrame& ScopedFrame = MCullFrames[MFrameIndex];
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (MImageIndex < MDrawDepthViews.size())
+    {
+        UpdateCullDepth(ScopedFrame.Set, MDrawDepthViews[MImageIndex]);
+    }
+    ScopedApi.vkCmdFillBuffer(InCommandBuffer, ScopedFrame.CounterBuffer, 0,
+                              static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(std::uint32_t), 0u);
+    VkMemoryBarrier ScopedBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &ScopedBarrier, 0, nullptr, 0,
+                                   nullptr);
+    GpuCullingConstants ScopedConstants{};
+    const float ScopedHalfX = InPacket.camera.viewport.X * 0.5f / std::max(InPacket.camera.zoom, 0.0001f);
+    const float ScopedHalfY = InPacket.camera.viewport.Y * 0.5f / std::max(InPacket.camera.zoom, 0.0001f);
+    ScopedConstants.ViewBounds = Vector4D{InPacket.camera.center.X - ScopedHalfX, InPacket.camera.center.Y - ScopedHalfY,
+                                          InPacket.camera.center.X + ScopedHalfX, InPacket.camera.center.Y + ScopedHalfY};
+    ScopedConstants.Viewport = Vector4D{InPacket.camera.viewport.X, InPacket.camera.viewport.Y, 0.0f,
+                                        MDesc.hiZLodScale};
+    ScopedConstants.UseDepth = (InPacket.sceneStatic && MHiZReady) ? 1u : 0u;
+    ScopedConstants.ItemCount = static_cast<std::uint32_t>(InPacket.items.size());
+    ScopedConstants.MaxVisible = kMaxCulledItems;
+    ScopedConstants.SourceOffset = static_cast<std::uint32_t>(InSourceBase);
+    ScopedConstants.OutputOffset = 0;
+    ScopedConstants.CounterOffset = 0;
+    ScopedConstants.CommandOffset = 0;
+    ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MCullPipeline);
+    ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MCullLayout, 0, 1,
+                                      &ScopedFrame.Set, 0, nullptr);
+    ScopedApi.vkCmdPushConstants(InCommandBuffer, MCullLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                 sizeof(ScopedConstants), &ScopedConstants);
+    ScopedApi.vkCmdDispatch(InCommandBuffer, (ScopedConstants.ItemCount + 63u) / 64u, 1, 1);
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &ScopedBarrier, 0, nullptr, 0, nullptr);
+    ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MCullFinalizePipeline);
+    ScopedApi.vkCmdDispatch(InCommandBuffer, 1, 1, 1);
+    VkBufferMemoryBarrier ScopedCounterBarrier{};
+    ScopedCounterBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    ScopedCounterBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    ScopedCounterBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    ScopedCounterBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedCounterBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedCounterBarrier.buffer = ScopedFrame.CounterBuffer;
+    ScopedCounterBarrier.offset = 0;
+    ScopedCounterBarrier.size = static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(std::uint32_t);
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &ScopedCounterBarrier, 0, nullptr);
+    VkBufferMemoryBarrier ScopedCommandBarrier{};
+    ScopedCommandBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    ScopedCommandBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    ScopedCommandBarrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    ScopedCommandBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedCommandBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedCommandBarrier.buffer = ScopedFrame.CommandBuffer;
+    ScopedCommandBarrier.offset = 0;
+    ScopedCommandBarrier.size =
+        static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(VkDrawIndexedIndirectCommand);
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0, 0, nullptr, 1, &ScopedCommandBarrier, 0,
+                                   nullptr);
+    VkBufferCopy ScopedReadbackCopy{};
+    ScopedReadbackCopy.size = static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(std::uint32_t);
+    ScopedApi.vkCmdCopyBuffer(InCommandBuffer, ScopedFrame.CounterBuffer, ScopedFrame.ReadbackBuffer, 1,
+                              &ScopedReadbackCopy);
+    VkMemoryBarrier ScopedVertexBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                        VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT};
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 1, &ScopedVertexBarrier, 0, nullptr, 0,
+                                   nullptr);
+}
+
+void VulkanRHI::RecordMainCull(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket,
+                               VkDeviceSize InSourceBase)
+{
+    if (!MCullReady || MFrameIndex >= MCullFrames.size() || InPacket.batches.empty() ||
+        InPacket.batches.size() > kMaxCullBatches)
+    {
+        return;
+    }
+    CullFrame& ScopedFrame = MCullFrames[MFrameIndex];
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (MImageIndex < MDrawDepthViews.size())
+    {
+        UpdateCullDepth(ScopedFrame.Set, MDrawDepthViews[MImageIndex]);
+    }
+    VkMemoryBarrier ScopedDepthBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr,
+                                       VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT};
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer,
+                                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &ScopedDepthBarrier, 0, nullptr, 0,
+                                   nullptr);
+    ScopedApi.vkCmdFillBuffer(InCommandBuffer, ScopedFrame.CounterBuffer, 0,
+                              static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(std::uint32_t), 0u);
+    VkMemoryBarrier ScopedBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &ScopedBarrier, 0, nullptr, 0,
+                                   nullptr);
+    GpuCullingConstants ScopedConstants{};
+    const float ScopedHalfX = InPacket.camera.viewport.X * 0.5f / std::max(InPacket.camera.zoom, 0.0001f);
+    const float ScopedHalfY = InPacket.camera.viewport.Y * 0.5f / std::max(InPacket.camera.zoom, 0.0001f);
+    ScopedConstants.ViewBounds = Vector4D{InPacket.camera.center.X - ScopedHalfX,
+                                          InPacket.camera.center.Y - ScopedHalfY,
+                                          InPacket.camera.center.X + ScopedHalfX,
+                                          InPacket.camera.center.Y + ScopedHalfY};
+    ScopedConstants.Viewport = Vector4D{InPacket.camera.viewport.X, InPacket.camera.viewport.Y, 0.0f,
+                                        MDesc.hiZLodScale};
+    ScopedConstants.UseDepth = MHiZReady ? 1u : 0u;
+    ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MCullLayout, 0, 1,
+                                      &ScopedFrame.Set, 0, nullptr);
+    std::uint32_t ScopedOutput = 0;
+    for (std::uint32_t ScopedBatchIndex = 0; ScopedBatchIndex < InPacket.batches.size(); ++ScopedBatchIndex)
+    {
+        const DrawBatch& ScopedBatch = InPacket.batches[ScopedBatchIndex];
+        if (ScopedBatch.itemCount == 0 || ScopedOutput >= kMaxCulledItems)
+        {
+            continue;
+        }
+        const std::uint32_t ScopedCount = std::min(ScopedBatch.itemCount, kMaxCulledItems - ScopedOutput);
+        ScopedConstants.ItemCount = ScopedCount;
+        ScopedConstants.MaxVisible = ScopedCount;
+        ScopedConstants.SourceOffset = static_cast<std::uint32_t>(InSourceBase + ScopedBatch.firstItem);
+        ScopedConstants.OutputOffset = ScopedOutput;
+        ScopedConstants.CounterOffset = ScopedBatchIndex;
+        ScopedConstants.CommandOffset = ScopedBatchIndex;
+        ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MCullPipeline);
+        ScopedApi.vkCmdPushConstants(InCommandBuffer, MCullLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                     sizeof(ScopedConstants), &ScopedConstants);
+        ScopedApi.vkCmdDispatch(InCommandBuffer, (ScopedCount + 63u) / 64u, 1, 1);
+        ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &ScopedBarrier, 0, nullptr, 0,
+                                       nullptr);
+        ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MCullFinalizePipeline);
+        ScopedApi.vkCmdPushConstants(InCommandBuffer, MCullLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                     sizeof(ScopedConstants), &ScopedConstants);
+        ScopedApi.vkCmdDispatch(InCommandBuffer, 1, 1, 1);
+        ScopedOutput += ScopedCount;
+    }
+    VkMemoryBarrier ScopedDrawBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT,
+                                      VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT};
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 1,
+                                   &ScopedDrawBarrier, 0, nullptr, 0, nullptr);
+    VkBufferMemoryBarrier ScopedCounterRead{};
+    ScopedCounterRead.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    ScopedCounterRead.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    ScopedCounterRead.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    ScopedCounterRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedCounterRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedCounterRead.buffer = ScopedFrame.CounterBuffer;
+    ScopedCounterRead.offset = 0;
+    ScopedCounterRead.size = static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(std::uint32_t);
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &ScopedCounterRead, 0, nullptr);
+    VkBufferCopy ScopedCulledCopy{};
+    ScopedCulledCopy.size = static_cast<VkDeviceSize>(kMaxCullBatches) * sizeof(std::uint32_t);
+    ScopedApi.vkCmdCopyBuffer(InCommandBuffer, ScopedFrame.CounterBuffer, ScopedFrame.ReadbackBuffer, 1,
+                              &ScopedCulledCopy);
 }
 
 bool VulkanRHI::CreateCommands()
@@ -1499,6 +3218,11 @@ bool VulkanRHI::CreateSyncObjects()
             ScopedApi.vkDestroyFence(MDevice, MInFlight[ScopedI], nullptr);
             MInFlight[ScopedI] = VK_NULL_HANDLE;
         }
+        if (MTimestampPools[ScopedI] != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyQueryPool(MDevice, MTimestampPools[ScopedI], nullptr);
+            MTimestampPools[ScopedI] = VK_NULL_HANDLE;
+        }
     }
     for (VkSemaphore& ScopedSemaphore : MRenderFinished)
     {
@@ -1537,17 +3261,78 @@ bool VulkanRHI::CreateSyncObjects()
             return false;
         }
     }
+
+    MTimestampsReady = false;
+    MTimestampPeriod = 0.0f;
+    if (MPhysical != VK_NULL_HANDLE && ScopedApi.vkGetPhysicalDeviceProperties != nullptr)
+    {
+        VkPhysicalDeviceProperties ScopedProperties{};
+        ScopedApi.vkGetPhysicalDeviceProperties(MPhysical, &ScopedProperties);
+        MTimestampPeriod = ScopedProperties.limits.timestampPeriod;
+        std::uint32_t ScopedQueueCount = 0;
+        ScopedApi.vkGetPhysicalDeviceQueueFamilyProperties(MPhysical, &ScopedQueueCount, nullptr);
+        std::vector<VkQueueFamilyProperties> ScopedQueues(ScopedQueueCount);
+        if (ScopedQueueCount > 0)
+        {
+            ScopedApi.vkGetPhysicalDeviceQueueFamilyProperties(MPhysical, &ScopedQueueCount, ScopedQueues.data());
+        }
+        const bool ScopedTimestampQueue =
+            MQueueFamily < ScopedQueues.size() && ScopedQueues[MQueueFamily].timestampValidBits != 0;
+        bool ScopedTimestampOk = MTimestampPeriod > 0.0f && ScopedTimestampQueue;
+        if (ScopedTimestampOk)
+        {
+            VkQueryPoolCreateInfo ScopedQueryInfo{};
+            ScopedQueryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            ScopedQueryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            ScopedQueryInfo.queryCount = TimestampCount;
+            for (std::uint32_t ScopedI = 0; ScopedI < kMaxFramesInFlight; ++ScopedI)
+            {
+                if (ScopedApi.vkCreateQueryPool(MDevice, &ScopedQueryInfo, nullptr, &MTimestampPools[ScopedI]) !=
+                    VK_SUCCESS)
+                {
+                    ScopedTimestampOk = false;
+                    break;
+                }
+            }
+        }
+        if (ScopedTimestampOk)
+        {
+            // A fresh query pool has never been reset, so reading it would violate
+            // VUID-vkGetQueryPoolResults-None-09401. Reset every pool once through a
+            // one-shot submit before the first frame can read it.
+            for (std::uint32_t ScopedI = 0; ScopedI < kMaxFramesInFlight; ++ScopedI)
+            {
+                const VkCommandBuffer ScopedInit = BeginOneShot();
+                ScopedApi.vkCmdResetQueryPool(ScopedInit, MTimestampPools[ScopedI], 0, TimestampCount);
+                EndOneShot(ScopedInit);
+            }
+        }
+        if (!ScopedTimestampOk)
+        {
+            for (VkQueryPool& ScopedPool : MTimestampPools)
+            {
+                if (ScopedPool != VK_NULL_HANDLE)
+                {
+                    ScopedApi.vkDestroyQueryPool(MDevice, ScopedPool, nullptr);
+                    ScopedPool = VK_NULL_HANDLE;
+                }
+            }
+        }
+        MTimestampsReady = ScopedTimestampOk;
+    }
+    MInfo.timestamps = MTimestampsReady;
     return true;
 }
 
 bool VulkanRHI::CreateDescriptors()
 {
     Vk::Api& ScopedApi = Vk::GetApi();
+    MInfo.staticCaches = MDesc.enableStaticCaches;
 
-    // Binding 0 atlas, 1 SDF field, 2 per-frame SDF block. Every descriptor set
-    // built from this layout (the built-in atlas and each texture array) gets all
-    // three written by WriteSdfDescriptors.
-    std::array<VkDescriptorSetLayoutBinding, 7> ScopedBindings{};
+    // Binding 0 atlas, 1 SDF field, 2 dynamic per-view SDF block. Every
+    // descriptor set built from this layout (the built-in atlas and each texture
+    // array) gets all bindings written by WriteSdfDescriptors.
+    std::array<VkDescriptorSetLayoutBinding, 9> ScopedBindings{};
     ScopedBindings[0].binding = 0;
     ScopedBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     ScopedBindings[0].descriptorCount = 1;
@@ -1557,7 +3342,7 @@ bool VulkanRHI::CreateDescriptors()
     ScopedBindings[1].descriptorCount = 1;
     ScopedBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     ScopedBindings[2].binding = 2;
-    ScopedBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     ScopedBindings[2].descriptorCount = 1;
     ScopedBindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     ScopedBindings[3].binding = 3;
@@ -1576,10 +3361,35 @@ bool VulkanRHI::CreateDescriptors()
     ScopedBindings[6].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     ScopedBindings[6].descriptorCount = kFeedbackSlots;
     ScopedBindings[6].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    // Sparse brick atlas: the header table and the tile texture. Both stages use
+    // them, so the fragment pass and the mask compute pass share the layout.
+    ScopedBindings[7].binding = 7;
+    ScopedBindings[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedBindings[7].descriptorCount = 1;
+    ScopedBindings[7].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+    ScopedBindings[8].binding = 8;
+    ScopedBindings[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedBindings[8].descriptorCount = 1;
+    ScopedBindings[8].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     if (!CreateSdfShadowResources())
     {
         return false;
+    }
+    MGiReady = CreateGiResources();
+    if (!MGiReady)
+    {
+        LogWarn("vulkan", "GI probe buffers unavailable; SDF GI stays on the CPU path");
+    }
+    // Clustered lighting is optional: if its buffers or pipelines cannot be
+    // created the renderer keeps running with the CPU lighting path.
+    if (MClusterRequested && MGiReady)
+    {
+        if (!CreateClusterResources())
+        {
+            LogInfo("vulkan", "cluster resources unavailable; GPU clustered lighting disabled");
+            DestroyClusterResources();
+        }
     }
 
     VkDescriptorSetLayoutCreateInfo ScopedLayoutInfo{};
@@ -1592,13 +3402,15 @@ bool VulkanRHI::CreateDescriptors()
         return false;
     }
 
-    std::array<VkDescriptorPoolSize, 3> ScopedPoolSizes{};
+    std::array<VkDescriptorPoolSize, 4> ScopedPoolSizes{};
     ScopedPoolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    ScopedPoolSizes[0].descriptorCount = (kMaxTextureArrays + 1) * 5;
-    ScopedPoolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedPoolSizes[0].descriptorCount = (kMaxTextureArrays + 1) * 6;
+    ScopedPoolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     ScopedPoolSizes[1].descriptorCount = kMaxTextureArrays + 1;
     ScopedPoolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     ScopedPoolSizes[2].descriptorCount = (kMaxTextureArrays + 1) * kFeedbackSlots;
+    ScopedPoolSizes[3].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedPoolSizes[3].descriptorCount = kMaxTextureArrays + 1;
 
     VkDescriptorPoolCreateInfo ScopedPoolInfo{};
     ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1629,13 +3441,12 @@ bool VulkanRHI::CreateSdfShadowResources()
 {
     Vk::Api& ScopedApi = Vk::GetApi();
 
-    // The static field lives in an R8 texture (distance encoded as
-    // clamp(distance / encodeScale, 0, 1)); the shader decodes it with the same
-    // scale from the block below.
+    // The static field lives in an R32F texture and stores world-space distance
+    // directly. The neutral encode scale keeps the shader contract stable.
     VkImageCreateInfo ScopedImageInfo{};
     ScopedImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     ScopedImageInfo.imageType = VK_IMAGE_TYPE_2D;
-    ScopedImageInfo.format = VK_FORMAT_R8_UNORM;
+    ScopedImageInfo.format = VK_FORMAT_R32_SFLOAT;
     ScopedImageInfo.extent = {kSdfFieldSize, kSdfFieldSize, 1};
     ScopedImageInfo.mipLevels = 1;
     ScopedImageInfo.arrayLayers = 1;
@@ -1670,12 +3481,14 @@ bool VulkanRHI::CreateSdfShadowResources()
         LogError("vulkan", "SDF field image memory failed");
         return false;
     }
+    InitImageLayout(MSdfFieldImage, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    MSdfFieldInitialized = true;
 
     VkImageViewCreateInfo ScopedViewInfo{};
     ScopedViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     ScopedViewInfo.image = MSdfFieldImage;
     ScopedViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    ScopedViewInfo.format = VK_FORMAT_R8_UNORM;
+    ScopedViewInfo.format = VK_FORMAT_R32_SFLOAT;
     ScopedViewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     if (ScopedApi.vkCreateImageView(MDevice, &ScopedViewInfo, nullptr, &MSdfFieldView) != VK_SUCCESS)
     {
@@ -1697,19 +3510,136 @@ bool VulkanRHI::CreateSdfShadowResources()
         return false;
     }
 
-    if (!CreateBuffer(sizeof(SdfGpuBlock), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+    constexpr VkDeviceSize ScopedFieldBytes =
+        static_cast<VkDeviceSize>(kSdfFieldSize) * kSdfFieldSize * sizeof(float);
+    for (std::uint32_t ScopedFrame = 0; ScopedFrame < kMaxFramesInFlight; ++ScopedFrame)
+    {
+        if (!CreateBuffer(ScopedFieldBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &MSdfFieldStagingBuffers[ScopedFrame], &MSdfFieldStagingMemories[ScopedFrame]))
+        {
+            LogError("vulkan", "SDF field staging buffer failed");
+            return false;
+        }
+        if (ScopedApi.vkMapMemory(MDevice, MSdfFieldStagingMemories[ScopedFrame], 0, ScopedFieldBytes, 0,
+                                  &MSdfFieldStagingMapped[ScopedFrame]) != VK_SUCCESS)
+        {
+            MSdfFieldStagingMapped[ScopedFrame] = nullptr;
+            return false;
+        }
+    }
+
+    const VkDeviceSize ScopedBlockBytes = static_cast<VkDeviceSize>(SdfViewSlots) * SdfBlockStride;
+    if (!CreateBuffer(ScopedBlockBytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &MSdfBlockBuffer,
                       &MSdfBlockMemory))
     {
         LogError("vulkan", "SDF parameter buffer failed");
         return false;
     }
-    if (ScopedApi.vkMapMemory(MDevice, MSdfBlockMemory, 0, sizeof(SdfGpuBlock), 0, &MSdfBlockMapped) != VK_SUCCESS)
+    if (ScopedApi.vkMapMemory(MDevice, MSdfBlockMemory, 0, ScopedBlockBytes, 0, &MSdfBlockMapped) != VK_SUCCESS)
     {
         LogError("vulkan", "SDF parameter buffer map failed");
         MSdfBlockMapped = nullptr;
         return false;
     }
+
+    // Brick table: host-visible, rewritten when the field version changes.
+    const VkDeviceSize ScopedTableBytes =
+        static_cast<VkDeviceSize>(kSdfTableCapacity) * kSdfTableEntryBytes;
+    if (!CreateBuffer(ScopedTableBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &MSdfTableBuffer,
+                      &MSdfTableMemory))
+    {
+        LogError("vulkan", "SDF brick table buffer failed");
+        return false;
+    }
+    if (ScopedApi.vkMapMemory(MDevice, MSdfTableMemory, 0, ScopedTableBytes, 0, &MSdfTableMapped) != VK_SUCCESS)
+    {
+        LogError("vulkan", "SDF brick table map failed");
+        MSdfTableMapped = nullptr;
+        return false;
+    }
+    std::memset(MSdfTableMapped, 0, static_cast<std::size_t>(ScopedTableBytes));
+
+    // Sparse atlas texture: one 16x16 tile per narrow brick, R32F like the field.
+    VkImageCreateInfo ScopedAtlasInfo{};
+    ScopedAtlasInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ScopedAtlasInfo.imageType = VK_IMAGE_TYPE_2D;
+    ScopedAtlasInfo.format = VK_FORMAT_R32_SFLOAT;
+    ScopedAtlasInfo.extent = {kSdfAtlasSize, kSdfAtlasSize, 1};
+    ScopedAtlasInfo.mipLevels = 1;
+    ScopedAtlasInfo.arrayLayers = 1;
+    ScopedAtlasInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    ScopedAtlasInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    ScopedAtlasInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    ScopedAtlasInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    if (ScopedApi.vkCreateImage(MDevice, &ScopedAtlasInfo, nullptr, &MSdfAtlasImage) != VK_SUCCESS)
+    {
+        LogError("vulkan", "SDF atlas image creation failed");
+        return false;
+    }
+    VkMemoryRequirements ScopedAtlasRequirements{};
+    ScopedApi.vkGetImageMemoryRequirements(MDevice, MSdfAtlasImage, &ScopedAtlasRequirements);
+    VkMemoryAllocateInfo ScopedAtlasAllocate{};
+    ScopedAtlasAllocate.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ScopedAtlasAllocate.allocationSize = ScopedAtlasRequirements.size;
+    ScopedAtlasAllocate.memoryTypeIndex = 0;
+    for (std::uint32_t ScopedI = 0; ScopedI < MMemoryProperties.memoryTypeCount; ++ScopedI)
+    {
+        if ((ScopedAtlasRequirements.memoryTypeBits & (1u << ScopedI)) != 0 &&
+            (MMemoryProperties.memoryTypes[ScopedI].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0)
+        {
+            ScopedAtlasAllocate.memoryTypeIndex = ScopedI;
+            break;
+        }
+    }
+    if (ScopedApi.vkAllocateMemory(MDevice, &ScopedAtlasAllocate, nullptr, &MSdfAtlasMemory) != VK_SUCCESS ||
+        ScopedApi.vkBindImageMemory(MDevice, MSdfAtlasImage, MSdfAtlasMemory, 0) != VK_SUCCESS)
+    {
+        LogError("vulkan", "SDF atlas memory failed");
+        return false;
+    }
+    VkImageViewCreateInfo ScopedAtlasViewInfo{};
+    ScopedAtlasViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ScopedAtlasViewInfo.image = MSdfAtlasImage;
+    ScopedAtlasViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    ScopedAtlasViewInfo.format = VK_FORMAT_R32_SFLOAT;
+    ScopedAtlasViewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    if (ScopedApi.vkCreateImageView(MDevice, &ScopedAtlasViewInfo, nullptr, &MSdfAtlasView) != VK_SUCCESS)
+    {
+        LogError("vulkan", "SDF atlas view failed");
+        return false;
+    }
+    VkSamplerCreateInfo ScopedAtlasSamplerInfo{};
+    ScopedAtlasSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    ScopedAtlasSamplerInfo.magFilter = VK_FILTER_LINEAR;
+    ScopedAtlasSamplerInfo.minFilter = VK_FILTER_LINEAR;
+    ScopedAtlasSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedAtlasSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedAtlasSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedAtlasSamplerInfo.maxLod = 0.0f;
+    if (ScopedApi.vkCreateSampler(MDevice, &ScopedAtlasSamplerInfo, nullptr, &MSdfAtlasSampler) != VK_SUCCESS)
+    {
+        LogError("vulkan", "SDF atlas sampler failed");
+        return false;
+    }
+
+    // The compute set samples the atlas from the first dispatch, so bring the
+    // image out of UNDEFINED and zero it before any frame can bind it.
+    std::memset(MSdfFieldStagingMapped[0], 0, static_cast<std::size_t>(kSdfAtlasSize) * kSdfAtlasSize * sizeof(float));
+    const VkCommandBuffer ScopedAtlasInit = BeginOneShot();
+    TransitionImage(ScopedAtlasInit, MSdfAtlasImage, VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkBufferImageCopy ScopedAtlasCopy{};
+    ScopedAtlasCopy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    ScopedAtlasCopy.imageExtent = {kSdfAtlasSize, kSdfAtlasSize, 1};
+    ScopedApi.vkCmdCopyBufferToImage(ScopedAtlasInit, MSdfFieldStagingBuffers[0], MSdfAtlasImage,
+                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedAtlasCopy);
+    TransitionImage(ScopedAtlasInit, MSdfAtlasImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    EndOneShot(ScopedAtlasInit);
+    MSdfAtlasInitialized = true;
 
     // Half-resolution screen mask: the sprite shader samples it instead of
     // marching per pixel, and the compute pass is scheduled by the render graph.
@@ -1769,6 +3699,7 @@ bool VulkanRHI::CreateVtFallbackResources()
         LogError("vulkan", "VT fallback table memory failed");
         return false;
     }
+    InitImageLayout(MVtFallbackTable, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     VkImageViewCreateInfo ScopedTableView{};
     ScopedTableView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     ScopedTableView.image = MVtFallbackTable;
@@ -1828,6 +3759,7 @@ bool VulkanRHI::CreateVtFallbackResources()
         LogError("vulkan", "VT fallback page memory failed");
         return false;
     }
+    InitImageLayout(MVtFallbackPages, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     VkImageViewCreateInfo ScopedPagesView{};
     ScopedPagesView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     ScopedPagesView.image = MVtFallbackPages;
@@ -1883,6 +3815,7 @@ bool VulkanRHI::CreateVtFallbackResources()
         LogError("vulkan", "VT feedback fallback memory failed");
         return false;
     }
+    InitImageLayout(MVtFeedbackFallback, VK_IMAGE_LAYOUT_GENERAL);
     VkImageViewCreateInfo ScopedFeedbackView{};
     ScopedFeedbackView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     ScopedFeedbackView.image = MVtFeedbackFallback;
@@ -1979,21 +3912,21 @@ void VulkanRHI::ApplyVirtualTexture(const FramePacket& InPacket)
         return;
     }
     MActiveVirtualTexture = InPacket.virtualTexture;
-    // The VT is bound once at startup in the current editor flow, before any VT
-    // draw is recorded, so rewriting the shared sprite sets is safe here.
-    WriteSdfDescriptors(MDescriptorSet);
-    for (const std::unique_ptr<TextureArray>& ScopedArray : MTextureArrays)
-    {
-        if (ScopedArray != nullptr && ScopedArray->descriptor != VK_NULL_HANDLE)
-        {
-            WriteSdfDescriptors(ScopedArray->descriptor);
-        }
-    }
+    // The shared sprite sets are rewritten in BeginFrame, before any pass binds
+    // them: updating a set that the recording command buffer already bound
+    // invalidates that command buffer.
+    MVirtualTextureDirty = true;
     LogInfo("vulkan", "virtual texture #{} bound to the sprite sets", InPacket.virtualTexture.id);
 }
 
 bool VulkanRHI::EnsureSdfMask(Extent2D InMaskExtent)
 {
+    if (MInFrame)
+    {
+        // Recreating the mask rewrites descriptor sets. The mask is created or
+        // resized in BeginFrame, before any pass binds those sets.
+        return MSdfMaskView != VK_NULL_HANDLE;
+    }
     if (InMaskExtent.width == 0 || InMaskExtent.height == 0)
     {
         return false;
@@ -2004,6 +3937,9 @@ bool VulkanRHI::EnsureSdfMask(Extent2D InMaskExtent)
         return true;
     }
     Vk::Api& ScopedApi = Vk::GetApi();
+    // A viewport resize can reach this point mid-frame. Do not free an image
+    // that command buffers from older frames may still reference.
+    WaitIdle();
     DestroySdfMaskResources();
 
     VkImageCreateInfo ScopedImageInfo{};
@@ -2012,7 +3948,7 @@ bool VulkanRHI::EnsureSdfMask(Extent2D InMaskExtent)
     ScopedImageInfo.format = VK_FORMAT_R16_SFLOAT;
     ScopedImageInfo.extent = {InMaskExtent.width, InMaskExtent.height, 1};
     ScopedImageInfo.mipLevels = 1;
-    ScopedImageInfo.arrayLayers = 1;
+    ScopedImageInfo.arrayLayers = SdfViewSlots;
     ScopedImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     ScopedImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     ScopedImageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
@@ -2046,9 +3982,9 @@ bool VulkanRHI::EnsureSdfMask(Extent2D InMaskExtent)
     VkImageViewCreateInfo ScopedViewInfo{};
     ScopedViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     ScopedViewInfo.image = MSdfMaskImage;
-    ScopedViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    ScopedViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     ScopedViewInfo.format = VK_FORMAT_R16_SFLOAT;
-    ScopedViewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    ScopedViewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, SdfViewSlots};
     if (ScopedApi.vkCreateImageView(MDevice, &ScopedViewInfo, nullptr, &MSdfMaskView) != VK_SUCCESS)
     {
         LogError("vulkan", "SDF mask view failed");
@@ -2073,12 +4009,14 @@ bool VulkanRHI::EnsureSdfMask(Extent2D InMaskExtent)
     const VkCommandBuffer ScopedCommand = BeginOneShot();
     if (ScopedCommand != VK_NULL_HANDLE)
     {
-        TransitionImage(ScopedCommand, MSdfMaskImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+        TransitionImage(ScopedCommand, MSdfMaskImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                        SdfViewSlots);
         EndOneShot(ScopedCommand);
     }
     MSdfMaskExtent = VkExtent2D{InMaskExtent.width, InMaskExtent.height};
-    MSdfMaskValid = true;
-    LogInfo("vulkan", "SDF shadow mask: {}x{} (r16f, compute + sampled)", InMaskExtent.width, InMaskExtent.height);
+    MSdfMaskPublished.fill(false);
+    LogInfo("vulkan", "SDF shadow mask: {}x{} x {} layers (r16f, compute + sampled)", InMaskExtent.width,
+            InMaskExtent.height, SdfViewSlots);
 
     // Descriptor sets that sample the mask must point at the new view.
     if (MDescriptorSet != VK_NULL_HANDLE)
@@ -2092,7 +4030,7 @@ bool VulkanRHI::EnsureSdfMask(Extent2D InMaskExtent)
             WriteSdfDescriptors(ScopedArray->descriptor);
         }
     }
-    UpdateSdfComputeSets(MSdfMaskView);
+    UpdateSdfComputeSets();
     return true;
 }
 
@@ -2124,19 +4062,19 @@ void VulkanRHI::DestroySdfMaskResources() noexcept
         MSdfMaskMemory = VK_NULL_HANDLE;
     }
     MSdfMaskExtent = {};
-    MSdfMaskValid = false;
+    MSdfMaskPublished.fill(false);
 }
 
-void VulkanRHI::UpdateSdfComputeSets(VkImageView InMaskView) const
+void VulkanRHI::UpdateSdfComputeSets()
 {
-    if (MSdfComputeSetLayout == VK_NULL_HANDLE || InMaskView == VK_NULL_HANDLE)
+    if (MSdfComputeSetLayout == VK_NULL_HANDLE || MSdfMaskView == VK_NULL_HANDLE)
     {
         return;
     }
     Vk::Api& ScopedApi = Vk::GetApi();
-    for (std::uint32_t ScopedFrame = 0; ScopedFrame < kSdfMaskFrames; ++ScopedFrame)
+    for (std::uint32_t ScopedSlot = 0; ScopedSlot < SdfViewSlots; ++ScopedSlot)
     {
-        if (MSdfComputeSets[ScopedFrame] == VK_NULL_HANDLE || MSdfComputeBuffers[ScopedFrame] == VK_NULL_HANDLE)
+        if (MSdfComputeSets[ScopedSlot] == VK_NULL_HANDLE || MSdfComputeBuffers[ScopedSlot] == VK_NULL_HANDLE)
         {
             continue;
         }
@@ -2145,31 +4083,61 @@ void VulkanRHI::UpdateSdfComputeSets(VkImageView InMaskView) const
         ScopedFieldInfo.imageView = MSdfFieldView;
         ScopedFieldInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkDescriptorImageInfo ScopedMaskInfo{};
-        ScopedMaskInfo.imageView = InMaskView;
+        ScopedMaskInfo.imageView = MSdfMaskView;
         ScopedMaskInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        VkDescriptorImageInfo ScopedHistoryInfo{};
+        ScopedHistoryInfo.sampler = MSdfMaskSampler;
+        ScopedHistoryInfo.imageView = MSdfMaskView;
+        ScopedHistoryInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        VkDescriptorBufferInfo ScopedAtlasTableInfo{};
+        ScopedAtlasTableInfo.buffer = MSdfTableBuffer;
+        ScopedAtlasTableInfo.offset = 0;
+        ScopedAtlasTableInfo.range = VK_WHOLE_SIZE;
+        VkDescriptorImageInfo ScopedAtlasInfo{};
+        ScopedAtlasInfo.sampler = MSdfAtlasSampler;
+        ScopedAtlasInfo.imageView = MSdfAtlasView;
+        ScopedAtlasInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkDescriptorBufferInfo ScopedBufferInfo{};
-        ScopedBufferInfo.buffer = MSdfComputeBuffers[ScopedFrame];
+        ScopedBufferInfo.buffer = MSdfComputeBuffers[ScopedSlot];
         ScopedBufferInfo.offset = 0;
         ScopedBufferInfo.range = kSdfShadowBlockBytes;
-        std::array<VkWriteDescriptorSet, 3> ScopedWrites{};
+        std::array<VkWriteDescriptorSet, 6> ScopedWrites{};
         ScopedWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        ScopedWrites[0].dstSet = MSdfComputeSets[ScopedFrame];
+        ScopedWrites[0].dstSet = MSdfComputeSets[ScopedSlot];
         ScopedWrites[0].dstBinding = 0;
         ScopedWrites[0].descriptorCount = 1;
         ScopedWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         ScopedWrites[0].pImageInfo = &ScopedFieldInfo;
         ScopedWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        ScopedWrites[1].dstSet = MSdfComputeSets[ScopedFrame];
+        ScopedWrites[1].dstSet = MSdfComputeSets[ScopedSlot];
         ScopedWrites[1].dstBinding = 1;
         ScopedWrites[1].descriptorCount = 1;
         ScopedWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         ScopedWrites[1].pImageInfo = &ScopedMaskInfo;
         ScopedWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        ScopedWrites[2].dstSet = MSdfComputeSets[ScopedFrame];
+        ScopedWrites[2].dstSet = MSdfComputeSets[ScopedSlot];
         ScopedWrites[2].dstBinding = 2;
         ScopedWrites[2].descriptorCount = 1;
         ScopedWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         ScopedWrites[2].pBufferInfo = &ScopedBufferInfo;
+        ScopedWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[3].dstSet = MSdfComputeSets[ScopedSlot];
+        ScopedWrites[3].dstBinding = 3;
+        ScopedWrites[3].descriptorCount = 1;
+        ScopedWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedWrites[3].pImageInfo = &ScopedHistoryInfo;
+        ScopedWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[4].dstSet = MSdfComputeSets[ScopedSlot];
+        ScopedWrites[4].dstBinding = 7;
+        ScopedWrites[4].descriptorCount = 1;
+        ScopedWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        ScopedWrites[4].pBufferInfo = &ScopedAtlasTableInfo;
+        ScopedWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[5].dstSet = MSdfComputeSets[ScopedSlot];
+        ScopedWrites[5].dstBinding = 8;
+        ScopedWrites[5].descriptorCount = 1;
+        ScopedWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedWrites[5].pImageInfo = &ScopedAtlasInfo;
         ScopedApi.vkUpdateDescriptorSets(MDevice, static_cast<std::uint32_t>(ScopedWrites.size()), ScopedWrites.data(), 0,
                                         nullptr);
     }
@@ -2189,7 +4157,7 @@ bool VulkanRHI::CreateSdfComputeResources()
         return false;
     }
 
-    std::array<VkDescriptorSetLayoutBinding, 3> ScopedBindings{};
+    std::array<VkDescriptorSetLayoutBinding, 6> ScopedBindings{};
     ScopedBindings[0].binding = 0;
     ScopedBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     ScopedBindings[0].descriptorCount = 1;
@@ -2202,7 +4170,19 @@ bool VulkanRHI::CreateSdfComputeResources()
     ScopedBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     ScopedBindings[2].descriptorCount = 1;
     ScopedBindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
+    ScopedBindings[3].binding = 3;
+    ScopedBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedBindings[3].descriptorCount = 1;
+    ScopedBindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // Sparse atlas: the same table and tiles the fragment path uses.
+    ScopedBindings[4].binding = 7;
+    ScopedBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedBindings[4].descriptorCount = 1;
+    ScopedBindings[4].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    ScopedBindings[5].binding = 8;
+    ScopedBindings[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedBindings[5].descriptorCount = 1;
+    ScopedBindings[5].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     VkDescriptorSetLayoutCreateInfo ScopedLayoutInfo{};
     ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     ScopedLayoutInfo.bindingCount = static_cast<std::uint32_t>(ScopedBindings.size());
@@ -2213,16 +4193,18 @@ bool VulkanRHI::CreateSdfComputeResources()
         return false;
     }
 
-    std::array<VkDescriptorPoolSize, 3> ScopedPoolSizes{};
+    std::array<VkDescriptorPoolSize, 4> ScopedPoolSizes{};
     ScopedPoolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    ScopedPoolSizes[0].descriptorCount = kSdfMaskFrames;
+    ScopedPoolSizes[0].descriptorCount = SdfViewSlots * 3u;
     ScopedPoolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    ScopedPoolSizes[1].descriptorCount = kSdfMaskFrames;
+    ScopedPoolSizes[1].descriptorCount = SdfViewSlots;
     ScopedPoolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    ScopedPoolSizes[2].descriptorCount = kSdfMaskFrames;
+    ScopedPoolSizes[2].descriptorCount = SdfViewSlots;
+    ScopedPoolSizes[3].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedPoolSizes[3].descriptorCount = SdfViewSlots;
     VkDescriptorPoolCreateInfo ScopedPoolInfo{};
     ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    ScopedPoolInfo.maxSets = kSdfMaskFrames;
+    ScopedPoolInfo.maxSets = SdfViewSlots;
     ScopedPoolInfo.poolSizeCount = static_cast<std::uint32_t>(ScopedPoolSizes.size());
     ScopedPoolInfo.pPoolSizes = ScopedPoolSizes.data();
     if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MSdfComputePool) != VK_SUCCESS)
@@ -2230,35 +4212,35 @@ bool VulkanRHI::CreateSdfComputeResources()
         LogError("vulkan", "SDF compute pool failed");
         return false;
     }
-    std::array<VkDescriptorSetLayout, kSdfMaskFrames> ScopedLayouts{};
+    std::array<VkDescriptorSetLayout, SdfViewSlots> ScopedLayouts{};
     ScopedLayouts.fill(MSdfComputeSetLayout);
     VkDescriptorSetAllocateInfo ScopedAllocate{};
     ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     ScopedAllocate.descriptorPool = MSdfComputePool;
-    ScopedAllocate.descriptorSetCount = kSdfMaskFrames;
+    ScopedAllocate.descriptorSetCount = SdfViewSlots;
     ScopedAllocate.pSetLayouts = ScopedLayouts.data();
     if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, MSdfComputeSets.data()) != VK_SUCCESS)
     {
         LogError("vulkan", "SDF compute sets failed");
         return false;
     }
-    for (std::uint32_t ScopedFrame = 0; ScopedFrame < kSdfMaskFrames; ++ScopedFrame)
+    for (std::uint32_t ScopedSlot = 0; ScopedSlot < SdfViewSlots; ++ScopedSlot)
     {
         if (!CreateBuffer(kSdfShadowBlockBytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                          &MSdfComputeBuffers[ScopedFrame], &MSdfComputeMemories[ScopedFrame]))
+                          &MSdfComputeBuffers[ScopedSlot], &MSdfComputeMemories[ScopedSlot]))
         {
             LogError("vulkan", "SDF compute block buffer failed");
             return false;
         }
-        if (ScopedApi.vkMapMemory(MDevice, MSdfComputeMemories[ScopedFrame], 0, kSdfShadowBlockBytes, 0,
-                                  &MSdfComputeMapped[ScopedFrame]) != VK_SUCCESS)
+        if (ScopedApi.vkMapMemory(MDevice, MSdfComputeMemories[ScopedSlot], 0, kSdfShadowBlockBytes, 0,
+                                  &MSdfComputeMapped[ScopedSlot]) != VK_SUCCESS)
         {
-            MSdfComputeMapped[ScopedFrame] = nullptr;
+            MSdfComputeMapped[ScopedSlot] = nullptr;
             return false;
         }
     }
-    UpdateSdfComputeSets(MSdfMaskView);
+    UpdateSdfComputeSets();
 
     VkPipelineLayoutCreateInfo ScopedPipelineLayout{};
     ScopedPipelineLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -2313,22 +4295,22 @@ void VulkanRHI::DestroySdfShadowResources() noexcept
         ScopedApi.vkDestroyPipelineLayout(MDevice, MSdfComputeLayout, nullptr);
         MSdfComputeLayout = VK_NULL_HANDLE;
     }
-    for (std::uint32_t ScopedFrame = 0; ScopedFrame < kSdfMaskFrames; ++ScopedFrame)
+    for (std::uint32_t ScopedSlot = 0; ScopedSlot < SdfViewSlots; ++ScopedSlot)
     {
-        if (MSdfComputeMapped[ScopedFrame] != nullptr && MSdfComputeMemories[ScopedFrame] != VK_NULL_HANDLE)
+        if (MSdfComputeMapped[ScopedSlot] != nullptr && MSdfComputeMemories[ScopedSlot] != VK_NULL_HANDLE)
         {
-            ScopedApi.vkUnmapMemory(MDevice, MSdfComputeMemories[ScopedFrame]);
-            MSdfComputeMapped[ScopedFrame] = nullptr;
+            ScopedApi.vkUnmapMemory(MDevice, MSdfComputeMemories[ScopedSlot]);
+            MSdfComputeMapped[ScopedSlot] = nullptr;
         }
-        if (MSdfComputeBuffers[ScopedFrame] != VK_NULL_HANDLE)
+        if (MSdfComputeBuffers[ScopedSlot] != VK_NULL_HANDLE)
         {
-            ScopedApi.vkDestroyBuffer(MDevice, MSdfComputeBuffers[ScopedFrame], nullptr);
-            MSdfComputeBuffers[ScopedFrame] = VK_NULL_HANDLE;
+            ScopedApi.vkDestroyBuffer(MDevice, MSdfComputeBuffers[ScopedSlot], nullptr);
+            MSdfComputeBuffers[ScopedSlot] = VK_NULL_HANDLE;
         }
-        if (MSdfComputeMemories[ScopedFrame] != VK_NULL_HANDLE)
+        if (MSdfComputeMemories[ScopedSlot] != VK_NULL_HANDLE)
         {
-            ScopedApi.vkFreeMemory(MDevice, MSdfComputeMemories[ScopedFrame], nullptr);
-            MSdfComputeMemories[ScopedFrame] = VK_NULL_HANDLE;
+            ScopedApi.vkFreeMemory(MDevice, MSdfComputeMemories[ScopedSlot], nullptr);
+            MSdfComputeMemories[ScopedSlot] = VK_NULL_HANDLE;
         }
     }
     if (MSdfComputePool != VK_NULL_HANDLE)
@@ -2340,6 +4322,24 @@ void VulkanRHI::DestroySdfShadowResources() noexcept
     {
         ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MSdfComputeSetLayout, nullptr);
         MSdfComputeSetLayout = VK_NULL_HANDLE;
+    }
+    for (std::uint32_t ScopedFrame = 0; ScopedFrame < kMaxFramesInFlight; ++ScopedFrame)
+    {
+        if (MSdfFieldStagingMapped[ScopedFrame] != nullptr && MSdfFieldStagingMemories[ScopedFrame] != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkUnmapMemory(MDevice, MSdfFieldStagingMemories[ScopedFrame]);
+            MSdfFieldStagingMapped[ScopedFrame] = nullptr;
+        }
+        if (MSdfFieldStagingBuffers[ScopedFrame] != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, MSdfFieldStagingBuffers[ScopedFrame], nullptr);
+            MSdfFieldStagingBuffers[ScopedFrame] = VK_NULL_HANDLE;
+        }
+        if (MSdfFieldStagingMemories[ScopedFrame] != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, MSdfFieldStagingMemories[ScopedFrame], nullptr);
+            MSdfFieldStagingMemories[ScopedFrame] = VK_NULL_HANDLE;
+        }
     }
     if (MSdfBlockMapped != nullptr && MSdfBlockMemory != VK_NULL_HANDLE)
     {
@@ -2378,6 +4378,595 @@ void VulkanRHI::DestroySdfShadowResources() noexcept
     }
     MSdfFieldInitialized = false;
     MSdfFieldUploadPending = false;
+    // Sparse atlas resources.
+    if (MSdfTableMapped != nullptr)
+    {
+        ScopedApi.vkUnmapMemory(MDevice, MSdfTableMemory);
+        MSdfTableMapped = nullptr;
+    }
+    if (MSdfTableBuffer != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyBuffer(MDevice, MSdfTableBuffer, nullptr);
+        MSdfTableBuffer = VK_NULL_HANDLE;
+    }
+    if (MSdfTableMemory != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkFreeMemory(MDevice, MSdfTableMemory, nullptr);
+        MSdfTableMemory = VK_NULL_HANDLE;
+    }
+    if (MSdfAtlasSampler != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroySampler(MDevice, MSdfAtlasSampler, nullptr);
+        MSdfAtlasSampler = VK_NULL_HANDLE;
+    }
+    if (MSdfAtlasView != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyImageView(MDevice, MSdfAtlasView, nullptr);
+        MSdfAtlasView = VK_NULL_HANDLE;
+    }
+    if (MSdfAtlasImage != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyImage(MDevice, MSdfAtlasImage, nullptr);
+        MSdfAtlasImage = VK_NULL_HANDLE;
+    }
+    if (MSdfAtlasMemory != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkFreeMemory(MDevice, MSdfAtlasMemory, nullptr);
+        MSdfAtlasMemory = VK_NULL_HANDLE;
+    }
+}
+
+bool VulkanRHI::CreateGiResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    for (GiFrame& ScopedFrame : MGiFrames)
+    {
+        if (!CreateBuffer(static_cast<VkDeviceSize>(kMaxGiProbes) * sizeof(GpuGiProbe),
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &ScopedFrame.ProbeBuffer, &ScopedFrame.ProbeMemory) ||
+            !CreateBuffer(sizeof(GpuGiVolumeHeader), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &ScopedFrame.HeaderBuffer, &ScopedFrame.HeaderMemory))
+        {
+            return false;
+        }
+        if (ScopedApi.vkMapMemory(MDevice, ScopedFrame.ProbeMemory, 0, VK_WHOLE_SIZE, 0,
+                                  &ScopedFrame.ProbeMapped) != VK_SUCCESS ||
+            ScopedApi.vkMapMemory(MDevice, ScopedFrame.HeaderMemory, 0, VK_WHOLE_SIZE, 0,
+                                  &ScopedFrame.HeaderMapped) != VK_SUCCESS)
+        {
+            return false;
+        }
+        std::memset(ScopedFrame.ProbeMapped, 0, static_cast<std::size_t>(kMaxGiProbes) * sizeof(GpuGiProbe));
+        std::memset(ScopedFrame.HeaderMapped, 0, sizeof(GpuGiVolumeHeader));
+    }
+    return true;
+}
+
+void VulkanRHI::DestroyGiResources() noexcept
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    for (GiFrame& ScopedFrame : MGiFrames)
+    {
+        if (ScopedFrame.ProbeBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.ProbeBuffer, nullptr);
+            ScopedFrame.ProbeBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.ProbeMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.ProbeMemory, nullptr);
+            ScopedFrame.ProbeMemory = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.HeaderBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.HeaderBuffer, nullptr);
+            ScopedFrame.HeaderBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.HeaderMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.HeaderMemory, nullptr);
+            ScopedFrame.HeaderMemory = VK_NULL_HANDLE;
+        }
+        ScopedFrame.ProbeMapped = nullptr;
+        ScopedFrame.HeaderMapped = nullptr;
+    }
+}
+
+bool VulkanRHI::CreateClusterResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+
+    std::array<VkDescriptorSetLayoutBinding, 5> ScopedBindings{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 3u; ++ScopedIndex)
+    {
+        ScopedBindings[ScopedIndex].binding = ScopedIndex;
+        ScopedBindings[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        ScopedBindings[ScopedIndex].descriptorCount = 1;
+        ScopedBindings[ScopedIndex].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    ScopedBindings[3].binding = 3;
+    ScopedBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedBindings[3].descriptorCount = 1;
+    ScopedBindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    ScopedBindings[4].binding = 4;
+    ScopedBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedBindings[4].descriptorCount = 1;
+    ScopedBindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutCreateInfo ScopedSetInfo{};
+    ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ScopedSetInfo.bindingCount = static_cast<std::uint32_t>(ScopedBindings.size());
+    ScopedSetInfo.pBindings = ScopedBindings.data();
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetInfo, nullptr, &MClusterSetLayout) != VK_SUCCESS)
+    {
+        LogError("vulkan", "cluster descriptor set layout failed");
+        return false;
+    }
+
+    std::array<VkDescriptorPoolSize, 2> ScopedPoolSizes{};
+    ScopedPoolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedPoolSizes[0].descriptorCount = 4u * kMaxFramesInFlight;
+    ScopedPoolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedPoolSizes[1].descriptorCount = kMaxFramesInFlight;
+    VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+    ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ScopedPoolInfo.maxSets = kMaxFramesInFlight;
+    ScopedPoolInfo.poolSizeCount = static_cast<std::uint32_t>(ScopedPoolSizes.size());
+    ScopedPoolInfo.pPoolSizes = ScopedPoolSizes.data();
+    if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MClusterPool) != VK_SUCCESS)
+    {
+        LogError("vulkan", "cluster descriptor pool failed");
+        return false;
+    }
+
+    VkPushConstantRange ScopedRange{};
+    ScopedRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    ScopedRange.offset = 0;
+    ScopedRange.size = sizeof(ClusterGridConstants);
+    VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
+    ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ScopedLayoutInfo.setLayoutCount = 1;
+    ScopedLayoutInfo.pSetLayouts = &MClusterSetLayout;
+    ScopedLayoutInfo.pushConstantRangeCount = 1;
+    ScopedLayoutInfo.pPushConstantRanges = &ScopedRange;
+    if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MClusterLayout) != VK_SUCCESS)
+    {
+        LogError("vulkan", "cluster pipeline layout failed");
+        return false;
+    }
+
+    const auto ScopedCreatePipeline = [this, &ScopedApi](const auto& InCode, VkPipeline* OutPipeline)
+    {
+        VkShaderModule ScopedModule = VK_NULL_HANDLE;
+        VkShaderModuleCreateInfo ScopedModuleInfo{};
+        ScopedModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        ScopedModuleInfo.codeSize = InCode.size() * sizeof(std::uint32_t);
+        ScopedModuleInfo.pCode = InCode.data();
+        if (ScopedApi.vkCreateShaderModule(MDevice, &ScopedModuleInfo, nullptr, &ScopedModule) != VK_SUCCESS)
+        {
+            return false;
+        }
+        VkComputePipelineCreateInfo ScopedPipelineInfo{};
+        ScopedPipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        ScopedPipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        ScopedPipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        ScopedPipelineInfo.stage.module = ScopedModule;
+        ScopedPipelineInfo.stage.pName = "main";
+        ScopedPipelineInfo.layout = MClusterLayout;
+        const VkResult ScopedResult =
+            ScopedApi.vkCreateComputePipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedPipelineInfo, nullptr, OutPipeline);
+        ScopedApi.vkDestroyShaderModule(MDevice, ScopedModule, nullptr);
+        return ScopedResult == VK_SUCCESS;
+    };
+    if (!ScopedCreatePipeline(Shaders::cluster_count, &MClusterCountPipeline) ||
+        !ScopedCreatePipeline(Shaders::cluster_prefix, &MClusterPrefixPipeline) ||
+        !ScopedCreatePipeline(Shaders::cluster_fill, &MClusterFillPipeline))
+    {
+        LogError("vulkan", "cluster compute pipeline failed");
+        return false;
+    }
+
+    for (std::uint32_t ScopedFrame = 0; ScopedFrame < kMaxFramesInFlight; ++ScopedFrame)
+    {
+        ClusterFrame& ScopedTarget = MClusterFrames[ScopedFrame];
+        if (!CreateBuffer(static_cast<VkDeviceSize>(kClusterMaxLights) * sizeof(GpuLight),
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &ScopedTarget.LightBuffer, &ScopedTarget.LightMemory) ||
+            !CreateBuffer(static_cast<VkDeviceSize>(kClusterMaxCount) * sizeof(ClusterHeader),
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                          &ScopedTarget.HeaderBuffer, &ScopedTarget.HeaderMemory) ||
+            !CreateBuffer(static_cast<VkDeviceSize>(kClusterMaxIndices) * sizeof(std::uint32_t),
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                          &ScopedTarget.IndexBuffer, &ScopedTarget.IndexMemory))
+        {
+            LogError("vulkan", "cluster buffers failed");
+            return false;
+        }
+        if (ScopedApi.vkMapMemory(MDevice, ScopedTarget.LightMemory, 0, VK_WHOLE_SIZE, 0,
+                                  &ScopedTarget.LightMapped) != VK_SUCCESS)
+        {
+            LogError("vulkan", "cluster light map failed");
+            return false;
+        }
+
+        VkDescriptorSetAllocateInfo ScopedAllocateInfo{};
+        ScopedAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        ScopedAllocateInfo.descriptorPool = MClusterPool;
+        ScopedAllocateInfo.descriptorSetCount = 1;
+        ScopedAllocateInfo.pSetLayouts = &MClusterSetLayout;
+        if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocateInfo, &ScopedTarget.Set) != VK_SUCCESS)
+        {
+            LogError("vulkan", "cluster descriptor set failed");
+            return false;
+        }
+        std::array<VkDescriptorBufferInfo, 5> ScopedBufferInfos{};
+        ScopedBufferInfos[0] = VkDescriptorBufferInfo{ScopedTarget.LightBuffer, 0, VK_WHOLE_SIZE};
+        ScopedBufferInfos[1] = VkDescriptorBufferInfo{ScopedTarget.HeaderBuffer, 0, VK_WHOLE_SIZE};
+        ScopedBufferInfos[2] = VkDescriptorBufferInfo{ScopedTarget.IndexBuffer, 0, VK_WHOLE_SIZE};
+        ScopedBufferInfos[3] = VkDescriptorBufferInfo{MGiFrames[ScopedFrame].ProbeBuffer, 0, VK_WHOLE_SIZE};
+        ScopedBufferInfos[4] = VkDescriptorBufferInfo{MGiFrames[ScopedFrame].HeaderBuffer, 0, VK_WHOLE_SIZE};
+        std::array<VkWriteDescriptorSet, 5> ScopedWrites{};
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedWrites.size(); ++ScopedIndex)
+        {
+            ScopedWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            ScopedWrites[ScopedIndex].dstSet = ScopedTarget.Set;
+            ScopedWrites[ScopedIndex].dstBinding = ScopedIndex;
+            ScopedWrites[ScopedIndex].descriptorCount = 1;
+            ScopedWrites[ScopedIndex].descriptorType =
+                ScopedIndex == 4u ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            ScopedWrites[ScopedIndex].pBufferInfo = &ScopedBufferInfos[ScopedIndex];
+        }
+        ScopedApi.vkUpdateDescriptorSets(MDevice, static_cast<std::uint32_t>(ScopedWrites.size()),
+                                         ScopedWrites.data(), 0, nullptr);
+    }
+    MClusterReady = true;
+    MInfo.clusteredLighting = true;
+    return true;
+}
+
+bool VulkanRHI::CreateClusterFallback()
+{
+    if (MClusterReady)
+    {
+        return true;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (MClusterSetLayout == VK_NULL_HANDLE)
+    {
+        std::array<VkDescriptorSetLayoutBinding, 5> ScopedBindings{};
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < 3u; ++ScopedIndex)
+        {
+            ScopedBindings[ScopedIndex].binding = ScopedIndex;
+            ScopedBindings[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            ScopedBindings[ScopedIndex].descriptorCount = 1;
+            ScopedBindings[ScopedIndex].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        }
+        ScopedBindings[3].binding = 3;
+        ScopedBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        ScopedBindings[3].descriptorCount = 1;
+        ScopedBindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        ScopedBindings[4].binding = 4;
+        ScopedBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        ScopedBindings[4].descriptorCount = 1;
+        ScopedBindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        VkDescriptorSetLayoutCreateInfo ScopedSetInfo{};
+        ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ScopedSetInfo.bindingCount = static_cast<std::uint32_t>(ScopedBindings.size());
+        ScopedSetInfo.pBindings = ScopedBindings.data();
+        if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetInfo, nullptr, &MClusterSetLayout) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    if (MClusterPool == VK_NULL_HANDLE)
+    {
+        std::array<VkDescriptorPoolSize, 2> ScopedPoolSizes{};
+        ScopedPoolSizes[0] = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
+        ScopedPoolSizes[1] = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1};
+        VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+        ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        ScopedPoolInfo.maxSets = 2;
+        ScopedPoolInfo.poolSizeCount = static_cast<std::uint32_t>(ScopedPoolSizes.size());
+        ScopedPoolInfo.pPoolSizes = ScopedPoolSizes.data();
+        if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MClusterPool) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    constexpr std::array<VkDeviceSize, 5> ScopedSizes{sizeof(GpuLight), sizeof(ClusterHeader), sizeof(std::uint32_t),
+                                                      sizeof(GpuGiProbe), sizeof(GpuGiVolumeHeader)};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedSizes.size(); ++ScopedIndex)
+    {
+        const VkBufferUsageFlags ScopedUsage =
+            ScopedIndex == 4u ? VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT : VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        if (!CreateBuffer(ScopedSizes[ScopedIndex], ScopedUsage,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &MClusterFallbackBuffers[ScopedIndex], &MClusterFallbackMemories[ScopedIndex]))
+        {
+            return false;
+        }
+        void* ScopedMapped = nullptr;
+        if (ScopedApi.vkMapMemory(MDevice, MClusterFallbackMemories[ScopedIndex], 0, VK_WHOLE_SIZE, 0,
+                                  &ScopedMapped) != VK_SUCCESS)
+        {
+            return false;
+        }
+        std::memset(ScopedMapped, 0, static_cast<std::size_t>(ScopedSizes[ScopedIndex]));
+        ScopedApi.vkUnmapMemory(MDevice, MClusterFallbackMemories[ScopedIndex]);
+    }
+    VkDescriptorSetAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ScopedAllocate.descriptorPool = MClusterPool;
+    ScopedAllocate.descriptorSetCount = 1;
+    ScopedAllocate.pSetLayouts = &MClusterSetLayout;
+    if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &MClusterFallbackSet) != VK_SUCCESS)
+    {
+        return false;
+    }
+    std::array<VkDescriptorBufferInfo, 5> ScopedInfo{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 5; ++ScopedIndex)
+    {
+        ScopedInfo[ScopedIndex] = {MClusterFallbackBuffers[ScopedIndex], 0, VK_WHOLE_SIZE};
+    }
+    std::array<VkWriteDescriptorSet, 5> ScopedWrites{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 5; ++ScopedIndex)
+    {
+        ScopedWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[ScopedIndex].dstSet = MClusterFallbackSet;
+        ScopedWrites[ScopedIndex].dstBinding = ScopedIndex;
+        ScopedWrites[ScopedIndex].descriptorCount = 1;
+        ScopedWrites[ScopedIndex].descriptorType =
+            ScopedIndex == 4u ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        ScopedWrites[ScopedIndex].pBufferInfo = &ScopedInfo[ScopedIndex];
+    }
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 5, ScopedWrites.data(), 0, nullptr);
+    MClusterFallbackReady = true;
+    return true;
+}
+
+void VulkanRHI::DestroyClusterFallback() noexcept
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 5; ++ScopedIndex)
+    {
+        if (MClusterFallbackBuffers[ScopedIndex] != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, MClusterFallbackBuffers[ScopedIndex], nullptr);
+            MClusterFallbackBuffers[ScopedIndex] = VK_NULL_HANDLE;
+        }
+        if (MClusterFallbackMemories[ScopedIndex] != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, MClusterFallbackMemories[ScopedIndex], nullptr);
+            MClusterFallbackMemories[ScopedIndex] = VK_NULL_HANDLE;
+        }
+    }
+    MClusterFallbackSet = VK_NULL_HANDLE;
+    MClusterFallbackReady = false;
+}
+
+void VulkanRHI::DestroyClusterResources() noexcept
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    MClusterReady = false;
+    MInfo.clusteredLighting = false;
+    for (ClusterFrame& ScopedFrame : MClusterFrames)
+    {
+        if (ScopedFrame.LightMapped != nullptr && ScopedFrame.LightMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkUnmapMemory(MDevice, ScopedFrame.LightMemory);
+            ScopedFrame.LightMapped = nullptr;
+        }
+        if (ScopedFrame.LightBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.LightBuffer, nullptr);
+            ScopedFrame.LightBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.LightMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.LightMemory, nullptr);
+            ScopedFrame.LightMemory = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.HeaderBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.HeaderBuffer, nullptr);
+            ScopedFrame.HeaderBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.HeaderMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.HeaderMemory, nullptr);
+            ScopedFrame.HeaderMemory = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.IndexBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, ScopedFrame.IndexBuffer, nullptr);
+            ScopedFrame.IndexBuffer = VK_NULL_HANDLE;
+        }
+        if (ScopedFrame.IndexMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, ScopedFrame.IndexMemory, nullptr);
+            ScopedFrame.IndexMemory = VK_NULL_HANDLE;
+        }
+        ScopedFrame.Set = VK_NULL_HANDLE;
+    }
+    if (MClusterFillPipeline != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipeline(MDevice, MClusterFillPipeline, nullptr);
+        MClusterFillPipeline = VK_NULL_HANDLE;
+    }
+    if (MClusterPrefixPipeline != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipeline(MDevice, MClusterPrefixPipeline, nullptr);
+        MClusterPrefixPipeline = VK_NULL_HANDLE;
+    }
+    if (MClusterCountPipeline != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipeline(MDevice, MClusterCountPipeline, nullptr);
+        MClusterCountPipeline = VK_NULL_HANDLE;
+    }
+    if (MClusterLayout != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyPipelineLayout(MDevice, MClusterLayout, nullptr);
+        MClusterLayout = VK_NULL_HANDLE;
+    }
+    if (MClusterPool != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyDescriptorPool(MDevice, MClusterPool, nullptr);
+        MClusterPool = VK_NULL_HANDLE;
+    }
+    if (MClusterSetLayout != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MClusterSetLayout, nullptr);
+        MClusterSetLayout = VK_NULL_HANDLE;
+    }
+}
+
+void VulkanRHI::WriteTimestamp(VkCommandBuffer InCommandBuffer, std::uint32_t InIndex,
+                               VkPipelineStageFlagBits InStage)
+{
+    if (MTimestampsReady && MFrameIndex < MTimestampPools.size() && MTimestampPools[MFrameIndex] != VK_NULL_HANDLE &&
+        InIndex < TimestampCount)
+    {
+        Vk::GetApi().vkCmdWriteTimestamp(InCommandBuffer, InStage, MTimestampPools[MFrameIndex], InIndex);
+    }
+}
+
+void VulkanRHI::RecordOitResolve(VkCommandBuffer InCommandBuffer, VkRenderPass InRenderPass,
+                                 const FramePacket& InPacket)
+{
+    if (MOitResolveSet == VK_NULL_HANDLE || MOitResolveLayout == VK_NULL_HANDLE ||
+        InPacket.oitAccumulation == 0xFFFFFFFFu || InPacket.oitRevealage == 0xFFFFFFFFu)
+    {
+        return;
+    }
+    const RenderTarget* ScopedAccumulation = FindRenderTarget(InPacket.oitAccumulation);
+    const RenderTarget* ScopedRevealage = FindRenderTarget(InPacket.oitRevealage);
+    if (ScopedAccumulation == nullptr || ScopedRevealage == nullptr || ScopedAccumulation->view == VK_NULL_HANDLE ||
+        ScopedRevealage->view == VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    VkPipeline ScopedResolvePipeline = VK_NULL_HANDLE;
+    if (InRenderPass == MRenderPass)
+    {
+        ScopedResolvePipeline = MOitResolvePipeline;
+    }
+    else
+    {
+        const auto ScopedFound = MOitResolvePipelines.find(InRenderPass);
+        if (ScopedFound != MOitResolvePipelines.end())
+        {
+            ScopedResolvePipeline = ScopedFound->second;
+        }
+        else if (CreateGraphicsPipelineForPass(InRenderPass, MOitResolveLayout, Shaders::fullscreen_vert.data(),
+                                               Shaders::fullscreen_vert.size() * sizeof(std::uint32_t),
+                                               Shaders::oit_resolve.data(),
+                                               Shaders::oit_resolve.size() * sizeof(std::uint32_t),
+                                               &ScopedResolvePipeline))
+        {
+            MOitResolvePipelines.emplace(InRenderPass, ScopedResolvePipeline);
+        }
+    }
+    if (ScopedResolvePipeline == VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorImageInfo ScopedImages[2]{};
+    ScopedImages[0].sampler = MOitResolveSampler;
+    ScopedImages[0].imageView = ScopedAccumulation->view;
+    ScopedImages[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ScopedImages[1].sampler = MOitResolveSampler;
+    ScopedImages[1].imageView = ScopedRevealage->view;
+    ScopedImages[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkWriteDescriptorSet ScopedWrites[2]{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 2; ++ScopedIndex)
+    {
+        ScopedWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[ScopedIndex].dstSet = MOitResolveSet;
+        ScopedWrites[ScopedIndex].dstBinding = ScopedIndex;
+        ScopedWrites[ScopedIndex].descriptorCount = 1;
+        ScopedWrites[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedWrites[ScopedIndex].pImageInfo = &ScopedImages[ScopedIndex];
+    }
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 2, ScopedWrites, 0, nullptr);
+    ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedResolvePipeline);
+    ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MOitResolveLayout, 0, 1,
+                                      &MOitResolveSet, 0, nullptr);
+    ScopedApi.vkCmdDraw(InCommandBuffer, 3, 1, 0, 0);
+}
+
+void VulkanRHI::RecordClusters(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket)
+{
+    if (!MClusterRequested || !MClusterReady || MClusterRecordedThisFrame || InPacket.lights.empty() || MBlindFrame)
+    {
+        return;
+    }
+    ClusterFrame& ScopedReusableFrame = MClusterFrames[MFrameIndex];
+    if (MDesc.enableStaticCaches && InPacket.sceneStatic && InPacket.lightVersion != 0u &&
+        ScopedReusableFrame.LightVersion == InPacket.lightVersion)
+    {
+        MClusterRecordedThisFrame = true;
+        ++MStats.clusterCacheHits;
+        return;
+    }
+    const float ScopedWidth = std::max(InPacket.camera.viewport.X, 1.0f);
+    const float ScopedHeight = std::max(InPacket.camera.viewport.Y, 1.0f);
+    const std::uint32_t ScopedTilesX =
+        static_cast<std::uint32_t>(std::ceil(ScopedWidth / static_cast<float>(ClusterTileSize)));
+    const std::uint32_t ScopedTilesY =
+        static_cast<std::uint32_t>(std::ceil(ScopedHeight / static_cast<float>(ClusterTileSize)));
+    if (ScopedTilesX == 0u || ScopedTilesY == 0u || ScopedTilesX * ScopedTilesY > kClusterMaxCount)
+    {
+        return;
+    }
+    const std::uint32_t ScopedLightCount =
+        std::min(static_cast<std::uint32_t>(InPacket.lights.size()), kClusterMaxLights);
+    MStats.clusterTilesX = ScopedTilesX;
+    MStats.clusterTilesY = ScopedTilesY;
+    MStats.clusterCount = ScopedTilesX * ScopedTilesY;
+    MStats.clusterLights = ScopedLightCount;
+    MStats.clusterDispatches = 3;
+    ClusterFrame& ScopedFrame = MClusterFrames[MFrameIndex];
+    if (ScopedFrame.LightMapped == nullptr || ScopedFrame.Set == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    std::memcpy(ScopedFrame.LightMapped, InPacket.lights.data(),
+                static_cast<std::size_t>(ScopedLightCount) * sizeof(GpuLight));
+    Vk::Api& ScopedApi = Vk::GetApi();
+    const ClusterGridConstants ScopedConstants{ScopedTilesX, ScopedTilesY, ScopedLightCount, MaxLightsPerCluster};
+
+    const VkMemoryBarrier ScopedComputeBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT,
+                                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+    const auto ScopedBarrier = [&ScopedApi, InCommandBuffer](const VkMemoryBarrier& InBarrier)
+    {
+        ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &InBarrier, 0, nullptr, 0, nullptr);
+    };
+    const std::uint32_t ScopedClusterCount = ScopedTilesX * ScopedTilesY;
+    ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MClusterLayout, 0, 1,
+                                      &ScopedFrame.Set, 0, nullptr);
+    ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MClusterCountPipeline);
+    ScopedApi.vkCmdPushConstants(InCommandBuffer, MClusterLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                 sizeof(ClusterGridConstants), &ScopedConstants);
+    ScopedApi.vkCmdDispatch(InCommandBuffer, (ScopedClusterCount + 63u) / 64u, 1, 1);
+    ScopedBarrier(ScopedComputeBarrier);
+    ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MClusterPrefixPipeline);
+    ScopedApi.vkCmdDispatch(InCommandBuffer, 1, 1, 1);
+    ScopedBarrier(ScopedComputeBarrier);
+    ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MClusterFillPipeline);
+    ScopedApi.vkCmdDispatch(InCommandBuffer, (ScopedClusterCount + 63u) / 64u, 1, 1);
+    const VkMemoryBarrier ScopedGraphicsBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr,
+                                                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT};
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, 0, 1, &ScopedGraphicsBarrier, 0, nullptr, 0,
+                                   nullptr);
+    ScopedReusableFrame.LightVersion = InPacket.lightVersion;
+    MClusterRecordedThisFrame = true;
 }
 
 void VulkanRHI::WriteSdfDescriptors(VkDescriptorSet InSet) const
@@ -2409,7 +4998,7 @@ void VulkanRHI::WriteSdfDescriptors(VkDescriptorSet InSet) const
     ScopedWrites[1].dstSet = InSet;
     ScopedWrites[1].dstBinding = 2;
     ScopedWrites[1].descriptorCount = 1;
-    ScopedWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     ScopedWrites[1].pBufferInfo = &ScopedBufferDescriptor;
     VkDescriptorImageInfo ScopedMaskDescriptor{};
     ScopedMaskDescriptor.sampler = MSdfMaskSampler;
@@ -2478,7 +5067,7 @@ void VulkanRHI::WriteSdfDescriptors(VkDescriptorSet InSet) const
             MVtFeedbackViews[ScopedI] != VK_NULL_HANDLE ? MVtFeedbackViews[ScopedI] : MVtFeedbackFallbackView;
         ScopedFeedbackInfos[ScopedI].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     }
-    std::array<VkWriteDescriptorSet, 6> ScopedFinalWrites{};
+    std::array<VkWriteDescriptorSet, 8> ScopedFinalWrites{};
     for (std::uint32_t ScopedI = 0; ScopedI < 5; ++ScopedI)
     {
         ScopedFinalWrites[ScopedI] = ScopedAllWrites[ScopedI];
@@ -2489,57 +5078,90 @@ void VulkanRHI::WriteSdfDescriptors(VkDescriptorSet InSet) const
     ScopedFinalWrites[5].descriptorCount = kFeedbackSlots;
     ScopedFinalWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     ScopedFinalWrites[5].pImageInfo = ScopedFeedbackInfos.data();
+
+    // Bindings 7/8: the sparse brick table and the atlas tiles.
+    VkDescriptorBufferInfo ScopedSdfTableInfo{};
+    ScopedSdfTableInfo.buffer = MSdfTableBuffer;
+    ScopedSdfTableInfo.offset = 0;
+    ScopedSdfTableInfo.range = VK_WHOLE_SIZE;
+    ScopedFinalWrites[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedFinalWrites[6].dstSet = InSet;
+    ScopedFinalWrites[6].dstBinding = 7;
+    ScopedFinalWrites[6].descriptorCount = 1;
+    ScopedFinalWrites[6].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedFinalWrites[6].pBufferInfo = &ScopedSdfTableInfo;
+    VkDescriptorImageInfo ScopedSdfAtlasInfo{};
+    ScopedSdfAtlasInfo.sampler = MSdfAtlasSampler;
+    ScopedSdfAtlasInfo.imageView = MSdfAtlasView;
+    ScopedSdfAtlasInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ScopedFinalWrites[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedFinalWrites[7].dstSet = InSet;
+    ScopedFinalWrites[7].dstBinding = 8;
+    ScopedFinalWrites[7].descriptorCount = 1;
+    ScopedFinalWrites[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedFinalWrites[7].pImageInfo = &ScopedSdfAtlasInfo;
     ScopedApi.vkUpdateDescriptorSets(MDevice, static_cast<std::uint32_t>(ScopedFinalWrites.size()),
                                     ScopedFinalWrites.data(), 0, nullptr);
 }
 
 void VulkanRHI::UploadSdfField()
 {
-    Vk::Api& ScopedApi = Vk::GetApi();
-    VkBuffer ScopedStaging = VK_NULL_HANDLE;
-    VkDeviceMemory ScopedStagingMemory = VK_NULL_HANDLE;
-    if (!CreateBuffer(sizeof(MSdfFieldTexels), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ScopedStaging,
-                      &ScopedStagingMemory))
+    if (!MInFrame || MFrameIndex >= kMaxFramesInFlight || MSdfFieldStagingMapped[MFrameIndex] == nullptr)
     {
         MSdfFieldUploadPending = false;
         return;
     }
-    void* ScopedMapped = nullptr;
-    if (ScopedApi.vkMapMemory(MDevice, ScopedStagingMemory, 0, sizeof(MSdfFieldTexels), 0, &ScopedMapped) ==
-        VK_SUCCESS)
-    {
-        std::memcpy(ScopedMapped, MSdfFieldTexels.data(), MSdfFieldTexels.size());
-        ScopedApi.vkUnmapMemory(MDevice, ScopedStagingMemory);
-    }
-    const VkCommandBuffer ScopedCommand = BeginOneShot();
-    if (ScopedCommand != VK_NULL_HANDLE)
-    {
-        TransitionImage(ScopedCommand, MSdfFieldImage,
-                        MSdfFieldInitialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        VkBufferImageCopy ScopedCopy{};
-        ScopedCopy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        ScopedCopy.imageExtent = {kSdfFieldSize, kSdfFieldSize, 1};
-        ScopedApi.vkCmdCopyBufferToImage(ScopedCommand, ScopedStaging, MSdfFieldImage,
-                                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedCopy);
-        TransitionImage(ScopedCommand, MSdfFieldImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        EndOneShot(ScopedCommand);
-        MSdfFieldInitialized = true;
-    }
-    ScopedApi.vkDestroyBuffer(MDevice, ScopedStaging, nullptr);
-    ScopedApi.vkFreeMemory(MDevice, ScopedStagingMemory, nullptr);
+    std::memcpy(MSdfFieldStagingMapped[MFrameIndex], MSdfFieldTexels.data(), MSdfFieldTexels.size() * sizeof(float));
+    const VkCommandBuffer ScopedCommand = MCommandBuffers[MFrameIndex];
+    TransitionImage(ScopedCommand, MSdfFieldImage,
+                    MSdfFieldInitialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkBufferImageCopy ScopedCopy{};
+    ScopedCopy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    ScopedCopy.imageExtent = {kSdfFieldSize, kSdfFieldSize, 1};
+    Vk::GetApi().vkCmdCopyBufferToImage(ScopedCommand, MSdfFieldStagingBuffers[MFrameIndex], MSdfFieldImage,
+                                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedCopy);
+    TransitionImage(ScopedCommand, MSdfFieldImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    MSdfFieldInitialized = true;
     MSdfFieldUploadPending = false;
 }
 
-void VulkanRHI::ApplySdfLighting(const SdfLightingFrame& InFrame)
+void VulkanRHI::UploadSdfAtlas()
 {
-    if (MSdfBlockMapped == nullptr)
+    if (!MInFrame || MFrameIndex >= kMaxFramesInFlight || MSdfFieldStagingMapped[MFrameIndex] == nullptr)
     {
+        MSdfAtlasUploadPending = false;
         return;
     }
+    std::memcpy(MSdfFieldStagingMapped[MFrameIndex], MSdfAtlasTexels.data(),
+                MSdfAtlasTexels.size() * sizeof(float));
+    const VkCommandBuffer ScopedCommand = MCommandBuffers[MFrameIndex];
+    TransitionImage(ScopedCommand, MSdfAtlasImage,
+                    MSdfAtlasInitialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkBufferImageCopy ScopedCopy{};
+    ScopedCopy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    ScopedCopy.imageExtent = {kSdfAtlasSize, kSdfAtlasSize, 1};
+    Vk::GetApi().vkCmdCopyBufferToImage(ScopedCommand, MSdfFieldStagingBuffers[MFrameIndex], MSdfAtlasImage,
+                                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedCopy);
+    TransitionImage(ScopedCommand, MSdfAtlasImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    MSdfAtlasInitialized = true;
+    MSdfAtlasUploadPending = false;
+}
+
+std::uint32_t VulkanRHI::ApplySdfLighting(const SdfLightingFrame& InFrame)
+{
+    const std::uint32_t ScopedView = std::min(InFrame.viewId, SdfMaxViews - 1u);
+    const std::uint32_t ScopedSlot = MFrameIndex * SdfMaxViews + ScopedView;
+    if (MSdfBlockMapped == nullptr)
+    {
+        return ScopedSlot;
+    }
     SdfGpuBlock ScopedBlock;
+    ScopedBlock.camera = InFrame.camera;
+    ScopedBlock.viewport = InFrame.viewport;
     const float ScopedExtentX = static_cast<float>(InFrame.width) * InFrame.cellSize.X;
     const float ScopedExtentY = static_cast<float>(InFrame.height) * InFrame.cellSize.Y;
     ScopedBlock.fieldBounds = Vector4D{InFrame.origin.X, InFrame.origin.Y, ScopedExtentX, ScopedExtentY};
@@ -2564,14 +5186,37 @@ void VulkanRHI::ApplySdfLighting(const SdfLightingFrame& InFrame)
                                   std::clamp(InFrame.occlusionStrength, 0.0f, 1.0f)};
     const bool ScopedEnabled = InFrame.enabled && InFrame.field != nullptr && InFrame.width > 1 &&
                                InFrame.height > 1 && ScopedExtentX > 0.0f && ScopedExtentY > 0.0f;
-    const bool ScopedMaskActive = ScopedEnabled && MSdfMaskValid;
+    const bool ScopedMaskActive = ScopedEnabled && ScopedSlot < MSdfMaskPublished.size() &&
+                                  MSdfMaskPublished[ScopedSlot];
     ScopedBlock.flags = Vector4D{kSdfEncodeScale, ScopedEnabled ? 1.0f : 0.0f, ScopedMaskActive ? 1.0f : 0.0f, 0.0f};
+    float ScopedHistoryLayer = 0.0f;
+    float ScopedHistoryValid = 0.0f;
+    if (InFrame.temporal && ScopedEnabled && MFrameCounter > MFramesInFlight)
+    {
+        const std::uint32_t ScopedHistoryView = std::min(InFrame.viewId, SdfMaxViews - 1u);
+        const std::uint32_t ScopedPreviousFrame = (MFrameIndex + MFramesInFlight - 1u) % MFramesInFlight;
+        ScopedHistoryLayer = static_cast<float>(ScopedPreviousFrame * SdfMaxViews + ScopedHistoryView);
+        ScopedHistoryValid = 1.0f;
+    }
+    ScopedBlock.history = Vector4D{ScopedHistoryLayer, ScopedHistoryValid, 0.85f, 0.0f};
+    ScopedBlock.historyCamera = InFrame.previousCamera;
+    // The atlas path needs the grid mapping and the brick layout. A field that is
+    // not configured reports zero bricks, which the shader treats as "no atlas".
+    ScopedBlock.fieldGrid = Vector4D{InFrame.origin.X, InFrame.origin.Y, InFrame.cellSize.X, InFrame.cellSize.Y};
+    const std::uint32_t ScopedBrickSize = 16;
+    ScopedBlock.brickMeta =
+        Vector4D{static_cast<float>(ScopedBrickSize),
+                 static_cast<float>((InFrame.width + ScopedBrickSize - 1u) / ScopedBrickSize),
+                 static_cast<float>((InFrame.height + ScopedBrickSize - 1u) / ScopedBrickSize),
+                 static_cast<float>(InFrame.atlasColumns)};
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedOccluderCount; ++ScopedI)
     {
         ScopedBlock.occluders[ScopedI * 2] = InFrame.occluders[ScopedI].Shape;
         ScopedBlock.occluders[ScopedI * 2 + 1] = InFrame.occluders[ScopedI].Extents;
     }
-    *static_cast<SdfGpuBlock*>(MSdfBlockMapped) = ScopedBlock;
+    auto* ScopedBlocks = static_cast<std::byte*>(MSdfBlockMapped);
+    *reinterpret_cast<SdfGpuBlock*>(ScopedBlocks + static_cast<std::size_t>(ScopedSlot) * SdfBlockStride) =
+        ScopedBlock;
     MSdfEnabled = ScopedEnabled;
 
     if (ScopedEnabled && InFrame.fieldVersion != MSdfFieldVersion)
@@ -2586,18 +5231,43 @@ void VulkanRHI::ApplySdfLighting(const SdfLightingFrame& InFrame)
                 const std::uint32_t ScopedSourceX = ScopedX * InFrame.width / kSdfFieldSize;
                 const float ScopedDistance = InFrame.field[static_cast<std::size_t>(ScopedSourceY) * InFrame.width +
                                                           ScopedSourceX];
-                const float ScopedNormalized = std::clamp(ScopedDistance / kSdfEncodeScale, 0.0f, 1.0f);
-                MSdfFieldTexels[static_cast<std::size_t>(ScopedY) * kSdfFieldSize + ScopedX] =
-                    static_cast<std::uint8_t>(std::lround(ScopedNormalized * 255.0f));
+                MSdfFieldTexels[static_cast<std::size_t>(ScopedY) * kSdfFieldSize + ScopedX] = ScopedDistance;
             }
         }
         MSdfFieldVersion = InFrame.fieldVersion;
         MSdfFieldUploadPending = true;
+
+        // The sparse atlas shares the field version. The table is host-visible and
+        // rewritten in place; the tiles go through the same staging slice as the
+        // dense field so a pending frame cannot read overwritten bytes.
+        MSdfAtlasUploadPending = false;
+        if (InFrame.brickTable != nullptr && InFrame.brickCount > 0 && InFrame.atlasTexels != nullptr &&
+            MSdfTableMapped != nullptr && MSdfAtlasImage != VK_NULL_HANDLE)
+        {
+            const std::uint32_t ScopedBricks = std::min(InFrame.brickCount, kSdfTableCapacity);
+            std::memcpy(MSdfTableMapped, InFrame.brickTable,
+                        static_cast<std::size_t>(ScopedBricks) * kSdfTableEntryBytes);
+            MSdfAtlasTexels.fill(0.0f);
+            const std::uint32_t ScopedCopyWidth = std::min(InFrame.atlasWidth, kSdfAtlasSize);
+            const std::uint32_t ScopedCopyHeight = std::min(InFrame.atlasHeight, kSdfAtlasSize);
+            for (std::uint32_t ScopedY = 0; ScopedY < ScopedCopyHeight; ++ScopedY)
+            {
+                std::memcpy(MSdfAtlasTexels.data() + static_cast<std::size_t>(ScopedY) * kSdfAtlasSize,
+                            InFrame.atlasTexels + static_cast<std::size_t>(ScopedY) * InFrame.atlasWidth,
+                            static_cast<std::size_t>(ScopedCopyWidth) * sizeof(float));
+            }
+            MSdfAtlasUploadPending = true;
+        }
     }
     if (MSdfFieldUploadPending)
     {
         UploadSdfField();
     }
+    if (MSdfAtlasUploadPending)
+    {
+        UploadSdfAtlas();
+    }
+    return ScopedSlot;
 }
 
 VirtualTextureResource* VulkanRHI::FindVirtualTexture(std::uint32_t InId) noexcept
@@ -2892,45 +5562,35 @@ bool VulkanRHI::UpdateVirtualTexturePageTable(VirtualTextureHandle InHandle, std
         return false;
     }
     const VkDeviceSize ScopedBytes = static_cast<VkDeviceSize>(InWidth) * InHeight * sizeof(std::uint32_t);
-    VkBuffer ScopedStaging = VK_NULL_HANDLE;
-    VkDeviceMemory ScopedStagingMemory = VK_NULL_HANDLE;
-    if (!CreateBuffer(ScopedBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ScopedStaging,
-                      &ScopedStagingMemory))
+    if (MUploadMapped == nullptr || ScopedBytes > MUploadCapacity || MUploadCommandBuffer == VK_NULL_HANDLE)
     {
         return false;
     }
-    Vk::Api& ScopedApi = Vk::GetApi();
-    void* ScopedMapped = nullptr;
-    if (ScopedApi.vkMapMemory(MDevice, ScopedStagingMemory, 0, ScopedBytes, 0, &ScopedMapped) != VK_SUCCESS)
+    if (!WaitUploadFence())
     {
-        ScopedApi.vkDestroyBuffer(MDevice, ScopedStaging, nullptr);
-        ScopedApi.vkFreeMemory(MDevice, ScopedStagingMemory, nullptr);
         return false;
     }
-    std::memcpy(ScopedMapped, InEntries.data(), static_cast<std::size_t>(ScopedBytes));
-    ScopedApi.vkUnmapMemory(MDevice, ScopedStagingMemory);
+    std::memcpy(MUploadMapped, InEntries.data(), static_cast<std::size_t>(ScopedBytes));
 
-    const VkCommandBuffer ScopedCommand = BeginOneShot();
-    if (ScopedCommand == VK_NULL_HANDLE)
+    Vk::Api& ScopedApi = Vk::GetApi();
+    (void)ScopedApi.vkResetCommandBuffer(MUploadCommandBuffer, 0);
+    VkCommandBufferBeginInfo ScopedBeginInfo{};
+    ScopedBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    ScopedBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (ScopedApi.vkBeginCommandBuffer(MUploadCommandBuffer, &ScopedBeginInfo) != VK_SUCCESS)
     {
-        ScopedApi.vkDestroyBuffer(MDevice, ScopedStaging, nullptr);
-        ScopedApi.vkFreeMemory(MDevice, ScopedStagingMemory, nullptr);
         return false;
     }
-    TransitionImage(ScopedCommand, ScopedTexture->table, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    TransitionImage(MUploadCommandBuffer, ScopedTexture->table, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkBufferImageCopy ScopedCopy{};
     ScopedCopy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     ScopedCopy.imageExtent = {InWidth, InHeight, 1};
-    ScopedApi.vkCmdCopyBufferToImage(ScopedCommand, ScopedStaging, ScopedTexture->table,
+    ScopedApi.vkCmdCopyBufferToImage(MUploadCommandBuffer, MUploadBuffer, ScopedTexture->table,
                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedCopy);
-    TransitionImage(ScopedCommand, ScopedTexture->table, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    TransitionImage(MUploadCommandBuffer, ScopedTexture->table, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    EndOneShot(ScopedCommand);
-    ScopedApi.vkDestroyBuffer(MDevice, ScopedStaging, nullptr);
-    ScopedApi.vkFreeMemory(MDevice, ScopedStagingMemory, nullptr);
-    return true;
+    return SubmitUpload(MUploadCommandBuffer);
 }
 
 bool VulkanRHI::UploadVirtualTexturePage(VirtualTextureHandle InHandle, std::uint32_t InLayer, std::uint32_t InSlotX,
@@ -2951,33 +5611,26 @@ bool VulkanRHI::UploadVirtualTexturePage(VirtualTextureHandle InHandle, std::uin
     {
         return false;
     }
-    VkBuffer ScopedStaging = VK_NULL_HANDLE;
-    VkDeviceMemory ScopedStagingMemory = VK_NULL_HANDLE;
-    if (!CreateBuffer(InPixels.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ScopedStaging,
-                      &ScopedStagingMemory))
+    if (MUploadMapped == nullptr || InPixels.size() > MUploadCapacity || MUploadCommandBuffer == VK_NULL_HANDLE)
     {
         return false;
     }
-    Vk::Api& ScopedApi = Vk::GetApi();
-    void* ScopedMapped = nullptr;
-    if (ScopedApi.vkMapMemory(MDevice, ScopedStagingMemory, 0, InPixels.size(), 0, &ScopedMapped) != VK_SUCCESS)
+    if (!WaitUploadFence())
     {
-        ScopedApi.vkDestroyBuffer(MDevice, ScopedStaging, nullptr);
-        ScopedApi.vkFreeMemory(MDevice, ScopedStagingMemory, nullptr);
         return false;
     }
-    std::memcpy(ScopedMapped, InPixels.data(), InPixels.size());
-    ScopedApi.vkUnmapMemory(MDevice, ScopedStagingMemory);
+    std::memcpy(MUploadMapped, InPixels.data(), InPixels.size());
 
-    const VkCommandBuffer ScopedCommand = BeginOneShot();
-    if (ScopedCommand == VK_NULL_HANDLE)
+    Vk::Api& ScopedApi = Vk::GetApi();
+    (void)ScopedApi.vkResetCommandBuffer(MUploadCommandBuffer, 0);
+    VkCommandBufferBeginInfo ScopedBeginInfo{};
+    ScopedBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    ScopedBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (ScopedApi.vkBeginCommandBuffer(MUploadCommandBuffer, &ScopedBeginInfo) != VK_SUCCESS)
     {
-        ScopedApi.vkDestroyBuffer(MDevice, ScopedStaging, nullptr);
-        ScopedApi.vkFreeMemory(MDevice, ScopedStagingMemory, nullptr);
         return false;
     }
-    TransitionImage(ScopedCommand, ScopedTexture->pages, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    TransitionImage(MUploadCommandBuffer, ScopedTexture->pages, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, ScopedTexture->layerCount);
     VkBufferImageCopy ScopedCopy{};
     ScopedCopy.bufferRowLength = InRowPitch / 4u;
@@ -2986,13 +5639,15 @@ bool VulkanRHI::UploadVirtualTexturePage(VirtualTextureHandle InHandle, std::uin
     ScopedCopy.imageOffset = {static_cast<std::int32_t>(InSlotX * ScopedTexture->tileSize),
                               static_cast<std::int32_t>(InSlotY * ScopedTexture->tileSize), 0};
     ScopedCopy.imageExtent = {InWidth, InHeight, 1};
-    ScopedApi.vkCmdCopyBufferToImage(ScopedCommand, ScopedStaging, ScopedTexture->pages,
+    ScopedApi.vkCmdCopyBufferToImage(MUploadCommandBuffer, MUploadBuffer, ScopedTexture->pages,
                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedCopy);
-    TransitionImage(ScopedCommand, ScopedTexture->pages, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    TransitionImage(MUploadCommandBuffer, ScopedTexture->pages, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ScopedTexture->layerCount);
-    EndOneShot(ScopedCommand);
-    ScopedApi.vkDestroyBuffer(MDevice, ScopedStaging, nullptr);
-    ScopedApi.vkFreeMemory(MDevice, ScopedStagingMemory, nullptr);
+    if (!SubmitUpload(MUploadCommandBuffer))
+    {
+        return false;
+    }
+    ++MStats.uploadedBytes;
     return true;
 }
 
@@ -3071,6 +5726,14 @@ bool VulkanRHI::EnsureVtFeedback(Extent2D InExtent)
     {
         return MVtFeedbackMapped[0] != nullptr;
     }
+    if (MInFrame)
+    {
+        // Recreating the views rewrites the sprite descriptor sets, which would
+        // invalidate the command buffer being recorded. Defer the rebuild to
+        // BeginFrame, before anything is recorded for that frame.
+        MVtFeedbackPendingExtent = InExtent;
+        return MVtFeedbackMapped[0] != nullptr;
+    }
     Vk::Api& ScopedApi = Vk::GetApi();
     if (MInFrame && MVtFeedbackRecordedThisFrame)
     {
@@ -3099,12 +5762,16 @@ bool VulkanRHI::EnsureVtFeedback(Extent2D InExtent)
         ScopedInfo.arrayLayers = 1;
         ScopedInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         ScopedInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        ScopedInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        ScopedInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                            VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         ScopedInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         if (ScopedApi.vkCreateImage(MDevice, &ScopedInfo, nullptr, &MVtFeedbackImages[ScopedI]) != VK_SUCCESS)
         {
             LogError("vulkan", "VT feedback image failed");
             return false;
+        }
+        if (std::getenv("FBY_VK_DESCRIPTOR_DEBUG") != nullptr)
+        {
         }
         VkMemoryRequirements ScopedRequirements{};
         ScopedApi.vkGetImageMemoryRequirements(MDevice, MVtFeedbackImages[ScopedI], &ScopedRequirements);
@@ -3183,19 +5850,343 @@ bool VulkanRHI::EnsureVtFeedback(Extent2D InExtent)
     return true;
 }
 
+bool VulkanRHI::CreateOitResolveResources()
+{
+    if (MRenderPass == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+
+    VkDescriptorSetLayoutBinding ScopedBindings[2]{};
+    for (std::uint32_t ScopedBinding = 0; ScopedBinding < 2; ++ScopedBinding)
+    {
+        ScopedBindings[ScopedBinding].binding = ScopedBinding;
+        ScopedBindings[ScopedBinding].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedBindings[ScopedBinding].descriptorCount = 1;
+        ScopedBindings[ScopedBinding].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    VkDescriptorSetLayoutCreateInfo ScopedSetLayoutInfo{};
+    ScopedSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ScopedSetLayoutInfo.bindingCount = 2;
+    ScopedSetLayoutInfo.pBindings = ScopedBindings;
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MOitResolveSetLayout) !=
+        VK_SUCCESS)
+    {
+        return false;
+    }
+
+    VkDescriptorPoolSize ScopedPoolSize{};
+    ScopedPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedPoolSize.descriptorCount = 2;
+    VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+    ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ScopedPoolInfo.maxSets = 1;
+    ScopedPoolInfo.poolSizeCount = 1;
+    ScopedPoolInfo.pPoolSizes = &ScopedPoolSize;
+    if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MOitResolvePool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorSetAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ScopedAllocate.descriptorPool = MOitResolvePool;
+    ScopedAllocate.descriptorSetCount = 1;
+    ScopedAllocate.pSetLayouts = &MOitResolveSetLayout;
+    if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &MOitResolveSet) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    VkSamplerCreateInfo ScopedSamplerInfo{};
+    ScopedSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    ScopedSamplerInfo.magFilter = VK_FILTER_LINEAR;
+    ScopedSamplerInfo.minFilter = VK_FILTER_LINEAR;
+    ScopedSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    if (ScopedApi.vkCreateSampler(MDevice, &ScopedSamplerInfo, nullptr, &MOitResolveSampler) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
+    ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ScopedLayoutInfo.setLayoutCount = 1;
+    ScopedLayoutInfo.pSetLayouts = &MOitResolveSetLayout;
+    if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MOitResolveLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    return CreateGraphicsPipelineForPass(MRenderPass, MOitResolveLayout, Shaders::fullscreen_vert.data(),
+                                         Shaders::fullscreen_vert.size() * sizeof(std::uint32_t),
+                                         Shaders::oit_resolve.data(),
+                                         Shaders::oit_resolve.size() * sizeof(std::uint32_t), &MOitResolvePipeline);
+}
+
+bool VulkanRHI::CreateUpscaleResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorSetLayoutBinding ScopedBinding{};
+    ScopedBinding.binding = 0;
+    ScopedBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedBinding.descriptorCount = 1;
+    ScopedBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutCreateInfo ScopedSetLayoutInfo{};
+    ScopedSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ScopedSetLayoutInfo.bindingCount = 1;
+    ScopedSetLayoutInfo.pBindings = &ScopedBinding;
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MUpscaleSetLayout) !=
+        VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorPoolSize ScopedPoolSize{};
+    ScopedPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedPoolSize.descriptorCount = 2;
+    VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+    ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ScopedPoolInfo.maxSets = 2 * kMaxFramesInFlight;
+    ScopedPoolInfo.poolSizeCount = 1;
+    ScopedPoolInfo.pPoolSizes = &ScopedPoolSize;
+    if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MUpscalePool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorSetAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ScopedAllocate.descriptorPool = MUpscalePool;
+    ScopedAllocate.descriptorSetCount = 1;
+    ScopedAllocate.pSetLayouts = &MUpscaleSetLayout;
+    for (std::uint32_t ScopedFrame = 0; ScopedFrame < kMaxFramesInFlight; ++ScopedFrame)
+    {
+        if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &MUpscaleSets[ScopedFrame]) != VK_SUCCESS ||
+            ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &MRcasSets[ScopedFrame]) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    VkSamplerCreateInfo ScopedSamplerInfo{};
+    ScopedSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    ScopedSamplerInfo.magFilter = VK_FILTER_LINEAR;
+    ScopedSamplerInfo.minFilter = VK_FILTER_LINEAR;
+    ScopedSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    if (ScopedApi.vkCreateSampler(MDevice, &ScopedSamplerInfo, nullptr, &MUpscaleSampler) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkPushConstantRange ScopedPush{};
+    ScopedPush.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    ScopedPush.offset = 0;
+    ScopedPush.size = 32;
+    VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
+    ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ScopedLayoutInfo.setLayoutCount = 1;
+    ScopedLayoutInfo.pSetLayouts = &MUpscaleSetLayout;
+    ScopedLayoutInfo.pushConstantRangeCount = 1;
+    ScopedLayoutInfo.pPushConstantRanges = &ScopedPush;
+    if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MUpscaleLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkPushConstantRange ScopedRcasPush{};
+    ScopedRcasPush.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    ScopedRcasPush.size = 16;
+    ScopedLayoutInfo.pPushConstantRanges = &ScopedRcasPush;
+    return ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MRcasLayout) == VK_SUCCESS;
+}
+
+bool VulkanRHI::CreateHudResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorSetLayoutBinding ScopedBinding{};
+    ScopedBinding.binding = 0;
+    ScopedBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedBinding.descriptorCount = 1;
+    ScopedBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutCreateInfo ScopedSetLayoutInfo{};
+    ScopedSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ScopedSetLayoutInfo.bindingCount = 1;
+    ScopedSetLayoutInfo.pBindings = &ScopedBinding;
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MHudSetLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorPoolSize ScopedPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                        static_cast<std::uint32_t>(kMaxFramesInFlight)};
+    VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+    ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ScopedPoolInfo.maxSets = kMaxFramesInFlight;
+    ScopedPoolInfo.poolSizeCount = 1;
+    ScopedPoolInfo.pPoolSizes = &ScopedPoolSize;
+    if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MHudPool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorSetAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ScopedAllocate.descriptorPool = MHudPool;
+    ScopedAllocate.descriptorSetCount = 1;
+    ScopedAllocate.pSetLayouts = &MHudSetLayout;
+    for (VkDescriptorSet& ScopedSet : MHudSets)
+    {
+        if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &ScopedSet) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    VkSamplerCreateInfo ScopedSamplerInfo{};
+    ScopedSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    ScopedSamplerInfo.magFilter = VK_FILTER_LINEAR;
+    ScopedSamplerInfo.minFilter = VK_FILTER_LINEAR;
+    ScopedSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    if (ScopedApi.vkCreateSampler(MDevice, &ScopedSamplerInfo, nullptr, &MHudSampler) != VK_SUCCESS)
+    {
+        return false;
+    }
+    ScopedSamplerInfo.magFilter = VK_FILTER_NEAREST;
+    ScopedSamplerInfo.minFilter = VK_FILTER_NEAREST;
+    if (ScopedApi.vkCreateSampler(MDevice, &ScopedSamplerInfo, nullptr, &MHudNearestSampler) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
+    ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ScopedLayoutInfo.setLayoutCount = 1;
+    ScopedLayoutInfo.pSetLayouts = &MHudSetLayout;
+    return ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MHudLayout) == VK_SUCCESS;
+}
+
+bool VulkanRHI::CreateMotionResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorSetLayoutBinding ScopedBinding{};
+    ScopedBinding.binding = 0;
+    ScopedBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedBinding.descriptorCount = 1;
+    ScopedBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    VkDescriptorSetLayoutCreateInfo ScopedSetLayoutInfo{};
+    ScopedSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ScopedSetLayoutInfo.bindingCount = 1;
+    ScopedSetLayoutInfo.pBindings = &ScopedBinding;
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MMotionSetLayout) !=
+        VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorPoolSize ScopedPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                        static_cast<std::uint32_t>(kMaxFramesInFlight)};
+    VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+    ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ScopedPoolInfo.maxSets = kMaxFramesInFlight;
+    ScopedPoolInfo.poolSizeCount = 1;
+    ScopedPoolInfo.pPoolSizes = &ScopedPoolSize;
+    if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MMotionPool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorSetAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ScopedAllocate.descriptorPool = MMotionPool;
+    ScopedAllocate.descriptorSetCount = 1;
+    ScopedAllocate.pSetLayouts = &MMotionSetLayout;
+    for (VkDescriptorSet& ScopedSet : MMotionSets)
+    {
+        if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &ScopedSet) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    VkPushConstantRange ScopedPush{};
+    ScopedPush.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    ScopedPush.size = 48;
+    VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
+    ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ScopedLayoutInfo.setLayoutCount = 1;
+    ScopedLayoutInfo.pSetLayouts = &MMotionSetLayout;
+    ScopedLayoutInfo.pushConstantRangeCount = 1;
+    ScopedLayoutInfo.pPushConstantRanges = &ScopedPush;
+    return ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MMotionLayout) == VK_SUCCESS;
+}
+
+bool VulkanRHI::CreateTemporalResources()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorSetLayoutBinding ScopedBindings[5]{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 5; ++ScopedIndex)
+    {
+        ScopedBindings[ScopedIndex].binding = ScopedIndex;
+        ScopedBindings[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedBindings[ScopedIndex].descriptorCount = 1;
+        ScopedBindings[ScopedIndex].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    VkDescriptorSetLayoutCreateInfo ScopedSetLayoutInfo{};
+    ScopedSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ScopedSetLayoutInfo.bindingCount = 5;
+    ScopedSetLayoutInfo.pBindings = ScopedBindings;
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MTemporalSetLayout) !=
+        VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorPoolSize ScopedPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5};
+    VkDescriptorPoolCreateInfo ScopedPoolInfo{};
+    ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ScopedPoolInfo.maxSets = 1;
+    ScopedPoolInfo.poolSizeCount = 1;
+    ScopedPoolInfo.pPoolSizes = &ScopedPoolSize;
+    if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MTemporalPool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkDescriptorSetAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ScopedAllocate.descriptorPool = MTemporalPool;
+    ScopedAllocate.descriptorSetCount = 1;
+    ScopedAllocate.pSetLayouts = &MTemporalSetLayout;
+    for (VkDescriptorSet& ScopedSet : MTemporalSets)
+    {
+        if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &ScopedSet) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    VkPushConstantRange ScopedPush{};
+    ScopedPush.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    ScopedPush.size = 32;
+    VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
+    ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ScopedLayoutInfo.setLayoutCount = 1;
+    ScopedLayoutInfo.pSetLayouts = &MTemporalSetLayout;
+    ScopedLayoutInfo.pushConstantRangeCount = 1;
+    ScopedLayoutInfo.pPushConstantRanges = &ScopedPush;
+    return ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MTemporalLayout) == VK_SUCCESS;
+}
+
 bool VulkanRHI::CreatePipeline()
 {
     Vk::Api& ScopedApi = Vk::GetApi();
+    if (!CreateClusterFallback())
+    {
+        LogError("vulkan", "cluster fallback set failed");
+        return false;
+    }
 
     VkPushConstantRange ScopedPushRange{};
     ScopedPushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     ScopedPushRange.offset = 0;
     ScopedPushRange.size = sizeof(PushConstants);
 
+    const std::array<VkDescriptorSetLayout, 2> ScopedSetLayouts{MDescriptorLayout, MClusterSetLayout};
     VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
     ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    ScopedLayoutInfo.setLayoutCount = 1;
-    ScopedLayoutInfo.pSetLayouts = &MDescriptorLayout;
+    ScopedLayoutInfo.setLayoutCount = MClusterSetLayout != VK_NULL_HANDLE ? 2u : 1u;
+    ScopedLayoutInfo.pSetLayouts = ScopedSetLayouts.data();
     ScopedLayoutInfo.pushConstantRangeCount = 1;
     ScopedLayoutInfo.pPushConstantRanges = &ScopedPushRange;
     if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MPipelineLayout) != VK_SUCCESS)
@@ -3204,11 +6195,16 @@ bool VulkanRHI::CreatePipeline()
         return false;
     }
 
-    return CreatePipelineForPass(MRenderPass, &MPipeline);
+    if (!CreatePipelineForPass(MRenderPass, &MPipeline))
+    {
+        return false;
+    }
+    return CreatePipelineForPass(MRenderPass, &MPipelineOpaque, true, true);
 }
 
 // One sprite pipeline per render pass. The pass is a parameter because the
-bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline)
+bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline, bool InDepthTest,
+                                      bool InBlendless, Fby::Rhi::RenderBlendMode InBlend)
 {
     Vk::Api& ScopedApi = Vk::GetApi();
 
@@ -3287,13 +6283,29 @@ bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* Out
     ScopedMultisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     VkPipelineColorBlendAttachmentState ScopedBlendAttachment{};
-    ScopedBlendAttachment.blendEnable = VK_TRUE;
+    ScopedBlendAttachment.blendEnable = InBlendless ? VK_FALSE : VK_TRUE;
     ScopedBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
     ScopedBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     ScopedBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
     ScopedBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     ScopedBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     ScopedBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    if (InBlend == Fby::Rhi::RenderBlendMode::Additive)
+    {
+        ScopedBlendAttachment.blendEnable = VK_TRUE;
+        ScopedBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        ScopedBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        ScopedBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        ScopedBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    }
+    else if (InBlend == Fby::Rhi::RenderBlendMode::Reveal)
+    {
+        ScopedBlendAttachment.blendEnable = VK_TRUE;
+        ScopedBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+        ScopedBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        ScopedBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        ScopedBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    }
     ScopedBlendAttachment.colorWriteMask =
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
@@ -3308,6 +6320,13 @@ bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* Out
     ScopedDynamicState.dynamicStateCount = 2;
     ScopedDynamicState.pDynamicStates = ScopedDynamicStates;
 
+    VkPipelineDepthStencilStateCreateInfo ScopedDepthState = MakeDepthStencilState();
+    if (InDepthTest)
+    {
+        ScopedDepthState.depthTestEnable = VK_TRUE;
+        ScopedDepthState.depthWriteEnable = VK_TRUE;
+        ScopedDepthState.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    }
     VkGraphicsPipelineCreateInfo ScopedPipelineInfo{};
     ScopedPipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     ScopedPipelineInfo.stageCount = 2;
@@ -3318,6 +6337,7 @@ bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* Out
     ScopedPipelineInfo.pRasterizationState = &ScopedRaster;
     ScopedPipelineInfo.pMultisampleState = &ScopedMultisample;
     ScopedPipelineInfo.pColorBlendState = &ScopedColorBlend;
+    ScopedPipelineInfo.pDepthStencilState = &ScopedDepthState;
     ScopedPipelineInfo.pDynamicState = &ScopedDynamicState;
     ScopedPipelineInfo.layout = MPipelineLayout;
     ScopedPipelineInfo.renderPass = InRenderPass;
@@ -3365,10 +6385,15 @@ bool VulkanRHI::CreateInstanceRing()
     const VkDeviceSize ScopedSliceBytes = static_cast<VkDeviceSize>(MInstanceCapacity) * sizeof(RenderItem);
     const VkDeviceSize ScopedTotalBytes = ScopedSliceBytes * MFramesInFlight;
 
-    if (!CreateBuffer(ScopedTotalBytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &MInstanceBuffer,
+    const VkBufferUsageFlags ScopedDeviceUsage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                                                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                                 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if (!CreateBuffer(ScopedTotalBytes, ScopedDeviceUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &MInstanceBuffer,
                       &MInstanceMemory) ||
-        Vk::GetApi().vkMapMemory(MDevice, MInstanceMemory, 0, VK_WHOLE_SIZE, 0, &MInstanceMapped) != VK_SUCCESS)
+        !CreateBuffer(ScopedTotalBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                      &MInstanceStagingBuffer, &MInstanceStagingMemory) ||
+        Vk::GetApi().vkMapMemory(MDevice, MInstanceStagingMemory, 0, VK_WHOLE_SIZE, 0, &MInstanceMapped) != VK_SUCCESS)
     {
         LogError("vulkan", "instance ring creation failed ({} bytes)", ScopedTotalBytes);
         return false;
@@ -3376,8 +6401,8 @@ bool VulkanRHI::CreateInstanceRing()
 
     MTransientCapacity = static_cast<std::size_t>(ScopedSliceBytes);
     MInstanceSliceValid.fill(false);
-    LogInfo("vulkan", "instance ring: {} items/frame x {} frames = {:.1f} MB", MInstanceCapacity, MFramesInFlight,
-            static_cast<double>(ScopedTotalBytes) / (1024.0 * 1024.0));
+    LogInfo("vulkan", "instance ring: {} items/frame x {} frames = {:.1f} MB device-local + staging", MInstanceCapacity,
+            MFramesInFlight, static_cast<double>(ScopedTotalBytes) / (1024.0 * 1024.0));
     return true;
 }
 
@@ -3957,6 +6982,7 @@ bool VulkanRHI::CreateGraphicsPipelineForPass(VkRenderPass InRenderPass, VkPipel
     ScopedDynamicState.dynamicStateCount = 2;
     ScopedDynamicState.pDynamicStates = ScopedDynamicStates;
 
+    const VkPipelineDepthStencilStateCreateInfo ScopedDepthState = MakeDepthStencilState();
     VkGraphicsPipelineCreateInfo ScopedPipelineInfo{};
     ScopedPipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     ScopedPipelineInfo.stageCount = 2;
@@ -3967,6 +6993,7 @@ bool VulkanRHI::CreateGraphicsPipelineForPass(VkRenderPass InRenderPass, VkPipel
     ScopedPipelineInfo.pRasterizationState = &ScopedRaster;
     ScopedPipelineInfo.pMultisampleState = &ScopedMultisample;
     ScopedPipelineInfo.pColorBlendState = &ScopedColorBlend;
+    ScopedPipelineInfo.pDepthStencilState = &ScopedDepthState;
     ScopedPipelineInfo.pDynamicState = &ScopedDynamicState;
     ScopedPipelineInfo.layout = InLayout;
     ScopedPipelineInfo.renderPass = InRenderPass;
@@ -4000,22 +7027,43 @@ bool VulkanRHI::CreateOffscreenRenderPass()
     ScopedColorRef.attachment = 0;
     ScopedColorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentDescription ScopedDepth{};
+    ScopedDepth.format = VK_FORMAT_D32_SFLOAT;
+    ScopedDepth.samples = VK_SAMPLE_COUNT_1_BIT;
+    ScopedDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    ScopedDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    ScopedDepth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    ScopedDepth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    ScopedDepth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    ScopedDepth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    VkAttachmentReference ScopedDepthRef{};
+    ScopedDepthRef.attachment = 1;
+    ScopedDepthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
     VkSubpassDescription ScopedSubpass{};
     ScopedSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     ScopedSubpass.colorAttachmentCount = 1;
     ScopedSubpass.pColorAttachments = &ScopedColorRef;
+    ScopedSubpass.pDepthStencilAttachment = &ScopedDepthRef;
 
     VkSubpassDependency ScopedDependency{};
     ScopedDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     ScopedDependency.dstSubpass = 0;
-    ScopedDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    ScopedDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    ScopedDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    ScopedDependency.srcStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    ScopedDependency.dstStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    ScopedDependency.dstAccessMask =
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 
+    VkAttachmentDescription ScopedAttachments[] = {ScopedColor, ScopedDepth};
     VkRenderPassCreateInfo ScopedCreateInfo{};
     ScopedCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    ScopedCreateInfo.attachmentCount = 1;
-    ScopedCreateInfo.pAttachments = &ScopedColor;
+    ScopedCreateInfo.attachmentCount = 2;
+    ScopedCreateInfo.pAttachments = ScopedAttachments;
     ScopedCreateInfo.subpassCount = 1;
     ScopedCreateInfo.pSubpasses = &ScopedSubpass;
     ScopedCreateInfo.dependencyCount = 1;
@@ -4027,6 +7075,7 @@ bool VulkanRHI::CreateOffscreenRenderPass()
     }
     // Material pipelines need a variant compiled against the sRGB attachment.
     ScopedColor.format = VK_FORMAT_R8G8B8A8_SRGB;
+    ScopedAttachments[0].format = VK_FORMAT_R8G8B8A8_SRGB;
     if (ScopedApi.vkCreateRenderPass(MDevice, &ScopedCreateInfo, nullptr, &MSrgbOffscreenRenderPass) != VK_SUCCESS)
     {
         // A driver without this format can still run every non-sRGB path;
@@ -4061,15 +7110,19 @@ bool VulkanRHI::CreateAccessibilityCompositeResources()
         return false;
     }
 
-    VkDescriptorSetLayoutBinding ScopedBinding{};
-    ScopedBinding.binding = 0;
-    ScopedBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    ScopedBinding.descriptorCount = 1;
-    ScopedBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutBinding ScopedBindings[2]{};
+    ScopedBindings[0].binding = 0;
+    ScopedBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedBindings[0].descriptorCount = 1;
+    ScopedBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    ScopedBindings[1].binding = 1;
+    ScopedBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    ScopedBindings[1].descriptorCount = 1;
+    ScopedBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     VkDescriptorSetLayoutCreateInfo ScopedSetInfo{};
     ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    ScopedSetInfo.bindingCount = 1;
-    ScopedSetInfo.pBindings = &ScopedBinding;
+    ScopedSetInfo.bindingCount = 2;
+    ScopedSetInfo.pBindings = ScopedBindings;
     if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetInfo, nullptr, &MAccessibilitySetLayout) != VK_SUCCESS)
     {
         LogWarn("vulkan", "accessibility composite: descriptor set layout failed; the CPU path stays");
@@ -4176,6 +7229,7 @@ bool VulkanRHI::CreateAccessibilityCompositeResources()
     ScopedDynamicState.dynamicStateCount = 2;
     ScopedDynamicState.pDynamicStates = ScopedDynamicStates;
 
+    const VkPipelineDepthStencilStateCreateInfo ScopedDepthState = MakeDepthStencilState();
     VkGraphicsPipelineCreateInfo ScopedPipelineInfo{};
     ScopedPipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     ScopedPipelineInfo.stageCount = 2;
@@ -4186,6 +7240,7 @@ bool VulkanRHI::CreateAccessibilityCompositeResources()
     ScopedPipelineInfo.pRasterizationState = &ScopedRaster;
     ScopedPipelineInfo.pMultisampleState = &ScopedMultisample;
     ScopedPipelineInfo.pColorBlendState = &ScopedColorBlend;
+    ScopedPipelineInfo.pDepthStencilState = &ScopedDepthState;
     ScopedPipelineInfo.pDynamicState = &ScopedDynamicState;
     ScopedPipelineInfo.layout = MAccessibilityLayout;
     ScopedPipelineInfo.renderPass = MOffscreenRenderPass;
@@ -4202,82 +7257,7 @@ bool VulkanRHI::CreateAccessibilityCompositeResources()
     }
 
     MAccessibilityReady = true;
-    (void)CreateAccessibilityFlashResources();
     LogInfo("vulkan", "accessibility composite active (colour vision + flash gain per frame)");
-    return true;
-}
-
-bool VulkanRHI::CreateAccessibilityFlashResources()
-{
-    Vk::Api& ScopedApi = Vk::GetApi();
-    if (MDevice == VK_NULL_HANDLE || !MAccessibilityReady)
-    {
-        return false;
-    }
-
-    VkDescriptorSetLayoutBinding ScopedBindings[2]{};
-    ScopedBindings[0].binding = 0;
-    ScopedBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    ScopedBindings[0].descriptorCount = 1;
-    ScopedBindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    ScopedBindings[1].binding = 1;
-    ScopedBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    ScopedBindings[1].descriptorCount = 1;
-    ScopedBindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    VkDescriptorSetLayoutCreateInfo ScopedSetInfo{};
-    ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    ScopedSetInfo.bindingCount = 2;
-    ScopedSetInfo.pBindings = ScopedBindings;
-    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetInfo, nullptr, &MAccessibilityFlashSetLayout) !=
-        VK_SUCCESS)
-    {
-        MAccessibilityFlashSetLayout = VK_NULL_HANDLE;
-        return false;
-    }
-
-    VkPushConstantRange ScopedRange{};
-    ScopedRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    ScopedRange.offset = 0;
-    ScopedRange.size = static_cast<std::uint32_t>(sizeof(float) * 4);
-    VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
-    ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    ScopedLayoutInfo.setLayoutCount = 1;
-    ScopedLayoutInfo.pSetLayouts = &MAccessibilityFlashSetLayout;
-    ScopedLayoutInfo.pushConstantRangeCount = 1;
-    ScopedLayoutInfo.pPushConstantRanges = &ScopedRange;
-    if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MAccessibilityFlashLayout) != VK_SUCCESS)
-    {
-        MAccessibilityFlashLayout = VK_NULL_HANDLE;
-        return false;
-    }
-
-    VkShaderModuleCreateInfo ScopedModuleInfo{};
-    ScopedModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    ScopedModuleInfo.codeSize = Shaders::accessibility_flash.size() * sizeof(std::uint32_t);
-    ScopedModuleInfo.pCode = Shaders::accessibility_flash.data();
-    VkShaderModule ScopedModule = VK_NULL_HANDLE;
-    if (ScopedApi.vkCreateShaderModule(MDevice, &ScopedModuleInfo, nullptr, &ScopedModule) != VK_SUCCESS)
-    {
-        return false;
-    }
-    VkComputePipelineCreateInfo ScopedPipelineInfo{};
-    ScopedPipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    ScopedPipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    ScopedPipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ScopedPipelineInfo.stage.module = ScopedModule;
-    ScopedPipelineInfo.stage.pName = "main";
-    ScopedPipelineInfo.layout = MAccessibilityFlashLayout;
-    const VkResult ScopedResult =
-        ScopedApi.vkCreateComputePipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedPipelineInfo, nullptr,
-                                           &MAccessibilityFlashPipeline);
-    ScopedApi.vkDestroyShaderModule(MDevice, ScopedModule, nullptr);
-    if (ScopedResult != VK_SUCCESS)
-    {
-        MAccessibilityFlashPipeline = VK_NULL_HANDLE;
-        return false;
-    }
-    MAccessibilityFlashReady = true;
-    LogInfo("vulkan", "per-pixel flash guard active");
     return true;
 }
 
@@ -4340,8 +7320,12 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
     ScopedImageInfo.arrayLayers = 1;
     ScopedImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     ScopedImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    // The accessibility flash guard writes into this image from a compute shader,
+    // so it needs STORAGE usage. An sRGB format is not required by the spec to
+    // expose STORAGE_IMAGE, but the desktop drivers used by the project accept it;
+    // the image creation check below disables the composite on devices that do not.
     ScopedImageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-                            VK_IMAGE_USAGE_STORAGE_BIT;
+                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     ScopedImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     ScopedImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     if (ScopedApi.vkCreateImage(MDevice, &ScopedImageInfo, nullptr, &MAccessibilitySwapImage) != VK_SUCCESS)
@@ -4364,21 +7348,56 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
     ScopedView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     ScopedView.subresourceRange.levelCount = 1;
     ScopedView.subresourceRange.layerCount = 1;
-    VkFramebufferCreateInfo ScopedFramebuffer{};
-    ScopedFramebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    ScopedFramebuffer.renderPass = MRenderPass;
-    ScopedFramebuffer.attachmentCount = 1;
-    ScopedFramebuffer.pAttachments = &MAccessibilitySwapView;
-    ScopedFramebuffer.width = MExtent.width;
-    ScopedFramebuffer.height = MExtent.height;
-    ScopedFramebuffer.layers = 1;
+    if (!CreateDepthImage(Extent2D{MExtent.width, MExtent.height}, &MAccessibilitySwapDepthImage,
+                          &MAccessibilitySwapDepthMemory, &MAccessibilitySwapDepthView))
+    {
+        LogWarn("vulkan", "accessibility swapchain composite: depth failed; direct path stays");
+        DestroyAccessibilitySwapchainResources();
+        return false;
+    }
+    VkFramebufferCreateInfo ScopedDepthPrepassFramebuffer{};
+    if (MDepthPrepassRenderPass != VK_NULL_HANDLE)
+    {
+        ScopedDepthPrepassFramebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        ScopedDepthPrepassFramebuffer.renderPass = MDepthPrepassRenderPass;
+        ScopedDepthPrepassFramebuffer.attachmentCount = 1;
+        ScopedDepthPrepassFramebuffer.pAttachments = &MAccessibilitySwapDepthView;
+        ScopedDepthPrepassFramebuffer.width = MExtent.width;
+        ScopedDepthPrepassFramebuffer.height = MExtent.height;
+        ScopedDepthPrepassFramebuffer.layers = 1;
+        if (ScopedApi.vkCreateFramebuffer(MDevice, &ScopedDepthPrepassFramebuffer, nullptr,
+                                          &MAccessibilityDepthPrepassFramebuffer) != VK_SUCCESS)
+        {
+            LogWarn("vulkan", "accessibility depth prepass framebuffer failed");
+            DestroyAccessibilitySwapchainResources();
+            return false;
+        }
+    }
+    // The image view must exist before the framebuffer names it. Capturing the
+    // attachment array first handed the driver a null view handle, and the
+    // resulting framebuffer faulted on its first vkCmdBeginRenderPass.
     if (ScopedAllocate.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
         ScopedApi.vkAllocateMemory(MDevice, &ScopedAllocate, nullptr, &MAccessibilitySwapMemory) != VK_SUCCESS ||
         ScopedApi.vkBindImageMemory(MDevice, MAccessibilitySwapImage, MAccessibilitySwapMemory, 0) != VK_SUCCESS ||
-        ScopedApi.vkCreateImageView(MDevice, &ScopedView, nullptr, &MAccessibilitySwapView) != VK_SUCCESS ||
-        ScopedApi.vkCreateFramebuffer(MDevice, &ScopedFramebuffer, nullptr, &MAccessibilitySwapFramebuffer) != VK_SUCCESS)
+        ScopedApi.vkCreateImageView(MDevice, &ScopedView, nullptr, &MAccessibilitySwapView) != VK_SUCCESS)
     {
         LogWarn("vulkan", "accessibility swapchain composite: resources failed; direct path stays");
+        DestroyAccessibilitySwapchainResources();
+        return false;
+    }
+    const VkImageView ScopedAttachments[2] = {MAccessibilitySwapView, MAccessibilitySwapDepthView};
+    VkFramebufferCreateInfo ScopedFramebuffer{};
+    ScopedFramebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    ScopedFramebuffer.renderPass = MRenderPass;
+    ScopedFramebuffer.attachmentCount = 2;
+    ScopedFramebuffer.pAttachments = ScopedAttachments;
+    ScopedFramebuffer.width = MExtent.width;
+    ScopedFramebuffer.height = MExtent.height;
+    ScopedFramebuffer.layers = 1;
+    if (ScopedApi.vkCreateFramebuffer(MDevice, &ScopedFramebuffer, nullptr, &MAccessibilitySwapFramebuffer) !=
+        VK_SUCCESS)
+    {
+        LogWarn("vulkan", "accessibility swapchain composite: framebuffer failed; direct path stays");
         DestroyAccessibilitySwapchainResources();
         return false;
     }
@@ -4458,6 +7477,15 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
     ScopedPipelineInfo.pMultisampleState = &ScopedMultisample;
     ScopedPipelineInfo.pColorBlendState = &ScopedColorBlend;
     ScopedPipelineInfo.pDynamicState = &ScopedDynamicState;
+    // A full-screen composite still needs a depth-stencil state: the render pass
+    // has a depth attachment, so the pipeline must describe how to treat it.
+    VkPipelineDepthStencilStateCreateInfo ScopedDepthState{};
+    ScopedDepthState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ScopedDepthState.depthTestEnable = VK_FALSE;
+    ScopedDepthState.depthWriteEnable = VK_FALSE;
+    ScopedDepthState.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+    ScopedDepthState.stencilTestEnable = VK_FALSE;
+    ScopedPipelineInfo.pDepthStencilState = &ScopedDepthState;
     ScopedPipelineInfo.layout = MAccessibilityLayout;
     ScopedPipelineInfo.renderPass = MRenderPass;
     ScopedPipelineInfo.subpass = 0;
@@ -4492,7 +7520,9 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
         ScopedWrite.pImageInfo = &ScopedImage;
         ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedWrite, 0, nullptr);
     }
-    if (MAccessibilityFlashReady)
+    // The flash guard now runs inside the composite fragment shader and only uses
+    // this r8 image as luminance history. R8_UNORM supports storage images, so the
+    // sRGB scene image no longer needs STORAGE usage.
     {
         VkImageCreateInfo ScopedFlashInfo{};
         ScopedFlashInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -4537,31 +7567,20 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
                                         &MAccessibilitySwapFlashView) == VK_SUCCESS;
         if (ScopedFlashOk)
         {
-            VkDescriptorSetAllocateInfo ScopedSetInfo{};
-            ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            ScopedSetInfo.descriptorPool = MAccessibilityPool;
-            ScopedSetInfo.descriptorSetCount = 1;
-            ScopedSetInfo.pSetLayouts = &MAccessibilityFlashSetLayout;
-            if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedSetInfo, &MAccessibilitySwapFlashSet) == VK_SUCCESS)
+            InitImageLayout(MAccessibilitySwapFlashImage, VK_IMAGE_LAYOUT_GENERAL);
+            if (MAccessibilitySwapSet != VK_NULL_HANDLE)
             {
-                VkDescriptorImageInfo ScopedColor{};
-                ScopedColor.imageView = MAccessibilitySwapView;
-                ScopedColor.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
                 VkDescriptorImageInfo ScopedHistory{};
                 ScopedHistory.imageView = MAccessibilitySwapFlashView;
                 ScopedHistory.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-                VkWriteDescriptorSet ScopedWrites[2]{};
-                for (std::uint32_t ScopedIndex = 0; ScopedIndex < 2; ++ScopedIndex)
-                {
-                    ScopedWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    ScopedWrites[ScopedIndex].dstSet = MAccessibilitySwapFlashSet;
-                    ScopedWrites[ScopedIndex].dstBinding = ScopedIndex;
-                    ScopedWrites[ScopedIndex].descriptorCount = 1;
-                    ScopedWrites[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                }
-                ScopedWrites[0].pImageInfo = &ScopedColor;
-                ScopedWrites[1].pImageInfo = &ScopedHistory;
-                ScopedApi.vkUpdateDescriptorSets(MDevice, 2, ScopedWrites, 0, nullptr);
+                VkWriteDescriptorSet ScopedHistoryWrite{};
+                ScopedHistoryWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                ScopedHistoryWrite.dstSet = MAccessibilitySwapSet;
+                ScopedHistoryWrite.dstBinding = 1;
+                ScopedHistoryWrite.descriptorCount = 1;
+                ScopedHistoryWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                ScopedHistoryWrite.pImageInfo = &ScopedHistory;
+                ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedHistoryWrite, 0, nullptr);
             }
         }
     }
@@ -4571,7 +7590,6 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
     (void)CreatePostFxResources();
     return true;
 }
-
 bool VulkanRHI::CreatePostFxResources()
 {
     if (MDevice == VK_NULL_HANDLE || MAccessibilitySwapView == VK_NULL_HANDLE ||
@@ -4702,6 +7720,13 @@ bool VulkanRHI::CreatePostFxResources()
     ScopedPipelineInfo.pMultisampleState = &ScopedMultisample;
     ScopedPipelineInfo.pColorBlendState = &ScopedColorBlend;
     ScopedPipelineInfo.pDynamicState = &ScopedDynamicState;
+    VkPipelineDepthStencilStateCreateInfo ScopedDepthState{};
+    ScopedDepthState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ScopedDepthState.depthTestEnable = VK_FALSE;
+    ScopedDepthState.depthWriteEnable = VK_FALSE;
+    ScopedDepthState.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+    ScopedDepthState.stencilTestEnable = VK_FALSE;
+    ScopedPipelineInfo.pDepthStencilState = &ScopedDepthState;
     ScopedPipelineInfo.layout = MPostFxLayout;
     ScopedPipelineInfo.renderPass = MRenderPass;
     ScopedPipelineInfo.subpass = 0;
@@ -4761,15 +7786,17 @@ void VulkanRHI::RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const Pos
                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
                                    &ScopedBarrier);
 
-    VkClearValue ScopedClear{};
-    ScopedClear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    VkClearValue ScopedClearValues[2]{};
+    ScopedClearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    ScopedClearValues[1].depthStencil.depth = 1.0f;
+    ScopedClearValues[1].depthStencil.stencil = 0;
     VkRenderPassBeginInfo ScopedBegin{};
     ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     ScopedBegin.renderPass = MRenderPass;
     ScopedBegin.framebuffer = MFramebuffers[MImageIndex];
     ScopedBegin.renderArea.extent = {InExtent.width, InExtent.height};
-    ScopedBegin.clearValueCount = 1;
-    ScopedBegin.pClearValues = &ScopedClear;
+    ScopedBegin.clearValueCount = 2;
+    ScopedBegin.pClearValues = ScopedClearValues;
     ScopedApi.vkCmdBeginRenderPass(InCommandBuffer, &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
     VkViewport ScopedViewport{};
     ScopedViewport.width = static_cast<float>(InExtent.width);
@@ -4831,10 +7858,16 @@ void VulkanRHI::DestroyAccessibilitySwapchainResources() noexcept
         {
             ScopedApi.vkFreeMemory(MDevice, MAccessibilitySwapFlashMemory, nullptr);
         }
+        if (MAccessibilityDepthPrepassFramebuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyFramebuffer(MDevice, MAccessibilityDepthPrepassFramebuffer, nullptr);
+        }
         if (MAccessibilitySwapFramebuffer != VK_NULL_HANDLE)
         {
             ScopedApi.vkDestroyFramebuffer(MDevice, MAccessibilitySwapFramebuffer, nullptr);
         }
+        DestroyDepthImage(&MAccessibilitySwapDepthImage, &MAccessibilitySwapDepthMemory,
+                          &MAccessibilitySwapDepthView);
         if (MAccessibilitySwapView != VK_NULL_HANDLE)
         {
             ScopedApi.vkDestroyImageView(MDevice, MAccessibilitySwapView, nullptr);
@@ -4848,15 +7881,18 @@ void VulkanRHI::DestroyAccessibilitySwapchainResources() noexcept
             ScopedApi.vkFreeMemory(MDevice, MAccessibilitySwapMemory, nullptr);
         }
     }
-    MAccessibilitySwapFlashSet = VK_NULL_HANDLE;
     MAccessibilitySwapFlashView = VK_NULL_HANDLE;
     MAccessibilitySwapFlashImage = VK_NULL_HANDLE;
     MAccessibilitySwapFlashMemory = VK_NULL_HANDLE;
     MAccessibilitySwapPipeline = VK_NULL_HANDLE;
     MAccessibilitySwapFramebuffer = VK_NULL_HANDLE;
+    MAccessibilityDepthPrepassFramebuffer = VK_NULL_HANDLE;
     MAccessibilitySwapView = VK_NULL_HANDLE;
     MAccessibilitySwapImage = VK_NULL_HANDLE;
     MAccessibilitySwapMemory = VK_NULL_HANDLE;
+    MAccessibilitySwapDepthImage = VK_NULL_HANDLE;
+    MAccessibilitySwapDepthMemory = VK_NULL_HANDLE;
+    MAccessibilitySwapDepthView = VK_NULL_HANDLE;
     MAccessibilitySwapSet = VK_NULL_HANDLE;
     if (MPostFxPipeline != VK_NULL_HANDLE)
     {
@@ -4918,7 +7954,6 @@ void VulkanRHI::DestroyAccessibilityCompositeResources() noexcept
     MAccessibilitySampler = VK_NULL_HANDLE;
     MAccessibilityReady = false;
 }
-
 bool VulkanRHI::AccessibilityCompositeWanted(const FramePacket& InPacket) const noexcept
 {
     if (!MAccessibilityReady)
@@ -4936,7 +7971,7 @@ bool VulkanRHI::AccessibilityCompositeWanted(const FramePacket& InPacket) const 
 void VulkanRHI::RecordAccessibilityComposite(VkCommandBuffer InCommandBuffer, VkRenderPass InRenderPass,
                                              VkFramebuffer InFramebuffer, VkPipeline InPipeline,
                                              VkDescriptorSet InSet, Extent2D InExtent,
-                                             const FrameAccessibility& InAccessibility) noexcept
+                                             const FrameAccessibility& InAccessibility, bool InHasDepth) noexcept
 {
     Vk::Api& ScopedApi = Vk::GetApi();
     const std::uint32_t ScopedFlags = InAccessibility.flags;
@@ -4953,15 +7988,21 @@ void VulkanRHI::RecordAccessibilityComposite(VkCommandBuffer InCommandBuffer, Vk
     ScopedPush.safety[1] = InAccessibility.colorVisionStrength;
     ScopedPush.safety[2] = (ScopedFlags & AccessibilityColorVision) != 0 ? 1.0f : 0.0f;
     ScopedPush.safety[3] = 0.0f;
+    ScopedPush.flashGuard[0] = InAccessibility.flashThreshold;
+    ScopedPush.flashGuard[1] = InAccessibility.flashGain;
+    ScopedPush.flashGuard[2] = (ScopedFlags & AccessibilityFlashGuard) != 0 ? 1.0f : 0.0f;
+    ScopedPush.flashGuard[3] = 0.0f;
 
     VkRenderPassBeginInfo ScopedBeginInfo{};
     ScopedBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     ScopedBeginInfo.renderPass = InRenderPass;
     ScopedBeginInfo.framebuffer = InFramebuffer;
     ScopedBeginInfo.renderArea.extent = {InExtent.width, InExtent.height};
-    VkClearValue ScopedClear{};
-    ScopedBeginInfo.clearValueCount = 1;
-    ScopedBeginInfo.pClearValues = &ScopedClear;
+    VkClearValue ScopedClearValues[2]{};
+    ScopedClearValues[1].depthStencil.depth = 1.0f;
+    ScopedClearValues[1].depthStencil.stencil = 0;
+    ScopedBeginInfo.clearValueCount = InHasDepth ? 2 : 1;
+    ScopedBeginInfo.pClearValues = ScopedClearValues;
     ScopedApi.vkCmdBeginRenderPass(InCommandBuffer, &ScopedBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
     ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, InPipeline);
     VkViewport ScopedViewport{};
@@ -4998,6 +8039,25 @@ bool VulkanRHI::CreateUploadArena(std::uint32_t InBytes)
     if (ScopedApi.vkMapMemory(MDevice, MUploadMemory, 0, MUploadCapacity, 0, &MUploadMapped) != VK_SUCCESS)
     {
         LogError("vulkan", "texture upload arena map failed");
+        return false;
+    }
+
+    VkFenceCreateInfo ScopedFenceInfo{};
+    ScopedFenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    ScopedFenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    if (ScopedApi.vkCreateFence(MDevice, &ScopedFenceInfo, nullptr, &MUploadFence) != VK_SUCCESS)
+    {
+        LogError("vulkan", "texture upload fence creation failed");
+        return false;
+    }
+    VkCommandBufferAllocateInfo ScopedAllocateInfo{};
+    ScopedAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    ScopedAllocateInfo.commandPool = MCommandPool;
+    ScopedAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    ScopedAllocateInfo.commandBufferCount = 1;
+    if (ScopedApi.vkAllocateCommandBuffers(MDevice, &ScopedAllocateInfo, &MUploadCommandBuffer) != VK_SUCCESS)
+    {
+        LogError("vulkan", "texture upload command buffer creation failed");
         return false;
     }
     return true;
@@ -5214,21 +8274,105 @@ void VulkanRHI::DestroyTextureArrayResources(TextureArray& InArray) noexcept
         ScopedApi.vkDestroySampler(MDevice, InArray.sampler, nullptr);
         InArray.sampler = VK_NULL_HANDLE;
     }
-    if (InArray.view != VK_NULL_HANDLE)
+    if (!InArray.borrowed)
     {
-        ScopedApi.vkDestroyImageView(MDevice, InArray.view, nullptr);
-        InArray.view = VK_NULL_HANDLE;
+        if (InArray.view != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyImageView(MDevice, InArray.view, nullptr);
+            InArray.view = VK_NULL_HANDLE;
+        }
+        if (InArray.image != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyImage(MDevice, InArray.image, nullptr);
+            InArray.image = VK_NULL_HANDLE;
+        }
+        if (InArray.memory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, InArray.memory, nullptr);
+            InArray.memory = VK_NULL_HANDLE;
+        }
     }
-    if (InArray.image != VK_NULL_HANDLE)
+}
+
+TextureArrayHandle VulkanRHI::CreateTextureArrayFromRenderTarget(RenderTargetHandle InHandle)
+{
+    RenderTarget* ScopedTarget = FindRenderTarget(InHandle.id);
+    if (ScopedTarget == nullptr || ScopedTarget->view == VK_NULL_HANDLE || MDescriptorPool == VK_NULL_HANDLE)
     {
-        ScopedApi.vkDestroyImage(MDevice, InArray.image, nullptr);
-        InArray.image = VK_NULL_HANDLE;
+        return {};
     }
-    if (InArray.memory != VK_NULL_HANDLE)
+
+    std::uint32_t ScopedId = 0;
+    if (!MFreeTextureArrayIds.empty())
     {
-        ScopedApi.vkFreeMemory(MDevice, InArray.memory, nullptr);
-        InArray.memory = VK_NULL_HANDLE;
+        ScopedId = MFreeTextureArrayIds.back();
+        MFreeTextureArrayIds.pop_back();
     }
+    else
+    {
+        if (MTextureArrays.size() >= kMaxTextureArrays + 1)
+        {
+            return {};
+        }
+        ScopedId = static_cast<std::uint32_t>(MTextureArrays.size());
+        MTextureArrays.push_back(nullptr);
+    }
+
+    auto ScopedArray = std::make_unique<TextureArray>();
+    ScopedArray->borrowed = true;
+    ScopedArray->image = ScopedTarget->image;
+    ScopedArray->view = ScopedTarget->view;
+    ScopedArray->layers = 1;
+    ScopedArray->mipLevels = 1;
+    ScopedArray->width = ScopedTarget->extent.width;
+    ScopedArray->height = ScopedTarget->extent.height;
+    ScopedArray->format = Fby::Assets::TextureFormat::Rgba8;
+    ScopedArray->srgb = ScopedTarget->srgb;
+
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkSamplerCreateInfo ScopedSamplerInfo{};
+    ScopedSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    ScopedSamplerInfo.magFilter = VK_FILTER_LINEAR;
+    ScopedSamplerInfo.minFilter = VK_FILTER_LINEAR;
+    ScopedSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ScopedSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    if (ScopedApi.vkCreateSampler(MDevice, &ScopedSamplerInfo, nullptr, &ScopedArray->sampler) != VK_SUCCESS)
+    {
+        MTextureArrays[ScopedId].reset();
+        return {};
+    }
+
+    VkDescriptorSetAllocateInfo ScopedAllocate{};
+    ScopedAllocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ScopedAllocate.descriptorPool = MDescriptorPool;
+    ScopedAllocate.descriptorSetCount = 1;
+    ScopedAllocate.pSetLayouts = &MDescriptorLayout;
+    if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedAllocate, &ScopedArray->descriptor) != VK_SUCCESS)
+    {
+        DestroyTextureArrayResources(*ScopedArray);
+        MTextureArrays[ScopedId].reset();
+        return {};
+    }
+
+    VkDescriptorImageInfo ScopedImageDescriptor{};
+    ScopedImageDescriptor.sampler = ScopedArray->sampler;
+    ScopedImageDescriptor.imageView = ScopedArray->view;
+    ScopedImageDescriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkWriteDescriptorSet ScopedWrite{};
+    ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrite.dstSet = ScopedArray->descriptor;
+    ScopedWrite.dstBinding = 0;
+    ScopedWrite.descriptorCount = 1;
+    ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedWrite.pImageInfo = &ScopedImageDescriptor;
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedWrite, 0, nullptr);
+    WriteSdfDescriptors(ScopedArray->descriptor);
+
+    MTextureArrays[ScopedId] = std::move(ScopedArray);
+    TextureArrayHandle ScopedHandle;
+    ScopedHandle.id = ScopedId;
+    return ScopedHandle;
 }
 
 TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc, std::span<const std::byte> InPixels)
@@ -5567,12 +8711,24 @@ bool VulkanRHI::UpdateTextureArrayLayer(TextureArrayHandle InHandle, std::uint32
         return false;
     }
 
-    // The media path calls this at most once per frame. Waiting for the device
-    ScopedApi.vkDeviceWaitIdle(MDevice);
+    // Reusing the staging arena waits only for the previous upload, not for the
+    // whole device. The frame queue sees this submission before the next draw.
+    if (!WaitUploadFence())
+    {
+        LogError("vulkan", "UpdateTextureArrayLayer: upload fence wait failed");
+        return false;
+    }
     std::memcpy(MUploadMapped, InData.data(), static_cast<std::size_t>(ScopedExpected));
 
-    const VkCommandBuffer ScopedCommand = BeginOneShot();
-    TransitionImage(ScopedCommand, ScopedArray->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    (void)ScopedApi.vkResetCommandBuffer(MUploadCommandBuffer, 0);
+    VkCommandBufferBeginInfo ScopedBeginInfo{};
+    ScopedBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    ScopedBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (ScopedApi.vkBeginCommandBuffer(MUploadCommandBuffer, &ScopedBeginInfo) != VK_SUCCESS)
+    {
+        return false;
+    }
+    TransitionImage(MUploadCommandBuffer, ScopedArray->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, ScopedArray->layers, ScopedArray->mipLevels);
     VkBufferImageCopy ScopedRegion{};
     ScopedRegion.bufferOffset = 0;
@@ -5587,11 +8743,15 @@ bool VulkanRHI::UpdateTextureArrayLayer(TextureArrayHandle InHandle, std::uint32
                                     ? Fby::Assets::BlockAlignedExtent(ScopedMipHeight, ScopedArray->format)
                                     : ScopedMipHeight,
                                 1};
-    ScopedApi.vkCmdCopyBufferToImage(ScopedCommand, MUploadBuffer, ScopedArray->image,
+    ScopedApi.vkCmdCopyBufferToImage(MUploadCommandBuffer, MUploadBuffer, ScopedArray->image,
                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedRegion);
-    TransitionImage(ScopedCommand, ScopedArray->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    TransitionImage(MUploadCommandBuffer, ScopedArray->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ScopedArray->layers, ScopedArray->mipLevels);
-    EndOneShot(ScopedCommand);
+    if (!SubmitUpload(MUploadCommandBuffer))
+    {
+        LogError("vulkan", "UpdateTextureArrayLayer: upload submit failed");
+        return false;
+    }
     ++MStats.uploadedBytes;
     return true;
 }
@@ -5608,7 +8768,7 @@ bool VulkanRHI::CaptureRenderTarget(RenderTargetHandle InHandle, std::span<std::
     {
         return false;
     }
-    if (ScopedTarget->format != VK_FORMAT_R8G8B8A8_UNORM && ScopedTarget->format != VK_FORMAT_R8G8B8A8_SRGB)
+    if (ScopedTarget->format != VK_FORMAT_R8G8B8A8_UNORM && !IsSrgbFormat(ScopedTarget->format))
     {
         LogError("vulkan", "CaptureRenderTarget: unsupported target format");
         return false;
@@ -5809,13 +8969,32 @@ void VulkanRHI::DestroyMesh(MeshHandle InHandle)
 
 void VulkanRHI::DestroySwapchain()
 {
+    DestroyHiZResources();
     DestroyAccessibilitySwapchainResources();
+    DestroyDepthPrepassFramebuffers();
     Vk::Api& ScopedApi = Vk::GetApi();
     for (VkFramebuffer ScopedFramebuffer : MFramebuffers)
     {
         ScopedApi.vkDestroyFramebuffer(MDevice, ScopedFramebuffer, nullptr);
     }
     MFramebuffers.clear();
+    for (VkFramebuffer ScopedFramebuffer : MHudOverlayFramebuffers)
+    {
+        ScopedApi.vkDestroyFramebuffer(MDevice, ScopedFramebuffer, nullptr);
+    }
+    MHudOverlayFramebuffers.clear();
+    for (std::size_t ScopedI = 0; ScopedI < MDrawDepthViews.size(); ++ScopedI)
+    {
+        DestroyDepthImage(&MDrawDepthImages[ScopedI], &MDrawDepthMemories[ScopedI], &MDrawDepthViews[ScopedI]);
+    }
+    if (MDepthSampler != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroySampler(MDevice, MDepthSampler, nullptr);
+        MDepthSampler = VK_NULL_HANDLE;
+    }
+    MDrawDepthImages.clear();
+    MDrawDepthMemories.clear();
+    MDrawDepthViews.clear();
     for (VkImageView ScopedView : MViews)
     {
         ScopedApi.vkDestroyImageView(MDevice, ScopedView, nullptr);
@@ -5852,7 +9031,9 @@ bool VulkanRHI::RecreateSwapchain(Extent2D InSize)
     {
         return true;
     }
-    const bool ScopedOk = CreateSwapchain(InSize) && CreateFramebuffers() && CreateSyncObjects();
+    const bool ScopedOk = CreateSwapchain(InSize) && CreateFramebuffers() && CreateDepthPrepassFramebuffers() &&
+                          CreateSyncObjects() && CreateHiZResources();
+    MHiZReady = ScopedOk && MDesc.enableHiZ;
     if (ScopedOk)
     {
         (void)CreateAccessibilitySwapchainResources();
@@ -5886,6 +9067,16 @@ bool VulkanRHI::VSyncEnabled() const noexcept
     return MDesc.vsync;
 }
 
+void VulkanRHI::SetOitMode(std::uint8_t InMode)
+{
+    MInfo.oitMode = InMode;
+}
+
+void VulkanRHI::SetUpscaleMode(std::uint8_t InMode)
+{
+    MInfo.upscaleMode = InMode;
+}
+
 void VulkanRHI::WaitIdle()
 {
     if (MDevice != VK_NULL_HANDLE)
@@ -5904,6 +9095,11 @@ bool VulkanRHI::BeginFrame()
     Vk::Api& ScopedApi = Vk::GetApi();
     MFrameIndex = static_cast<std::uint32_t>(MFrameCounter % MFramesInFlight);
     ++MFrameCounter;
+    MClusterRecordedThisFrame = false;
+    for (std::uint32_t ScopedView = 0; ScopedView < SdfMaxViews; ++ScopedView)
+    {
+        MSdfMaskPublished[MFrameIndex * SdfMaxViews + ScopedView] = false;
+    }
 
     if (ScopedApi.vkWaitForFences(MDevice, 1, &MInFlight[MFrameIndex], VK_TRUE,
                                   std::numeric_limits<std::uint64_t>::max()) != VK_SUCCESS)
@@ -5911,6 +9107,49 @@ bool VulkanRHI::BeginFrame()
         LogError("vulkan", "vkWaitForFences failed; device lost");
         MDeviceLost = true;
         return false;
+    }
+    float ScopedGpuFrameMilliseconds = 0.0f;
+    float ScopedGpuDepthMilliseconds = 0.0f;
+    float ScopedGpuMainMilliseconds = 0.0f;
+    float ScopedGpuClusterMilliseconds = 0.0f;
+    float ScopedGpuPostFxMilliseconds = 0.0f;
+    int ScopedTimestampCode = 0;
+    if (MTimestampsReady && MFrameCounter > MFramesInFlight && MFrameIndex < MTimestampPools.size() &&
+        MTimestampPools[MFrameIndex] != VK_NULL_HANDLE)
+    {
+        std::array<std::uint64_t, TimestampCount> ScopedTimestamps{};
+        const VkResult ScopedTimestampResult =
+            ScopedApi.vkGetQueryPoolResults(MDevice, MTimestampPools[MFrameIndex], 0, TimestampCount,
+                                            ScopedTimestamps.size() * sizeof(std::uint64_t), ScopedTimestamps.data(),
+                                            sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
+        ScopedTimestampCode = static_cast<int>(ScopedTimestampResult);
+        if (ScopedTimestampResult == VK_SUCCESS)
+        {
+            const auto ScopedMs = [&](std::uint32_t InStart, std::uint32_t InEnd)
+            {
+                if (ScopedTimestamps[InEnd] < ScopedTimestamps[InStart])
+                {
+                    return 0.0f;
+                }
+                return static_cast<float>(ScopedTimestamps[InEnd] - ScopedTimestamps[InStart]) * MTimestampPeriod /
+                       1.0e6f;
+            };
+            ScopedGpuFrameMilliseconds = ScopedMs(TimestampFrameStart, TimestampFrameEnd);
+            ScopedGpuDepthMilliseconds = ScopedMs(TimestampDepthStart, TimestampDepthEnd);
+            ScopedGpuMainMilliseconds = ScopedMs(TimestampMainStart, TimestampMainEnd);
+            ScopedGpuClusterMilliseconds = ScopedMs(TimestampClusterStart, TimestampClusterEnd);
+            ScopedGpuPostFxMilliseconds = ScopedMs(TimestampPostFxStart, TimestampPostFxEnd);
+        }
+    }
+    std::uint32_t ScopedCulledItems = 0;
+    if (MCullReady && MFrameIndex < MCullFrames.size() && MCullFrames[MFrameIndex].ReadbackMapped != nullptr)
+    {
+        const auto* ScopedCounts =
+            static_cast<const std::uint32_t*>(MCullFrames[MFrameIndex].ReadbackMapped);
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < kMaxCullBatches; ++ScopedIndex)
+        {
+            ScopedCulledItems += ScopedCounts[ScopedIndex];
+        }
     }
     ParseVtFeedback(MFrameIndex % kFeedbackSlots);
 
@@ -5928,29 +9167,88 @@ bool VulkanRHI::BeginFrame()
         return false;
     }
 
+    if (MExtent.width != 0 && MExtent.height != 0)
+    {
+        // The mask is created or resized before recording starts: creating it from
+        // the compute pass rewrites descriptor sets the recording buffer already
+        // bound.
+        const Extent2D ScopedMaskExtent{std::max(MExtent.width / 2u, 1u), std::max(MExtent.height / 2u, 1u)};
+        if (MSdfMaskView == VK_NULL_HANDLE || MSdfMaskExtent.width != ScopedMaskExtent.width ||
+            MSdfMaskExtent.height != ScopedMaskExtent.height)
+        {
+            WaitAllInFlight();
+            (void)EnsureSdfMask(ScopedMaskExtent);
+        }
+    }
+    if (MVtFeedbackPendingExtent.width != 0)
+    {
+        // The feedback views and their descriptor writes must not race a recording
+        // or pending command buffer.
+        const Extent2D ScopedPending = MVtFeedbackPendingExtent;
+        MVtFeedbackPendingExtent = {};
+        WaitAllInFlight();
+        (void)EnsureVtFeedback(ScopedPending);
+    }
+
     // The fence is reset just before the submit in EndFrame: resetting here and
     // then failing the frame leaves an unsignalled fence that hangs the slot.
-    VkCommandBuffer ScopedCommandBuffer = MCommandBuffers[MFrameIndex];
-    ScopedApi.vkResetCommandBuffer(ScopedCommandBuffer, 0);
+    VkCommandBuffer ScopedFrameCommandBuffer = MCommandBuffers[MFrameIndex];
+    ScopedApi.vkResetCommandBuffer(ScopedFrameCommandBuffer, 0);
 
-    VkCommandBufferBeginInfo ScopedBeginInfo{};
-    ScopedBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    ScopedBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (ScopedApi.vkBeginCommandBuffer(ScopedCommandBuffer, &ScopedBeginInfo) != VK_SUCCESS)
+    if (MVirtualTextureDirty)
+    {
+        // The command buffer holds no recorded commands yet and the in-flight
+        // submissions are done, so the shared sprite sets can be rewritten.
+        WaitAllInFlight();
+        if (MDescriptorSet != VK_NULL_HANDLE)
+        {
+            WriteSdfDescriptors(MDescriptorSet);
+        }
+        for (const std::unique_ptr<TextureArray>& ScopedArray : MTextureArrays)
+        {
+            if (ScopedArray != nullptr && ScopedArray->descriptor != VK_NULL_HANDLE)
+            {
+                WriteSdfDescriptors(ScopedArray->descriptor);
+            }
+        }
+        MVirtualTextureDirty = false;
+    }
+
+    VkCommandBufferBeginInfo ScopedFrameBegin{};
+    ScopedFrameBegin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    ScopedFrameBegin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (ScopedApi.vkBeginCommandBuffer(ScopedFrameCommandBuffer, &ScopedFrameBegin) != VK_SUCCESS)
     {
         LogError("vulkan", "vkBeginCommandBuffer failed; stopping the frame loop");
         MDeviceLost = true;
         return false;
     }
+    if (MTimestampsReady && MTimestampPools[MFrameIndex] != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkCmdResetQueryPool(ScopedFrameCommandBuffer, MTimestampPools[MFrameIndex], 0, TimestampCount);
+        WriteTimestamp(ScopedFrameCommandBuffer, TimestampFrameStart, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    }
 
     MStats = {};
     MStats.frameIndex = MFrameCounter;
+    MStats.culledItems = ScopedCulledItems;
+    MStats.gpuFrameMilliseconds = ScopedGpuFrameMilliseconds;
+    MStats.gpuDepthMilliseconds = ScopedGpuDepthMilliseconds;
+    MStats.gpuMainMilliseconds = ScopedGpuMainMilliseconds;
+    MStats.gpuClusterMilliseconds = ScopedGpuClusterMilliseconds;
+    MStats.gpuPostFxMilliseconds = ScopedGpuPostFxMilliseconds;
+    MStats.deviceLost = MDeviceLost;
+    MStats.oitItems = 0;
+    MStats.gpuTimestampsValid = ScopedGpuFrameMilliseconds > 0.0f;
+    MStats.gpuTimestampResult = ScopedTimestampCode;
     MInFrame = true;
     MPassOpen = false;
     MMainPassRecorded = false;
+    MPresentTargetId = 0xFFFFFFFFu;
     MBlindFrame = false;
     MVtFeedbackRecordedThisFrame = false;
     MInstanceFrameCursor = 0;
+    MPreUploadedPackets.clear();
     MRecordedPassIndex = 0;
     MPostFxThisFrame = false;
     MPostFxRecordPending = false;
@@ -6038,6 +9336,7 @@ void VulkanRHI::DestroyRenderTargetResources(RenderTarget& InTarget) noexcept
         ScopedApi.vkFreeMemory(MDevice, InTarget.memory, nullptr);
         InTarget.memory = VK_NULL_HANDLE;
     }
+    DestroyDepthImage(&InTarget.depthImage, &InTarget.depthMemory, &InTarget.depthView);
 }
 
 RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
@@ -6068,7 +9367,10 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
     auto ScopedTarget = std::make_unique<RenderTarget>();
     ScopedTarget->extent = InDesc.size;
     ScopedTarget->srgb = InDesc.srgb;
-    ScopedTarget->format = InDesc.srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+    ScopedTarget->blend = InDesc.blend;
+    ScopedTarget->format =
+        InDesc.matchSwapchainFormat ? MFormat
+                                    : (InDesc.srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM);
 
     const auto ScopedCleanup = [&]() { DestroyRenderTargetResources(*ScopedTarget); };
 
@@ -6081,7 +9383,8 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
     ScopedImageInfo.arrayLayers = 1;
     ScopedImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     ScopedImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    ScopedImageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ScopedImageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     ScopedImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     ScopedImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     if (ScopedApi.vkCreateImage(MDevice, &ScopedImageInfo, nullptr, &ScopedTarget->image) != VK_SUCCESS)
@@ -6107,7 +9410,7 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
         return {};
     }
 
-    if (!InDesc.srgb && MOffscreenRenderPass != VK_NULL_HANDLE)
+    if (!IsSrgbFormat(ScopedTarget->format) && MOffscreenRenderPass != VK_NULL_HANDLE)
     {
         // Shared offscreen pass: identical attachment format and structure, so
         ScopedTarget->renderPass = MOffscreenRenderPass;
@@ -6127,22 +9430,53 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
         ScopedColorRef.attachment = 0;
         ScopedColorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+        VkAttachmentDescription ScopedDepth{};
+        ScopedDepth.format = VK_FORMAT_D32_SFLOAT;
+        ScopedDepth.samples = VK_SAMPLE_COUNT_1_BIT;
+        ScopedDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        ScopedDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        ScopedDepth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        ScopedDepth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        ScopedDepth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        ScopedDepth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        VkAttachmentReference ScopedDepthRef{};
+        ScopedDepthRef.attachment = 1;
+        ScopedDepthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
         VkSubpassDescription ScopedSubpass{};
         ScopedSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         ScopedSubpass.colorAttachmentCount = 1;
         ScopedSubpass.pColorAttachments = &ScopedColorRef;
+        ScopedSubpass.pDepthStencilAttachment = &ScopedDepthRef;
 
         VkSubpassDependency ScopedDependency{};
         ScopedDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
         ScopedDependency.dstSubpass = 0;
-        ScopedDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        ScopedDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        ScopedDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        ScopedDependency.srcStageMask =
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        ScopedDependency.dstStageMask =
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        ScopedDependency.dstAccessMask =
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        if (InDesc.matchSwapchainFormat)
+        {
+            // The UI pipeline is created against MRenderPass, so this pass has to
+            // describe the same stage dependencies to stay compatible with it.
+            ScopedDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            ScopedDependency.dstStageMask =
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            ScopedDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                                             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                                             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+        }
 
+        const VkAttachmentDescription ScopedAttachments[] = {ScopedColor, ScopedDepth};
         VkRenderPassCreateInfo ScopedPassInfo{};
         ScopedPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        ScopedPassInfo.attachmentCount = 1;
-        ScopedPassInfo.pAttachments = &ScopedColor;
+        ScopedPassInfo.attachmentCount = 2;
+        ScopedPassInfo.pAttachments = ScopedAttachments;
         ScopedPassInfo.subpassCount = 1;
         ScopedPassInfo.pSubpasses = &ScopedSubpass;
         ScopedPassInfo.dependencyCount = 1;
@@ -6170,12 +9504,20 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
         ScopedCleanup();
         return {};
     }
+    if (!CreateDepthImage(InDesc.size, &ScopedTarget->depthImage, &ScopedTarget->depthMemory,
+                          &ScopedTarget->depthView))
+    {
+        LogError("vulkan", "CreateRenderTarget: depth image failed");
+        ScopedCleanup();
+        return {};
+    }
 
+    const VkImageView ScopedAttachments[] = {ScopedTarget->view, ScopedTarget->depthView};
     VkFramebufferCreateInfo ScopedFramebufferInfo{};
     ScopedFramebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     ScopedFramebufferInfo.renderPass = ScopedTarget->renderPass;
-    ScopedFramebufferInfo.attachmentCount = 1;
-    ScopedFramebufferInfo.pAttachments = &ScopedTarget->view;
+    ScopedFramebufferInfo.attachmentCount = 2;
+    ScopedFramebufferInfo.pAttachments = ScopedAttachments;
     ScopedFramebufferInfo.width = InDesc.size.width;
     ScopedFramebufferInfo.height = InDesc.size.height;
     ScopedFramebufferInfo.layers = 1;
@@ -6201,8 +9543,7 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
         ScopedSceneInfo.arrayLayers = 1;
         ScopedSceneInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         ScopedSceneInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        ScopedSceneInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-                                VK_IMAGE_USAGE_STORAGE_BIT;
+        ScopedSceneInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         ScopedSceneInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         ScopedSceneInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         if (ScopedApi.vkCreateImage(MDevice, &ScopedSceneInfo, nullptr, &ScopedTarget->sceneImage) == VK_SUCCESS)
@@ -6222,23 +9563,32 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
             ScopedSceneView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             ScopedSceneView.subresourceRange.levelCount = 1;
             ScopedSceneView.subresourceRange.layerCount = 1;
-            VkFramebufferCreateInfo ScopedSceneFramebuffer{};
-            ScopedSceneFramebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            ScopedSceneFramebuffer.renderPass = ScopedTarget->renderPass;
-            ScopedSceneFramebuffer.attachmentCount = 1;
-            ScopedSceneFramebuffer.pAttachments = &ScopedTarget->sceneView;
-            ScopedSceneFramebuffer.width = InDesc.size.width;
-            ScopedSceneFramebuffer.height = InDesc.size.height;
-            ScopedSceneFramebuffer.layers = 1;
-            const bool ScopedSceneOk =
+            // The scene view must exist before the framebuffer names it, so the
+            // attachment array is built after the image view is created. The
+            // same ordering bug in the accessibility framebuffer faulted on the
+            // first vkCmdBeginRenderPass that used it.
+            const bool ScopedSceneResourcesOk =
                 ScopedSceneAllocate.memoryTypeIndex != std::numeric_limits<std::uint32_t>::max() &&
                 ScopedApi.vkAllocateMemory(MDevice, &ScopedSceneAllocate, nullptr, &ScopedTarget->sceneMemory) ==
                     VK_SUCCESS &&
                 ScopedApi.vkBindImageMemory(MDevice, ScopedTarget->sceneImage, ScopedTarget->sceneMemory, 0) ==
                     VK_SUCCESS &&
-                ScopedApi.vkCreateImageView(MDevice, &ScopedSceneView, nullptr, &ScopedTarget->sceneView) == VK_SUCCESS &&
-                ScopedApi.vkCreateFramebuffer(MDevice, &ScopedSceneFramebuffer, nullptr, &ScopedTarget->sceneFramebuffer) ==
-                    VK_SUCCESS;
+                ScopedApi.vkCreateImageView(MDevice, &ScopedSceneView, nullptr, &ScopedTarget->sceneView) == VK_SUCCESS;
+            bool ScopedSceneOk = false;
+            if (ScopedSceneResourcesOk)
+            {
+                const VkImageView ScopedSceneAttachments[] = {ScopedTarget->sceneView, ScopedTarget->depthView};
+                VkFramebufferCreateInfo ScopedSceneFramebuffer{};
+                ScopedSceneFramebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+                ScopedSceneFramebuffer.renderPass = ScopedTarget->renderPass;
+                ScopedSceneFramebuffer.attachmentCount = 2;
+                ScopedSceneFramebuffer.pAttachments = ScopedSceneAttachments;
+                ScopedSceneFramebuffer.width = InDesc.size.width;
+                ScopedSceneFramebuffer.height = InDesc.size.height;
+                ScopedSceneFramebuffer.layers = 1;
+                ScopedSceneOk = ScopedApi.vkCreateFramebuffer(MDevice, &ScopedSceneFramebuffer, nullptr,
+                                                              &ScopedTarget->sceneFramebuffer) == VK_SUCCESS;
+            }
             if (ScopedSceneOk)
             {
                 VkDescriptorSetAllocateInfo ScopedSetAllocate{};
@@ -6263,7 +9613,7 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
                     ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedWrite, 0, nullptr);
                 }
             }
-            if (ScopedSceneOk && MAccessibilityFlashReady)
+            if (ScopedSceneOk)
             {
                 VkImageCreateInfo ScopedFlashInfo{};
                 ScopedFlashInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -6310,34 +9660,20 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
                         VK_SUCCESS;
                 if (ScopedFlashOk)
                 {
-                    VkDescriptorSetAllocateInfo ScopedFlashSetInfo{};
-                    ScopedFlashSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-                    ScopedFlashSetInfo.descriptorPool = MAccessibilityPool;
-                    ScopedFlashSetInfo.descriptorSetCount = 1;
-                    ScopedFlashSetInfo.pSetLayouts = &MAccessibilityFlashSetLayout;
-                    if (ScopedApi.vkAllocateDescriptorSets(MDevice, &ScopedFlashSetInfo,
-                                                          &ScopedTarget->flashSet) == VK_SUCCESS)
+                    InitImageLayout(ScopedTarget->flashImage, VK_IMAGE_LAYOUT_GENERAL);
+                    if (ScopedTarget->accessibilitySet != VK_NULL_HANDLE)
                     {
-                        VkDescriptorImageInfo ScopedColor{};
-                        ScopedColor.imageView = ScopedTarget->sceneView;
-                        ScopedColor.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
                         VkDescriptorImageInfo ScopedHistory{};
                         ScopedHistory.imageView = ScopedTarget->flashView;
                         ScopedHistory.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-                        VkWriteDescriptorSet ScopedWrites[2]{};
-                        ScopedWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                        ScopedWrites[0].dstSet = ScopedTarget->flashSet;
-                        ScopedWrites[0].dstBinding = 0;
-                        ScopedWrites[0].descriptorCount = 1;
-                        ScopedWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                        ScopedWrites[0].pImageInfo = &ScopedColor;
-                        ScopedWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                        ScopedWrites[1].dstSet = ScopedTarget->flashSet;
-                        ScopedWrites[1].dstBinding = 1;
-                        ScopedWrites[1].descriptorCount = 1;
-                        ScopedWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                        ScopedWrites[1].pImageInfo = &ScopedHistory;
-                        ScopedApi.vkUpdateDescriptorSets(MDevice, 2, ScopedWrites, 0, nullptr);
+                        VkWriteDescriptorSet ScopedHistoryWrite{};
+                        ScopedHistoryWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                        ScopedHistoryWrite.dstSet = ScopedTarget->accessibilitySet;
+                        ScopedHistoryWrite.dstBinding = 1;
+                        ScopedHistoryWrite.descriptorCount = 1;
+                        ScopedHistoryWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                        ScopedHistoryWrite.pImageInfo = &ScopedHistory;
+                        ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedHistoryWrite, 0, nullptr);
                     }
                 }
             }
@@ -6345,7 +9681,7 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
     }
 
     // The sprite pipeline is tied to this pass, so create a second pipeline.
-    if (!CreatePipelineForPass(ScopedTarget->renderPass, &ScopedTarget->pipeline) ||
+    if (!CreatePipelineForPass(ScopedTarget->renderPass, &ScopedTarget->pipeline, false, false, InDesc.blend) ||
         !CreateMeshPipelineForPass(ScopedTarget->renderPass, &ScopedTarget->meshPipeline))
     {
         ScopedCleanup();
@@ -6375,6 +9711,381 @@ void VulkanRHI::DestroyRenderTarget(RenderTargetHandle InHandle)
     MFreeRenderTargetIds.push_back(InHandle.id);
 }
 
+bool VulkanRHI::RcasSharpen(RenderTargetHandle InSource, RenderTargetHandle InDestination, float InSharpness)
+{
+    if (!MInFrame || MPassOpen || MRcasLayout == VK_NULL_HANDLE || MUpscaleSets[MFrameIndex] == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    const RenderTarget* ScopedSource = FindRenderTarget(InSource.id);
+    RenderTarget* ScopedDestination = FindRenderTarget(InDestination.id);
+    if (ScopedSource == nullptr || ScopedDestination == nullptr)
+    {
+        return false;
+    }
+    VkPipeline ScopedPipeline = VK_NULL_HANDLE;
+    const auto ScopedFound = MRcasPipelines.find(ScopedDestination->renderPass);
+    if (ScopedFound != MRcasPipelines.end())
+    {
+        ScopedPipeline = ScopedFound->second;
+    }
+    else if (CreateGraphicsPipelineForPass(ScopedDestination->renderPass, MRcasLayout, Shaders::fullscreen_vert.data(),
+                                           Shaders::fullscreen_vert.size() * sizeof(std::uint32_t),
+                                           Shaders::fsr1_rcas.data(),
+                                           Shaders::fsr1_rcas.size() * sizeof(std::uint32_t), &ScopedPipeline))
+    {
+        MRcasPipelines.emplace(ScopedDestination->renderPass, ScopedPipeline);
+    }
+    if (ScopedPipeline == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorImageInfo ScopedImage{MUpscaleSampler, ScopedSource->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    VkWriteDescriptorSet ScopedWrite{};
+    ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrite.dstSet = MRcasSets[MFrameIndex];
+    ScopedWrite.dstBinding = 0;
+    ScopedWrite.descriptorCount = 1;
+    ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedWrite.pImageInfo = &ScopedImage;
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedWrite, 0, nullptr);
+
+    VkClearValue ScopedClear[2]{};
+    ScopedClear[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    ScopedClear[1].depthStencil = {1.0f, 0};
+    VkRenderPassBeginInfo ScopedBegin{};
+    ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    ScopedBegin.renderPass = ScopedDestination->renderPass;
+    ScopedBegin.framebuffer = ScopedDestination->framebuffer;
+    ScopedBegin.renderArea.extent = {ScopedDestination->extent.width, ScopedDestination->extent.height};
+    ScopedBegin.clearValueCount = 2;
+    ScopedBegin.pClearValues = ScopedClear;
+    ScopedApi.vkCmdBeginRenderPass(MCommandBuffers[MFrameIndex], &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
+    VkViewport ScopedViewport{};
+    ScopedViewport.width = static_cast<float>(ScopedDestination->extent.width);
+    ScopedViewport.height = static_cast<float>(ScopedDestination->extent.height);
+    ScopedViewport.maxDepth = 1.0f;
+    ScopedApi.vkCmdSetViewport(MCommandBuffers[MFrameIndex], 0, 1, &ScopedViewport);
+    VkRect2D ScopedScissor{};
+    ScopedScissor.extent = {ScopedDestination->extent.width, ScopedDestination->extent.height};
+    ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedScissor);
+    ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedPipeline);
+    ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MRcasLayout, 0, 1,
+                                      &MRcasSets[MFrameIndex], 0, nullptr);
+    struct RcasPush
+    {
+        float texel[2];
+        float sharpness;
+        float padding;
+    } ScopedPush{};
+    ScopedPush.texel[0] = 1.0f / static_cast<float>(ScopedSource->extent.width);
+    ScopedPush.texel[1] = 1.0f / static_cast<float>(ScopedSource->extent.height);
+    ScopedPush.sharpness = InSharpness;
+    ScopedApi.vkCmdPushConstants(MCommandBuffers[MFrameIndex], MRcasLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                                 sizeof(ScopedPush), &ScopedPush);
+    ScopedApi.vkCmdDraw(MCommandBuffers[MFrameIndex], 3, 1, 0, 0);
+    ScopedApi.vkCmdEndRenderPass(MCommandBuffers[MFrameIndex]);
+    return true;
+}
+
+bool VulkanRHI::UpscaleRenderTarget(RenderTargetHandle InSource, RenderTargetHandle InDestination,
+                                    SpatialUpscaleMode InMode)
+{
+    if (!MInFrame || MPassOpen || MUpscaleLayout == VK_NULL_HANDLE || MUpscaleSets[MFrameIndex] == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    const RenderTarget* ScopedSource = FindRenderTarget(InSource.id);
+    RenderTarget* ScopedDestination = FindRenderTarget(InDestination.id);
+    if (ScopedSource == nullptr || ScopedDestination == nullptr || ScopedSource->view == VK_NULL_HANDLE ||
+        ScopedDestination->renderPass == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkPipeline ScopedPipeline = VK_NULL_HANDLE;
+    const auto ScopedFound = MUpscalePipelines.find(ScopedDestination->renderPass);
+    if (ScopedFound != MUpscalePipelines.end())
+    {
+        ScopedPipeline = ScopedFound->second;
+    }
+    else if (CreateGraphicsPipelineForPass(ScopedDestination->renderPass, MUpscaleLayout,
+                                           Shaders::fullscreen_vert.data(),
+                                           Shaders::fullscreen_vert.size() * sizeof(std::uint32_t),
+                                           Shaders::fsr1_upscale.data(),
+                                           Shaders::fsr1_upscale.size() * sizeof(std::uint32_t), &ScopedPipeline))
+    {
+        MUpscalePipelines.emplace(ScopedDestination->renderPass, ScopedPipeline);
+    }
+    if (ScopedPipeline == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorImageInfo ScopedImage{};
+    ScopedImage.sampler = MUpscaleSampler;
+    ScopedImage.imageView = ScopedSource->view;
+    ScopedImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkWriteDescriptorSet ScopedWrite{};
+    ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrite.dstSet = MUpscaleSets[MFrameIndex];
+    ScopedWrite.dstBinding = 0;
+    ScopedWrite.descriptorCount = 1;
+    ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedWrite.pImageInfo = &ScopedImage;
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedWrite, 0, nullptr);
+
+    VkClearValue ScopedClear[2]{};
+    ScopedClear[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    ScopedClear[1].depthStencil = {1.0f, 0};
+    VkRenderPassBeginInfo ScopedBegin{};
+    ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    ScopedBegin.renderPass = ScopedDestination->renderPass;
+    ScopedBegin.framebuffer = ScopedDestination->framebuffer;
+    ScopedBegin.renderArea.extent = {ScopedDestination->extent.width, ScopedDestination->extent.height};
+    ScopedBegin.clearValueCount = 2;
+    ScopedBegin.pClearValues = ScopedClear;
+    ScopedApi.vkCmdBeginRenderPass(MCommandBuffers[MFrameIndex], &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
+    VkViewport ScopedViewport{};
+    ScopedViewport.width = static_cast<float>(ScopedDestination->extent.width);
+    ScopedViewport.height = static_cast<float>(ScopedDestination->extent.height);
+    ScopedViewport.maxDepth = 1.0f;
+    ScopedApi.vkCmdSetViewport(MCommandBuffers[MFrameIndex], 0, 1, &ScopedViewport);
+    VkRect2D ScopedScissor{};
+    ScopedScissor.extent = {ScopedDestination->extent.width, ScopedDestination->extent.height};
+    ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedScissor);
+    ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedPipeline);
+    ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                      MUpscaleLayout, 0, 1, &MUpscaleSets[MFrameIndex], 0, nullptr);
+    struct UpscalePush
+    {
+        float source[4];
+        float params[4];
+    } ScopedPush{};
+    ScopedPush.source[0] = static_cast<float>(ScopedSource->extent.width);
+    ScopedPush.source[1] = static_cast<float>(ScopedSource->extent.height);
+    ScopedPush.source[2] = 1.0f / static_cast<float>(ScopedSource->extent.width);
+    ScopedPush.source[3] = 1.0f / static_cast<float>(ScopedSource->extent.height);
+    ScopedPush.params[0] = InMode == SpatialUpscaleMode::Fsr1 ? 0.0f : 0.12f;
+    ScopedPush.params[1] = static_cast<float>(InMode);
+    ScopedApi.vkCmdPushConstants(MCommandBuffers[MFrameIndex], MUpscaleLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                                 sizeof(ScopedPush), &ScopedPush);
+    ScopedApi.vkCmdDraw(MCommandBuffers[MFrameIndex], 3, 1, 0, 0);
+    ScopedApi.vkCmdEndRenderPass(MCommandBuffers[MFrameIndex]);
+    return true;
+}
+
+void VulkanRHI::PresentRenderTarget(RenderTargetHandle InHandle)
+{
+    const RenderTarget* ScopedTarget = FindRenderTarget(InHandle.id);
+    MPresentTargetId =
+        ScopedTarget != nullptr && ScopedTarget->image != VK_NULL_HANDLE ? InHandle.id : 0xFFFFFFFFu;
+}
+
+bool VulkanRHI::TransitionRenderTargetLayout(RenderTargetHandle InHandle, int InOldLayout, int InNewLayout)
+{
+    if (!MInFrame)
+    {
+        return false;
+    }
+    const RenderTarget* ScopedTarget = FindRenderTarget(InHandle.id);
+    if (ScopedTarget == nullptr || ScopedTarget->image == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    VkImageMemoryBarrier ScopedBarrier{};
+    ScopedBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ScopedBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+    ScopedBarrier.oldLayout = static_cast<VkImageLayout>(InOldLayout);
+    ScopedBarrier.newLayout = static_cast<VkImageLayout>(InNewLayout);
+    ScopedBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedBarrier.image = ScopedTarget->image;
+    ScopedBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    Vk::GetApi().vkCmdPipelineBarrier(MCommandBuffers[MFrameIndex], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
+                                      &ScopedBarrier);
+    return true;
+}
+
+bool VulkanRHI::PresentGeneratedFrame(RenderTargetHandle InHandle)
+{
+    if (MInFrame || MDeviceLost || MSwapchain == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    const RenderTarget* ScopedTarget = FindRenderTarget(InHandle.id);
+    if (ScopedTarget == nullptr || ScopedTarget->image == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (ScopedApi.vkWaitForFences(MDevice, 1, &MInFlight[MFrameIndex], VK_TRUE,
+                                  std::numeric_limits<std::uint64_t>::max()) != VK_SUCCESS)
+    {
+        return false;
+    }
+    const VkResult ScopedAcquire =
+        ScopedApi.vkAcquireNextImageKHR(MDevice, MSwapchain, std::numeric_limits<std::uint64_t>::max(),
+                                        MImageAvailable[MFrameIndex], VK_NULL_HANDLE, &MImageIndex);
+    if (ScopedAcquire != VK_SUCCESS && ScopedAcquire != VK_SUBOPTIMAL_KHR)
+    {
+        return false;
+    }
+    // The fence is reset just before the submit in EndFrame: resetting here and
+    // then failing the frame leaves an unsignalled fence that hangs the slot.
+    VkCommandBuffer ScopedCommandBuffer = MCommandBuffers[MFrameIndex];
+    ScopedApi.vkResetCommandBuffer(ScopedCommandBuffer, 0);
+
+    if (MVirtualTextureDirty)
+    {
+        // The command buffer holds no recorded commands now, and the in-flight
+        // submissions are done, so the shared sprite sets can be rewritten safely.
+        WaitAllInFlight();
+        if (MDescriptorSet != VK_NULL_HANDLE)
+        {
+            WriteSdfDescriptors(MDescriptorSet);
+        }
+        for (const std::unique_ptr<TextureArray>& ScopedArray : MTextureArrays)
+        {
+            if (ScopedArray != nullptr && ScopedArray->descriptor != VK_NULL_HANDLE)
+            {
+                WriteSdfDescriptors(ScopedArray->descriptor);
+            }
+        }
+        MVirtualTextureDirty = false;
+    }
+
+    VkCommandBufferBeginInfo ScopedBeginInfo{};
+    ScopedBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    ScopedBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (ScopedApi.vkBeginCommandBuffer(ScopedCommandBuffer, &ScopedBeginInfo) != VK_SUCCESS)
+    {
+        LogError("vulkan", "vkBeginCommandBuffer failed; stopping the frame loop");
+        MDeviceLost = true;
+        return false;
+    }
+    if (MTimestampsReady && MTimestampPools[MFrameIndex] != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkCmdResetQueryPool(ScopedCommandBuffer, MTimestampPools[MFrameIndex], 0, TimestampCount);
+        WriteTimestamp(ScopedCommandBuffer, TimestampFrameStart, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    }
+
+    VkImageMemoryBarrier ScopedSourceBarrier{};
+    ScopedSourceBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ScopedSourceBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    ScopedSourceBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    ScopedSourceBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ScopedSourceBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    ScopedSourceBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedSourceBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedSourceBarrier.image = ScopedTarget->image;
+    ScopedSourceBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    VkImageMemoryBarrier ScopedDestinationBarrier{};
+    ScopedDestinationBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ScopedDestinationBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ScopedDestinationBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    ScopedDestinationBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    ScopedDestinationBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedDestinationBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedDestinationBarrier.image = MImages[MImageIndex];
+    ScopedDestinationBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    const VkImageMemoryBarrier ScopedBarriers[] = {ScopedSourceBarrier, ScopedDestinationBarrier};
+    ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, ScopedBarriers);
+    VkImageBlit ScopedBlit{};
+    ScopedBlit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    ScopedBlit.srcOffsets[1] = {static_cast<std::int32_t>(ScopedTarget->extent.width),
+                                static_cast<std::int32_t>(ScopedTarget->extent.height), 1};
+    ScopedBlit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    ScopedBlit.dstOffsets[1] = {static_cast<std::int32_t>(MExtent.width),
+                                static_cast<std::int32_t>(MExtent.height), 1};
+    ScopedApi.vkCmdBlitImage(ScopedCommandBuffer, ScopedTarget->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                             MImages[MImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedBlit,
+                             VK_FILTER_LINEAR);
+    ScopedDestinationBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ScopedDestinationBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    ScopedDestinationBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    ScopedDestinationBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1,
+                                   &ScopedDestinationBarrier);
+    if (MUiVisible && MHudTargetId != 0xFFFFFFFFu && MHudPipeline != VK_NULL_HANDLE &&
+        MImageIndex < MHudOverlayFramebuffers.size())
+    {
+        VkRenderPassBeginInfo ScopedHudBegin{};
+        ScopedHudBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        ScopedHudBegin.renderPass = MHudOverlayPass;
+        ScopedHudBegin.framebuffer = MHudOverlayFramebuffers[MImageIndex];
+        ScopedHudBegin.renderArea.extent = MExtent;
+        ScopedApi.vkCmdBeginRenderPass(ScopedCommandBuffer, &ScopedHudBegin, VK_SUBPASS_CONTENTS_INLINE);
+        VkViewport ScopedHudViewport{};
+        ScopedHudViewport.width = static_cast<float>(MExtent.width);
+        ScopedHudViewport.height = static_cast<float>(MExtent.height);
+        ScopedHudViewport.maxDepth = 1.0f;
+        ScopedApi.vkCmdSetViewport(ScopedCommandBuffer, 0, 1, &ScopedHudViewport);
+        VkRect2D ScopedHudScissor{};
+        ScopedHudScissor.extent = MExtent;
+        ScopedApi.vkCmdSetScissor(ScopedCommandBuffer, 0, 1, &ScopedHudScissor);
+        ScopedApi.vkCmdBindPipeline(ScopedCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MHudPipeline);
+        ScopedApi.vkCmdBindDescriptorSets(ScopedCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MHudLayout, 0, 1,
+                                          &HudSetRef(), 0, nullptr);
+        ScopedApi.vkCmdDraw(ScopedCommandBuffer, 3, 1, 0, 0);
+        ScopedApi.vkCmdEndRenderPass(ScopedCommandBuffer);
+    }
+    VkImageMemoryBarrier ScopedPresentBarrier{};
+    ScopedPresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ScopedPresentBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    ScopedPresentBarrier.dstAccessMask = 0;
+    ScopedPresentBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    ScopedPresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    ScopedPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedPresentBarrier.image = MImages[MImageIndex];
+    ScopedPresentBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1,
+                                   &ScopedPresentBarrier);
+    if (ScopedApi.vkEndCommandBuffer(ScopedCommandBuffer) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkSemaphore ScopedWaitSemaphores[] = {MImageAvailable[MFrameIndex]};
+    VkPipelineStageFlags ScopedWaitStages[] = {VK_PIPELINE_STAGE_TRANSFER_BIT};
+    VkSemaphore ScopedSignalSemaphores[] = {MRenderFinished[MImageIndex]};
+    VkSubmitInfo ScopedSubmitInfo{};
+    ScopedSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    ScopedSubmitInfo.waitSemaphoreCount = 1;
+    ScopedSubmitInfo.pWaitSemaphores = ScopedWaitSemaphores;
+    ScopedSubmitInfo.pWaitDstStageMask = ScopedWaitStages;
+    ScopedSubmitInfo.commandBufferCount = 1;
+    ScopedSubmitInfo.pCommandBuffers = &ScopedCommandBuffer;
+    ScopedSubmitInfo.signalSemaphoreCount = 1;
+    ScopedSubmitInfo.pSignalSemaphores = ScopedSignalSemaphores;
+    (void)ScopedApi.vkResetFences(MDevice, 1, &MInFlight[MFrameIndex]);
+    if (ScopedApi.vkQueueSubmit(MQueue, 1, &ScopedSubmitInfo, MInFlight[MFrameIndex]) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkPresentInfoKHR ScopedPresentInfo{};
+    ScopedPresentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    ScopedPresentInfo.waitSemaphoreCount = 1;
+    ScopedPresentInfo.pWaitSemaphores = ScopedSignalSemaphores;
+    ScopedPresentInfo.swapchainCount = 1;
+    ScopedPresentInfo.pSwapchains = &MSwapchain;
+    ScopedPresentInfo.pImageIndices = &MImageIndex;
+    const VkResult ScopedPresent = ScopedApi.vkQueuePresentKHR(MQueue, &ScopedPresentInfo);
+    if (ScopedPresent == VK_ERROR_OUT_OF_DATE_KHR || ScopedPresent == VK_SUBOPTIMAL_KHR)
+    {
+        (void)RecreateSwapchain(MDesc.size);
+        return false;
+    }
+    return ScopedPresent == VK_SUCCESS;
+}
+
 bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& InPacket)
 {
     if (!MInFrame)
@@ -6392,7 +10103,7 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
         LogError("vulkan", "RenderToTarget must be recorded before the main Submit()");
         return false;
     }
-    ApplySdfLighting(InPacket.sdf);
+    const std::uint32_t ScopedSdfSlot = ApplySdfLighting(InPacket.sdf);
     ApplyVirtualTexture(InPacket);
 
     Vk::Api& ScopedApi = Vk::GetApi();
@@ -6403,6 +10114,7 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
     if (!MBlindFrame)
     {
         RecordMeshSkinning(ScopedCommandBuffer, InPacket);
+        RecordClusters(ScopedCommandBuffer, InPacket);
     }
 
     const std::uint32_t ScopedFeedbackSlot = MFrameIndex % kFeedbackSlots;
@@ -6429,10 +10141,12 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
                                        &ScopedFeedbackBarrier);
     }
 
-    VkClearValue ScopedClear{};
-    ScopedClear.color = {
+    VkClearValue ScopedClearValues[2]{};
+    ScopedClearValues[0].color = {
         {static_cast<float>(InPacket.clear.R()) / 255.0f, static_cast<float>(InPacket.clear.G()) / 255.0f,
          static_cast<float>(InPacket.clear.B()) / 255.0f, static_cast<float>(InPacket.clear.A()) / 255.0f}};
+    ScopedClearValues[1].depthStencil.depth = 1.0f;
+    ScopedClearValues[1].depthStencil.stencil = 0;
 
     const bool ScopedComposite =
         ScopedTarget->sceneFramebuffer != VK_NULL_HANDLE && AccessibilityCompositeWanted(InPacket);
@@ -6441,8 +10155,9 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
     ScopedBeginInfo.renderPass = ScopedTarget->renderPass;
     ScopedBeginInfo.framebuffer = ScopedComposite ? ScopedTarget->sceneFramebuffer : ScopedTarget->framebuffer;
     ScopedBeginInfo.renderArea.extent = {ScopedTarget->extent.width, ScopedTarget->extent.height};
-    ScopedBeginInfo.clearValueCount = 1;
-    ScopedBeginInfo.pClearValues = &ScopedClear;
+    ScopedBeginInfo.clearValueCount = 2;
+    ScopedBeginInfo.pClearValues = ScopedClearValues;
+    PreUploadInstances(ScopedCommandBuffer, InPacket);
     ScopedApi.vkCmdBeginRenderPass(ScopedCommandBuffer, &ScopedBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     VkViewport ScopedViewport{};
@@ -6458,18 +10173,12 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
 
     if (!MBlindFrame)
     {
-        const bool ScopedTargetSrgb = ScopedTarget->format == VK_FORMAT_R8G8B8A8_SRGB;
-        DrawPacket(ScopedCommandBuffer, ScopedTarget->pipeline, InPacket, true, ScopedTargetSrgb);
-        DrawMeshes(ScopedCommandBuffer, ScopedTarget->meshPipeline, InPacket, true, ScopedTargetSrgb);
+        const bool ScopedTargetSrgb = IsSrgbFormat(ScopedTarget->format);
+        DrawPacket(ScopedCommandBuffer, ScopedTarget->pipeline, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
+        DrawMeshes(ScopedCommandBuffer, ScopedTarget->meshPipeline, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
+        RecordOitResolve(ScopedCommandBuffer, ScopedTarget->renderPass, InPacket);
     }
     ScopedApi.vkCmdEndRenderPass(ScopedCommandBuffer);
-
-    if (ScopedTarget->flashSet != VK_NULL_HANDLE && FlashGuardWanted(InPacket.accessibility))
-    {
-        RecordFlashGuard(ScopedCommandBuffer, ScopedTarget->sceneImage, ScopedTarget->flashSet,
-                         ScopedTarget->extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                         InPacket.accessibility);
-    }
 
     if (ScopedComposite)
     {
@@ -6490,7 +10199,7 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
                                        &ScopedCompositeBarrier);
         RecordAccessibilityComposite(ScopedCommandBuffer, ScopedTarget->renderPass, ScopedTarget->framebuffer,
                                      MAccessibilityPipeline, ScopedTarget->accessibilitySet, ScopedTarget->extent,
-                                     InPacket.accessibility);
+                                     InPacket.accessibility, true);
     }
 
     if (ScopedFeedback)
@@ -6542,8 +10251,34 @@ bool VulkanRHI::RenderTargetTexture(RenderTargetHandle InHandle, NativeTextureVi
     }
     const RenderTarget& ScopedTarget = *MRenderTargets[InHandle.id];
     InView.view = ScopedTarget.view;
+    InView.image = ScopedTarget.image;
     InView.layout = static_cast<int>(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     return ScopedTarget.view != VK_NULL_HANDLE;
+}
+
+bool VulkanRHI::MainDepthTexture(NativeTextureView& InView) const
+{
+    if (MImageIndex >= MDrawDepthViews.size() || MDrawDepthViews[MImageIndex] == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    InView.view = MDrawDepthViews[MImageIndex];
+    InView.image = MDrawDepthImages[MImageIndex];
+    InView.layout = static_cast<int>(VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    return true;
+}
+
+bool VulkanRHI::RenderTargetDepthTexture(RenderTargetHandle InHandle, NativeTextureView& InView) const
+{
+    if (InHandle.id >= MRenderTargets.size() || MRenderTargets[InHandle.id] == nullptr)
+    {
+        return false;
+    }
+    const RenderTarget& ScopedTarget = *MRenderTargets[InHandle.id];
+    InView.view = ScopedTarget.depthView;
+    InView.image = ScopedTarget.depthImage;
+    InView.layout = static_cast<int>(VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    return ScopedTarget.depthView != VK_NULL_HANDLE;
 }
 
 bool VulkanRHI::TextureArrayLayerView(TextureArrayHandle InHandle, std::uint32_t InLayer,
@@ -6561,6 +10296,7 @@ bool VulkanRHI::TextureArrayLayerView(TextureArrayHandle InHandle, std::uint32_t
         if (Key == ScopedKey)
         {
             InView.view = View;
+            InView.image = ScopedArray->image;
             InView.layout = static_cast<int>(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             return View != VK_NULL_HANDLE;
         }
@@ -6625,46 +10361,175 @@ void* VulkanRHI::GetNativeFunction(const char* InName) const
         return nullptr;
     }
     Vk::Api& ScopedApi = Vk::GetApi();
-    if (MDevice != VK_NULL_HANDLE)
+    // vkGetInstanceProcAddr resolves every command the instance knows, including
+    // device-level ones, so it is asked first: that keeps instance-level names away
+    // from vkGetDeviceProcAddr, which must return NULL for them and makes the
+    // validation layer warn when it does not. Device extensions the instance does
+    // not expose still fall through to the device resolver.
+    if (MInstance != VK_NULL_HANDLE)
     {
-        const auto ScopedFunction = ScopedApi.vkGetDeviceProcAddr(MDevice, InName);
+        const auto ScopedFunction = ScopedApi.GetInstanceProcAddr(MInstance, InName);
         if (ScopedFunction != nullptr)
         {
             return reinterpret_cast<void*>(ScopedFunction);
         }
     }
-    if (MInstance != VK_NULL_HANDLE)
+    if (MDevice != VK_NULL_HANDLE)
     {
-        return reinterpret_cast<void*>(ScopedApi.GetInstanceProcAddr(MInstance, InName));
+        return reinterpret_cast<void*>(ScopedApi.vkGetDeviceProcAddr(MDevice, InName));
     }
     return nullptr;
 }
 
-void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
-                           bool InOffscreen, bool InSrgb)
+void VulkanRHI::RecordDepthPrepass(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket,
+                                   bool InAccessibility)
 {
-    if (InPacket.items.empty())
+    if (MDepthPrepassPipeline == VK_NULL_HANDLE || MDepthPrepassRenderPass == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    VkFramebuffer ScopedFramebuffer = VK_NULL_HANDLE;
+    if (InAccessibility)
+    {
+        ScopedFramebuffer = MAccessibilityDepthPrepassFramebuffer;
+    }
+    else if (MImageIndex < MDepthPrepassFramebuffers.size())
+    {
+        ScopedFramebuffer = MDepthPrepassFramebuffers[MImageIndex];
+    }
+    if (ScopedFramebuffer == VK_NULL_HANDLE)
     {
         return;
     }
     Vk::Api& ScopedApi = Vk::GetApi();
-    const std::uint32_t ScopedItemCount = static_cast<std::uint32_t>(InPacket.items.size());
-    if (ScopedItemCount > MInstanceCapacity || MInstanceFrameCursor > MInstanceCapacity - ScopedItemCount)
+    WriteTimestamp(InCommandBuffer, TimestampDepthStart, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    const bool ScopedUseCull =
+        MDepthPrepassRequested && MCullReady && !InPacket.items.empty() &&
+        InPacket.items.size() <= kMaxCulledItems && ScopedApi.vkCmdDrawIndexedIndirectCount != nullptr;
+    CullFrame& ScopedCullFrame = MCullFrames[MFrameIndex];
+    const bool ScopedReuseCull = ScopedUseCull && MDesc.enableStaticCaches && InPacket.sceneStatic &&
+                                 InPacket.gpuOpaqueMain && MHiZReady &&
+                                 ScopedCullFrame.SceneVersion == InPacket.sceneVersion;
+    VkDeviceSize ScopedSourceBase = 0;
+    if (ScopedUseCull && ScopedReuseCull)
     {
-        LogError("vulkan", "frame passes upload {} items in total, ring holds {} - raise DeviceDesc::maxItemsPerFrame",
-                 static_cast<std::uint64_t>(MInstanceFrameCursor) + ScopedItemCount, MInstanceCapacity);
-        return;
+        ++MStats.cullCacheHits;
+    }
+    if (ScopedUseCull && !ScopedReuseCull)
+    {
+        ScopedSourceBase = UploadPrepassInstances(InCommandBuffer, InPacket);
+        RecordOpaqueCull(InCommandBuffer, InPacket, ScopedSourceBase);
     }
 
-    // Copy the sorted items into this pass's range of this frame's slice. PIE,
-    // the editor viewport and the UI share one frame, so the base advances per
-    // pass instead of every pass overwriting the previous upload.
+    VkClearValue ScopedClear{};
+    ScopedClear.depthStencil.depth = 1.0f;
+    ScopedClear.depthStencil.stencil = 0;
+    VkRenderPassBeginInfo ScopedBegin{};
+    ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    ScopedBegin.renderPass = MDepthPrepassRenderPass;
+    ScopedBegin.framebuffer = ScopedFramebuffer;
+    ScopedBegin.renderArea.extent = MExtent;
+    ScopedBegin.clearValueCount = 1;
+    ScopedBegin.pClearValues = &ScopedClear;
+    ScopedApi.vkCmdBeginRenderPass(InCommandBuffer, &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
+    VkViewport ScopedViewport{};
+    ScopedViewport.width = static_cast<float>(MExtent.width);
+    ScopedViewport.height = static_cast<float>(MExtent.height);
+    ScopedViewport.minDepth = 0.0f;
+    ScopedViewport.maxDepth = 1.0f;
+    ScopedApi.vkCmdSetViewport(InCommandBuffer, 0, 1, &ScopedViewport);
+    VkRect2D ScopedScissor{};
+    ScopedScissor.extent = MExtent;
+    ScopedApi.vkCmdSetScissor(InCommandBuffer, 0, 1, &ScopedScissor);
+    if (ScopedUseCull)
+    {
+        CullFrame& ScopedCull = MCullFrames[MFrameIndex];
+        ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MDepthPrepassPipeline);
+        const VkDeviceSize ScopedZeroOffset = 0;
+        ScopedApi.vkCmdBindVertexBuffers(InCommandBuffer, 0, 1, &ScopedCull.VisibleBuffer, &ScopedZeroOffset);
+        ScopedApi.vkCmdBindIndexBuffer(InCommandBuffer, MIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        PushConstants ScopedConstants{};
+        ScopedConstants.viewportAndZoom[0] = InPacket.camera.viewport.X;
+        ScopedConstants.viewportAndZoom[1] = InPacket.camera.viewport.Y;
+        ScopedConstants.viewportAndZoom[2] = InPacket.camera.zoom;
+        ScopedConstants.centerAndPadding[0] = InPacket.camera.center.X;
+        ScopedConstants.centerAndPadding[1] = InPacket.camera.center.Y;
+        ScopedConstants.frame[0] = static_cast<float>(MFrameIndex % kFeedbackSlots);
+        ScopedConstants.frame[2] = 0.0f;
+        ScopedConstants.material[1] = InPacket.camera.viewport.X;
+        ScopedConstants.material[2] = InPacket.camera.viewport.Y;
+        ScopedApi.vkCmdPushConstants(InCommandBuffer, MPipelineLayout,
+                                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                                     sizeof(ScopedConstants), &ScopedConstants);
+        if (ScopedReuseCull)
+        {
+            MStats.depthDrawCalls += static_cast<std::uint32_t>(InPacket.batches.size());
+            for (std::uint32_t ScopedBatchIndex = 0; ScopedBatchIndex < InPacket.batches.size(); ++ScopedBatchIndex)
+            {
+                const VkDeviceSize ScopedCommandOffset =
+                    static_cast<VkDeviceSize>(ScopedBatchIndex) * sizeof(VkDrawIndexedIndirectCommand);
+                ScopedApi.vkCmdDrawIndexedIndirect(InCommandBuffer, ScopedCull.CommandBuffer, ScopedCommandOffset, 1,
+                                                  sizeof(VkDrawIndexedIndirectCommand));
+            }
+        }
+        else
+        {
+            ScopedApi.vkCmdDrawIndexedIndirectCount(InCommandBuffer, ScopedCull.CommandBuffer, 0,
+                                                   ScopedCull.CounterBuffer, 0, 1,
+                                                   sizeof(VkDrawIndexedIndirectCommand));
+        }
+    }
+    else if (MDepthPrepassRequested)
+    {
+        DrawPacket(InCommandBuffer, MDepthPrepassPipeline, InPacket, false, false, 0, true);
+    }
+    ScopedApi.vkCmdEndRenderPass(InCommandBuffer);
+    if (ScopedUseCull && InPacket.gpuOpaqueMain && !ScopedReuseCull)
+    {
+        RecordHiZ(InCommandBuffer);
+        RecordMainCull(InCommandBuffer, InPacket, ScopedSourceBase);
+        ScopedCullFrame.SceneVersion = InPacket.sceneVersion;
+    }
+    WriteTimestamp(InCommandBuffer, TimestampDepthEnd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+}
+
+void VulkanRHI::WaitAllInFlight()
+{
+    Vk::Api& ScopedApi = Vk::GetApi();
+    for (const VkFence ScopedFence : MInFlight)
+    {
+        if (ScopedFence != VK_NULL_HANDLE)
+        {
+            (void)ScopedApi.vkWaitForFences(MDevice, 1, &ScopedFence, VK_TRUE,
+                                            std::numeric_limits<std::uint64_t>::max());
+        }
+    }
+    (void)ScopedApi.vkDeviceWaitIdle(MDevice);
+}
+
+void VulkanRHI::PreUploadInstances(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket)
+{
+    if (InPacket.items.empty() || MInstanceMapped == nullptr || MFrameIndex >= MInstanceSliceValid.size() ||
+        MFrameIndex >= MInstanceSliceFrameCounter.size())
+    {
+        return;
+    }
+    for (const PreUploadedPacket& ScopedPacket : MPreUploadedPackets)
+    {
+        if (ScopedPacket.packet == &InPacket)
+        {
+            return;
+        }
+    }
+    const std::uint32_t ScopedCount = static_cast<std::uint32_t>(InPacket.items.size());
+    if (ScopedCount > MInstanceCapacity)
+    {
+        return;
+    }
     const VkDeviceSize ScopedSliceBytes = static_cast<VkDeviceSize>(MInstanceCapacity) * sizeof(RenderItem);
     auto* ScopedSlice = static_cast<std::byte*>(MInstanceMapped) + ScopedSliceBytes * MFrameIndex +
                         static_cast<std::size_t>(MInstanceFrameCursor) * sizeof(RenderItem);
-    const bool ScopedFirstPassThisFrame = MRecordedPassIndex == 0;
-    bool ScopedIncremental = InPacket.instanceRangesAreDeltas && ScopedFirstPassThisFrame &&
-                             MFrameIndex < MInstanceSliceValid.size() && MInstanceSliceValid[MFrameIndex] &&
+    bool ScopedIncremental = InPacket.instanceRangesAreDeltas && MInstanceSliceValid[MFrameIndex] &&
                              MInstanceSliceFrameCounter[MFrameIndex] + 1u == MFrameCounter;
     if (ScopedIncremental)
     {
@@ -6690,23 +10555,161 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
         std::memcpy(ScopedSlice, InPacket.items.data(), InPacket.items.size_bytes());
         MStats.uploadedBytes += InPacket.items.size_bytes();
     }
-    if (MFrameIndex < MInstanceSliceValid.size())
-    {
-        MInstanceSliceValid[MFrameIndex] = true;
-        if (ScopedFirstPassThisFrame)
-        {
-            MInstanceSliceFrameCounter[MFrameIndex] = MFrameCounter;
-        }
-    }
+    MInstanceSliceValid[MFrameIndex] = true;
+    MInstanceSliceFrameCounter[MFrameIndex] = MFrameCounter;
 
+    const VkDeviceSize ScopedBase =
+        static_cast<VkDeviceSize>(MFrameIndex) * MInstanceCapacity + MInstanceFrameCursor;
+    // The staging slice always holds the previous frame plus this frame's deltas, so
+    // a whole-slice copy is equivalent to the per-range copy and keeps one path.
+    VkBufferCopy ScopedCopy{};
+    ScopedCopy.srcOffset = ScopedBase * static_cast<VkDeviceSize>(sizeof(RenderItem));
+    ScopedCopy.dstOffset = ScopedCopy.srcOffset;
+    ScopedCopy.size = static_cast<VkDeviceSize>(ScopedCount) * sizeof(RenderItem);
+    Vk::GetApi().vkCmdCopyBuffer(InCommandBuffer, MInstanceStagingBuffer, MInstanceBuffer, 1, &ScopedCopy);
+    VkBufferMemoryBarrier ScopedBarrier{};
+    ScopedBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    ScopedBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ScopedBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    ScopedBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedBarrier.buffer = MInstanceBuffer;
+    ScopedBarrier.offset = 0;
+    ScopedBarrier.size = VK_WHOLE_SIZE;
+    Vk::GetApi().vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                      VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, nullptr, 1, &ScopedBarrier, 0, nullptr);
+
+    MPreUploadedPackets.push_back(PreUploadedPacket{&InPacket, ScopedBase, ScopedCount});
+    MInstanceFrameCursor += ScopedCount;
+}
+
+void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
+                           bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot, bool InDepthOnly)
+{
+    if (InPacket.items.empty())
+    {
+        return;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    const std::uint32_t ScopedItemCount = static_cast<std::uint32_t>(InPacket.items.size());
     MStats.items += ScopedItemCount;
     MStats.batches += static_cast<std::uint32_t>(InPacket.batches.size());
+    // Submit copies the whole packet before the first render pass opens, because
+    // buffer copies and barriers are invalid inside a pass. Both the depth pass
+    // and the main pass then read the same uploaded slice.
+    const PreUploadedPacket* ScopedPreUploaded = nullptr;
+    for (const PreUploadedPacket& ScopedPacket : MPreUploadedPackets)
+    {
+        if (ScopedPacket.packet == &InPacket && ScopedPacket.count == ScopedItemCount)
+        {
+            ScopedPreUploaded = &ScopedPacket;
+            break;
+        }
+    }
+    VkDeviceSize ScopedFirstInstanceBase = 0;
+    if (ScopedPreUploaded != nullptr)
+    {
+        ScopedFirstInstanceBase = ScopedPreUploaded->base;
+    }
+    else
+    {
+        if (ScopedItemCount > MInstanceCapacity || MInstanceFrameCursor > MInstanceCapacity - ScopedItemCount)
+        {
+            LogError("vulkan", "frame passes upload {} items in total, ring holds {} - raise DeviceDesc::maxItemsPerFrame",
+                     static_cast<std::uint64_t>(MInstanceFrameCursor) + ScopedItemCount, MInstanceCapacity);
+            return;
+        }
+        // Copy the sorted items into this pass's range of this frame's slice. PIE,
+        // the editor viewport and the UI share one frame, so the base advances per
+        // pass instead of every pass overwriting the previous upload.
+        const VkDeviceSize ScopedSliceBytes = static_cast<VkDeviceSize>(MInstanceCapacity) * sizeof(RenderItem);
+        auto* ScopedSlice = static_cast<std::byte*>(MInstanceMapped) + ScopedSliceBytes * MFrameIndex +
+                            static_cast<std::size_t>(MInstanceFrameCursor) * sizeof(RenderItem);
+        const bool ScopedFirstPassThisFrame = MRecordedPassIndex == 0;
+        bool ScopedIncremental = InPacket.instanceRangesAreDeltas && ScopedFirstPassThisFrame &&
+                                 MFrameIndex < MInstanceSliceValid.size() && MInstanceSliceValid[MFrameIndex] &&
+                                 MInstanceSliceFrameCounter[MFrameIndex] + 1u == MFrameCounter;
+        if (ScopedIncremental)
+        {
+            for (const DirtyRange& ScopedRange : InPacket.instanceRanges)
+            {
+                if (ScopedRange.count == 0)
+                {
+                    continue;
+                }
+                if (static_cast<std::size_t>(ScopedRange.first) + ScopedRange.count > InPacket.items.size())
+                {
+                    ScopedIncremental = false;
+                    break;
+                }
+                std::memcpy(ScopedSlice + static_cast<std::size_t>(ScopedRange.first) * sizeof(RenderItem),
+                            InPacket.items.data() + ScopedRange.first,
+                            static_cast<std::size_t>(ScopedRange.count) * sizeof(RenderItem));
+                MStats.uploadedBytes += static_cast<std::uint64_t>(ScopedRange.count) * sizeof(RenderItem);
+            }
+        }
+        if (!ScopedIncremental)
+        {
+            std::memcpy(ScopedSlice, InPacket.items.data(), InPacket.items.size_bytes());
+            MStats.uploadedBytes += InPacket.items.size_bytes();
+        }
+        if (MFrameIndex < MInstanceSliceValid.size())
+        {
+            MInstanceSliceValid[MFrameIndex] = true;
+            if (ScopedFirstPassThisFrame)
+            {
+                MInstanceSliceFrameCounter[MFrameIndex] = MFrameCounter;
+            }
+        }
+        ScopedFirstInstanceBase = static_cast<VkDeviceSize>(MFrameIndex) * MInstanceCapacity + MInstanceFrameCursor;
+        MInstanceFrameCursor += ScopedItemCount;
 
-    const VkDeviceSize ScopedFirstInstanceBase =
-        static_cast<VkDeviceSize>(MFrameIndex) * MInstanceCapacity + MInstanceFrameCursor;
-    MInstanceFrameCursor += ScopedItemCount;
+        // The staging copy is the only host write. From here the vertex stage reads
+        // device-local memory, so a discrete GPU never fetches instances over PCIe.
+        if (ScopedIncremental)
+        {
+            for (const DirtyRange& ScopedRange : InPacket.instanceRanges)
+            {
+                if (ScopedRange.count == 0)
+                {
+                    continue;
+                }
+                VkBufferCopy ScopedCopy{};
+                ScopedCopy.srcOffset =
+                    (ScopedFirstInstanceBase + ScopedRange.first) * static_cast<VkDeviceSize>(sizeof(RenderItem));
+                ScopedCopy.dstOffset = ScopedCopy.srcOffset;
+                ScopedCopy.size = static_cast<VkDeviceSize>(ScopedRange.count) * sizeof(RenderItem);
+                ScopedApi.vkCmdCopyBuffer(InCommandBuffer, MInstanceStagingBuffer, MInstanceBuffer, 1, &ScopedCopy);
+            }
+        }
+        else
+        {
+            VkBufferCopy ScopedCopy{};
+            ScopedCopy.srcOffset = ScopedFirstInstanceBase * static_cast<VkDeviceSize>(sizeof(RenderItem));
+            ScopedCopy.dstOffset = ScopedCopy.srcOffset;
+            ScopedCopy.size = static_cast<VkDeviceSize>(InPacket.items.size_bytes());
+            ScopedApi.vkCmdCopyBuffer(InCommandBuffer, MInstanceStagingBuffer, MInstanceBuffer, 1, &ScopedCopy);
+        }
+        VkBufferMemoryBarrier ScopedInstanceBarrier{};
+        ScopedInstanceBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        ScopedInstanceBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        ScopedInstanceBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        ScopedInstanceBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ScopedInstanceBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ScopedInstanceBarrier.buffer = MInstanceBuffer;
+        ScopedInstanceBarrier.offset = 0;
+        ScopedInstanceBarrier.size = VK_WHOLE_SIZE;
+        ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                       VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, nullptr, 1, &ScopedInstanceBarrier, 0,
+                                       nullptr);
+    }
     ++MRecordedPassIndex;
 
+    const std::span<const DrawBatch> ScopedBatches = InDepthOnly ? InPacket.depthBatches : InPacket.batches;
+    if (InDepthOnly && ScopedBatches.empty())
+    {
+        return;
+    }
     ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, InPipeline);
     // A sprite batch may carry a material pipeline; the engine quad pipeline is
     // restored whenever the next batch does not ask for one.
@@ -6714,8 +10717,41 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     // Packet-level array is the default. A batch with a non-zero textureArray
     std::uint32_t ScopedBoundArray = InPacket.textureArray;
     VkDescriptorSet ScopedActiveTexture = DescriptorFor(ScopedBoundArray);
+    const std::uint32_t ScopedSdfSlot = std::min(InSdfSlot, SdfViewSlots - 1u);
+    const std::uint32_t ScopedSdfOffset = ScopedSdfSlot * SdfBlockStride;
     ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPipelineLayout, 0, 1,
-                                      &ScopedActiveTexture, 0, nullptr);
+                                      &ScopedActiveTexture, 1, &ScopedSdfOffset);
+    if (MGiReady && MClusterReady && MFrameIndex < MGiFrames.size())
+    {
+        GiFrame& ScopedGi = MGiFrames[MFrameIndex];
+        const std::size_t ScopedProbeCount = std::min<std::size_t>(InPacket.giProbes.size(), kMaxGiProbes);
+        MStats.giProbes = static_cast<std::uint32_t>(ScopedProbeCount);
+        if (!MDesc.enableStaticCaches || ScopedGi.Version != InPacket.giVersion)
+        {
+            if (ScopedProbeCount > 0)
+            {
+                std::memcpy(ScopedGi.ProbeMapped, InPacket.giProbes.data(),
+                            ScopedProbeCount * sizeof(GpuGiProbe));
+            }
+            std::memcpy(ScopedGi.HeaderMapped, &InPacket.giHeader, sizeof(GpuGiVolumeHeader));
+            ScopedGi.Version = InPacket.giVersion;
+            VkMemoryBarrier ScopedGiBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_HOST_WRITE_BIT,
+                                            VK_ACCESS_SHADER_READ_BIT};
+            ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_HOST_BIT,
+                                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 1, &ScopedGiBarrier, 0,
+                                           nullptr, 0, nullptr);
+        }
+    }
+    if (MClusterSetLayout != VK_NULL_HANDLE)
+    {
+        VkDescriptorSet ScopedClusterSet =
+            MClusterReady && MFrameIndex < MClusterFrames.size() ? MClusterFrames[MFrameIndex].Set : MClusterFallbackSet;
+        if (ScopedClusterSet != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPipelineLayout, 1, 1,
+                                              &ScopedClusterSet, 0, nullptr);
+        }
+    }
     ++MStats.textureBinds;
 
     const VkDeviceSize ScopedZeroOffset = 0;
@@ -6738,31 +10774,87 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     ScopedConstants.vtLayout[3] = InPacket.virtualTextureLayout.W;
     ScopedConstants.frame[0] = static_cast<float>(MFrameIndex % kFeedbackSlots);
     ScopedConstants.frame[1] = static_cast<float>(InPacket.virtualTextureDebugMode);
+    ScopedConstants.frame[2] = static_cast<float>(ScopedSdfSlot);
+    ScopedConstants.frame[3] =
+        (InPacket.gpuLighting && MClusterReady && !InPacket.lights.empty()) ? 1.0f : 0.0f;
     ScopedConstants.material[0] = InPacket.timeSeconds;
     ScopedConstants.material[1] = InPacket.camera.viewport.X;
     ScopedConstants.material[2] = InPacket.camera.viewport.Y;
-    ScopedConstants.material[3] = 0.0f;
+    ScopedConstants.material[3] = InPacket.opaqueFrontToBack ? 1.0f : 0.0f;
     ScopedApi.vkCmdPushConstants(InCommandBuffer, MPipelineLayout,
                                  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
                                  sizeof(ScopedConstants), &ScopedConstants);
 
+    const bool ScopedUseGpuCommands =
+        !InDepthOnly && !InOffscreen && InPacket.gpuOpaqueMain && InPacket.gpuCulledBatchCount > 0u &&
+        InPacket.items.size() <= kMaxCulledItems && MDepthPrepassReady && MCullReady &&
+        MFrameIndex < MCullFrames.size() && ScopedBatches.size() <= kMaxCullBatches;
+    bool ScopedNormalVertexBound = false;
+    if (ScopedUseGpuCommands)
+    {
+        CullFrame& ScopedCull = MCullFrames[MFrameIndex];
+        const VkDeviceSize ScopedBatchZero = 0;
+        ScopedApi.vkCmdBindVertexBuffers(InCommandBuffer, 0, 1, &ScopedCull.VisibleBuffer, &ScopedBatchZero);
+        ScopedApi.vkCmdBindIndexBuffer(InCommandBuffer, MIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        MStats.gpuMainBatches += InPacket.gpuCulledBatchCount;
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < InPacket.gpuCulledBatchCount; ++ScopedIndex)
+        {
+            MStats.gpuMainItems += InPacket.batches[ScopedIndex].itemCount;
+        }
+    }
+
+    // Fully opaque frames with one pipeline and one atlas need one indirect
+    // call, not one per material batch.
+    if (ScopedUseGpuCommands && !InDepthOnly && ScopedBatches.size() == InPacket.gpuCulledBatchCount)
+    {
+        bool ScopedSinglePipeline = true;
+        for (const DrawBatch& ScopedBatch : ScopedBatches)
+        {
+            if (ScopedBatch.pipeline != 0 || ScopedBatch.textureArray != 0)
+            {
+                ScopedSinglePipeline = false;
+                break;
+            }
+        }
+        if (ScopedSinglePipeline && MPipelineOpaque != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPipelineOpaque);
+            ScopedApi.vkCmdDrawIndexedIndirect(InCommandBuffer, MCullFrames[MFrameIndex].CommandBuffer, 0,
+                                              InPacket.gpuCulledBatchCount, sizeof(VkDrawIndexedIndirectCommand));
+            ++MStats.drawCalls;
+            return;
+        }
+    }
+
     // One draw per batch. With a texture array the only batch boundary is the
-    if (InPacket.batches.empty())
+    if (ScopedBatches.empty())
     {
         ScopedApi.vkCmdDrawIndexed(InCommandBuffer, kQuadIndexCount, static_cast<std::uint32_t>(InPacket.items.size()),
                                    0, 0, static_cast<std::uint32_t>(ScopedFirstInstanceBase));
         ++MStats.drawCalls;
+        if (InDepthOnly)
+        {
+            MStats.depthItems += static_cast<std::uint32_t>(InPacket.items.size());
+            ++MStats.depthDrawCalls;
+        }
         return;
     }
 
-    for (const DrawBatch& ScopedBatch : InPacket.batches)
+    for (std::uint32_t ScopedBatchIndex = 0; ScopedBatchIndex < ScopedBatches.size(); ++ScopedBatchIndex)
     {
+        const DrawBatch& ScopedBatch = ScopedBatches[ScopedBatchIndex];
         if (ScopedBatch.itemCount == 0)
         {
             continue;
         }
         VkPipeline ScopedBatchPipeline = InPipeline;
-        if (ScopedBatch.pipeline != 0)
+        if (!InDepthOnly && !InOffscreen && (MDepthPrepassReady || InPacket.opaqueFrontToBack) &&
+            InPacket.gpuOpaqueMain && MPipelineOpaque != VK_NULL_HANDLE &&
+            ScopedBatchIndex < InPacket.gpuCulledBatchCount)
+        {
+            ScopedBatchPipeline = MPipelineOpaque;
+        }
+        if (!InDepthOnly && ScopedBatch.pipeline != 0)
         {
             const VkPipeline ScopedMaterial = ResolveMaterialPipeline(ScopedBatch.pipeline, InOffscreen, InSrgb);
             if (ScopedMaterial != VK_NULL_HANDLE)
@@ -6783,13 +10875,34 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
             // Honest native atlas switch: font array, sprite array or a custom
             ScopedActiveTexture = DescriptorFor(ScopedRequestedArray);
             ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPipelineLayout, 0, 1,
-                                              &ScopedActiveTexture, 0, nullptr);
+                                              &ScopedActiveTexture, 1, &ScopedSdfOffset);
             ScopedBoundArray = ScopedRequestedArray;
             ++MStats.textureBinds;
         }
-        ScopedApi.vkCmdDrawIndexed(InCommandBuffer, kQuadIndexCount, ScopedBatch.itemCount, 0, 0,
-                                   static_cast<std::uint32_t>(ScopedFirstInstanceBase + ScopedBatch.firstItem));
+        if (ScopedUseGpuCommands && ScopedBatchIndex < InPacket.gpuCulledBatchCount)
+        {
+            const VkDeviceSize ScopedCommandOffset =
+                static_cast<VkDeviceSize>(ScopedBatchIndex) * sizeof(VkDrawIndexedIndirectCommand);
+            ScopedApi.vkCmdDrawIndexedIndirect(InCommandBuffer, MCullFrames[MFrameIndex].CommandBuffer,
+                                              ScopedCommandOffset, 1, sizeof(VkDrawIndexedIndirectCommand));
+        }
+        else
+        {
+            if (ScopedUseGpuCommands && !ScopedNormalVertexBound)
+            {
+                const VkDeviceSize ScopedInstanceZero = 0;
+                ScopedApi.vkCmdBindVertexBuffers(InCommandBuffer, 0, 1, &MInstanceBuffer, &ScopedInstanceZero);
+                ScopedNormalVertexBound = true;
+            }
+            ScopedApi.vkCmdDrawIndexed(InCommandBuffer, kQuadIndexCount, ScopedBatch.itemCount, 0, 0,
+                                       static_cast<std::uint32_t>(ScopedFirstInstanceBase + ScopedBatch.firstItem));
+        }
         ++MStats.drawCalls;
+        if (InDepthOnly)
+        {
+            MStats.depthItems += ScopedBatch.itemCount;
+            ++MStats.depthDrawCalls;
+        }
     }
 }
 
@@ -7136,7 +11249,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
 }
 
 void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
-                           bool InOffscreen, bool InSrgb)
+                           bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot)
 {
     if (MMeshDrawCount == 0 || InPipeline == VK_NULL_HANDLE)
     {
@@ -7199,8 +11312,11 @@ void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
             ScopedBoundPipeline = ScopedGroupPipeline;
         }
         const VkDescriptorSet ScopedAtlas = DescriptorFor(ScopedGroup.textureArray);
+        // Set 0 carries the shared SDF block as a dynamic uniform buffer, so the
+        // bind must supply the slot offset even when the mesh does not read it.
+        const std::uint32_t ScopedSdfOffset = std::min(InSdfSlot, SdfViewSlots - 1u) * SdfBlockStride;
         ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MMeshGraphicsLayout, 0, 1,
-                                          &ScopedAtlas, 0, nullptr);
+                                          &ScopedAtlas, 1, &ScopedSdfOffset);
         ScopedApi.vkCmdDrawIndexedIndirect(InCommandBuffer, ScopedFrame.indirectBuffer,
                                            static_cast<VkDeviceSize>(ScopedGroup.firstCommand) *
                                                sizeof(VkDrawIndexedIndirectCommand),
@@ -7221,17 +11337,28 @@ bool VulkanRHI::RecordComputePass(std::string_view InPipeline, const void* InCon
     {
         return false;
     }
+    // The mask is created at device init and on swapchain resize, before any
+    // command buffer records. Recreating it here would rewrite descriptor sets
+    // that the recording command buffer already bound, which invalidates it.
     const Extent2D ScopedMask{std::max(InExtent.width / 2u, 1u), std::max(InExtent.height / 2u, 1u)};
-    if (!EnsureSdfMask(ScopedMask))
+    if (MSdfMaskView == VK_NULL_HANDLE)
     {
-        return false;
+        if (!EnsureSdfMask(ScopedMask))
+        {
+            return false;
+        }
     }
-    const std::uint32_t ScopedSlot = MFrameIndex % kSdfMaskFrames;
+    SdfShadowConstants ScopedConstants{};
+    std::memcpy(&ScopedConstants, InConstants, kSdfShadowBlockBytes);
+    const std::uint32_t ScopedView = std::min(
+        static_cast<std::uint32_t>(std::max(ScopedConstants.encode.Z, 0.0f)), SdfMaxViews - 1u);
+    const std::uint32_t ScopedSlot = MFrameIndex * SdfMaxViews + ScopedView;
     if (MSdfComputeMapped[ScopedSlot] == nullptr)
     {
         return false;
     }
-    std::memcpy(MSdfComputeMapped[ScopedSlot], InConstants, kSdfShadowBlockBytes);
+    ScopedConstants.encode.W = static_cast<float>(ScopedSlot);
+    std::memcpy(MSdfComputeMapped[ScopedSlot], &ScopedConstants, kSdfShadowBlockBytes);
 
     // Recorded into the frame command buffer before the sprite render pass, so
     // the mask writes happen-before the fragment samples.
@@ -7252,11 +11379,11 @@ bool VulkanRHI::RecordComputePass(std::string_view InPipeline, const void* InCon
     ScopedBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     ScopedBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     ScopedBarrier.image = MSdfMaskImage;
-    ScopedBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    ScopedBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, SdfViewSlots};
     ScopedApi.vkCmdPipelineBarrier(ScopedCommand, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
                                    &ScopedBarrier);
-    MSdfMaskValid = true;
+    MSdfMaskPublished[ScopedSlot] = true;
     return true;
 }
 
@@ -7294,26 +11421,37 @@ void VulkanRHI::Submit(const FramePacket& InPacket)
         LogError("vulkan", "Submit called more than once per frame");
         return;
     }
-
-    MBlindFrame = (InPacket.accessibility.flags & AccessibilityBlind) != 0;
-    // Only a scene packet owns the SDF parameters; the UI pass must not overwrite
-    // the block before the GPU executes the recorded scene draws.
-    if (InPacket.sdf.enabled)
+    MStats.oitItems = 0;
+    MStats.oitMode = InPacket.oitMode;
+    for (const RenderItem& ScopedItem : InPacket.items)
     {
-        ApplySdfLighting(InPacket.sdf);
+        if ((ScopedItem.flags & static_cast<std::uint32_t>(RenderFlags::Oit)) != 0u)
+        {
+            ++MStats.oitItems;
+        }
     }
+    MBlindFrame = (InPacket.accessibility.flags & AccessibilityBlind) != 0;
+    // Every scene packet writes its own SDF slot, so editor and PIE no longer
+    // overwrite each other before the GPU executes the recorded draws.
+    const std::uint32_t ScopedSdfSlot = ApplySdfLighting(InPacket.sdf);
     ApplyVirtualTexture(InPacket);
+    PreUploadInstances(ScopedCommandBuffer, InPacket);
 
     // Compute skinning must run outside the render pass. In BlindMode the
     if (!MBlindFrame)
     {
         RecordMeshSkinning(ScopedCommandBuffer, InPacket);
+        WriteTimestamp(ScopedCommandBuffer, TimestampClusterStart, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+        RecordClusters(ScopedCommandBuffer, InPacket);
+        WriteTimestamp(ScopedCommandBuffer, TimestampClusterEnd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
     }
 
-    VkClearValue ScopedClear{};
-    ScopedClear.color = {
+    VkClearValue ScopedClearValues[2]{};
+    ScopedClearValues[0].color = {
         {static_cast<float>(InPacket.clear.R()) / 255.0f, static_cast<float>(InPacket.clear.G()) / 255.0f,
          static_cast<float>(InPacket.clear.B()) / 255.0f, static_cast<float>(InPacket.clear.A()) / 255.0f}};
+    ScopedClearValues[1].depthStencil.depth = 1.0f;
+    ScopedClearValues[1].depthStencil.stencil = 0;
 
     MAccessibilityFrame = InPacket.accessibility;
     MAccessibilitySwapActive = MAccessibilitySwapReady && AccessibilityCompositeWanted(InPacket);
@@ -7321,14 +11459,16 @@ void VulkanRHI::Submit(const FramePacket& InPacket)
     // skipped when the accessibility composite owns the swapchain path.
     MPostFxThisFrame = (InPacket.postFxEnabled || MPostFxRecordPending) && MPostFxReady && !MAccessibilitySwapActive;
     MPostFxSettings = InPacket.postFx;
+    RecordDepthPrepass(ScopedCommandBuffer, InPacket, MAccessibilitySwapActive || MPostFxThisFrame);
+    WriteTimestamp(ScopedCommandBuffer, TimestampMainStart, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
     VkRenderPassBeginInfo ScopedBeginInfo{};
     ScopedBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     ScopedBeginInfo.renderPass = MRenderPass;
     ScopedBeginInfo.framebuffer =
         (MAccessibilitySwapActive || MPostFxThisFrame) ? MAccessibilitySwapFramebuffer : MFramebuffers[MImageIndex];
     ScopedBeginInfo.renderArea.extent = MExtent;
-    ScopedBeginInfo.clearValueCount = 1;
-    ScopedBeginInfo.pClearValues = &ScopedClear;
+    ScopedBeginInfo.clearValueCount = 2;
+    ScopedBeginInfo.pClearValues = ScopedClearValues;
 
     ScopedApi.vkCmdBeginRenderPass(ScopedCommandBuffer, &ScopedBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
     MPassOpen = true;
@@ -7347,9 +11487,482 @@ void VulkanRHI::Submit(const FramePacket& InPacket)
 
     if (!MBlindFrame)
     {
-        DrawPacket(ScopedCommandBuffer, MPipeline, InPacket, false, false);
-        DrawMeshes(ScopedCommandBuffer, MMeshPipeline, InPacket, false, false);
+        DrawPacket(ScopedCommandBuffer, MPipeline, InPacket, false, false, ScopedSdfSlot);
+        DrawMeshes(ScopedCommandBuffer, MMeshPipeline, InPacket, false, false, ScopedSdfSlot);
+        RecordOitResolve(ScopedCommandBuffer, MRenderPass, InPacket);
     }
+}
+
+bool VulkanRHI::DrawOverlay(const FramePacket& InPacket)
+{
+    if (!MInFrame || (!MPassOpen && !MInHudPass) || InPacket.items.empty())
+    {
+        return false;
+    }
+    DrawPacket(MCommandBuffers[MFrameIndex], MPipeline, InPacket, false, false, 0);
+    return true;
+}
+
+bool VulkanRHI::UploadMotionVectors(std::span<const MotionVectorItem> InItems)
+{
+    MMotionCount = static_cast<std::uint32_t>(InItems.size());
+    if (InItems.empty())
+    {
+        return true;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    if (MMotionCapacity < InItems.size())
+    {
+        if (MMotionMapped != nullptr)
+        {
+            ScopedApi.vkUnmapMemory(MDevice, MMotionMemory);
+            MMotionMapped = nullptr;
+        }
+        if (MMotionBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, MMotionBuffer, nullptr);
+            MMotionBuffer = VK_NULL_HANDLE;
+        }
+        if (MMotionMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, MMotionMemory, nullptr);
+            MMotionMemory = VK_NULL_HANDLE;
+        }
+        const VkDeviceSize ScopedBytes = static_cast<VkDeviceSize>(InItems.size()) * sizeof(MotionVectorItem);
+        if (!CreateBuffer(ScopedBytes,
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                              VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &MMotionBuffer, &MMotionMemory) ||
+            ScopedApi.vkMapMemory(MDevice, MMotionMemory, 0, ScopedBytes, 0, &MMotionMapped) != VK_SUCCESS)
+        {
+            return false;
+        }
+        MMotionCapacity = static_cast<std::uint32_t>(InItems.size());
+    }
+    if (MMotionMapped == nullptr)
+    {
+        return false;
+    }
+    std::memcpy(MMotionMapped, InItems.data(), InItems.size() * sizeof(MotionVectorItem));
+    VkDescriptorBufferInfo ScopedBufferInfo{};
+    ScopedBufferInfo.buffer = MMotionBuffer;
+    ScopedBufferInfo.offset = 0;
+    ScopedBufferInfo.range = static_cast<VkDeviceSize>(InItems.size()) * sizeof(MotionVectorItem);
+    VkWriteDescriptorSet ScopedWrite{};
+    ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrite.dstSet = MMotionSets[MFrameIndex];
+    ScopedWrite.dstBinding = 0;
+    ScopedWrite.descriptorCount = 1;
+    ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ScopedWrite.pBufferInfo = &ScopedBufferInfo;
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedWrite, 0, nullptr);
+    return true;
+}
+
+bool VulkanRHI::CopyColorImage(RenderTargetHandle InSource, RenderTargetHandle InDestination)
+{
+    if (!MInFrame || MPassOpen)
+    {
+        return false;
+    }
+    RenderTarget* ScopedSource = FindRenderTarget(InSource.id);
+    RenderTarget* ScopedDestination = FindRenderTarget(InDestination.id);
+    if (ScopedSource == nullptr || ScopedDestination == nullptr)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkImageMemoryBarrier ScopedBarriers[2]{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 2; ++ScopedIndex)
+    {
+        ScopedBarriers[ScopedIndex].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ScopedBarriers[ScopedIndex].oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        ScopedBarriers[ScopedIndex].newLayout = ScopedIndex == 0 ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+                                                               : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        ScopedBarriers[ScopedIndex].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ScopedBarriers[ScopedIndex].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ScopedBarriers[ScopedIndex].image = ScopedIndex == 0 ? ScopedSource->image : ScopedDestination->image;
+        ScopedBarriers[ScopedIndex].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        ScopedBarriers[ScopedIndex].dstAccessMask =
+            ScopedIndex == 0 ? VK_ACCESS_TRANSFER_READ_BIT : VK_ACCESS_TRANSFER_WRITE_BIT;
+    }
+    ScopedApi.vkCmdPipelineBarrier(MCommandBuffers[MFrameIndex], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, ScopedBarriers);
+    VkImageCopy ScopedCopy{};
+    ScopedCopy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    ScopedCopy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    ScopedCopy.extent = {std::min(ScopedSource->extent.width, ScopedDestination->extent.width),
+                         std::min(ScopedSource->extent.height, ScopedDestination->extent.height), 1};
+    ScopedApi.vkCmdCopyImage(MCommandBuffers[MFrameIndex], ScopedSource->image,
+                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ScopedDestination->image,
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedCopy);
+    for (VkImageMemoryBarrier& ScopedBarrier : ScopedBarriers)
+    {
+        ScopedBarrier.oldLayout = ScopedBarrier.newLayout;
+        ScopedBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        ScopedBarrier.srcAccessMask = ScopedBarrier.dstAccessMask;
+        ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    }
+    ScopedApi.vkCmdPipelineBarrier(MCommandBuffers[MFrameIndex], VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2,
+                                   ScopedBarriers);
+    return true;
+}
+
+bool VulkanRHI::CopyDepth(RenderTargetHandle InSource, RenderTargetHandle InDestination)
+{
+    if (!MInFrame || MPassOpen)
+    {
+        return false;
+    }
+    RenderTarget* ScopedSource = FindRenderTarget(InSource.id);
+    RenderTarget* ScopedDestination = FindRenderTarget(InDestination.id);
+    if (ScopedSource == nullptr || ScopedDestination == nullptr || ScopedSource->depthImage == VK_NULL_HANDLE ||
+        ScopedDestination->depthImage == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkImageMemoryBarrier ScopedBarriers[2]{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 2; ++ScopedIndex)
+    {
+        ScopedBarriers[ScopedIndex].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ScopedBarriers[ScopedIndex].oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        ScopedBarriers[ScopedIndex].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        ScopedBarriers[ScopedIndex].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ScopedBarriers[ScopedIndex].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ScopedBarriers[ScopedIndex].image =
+            ScopedIndex == 0 ? ScopedSource->depthImage : ScopedDestination->depthImage;
+        ScopedBarriers[ScopedIndex].subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
+        ScopedBarriers[ScopedIndex].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    }
+    ScopedBarriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    ScopedBarriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ScopedApi.vkCmdPipelineBarrier(MCommandBuffers[MFrameIndex], VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, ScopedBarriers);
+    VkImageCopy ScopedCopy{};
+    ScopedCopy.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+    ScopedCopy.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+    ScopedCopy.extent = {std::min(ScopedSource->extent.width, ScopedDestination->extent.width),
+                         std::min(ScopedSource->extent.height, ScopedDestination->extent.height), 1};
+    ScopedApi.vkCmdCopyImage(MCommandBuffers[MFrameIndex], ScopedSource->depthImage,
+                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ScopedDestination->depthImage,
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedCopy);
+    for (VkImageMemoryBarrier& ScopedBarrier : ScopedBarriers)
+    {
+        ScopedBarrier.oldLayout = ScopedBarrier.newLayout;
+        ScopedBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        ScopedBarrier.srcAccessMask = ScopedBarrier.dstAccessMask;
+        ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    }
+    ScopedApi.vkCmdPipelineBarrier(MCommandBuffers[MFrameIndex], VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2,
+                                   ScopedBarriers);
+    return true;
+}
+
+bool VulkanRHI::TemporalResolve(RenderTargetHandle InCurrent, RenderTargetHandle InHistory,
+                                RenderTargetHandle InMotion, RenderTargetHandle InDepth,
+                                RenderTargetHandle InHistoryDepth, RenderTargetHandle InOutput,
+                                float InHistoryWeight, float InMotionScale, bool InResetHistory)
+{
+    if (!MInFrame || MTemporalLayout == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    RenderTarget* ScopedCurrent = FindRenderTarget(InCurrent.id);
+    RenderTarget* ScopedHistory = FindRenderTarget(InHistory.id);
+    RenderTarget* ScopedMotion = FindRenderTarget(InMotion.id);
+    RenderTarget* ScopedDepth = FindRenderTarget(InDepth.id);
+    RenderTarget* ScopedHistoryDepth = FindRenderTarget(InHistoryDepth.id);
+    RenderTarget* ScopedOutput = FindRenderTarget(InOutput.id);
+    if (ScopedCurrent == nullptr || ScopedHistory == nullptr || ScopedMotion == nullptr ||
+        ScopedDepth == nullptr || ScopedHistoryDepth == nullptr || ScopedOutput == nullptr)
+    {
+        return false;
+    }
+    VkPipeline ScopedPipeline = VK_NULL_HANDLE;
+    const auto ScopedFound = MTemporalPipelines.find(ScopedOutput->renderPass);
+    if (ScopedFound != MTemporalPipelines.end())
+    {
+        ScopedPipeline = ScopedFound->second;
+    }
+    else if (CreateGraphicsPipelineForPass(ScopedOutput->renderPass, MTemporalLayout, Shaders::fullscreen_vert.data(),
+                                           Shaders::fullscreen_vert.size() * sizeof(std::uint32_t),
+                                           Shaders::temporal_resolve.data(),
+                                           Shaders::temporal_resolve.size() * sizeof(std::uint32_t), &ScopedPipeline))
+    {
+        MTemporalPipelines.emplace(ScopedOutput->renderPass, ScopedPipeline);
+    }
+    if (ScopedPipeline == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorImageInfo ScopedImages[5]{};
+    const VkImageView ScopedViews[5] = {ScopedCurrent->view, ScopedHistory->view, ScopedMotion->view,
+                                        ScopedDepth->depthView, ScopedHistoryDepth->depthView};
+    VkWriteDescriptorSet ScopedWrites[5]{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 5; ++ScopedIndex)
+    {
+        ScopedImages[ScopedIndex].sampler = MHudSampler;
+        ScopedImages[ScopedIndex].imageView = ScopedViews[ScopedIndex];
+        ScopedImages[ScopedIndex].imageLayout = ScopedIndex >= 3
+            ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        ScopedWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ScopedWrites[ScopedIndex].dstSet = MTemporalSets[MFrameIndex];
+        ScopedWrites[ScopedIndex].dstBinding = ScopedIndex;
+        ScopedWrites[ScopedIndex].descriptorCount = 1;
+        ScopedWrites[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ScopedWrites[ScopedIndex].pImageInfo = &ScopedImages[ScopedIndex];
+    }
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 5, ScopedWrites, 0, nullptr);
+    VkClearValue ScopedClear[2]{};
+    ScopedClear[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    ScopedClear[1].depthStencil = {1.0f, 0};
+    VkRenderPassBeginInfo ScopedBegin{};
+    ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    ScopedBegin.renderPass = ScopedOutput->renderPass;
+    ScopedBegin.framebuffer = ScopedOutput->framebuffer;
+    ScopedBegin.renderArea.extent = {ScopedOutput->extent.width, ScopedOutput->extent.height};
+    ScopedBegin.clearValueCount = 2;
+    ScopedBegin.pClearValues = ScopedClear;
+    ScopedApi.vkCmdBeginRenderPass(MCommandBuffers[MFrameIndex], &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
+    ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedPipeline);
+    ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MTemporalLayout,
+                                      0, 1, &MTemporalSets[MFrameIndex], 0, nullptr);
+    struct TemporalPush
+    {
+        float texel[2];
+        float historyWeight;
+        float motionScale;
+        float resetHistory;
+        float padding[3];
+    } ScopedPush{};
+    ScopedPush.texel[0] = 1.0f / static_cast<float>(ScopedCurrent->extent.width);
+    ScopedPush.texel[1] = 1.0f / static_cast<float>(ScopedCurrent->extent.height);
+    ScopedPush.historyWeight = InHistoryWeight;
+    ScopedPush.motionScale = InMotionScale;
+    ScopedPush.resetHistory = InResetHistory ? 1.0f : 0.0f;
+    ScopedApi.vkCmdPushConstants(MCommandBuffers[MFrameIndex], MTemporalLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                                 sizeof(ScopedPush), &ScopedPush);
+    VkViewport ScopedViewport{};
+    ScopedViewport.width = static_cast<float>(ScopedOutput->extent.width);
+    ScopedViewport.height = static_cast<float>(ScopedOutput->extent.height);
+    ScopedViewport.maxDepth = 1.0f;
+    ScopedApi.vkCmdSetViewport(MCommandBuffers[MFrameIndex], 0, 1, &ScopedViewport);
+    VkRect2D ScopedScissor{};
+    ScopedScissor.extent = {ScopedOutput->extent.width, ScopedOutput->extent.height};
+    ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedScissor);
+    ScopedApi.vkCmdDraw(MCommandBuffers[MFrameIndex], 3, 1, 0, 0);
+    ScopedApi.vkCmdEndRenderPass(MCommandBuffers[MFrameIndex]);
+    return true;
+}
+
+bool VulkanRHI::ClearMotionVectors(RenderTargetHandle InTarget)
+{
+    if (!MInFrame)
+    {
+        return false;
+    }
+    RenderTarget* ScopedTarget = FindRenderTarget(InTarget.id);
+    if (ScopedTarget == nullptr || ScopedTarget->framebuffer == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkClearValue ScopedClear[2]{};
+    ScopedClear[0].color = {{0.5f, 0.5f, 0.0f, 1.0f}};
+    ScopedClear[1].depthStencil = {1.0f, 0};
+    VkRenderPassBeginInfo ScopedBegin{};
+    ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    ScopedBegin.renderPass = ScopedTarget->renderPass;
+    ScopedBegin.framebuffer = ScopedTarget->framebuffer;
+    ScopedBegin.renderArea.extent = {ScopedTarget->extent.width, ScopedTarget->extent.height};
+    ScopedBegin.clearValueCount = 2;
+    ScopedBegin.pClearValues = ScopedClear;
+    ScopedApi.vkCmdBeginRenderPass(MCommandBuffers[MFrameIndex], &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
+    ScopedApi.vkCmdEndRenderPass(MCommandBuffers[MFrameIndex]);
+    return true;
+}
+
+bool VulkanRHI::RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t InCount,
+                                    Vector2D InCameraCenter, Vector2D InPreviousCameraCenter,
+                                    float InCameraZoom, float InPreviousCameraZoom, Vector2D InJitter,
+                                    Vector2D InPreviousJitter, Vector2D InViewport)
+{
+    if (!MInFrame || InCount == 0 || MMotionLayout == VK_NULL_HANDLE || MMotionSets[MFrameIndex] == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    RenderTarget* ScopedTarget = FindRenderTarget(InTarget.id);
+    if (ScopedTarget == nullptr || ScopedTarget->framebuffer == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    VkPipeline ScopedPipeline = VK_NULL_HANDLE;
+    const auto ScopedFound = MMotionPipelines.find(ScopedTarget->renderPass);
+    if (ScopedFound != MMotionPipelines.end())
+    {
+        ScopedPipeline = ScopedFound->second;
+    }
+    else if (CreateGraphicsPipelineForPass(ScopedTarget->renderPass, MMotionLayout, Shaders::motion.data(),
+                                           Shaders::motion.size() * sizeof(std::uint32_t),
+                                           Shaders::motion_frag.data(),
+                                           Shaders::motion_frag.size() * sizeof(std::uint32_t), &ScopedPipeline))
+    {
+        MMotionPipelines.emplace(ScopedTarget->renderPass, ScopedPipeline);
+    }
+    if (ScopedPipeline == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkClearValue ScopedClear[2]{};
+    ScopedClear[0].color = {{0.5f, 0.5f, 0.0f, 1.0f}};
+    ScopedClear[1].depthStencil = {1.0f, 0};
+    VkRenderPassBeginInfo ScopedBegin{};
+    ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    ScopedBegin.renderPass = ScopedTarget->renderPass;
+    ScopedBegin.framebuffer = ScopedTarget->framebuffer;
+    ScopedBegin.renderArea.extent = {ScopedTarget->extent.width, ScopedTarget->extent.height};
+    ScopedBegin.clearValueCount = 2;
+    ScopedBegin.pClearValues = ScopedClear;
+    ScopedApi.vkCmdBeginRenderPass(MCommandBuffers[MFrameIndex], &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
+    VkViewport ScopedViewport{};
+    ScopedViewport.width = static_cast<float>(ScopedTarget->extent.width);
+    ScopedViewport.height = static_cast<float>(ScopedTarget->extent.height);
+    ScopedViewport.maxDepth = 1.0f;
+    ScopedApi.vkCmdSetViewport(MCommandBuffers[MFrameIndex], 0, 1, &ScopedViewport);
+    VkRect2D ScopedScissor{};
+    ScopedScissor.extent = {ScopedTarget->extent.width, ScopedTarget->extent.height};
+    ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedScissor);
+    ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedPipeline);
+    ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MMotionLayout,
+                                      0, 1, &MMotionSets[MFrameIndex], 0, nullptr);
+    struct MotionPush
+    {
+        float camera[2];
+        float previousCamera[2];
+        float viewport[2];
+        float cameraZoom;
+        float previousCameraZoom;
+        float jitter[2];
+        float previousJitter[2];
+    } ScopedPush{};
+    ScopedPush.camera[0] = InCameraCenter.X;
+    ScopedPush.camera[1] = InCameraCenter.Y;
+    ScopedPush.previousCamera[0] = InPreviousCameraCenter.X;
+    ScopedPush.previousCamera[1] = InPreviousCameraCenter.Y;
+    ScopedPush.viewport[0] = InViewport.X;
+    ScopedPush.viewport[1] = InViewport.Y;
+    ScopedPush.cameraZoom = InCameraZoom;
+    ScopedPush.previousCameraZoom = InPreviousCameraZoom;
+    ScopedPush.jitter[0] = InJitter.X;
+    ScopedPush.jitter[1] = InJitter.Y;
+    ScopedPush.previousJitter[0] = InPreviousJitter.X;
+    ScopedPush.previousJitter[1] = InPreviousJitter.Y;
+    ScopedApi.vkCmdPushConstants(MCommandBuffers[MFrameIndex], MMotionLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                 sizeof(ScopedPush), &ScopedPush);
+    ScopedApi.vkCmdDraw(MCommandBuffers[MFrameIndex], 6, InCount, 0, 0);
+    ScopedApi.vkCmdEndRenderPass(MCommandBuffers[MFrameIndex]);
+    return true;
+}
+
+bool VulkanRHI::RenderHudTarget()
+{
+    if (!MInFrame || MHudTargetId == 0xFFFFFFFFu || MHudLayout == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    RenderTarget* ScopedHud = FindRenderTarget(MHudTargetId);
+    if (ScopedHud == nullptr || ScopedHud->view == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (MHudPipeline == VK_NULL_HANDLE)
+    {
+        if (!CreateGraphicsPipelineForPass(MRenderPass, MHudLayout, Shaders::fullscreen_vert.data(),
+                                           Shaders::fullscreen_vert.size() * sizeof(std::uint32_t),
+                                           Shaders::hud_composite.data(),
+                                           Shaders::hud_composite.size() * sizeof(std::uint32_t), &MHudPipeline))
+        {
+            return false;
+        }
+    }
+
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkClearValue ScopedClear[2]{};
+    ScopedClear[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+    ScopedClear[1].depthStencil = {1.0f, 0};
+    VkRenderPassBeginInfo ScopedBegin{};
+    ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    ScopedBegin.renderPass = ScopedHud->renderPass;
+    ScopedBegin.framebuffer = ScopedHud->framebuffer;
+    ScopedBegin.renderArea.extent = {ScopedHud->extent.width, ScopedHud->extent.height};
+    ScopedBegin.clearValueCount = 2;
+    ScopedBegin.pClearValues = ScopedClear;
+    ScopedApi.vkCmdBeginRenderPass(MCommandBuffers[MFrameIndex], &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
+    VkViewport ScopedViewport{};
+    ScopedViewport.width = static_cast<float>(ScopedHud->extent.width);
+    ScopedViewport.height = static_cast<float>(ScopedHud->extent.height);
+    ScopedViewport.maxDepth = 1.0f;
+    ScopedApi.vkCmdSetViewport(MCommandBuffers[MFrameIndex], 0, 1, &ScopedViewport);
+    VkRect2D ScopedScissor{};
+    ScopedScissor.extent = {ScopedHud->extent.width, ScopedHud->extent.height};
+    ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedScissor);
+    MInHudPass = true;
+    if (MUiRenderer != nullptr)
+    {
+        MUiRenderer(MUiUser, MCommandBuffers[MFrameIndex]);
+    }
+    MInHudPass = false;
+    ScopedApi.vkCmdEndRenderPass(MCommandBuffers[MFrameIndex]);
+    MSkipMainUi = true;
+    return true;
+}
+
+bool VulkanRHI::CompositeHud()
+{
+    if (!MInFrame || !MPassOpen || MHudTargetId == 0xFFFFFFFFu || MHudLayout == VK_NULL_HANDLE ||
+        MHudPipeline == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    RenderTarget* ScopedHud = FindRenderTarget(MHudTargetId);
+    if (ScopedHud == nullptr || ScopedHud->view == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    Vk::Api& ScopedApi = Vk::GetApi();
+    VkDescriptorImageInfo ScopedImage{};
+    ScopedImage.sampler = MHudNearest ? MHudNearestSampler : MHudSampler;
+    ScopedImage.imageView = ScopedHud->view;
+    ScopedImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkWriteDescriptorSet ScopedWrite{};
+    ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrite.dstSet = HudSet();
+    ScopedWrite.dstBinding = 0;
+    ScopedWrite.descriptorCount = 1;
+    ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedWrite.pImageInfo = &ScopedImage;
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedWrite, 0, nullptr);
+
+    VkViewport ScopedMainViewport{};
+    ScopedMainViewport.width = static_cast<float>(MExtent.width);
+    ScopedMainViewport.height = static_cast<float>(MExtent.height);
+    ScopedMainViewport.maxDepth = 1.0f;
+    ScopedApi.vkCmdSetViewport(MCommandBuffers[MFrameIndex], 0, 1, &ScopedMainViewport);
+    VkRect2D ScopedMainScissor{};
+    ScopedMainScissor.extent = MExtent;
+    ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedMainScissor);
+    ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MHudPipeline);
+    ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MHudLayout,
+                                      0, 1, &HudSetRef(), 0, nullptr);
+    ScopedApi.vkCmdDraw(MCommandBuffers[MFrameIndex], 3, 1, 0, 0);
+    return true;
 }
 
 void VulkanRHI::EndFrame()
@@ -7358,22 +11971,26 @@ void VulkanRHI::EndFrame()
     Vk::Api& ScopedApi = Vk::GetApi();
     const VkCommandBuffer ScopedCommandBuffer = MCommandBuffers[MFrameIndex];
 
-    if (!MMainPassRecorded)
+    if (!MMainPassRecorded && MPresentTargetId == 0xFFFFFFFFu)
     {
         // A frame that only rendered offscreen targets never wrote the acquired
         // swapchain image. Present a defined clear instead of undefined memory.
-        VkClearValue ScopedClear{};
-        ScopedClear.color.float32[0] = 0.0f;
-        ScopedClear.color.float32[1] = 0.0f;
-        ScopedClear.color.float32[2] = 0.0f;
-        ScopedClear.color.float32[3] = 1.0f;
+        FramePacket ScopedEmpty{};
+        RecordDepthPrepass(ScopedCommandBuffer, ScopedEmpty, false);
+        VkClearValue ScopedClearValues[2]{};
+        ScopedClearValues[0].color.float32[0] = 0.0f;
+        ScopedClearValues[0].color.float32[1] = 0.0f;
+        ScopedClearValues[0].color.float32[2] = 0.0f;
+        ScopedClearValues[0].color.float32[3] = 1.0f;
+        ScopedClearValues[1].depthStencil.depth = 1.0f;
+        ScopedClearValues[1].depthStencil.stencil = 0;
         VkRenderPassBeginInfo ScopedBeginInfo{};
         ScopedBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         ScopedBeginInfo.renderPass = MRenderPass;
         ScopedBeginInfo.framebuffer = MFramebuffers[MImageIndex];
         ScopedBeginInfo.renderArea.extent = MExtent;
-        ScopedBeginInfo.clearValueCount = 1;
-        ScopedBeginInfo.pClearValues = &ScopedClear;
+        ScopedBeginInfo.clearValueCount = 2;
+        ScopedBeginInfo.pClearValues = ScopedClearValues;
         ScopedApi.vkCmdBeginRenderPass(ScopedCommandBuffer, &ScopedBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         ScopedApi.vkCmdEndRenderPass(ScopedCommandBuffer);
     }
@@ -7381,10 +11998,11 @@ void VulkanRHI::EndFrame()
     if (MPassOpen)
     {
         // UI last: the game has already been recorded into the main pass and
-        if (MUiRenderer != nullptr && !MBlindFrame)
+        if (MUiRenderer != nullptr && !MBlindFrame && !MSkipMainUi && MUiVisible)
         {
             MUiRenderer(MUiUser, ScopedCommandBuffer);
         }
+        WriteTimestamp(ScopedCommandBuffer, TimestampMainEnd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
         ScopedApi.vkCmdEndRenderPass(ScopedCommandBuffer);
         MPassOpen = false;
     }
@@ -7404,39 +12022,12 @@ void VulkanRHI::EndFrame()
         ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
                                        &ScopedBarrier);
-        if (MAccessibilitySwapFlashSet != VK_NULL_HANDLE && FlashGuardWanted(MAccessibilityFrame))
-        {
-            // Per-pixel guard first: it needs the scene in GENERAL, applies the
-            // residual gain and leaves the image readable for the composite.
-            RecordFlashGuard(ScopedCommandBuffer, MAccessibilitySwapImage, MAccessibilitySwapFlashSet,
-                             Extent2D{MExtent.width, MExtent.height}, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                             MAccessibilityFrame);
-            RecordAccessibilityComposite(ScopedCommandBuffer, MRenderPass, MFramebuffers[MImageIndex],
-                                         MAccessibilitySwapPipeline, MAccessibilitySwapSet,
-                                         Extent2D{MExtent.width, MExtent.height}, MAccessibilityFrame);
-            MAccessibilitySwapActive = false;
-            MPassOpen = false;
-        }
-        else
-        {
-            VkImageMemoryBarrier ScopedSwapBarrier{};
-            ScopedSwapBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            ScopedSwapBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            ScopedSwapBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            ScopedSwapBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            ScopedSwapBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            ScopedSwapBarrier.image = MAccessibilitySwapImage;
-            ScopedSwapBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-            ScopedSwapBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
-                                           &ScopedSwapBarrier);
-            RecordAccessibilityComposite(ScopedCommandBuffer, MRenderPass, MFramebuffers[MImageIndex],
-                                         MAccessibilitySwapPipeline, MAccessibilitySwapSet,
-                                         Extent2D{MExtent.width, MExtent.height}, MAccessibilityFrame);
-            MAccessibilitySwapActive = false;
-        }
+        RecordAccessibilityComposite(ScopedCommandBuffer, MRenderPass, MFramebuffers[MImageIndex],
+                                     MAccessibilitySwapPipeline, MAccessibilitySwapSet,
+                                     Extent2D{MExtent.width, MExtent.height}, MAccessibilityFrame, true);
+        MAccessibilitySwapActive = false;
     }
+    WriteTimestamp(ScopedCommandBuffer, TimestampPostFxStart, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
     if (MPostFxRecordPending)
     {
         RecordPostFxComposite(ScopedCommandBuffer, MPostFxRecordBlock, Extent2D{MExtent.width, MExtent.height});
@@ -7448,6 +12039,65 @@ void VulkanRHI::EndFrame()
         RecordPostFxComposite(ScopedCommandBuffer, MPostFxSettings, Extent2D{MExtent.width, MExtent.height});
         MPostFxThisFrame = false;
     }
+    WriteTimestamp(ScopedCommandBuffer, TimestampPostFxEnd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+    if (MPresentTargetId != 0xFFFFFFFFu)
+    {
+        const RenderTarget* ScopedTarget = FindRenderTarget(MPresentTargetId);
+        if (ScopedTarget != nullptr && ScopedTarget->image != VK_NULL_HANDLE && MImageIndex < MImages.size())
+        {
+            VkImageMemoryBarrier ScopedSourceBarrier{};
+            ScopedSourceBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            ScopedSourceBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            ScopedSourceBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            ScopedSourceBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            ScopedSourceBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            ScopedSourceBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ScopedSourceBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ScopedSourceBarrier.image = ScopedTarget->image;
+            ScopedSourceBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+            VkImageMemoryBarrier ScopedDestinationBarrier{};
+            ScopedDestinationBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            ScopedDestinationBarrier.srcAccessMask = 0;
+            ScopedDestinationBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            ScopedDestinationBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            ScopedDestinationBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            ScopedDestinationBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ScopedDestinationBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ScopedDestinationBarrier.image = MImages[MImageIndex];
+            ScopedDestinationBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+            const VkImageMemoryBarrier ScopedBarriers[] = {ScopedSourceBarrier, ScopedDestinationBarrier};
+            ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                           VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2,
+                                           ScopedBarriers);
+
+            VkImageBlit ScopedBlit{};
+            ScopedBlit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            ScopedBlit.srcOffsets[1] = {static_cast<std::int32_t>(ScopedTarget->extent.width),
+                                        static_cast<std::int32_t>(ScopedTarget->extent.height), 1};
+            ScopedBlit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            ScopedBlit.dstOffsets[1] = {static_cast<std::int32_t>(MExtent.width),
+                                        static_cast<std::int32_t>(MExtent.height), 1};
+            ScopedApi.vkCmdBlitImage(ScopedCommandBuffer, ScopedTarget->image,
+                                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, MImages[MImageIndex],
+                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedBlit, VK_FILTER_LINEAR);
+
+            ScopedSourceBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            ScopedSourceBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            ScopedSourceBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            ScopedSourceBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            ScopedDestinationBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            ScopedDestinationBarrier.dstAccessMask = 0;
+            ScopedDestinationBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            ScopedDestinationBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            const VkImageMemoryBarrier ScopedFinalBarriers[] = {ScopedSourceBarrier, ScopedDestinationBarrier};
+            ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                           VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 2,
+                                           ScopedFinalBarriers);
+        }
+    }
+    WriteTimestamp(ScopedCommandBuffer, TimestampFrameEnd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
     if (ScopedApi.vkEndCommandBuffer(ScopedCommandBuffer) != VK_SUCCESS)
     {
         LogError("vulkan", "vkEndCommandBuffer failed; stopping the frame loop");
@@ -7494,6 +12144,7 @@ void VulkanRHI::EndFrame()
         (void)RecreateSwapchain(MDesc.size);
     }
 
+    MSkipMainUi = false;
     MInFrame = false;
 }
 
@@ -7646,10 +12297,21 @@ void VulkanRHI::Shutdown()
     {
         if (MInstanceMapped != nullptr)
         {
-            ScopedApi.vkUnmapMemory(MDevice, MInstanceMemory);
+            ScopedApi.vkUnmapMemory(MDevice, MInstanceStagingMemory);
             MInstanceMapped = nullptr;
         }
         DestroySdfShadowResources();
+        DestroyGiResources();
+        DestroyClusterFallback();
+        DestroyClusterResources();
+        DestroyCullResources();
+        if (MInstanceStagingBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, MInstanceStagingBuffer, nullptr);
+            ScopedApi.vkFreeMemory(MDevice, MInstanceStagingMemory, nullptr);
+            MInstanceStagingBuffer = VK_NULL_HANDLE;
+            MInstanceStagingMemory = VK_NULL_HANDLE;
+        }
         if (MInstanceBuffer != VK_NULL_HANDLE)
         {
             ScopedApi.vkDestroyBuffer(MDevice, MInstanceBuffer, nullptr);
@@ -7699,6 +12361,16 @@ void VulkanRHI::Shutdown()
         {
             ScopedApi.vkUnmapMemory(MDevice, MUploadMemory);
             MUploadMapped = nullptr;
+        }
+        if (MUploadFence != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyFence(MDevice, MUploadFence, nullptr);
+            MUploadFence = VK_NULL_HANDLE;
+        }
+        if (MUploadCommandBuffer != VK_NULL_HANDLE && MCommandPool != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeCommandBuffers(MDevice, MCommandPool, 1, &MUploadCommandBuffer);
+            MUploadCommandBuffer = VK_NULL_HANDLE;
         }
         if (MUploadBuffer != VK_NULL_HANDLE)
         {
@@ -7753,6 +12425,135 @@ void VulkanRHI::Shutdown()
         {
             ScopedApi.vkDestroyPipeline(MDevice, MPipeline, nullptr);
         }
+        if (MPipelineOpaque != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipeline(MDevice, MPipelineOpaque, nullptr);
+        }
+        if (MOitResolvePipeline != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipeline(MDevice, MOitResolvePipeline, nullptr);
+        }
+        for (const auto& [ScopedPass, ScopedPipeline] : MOitResolvePipelines)
+        {
+            (void)ScopedPass;
+            if (ScopedPipeline != VK_NULL_HANDLE)
+            {
+                ScopedApi.vkDestroyPipeline(MDevice, ScopedPipeline, nullptr);
+            }
+        }
+        MOitResolvePipelines.clear();
+        if (MOitResolveLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipelineLayout(MDevice, MOitResolveLayout, nullptr);
+        }
+        if (MOitResolvePool != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorPool(MDevice, MOitResolvePool, nullptr);
+        }
+        if (MOitResolveSetLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MOitResolveSetLayout, nullptr);
+        }
+        if (MOitResolveSampler != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroySampler(MDevice, MOitResolveSampler, nullptr);
+        }
+        for (const auto& [ScopedPass, ScopedPipeline] : MUpscalePipelines)
+        {
+            (void)ScopedPass;
+            if (ScopedPipeline != VK_NULL_HANDLE)
+            {
+                ScopedApi.vkDestroyPipeline(MDevice, ScopedPipeline, nullptr);
+            }
+        }
+        MUpscalePipelines.clear();
+        if (MUpscaleLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipelineLayout(MDevice, MUpscaleLayout, nullptr);
+        }
+        if (MUpscalePool != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorPool(MDevice, MUpscalePool, nullptr);
+        }
+        if (MUpscaleSetLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MUpscaleSetLayout, nullptr);
+        }
+        if (MUpscaleSampler != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroySampler(MDevice, MUpscaleSampler, nullptr);
+        }
+        for (const auto& [ScopedPass, ScopedPipeline] : MRcasPipelines)
+        {
+            (void)ScopedPass;
+            if (ScopedPipeline != VK_NULL_HANDLE)
+            {
+                ScopedApi.vkDestroyPipeline(MDevice, ScopedPipeline, nullptr);
+            }
+        }
+        MRcasPipelines.clear();
+        if (MRcasLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipelineLayout(MDevice, MRcasLayout, nullptr);
+        }
+        if (MMotionMapped != nullptr)
+        {
+            ScopedApi.vkUnmapMemory(MDevice, MMotionMemory);
+            MMotionMapped = nullptr;
+        }
+        if (MMotionBuffer != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyBuffer(MDevice, MMotionBuffer, nullptr);
+        }
+        if (MMotionMemory != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkFreeMemory(MDevice, MMotionMemory, nullptr);
+        }
+        for (const auto& [ScopedPass, ScopedPipeline] : MMotionPipelines)
+        {
+            (void)ScopedPass;
+            if (ScopedPipeline != VK_NULL_HANDLE)
+            {
+                ScopedApi.vkDestroyPipeline(MDevice, ScopedPipeline, nullptr);
+            }
+        }
+        MMotionPipelines.clear();
+        if (MMotionLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipelineLayout(MDevice, MMotionLayout, nullptr);
+        }
+        if (MMotionPool != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorPool(MDevice, MMotionPool, nullptr);
+        }
+        if (MMotionSetLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MMotionSetLayout, nullptr);
+        }
+        if (MHudPipeline != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipeline(MDevice, MHudPipeline, nullptr);
+        }
+        if (MHudLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipelineLayout(MDevice, MHudLayout, nullptr);
+        }
+        if (MHudPool != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorPool(MDevice, MHudPool, nullptr);
+        }
+        if (MHudSetLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MHudSetLayout, nullptr);
+        }
+        if (MHudSampler != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroySampler(MDevice, MHudSampler, nullptr);
+        }
+        if (MHudNearestSampler != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroySampler(MDevice, MHudNearestSampler, nullptr);
+        }
         if (MPipelineLayout != VK_NULL_HANDLE)
         {
             ScopedApi.vkDestroyPipelineLayout(MDevice, MPipelineLayout, nullptr);
@@ -7766,6 +12567,13 @@ void VulkanRHI::Shutdown()
             ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MDescriptorLayout, nullptr);
         }
 
+        for (VkQueryPool ScopedPool : MTimestampPools)
+        {
+            if (ScopedPool != VK_NULL_HANDLE)
+            {
+                ScopedApi.vkDestroyQueryPool(MDevice, ScopedPool, nullptr);
+            }
+        }
         for (VkFence ScopedFence : MInFlight)
         {
             if (ScopedFence != VK_NULL_HANDLE)
@@ -7786,6 +12594,21 @@ void VulkanRHI::Shutdown()
         {
             ScopedApi.vkDestroyCommandPool(MDevice, MCommandPool, nullptr);
             MCommandPool = VK_NULL_HANDLE;
+        }
+        if (MDepthPrepassPipeline != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipeline(MDevice, MDepthPrepassPipeline, nullptr);
+            MDepthPrepassPipeline = VK_NULL_HANDLE;
+        }
+        if (MDepthPrepassRenderPass != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyRenderPass(MDevice, MDepthPrepassRenderPass, nullptr);
+            MDepthPrepassRenderPass = VK_NULL_HANDLE;
+        }
+        if (MHudOverlayPass != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyRenderPass(MDevice, MHudOverlayPass, nullptr);
+            MHudOverlayPass = VK_NULL_HANDLE;
         }
         if (MRenderPass != VK_NULL_HANDLE)
         {

@@ -1,4 +1,7 @@
 #version 460
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_vote : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
 // FemboyEngine 2.0 - screen-space SDF shadow mask (compute).
 //
 // One invocation per mask texel (half resolution). Each texel recovers its world
@@ -10,8 +13,16 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform sampler2D uSdf;
-layout(set = 0, binding = 1, r16f) uniform image2D uShadow;
+// One layer per in-flight view slot. encode.w carries the absolute layer.
+layout(set = 0, binding = 1, r16f) uniform image2DArray uShadow;
 
+layout(set = 0, binding = 3) uniform sampler2DArray uHistory;
+// Sparse brick table: eight 32-bit words per brick, same layout as quad.frag.
+layout(std430, set = 0, binding = 7) readonly buffer SdfBrickTable
+{
+    uint words[];
+} brickTable;
+layout(set = 0, binding = 8) uniform sampler2D uSdfAtlas;
 layout(set = 0, binding = 2) uniform SdfShadowBlock
 {
     vec4 camera;       // centre.xy, zoom, padding
@@ -19,7 +30,11 @@ layout(set = 0, binding = 2) uniform SdfShadowBlock
     vec4 fieldBounds;  // origin.xy, extent.xy
     vec4 sun;          // direction towards the light.xy, softness, ambient
     vec4 params;       // steps, occluderCount, occlusionRadius, occlusionStrength
-    vec4 encode;       // encodeScale, enabled, 0, 0
+    vec4 encode;         // neutral scale, enabled, viewId, absolute layer
+    vec4 history;        // previous layer, valid, blend, reserved
+    vec4 historyCamera;  // previous centre.xy, previous zoom, reserved
+    vec4 fieldGrid;      // origin.xy, cell size.xy
+    vec4 brickMeta;      // brick size, columns, rows, atlas columns
     vec4 occluders[32];
 } sdf;
 
@@ -32,6 +47,36 @@ float fieldDistance(vec2 world)
     {
         return 1.0e6;
     }
+    const float atlasColumns = sdf.brickMeta.w;
+    if (atlasColumns > 0.5)
+    {
+        const float brickSize = max(sdf.brickMeta.x, 1.0);
+        const vec2 cell = (world - sdf.fieldGrid.xy) / max(sdf.fieldGrid.zw, vec2(0.0001));
+        const ivec2 brick = ivec2(floor(cell / brickSize));
+        const uint columns = uint(sdf.brickMeta.y);
+        const uint rows = uint(sdf.brickMeta.z);
+        if (brick.x < 0 || brick.y < 0 || uint(brick.x) >= columns || uint(brick.y) >= rows)
+        {
+            return 1.0e6;
+        }
+        const uint base = (uint(brick.y) * columns + uint(brick.x)) * 8u;
+        const float minDistance = uintBitsToFloat(brickTable.words[base + 1u]);
+        const float maxDistance = uintBitsToFloat(brickTable.words[base + 2u]);
+        const uint state = brickTable.words[base + 5u] & 3u;
+        if (state == 0u)
+        {
+            return max(minDistance, 0.0);
+        }
+        if (state == 1u)
+        {
+            return min(maxDistance, 0.0);
+        }
+        const uint tile = brickTable.words[base + 0u];
+        const vec2 local = (cell - vec2(brick) * brickSize) / brickSize;
+        const vec2 tileOrigin = vec2(float(tile % uint(atlasColumns)), float(tile / uint(atlasColumns))) * brickSize;
+        const vec2 atlasUv = (tileOrigin + local * brickSize) / (atlasColumns * brickSize);
+        return texture(uSdfAtlas, atlasUv).r * sdf.encode.x;
+    }
     return texture(uSdf, uv).r * sdf.encode.x;
 }
 
@@ -43,15 +88,10 @@ float occluderDistance(vec2 world, uint count)
         const vec4 shape = sdf.occluders[index * 2u];
         const vec4 extents = sdf.occluders[index * 2u + 1u];
         const vec2 local = world - shape.xy;
-        if (extents.z > 0.5)
-        {
-            const vec2 q = abs(local) - extents.xy;
-            best = min(best, length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));
-        }
-        else
-        {
-            best = min(best, length(local) - shape.z);
-        }
+        const vec2 q = abs(local) - extents.xy;
+        const float boxDistance = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+        const float circleDistance = length(local) - shape.z;
+        best = min(best, mix(circleDistance, boxDistance, step(0.5, extents.z)));
     }
     return best;
 }
@@ -63,38 +103,49 @@ float visibility(vec2 world, uint count)
     const uint steps = uint(max(sdf.params.x, 1.0));
     float travelled = 0.5;
     float ratio = 1.0;
+    bool laneActive = true;
     for (uint index = 0u; index < steps; ++index)
     {
+        if (!subgroupAny(laneActive))
+        {
+            break;
+        }
+        if (!laneActive)
+        {
+            continue;
+        }
         const vec2 probe = world + direction * travelled;
         const float distance = min(fieldDistance(probe), occluderDistance(probe, count));
         if (distance <= 0.0)
         {
-            return 0.0;
+            ratio = 0.0;
+            laneActive = false;
+            continue;
         }
         ratio = min(ratio, distance / (softness * travelled));
-        travelled += max(distance * 0.8, 0.5);
-        if (travelled > 4096.0)
-        {
-            break;
-        }
+        const float nextStep = max(distance * 0.8, 0.5);
+        const float waveStep = subgroupMin(laneActive ? nextStep : 4096.0);
+        travelled += max(waveStep, 0.5);
+        laneActive = travelled < 4096.0;
     }
     return clamp(ratio, 0.0, 1.0);
 }
 
 void main()
 {
-    const ivec2 size = imageSize(uShadow);
+    const ivec3 size = imageSize(uShadow);
     const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    const int layer = int(sdf.encode.w + 0.5);
     if (pixel.x >= size.x || pixel.y >= size.y)
     {
         return;
     }
     if (sdf.encode.y < 0.5 || sdf.viewport.x <= 0.0 || sdf.viewport.y <= 0.0)
     {
-        imageStore(uShadow, pixel, vec4(1.0));
+        imageStore(uShadow, ivec3(pixel, layer), vec4(1.0));
         return;
     }
-    const vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    const vec2 uv = (vec2(pixel) + 0.5) / vec2(size.xy);
     // Inverse of the sprite projection: gl_Position = (clip.x, -clip.y) and the
     // fragment passes its NDC+0.5 as the sampling UV, so this is the exact match.
     const vec2 ndc = uv * 2.0 - 1.0;
@@ -105,6 +156,43 @@ void main()
     // A texel inside a dynamic caster is that caster's own surface: keep it lit
     // while it still shadows everything outside itself.
     const uint count = occluderDistance(world, available) <= 0.0 ? 0u : available;
-    const float shadow = mix(sdf.sun.w, 1.0, visibility(world, count));
-    imageStore(uShadow, pixel, vec4(shadow));
+    float shadow = mix(sdf.sun.w, 1.0, visibility(world, count));
+    if (sdf.history.y > 0.5)
+    {
+        vec2 historyUv = uv;
+        if (sdf.historyCamera.z > 0.0001)
+        {
+            const vec2 previousNdc =
+                vec2((world.x - sdf.historyCamera.x) * sdf.historyCamera.z * 2.0 / sdf.viewport.x,
+                     (sdf.historyCamera.y - world.y) * sdf.historyCamera.z * 2.0 / sdf.viewport.y);
+            historyUv = previousNdc * 0.5 + 0.5;
+        }
+        if (historyUv.x >= 0.0 && historyUv.x <= 1.0 && historyUv.y >= 0.0 && historyUv.y <= 1.0)
+        {
+            const vec2 texel = 1.0 / vec2(imageSize(uShadow).xy);
+            float history = 0.0;
+            for (int offsetY = -1; offsetY <= 1; ++offsetY)
+            {
+                for (int offsetX = -1; offsetX <= 1; ++offsetX)
+                {
+                    const vec2 offset = vec2(offsetX, offsetY) * texel;
+                    history += texture(uHistory, vec3(historyUv + offset, sdf.history.x)).r;
+                }
+            }
+            history /= 9.0;
+            float weight = clamp(sdf.history.z, 0.0, 1.0);
+            // Fast camera motion makes reprojection less trustworthy; fade the
+            // history before it produces visible trailing.
+            const float cameraMotion = length(sdf.camera.xy - sdf.historyCamera.xy) * abs(sdf.camera.z);
+            weight *= clamp(1.0 - cameraMotion / 256.0, 0.2, 1.0);
+            // Reject stale history on hard shadow edges: a large current/history
+            // disagreement is more likely disocclusion than useful temporal data.
+            if (abs(shadow - history) > 0.5)
+            {
+                weight *= 0.25;
+            }
+            shadow = mix(shadow, history, weight);
+        }
+    }
+    imageStore(uShadow, ivec3(pixel, layer), vec4(shadow));
 }

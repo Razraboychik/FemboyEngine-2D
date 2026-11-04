@@ -33,9 +33,12 @@ int main()
     const Entity ScopedActor = ScopedRegistry.create();
     ScopedRegistry.emplace<Transform2D>(ScopedActor, Transform2D{Vector2D{120.0f, 40.0f}, Vector2D{1.0f, 1.0f}, 0.0f});
     ScopedRegistry.emplace<Velocity>(ScopedActor, Velocity{Vector2D{30.0f, 40.0f}});
-    GameplayState ScopedState;
-    ScopedState.Bits = 1ull << 0;
-    ScopedRegistry.emplace<GameplayState>(ScopedActor, ScopedState);
+    GameplayTagRegistry ScopedTags;
+    const GameplayTag ScopedGrounded = ScopedTags.Register("Character.State.Grounded");
+    GameplayTagsComponent ScopedActorTags;
+    ScopedActorTags.BaseTags.Add(ScopedGrounded);
+    ScopedActorTags.Tags.Add(ScopedGrounded);
+    ScopedRegistry.emplace<GameplayTagsComponent>(ScopedActor, ScopedActorTags);
 
     const Entity ScopedBody = ScopedRegistry.create();
     ScopedRegistry.emplace<Transform2D>(ScopedBody, Transform2D{Vector2D{300.0f, 200.0f}, Vector2D{1.0f, 1.0f}, 0.0f});
@@ -63,6 +66,7 @@ int main()
     ScopedRegistry.emplace<NarrativeLabelComponent>(ScopedNamed, NarrativeLabelComponent{"Boss"});
 
     Ui::NarrativeTree ScopedTree;
+    ScopedTree.SetGameplayTagRegistry(&ScopedTags);
     ScopedTree.SetLocale(Ui::NarrativeLocale::English);
     ScopedTree.Build(ScopedRegistry);
     FBY_CHECK(ScopedTree.NodeCount() == 7);
@@ -77,7 +81,7 @@ int main()
     ScopedTree.DescribeEntity(ScopedRegistry, ScopedActor, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "actor #") != nullptr);
     FBY_CHECK(std::strstr(ScopedBuffer, "speed 50") != nullptr);
-    FBY_CHECK(std::strstr(ScopedBuffer, "grounded") != nullptr);
+    FBY_CHECK(std::strstr(ScopedBuffer, "Grounded") != nullptr);
 
     ScopedTree.DescribeEntity(ScopedRegistry, ScopedBody, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "physics body") != nullptr);
@@ -86,8 +90,8 @@ int main()
     ScopedTree.DescribeEntity(ScopedRegistry, ScopedCloth, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "cloth") != nullptr);
 
-    ScopedTree.DescribeStateChange(ScopedRegistry, ScopedActor, 0, true, ScopedBuffer, sizeof(ScopedBuffer));
-    FBY_CHECK(std::strstr(ScopedBuffer, "on grounded") != nullptr);
+    ScopedTree.DescribeStateChange(ScopedRegistry, ScopedActor, "Grounded", true, ScopedBuffer, sizeof(ScopedBuffer));
+    FBY_CHECK(std::strstr(ScopedBuffer, "on Grounded") != nullptr);
 
     ScopedTree.DescribeContact(ScopedRegistry, ScopedActor, ScopedBody, 2, 123.0f, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "Contact:") != nullptr);
@@ -105,7 +109,7 @@ int main()
     ScopedTree.DescribeEntity(ScopedRegistry, ScopedNamed, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "Boss, position 10, 20") != nullptr);
     FBY_CHECK(std::strstr(ScopedBuffer, "Boss #") == nullptr);
-    ScopedTree.DescribeStateChange(ScopedRegistry, ScopedNamed, 0, true, ScopedBuffer, sizeof(ScopedBuffer));
+    ScopedTree.DescribeStateChange(ScopedRegistry, ScopedNamed, "Grounded", true, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "Boss:") != nullptr);
     ScopedTree.DescribeHierarchy(ScopedRegistry, ScopedNamed, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "Boss") != nullptr);
@@ -116,7 +120,7 @@ int main()
     ScopedTree.DescribeEntity(ScopedRegistry, ScopedActor, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "\xD0\x90\xD0\xBA\xD1\x82\xD1\x91\xD1\x80") != nullptr);
     FBY_CHECK(std::strstr(ScopedBuffer, "\xD1\x81\xD0\xBA\xD0\xBE\xD1\x80\xD0\xBE\xD1\x81\xD1\x82\xD1\x8C") != nullptr);
-    ScopedTree.DescribeStateChange(ScopedRegistry, ScopedActor, 0, true, ScopedBuffer, sizeof(ScopedBuffer));
+    ScopedTree.DescribeStateChange(ScopedRegistry, ScopedActor, "Grounded", true, ScopedBuffer, sizeof(ScopedBuffer));
     FBY_CHECK(std::strstr(ScopedBuffer, "\xD0\xB2\xD0\xBA\xD0\xBB\xD1\x8E\xD1\x87\xD0\xB5\xD0\xBD\xD0\xBE") != nullptr);
 
     // Truncation must stay NUL-terminated and bounded.

@@ -1,13 +1,16 @@
 // FemboyEngine2D - unified light source solver with a static contribution cache.
 #include "Engine/ECS/LightSource.hpp"
 
+#include "Engine/ECS/LightGrid.hpp"
 #include "Engine/ECS/Presentation.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstring>
+#include <span>
 
 namespace Fby
 {
@@ -172,13 +175,13 @@ struct CombinedField
 }
 
 // Adds every light of one class (static or dynamic) to a target's colour.
-[[nodiscard]] std::uint32_t AccumulateLights(const LightSample* InLights, std::uint32_t InCount, Vector2D InTarget,
-                                             bool InStaticClass, bool InShadows, const CombinedField& InField,
-                                             const LightSourceSettings& InSettings, float* OutRed,
-                                             float* OutGreen, float* OutBlue) noexcept
+[[nodiscard]] std::uint32_t AccumulateLights(const LightSample* InLights, std::span<const std::uint32_t> InIndices,
+                                             Vector2D InTarget, bool InStaticClass, bool InShadows,
+                                             const CombinedField& InField, const LightSourceSettings& InSettings,
+                                             float* OutRed, float* OutGreen, float* OutBlue) noexcept
 {
     std::uint32_t ScopedShadows = 0;
-    for (std::uint32_t ScopedI = 0; ScopedI < InCount; ++ScopedI)
+    for (const std::uint32_t ScopedI : InIndices)
     {
         const LightSample& ScopedLight = InLights[ScopedI];
         if (ScopedLight.IsStatic != InStaticClass)
@@ -319,6 +322,30 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
     MLightCount = ScopedLightCount;
     MStaticLights = ScopedStaticCount;
     MDynamicLights = ScopedDynamicCount;
+    std::array<LightGridInput, kMaxLightSamples> ScopedGridInputs{};
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+    {
+        ScopedGridInputs[ScopedI].Position = ScopedLights[ScopedI].Position;
+        ScopedGridInputs[ScopedI].Radius = ScopedLights[ScopedI].Radius;
+    }
+    std::uint64_t ScopedGridSignature = 1469598103934665603ull;
+    const auto ScopedMixGrid = [](std::uint64_t InHash, float InValue)
+    {
+        return (InHash ^ std::bit_cast<std::uint32_t>(InValue)) * 1099511628211ull;
+    };
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+    {
+        ScopedGridSignature = ScopedMixGrid(ScopedGridSignature, ScopedGridInputs[ScopedI].Position.X);
+        ScopedGridSignature = ScopedMixGrid(ScopedGridSignature, ScopedGridInputs[ScopedI].Position.Y);
+        ScopedGridSignature = ScopedMixGrid(ScopedGridSignature, ScopedGridInputs[ScopedI].Radius);
+    }
+    if (!MLightGridValid || ScopedGridSignature != MLightGridSignature)
+    {
+        MLightGrid.Build(std::span<const LightGridInput>(ScopedGridInputs.data(), ScopedLightCount));
+        MLightGridSignature = ScopedGridSignature;
+        MLightGridValid = true;
+        ++MGridBuilds;
+    }
 
     std::uint64_t ScopedSignature = 1469598103934665603ull;
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
@@ -401,9 +428,10 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
             ScopedEntry.Blue = ScopedBaseBlue;
             ScopedField.Receiver = ScopedEntity;
             const bool ScopedShadows = EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows);
-            ScopedStaticSamples += AccumulateLights(ScopedLights.data(), ScopedLightCount, ScopedTransform.Position,
-                                                    true, ScopedShadows, ScopedField, InSettings, &ScopedEntry.Red,
-                                                    &ScopedEntry.Green, &ScopedEntry.Blue);
+            ScopedStaticSamples +=
+                AccumulateLights(ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position),
+                                 ScopedTransform.Position, true, ScopedShadows, ScopedField, InSettings,
+                                 &ScopedEntry.Red, &ScopedEntry.Green, &ScopedEntry.Blue);
             if (ScopedField.Active() && InSettings.SdfAmbientOcclusion > 0.0f)
             {
                 const float ScopedOcclusion =
@@ -451,15 +479,17 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
         }
         else
         {
-            ScopedShadowSamples += AccumulateLights(ScopedLights.data(), ScopedLightCount, ScopedTransform.Position,
-                                                    true,
-                                                    EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows),
-                                                    ScopedField, InSettings, &ScopedRed, &ScopedGreen, &ScopedBlue);
+            ScopedShadowSamples +=
+                AccumulateLights(ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position),
+                                 ScopedTransform.Position, true,
+                                 EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows), ScopedField,
+                                 InSettings, &ScopedRed, &ScopedGreen, &ScopedBlue);
         }
-        ScopedShadowSamples += AccumulateLights(ScopedLights.data(), ScopedLightCount, ScopedTransform.Position,
-                                                false,
-                                                EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows),
-                                                ScopedField, InSettings, &ScopedRed, &ScopedGreen, &ScopedBlue);
+        ScopedShadowSamples +=
+            AccumulateLights(ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position),
+                             ScopedTransform.Position, false,
+                             EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows), ScopedField,
+                             InSettings, &ScopedRed, &ScopedGreen, &ScopedBlue);
         if (!ScopedUsingCache && ScopedField.Active() && InSettings.SdfAmbientOcclusion > 0.0f)
         {
             const float ScopedOcclusion =

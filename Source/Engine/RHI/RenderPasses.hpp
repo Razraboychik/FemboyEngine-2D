@@ -36,7 +36,7 @@ struct SdfShadowDesc
 
 struct SdfShadowConstants
 {
-    // Matches the SdfShadowBlock UBO in sdf_shadow.comp (std430, 608 bytes).
+    // Matches the SdfShadowBlock UBO in sdf_shadow.comp (std430, 624 bytes).
     // centre.xy, zoom, padding
     Vector4D camera{};
     // width, height, 0, 0
@@ -47,13 +47,21 @@ struct SdfShadowConstants
     Vector4D sun{};
     // steps, occluderCount, occlusionRadius, occlusionStrength
     Vector4D params{};
-    // encodeScale, enabled, 0, 0
+    // encodeScale, enabled, viewId, absolute mask layer
     Vector4D encode{};
+    // historyLayer, valid, blend, reserved
+    Vector4D history{};
+    // previous centre.xy, previous zoom, reserved
+    Vector4D historyCamera{};
+    // origin.xy, cell size.xy of the SDF grid
+    Vector4D fieldGrid{};
+    // brick size in cells, brick columns, brick rows, atlas columns
+    Vector4D brickMeta{};
     // Pairs: shape (x, y, radius, 0) and extents (hx, hy, box, 0).
     Vector4D occluders[32]{};
 };
 
-static_assert(sizeof(SdfShadowConstants) == 608);
+static_assert(sizeof(SdfShadowConstants) == 672);
 
 class SdfShadowPass
 {

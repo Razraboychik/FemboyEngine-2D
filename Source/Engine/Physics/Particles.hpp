@@ -20,6 +20,10 @@ enum ParticleEmitterFlags : std::uint32_t
     ParticleEmitterAdditive = 1u << 2,
     // Reserved: requires a GPU collision grid
     ParticleEmitterCollideWorld = 1u << 3,
+    // Per-effect OIT override. The project setting is the default; these bits
+    // force one emitter on or off.
+    ParticleEmitterOit = 1u << 4,
+    ParticleEmitterOitDisabled = 1u << 5,
 };
 
 // Per-emitter authoring data. Everything is a primitive so the inspector, scene

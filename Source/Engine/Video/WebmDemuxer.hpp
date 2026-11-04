@@ -10,7 +10,7 @@
 namespace Fby::Video
 {
 
-// What the tracks element told us about the single video track we accept.
+// Single video track described by the tracks element.
 struct WebmTrackInfo
 {
     std::uint32_t trackNumber = 0;

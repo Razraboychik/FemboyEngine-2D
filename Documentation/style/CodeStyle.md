@@ -15,7 +15,7 @@ The contract has three goals:
 ## Language and toolchain
 
 - Language: C++26 as enabled by the project CMake configuration.
-- Validated compilers: Clang 19+ and GCC 15+; the current CI baseline is
+- Validated compilers: Clang 19+ and GCC 16+; the current CI baseline is
   clang-cl 23.1.x with the MSVC standard library on Windows.
 - Build system: CMake 3.28+ with Ninja.
 - File suffixes: `.hpp` for C++ headers, `.cpp` for C++ translation units,

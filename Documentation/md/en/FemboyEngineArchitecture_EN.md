@@ -2,10 +2,10 @@
 
 **Language section:** English
 
-**Version:** 0.1.0-alpha.1  
-**Status:** Alpha  
-**Date:** 2026-10-31  
-**Document:** FBY-ARCH-0.1  
+**Version:** 0.2.0-alpha.1
+**Status:** Alpha
+**Date:** 2026-11-04
+**Document:** FBY-ARCH-0.1
 
 ---
 
@@ -143,11 +143,11 @@ The physics header does not include box2d.h. RigidBody2D and Collider2D store pa
 | Model | Details |
 |---|---|
 | Rigid bodies | Box2D v3 world, fixed step, contact events, teleport flag |
-| Rope / chain | A chain of capsule links with distance or revolute joints; anchors are existing bodies |
+| Rope / chain / spring graph | A joint graph of capsule links: chain, rope and spring connections with break limits, ties and repair |
 | Cloth | 32x32 Verlet grid, Gauss-Seidel constraints, overlap query against Box2D shapes |
 | Water | GerstnerField analytic waves plus ShallowWaterGrid on mdspan |
 
-A rope is not a special body. It is a chain of small rigid links; a rope uses distance joints, a rigid chain replaces every distance joint with a revolute joint and angle limits. The system hard-caps chains, links and joints and allocates nothing on the frame path. It owns the link entities it creates and never the anchor entities; Shutdown order matters because destroying the Box2D world invalidates every stored id.
+A rope is not a special body. It is a chain of small rigid links joined by connections; every connection carries its own material (rigid distance, spring distance, revolute with limits, spring revolute), its own break limits in newtons and newton metres, optional damage accumulation and its own repair state. A chain is therefore a builder over a fixed joint graph: sections splice chain and rope runs, ties connect two links across chains or two plain bodies, gameplay cuts enter the deterministic command log, and a broken connection leaves the link entities alive. The system hard-caps chains, links and connections, allocates the pool once and never allocates on the frame path. It owns the link entities it creates and never the anchor entities; Shutdown order matters because destroying the Box2D world invalidates every stored id, and Update must run directly after the physics step to consume Box2D joint events.
 
 Cloth is a Verlet mass-spring grid projected with a fixed number of Gauss-Seidel iterations, then pushed out of the existing Box2D shapes. It is not a second collision world and does not duplicate level geometry. The CPU writes MeshVertex positions; the renderer streams them through the same deformable path as a skinned mesh, so cloth adds no second draw path. A pinned vertex is simply invMass = 0.
 
@@ -155,7 +155,7 @@ Two water models share one system. GerstnerField is a small sum of trochoidal wa
 
 ## 7. Network rollback and Snapshot v4
 
-NetRollbackSession is the glue between Snapshot v4, CommandLog, Pcg32 and GameplayState. A session owns a fixed ring of full snapshots (one per simulated tick), one input ring per player, a stable NetEntityId to local EnTT id map and the replay loop. Everything after Initialize() is allocation-free: the snapshot arena, entity tables, input rings and frame metadata are fixed capacity. The simulation callback is a function pointer plus void*, never std::function.
+NetRollbackSession is the glue between Snapshot v4, CommandLog, Pcg32 and the gameplay components (tags, attributes, effects and skills). A session owns a fixed ring of full snapshots (one per simulated tick), one input ring per player, a stable NetEntityId to local EnTT id map and the replay loop. Everything after Initialize() is allocation-free: the snapshot arena, entity tables, input rings and frame metadata are fixed capacity. The simulation callback is a function pointer plus void*, never std::function.
 
 When a remote input arrives late, the session restores the snapshot immediately before the earliest corrected tick, restores the RNG and CommandLog cursor from the same slot, reapplies structural commands, resimulates the affected ticks with the corrected input and prediction for still-missing inputs, captures new snapshots, and reports which frames actually changed.
 
@@ -168,7 +168,7 @@ When a remote input arrives late, the session restores the snapshot immediately 
 
 NetInputFrame is 24 bytes and uses signed 16-bit fixed-point axes, not floats: a float bit pattern is not guaranteed to survive a different compiler, and the simulation must be a pure function of the input bits. The status of each player frame is Confirmed, Predicted or Missing. A late input overwrites the prediction in place at the same tick, which is exactly what replay needs.
 
-NetEntityId is assigned by the authority (or by the local peer for locally owned objects) and is never derived from an EnTT id. A restored snapshot, a different spawn order or a different allocator must not change it. GameplayState is a 64-bit mask, so the whole replicated state fits one register and the checksum is one multiply-fold per entity. CommandLog records structural spawn/despawn/add/remove, so a rollback can replay structure as well as values.
+NetEntityId is assigned by the authority (or by the local peer for locally owned objects) and is never derived from an EnTT id. A restored snapshot, a different spawn order or a different allocator must not change it. The replicated gameplay state is a compact tag mask plus fixed attribute, effect and skill records; the checksum folds each of them per mapped entity. CommandLog records structural spawn/despawn/add/remove, so a rollback can replay structure as well as values.
 
 ## 8. Asset pipeline and editor infrastructure
 
@@ -226,11 +226,11 @@ MaterialGraph -> type-check -> GLSL -> glslang -> SPIR-V -> VkPipeline
 
 ## 10. Quality gates and verification
 
-The Release is verified by 38 CTest executables: rollback replay, RNG/noise, network rollback, indirect mesh smoke, script VM, script AOT, PinkUI, DSP mixer, audio cook, material graph, video, texture cook, asset metadata, animation timeline, editor command stack, editor infrastructure, graph editor, physics extensions, UI accessibility, P3 integration and the Definitions contract. Tests are plain executables with no framework, so they run headless and on a console devkit.
+The Release is verified by the CTest suite: rollback replay, RNG/noise, network rollback, indirect mesh smoke, script VM, script AOT, PinkUI, DSP mixer, audio cook, material graph, video, texture cook, asset metadata, animation timeline, editor command stack, editor infrastructure, graph editor, physics extensions, UI accessibility, P3 integration and the Definitions contract. Tests are plain executables with no framework, so they run headless and on a console devkit.
 
 | Gate | Details |
 |---|---|
-| ctest | 25/25 pass; no GPU required for the headless subset |
+| ctest | full suite passes; no GPU required for the headless subset |
 | CheckStyle.py | PascalCase stems, required tree, no Vec2/3/4, no RTTI tokens, no Cyrillic, Allman, braces |
 | clang-format | Allman, 4 spaces, 120 columns, mandatory braces |
 | clang-tidy | Parameters In*, outputs Out*, locals Scoped*, no type shadowing |

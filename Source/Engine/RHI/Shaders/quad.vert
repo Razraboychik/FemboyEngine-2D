@@ -41,6 +41,7 @@ layout(location = 5) flat out uint vFlags;
 
 const uint kFlipX = 1u;
 const uint kFlipY = 2u;
+const uint kDepthWrite = 1u << 9;
 
 void main()
 {
@@ -60,7 +61,8 @@ void main()
     const vec2 view = (world - camera.centerAndPadding.xy) * camera.viewportAndZoom.z;
     const vec2 clip = view / (camera.viewportAndZoom.xy * 0.5);
 
-    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+    const float depth = ((inFlags & kDepthWrite) != 0u) ? float((inFlags >> 24) & 255u) / 255.0 : 1.0;
+    gl_Position = vec4(clip.x, -clip.y, depth, 1.0);
     vWorld = world;
     vScreen = gl_Position.xy * 0.5 + 0.5;
     vFlags = inFlags;

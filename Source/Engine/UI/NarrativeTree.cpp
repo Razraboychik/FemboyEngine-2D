@@ -37,16 +37,12 @@ struct NarrativeTemplates
     const char* hidden = nullptr;
     const char* const* groups = nullptr;
     const char* const* archetypes = nullptr;
-    const char* const* states = nullptr;
     const char* const* contacts = nullptr;
 };
 
 const char* const kGroupsEn[] = {"scene", "actors", "physics", "visuals", "other"};
 const char* const kArchetypesEn[] = {"object", "actor", "character", "physics body",
                                      "cloth", "rope link", "visual", "camera"};
-const char* const kStatesEn[] = {"grounded", "airborne", "jumping", "crouching", "attacking", "blocking",
-                                 "dashing",  "stunned",  "dead",    "invulnerable", "aiming", "reloading",
-                                 "interacting", "hidden", "frozen", "carrying"};
 const char* const kContactsEn[] = {"touch", "touch end", "hit"};
 
 // Russian templates are written as universal character names so the style gate
@@ -66,24 +62,6 @@ const char* const kArchetypesRu[] = {
     "\u0417\u0432\u0435\u043D\u043E \u0432\u0435\u0440\u0451\u0432\u043A\u0438",
     "\u0412\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u044B\u0439 \u043E\u0431\u044A\u0435\u043A\u0442",
     "\u041A\u0430\u043C\u0435\u0440\u0430",
-};
-const char* const kStatesRu[] = {
-    "\u043D\u0430 \u0437\u0435\u043C\u043B\u0435",
-    "\u0432 \u0432\u043E\u0437\u0434\u0443\u0445\u0435",
-    "\u043F\u0440\u044B\u0436\u043E\u043A",
-    "\u043F\u0440\u0438\u0441\u0435\u0434",
-    "\u0430\u0442\u0430\u043A\u0430",
-    "\u0431\u043B\u043E\u043A",
-    "\u0440\u044B\u0432\u043E\u043A",
-    "\u043E\u0433\u043B\u0443\u0448\u0451\u043D",
-    "\u043C\u0451\u0440\u0442\u0432",
-    "\u043D\u0435\u0443\u044F\u0437\u0432\u0438\u043C",
-    "\u043F\u0440\u0438\u0446\u0435\u043B",
-    "\u043F\u0435\u0440\u0435\u0437\u0430\u0440\u044F\u0434\u043A\u0430",
-    "\u0432\u0437\u0430\u0438\u043C\u043E\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435",
-    "\u0441\u043A\u0440\u044B\u0442",
-    "\u0437\u0430\u043C\u043E\u0440\u043E\u0436\u0435\u043D",
-    "\u043D\u0435\u0441\u0451\u0442",
 };
 const char* const kContactsRu[] = {
     "\u043A\u0430\u0441\u0430\u043D\u0438\u0435",
@@ -111,7 +89,6 @@ const NarrativeTemplates& Templates(NarrativeLocale InLocale) noexcept
         ", hidden",
         kGroupsEn,
         kArchetypesEn,
-        kStatesEn,
         kContactsEn,
     };
     static const NarrativeTemplates ScopedRussian{
@@ -134,7 +111,6 @@ const NarrativeTemplates& Templates(NarrativeLocale InLocale) noexcept
         ", \u0441\u043A\u0440\u044B\u0442",
         kGroupsRu,
         kArchetypesRu,
-        kStatesRu,
         kContactsRu,
     };
     return InLocale == NarrativeLocale::Russian ? ScopedRussian : ScopedEnglish;
@@ -263,7 +239,8 @@ NarrativeArchetype NarrativeTree::Classify(Ecs::Registry& InRegistry, Entity InE
     {
         return NarrativeArchetype::Visual;
     }
-    if (InRegistry.try_get<GameplayState>(InEntity) != nullptr || InRegistry.try_get<Velocity>(InEntity) != nullptr)
+    if (InRegistry.try_get<GameplayTagsComponent>(InEntity) != nullptr ||
+        InRegistry.try_get<Velocity>(InEntity) != nullptr)
     {
         return NarrativeArchetype::Actor;
     }
@@ -304,12 +281,6 @@ NarrativeArchetype NarrativeTree::ArchetypeOf(Entity InEntity) const noexcept
 {
     const NarrativeNode* ScopedNode = Find(InEntity);
     return ScopedNode != nullptr ? static_cast<NarrativeArchetype>(ScopedNode->archetype) : NarrativeArchetype::Unknown;
-}
-
-std::string_view NarrativeTree::StateName(std::uint32_t InBit, NarrativeLocale InLocale) noexcept
-{
-    const NarrativeTemplates& ScopedTemplates = Templates(InLocale);
-    return InBit < 16 ? std::string_view(ScopedTemplates.states[InBit]) : std::string_view("state");
 }
 
 std::string_view NarrativeTree::GroupName(NarrativeGroup InGroup, NarrativeLocale InLocale) noexcept
@@ -361,15 +332,23 @@ std::uint32_t NarrativeTree::DescribeEntity(Ecs::Registry& InRegistry, Entity In
                                             ScopedVelocity->Value.Y * ScopedVelocity->Value.Y);
         AppendText(OutText, InCapacity, &ScopedLength, ScopedTemplates.speed, static_cast<double>(ScopedSpeed));
     }
-    if (const auto* ScopedState = InRegistry.try_get<GameplayState>(InEntity); ScopedState != nullptr)
+    if (const auto* ScopedTags = InRegistry.try_get<GameplayTagsComponent>(InEntity);
+        ScopedTags != nullptr && MTags != nullptr)
     {
-        for (std::uint32_t ScopedBit = 0; ScopedBit < 16; ++ScopedBit)
+        for (std::uint32_t ScopedId = 1; ScopedId <= kMaxGameplayTags; ++ScopedId)
         {
-            if ((ScopedState->Bits & (1ull << ScopedBit)) != 0)
+            const GameplayTag ScopedTag{ScopedId};
+            if (!ScopedTags->Tags.Bits.Test(ScopedTag))
             {
-                AppendText(OutText, InCapacity, &ScopedLength, ", %s", ScopedTemplates.states[ScopedBit]);
-                break;
+                continue;
             }
+            const std::string_view ScopedName = MTags->Name(ScopedTag);
+            if (!ScopedName.empty())
+            {
+                AppendText(OutText, InCapacity, &ScopedLength, ", %.*s", static_cast<int>(ScopedName.size()),
+                           ScopedName.data());
+            }
+            break;
         }
     }
     if (const auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity); ScopedBody != nullptr)
@@ -389,24 +368,27 @@ std::uint32_t NarrativeTree::DescribeEntity(Ecs::Registry& InRegistry, Entity In
     return ScopedLength;
 }
 
-std::uint32_t NarrativeTree::DescribeStateChange(Ecs::Registry& InRegistry, Entity InEntity, std::uint32_t InBit,
-                                                 bool InGained, char* OutText, std::size_t InCapacity) const noexcept
+std::uint32_t NarrativeTree::DescribeStateChange(Ecs::Registry& InRegistry, Entity InEntity,
+                                                 std::string_view InStateName, bool InGained, char* OutText,
+                                                 std::size_t InCapacity) const noexcept
 {
     const NarrativeTemplates& ScopedTemplates = Templates(MLocale);
     const NarrativeArchetype ScopedArchetype =
         Find(InEntity) != nullptr ? ArchetypeOf(InEntity) : Classify(InRegistry, InEntity);
     const std::string_view ScopedLabel = NarrativeLabel(InRegistry, InEntity);
+    char ScopedStateName[64]{};
+    const std::size_t ScopedNameLength = std::min(InStateName.size(), sizeof(ScopedStateName) - 1u);
+    std::memcpy(ScopedStateName, InStateName.data(), ScopedNameLength);
+    ScopedStateName[ScopedNameLength] = '\0';
     if (!ScopedLabel.empty())
     {
         return WriteText(OutText, InCapacity, ScopedTemplates.namedStateChange,
                          static_cast<int>(ScopedLabel.size()), ScopedLabel.data(),
-                         InGained ? ScopedTemplates.gained : ScopedTemplates.lost,
-                         InBit < 16 ? ScopedTemplates.states[InBit] : "state");
+                         InGained ? ScopedTemplates.gained : ScopedTemplates.lost, ScopedStateName);
     }
     return WriteText(OutText, InCapacity, ScopedTemplates.stateChange,
                      ScopedTemplates.archetypes[static_cast<std::size_t>(ScopedArchetype)], EntityId(InEntity),
-                     InGained ? ScopedTemplates.gained : ScopedTemplates.lost,
-                     InBit < 16 ? ScopedTemplates.states[InBit] : "state");
+                     InGained ? ScopedTemplates.gained : ScopedTemplates.lost, ScopedStateName);
 }
 
 std::uint32_t NarrativeTree::DescribeContact(Ecs::Registry& InRegistry, Entity InA, Entity InB,

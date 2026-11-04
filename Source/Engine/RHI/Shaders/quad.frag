@@ -19,7 +19,8 @@ layout(location = 5) flat in uint vFlags;
 
 layout(set = 0, binding = 0) uniform sampler2DArray uAtlas;
 layout(set = 0, binding = 1) uniform sampler2D uSdf;
-layout(set = 0, binding = 3) uniform sampler2D uShadow;
+// One layer per in-flight view slot. The push block selects the layer.
+layout(set = 0, binding = 3) uniform sampler2DArray uShadow;
 // Virtual texture: R32_UINT page table, the RGBA8 page array and the per-frame
 // feedback images (one per frame slot, cleared by the backend each frame).
 layout(set = 0, binding = 4) uniform usampler2D uVtTable;
@@ -28,12 +29,150 @@ layout(set = 0, binding = 6, r32ui) uniform uimage2D uFeedback[3];
 
 layout(set = 0, binding = 2) uniform SdfBlock
 {
-    vec4 fieldBounds;
+    // The fragment path shares the buffer with sdf_shadow.comp, so the struct must
+    // keep the same std430 layout even though the fragment shader reads only
+    // fieldBounds and the occluders.
+    vec4 camera;        // centre.xy, zoom, padding
+    vec4 viewport;      // width, height, 0, 0
+    vec4 fieldBounds;   // origin.xy, extent.xy
     vec4 sun;
     vec4 params;
     vec4 flags;
+    vec4 history;
+    vec4 historyCamera;
+    vec4 fieldGrid;      // origin.xy, cell size.xy
+    vec4 brickMeta;      // brick size, columns, rows, atlas columns
     vec4 occluders[32];
 } sdf;
+
+// Sparse brick table: eight 32-bit words per brick. Word 0 is the tile index,
+// words 1/2 are min/max distance as floats, word 5 is the state in the low bits.
+layout(std430, set = 0, binding = 7) readonly buffer SdfBrickTable
+{
+    uint words[];
+} brickTable;
+
+layout(set = 0, binding = 8) uniform sampler2D uSdfAtlas;
+
+struct GpuLight
+{
+    vec4 positionAndRadius;
+    vec4 colorAndIntensity;
+    vec4 directionAndCone;
+    uint type;
+    uint flags;
+    uint shadowIndex;
+    uint reserved;
+};
+
+struct ClusterHeader
+{
+    uint offset;
+    uint count;
+    uint overflowCount;
+    uint flags;
+};
+
+layout(set = 1, binding = 0) readonly buffer ClusterLights
+{
+    GpuLight values[];
+} clusterLights;
+
+layout(set = 1, binding = 1) readonly buffer ClusterHeaders
+{
+    ClusterHeader values[];
+} clusterHeaders;
+
+layout(set = 1, binding = 2) readonly buffer ClusterIndices
+{
+    uint values[];
+} clusterIndices;
+
+struct GpuGiProbe
+{
+    vec4 positionAndRadius;
+    vec4 radiance;
+    vec4 occlusion;
+};
+
+layout(set = 1, binding = 3) readonly buffer GiProbes
+{
+    GpuGiProbe values[];
+} giProbes;
+
+layout(set = 1, binding = 4) uniform GiVolume
+{
+    vec4 originAndCell;
+    vec4 extent;
+} giVolume;
+
+vec3 SampleGi(vec2 InWorld, out float OutOcclusion)
+{
+    OutOcclusion = 1.0;
+    if (giVolume.extent.x <= 0.0 || giVolume.extent.y <= 0.0 || giVolume.extent.w <= 0.0)
+    {
+        return vec3(0.0);
+    }
+    const vec2 coord = (InWorld - giVolume.originAndCell.xy) / max(giVolume.originAndCell.zw, vec2(0.0001));
+    if (coord.x < 0.0 || coord.y < 0.0 || coord.x >= giVolume.extent.x || coord.y >= giVolume.extent.y)
+    {
+        return vec3(0.0);
+    }
+    const vec2 sampleCoord = coord - 0.5;
+    const ivec2 base = ivec2(floor(sampleCoord));
+    const vec2 fraction = sampleCoord - vec2(base);
+    const ivec2 maxCoord = ivec2(giVolume.extent.xy) - 1;
+    vec3 radiance = vec3(0.0);
+    float occlusion = 0.0;
+    for (int offsetY = 0; offsetY <= 1; ++offsetY)
+    {
+        for (int offsetX = 0; offsetX <= 1; ++offsetX)
+        {
+            const ivec2 sampleCoordInt = clamp(base + ivec2(offsetX, offsetY), ivec2(0), maxCoord);
+            const uint index = uint(sampleCoordInt.y) * uint(giVolume.extent.x) + uint(sampleCoordInt.x);
+            const float weight = (offsetX == 0 ? 1.0 - fraction.x : fraction.x) *
+                                 (offsetY == 0 ? 1.0 - fraction.y : fraction.y);
+            radiance += giProbes.values[index].radiance.rgb * weight;
+            occlusion += giProbes.values[index].occlusion.x * weight;
+        }
+    }
+    OutOcclusion = occlusion;
+    return radiance;
+}
+
+vec3 ClusterLighting(vec2 InScreen, vec2 InViewport)
+{
+    const vec2 viewport = InViewport;
+    const vec2 pixel = InScreen * viewport;
+    const ivec2 tile = ivec2(pixel / 16.0);
+    const uint tilesX = uint(ceil(viewport.x / 16.0));
+    const uint tilesY = uint(ceil(viewport.y / 16.0));
+    if (tile.x < 0 || tile.y < 0 || uint(tile.x) >= tilesX || uint(tile.y) >= tilesY)
+    {
+        return vec3(0.0);
+    }
+    const uint cluster = uint(tile.y) * tilesX + uint(tile.x);
+    const ClusterHeader header = clusterHeaders.values[cluster];
+    vec3 result = vec3(0.0);
+    for (uint index = 0u; index < header.count; ++index)
+    {
+        const uint lightIndex = clusterIndices.values[header.offset + index];
+        const GpuLight light = clusterLights.values[lightIndex];
+        const float radius = max(light.positionAndRadius.z, 1.0);
+        const vec2 toPixel = pixel - light.positionAndRadius.xy;
+        const float distance = length(toPixel);
+        const float attenuation = clamp(1.0 - distance / radius, 0.0, 1.0);
+        float cone = 1.0;
+        if (light.directionAndCone.z > -0.5 && light.directionAndCone.w > -0.5 && distance > 0.0001)
+        {
+            const vec2 direction = normalize(light.directionAndCone.xy);
+            const float cosine = dot(direction, toPixel / distance);
+            cone = smoothstep(light.directionAndCone.z, light.directionAndCone.w, cosine);
+        }
+        result += light.colorAndIntensity.rgb * (light.colorAndIntensity.a * attenuation * cone);
+    }
+    return result;
+}
 
 layout(push_constant) uniform Camera
 {
@@ -58,6 +197,7 @@ const uint kRenderFlagVirtualTexture = 1u << 5u;
 const uint kRenderFlagSdfText = 1u << 6u;
 const uint kRenderFlagSdfOutline = 1u << 7u;
 const uint kRenderFlagSdfGlow = 1u << 8u;
+const uint kRenderFlagDepthWrite = 1u << 9u;
 const uint kPageTableMissing = 0xFFFFFFFFu;
 
 float fieldDistance(vec2 world)
@@ -66,6 +206,37 @@ float fieldDistance(vec2 world)
     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0)
     {
         return 1.0e6;
+    }
+    const float atlasColumns = sdf.brickMeta.w;
+    if (atlasColumns > 0.5)
+    {
+        // Sparse path: world -> cell -> brick -> table -> atlas tile.
+        const float brickSize = max(sdf.brickMeta.x, 1.0);
+        const vec2 cell = (world - sdf.fieldGrid.xy) / max(sdf.fieldGrid.zw, vec2(0.0001));
+        const ivec2 brick = ivec2(floor(cell / brickSize));
+        const uint columns = uint(sdf.brickMeta.y);
+        const uint rows = uint(sdf.brickMeta.z);
+        if (brick.x < 0 || brick.y < 0 || uint(brick.x) >= columns || uint(brick.y) >= rows)
+        {
+            return 1.0e6;
+        }
+        const uint base = (uint(brick.y) * columns + uint(brick.x)) * 8u;
+        const float minDistance = uintBitsToFloat(brickTable.words[base + 1u]);
+        const float maxDistance = uintBitsToFloat(brickTable.words[base + 2u]);
+        const uint state = brickTable.words[base + 5u] & 3u;
+        if (state == 0u)
+        {
+            return max(minDistance, 0.0);
+        }
+        if (state == 1u)
+        {
+            return min(maxDistance, 0.0);
+        }
+        const uint tile = brickTable.words[base + 0u];
+        const vec2 local = (cell - vec2(brick) * brickSize) / brickSize;
+        const vec2 tileOrigin = vec2(float(tile % uint(atlasColumns)), float(tile / uint(atlasColumns))) * brickSize;
+        const vec2 atlasUv = (tileOrigin + local * brickSize) / (atlasColumns * brickSize);
+        return texture(uSdfAtlas, atlasUv).r * sdf.flags.x;
     }
     return texture(uSdf, uv).r * sdf.flags.x;
 }
@@ -261,23 +432,41 @@ void main()
 
     // Alpha-tested sprites keep the depth of the batch irrelevant and avoid
     // blend-order artefacts on fully transparent texels.
-    if (color.a < 0.002)
+    const float alphaCutoff = camera.materialParams.w > 0.5 && (vFlags & kRenderFlagDepthWrite) != 0u ? 0.5 : 0.002;
+    if (color.a < alphaCutoff)
     {
         discard;
     }
 
+    float shadow = 1.0;
+    float ao = 1.0;
     if (sdf.flags.y > 0.5)
     {
-        float shadow = 1.0;
         if (sdf.flags.z > 0.5)
         {
-            shadow = texture(uShadow, vScreen).r;
+            shadow = texture(uShadow, vec3(vScreen, camera.frame.z)).r;
         }
         else
         {
             shadow = mix(sdf.sun.w, 1.0, visibility(vWorld));
         }
-        color.rgb *= shadow * ambientOcclusion(vWorld);
+        ao = ambientOcclusion(vWorld);
+    }
+    if (camera.frame.w > 0.5)
+    {
+        color.rgb *= (0.15 + ClusterLighting(vScreen, camera.viewportAndZoom.xy)) * shadow * ao;
+    }
+    else if (sdf.flags.y > 0.5)
+    {
+        color.rgb *= shadow * ao;
+    }
+    if (giVolume.extent.w > 0.0)
+    {
+        float giOcclusion = 1.0;
+        const vec3 gi = SampleGi(vWorld, giOcclusion);
+        const float strength = clamp(giVolume.extent.w, 0.0, 1.0);
+        color.rgb = mix(color.rgb, color.rgb * 0.5 + gi, strength * 0.5);
+        color.rgb *= mix(1.0, giOcclusion, strength * 0.35);
     }
     outColor = color;
 }

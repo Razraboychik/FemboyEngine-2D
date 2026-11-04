@@ -1,4 +1,4 @@
-// FemboyEngine2D - FemStateTree tests.
+// FemboyEngine2D - StateTree tests.
 #include "Engine/ECS/StateTree.hpp"
 
 #include "Engine/Core/FrameArena.hpp"
@@ -21,16 +21,28 @@ std::uint32_t GFailures = 0;
         if (!(condition))                                                                                              \
         {                                                                                                              \
             std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition);                                  \
-            ++GFailures;                                                                                              \
+            ++GFailures;                                                                                               \
         }                                                                                                              \
     } while (false)
+
+Fby::GameplayTagRegistry& TestTags() noexcept
+{
+    static Fby::GameplayTagRegistry ScopedTags;
+    return ScopedTags;
+}
+
+Fby::GameplayTag ApproachingTag() noexcept
+{
+    static const Fby::GameplayTag ScopedTag = TestTags().Register("Character.State.Approaching");
+    return ScopedTag;
+}
 
 struct TestTree
 {
     Fby::StateTreeDefinition Definition;
     std::uint16_t Root = Fby::kStateTreeNone;
     std::uint16_t Group = Fby::kStateTreeNone;
-    std::uint16_t Attack = Fby::kStateTreeNone;
+    std::uint16_t Approach = Fby::kStateTreeNone;
     std::uint16_t Move = Fby::kStateTreeNone;
 };
 
@@ -39,20 +51,17 @@ struct TestTree
     TestTree ScopedTree;
     ScopedTree.Definition.TreeId = 7;
     ScopedTree.Root = Fby::StateTreeAddNode(ScopedTree.Definition, Fby::StateTreeNodeKind::Root);
-    ScopedTree.Group = Fby::StateTreeAddNode(ScopedTree.Definition, Fby::StateTreeNodeKind::Selector,
-                                             ScopedTree.Root);
-    ScopedTree.Attack = Fby::StateTreeAddNode(ScopedTree.Definition, Fby::StateTreeNodeKind::Leaf,
-                                              ScopedTree.Group);
-    ScopedTree.Move = Fby::StateTreeAddNode(ScopedTree.Definition, Fby::StateTreeNodeKind::Leaf,
-                                            ScopedTree.Group);
+    ScopedTree.Group = Fby::StateTreeAddNode(ScopedTree.Definition, Fby::StateTreeNodeKind::Selector, ScopedTree.Root);
+    ScopedTree.Approach = Fby::StateTreeAddNode(ScopedTree.Definition, Fby::StateTreeNodeKind::Leaf, ScopedTree.Group);
+    ScopedTree.Move = Fby::StateTreeAddNode(ScopedTree.Definition, Fby::StateTreeNodeKind::Leaf, ScopedTree.Group);
 
-    Fby::StateTreeEvaluator ScopedAttackGuard;
-    ScopedAttackGuard.Kind = Fby::StateTreeEvaluatorKind::TargetWithinRadius;
-    ScopedAttackGuard.Threshold = 64.0f;
-    Fby::StateTreeTask ScopedAttackTask;
-    ScopedAttackTask.Kind = Fby::StateTreeTaskKind::AttackTarget;
-    ScopedAttackTask.Range = 48.0f;
-    Fby::StateTreeSetLeaf(ScopedTree.Definition, ScopedTree.Attack, ScopedAttackGuard, ScopedAttackTask);
+    Fby::StateTreeEvaluator ScopedApproachGuard;
+    ScopedApproachGuard.Kind = Fby::StateTreeEvaluatorKind::TargetWithinRadius;
+    ScopedApproachGuard.Threshold = 64.0f;
+    Fby::StateTreeTask ScopedApproachTask;
+    ScopedApproachTask.Kind = Fby::StateTreeTaskKind::MoveToTarget;
+    ScopedApproachTask.Speed = 120.0f;
+    Fby::StateTreeSetLeaf(ScopedTree.Definition, ScopedTree.Approach, ScopedApproachGuard, ScopedApproachTask);
 
     Fby::StateTreeEvaluator ScopedMoveGuard;
     ScopedMoveGuard.Kind = Fby::StateTreeEvaluatorKind::AlwaysTrue;
@@ -61,29 +70,29 @@ struct TestTree
     ScopedMoveTask.Speed = 120.0f;
     Fby::StateTreeSetLeaf(ScopedTree.Definition, ScopedTree.Move, ScopedMoveGuard, ScopedMoveTask);
 
-    // "Player spotted" trigger: move -> attack.
+    // "Player spotted" trigger: move -> approach.
     Fby::StateTreeTransition ScopedSpotted;
     ScopedSpotted.FromLeaf = ScopedTree.Move;
-    ScopedSpotted.ToNode = ScopedTree.Attack;
+    ScopedSpotted.ToNode = ScopedTree.Approach;
     ScopedSpotted.TriggerMask = 1ull << 0;
     ScopedSpotted.ConsumeMask = 1ull << 0;
     FBY_CHECK(Fby::StateTreeAddTransition(ScopedTree.Definition, ScopedSpotted));
 
-    // Attack guard failed: back to move.
+    // Approach guard failed: back to move.
     Fby::StateTreeTransition ScopedLostTarget;
-    ScopedLostTarget.FromLeaf = ScopedTree.Attack;
+    ScopedLostTarget.FromLeaf = ScopedTree.Approach;
     ScopedLostTarget.ToNode = ScopedTree.Move;
     ScopedLostTarget.TriggerMask = Fby::kStateTreeTriggerLeafFailed;
     ScopedLostTarget.ConsumeMask = Fby::kStateTreeTriggerLeafFailed;
     FBY_CHECK(Fby::StateTreeAddTransition(ScopedTree.Definition, ScopedLostTarget));
 
-    // Tag-gated transition: only while the entity is attacking (external bit).
+    // Tag-gated transition: only while the entity is approaching (external bit).
     Fby::StateTreeTransition ScopedTagged;
     ScopedTagged.FromLeaf = ScopedTree.Move;
-    ScopedTagged.ToNode = ScopedTree.Attack;
+    ScopedTagged.ToNode = ScopedTree.Approach;
     ScopedTagged.TriggerMask = 1ull << 1;
     ScopedTagged.ConsumeMask = 1ull << 1;
-    ScopedTagged.RequireTagsAll = Fby::GameplayStateBit(Fby::GameplayStateFlag::Attacking);
+    ScopedTagged.RequireTags.Add(ApproachingTag());
     FBY_CHECK(Fby::StateTreeAddTransition(ScopedTree.Definition, ScopedTagged));
     return ScopedTree;
 }
@@ -93,12 +102,10 @@ void TestAuthoringLimits()
     Fby::StateTreeDefinition ScopedDeep;
     ScopedDeep.TreeId = 1;
     const std::uint16_t ScopedRoot = Fby::StateTreeAddNode(ScopedDeep, Fby::StateTreeNodeKind::Root);
-    const std::uint16_t ScopedDepth2 =
-        Fby::StateTreeAddNode(ScopedDeep, Fby::StateTreeNodeKind::Selector, ScopedRoot);
+    const std::uint16_t ScopedDepth2 = Fby::StateTreeAddNode(ScopedDeep, Fby::StateTreeNodeKind::Selector, ScopedRoot);
     const std::uint16_t ScopedDepth3 =
         Fby::StateTreeAddNode(ScopedDeep, Fby::StateTreeNodeKind::Selector, ScopedDepth2);
-    const std::uint16_t ScopedDepth4 =
-        Fby::StateTreeAddNode(ScopedDeep, Fby::StateTreeNodeKind::Leaf, ScopedDepth3);
+    const std::uint16_t ScopedDepth4 = Fby::StateTreeAddNode(ScopedDeep, Fby::StateTreeNodeKind::Leaf, ScopedDepth3);
     FBY_CHECK(ScopedRoot != Fby::kStateTreeNone && ScopedDepth2 != Fby::kStateTreeNone);
     FBY_CHECK(ScopedDepth3 != Fby::kStateTreeNone && ScopedDepth4 != Fby::kStateTreeNone);
     // A fifth level would exceed ActiveStates[4].
@@ -134,6 +141,7 @@ void TestSystem()
 
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
     ScopedContext.commands = &ScopedCommands;
+    ScopedContext.gameplayTags = &TestTags();
 
     const Fby::Entity ScopedTarget = ScopedRegistry.create();
     auto& ScopedTargetTransform = ScopedRegistry.emplace<Fby::Transform2D>(ScopedTarget);
@@ -142,7 +150,7 @@ void TestSystem()
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     auto& ScopedSelfTransform = ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
     ScopedSelfTransform.Position = Fby::Vector2D{0.0f, 0.0f};
-    auto& ScopedGameplay = ScopedRegistry.emplace<Fby::GameplayState>(ScopedEntity);
+    auto& ScopedTags = ScopedRegistry.emplace<Fby::GameplayTagsComponent>(ScopedEntity);
     auto& ScopedState = ScopedRegistry.emplace<Fby::StateTreeComponent>(ScopedEntity);
     ScopedState.TreeId = 7;
     ScopedState.Target = ScopedTarget;
@@ -185,25 +193,25 @@ void TestSystem()
     Fby::StateTreeRaiseTrigger(ScopedState, 1ull << 0);
     ScopedSystem.Run(ScopedContext);
     FBY_CHECK(ScopedState.TransitionsFired == 1);
-    FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Attack);
+    FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Approach);
     FBY_CHECK(ScopedState.ActiveDepth == 3);
-    FBY_CHECK(ScopedState.ActiveStates[2] == ScopedTree.Attack);
+    FBY_CHECK(ScopedState.ActiveStates[2] == ScopedTree.Approach);
     FBY_CHECK(ScopedState.Triggers == 0);
     FBY_CHECK(ScopedState.StateTime == 0.0f);
     FBY_CHECK(ScopedCommands.Count() == 1);
     ScopedCommands.Play(ScopedRegistry);
-    const auto* ScopedAttackCommand = ScopedRegistry.try_get<Fby::AICommandComponent>(ScopedEntity);
-    FBY_CHECK(ScopedAttackCommand != nullptr);
-    FBY_CHECK(ScopedAttackCommand->Kind == static_cast<std::uint32_t>(Fby::AICommandKind::Attack));
-    FBY_CHECK(ScopedAttackCommand->Range == 48.0f);
-    FBY_CHECK(ScopedAttackCommand->Position == Fby::Vector2D(10.0f, 0.0f));
+    const auto* ScopedApproachCommand = ScopedRegistry.try_get<Fby::AICommandComponent>(ScopedEntity);
+    FBY_CHECK(ScopedApproachCommand != nullptr);
+    FBY_CHECK(ScopedApproachCommand->Kind == static_cast<std::uint32_t>(Fby::AICommandKind::MoveTo));
+    FBY_CHECK(ScopedApproachCommand->Speed == 120.0f);
+    FBY_CHECK(ScopedApproachCommand->Position == Fby::Vector2D(10.0f, 0.0f));
     ScopedCommands.Reset();
     ScopedArena.Reset();
 
-    // The guard still holds: attack stays active, no scan-driven transition.
+    // The guard still holds: approach stays active, no scan-driven transition.
     ScopedSystem.Run(ScopedContext);
     FBY_CHECK(ScopedState.TransitionsFired == 1);
-    FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Attack);
+    FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Approach);
     ScopedCommands.Play(ScopedRegistry);
     ScopedCommands.Reset();
     ScopedArena.Reset();
@@ -231,10 +239,11 @@ void TestSystem()
     ScopedArena.Reset();
 
     // With the tag the same trigger now fires.
-    ScopedGameplay.Bits |= Fby::GameplayStateBit(Fby::GameplayStateFlag::Attacking);
+    ScopedTags.BaseTags.Add(ApproachingTag());
+    ScopedTags.Tags.Add(ApproachingTag());
     ScopedSystem.Run(ScopedContext);
     FBY_CHECK(ScopedState.TransitionsFired == 3);
-    FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Attack);
+    FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Approach);
     FBY_CHECK((ScopedState.Triggers & (1ull << 1)) == 0);
 
     // A task cannot use a missing tree; inactive entities are skipped.
@@ -259,6 +268,7 @@ void TestRegistration()
 
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
     ScopedContext.commands = &ScopedCommands;
+    ScopedContext.gameplayTags = &TestTags();
     ScopedContext.dt = 1.0f / 60.0f;
 
     Fby::Ecs::Schedule ScopedSchedule;

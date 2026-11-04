@@ -3,7 +3,7 @@
 This document records the editor contracts that are not obvious from the panels:
 project resolution, scene lifecycle, shell behaviour, authoring commands and the
 dirty/autosave rules. The task walkthrough stays in
-[Authoring.md](../md/en/Authoring.md); the forward plan is in
+[Authoring.md](authoring.md); the forward plan is in
 [ROADMAP.md](../ROADMAP.md).
 
 ## Project resolution and opening
@@ -50,6 +50,11 @@ dirty/autosave rules. The task walkthrough stays in
 - Typography defaults to 18 px body / 24 px panel titles. A project whose
   typography block still has the untouched 16 px values is migrated once at
   load.
+- Fonts and panel geometry share one content scale: `DisplayScale() /
+  PixelDensity()`. Windows and X11 report window coordinates in physical
+  pixels, so an 18 px body on a 150% display renders at 27 physical pixels;
+  macOS and Wayland fold the density into the framebuffer scale and keep 1.0.
+  UI scale multiplies both, so the text and the controls stay proportional.
 - The default dock layout (versioned next to the ImGui ini) puts the Viewport in
   the centre as the selected tab and docks the timeline, script debugger and
   graph editors below it. An older saved layout is rebuilt once.
@@ -114,6 +119,18 @@ dirty-scene guard is covered by `editor_infrastructure`. `File > Autosave scene
 
 PIE `Step` (F10) advances one fixed tick while paused, through the same
 fixed-step path as the normal play loop.
+
+## Logs
+
+- The file sink keeps the newest `log_max_files` files per category and the
+  newest `log_max_lines` lines in each file. Defaults are 20 files and 50,000
+  lines per file (about 6 MB per file); files beyond the count are deleted when
+  the sink opens or the limits are applied, and a file that reaches the line
+  limit is compacted in place by dropping its oldest lines.
+- Editor Settings > Logs edits both limits and has a "Use recommended limits"
+  action. The values are stored in `project.femproj` (`[editor]`) and mirrored
+  to `editor.ini`; applying them closes and reopens the current sink file so
+  the new limits take effect without a restart.
 
 ## Window presentation
 

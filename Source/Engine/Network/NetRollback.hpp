@@ -466,7 +466,7 @@ public:
     [[nodiscard]] bool CompareChecksums(std::uint64_t InTick, std::uint64_t InRemoteSnapshot,
                                         std::uint64_t InRemoteState, ChecksumComparison* Out = nullptr) const noexcept;
 
-    [[nodiscard]] static std::uint64_t ComputeGameplayStateChecksum(const Ecs::Registry& InRegistry,
+    [[nodiscard]] static std::uint64_t ComputeGameplayChecksum(const Ecs::Registry& InRegistry,
                                                                     const NetEntityMap& InEntities) noexcept;
 
 private:

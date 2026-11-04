@@ -201,6 +201,37 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
     return true;
 }
 
+bool PluginHost::Reload(const std::string& InPath, std::string* InError)
+{
+    for (auto ScopedIt = MPlugins.begin(); ScopedIt != MPlugins.end(); ++ScopedIt)
+    {
+        LoadedPlugin& ScopedPlugin = **ScopedIt;
+        if (ScopedPlugin.path != InPath)
+        {
+            continue;
+        }
+        if (MSystemGraph != nullptr)
+        {
+            for (PluginSystem& ScopedSystem : ScopedPlugin.systems)
+            {
+                MSystemGraph->RemoveUser(&ScopedSystem);
+            }
+        }
+        const auto ScopedUnloadEntry = reinterpret_cast<FbyPluginUnloadFn>(
+            FindSymbol(static_cast<LibraryHandle>(ScopedPlugin.handle), FBY_PLUGIN_UNLOAD_SYMBOL));
+        if (ScopedUnloadEntry != nullptr)
+        {
+            ScopedUnloadEntry();
+        }
+        CloseLibrary(static_cast<LibraryHandle>(ScopedPlugin.handle));
+        ScopedPlugin.handle = nullptr;
+        MPlugins.erase(ScopedIt);
+        LogInfo("plugin", "reloading {}", InPath);
+        return Load(InPath, InError);
+    }
+    return Load(InPath, InError);
+}
+
 void PluginHost::UnloadAll()
 {
     for (auto& ScopedPlugin : MPlugins)

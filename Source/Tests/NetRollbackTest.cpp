@@ -4,6 +4,7 @@
 #include "Engine/ECS/CommandLog.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Snapshot.hpp"
+#include "Engine/Gameplay/GameplayTags.hpp"
 #include "Engine/Physics/Physics.hpp"
 #include "Engine/Physics/Particles.hpp"
 
@@ -36,9 +37,10 @@ void Check(bool InCondition, const char* InMessage)
 }
 
 using Fby::Entity;
-using Fby::GameplayState;
-using Fby::GameplayStateBit;
-using Fby::GameplayStateFlag;
+using Fby::GameplayTag;
+using Fby::GameplayTagContainer;
+using Fby::GameplayTagRegistry;
+using Fby::GameplayTagsComponent;
 using Fby::Pcg32;
 using Fby::Transform2D;
 using Fby::Vector2D;
@@ -58,6 +60,33 @@ using Fby::Net::RollbackReport;
 
 constexpr float kStep = 1.0f / 60.0f;
 
+struct TestTagIds
+{
+    GameplayTagRegistry registry;
+    GameplayTag grounded;
+    GameplayTag airborne;
+    GameplayTag jumping;
+    GameplayTag dashing;
+    GameplayTag invulnerable;
+    GameplayTag frozen;
+};
+
+TestTagIds& TestTags() noexcept
+{
+    static TestTagIds ScopedTags = []()
+    {
+        TestTagIds ScopedResult;
+        ScopedResult.grounded = ScopedResult.registry.Register("Character.State.Grounded");
+        ScopedResult.airborne = ScopedResult.registry.Register("Character.State.Airborne");
+        ScopedResult.jumping = ScopedResult.registry.Register("Character.State.Jumping");
+        ScopedResult.dashing = ScopedResult.registry.Register("Character.State.Dashing");
+        ScopedResult.invulnerable = ScopedResult.registry.Register("Character.State.Invulnerable");
+        ScopedResult.frozen = ScopedResult.registry.Register("Character.State.Frozen");
+        return ScopedResult;
+    }();
+    return ScopedTags;
+}
+
 struct TestWorld
 {
     std::array<Entity, 2> players{entt::null, entt::null};
@@ -70,7 +99,7 @@ Entity CreatePlayer(Registry& InRegistry, Vector2D InPosition)
     ScopedTransform.Position = InPosition;
     InRegistry.emplace<Transform2D>(ScopedEntity, ScopedTransform);
     InRegistry.emplace<Velocity>(ScopedEntity, Velocity{Vector2D{0.0f, 0.0f}});
-    InRegistry.emplace<GameplayState>(ScopedEntity, GameplayState{});
+    InRegistry.emplace<GameplayTagsComponent>(ScopedEntity, GameplayTagsComponent{});
     return ScopedEntity;
 }
 
@@ -95,23 +124,25 @@ void Simulate(void* InUser, Registry& InRegistry, std::uint64_t InTick, const Ne
         }
         const NetInputFrame& ScopedInput = InInputs.Player(ScopedPlayer);
         auto& ScopedVelocity = InRegistry.get<Velocity>(ScopedEntity);
-        auto& ScopedState = InRegistry.get<GameplayState>(ScopedEntity);
+        auto& ScopedTags = InRegistry.get<GameplayTagsComponent>(ScopedEntity);
         ScopedVelocity.Value = Vector2D{ScopedInput.AxisX() * 180.0f, ScopedInput.AxisY() * 180.0f};
 
-        ScopedState.Bits = (InTick & 1u) != 0 ? GameplayStateBit(GameplayStateFlag::Grounded)
-                                              : GameplayStateBit(GameplayStateFlag::Airborne);
+        const TestTagIds& ScopedIds = TestTags();
+        ScopedTags.BaseTags = GameplayTagContainer{};
+        ScopedTags.BaseTags.Add((InTick & 1u) != 0 ? ScopedIds.grounded : ScopedIds.airborne);
         if (ScopedInput.Button(1u))
         {
-            ScopedState.Set(GameplayStateFlag::Jumping);
+            ScopedTags.BaseTags.Add(ScopedIds.jumping);
         }
         if (ScopedInput.moveX < 0)
         {
-            ScopedState.Set(GameplayStateFlag::Dashing);
+            ScopedTags.BaseTags.Add(ScopedIds.dashing);
         }
         if ((InTick + ScopedPlayer) % 5u == 0)
         {
-            ScopedState.Set(GameplayStateFlag::Invulnerable);
+            ScopedTags.BaseTags.Add(ScopedIds.invulnerable);
         }
+        ScopedTags.Tags = ScopedTags.BaseTags;
         InRegistry.get<Transform2D>(ScopedEntity).Rotation += InRng.RangeFloat(-0.003f, 0.003f);
     }
 
@@ -336,10 +367,11 @@ void TestLocalOnlyStateSkipped()
     Check(InitializeRun(ScopedRun), "local-state run initializes");
     const std::uint64_t ScopedBefore = ScopedRun.session.StateChecksum();
     const Entity ScopedLocal = ScopedRun.registry.create();
-    ScopedRun.registry.emplace<GameplayState>(ScopedLocal, GameplayState{});
-    ScopedRun.registry.get<GameplayState>(ScopedLocal).Bits = 0x1234u;
+    auto& ScopedTags = ScopedRun.registry.emplace<GameplayTagsComponent>(ScopedLocal, GameplayTagsComponent{});
+    ScopedTags.BaseTags.Add(TestTags().grounded);
+    ScopedTags.Tags = ScopedTags.BaseTags;
     Check(ScopedRun.session.StateChecksum() == ScopedBefore,
-          "local-only gameplay state stays out of the network checksum");
+          "local-only gameplay tags stay out of the network checksum");
 }
 
 void TestEntityMap()
@@ -359,24 +391,24 @@ void TestEntityMap()
     Check(ScopedMap.Register(NetEntityId{7}, ScopedFirst), "a freed net id can be reused");
 }
 
-void TestGameplayStateComponent()
+void TestGameplayTagsComponent()
 {
-    static_assert(sizeof(GameplayState) == 8);
-    static_assert(std::is_trivially_copyable_v<GameplayState>);
+    static_assert(std::is_trivially_copyable_v<GameplayTagsComponent>);
     const SnapshotSchema ScopedSchema = SnapshotSchema::BuiltIns();
-    Check(ScopedSchema.Find("GameplayState") != nullptr, "GameplayState is in the snapshot schema");
-    GameplayState ScopedState;
-    ScopedState.Set(GameplayStateFlag::Grounded);
-    ScopedState.Set(GameplayStateFlag::Attacking);
-    Check(ScopedState.Has(GameplayStateFlag::Grounded), "state bit set");
-    Check(ScopedState.HasAll(GameplayStateBit(GameplayStateFlag::Grounded) |
-                             GameplayStateBit(GameplayStateFlag::Attacking)),
-          "HasAll checks a mask");
-    Check(!ScopedState.Has(GameplayStateFlag::Dead), "unset state bit is clear");
-    ScopedState.Clear(GameplayStateFlag::Attacking);
-    Check(!ScopedState.Has(GameplayStateFlag::Attacking), "state bit cleared");
-    ScopedState.Toggle(GameplayStateFlag::Dead);
-    Check(ScopedState.Has(GameplayStateFlag::Dead), "state bit toggled");
+    Check(ScopedSchema.Find("GameplayTagsComponent") != nullptr,
+          "GameplayTagsComponent is in the snapshot schema");
+    const TestTagIds& ScopedIds = TestTags();
+    GameplayTagsComponent ScopedTags;
+    ScopedTags.BaseTags.Add(ScopedIds.grounded);
+    ScopedTags.BaseTags.Add(ScopedIds.dashing);
+    ScopedTags.Tags = ScopedTags.BaseTags;
+    Check(ScopedTags.Tags.HasExact(ScopedIds.grounded), "tag bit set");
+    Check(ScopedTags.Tags.HasExact(ScopedIds.dashing), "second tag bit set");
+    Check(!ScopedTags.Tags.HasExact(ScopedIds.frozen), "unset tag is clear");
+    Check(GameplayTagContainerHas(ScopedTags.Tags, ScopedIds.registry, ScopedIds.grounded),
+          "hierarchical lookup finds a set tag");
+    ScopedTags.Tags.Remove(ScopedIds.dashing);
+    Check(!ScopedTags.Tags.HasExact(ScopedIds.dashing), "tag cleared");
 }
 
 void TestPredictionAndRollback()
@@ -493,9 +525,11 @@ void TestCommandLogRollback()
     Velocity ScopedSpawnedVelocity;
     ScopedSpawnedVelocity.Value = Vector2D{12.0f, -3.0f};
     Check(ScopedLog.AddComponent<Velocity>(ScopedSpawned, ScopedSpawnedVelocity, 6), "command log velocity recorded");
-    GameplayState ScopedSpawnedState;
-    ScopedSpawnedState.Set(GameplayStateFlag::Frozen);
-    Check(ScopedLog.AddComponent<GameplayState>(ScopedSpawned, ScopedSpawnedState, 6), "command log state recorded");
+    GameplayTagsComponent ScopedSpawnedTags;
+    ScopedSpawnedTags.BaseTags.Add(TestTags().frozen);
+    ScopedSpawnedTags.Tags = ScopedSpawnedTags.BaseTags;
+    Check(ScopedLog.AddComponent<GameplayTagsComponent>(ScopedSpawned, ScopedSpawnedTags, 6),
+          "command log tags recorded");
 
     Check(InitializeRun(*ScopedLive, &ScopedLog), "live command-log session initializes");
     Check(InitializeRun(*ScopedReference, &ScopedLog), "reference command-log session initializes");
@@ -509,7 +543,7 @@ void TestCommandLogRollback()
               "command-log step succeeds");
     }
     Check(ScopedLive->registry.valid(ScopedSpawned), "CommandLog spawned the entity at tick 6");
-    Check(ScopedLive->registry.all_of<Transform2D, Velocity, GameplayState>(ScopedSpawned),
+    Check(ScopedLive->registry.all_of<Transform2D, Velocity, GameplayTagsComponent>(ScopedSpawned),
           "spawned entity has its components");
 
     // Correct tick 6: the snapshot at tick 5 predates the spawn, so replay must
@@ -517,7 +551,7 @@ void TestCommandLogRollback()
           "command-log correction accepted");
     Check(ScopedLive->session.ReplayPending() == NetRollbackSession::Result::Ok, "command-log replay succeeds");
     Check(ScopedLive->registry.valid(ScopedSpawned), "CommandLog re-spawned the entity during replay");
-    Check(ScopedLive->registry.get<GameplayState>(ScopedSpawned).Has(GameplayStateFlag::Frozen),
+    Check(ScopedLive->registry.get<GameplayTagsComponent>(ScopedSpawned).Tags.HasExact(TestTags().frozen),
           "replayed component payload is intact");
 
     // Correct the remaining remote ticks as well, then replay once more with the
@@ -881,7 +915,7 @@ int main()
     TestFarFutureFirstInput();
     TestLocalOnlyStateSkipped();
     TestEntityMap();
-    TestGameplayStateComponent();
+    TestGameplayTagsComponent();
     TestPredictionAndRollback();
     TestCommandLogRollback();
     TestNoAllocationAfterStart();

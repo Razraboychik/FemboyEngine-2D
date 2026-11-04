@@ -111,7 +111,7 @@ bool CompileGlslToSpirv(std::string_view InSource, ShaderStage InStage, std::vec
         const int ScopedLength = static_cast<int>(InSource.size());
         ScopedShader.setStringsWithLengths(&ScopedText, &ScopedLength, 1);
 
-        // Same environment the engine's build-time shaders use: Vulkan 1.1,
+        // Shader modules target Vulkan 1.1 SPIR-V and remain valid on Vulkan 1.4 devices.
         ScopedShader.setEnvInput(glslang::EShSourceGlsl, ScopedLanguage, glslang::EShClientVulkan, 110);
         ScopedShader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_1);
         ScopedShader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_3);

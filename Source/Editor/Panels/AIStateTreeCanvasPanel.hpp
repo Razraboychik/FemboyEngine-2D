@@ -76,6 +76,13 @@ public:
     // One ImGui/ImNodes frame. `InOpen` is the usual window open flag.
     void Draw(const char* InWindowTitle, bool* InOpen);
 
+    // Project tag database used to resolve authored paths and to name the ids
+    // shown in the inspector.
+    void SetGameplayTagRegistry(const GameplayTagRegistry* InTags) noexcept
+    {
+        MTags = InTags;
+    }
+
     // Scene binding. The panel writes its compiled tree into a marked TOML
     void SetScenePath(const std::filesystem::path& InPath);
     [[nodiscard]] const std::filesystem::path& ScenePath() const noexcept
@@ -194,6 +201,15 @@ private:
     AIStateTreeCompiled MCompiled{};
     std::array<std::byte, kMaxTrackedComponentBytes> MBefore{};
     std::array<std::byte, kMaxTrackedComponentBytes> MAfter{};
+    const GameplayTagRegistry* MTags = nullptr;
+    // Text buffers for the inspector's tag lists. They are rebuilt only when
+    // the selected node/transition changes, so typing survives the frame.
+    std::array<char, 192> MEvaluatorTagText{};
+    std::array<char, 192> MTaskTagText{};
+    std::array<char, 192> MRequireTagText{};
+    std::array<char, 192> MForbidTagText{};
+    std::uint16_t MTagBufferNode = kStateTreeNone;
+    std::uint16_t MTagBufferTransition = 0xFFFFu;
     std::filesystem::path MScenePath;
     const Ecs::Registry* MRuntimeWorld = nullptr;
     const Ecs::Registry* MSelectionWorld = nullptr;

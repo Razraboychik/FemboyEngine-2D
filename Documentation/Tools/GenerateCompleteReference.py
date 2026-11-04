@@ -27,7 +27,7 @@ The extra chapters are:
   32. Production distribution: encryption, LZMA, key baking and the store release checklist
   33. SystemGraph parallel scheduling and the blend-cycle contract
   34. Box2D rollback teardown and the PIE animation hand-off
-  35. Global audit: release-blocking findings and the gate
+  35. Release gate
   36. Profiling cache misses and vectorisation toward 8000+ FPS
 
 Outputs are written below Documentation/md, Documentation/docx and
@@ -765,19 +765,16 @@ EXTRA_SECTIONS: list[dict] = [
                 "type": "p",
                 "text": B(
                     "DrawBatch is the only place where a texture-array id and a shader-pipeline id cross "
-                    "the render-extract boundary. Until the RC-2 audit both fields were std::uint16_t, "
+                    "the render-extract boundary. Both fields were std::uint16_t, "
                     "while every RHI handle (TextureArrayHandle, ShaderPipelineHandle) is std::uint32_t. "
                     "The result was a silent alias: the 65,537th texture array or pipeline was truncated "
                     "to an unrelated low id and the batch sampled the wrong resource - with no error, no "
-                    "assert and no way to see it in a log. The fix widens both fields to std::uint32_t "
-                    "and reorders them so the struct is still exactly 16 bytes.",
+                    "assert and no way to see it in a log. Both fields are std::uint32_t and ordered "
+                    "so the struct remains exactly 16 bytes.",
                     "DrawBatch — единственное место, где id текстурного массива и id шейдерного "
-                    "пайплайна пересекают границу render-extract. До аудита RC-2 оба поля были "
-                    "std::uint16_t, тогда как все RHI-хэндлы (TextureArrayHandle, ShaderPipelineHandle) "
-                    "— std::uint32_t. Результат — тихое совпадение id: 65 537-й текстурный массив или "
-                    "пайплайн обрезался до чужого младшего id, и батч сэмплировал не тот ресурс — без "
-                    "ошибки, без assert и без следа в логе. Исправление расширяет оба поля до "
-                    "std::uint32_t и переставляет их так, что структура по-прежнему ровно 16 байт.",
+                    "пайплайна пересекают границу render-extract. Оба поля имеют тип std::uint32_t, "
+                    "как и все RHI-хэндлы (TextureArrayHandle, ShaderPipelineHandle), а порядок полей "
+                    "сохраняет размер структуры ровно 16 байт.",
                 ),
             },
             {
@@ -873,16 +870,14 @@ EXTRA_SECTIONS: list[dict] = [
                 "text": B(
                     "Pink UI text is atlas-only. The VFS mmap supplies cooked .fbyfont blobs, the cold "
                     "path packs them into one GPU texture array (white layer 0, font atlases 1..N), and "
-                    "the hot path only reads that array. The RC-2 audit found two holes in this chain: a "
-                    "lazy mount that let the first frame silently fall back to an 8x8 bitmap layer, and a "
-                    "remount that destroyed the previous array while a frame could still sample it. Both "
-                    "are now hard contracts.",
+                    "the hot path only reads that array. Two failure modes are excluded by contract: a "
+                    "lazy mount cannot leave the first frame on an 8x8 bitmap layer, and a remount cannot "
+                    "destroy an array that a frame may still sample.",
                     "Текст Pink UI существует только в атласе. mmap VFS поставляет приготовленные блобы "
                     ".fbyfont, холодный путь упаковывает их в один GPU-массив (слой 0 — белый, атласы "
-                    "шрифтов 1..N), а горячий путь только читает этот массив. Аудит RC-2 нашёл в этой "
-                    "цепочке две дыры: ленивый монтаж, позволявший первому кадру тихо откатиться на "
-                    "8x8-слой, и повторный монтаж, уничтожавший предыдущий массив, пока кадр ещё мог его "
-                    "сэмплировать. Оба места теперь — жёсткие контракты.",
+                    "шрифтов 1..N), а горячий путь только читает этот массив. Контракт исключает два "
+                    "режима отказа: ленивый монтаж не оставляет первый кадр на 8x8-слое, а повторный "
+                    "монтаж не уничтожает массив, который ещё может сэмплироваться кадром.",
                 ),
             },
             {
@@ -979,17 +974,13 @@ EXTRA_SECTIONS: list[dict] = [
             {
                 "type": "note",
                 "text": B(
-                    "Known limitation, now enforced instead of hidden: a canvas that mixes text with its "
-                    "own image texture array cannot be one batch, because one batch samples exactly one "
-                    "array. BuildFrame rejects it with FontsNotMounted. The follow-up is a per-array batch "
-                    "split (sorted runs of items grouped by array), which needs a multi-batch FrameOutput "
-                    "contract and is scheduled after Release.",
-                    "Известное ограничение, которое теперь проверяется, а не скрывается: канвас, "
-                    "смешивающий текст с собственным массивом изображений, не может быть одним батчем, "
-                    "потому что один батч сэмплирует ровно один массив. BuildFrame отклоняет его с "
-                    "FontsNotMounted. Дальнейшее исправление — разбиение батчей по массивам "
-                    "(отсортированные серии элементов, сгруппированные по массиву), что требует "
-                    "контракта FrameOutput с несколькими батчами; запланировано после Release.",
+                    "A canvas that mixes text with its own image texture array cannot be one batch, "
+                    "because one batch samples exactly one array. BuildFrame rejects it with "
+                    "FontsNotMounted. A per-array batch split requires a multi-batch FrameOutput contract.",
+                    "Канвас, смешивающий текст с собственным массивом изображений, не может быть одним "
+                    "батчем, потому что один батч сэмплирует ровно один массив. BuildFrame отклоняет его "
+                    "с FontsNotMounted. Разбиение батчей по массивам требует контракта FrameOutput с "
+                    "несколькими батчами.",
                 ),
             },
         ],
@@ -1165,21 +1156,21 @@ EXTRA_SECTIONS: list[dict] = [
     },
     {
         "number": "31",
-        "title": B("State-Driven Gameplay: FemAnimGraph, StateTree AI and the Animation Graph Canvas",
-                   "Геймплей на состояниях: FemAnimGraph, ИИ StateTree и холст Animation Graph"),
+        "title": B("State-Driven Gameplay: AnimGraph, StateTree AI and the Animation Graph Canvas",
+                   "Геймплей на состояниях: AnimGraph, ИИ StateTree и холст Animation Graph"),
         "blocks": [
             {
                 "type": "p",
                 "text": B(
                     "The high-level gameplay layer follows the same rule as the renderer: behaviour is a "
-                    "function over plain data, not a graph of objects. FemAnimGraph is a flat animation "
-                    "state machine and FemStateTree is a flat AI state tree. Neither one has a base class, "
+                    "function over plain data, not a graph of objects. AnimGraph is a flat animation "
+                    "state machine and StateTree is a flat AI state tree. Neither one has a base class, "
                     "a virtual Evaluate(), a per-node heap allocation or a std::function callback. An "
                     "entity owns a fixed-size POD component; the system owns the shared tables (the "
                     "animation clips and the AI node/transition arrays) and walks only the active path.",
                     "Высокоуровневый геймплейный слой следует тому же правилу, что и рендерер: поведение — "
-                    "это функция над простыми данными, а не граф объектов. FemAnimGraph — плоский автомат "
-                    "анимаций, FemStateTree — плоское дерево состояний ИИ. Ни у одного нет базового класса, "
+                    "это функция над простыми данными, а не граф объектов. AnimGraph — плоский автомат "
+                    "анимаций, StateTree — плоское дерево состояний ИИ. Ни у одного нет базового класса, "
                     "виртуального Evaluate(), аллокации на узел или колбэка std::function. Сущность "
                     "владеет POD-компонентом фиксированного размера; система владеет общими таблицами "
                     "(клипами анимации и массивами узлов/переходов ИИ) и обходит только активный путь.",
@@ -1191,15 +1182,51 @@ EXTRA_SECTIONS: list[dict] = [
                     "Why not a Behaviour Tree: a BT re-walks its hierarchy from the root every tick, so the "
                     "cost of an idle NPC is proportional to the size of its tree. A State Tree stores the "
                     "active path once and re-evaluates one guard; transitions are a flat, trigger-indexed "
-                    "array. The same reasoning applies to AnimGraph: transition conditions are bit tests and "
-                    "float comparisons on the component, and the expensive part - the bone pose - is "
+                    "array. The same reasoning applies to AnimGraph: transition conditions are state-time, "
+                    "tag and float comparisons on the component, and the expensive part - the bone pose - is "
                     "blended once per tick, never per graph node.",
                     "Почему не Behaviour Tree: BT переобходит иерархию с корня каждый тик, поэтому цена "
                     "простаивающего NPC пропорциональна размеру дерева. State Tree хранит активный путь и "
                     "переоценивает одну проверку; переходы — плоский массив, индексируемый триггерами. Та "
-                    "же логика у AnimGraph: условия переходов — это битовые тесты и сравнения float на "
+                    "же логика у AnimGraph: условия переходов — это сравнения времени состояния, тегов и float на "
                     "компоненте, а дорогая часть — поза костей — смешивается один раз за тик, а не на "
                     "каждый узел графа.",
+                ),
+            },
+            {
+                "type": "p",
+                "text": B(
+                    "Project Settings owns one Gameplay Tags database. Tags are authored as paths, "
+                    "stored in project.femproj and copied into GameplayTagRegistry on Apply. Definitions "
+                    "are project-global; values stay on the entity in GameplayTagsComponent, "
+                    "GameplayAttributesComponent, GameplayEffectsComponent and GameplaySkillsComponent. "
+                    "That split keeps ECS iteration packed and keeps SDF/world data separate from gameplay.",
+                    "Настройки проекта владеют одной базой Gameplay Tags. Теги задаются путями, хранятся в "
+                    "project.femproj и копируются в GameplayTagRegistry при Apply. Определения глобальны для "
+                    "проекта, а значения живут на сущности в GameplayTagsComponent, "
+                    "GameplayAttributesComponent, GameplayEffectsComponent и GameplaySkillsComponent. "
+                    "Такое разделение сохраняет плотную ECS-итерацию и отделяет SDF/мир от геймплея.",
+                ),
+            },
+            {
+                "type": "p",
+                "text": B(
+                    "The AI runtime is perception -> StateTree -> buffered AICommand -> AIController -> "
+                    "navigation and GameplaySkillSystem. The controller never moves an entity, applies "
+                    "damage or emits a combat event: it writes NavAgentSettings, activates skills, and routes "
+                    "ActionId as data for a game-owned ECS system. All combat rules live in game effects and "
+                    "that system. Navigation offers a cost-grid NavMap, a paged flow field for large worlds and a "
+                    "convex NavMesh with a portal funnel. Per-agent NavAgentPathSettings select raw, "
+                    "line-of-sight, Chaikin or Catmull-Rom paths, deterministic route noise and waypoint "
+                    "jitter; every generated segment is validated against the walkable grid.",
+                    "ИИ-конвейер: восприятие -> StateTree -> буферизованный AICommand -> AIController -> "
+                    "навигация и GameplaySkillSystem. Контроллер не двигает сущность, не наносит урон и не "
+                    "выдаёт боевых событий: он пишет NavAgentSettings, активирует скиллы и передаёт ActionId "
+                    "как данные для игровой ECS-системы. Правила боя живут в игровых эффектах и этой системе. Навигация "
+                    "предлагает cost-grid NavMap, paged flow field для больших миров и выпуклый NavMesh с "
+                    "portal-фуннелем. NavAgentPathSettings на агента выбирает сырую, line-of-sight, Chaikin "
+                    "или Catmull-Rom траекторию, детерминированный шум маршрута и дрожание точек; каждый "
+                    "сгенерированный сегмент проверяется по проходимой сетке.",
                 ),
             },
             {
@@ -1250,14 +1277,14 @@ EXTRA_SECTIONS: list[dict] = [
                     [B("AnimConditionStateTimeAtMost", "AnimConditionStateTimeAtMost"),
                      B("StateTime <= StateTimeThreshold", "StateTime <= StateTimeThreshold")],
                     [B("AnimConditionTagsAny", "AnimConditionTagsAny"),
-                     B("(GameplayState.Bits & TagsAny) != 0",
-                       "(GameplayState.Bits & TagsAny) != 0")],
+                     B("Any of TagsAny[0..TagsAnyCount) is present in GameplayTagsComponent.Tags",
+                       "Любой из TagsAny[0..TagsAnyCount) присутствует в GameplayTagsComponent.Tags")],
                     [B("AnimConditionTagsAll", "AnimConditionTagsAll"),
-                     B("(GameplayState.Bits & TagsAll) == TagsAll",
-                       "(GameplayState.Bits & TagsAll) == TagsAll")],
+                     B("All of TagsAll[0..TagsAllCount) are present",
+                       "Все TagsAll[0..TagsAllCount) присутствуют")],
                     [B("AnimConditionTagsNone", "AnimConditionTagsNone"),
-                     B("(GameplayState.Bits & TagsAny) == 0",
-                       "(GameplayState.Bits & TagsAny) == 0")],
+                     B("None of TagsAny[0..TagsAnyCount) is present",
+                       "Ни один из TagsAny[0..TagsAnyCount) не присутствует")],
                     [B("AnimConditionFloatAtLeast / AtMost", "AnimConditionFloatAtLeast / AtMost"),
                      B("Floats[FloatParam] compared with FloatThreshold; a non-finite value fails closed.",
                        "Floats[FloatParam] сравнивается с FloatThreshold; не-конечное значение даёт false.")],
@@ -1346,9 +1373,6 @@ EXTRA_SECTIONS: list[dict] = [
                        "Bit 63 is reserved for the internal leaf-guard-failed event.",
                        "Ожидающие триггеры изменений. 0 -> таблица переходов в этом тике не трогается "
                        "вообще. Бит 63 зарезервирован под внутреннее событие «guard листа провален».")],
-                    [B("Tags", "Tags"), B("uint64_t", "uint64_t"),
-                     B("Snapshot of GameplayState.Bits for this tick; every evaluator sees the same mask.",
-                       "Снимок GameplayState.Bits на этот тик; все оценщики видят одну маску.")],
                     [B("Target / TargetPosition", "Target / TargetPosition"), B("Entity / Vector2D",
                                                                                "Entity / Vector2D"),
                      B("Blackboard: a live entity target, with a cached position fallback for patrol points.",
@@ -1377,8 +1401,8 @@ EXTRA_SECTIONS: list[dict] = [
                      B("Not walked in steady state.", "В устойчивом состоянии не обходится.")],
                     [B("StateTreeDefinition::Transitions[32]",
                        "StateTreeDefinition::Transitions[32]"),
-                     B("FromLeaf, ToNode, TriggerMask, ConsumeMask, RequireTagsAll, ForbidTagsAny.",
-                       "FromLeaf, ToNode, TriggerMask, ConsumeMask, RequireTagsAll, ForbidTagsAny."),
+                     B("FromLeaf, ToNode, TriggerMask, ConsumeMask, RequireTags, ForbidTags.",
+                       "FromLeaf, ToNode, TriggerMask, ConsumeMask, RequireTags, ForbidTags."),
                      B("Scanned only when Triggers != 0.",
                        "Перебирается только при Triggers != 0.")],
                     [B("StateTreeEvaluator", "StateTreeEvaluator"),
@@ -1387,10 +1411,10 @@ EXTRA_SECTIONS: list[dict] = [
                        "одной функцией."),
                      B("One call for the active leaf.", "Один вызов для активного листа.")],
                     [B("StateTreeTask", "StateTreeTask"),
-                     B("None / MoveToTarget / Stop / AttackTarget / SetTag / ClearTag.",
-                       "None / MoveToTarget / Stop / AttackTarget / SetTag / ClearTag."),
-                     B("One switch; movement and attack go through CommandBuffer.",
-                       "Один switch; перемещение и атака идут через CommandBuffer.")],
+                     B("None / MoveToTarget / Stop / SetTag / ClearTag / ActivateSkill / Action.",
+                       "None / MoveToTarget / Stop / SetTag / ClearTag / ActivateSkill / Action."),
+                     B("Movement and skills are built in; Action routes ActionId to the developer registry.",
+                       "Перемещение и скиллы встроены; Action передаёт ActionId в реестр разработчика.")],
                 ],
             },
             {
@@ -1400,17 +1424,19 @@ EXTRA_SECTIONS: list[dict] = [
                         "StateTreeDefinition tree; tree.TreeId = 7;\n"
                         "const auto root  = StateTreeAddNode(tree, StateTreeNodeKind::Root);\n"
                         "const auto group = StateTreeAddNode(tree, StateTreeNodeKind::Selector, root);\n"
-                        "const auto attack = StateTreeAddNode(tree, StateTreeNodeKind::Leaf, group);\n"
+                        "const auto action = StateTreeAddNode(tree, StateTreeNodeKind::Leaf, group);\n"
                         "const auto move   = StateTreeAddNode(tree, StateTreeNodeKind::Leaf, group);\n"
-                        "StateTreeSetLeaf(tree, attack,\n"
+                        "StateTreeTask actionTask; actionTask.Kind = StateTreeTaskKind::Action;\n"
+                        "actionTask.ActionId = 1;   // game-registered callback\n"
+                        "StateTreeSetLeaf(tree, action,\n"
                         "                 StateTreeEvaluator{StateTreeEvaluatorKind::TargetWithinRadius, 0, 64.0f, 0},\n"
-                        "                 StateTreeTask{StateTreeTaskKind::AttackTarget, 0, 0.0f, 48.0f, 0});\n"
+                        "                 actionTask);\n"
                         "StateTreeSetLeaf(tree, move,\n"
                         "                 StateTreeEvaluator{StateTreeEvaluatorKind::AlwaysTrue, 0, 0.0f, 0},\n"
-                        "                 StateTreeTask{StateTreeTaskKind::MoveToTarget, 0, 120.0f, 0.0f, 0});\n"
+                        "                 StateTreeTask{StateTreeTaskKind::MoveToTarget, 0, 120.0f, 0});\n"
                         "StateTreeTransition spotted{};\n"
                         "spotted.FromLeaf = move;\n"
-                        "spotted.ToNode = attack;\n"
+                        "spotted.ToNode = action;\n"
                         "spotted.TriggerMask = 1ull << 0;   // \"player spotted\"\n"
                         "spotted.ConsumeMask = 1ull << 0;\n"
                         "StateTreeAddTransition(tree, spotted);\n"
@@ -1684,7 +1710,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "word into coalesced SSBO ranges; RelevanceGrid turns a spatial mdspan into a per-player "
                     "snapshot filter; AudioZoneSystem turns a Box2D sensor volume into a lock-free bus filter "
                     "ramp. Each subsystem has a fixed-capacity data layout and a headless acceptance test.",
-                    "Глава 31 описывает четыре конвейера, добавленные в сборку Release. Их объединяет одно "
+                    "Глава 32 описывает четыре конвейера, добавленные в сборку Release. Их объединяет одно "
                     "ограничение: кадр не должен выделять память, обходить граф сцены и загружать ресурс, "
                     "который не изменился. VirtualTextureSystem превращает мир в VFS-отображённые файлы "
                     "чанков и фиксированный texture array 2048; ChangeMaskRenderExtract превращает 64-битное "
@@ -1833,8 +1859,8 @@ EXTRA_SECTIONS: list[dict] = [
                      B("Rebuild UV/size/colour/layer", "Пересчёт UV/size/colour/layer")],
                     [B("2", "2"), B("DrawOrder", "DrawOrder"), B("ChangeMaskRenderExtract", "ChangeMaskRenderExtract"),
                      B("RenderKey may move: structural rebuild", "RenderKey может измениться: структурная пересборка")],
-                    [B("3-9", "3-9"), B("Velocity/GameplayState/Animation/Audio/Physics/Lifetime/Custom",
-                                        "Velocity/GameplayState/Animation/Audio/Physics/Lifetime/Custom"),
+                    [B("3-9", "3-9"), B("Velocity/GameplayTags/Animation/Audio/Physics/Lifetime/Custom",
+                                        "Velocity/GameplayTags/Animation/Audio/Physics/Lifetime/Custom"),
                      B("Gameplay systems", "Игровые системы"),
                      B("Consumed by the owner; the GPU sees nothing", "Потребляется владельцем; GPU ничего не видит")],
                     [B("16-63", "16-63"), B("GameBitBase + n", "GameBitBase + n"), B("Game code", "Игровой код"),
@@ -2129,7 +2155,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "class now owns that operation: one Build & Pack Game button starts the native logic plugin, "
                     "the ordered asset cook, the deterministic .fempak writer and the encrypted .femarc wrapper, "
                     "then publishes progress to SceneDiagnosticsPanel.",
-                    "Глава 32 закрывает разрыв между изолированными консольными утилитами и редактором. До неё в "
+                    "Глава 33 закрывает разрыв между изолированными консольными утилитами и редактором. До неё в "
                     "дереве были fby_fempak (cook, secure, list, extract), FemArchiver (LZMA/FbyLZ и "
                     "ChaCha20-Poly1305/AES-256-GCM), FemCrypto, AotBuilder и кнопка 'Cook AOT' в отдельной панели, "
                     "но не было одной операции, запускающей всё это как релиз. Класс ReleaseCooker теперь владеет "
@@ -2461,7 +2487,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "dependency. The editor's FixedUpdate chain (events_clear -> movement -> physics -> "
                     "contacts -> spriteAnimation -> skeletalAnimation_animate) therefore declares five after bits, while independent "
                     "PostUpdate nodes (skeletalAnimation_evaluate, physics_interpolate, cloth collect) form one wave. "
-                    "JobSystem is part of the fix: MPending and MRunning are now placed on separate 64-byte lines, "
+                    "JobSystem follows the same contract: MPending and MRunning occupy separate 64-byte lines, "
                     "so submit/completion traffic from different cores does not bounce one cache line, and "
                     "ParallelFor uses a per-call semaphore instead of a shared member.",
                     "Маска зависимостей — это весь контракт гонок данных. Две системы, пишущие один пул "
@@ -2590,14 +2616,14 @@ EXTRA_SECTIONS: list[dict] = [
                     "R1 is an ownership bug, not a Box2D bug. Registry::clear() destroys ECS objects; it cannot "
                     "know that RigidBody2D::body is a native b2BodyId, so the old bodies stay in the world while "
                     "the restored snapshot rows all carry body == 0. The next EnsureBodies()/Step() then creates a "
-                    "second body for every entity. The fix is ordered: (1) ask PhysicsSystem to destroy every "
+                    "second body for every entity. The teardown order is: (1) ask PhysicsSystem to destroy every "
                     "tracked live body and sweep the registry for joint-link bodies it did not create; (2) clear "
                     "and restore the snapshot; (3) recreate bodies from the restored bytes. A body is destroyed "
                     "only after b2Body_IsValid, so a joint system that already tore its anchors down is safe.",
                     "R1 — ошибка владения, а не ошибка Box2D. Registry::clear() уничтожает ECS-объекты; он не "
                     "знает, что RigidBody2D::body — нативный b2BodyId, поэтому старые тела остаются в мире, а "
                     "восстановленные строки снапшота несут body == 0. Следующий EnsureBodies()/Step() создаёт "
-                    "второе тело для каждой сущности. Фикс упорядочен: (1) попросить PhysicsSystem уничтожить "
+                    "второе тело для каждой сущности. Порядок удаления: (1) попросить PhysicsSystem уничтожить "
                     "все отслеживаемые живые тела и просканировать реестр на тела joint-цепочек, созданные не им; "
                     "(2) очистить и восстановить снапшот; (3) пересоздать тела из восстановленных байтов. Тело "
                     "уничтожается только после b2Body_IsValid, поэтому joint-система, уже убравшая свои якоря, "
@@ -2799,135 +2825,15 @@ EXTRA_SECTIONS: list[dict] = [
     },
     {
         "number": "36",
-        "title": B("Global audit: release-blocking findings and the gate",
-                   "Глобальный аудит: блокирующие находки и гейт"),
+        "title": B("Release gate", "Релизный гейт"),
         "blocks": [
             {
-                "type": "note",
-                "text": B(
-                    "Historical snapshot. This table is frozen at the 2026-10-27 audit: several findings are "
-                    "already fixed, and the live status with file/line evidence is Documentation/ROADMAP.md. "
-                    "Do not schedule work from this table.",
-                    "Исторический снимок. Таблица заморожена на аудите 2026-10-27: часть находок уже исправлена, "
-                    "а живой статус с файлами и строками — Documentation/ROADMAP.md. Не планируйте работы по "
-                    "этой таблице.",
-                ),
-            },
-            {
                 "type": "p",
                 "text": B(
-                    "The audit covered VulkanRHI/MetalRHI, NetRollbackSession, Snapshot v4, the Box2D remap, the "
-                    "weather compute path, VFS and the asset cooker, JobSystem, SystemGraph, hot reload and the "
-                    "animation canvas. It confirmed more than fifty defects. This chapter records the frozen "
-                    "snapshot for reference, and Documentation/ROADMAP.md is the live gate a reviewer should apply.",
-                    "Аудит покрыл VulkanRHI/MetalRHI, NetRollbackSession, Snapshot v4, Box2D-remap, погодный "
-                    "compute-путь, VFS и кукер ассетов, JobSystem, SystemGraph, hot reload и анимационный холст. "
-                    "Подтверждено более пятидесяти дефектов. Эта глава фиксирует замороженный снимок для "
-                    "справки, а живой гейт — Documentation/ROADMAP.md.",
-                ),
-            },
-            {
-                "type": "table",
-                "headers": [B("ID", "ID"), B("Severity", "Severity"), B("Finding", "Находка"),
-                           B("Minimal fix", "Минимальный фикс")],
-                "rows": [
-                    [B("R1", "R1"), B("Critical", "Critical"),
-                     B("Rollback restore never destroys old Box2D bodies; each rollback duplicates the world",
-                       "Restore отката не уничтожает старые Box2D-тела; каждый откат дублирует мир"),
-                     B("PhysicsSystem::DestroyAllBodies() inside NetRollbackSession::RestoreSnapshot(), before Registry::clear()",
-                       "PhysicsSystem::DestroyAllBodies() внутри NetRollbackSession::RestoreSnapshot(), до Registry::clear()")],                    [B("L1", "L1"), B("High", "High"),
-                     B("FilterDeltaForPlayer checks the source payload length, not the destination capacity",
-                       "FilterDeltaForPlayer проверяет длину источника, а не ёмкость приёмника"),
-                     B("Compute capacity from OutFiltered and test before every memcpy",
-                       "Считать ёмкость из OutFiltered и проверять до каждого memcpy")],
-                    [B("C1/C2", "C1/C2"), B("Critical", "Critical"),
-                     B("Readback runs before frame submit; failed frame leaves fence/semaphore signalled",
-                       "Readback идёт до submit кадра; неудачный кадр оставляет fence/semaphore сигнализированными"),
-                     B("Record copy into the frame CB; reset fence only before a successful submit",
-                       "Писать copy в CB кадра; сбрасывать fence только перед успешным submit")],
-                    [B("S1", "S1"), B("High", "High"),
-                     B("ParticleEmitterComponent loses six non-reflected members on restore",
-                       "ParticleEmitterComponent теряет шесть неотражённых полей при restore"),
-                     B("Add the six FBY_FIELD entries", "Добавить шесть FBY_FIELD")],
-                    [B("V2", "V2"), B("Critical", "Critical"),
-                     B("Store codec memcpy uses attacker-controlled stored.size()",
-                       "Store-кодек копирует управляемый атакующим stored.size()"),
-                     B("Require StoredSize == RawSize for Store", "Требовать StoredSize == RawSize для Store")],
-                    [B("V3", "V3"), B("High", "High"),
-                     B("Video decoder keeps a VFS mmap span across hot reload",
-                       "Видеодекодер держит mmap-span VFS через hot reload"),
-                     B("Own the bytes or return a shared mapping + generation",
-                       "Владеть байтами или отдавать shared mapping + generation")],
-                    [B("G1", "G1"), B("Critical", "Critical"),
-                     B("New projects have no CMakeLists/GameMain and cannot be built from the dashboard",
-                       "У нового проекта нет CMakeLists/GameMain, его нельзя собрать из дашборда"),
-                     B("ProjectScaffold.hpp + CreateProject writes CMakeLists.txt, project.femproj and GameMain.cpp",
-                       "ProjectScaffold.hpp + CreateProject пишет CMakeLists.txt, project.femproj и GameMain.cpp")],
-                    [B("G2", "G2"), B("Critical", "Critical"),
-                     B("Play/Pause/Stop are cosmetic; the editor never snapshots or steps an isolated world",
-                       "Play/Pause/Stop декоративны; редактор не делает снапшот и не шагает изолированный мир"),
-                     B("EditorSystem toolbar -> PlayInEditor::Start/Step/Stop with a private physics world",
-                       "Toolbar EditorSystem -> PlayInEditor::Start/Step/Stop с приватным физическим миром")],
-                    [B("G8", "G8"), B("High", "High"),
-                     B("SystemGraph::Run is a sequential walk regardless of after/before",
-                       "SystemGraph::Run — последовательный обход независимо от after/before"),
-                     B("Dependency levels + one wave per level + per-call semaphore + cache-line split",
-                       "Уровни зависимостей + волна на уровень + семафор на вызов + разделение кэш-линий")],
-                    [B("H1", "H1"), B("High", "High"),
-                     B("Nested ParallelFor shares one semaphore and can return before helpers finish",
-                       "Вложенный ParallelFor делит один семафор и может вернуться до завершения helper'ов"),
-                     B("Per-call semaphore + TLS nesting flag", "Семафор на вызов + TLS-флаг вложенности")],
-                    [B("H4", "H4"), B("High", "High"),
-                     B("SystemGraph::Run ignores MBuilt; Add/RemoveUser leave a stale or empty order",
-                       "SystemGraph::Run игнорирует MBuilt; Add/RemoveUser оставляют старый/пустой порядок"),
-                     B("Gate Run on MBuilt; rebuild on mutation", "Гейт Run по MBuilt; rebuild при мутации")],
-                    [B("H3 (RHI)", "H3 (RHI)"), B("High", "High"),
-                     B("Instance deltas are applied to the N-3 slice", "Instance-дельты применяются к срезу N-3"),
-                     B("Full copy when framesInFlight > 1, or timestamp slices",
-                       "Полная копия при framesInFlight > 1 или timestamp срезов")],
-                    [B("W1", "W1"), B("Critical", "Critical"),
-                     B("Splash counter is never reset; splashes stop after capacity",
-                       "Splash-счётчик не сбрасывается; всплески прекращаются после capacity"),
-                     B("Clear per frame in a pre-pass, or ring modulo capacity",
-                       "Сбрасывать каждый кадр в pre-pass или ring по модулю capacity")],
-                ],
-            },
-            {
-                "type": "table",
-                "headers": [B("Gate", "Гейт"), B("Contents", "Содержимое"), B("Exit criterion", "Критерий выхода")],
-                "rows": [
-                    [B("A — blocks freeze", "A — блокирует freeze"),
-                     B("R1, L1, C1, C2, S1, V2, V3, G1, G2, G8, H1, H3, H4, W1-W3",
-                       "R1, L1, C1, C2, S1, V2, V3, G1, G2, G8, H1, H3, H4, W1-W3"),
-                     B("Every item has a fix or a signed waiver plus a regression test",
-                       "У каждого пункта есть фикс или подписанный waiver плюс регрессионный тест")],
-                    [B("B — before RC", "B — до RC"),
-                     B("R2, R3, S2-S8, C4-C6, V4-V7, H5/H6, W2/W6, M8-M10",
-                       "R2, R3, S2-S8, C4-C6, V4-V7, H5/H6, W2/W6, M8-M10"),
-                     B("Fix or documented limitation in the release notes",
-                       "Фикс или задокументированное ограничение в release notes")],
-                    [B("C — after freeze", "C — после freeze"),
-                     B("Low findings, SoA split, remaining SIMD work",
-                       "Low-находки, SoA-разделение, оставшаяся SIMD-работа"),
-                     B("Scheduled for 1.1 with a profiling baseline",
-                       "Запланировано на 1.1 с профилировочным baseline")],
-                ],
-            },
-            {
-                "type": "p",
-                "text": B(
-                    "The audit also verified the parts that are correct and must not be 'fixed' by accident: "
-                    "snapshot canonical ordering and header layout, Pcg32 reference compatibility, VFS pak range "
-                    "checks, LZ decompressor bounds, fence-before-acquire, per-image present semaphores, "
-                    "descriptor accounting, plugin unload order, and the TTS main-thread contract. Several "
-                    "findings are latent because the weather records are not consumed by a backend yet; they are "
-                    "still release blockers once that consumer lands.",
-                    "Аудит также подтвердил корректные части, которые нельзя «чинить» случайно: канонический "
-                    "порядок и раскладку заголовков снапшота, совместимость Pcg32 с reference, range-checks "
-                    "VFS-пака, границы LZ-декомпрессора, fence-before-acquire, present-семафоры на изображение, "
-                    "учёт дескрипторов, порядок выгрузки плагинов и main-thread контракт TTS. Часть находок "
-                    "латентна, потому что погодные записи пока не потребляются backend'ом; они всё равно станут "
-                    "блокерами, как только этот потребитель появится.",
+                    "The release gate is the full CTest suite, the C++ style gate and the documentation "
+                    "checks. Run them from the repository root before publishing a build.",
+                    "Релизный гейт — полный набор CTest, стилевой гейт C++ и проверки документации. "
+                    "Запускайте их из корня репозитория перед публикацией сборки.",
                 ),
             },
         ],
@@ -3282,7 +3188,7 @@ def main() -> int:
     }
     base.SUBTITLES = {
         "en": "Architecture, rendering, ECS, the animation/AI canvases with blend-cycle and PIE "
-              "contracts, the global audit, DOD optimization and production distribution",
+              "contracts, DOD pipelines and production distribution",
         "ru": "Архитектура, рендеринг, ECS, холсты анимации/ИИ с контрактами циклов блендинга и "
               "PIE-передачи, глобальный аудит, DOD-оптимизация и продакшн-дистрибуция",
     }

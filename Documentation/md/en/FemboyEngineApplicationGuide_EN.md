@@ -1,6 +1,6 @@
 # FemboyEngine2D Application Guide
 
-*ECS in practice, production optimisation and the distribution SDK — 2026-10-31*
+*ECS in practice, production optimisation and the distribution SDK — 2026-11-04*
 
 ## 1. What this guide is for
 
@@ -12,26 +12,37 @@ The running project is deliberately small. A player, three enemy archetypes, a b
 - Assumed knowledge: C++20 basics, an ECS at the level of EnTT, and one graphics API.
 - Not covered: Vulkan synchronization details, console certification and legal storefront setup.
 
-> **Note / Примечание.** The engine is validated by 26 CTest executables. The new suites cover the SDK profile and crypto, the storefront bridge, SDF physics, the render/weather stack and the data-driven prefab/DPI/theme path. Run ctest --test-dir build --output-on-failure before trusting a local change.
+> **Note.** The engine is validated by the full CTest suite. The suites cover the SDK profile and crypto, the storefront bridge, SDF physics, the render/weather stack and the data-driven prefab/DPI/theme path. Run ctest --test-dir build --output-on-failure before trusting a local change.
 
 ---
 
 ## 2. Setup and the reproducible toolchain
 
-The one-click setup scripts install the pinned dependencies and materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first configure after setup does not need network access. Versions are fixed by the scripts and written to third_party/dependencies.lock.
+The setup scripts are split by software group. The C++ scripts install the pinned toolchain and materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first configure after setup does not need network access. Versions are fixed by the scripts and written to third_party/dependencies.lock.
 
 ```cpp
 # Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts/Setup.bat
+SetupScripts\SetupCpp.bat
+SetupScripts\SetupArchiver.bat
+# optional vendor SDKs
+SetupScripts\SetupUpscalers.bat
 
 # Ubuntu / Debian
-./SetupScripts/Setup.sh
+./SetupScripts/SetupCpp.sh
+./SetupScripts/SetupArchiver.sh
+# optional vendor SDKs
+./SetupScripts/SetupUpscalers.sh
 
 # macOS (double-click in Finder also works)
-./SetupScripts/Setup.command
+./SetupScripts/SetupCpp.command
+./SetupScripts/SetupArchiver.command
+# optional vendor SDKs
+./SetupScripts/SetupUpscalers.command
 ```
 
-Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.0.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system (or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan loader.
+The all-in-one Setup.bat, Setup.sh and Setup.command remain available.
+
+Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.2.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system (or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan loader.
 
 ```cpp
 cmake -S . -B build -G Ninja \
@@ -43,9 +54,9 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and GCC 15+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer uses the deterministic FbyLZ codec and reports it in the cook log.
+The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and GCC 16+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer uses the deterministic FbyLZ codec and reports it in the cook log.
 
-> **Note / Примечание.** Setup never modifies a source file. It is safe to delete third_party/<name>-src and re-run with --force; the lock file is regenerated and the CMake cache does not embed a machine-specific path.
+> **Note.** Setup never modifies a source file. It is safe to delete third_party/<name>-src and re-run with --force; the lock file is regenerated and the CMake cache does not embed a machine-specific path.
 
 ---
 
@@ -126,7 +137,7 @@ Entity SpawnPlayer(ecs::Registry& registry, Vector2D spawn)
     registry.emplace<HealthComponent>(entity, HealthComponent{100.0f, 100.0f, 0.0f, 0});
     registry.emplace<InputComponent>(entity, InputComponent{});
     registry.emplace<WeaponComponent>(entity, WeaponComponent{0x51A7u, 0.0f, 0.12f, {18.0f, 0.0f}, 1});
-    registry.emplace<GameplayState>(entity, GameplayState{});
+    registry.emplace<GameplayTagsComponent>(entity, GameplayTagsComponent{});
     return entity;
 }
 
@@ -327,7 +338,7 @@ The sprite path is already one instanced call per batch. The mesh path is where 
 - Watch FrameStats: items, batches, drawCalls, meshIndirectCalls. A batch count that grows with entity count means the authoring data is fragmented, not that the GPU is slow.
 - The render graph orders passes; it does not reorder draws inside a pass. Keep the draw list sorted by pipeline/layer once per frame.
 
-> **Note / Примечание.** The procedural Pink UI path removes texture memory entirely: circles, rounded boxes and cards are evaluated from a 64-byte instance record in pink_sdf.vert/frag. A card board of 200 slots is two instanced draws (cards and shadows), not 200 texture switches.
+> **Note.** The procedural Pink UI path removes texture memory entirely: circles, rounded boxes and cards are evaluated from a 64-byte instance record in pink_sdf.vert/frag. A card board of 200 slots is two instanced draws (cards and shadows), not 200 texture switches.
 
 ---
 
@@ -517,7 +528,7 @@ fby_fempak secure --in build/release/assets.fempak --out archives/game.femarc \
 
 The key is supplied through an environment variable or a 64-hex argument; the nonce is generated from SecureRng when omitted. Build is idempotent for a fixed key/nonce/entry set: the table is sorted, the string table is stable and the compressed stream is deterministic. Tampering with one byte makes Open() return AuthenticationFailed, not a half-parsed archive.
 
-> **Note / Примечание.** LZMA SDK is optional. When third_party/lzma-sdk/LzmaLib.h exists, CMake compiles the 7-Zip encoder and decoder; otherwise the build log says 'FbyLZ fallback is active' and the archive remains valid but larger. A shipped build should pin and audit one codec, not switch per run.
+> **Note.** LZMA SDK is optional. When third_party/lzma-sdk/LzmaLib.h exists, CMake compiles the 7-Zip encoder and decoder; otherwise the build log says 'FbyLZ fallback is active' and the archive remains valid but larger. A shipped build should pin and audit one codec, not switch per run.
 
 ---
 
@@ -589,7 +600,7 @@ Materials.Shutdown(gpu);
 - Check `SupportsRuntimeShaderPipelines()` once at startup instead of probing for an invalid handle.
 - Sprites use a separate cook: `fby_matc <graph> --sprite` builds the quad.vert contract, `DrawOrder::MaterialBucket` sorts the sprite into a material run, and `SetMaterialPipelines` maps that bucket to the cached pipeline id.
 
-> **Note / Примечание.** Reference: API reference section 8 lists every type and payload field; Complete Reference chapter 38 walks the cook, the cache and the frame; ADR 0002 records why the runtime does not link glslang.
+> **Note.** Reference: API reference section 8 lists every type and payload field; Complete Reference chapter 38 walks the cook, the cache and the frame; ADR 0002 records why the runtime does not link glslang.
 
 ---
 

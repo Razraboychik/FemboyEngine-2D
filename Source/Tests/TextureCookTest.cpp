@@ -152,6 +152,9 @@ void TestPngToBc7()
     FBY_CHECK((ScopedView->flags & Fby::Assets::kTextureFlagSrgb) != 0);
     // PNG has an alpha channel
     FBY_CHECK((ScopedView->flags & Fby::Assets::kTextureFlagAlpha) != 0);
+    // Fully opaque source alpha: not cutout and not blended.
+    FBY_CHECK((ScopedView->flags & Fby::Assets::kTextureFlagAlphaCutout) == 0);
+    FBY_CHECK((ScopedView->flags & Fby::Assets::kTextureFlagAlphaBlend) == 0);
     FBY_CHECK(ScopedView->texels.size() ==
               Fby::Assets::LayerByteSize(ScopedExpected, ScopedKSize, ScopedKSize, ScopedExpectedMips));
 

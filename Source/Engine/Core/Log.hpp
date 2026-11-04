@@ -1,6 +1,7 @@
 // FemboyEngine2D - logging.
 #pragma once
 
+#include <cstdint>
 #include <format>
 #include <string>
 #include <string_view>
@@ -22,6 +23,26 @@ enum class LogLevel : std::uint8_t
 // Set once at startup (--verbose, --quiet). Thread safe to read.
 void SetLogLevel(LogLevel InLevel) noexcept;
 [[nodiscard]] LogLevel GetLogLevel() noexcept;
+
+// Limits for the per-category file sink. The sink keeps the newest data: files
+// beyond MaxFiles are deleted when the sink opens or the limits are applied,
+// and a file that reaches MaxLinesPerFile is compacted by dropping its oldest
+// lines. Zero is clamped to a usable minimum by SetLogRetention.
+struct LogRetention
+{
+    std::uint32_t MaxFiles = 20;
+    std::uint32_t MaxLinesPerFile = 50000;
+};
+
+// Twenty files of 50,000 lines is about six megabytes per file and keeps a
+// long editor history without letting an unattended run fill the disk.
+inline constexpr LogRetention kRecommendedLogRetention{20, 50000};
+
+// Replaces the retention limits and applies them immediately: older files are
+// pruned and the open file is compacted when it is already over the new line
+// limit. Safe to call from the main thread at any point.
+void SetLogRetention(const LogRetention& InRetention) noexcept;
+[[nodiscard]] LogRetention GetLogRetention() noexcept;
 
 // Writes one fully formatted line. Prefer the templated helpers below.
 void LogLine(LogLevel InLevel, std::string_view InChannel, std::string_view InMessage) noexcept;

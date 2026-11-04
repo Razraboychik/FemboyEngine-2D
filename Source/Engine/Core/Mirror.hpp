@@ -80,6 +80,11 @@ template <typename T> [[nodiscard]] constexpr bool IsRegistered() noexcept
     return Reflection<T>::kRegistered;
 }
 
+// Opt-in for trivially copyable components whose command-log payload is the
+// whole object rather than the reflected scalar fields. Gameplay components
+// specialize it because their fixed arrays are wider than Mirror fields.
+template <typename T> inline constexpr bool kRawCommandPayload = false;
+
 template <typename T> [[nodiscard]] constexpr std::span<const FieldDesc> Fields() noexcept
 {
     if constexpr (Reflection<T>::kRegistered)

@@ -6,6 +6,8 @@
 #include "Engine/Text/TextService.hpp"
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/Core/Log.hpp"
+#include "Engine/Core/Profiler.hpp"
+#include "Engine/Core/ProfilerPanel.hpp"
 #include "Engine/ECS/Skeleton.hpp"
 #include "Engine/ECS/Lighting.hpp"
 #include "Engine/ECS/LightSource.hpp"
@@ -13,7 +15,10 @@
 #include "Engine/Text/TextFormat.hpp"
 #include "Engine/ECS/Tilemap.hpp"
 #include "Engine/Navigation/Navigation.hpp"
+#include "Engine/Physics/SdfComposerSession.hpp"
 #include "Editor/Panels/AIStateTreeCanvasPanel.hpp"
+#include "Editor/Panels/LevelSettingsPanel.hpp"
+#include "Engine/Gameplay/GameplayAttributes.hpp"
 #include "Editor/Panels/AnimationGraphCanvasPanel.hpp"
 #include "Editor/Panels/AnimationTimelinePanel.hpp"
 #include "Editor/Infrastructure/AssetDatabaseWatchSystem.hpp"
@@ -24,6 +29,7 @@
 #include "Editor/Infrastructure/EditorFonts.hpp"
 #include "Editor/Infrastructure/EditorTypography.hpp"
 #include "Editor/Infrastructure/EditorTheme.hpp"
+#include "Editor/Infrastructure/EditorWidgets.hpp"
 #include "Editor/Panels/LogBoyPanel.hpp"
 #include "Editor/Panels/LicensesPanel.hpp"
 #include "Editor/Panels/NetworkDiagnosticsPanel.hpp"
@@ -33,6 +39,9 @@
 #include "Editor/Infrastructure/PlayInEditor.hpp"
 #include "Editor/Infrastructure/PhysicsDebugDraw.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
+#include "Editor/Infrastructure/UserSettings.hpp"
+#include "Editor/Infrastructure/ResolvedRenderSettings.hpp"
+#include "Editor/Panels/UserSettingsPanel.hpp"
 #include "Editor/Infrastructure/ReleaseCooker.hpp"
 #include "Editor/Infrastructure/TextureThumbnails.hpp"
 #include "Editor/Panels/ProjectDashboard.hpp"
@@ -40,6 +49,7 @@
 #include "Editor/Panels/ScriptDebuggerPanel.hpp"
 #include "Editor/Panels/SettingsPanels.hpp"
 #include "Editor/Panels/TilemapEditorPanel.hpp"
+#include "Editor/Panels/TransportGroupPanel.hpp"
 #include "Editor/Panels/VirtualTexturePanel.hpp"
 
 #include "Engine/RHI/VirtualTextureSystem.hpp"
@@ -492,8 +502,7 @@ void WriteInt128Field(void* InComponent, const Reflect::FieldDesc& InField, cons
     return ScopedValue;
 }
 
-void WriteDecimalField(void* InComponent, const Reflect::FieldDesc& InField,
-                       const Fby::BigNum::Decimal128& InValue)
+void WriteDecimalField(void* InComponent, const Reflect::FieldDesc& InField, const Fby::BigNum::Decimal128& InValue)
 {
     if (InField.size == sizeof(InValue))
     {
@@ -595,11 +604,15 @@ struct EditorSystem::Impl
     // Style geometry is scaled relative to the last applied factor, never by
     float styleUiScale = 1.0f;
     float appliedStyleScale = 0.0f;
-    float lastDisplayScale = 1.0f;
 
-    void ApplyStyleScale(float InDisplayScale)
+    void ApplyStyleScale()
     {
-        const float ScopedTarget = std::max(1.0f, InDisplayScale) * std::max(0.75f, styleUiScale);
+        // ContentScale is the part of the display scale the UI still has to
+        // apply: Windows and X11 report window coordinates in physical pixels,
+        // so a 150% display returns 1.5, while macOS and Wayland already fold
+        // the scale into the framebuffer ratio and return 1.0.
+        const float ScopedContentScale = window != nullptr ? window->ContentScale() : 1.0f;
+        const float ScopedTarget = ScopedContentScale * std::max(0.75f, styleUiScale);
         const bool ScopedFirst = appliedStyleScale <= 0.0f;
         if (!ScopedFirst && std::abs(ScopedTarget - appliedStyleScale) <= 0.001f)
         {
@@ -607,14 +620,24 @@ struct EditorSystem::Impl
         }
         ImGui::GetStyle().ScaleAllSizes(ScopedFirst ? ScopedTarget : ScopedTarget / appliedStyleScale);
         appliedStyleScale = ScopedTarget;
-        lastDisplayScale = InDisplayScale;
-        LogInfo("editor", "UI style scale {:.2f} (display {:.2f} x ui {:.2f})", static_cast<double>(ScopedTarget),
-                static_cast<double>(InDisplayScale), static_cast<double>(styleUiScale));
+        const float ScopedDisplayScale = window != nullptr ? window->DisplayScale() : 1.0f;
+        LogInfo("editor", "UI style scale {:.2f} (content {:.2f} x ui {:.2f}, display {:.2f})",
+                static_cast<double>(ScopedTarget), static_cast<double>(ScopedContentScale),
+                static_cast<double>(styleUiScale), static_cast<double>(ScopedDisplayScale));
     }
 
     Rhi::RenderTargetHandle target{};
+    Rhi::RenderTargetHandle displayTarget{};
+    Rhi::RenderTargetHandle hudTarget{};
+    Rhi::RenderTargetHandle motionTarget{};
+    Rhi::RenderTargetHandle fsr1Intermediate{};
+    Rhi::RenderTargetHandle pieDisplayTarget{};
+    Rhi::RenderTargetHandle pieFsr1Intermediate{};
     Rhi::Extent2D targetSize{};
+    Rhi::Extent2D displaySize{};
     ImTextureID targetTexture = ImTextureID_Invalid;
+    bool presentationFsr1 = false;
+    bool presentationHudOffscreen = false;
     // A resized target is retired, not destroyed while the previous frames may
     // still sample its descriptor. Entries are released after four frames.
     struct RetiredTarget
@@ -671,10 +694,13 @@ struct EditorSystem::Impl
     };
     std::vector<ClipboardEntity> clipboard;
     bool snapEnabled = false;
+    // Viewport HUD and slider appearance, toggled from the viewport itself.
+    bool showOriginNavigator = true;
+    bool sliderGrabOverflow = false;
     float snapGrid = 16.0f;
     static constexpr float kSnapAngleDegrees = 15.0f;
     static constexpr float kSnapScale = 0.1f;
-    // Editor Step 1 infrastructure. The panels hold no globals: the project
+    // Editor authoring panels; they hold no globals.
     ContentBrowserPanel contentBrowser;
     MaterialGraphPanel materialGraph;
     VisualScriptPanel visualScript;
@@ -713,8 +739,16 @@ struct EditorSystem::Impl
     bool showPieClient = false;
     ProjectDashboard dashboard;
     ProjectConfigStore projectConfig;
+    // Project-wide gameplay registries. Project settings rebuild the tag
+    // registry whenever the authored database changes; the runtime and PIE use
+    // the same ids.
+    Fby::GameplayTagRegistry gameplayTags;
+    Fby::GameplayAttributeRegistry gameplayAttributes;
     ProjectSettingsPanel projectSettings;
+    LevelSettingsPanel levelSettings;
     EditorSettingsPanel editorSettings;
+    UserSettings userSettings{};
+    Rhi::BackendCapabilities backendCaps{};
     ReleaseCooker releaseCooker;
     AssetImportService importer;
     AssetDatabaseWatchSystem watcher;
@@ -727,7 +761,15 @@ struct EditorSystem::Impl
     LogBoyPanel logBoy;
     LicensesPanel licenses;
     NetworkDiagnosticsPanel networkDiagnostics;
+    Fby::SdfComposerSession sdfComposer;
+    std::vector<float> composerPreviewSamples;
+    Fby::SdfField composerPreviewField;
+    bool composerPreviewValid = false;
+    Fby::Core::Profiler* profiler = nullptr;
+    Fby::Core::ProfilerPanel profilerPanel;
+    const std::array<std::string_view, 5> profilerNames{"PreUpdate", "FixedUpdate", "PostUpdate", "Render", "Frame"};
     VoiceDevicePanel voiceDevices;
+    TransportGroupPanel transportGroups;
     std::unique_ptr<VoiceSystem> voiceRuntime;
     VoiceSession voiceSession;
     AudioDeviceEnumerator voiceDevicesEnumerator;
@@ -741,13 +783,16 @@ struct EditorSystem::Impl
     bool watcherStarted = false;
     bool quitRequested = false;
     bool showProjectSettings = false;
+    bool showLevelSettings = true;
     bool showEditorSettings = false;
+    bool showUserSettings = false;
 
     bool showHierarchy = true;
     bool showInspector = true;
     bool showViewport = true;
-    bool showProfiler = true;
-    bool showStats = true;
+    bool showProfiler = false;
+    bool showSdfComposer = false;
+    bool showStats = false;
     bool showLogBoy = true;
     bool showSceneDiagnostics = true;
     bool showPhysicsDebug = false;
@@ -758,6 +803,7 @@ struct EditorSystem::Impl
     bool showLicenses = false;
     bool showNetworkDiagnostics = false;
     bool showVoiceDevices = false;
+    bool showTransportGroups = false;
     bool showMaterialGraph = true;
     bool showVisualScript = true;
     bool showScriptDebugger = true;
@@ -914,8 +960,8 @@ struct EditorSystem::Impl
         fontRegular = fonts.Regular();
         fontMono = fonts.Mono();
         visualScript.SetFonts(&fonts);
-        materialGraph.Canvas().SetModelFonts(fonts.ScriptNodeTitle(), fonts.ScriptPinInput(),
-                                             fonts.ScriptPinOutput(), fonts.PanelTitle());
+        materialGraph.Canvas().SetModelFonts(fonts.ScriptNodeTitle(), fonts.ScriptPinInput(), fonts.ScriptPinOutput(),
+                                             fonts.PanelTitle());
         SetEditorFonts(&fonts);
         InIo.FontDefault = fontRegular;
     }
@@ -1051,10 +1097,10 @@ struct EditorSystem::Impl
         {
             if (pie.ExternalClient())
             {
-                SetStatus(std::format("PIE multiplayer playing: second sandbox on UDP {}, local client world, {} bytes, "
-                                      "voice {}",
-                                      pie.ExternalClientPort(), pie.SnapshotBytes(),
-                                      pie.VoiceActive() ? "on" : "off"));
+                SetStatus(
+                    std::format("PIE multiplayer playing: second sandbox on UDP {}, local client world, {} bytes, "
+                                "voice {}",
+                                pie.ExternalClientPort(), pie.SnapshotBytes(), pie.VoiceActive() ? "on" : "off"));
             }
             else
             {
@@ -1130,9 +1176,9 @@ struct EditorSystem::Impl
                 // can be inspected frame by frame.
                 const float ScopedFixedHz = std::clamp(projectConfig.Project().fixedUpdateHz, 15.0f, 240.0f);
                 const float ScopedFixedStep = 1.0f / std::max(ScopedFixedHz, 1.0f);
-                const bool ScopedStepped =
-                    pie.Multiplayer() ? pie.StepMultiplayer(*graph, ScopedFixedStep, ScopedFixedStep)
-                                      : pie.Step(*graph, ScopedFixedStep, ScopedFixedStep);
+                const bool ScopedStepped = pie.Multiplayer()
+                                               ? pie.StepMultiplayer(*graph, ScopedFixedStep, ScopedFixedStep)
+                                               : pie.Step(*graph, ScopedFixedStep, ScopedFixedStep);
                 if (ScopedStepped)
                 {
                     SyncCanvasWorlds(InContext);
@@ -1149,9 +1195,8 @@ struct EditorSystem::Impl
         const float ScopedFixedStep = 1.0f / std::max(ScopedFixedHz, 1.0f);
         // A multiplayer session also replicates the host delta into the client
         // world; the plain play session only steps the host clone.
-        const bool ScopedStepped = pie.Multiplayer()
-                                       ? pie.StepMultiplayer(*graph, InContext.dt, ScopedFixedStep)
-                                       : pie.Step(*graph, InContext.dt, ScopedFixedStep);
+        const bool ScopedStepped = pie.Multiplayer() ? pie.StepMultiplayer(*graph, InContext.dt, ScopedFixedStep)
+                                                     : pie.Step(*graph, InContext.dt, ScopedFixedStep);
         if (ScopedStepped)
         {
             // The step joined every system-graph worker before returning. The
@@ -1160,10 +1205,21 @@ struct EditorSystem::Impl
         }
     }
 
+    // Pushes the editor's saved log limits into the engine sink. The sink then
+    // prunes older files and compacts the open file immediately.
+    void ApplyLogLimits()
+    {
+        LogRetention ScopedRetention;
+        ScopedRetention.MaxFiles = projectConfig.Editor().logMaxFiles;
+        ScopedRetention.MaxLinesPerFile = projectConfig.Editor().logMaxLinesPerFile;
+        SetLogRetention(ScopedRetention);
+    }
+
     void ApplySettings(Ecs::SystemContext& InContext)
     {
         projectSettings.Apply(InContext);
         editorSettings.Apply(InContext);
+        ApplyLogLimits();
         // Window presentation comes from the project config, so a project can
         // start borderless on one machine and windowed on another.
         if (window != nullptr)
@@ -1175,11 +1231,13 @@ struct EditorSystem::Impl
                 (void)window->SetWindowMode(ScopedMode);
             }
         }
-        // The UI scale is owned by the font set: it applies FontScaleMain on a
+        // The font set owns the UI scale: it applies FontScaleMain (dynamic
+        // atlas) or FontGlobalScale (legacy density) on the next atlas apply.
         fonts.SetUiScale(projectConfig.Editor().uiScale);
-        // Geometry follows the same scale and the monitor's DPI. Re-applying the
+        // Geometry follows the same UI scale. The platform's pixel density is
+        // applied by the ImGui framebuffer scale, not by this multiplier.
         styleUiScale = projectConfig.Editor().uiScale;
-        ApplyStyleScale(window != nullptr ? window->DisplayScale() : lastDisplayScale);
+        ApplyStyleScale();
     }
 
     void PushMono() const
@@ -1244,14 +1302,53 @@ struct EditorSystem::Impl
             return;
         }
         CollectRetiredTargets();
-        const std::uint32_t ScopedPixelWidth = std::clamp(static_cast<std::uint32_t>(std::lround(InWidth)), 1u, 4096u);
-        const std::uint32_t ScopedPixelHeight =
+        const std::uint32_t ScopedDisplayWidth =
+            std::clamp(static_cast<std::uint32_t>(std::lround(InWidth)), 1u, 4096u);
+        const std::uint32_t ScopedDisplayHeight =
             std::clamp(static_cast<std::uint32_t>(std::lround(InHeight)), 1u, 4096u);
-        if (target.IsValid() && targetSize.width == ScopedPixelWidth && targetSize.height == ScopedPixelHeight)
+        const float ScopedScale = std::clamp(userSettings.renderScale, 0.25f, 1.0f);
+        const std::uint32_t ScopedPixelWidth =
+            std::max(1u, static_cast<std::uint32_t>(std::lround(static_cast<float>(ScopedDisplayWidth) * ScopedScale)));
+        const std::uint32_t ScopedPixelHeight = std::max(
+            1u, static_cast<std::uint32_t>(std::lround(static_cast<float>(ScopedDisplayHeight) * ScopedScale)));
+        const bool ScopedVendorUpscaler = userSettings.upscalerBackend == UpscalerBackendSetting::Dlss ||
+                                          userSettings.upscalerBackend == UpscalerBackendSetting::MetalFx;
+        const bool ScopedFsr1 =
+            ((userSettings.upscaleMode == UpscaleMode::Fsr1 || userSettings.upscaleMode == UpscaleMode::Fsr2) &&
+             (ScopedPixelWidth != ScopedDisplayWidth || ScopedPixelHeight != ScopedDisplayHeight)) ||
+            ScopedVendorUpscaler || userSettings.upscalePolicy != UpscalePolicy::Off;
+        const bool ScopedFrameGenerationRequested =
+            userSettings.frameGenerationPolicy != FrameGenerationPolicySetting::Off &&
+            (backendCaps.CustomFrameGeneration || backendCaps.Fsr3FrameGeneration || backendCaps.DlssFrameGeneration);
+        const bool ScopedHudOffscreen =
+            ResolveHudTarget(userSettings.hudTarget, ScopedFrameGenerationRequested) == HudTargetMode::Offscreen;
+        if (target.IsValid() && targetSize.width == ScopedPixelWidth && targetSize.height == ScopedPixelHeight &&
+            displaySize.width == ScopedDisplayWidth && displaySize.height == ScopedDisplayHeight &&
+            presentationFsr1 == ScopedFsr1 && presentationHudOffscreen == ScopedHudOffscreen)
         {
             return;
         }
 
+        if (displayTarget.IsValid())
+        {
+            retiredTargets.push_back(RetiredTarget{displayTarget, ImTextureID_Invalid, targetFrame + 4});
+            displayTarget = {};
+        }
+        if (hudTarget.IsValid())
+        {
+            retiredTargets.push_back(RetiredTarget{hudTarget, ImTextureID_Invalid, targetFrame + 4});
+            hudTarget = {};
+        }
+        if (motionTarget.IsValid())
+        {
+            retiredTargets.push_back(RetiredTarget{motionTarget, ImTextureID_Invalid, targetFrame + 4});
+            motionTarget = {};
+        }
+        if (fsr1Intermediate.IsValid())
+        {
+            retiredTargets.push_back(RetiredTarget{fsr1Intermediate, ImTextureID_Invalid, targetFrame + 4});
+            fsr1Intermediate = {};
+        }
         if (target.IsValid())
         {
             // The previous frame may still sample the old descriptor. Retire it
@@ -1281,9 +1378,32 @@ struct EditorSystem::Impl
             return;
         }
         targetSize = ScopedTargetDesc.size;
+        displaySize = {ScopedDisplayWidth, ScopedDisplayHeight};
+        motionTarget = gpu->CreateMotionVectorTarget(targetSize);
+        presentationFsr1 = ScopedFsr1;
+        presentationHudOffscreen = ScopedHudOffscreen;
+        if (ScopedFsr1)
+        {
+            ScopedTargetDesc.size = {ScopedDisplayWidth, ScopedDisplayHeight};
+            displayTarget = gpu->CreateRenderTarget(ScopedTargetDesc);
+            if (userSettings.upscaleMode == UpscaleMode::Fsr1 || userSettings.upscaleMode == UpscaleMode::Fsr2)
+            {
+                fsr1Intermediate = gpu->CreateRenderTarget(ScopedTargetDesc);
+            }
+        }
+        if (ScopedHudOffscreen)
+        {
+            const float ScopedHudScale = std::clamp(userSettings.hudRenderScale, 0.25f, 1.0f);
+            ScopedTargetDesc.size = {
+                std::max(1u, static_cast<std::uint32_t>(std::lround(ScopedDisplayWidth * ScopedHudScale))),
+                std::max(1u, static_cast<std::uint32_t>(std::lround(ScopedDisplayHeight * ScopedHudScale)))};
+            hudTarget = gpu->CreateHudTarget(ScopedTargetDesc.size);
+        }
+        gpu->SetHudTarget(hudTarget);
 
         Rhi::NativeTextureView ScopedView;
-        if (gpu->RenderTargetTexture(target, ScopedView) && ScopedView.view != nullptr)
+        const Rhi::RenderTargetHandle ScopedPresentedTarget = displayTarget.IsValid() ? displayTarget : target;
+        if (gpu->RenderTargetTexture(ScopedPresentedTarget, ScopedView) && ScopedView.view != nullptr)
         {
             const VkDescriptorSet ScopedDescriptor = ImGui_ImplVulkan_AddTexture(
                 static_cast<VkImageView>(ScopedView.view), static_cast<VkImageLayout>(ScopedView.layout));
@@ -1330,7 +1450,14 @@ struct EditorSystem::Impl
         {
             ScopedSize = {1280, 720};
         }
-        if (pieClientViewport.Target().IsValid() && pieClientViewport.Size() == ScopedSize)
+        const bool ScopedPieVendorUpscaler = userSettings.upscalerBackend == UpscalerBackendSetting::Dlss ||
+                                             userSettings.upscalerBackend == UpscalerBackendSetting::MetalFx;
+        const bool ScopedPieFsr1 =
+            ((userSettings.upscaleMode == UpscaleMode::Fsr1 || userSettings.upscaleMode == UpscaleMode::Fsr2) &&
+             (displaySize.width != ScopedSize.width || displaySize.height != ScopedSize.height)) ||
+            ScopedPieVendorUpscaler || userSettings.upscalePolicy != UpscalePolicy::Off;
+        if (pieClientViewport.Target().IsValid() && pieClientViewport.Size() == ScopedSize &&
+            (!ScopedPieFsr1 || (pieDisplayTarget.IsValid() && pieFsr1Intermediate.IsValid())))
         {
             return;
         }
@@ -1340,12 +1467,35 @@ struct EditorSystem::Impl
             gpu->WaitIdle();
         }
         ReleasePieClientTexture();
+        if (pieDisplayTarget.IsValid())
+        {
+            gpu->DestroyRenderTarget(pieDisplayTarget);
+            pieDisplayTarget = {};
+        }
+        if (pieFsr1Intermediate.IsValid())
+        {
+            gpu->DestroyRenderTarget(pieFsr1Intermediate);
+            pieFsr1Intermediate = {};
+        }
         if (!pieClientViewport.EnsureTarget(*gpu, ScopedSize))
         {
             return;
         }
+        if (ScopedPieFsr1)
+        {
+            Rhi::RenderTargetDesc ScopedDisplayDesc;
+            ScopedDisplayDesc.size = displaySize;
+            ScopedDisplayDesc.srgb = false;
+            pieDisplayTarget = gpu->CreateRenderTarget(ScopedDisplayDesc);
+            if (userSettings.upscaleMode == UpscaleMode::Fsr1 || userSettings.upscaleMode == UpscaleMode::Fsr2)
+            {
+                pieFsr1Intermediate = gpu->CreateRenderTarget(ScopedDisplayDesc);
+            }
+        }
+        const Rhi::RenderTargetHandle ScopedPresentedPie =
+            pieDisplayTarget.IsValid() ? pieDisplayTarget : pieClientViewport.Target();
         Rhi::NativeTextureView ScopedView;
-        if (gpu->RenderTargetTexture(pieClientViewport.Target(), ScopedView) && ScopedView.view != nullptr)
+        if (gpu->RenderTargetTexture(ScopedPresentedPie, ScopedView) && ScopedView.view != nullptr)
         {
             const VkDescriptorSet ScopedDescriptor = ImGui_ImplVulkan_AddTexture(
                 static_cast<VkImageView>(ScopedView.view), static_cast<VkImageLayout>(ScopedView.layout));
@@ -1543,8 +1693,7 @@ struct EditorSystem::Impl
                     BeginPropertyRow("Significant");
                     if (ImGui::DragInt("##significant", &ScopedSignificant, 1.0f, 0, 32))
                     {
-                        ScopedSpec.SignificantDigits =
-                            static_cast<std::uint8_t>(std::clamp(ScopedSignificant, 0, 32));
+                        ScopedSpec.SignificantDigits = static_cast<std::uint8_t>(std::clamp(ScopedSignificant, 0, 32));
                     }
                     char ScopedMarker[2] = {ScopedSpec.ExponentMarker, '\0'};
                     BeginPropertyRow("Exponent marker");
@@ -1577,11 +1726,13 @@ struct EditorSystem::Impl
                 }
                 if (InOps.name == "CollisionPolicyComponent" && InField.name == "Mode")
                 {
-                    const std::array<const char*, 7> ScopedModeNames{
-                        CollisionModeName(CollisionMode::NoCollision),     CollisionModeName(CollisionMode::QueryOnly),
-                        CollisionModeName(CollisionMode::TriggerOnly),     CollisionModeName(CollisionMode::SimpleStatic),
-                        CollisionModeName(CollisionMode::SimpleDynamic),   CollisionModeName(CollisionMode::ComplexStatic),
-                        CollisionModeName(CollisionMode::ComplexDynamic)};
+                    const std::array<const char*, 7> ScopedModeNames{CollisionModeName(CollisionMode::NoCollision),
+                                                                     CollisionModeName(CollisionMode::QueryOnly),
+                                                                     CollisionModeName(CollisionMode::TriggerOnly),
+                                                                     CollisionModeName(CollisionMode::SimpleStatic),
+                                                                     CollisionModeName(CollisionMode::SimpleDynamic),
+                                                                     CollisionModeName(CollisionMode::ComplexStatic),
+                                                                     CollisionModeName(CollisionMode::ComplexDynamic)};
                     int ScopedMode = static_cast<int>(ScopedValue < kCollisionModeCount ? ScopedValue : 0u);
                     BeginPropertyRow(ScopedLabel.c_str());
                     if (ImGui::Combo("##value", &ScopedMode, ScopedModeNames.data(),
@@ -1684,8 +1835,7 @@ struct EditorSystem::Impl
                 if (ImGui::InputText("##value", ScopedBuffer.data(), ScopedBuffer.size()))
                 {
                     Fby::BigNum::Int128 ScopedValue;
-                    if (Fby::BigNum::Int128::FromString(ScopedBuffer.data(), &ScopedValue) ==
-                        Fby::BigNum::Status::Ok)
+                    if (Fby::BigNum::Int128::FromString(ScopedBuffer.data(), &ScopedValue) == Fby::BigNum::Status::Ok)
                     {
                         WriteInt128Field(ScopedComponent, InField, ScopedValue);
                     }
@@ -1775,8 +1925,8 @@ struct EditorSystem::Impl
         {
             const Vector2D ScopedPosition = InSkeleton.LocalPositions[InBone];
             EditorTooltip("parent: %d\nlocal: (%.2f, %.2f)  rot %.3f rad  scale %.3f",
-                              static_cast<int>(InSkeleton.ParentIndices[InBone]), ScopedPosition.X, ScopedPosition.Y,
-                              InSkeleton.LocalRotations[InBone], InSkeleton.LocalScales[InBone]);
+                          static_cast<int>(InSkeleton.ParentIndices[InBone]), ScopedPosition.X, ScopedPosition.Y,
+                          InSkeleton.LocalRotations[InBone], InSkeleton.LocalScales[InBone]);
         }
         if (ScopedOpen && ScopedHasChildren)
         {
@@ -1807,8 +1957,7 @@ struct EditorSystem::Impl
         Ecs::Registry& ScopedRegistry = InContext.registry;
         const Entity ScopedSelected = SelectedEntity(ScopedRegistry);
         const std::size_t ScopedSelectedCount = ScopedRegistry.view<EditorSelected>().size();
-        ImGui::TextDisabled("%u entities | %u selected",
-                            static_cast<unsigned>(ScopedRegistry.storage<Entity>().size()),
+        ImGui::TextDisabled("%u entities | %u selected", static_cast<unsigned>(ScopedRegistry.storage<Entity>().size()),
                             static_cast<unsigned>(ScopedSelectedCount));
         if (ImGui::SmallButton("+ Entity"))
         {
@@ -1906,8 +2055,7 @@ struct EditorSystem::Impl
                 }
                 continue;
             }
-            if (ImGui::Selectable(ScopedLabel.c_str(), ScopedIsSelected,
-                                  ImGuiSelectableFlags_AllowDoubleClick))
+            if (ImGui::Selectable(ScopedLabel.c_str(), ScopedIsSelected, ImGuiSelectableFlags_AllowDoubleClick))
             {
                 if (ImGui::GetIO().KeyCtrl)
                 {
@@ -2200,8 +2348,8 @@ struct EditorSystem::Impl
         }
         const std::filesystem::path ScopedSource = AssetPhysicalPath(selectedAsset);
         std::error_code ScopedCode;
-        std::filesystem::path ScopedCopy = ScopedSource.parent_path() /
-                                           (ScopedSource.stem().string() + "_copy" + ScopedSource.extension().string());
+        std::filesystem::path ScopedCopy =
+            ScopedSource.parent_path() / (ScopedSource.stem().string() + "_copy" + ScopedSource.extension().string());
         for (int ScopedIndex = 2; std::filesystem::exists(ScopedCopy, ScopedCode) && ScopedIndex < 1000; ++ScopedIndex)
         {
             ScopedCopy = ScopedSource.parent_path() / (ScopedSource.stem().string() + "_copy" +
@@ -2214,7 +2362,8 @@ struct EditorSystem::Impl
             return;
         }
         RefreshAssetIndex(InContext);
-        selectedAsset = std::filesystem::relative(ScopedCopy, projectConfig.Paths().assets, ScopedCode).generic_string();
+        selectedAsset =
+            std::filesystem::relative(ScopedCopy, projectConfig.Paths().assets, ScopedCode).generic_string();
         SetStatus("duplicated: " + ScopedCopy.filename().string());
     }
 
@@ -2322,8 +2471,8 @@ struct EditorSystem::Impl
                 ImGui::SetKeyboardFocusHere();
                 assetDialogFocus = false;
             }
-            const bool ScopedEntered =
-                ImGui::InputText("##assetName", assetDialogName, sizeof(assetDialogName), ImGuiInputTextFlags_EnterReturnsTrue);
+            const bool ScopedEntered = ImGui::InputText("##assetName", assetDialogName, sizeof(assetDialogName),
+                                                        ImGuiInputTextFlags_EnterReturnsTrue);
             if (ImGui::Button("OK", ImVec2(90.0f, 0.0f)) || ScopedEntered)
             {
                 ApplyAssetDialog(InContext);
@@ -2562,10 +2711,9 @@ struct EditorSystem::Impl
         const ImVec2 ScopedImageMax = ImGui::GetItemRectMax();
         const bool ScopedImageHovered = ImGui::IsItemHovered();
 
-        // World grid overlay. The `show_grid` editor setting used to be persisted
-        // without any consumer; this is that consumer. The grid follows the
-        // projection of the selected tilemap (axis-aligned, iso diamonds or hex
-        // lattice) and highlights the world axes.
+        // World grid overlay. The grid follows the projection of the selected
+        // tilemap (axis-aligned, iso diamonds or hex lattice) and highlights the
+        // world axes.
         if (projectConfig.Editor().showGrid)
         {
             ImDrawList* ScopedDraw = ImGui::GetWindowDrawList();
@@ -2600,11 +2748,11 @@ struct EditorSystem::Impl
                                            static_cast<std::int32_t>(ScopedMap->Height)};
             }
 
-            if (ScopedGrid.Mode == Grid::ProjectionMode::IsoRect ||
-                ScopedGrid.Mode == Grid::ProjectionMode::IsoHex)
+            if (ScopedGrid.Mode == Grid::ProjectionMode::IsoRect || ScopedGrid.Mode == Grid::ProjectionMode::IsoHex)
             {
                 const Grid::Cell ScopedMin = Grid::WorldToCell(ScopedGrid, Vector2D{ScopedWorldLeft, ScopedWorldTop});
-                const Grid::Cell ScopedMax = Grid::WorldToCell(ScopedGrid, Vector2D{ScopedWorldRight, ScopedWorldBottom});
+                const Grid::Cell ScopedMax =
+                    Grid::WorldToCell(ScopedGrid, Vector2D{ScopedWorldRight, ScopedWorldBottom});
                 const std::int32_t ScopedLowX = std::max(ScopedMin.X, -256);
                 const std::int32_t ScopedLowY = std::max(ScopedMin.Y, -256);
                 const std::int32_t ScopedHighX = std::min(ScopedMax.X + 2, ScopedMapSize.X + 256);
@@ -2617,8 +2765,7 @@ struct EditorSystem::Impl
                 {
                     for (std::int32_t ScopedX = ScopedLowX; ScopedX <= ScopedHighX && ScopedDrawn < 2048; ++ScopedX)
                     {
-                        const Vector2D ScopedCenter =
-                            Grid::CellToWorld(ScopedGrid, Grid::Cell{ScopedX, ScopedY});
+                        const Vector2D ScopedCenter = Grid::CellToWorld(ScopedGrid, Grid::Cell{ScopedX, ScopedY});
                         ImVec2 ScopedPoints[6] = {};
                         int ScopedCount = 0;
                         if (ScopedGrid.Mode == Grid::ProjectionMode::IsoHex)
@@ -2627,18 +2774,22 @@ struct EditorSystem::Impl
                             for (int ScopedVertex = 0; ScopedVertex < 6; ++ScopedVertex)
                             {
                                 const float ScopedAngle = 1.5707963f + static_cast<float>(ScopedVertex) * 1.0471976f;
-                                ScopedPoints[ScopedVertex] = ScopedToScreen(
-                                    Vector2D{ScopedCenter.X + std::cos(ScopedAngle) * ScopedRadius,
-                                             ScopedCenter.Y + std::sin(ScopedAngle) * ScopedRadius});
+                                ScopedPoints[ScopedVertex] =
+                                    ScopedToScreen(Vector2D{ScopedCenter.X + std::cos(ScopedAngle) * ScopedRadius,
+                                                            ScopedCenter.Y + std::sin(ScopedAngle) * ScopedRadius});
                             }
                             ScopedCount = 6;
                         }
                         else
                         {
-                            ScopedPoints[0] = ScopedToScreen(Vector2D{ScopedCenter.X, ScopedCenter.Y - ScopedHalfHeight});
-                            ScopedPoints[1] = ScopedToScreen(Vector2D{ScopedCenter.X + ScopedHalfWidth, ScopedCenter.Y});
-                            ScopedPoints[2] = ScopedToScreen(Vector2D{ScopedCenter.X, ScopedCenter.Y + ScopedHalfHeight});
-                            ScopedPoints[3] = ScopedToScreen(Vector2D{ScopedCenter.X - ScopedHalfWidth, ScopedCenter.Y});
+                            ScopedPoints[0] =
+                                ScopedToScreen(Vector2D{ScopedCenter.X, ScopedCenter.Y - ScopedHalfHeight});
+                            ScopedPoints[1] =
+                                ScopedToScreen(Vector2D{ScopedCenter.X + ScopedHalfWidth, ScopedCenter.Y});
+                            ScopedPoints[2] =
+                                ScopedToScreen(Vector2D{ScopedCenter.X, ScopedCenter.Y + ScopedHalfHeight});
+                            ScopedPoints[3] =
+                                ScopedToScreen(Vector2D{ScopedCenter.X - ScopedHalfWidth, ScopedCenter.Y});
                             ScopedCount = 4;
                         }
                         const ImU32 ScopedColor = (ScopedX == 0 || ScopedY == 0) ? ScopedAxisColor : ScopedGridColor;
@@ -2797,8 +2948,8 @@ struct EditorSystem::Impl
             if (showNavigationDebug)
             {
                 const ImU32 ScopedPathColor = IM_COL32(120, 220, 255, 200);
-                auto ScopedAgentView = InContext.registry.view<Transform2D, Navigation::NavAgentSettings,
-                                                              Navigation::NavAgentComponent>();
+                auto ScopedAgentView =
+                    InContext.registry.view<Transform2D, Navigation::NavAgentSettings, Navigation::NavAgentComponent>();
                 for (auto [ScopedEntity, ScopedTransform, ScopedSettings, ScopedAgent] : ScopedAgentView.each())
                 {
                     (void)ScopedEntity;
@@ -2813,10 +2964,15 @@ struct EditorSystem::Impl
                     }
                     for (std::uint16_t ScopedI = 1; ScopedI < ScopedAgent.Path.Count; ++ScopedI)
                     {
-                        const Vector2D ScopedFrom = Grid::CellToWorld(ScopedGrid, ScopedAgent.Path.Cells[ScopedI - 1]);
-                        const Vector2D ScopedTo = Grid::CellToWorld(ScopedGrid, ScopedAgent.Path.Cells[ScopedI]);
-                        ScopedDraw->AddLine(ScopedToScreen(ScopedFrom), ScopedToScreen(ScopedTo),
-                                            ScopedPathColor, 2.0f);
+                        const Vector2D ScopedFrom =
+                            ScopedAgent.Path.HasPoints
+                                ? ScopedAgent.Path.Points[ScopedI - 1]
+                                : Grid::CellToWorld(ScopedGrid, ScopedAgent.Path.Cells[ScopedI - 1]);
+                        const Vector2D ScopedTo = ScopedAgent.Path.HasPoints
+                                                      ? ScopedAgent.Path.Points[ScopedI]
+                                                      : Grid::CellToWorld(ScopedGrid, ScopedAgent.Path.Cells[ScopedI]);
+                        ScopedDraw->AddLine(ScopedToScreen(ScopedFrom), ScopedToScreen(ScopedTo), ScopedPathColor,
+                                            2.0f);
                     }
                 }
             }
@@ -2826,7 +2982,9 @@ struct EditorSystem::Impl
         // Viewport HUD: a compact axis compass, the zoom factor and, when the
         // world origin is outside the visible area, an arrow towards it with the
         // bearing in degrees and the distance in world units. The viewport is a
-        // top-down 2D camera, so +X points right and +Y points down.
+        // top-down 2D camera, so +X points right and +Y points down. The whole
+        // navigator can be switched off from the viewport's Display popup.
+        if (showOriginNavigator)
         {
             ImDrawList* ScopedDraw = ImGui::GetWindowDrawList();
             ScopedDraw->PushClipRect(ScopedImageMin, ScopedImageMax, true);
@@ -2843,18 +3001,17 @@ struct EditorSystem::Impl
             const auto ScopedHudLabel = [&](ImVec2 InPosition, const char* InText)
             {
                 const ImVec2 ScopedTextSize = ImGui::CalcTextSize(InText);
-                ScopedDraw->AddRectFilled(ImVec2(InPosition.x - 4.0f, InPosition.y - 2.0f),
-                                          ImVec2(InPosition.x + ScopedTextSize.x + 4.0f,
-                                                 InPosition.y + ScopedTextSize.y + 2.0f),
-                                          ScopedBack, 3.0f);
+                ScopedDraw->AddRectFilled(
+                    ImVec2(InPosition.x - 4.0f, InPosition.y - 2.0f),
+                    ImVec2(InPosition.x + ScopedTextSize.x + 4.0f, InPosition.y + ScopedTextSize.y + 2.0f), ScopedBack,
+                    3.0f);
                 ScopedDraw->AddText(InPosition, ScopedInk, InText);
             };
 
             const float ScopedInset = 18.0f;
-            const bool ScopedOriginVisible = ScopedOrigin.x >= ScopedImageMin.x + ScopedInset &&
-                                             ScopedOrigin.x <= ScopedImageMax.x - ScopedInset &&
-                                             ScopedOrigin.y >= ScopedImageMin.y + ScopedInset &&
-                                             ScopedOrigin.y <= ScopedImageMax.y - ScopedInset;
+            const bool ScopedOriginVisible =
+                ScopedOrigin.x >= ScopedImageMin.x + ScopedInset && ScopedOrigin.x <= ScopedImageMax.x - ScopedInset &&
+                ScopedOrigin.y >= ScopedImageMin.y + ScopedInset && ScopedOrigin.y <= ScopedImageMax.y - ScopedInset;
             if (ScopedOriginVisible)
             {
                 ScopedDraw->AddCircle(ScopedOrigin, 5.0f, ScopedInkDim, 12, 1.5f);
@@ -2925,10 +3082,10 @@ struct EditorSystem::Impl
                                 IM_COL32(225, 90, 100, 230), 2.0f);
             ScopedDraw->AddLine(ScopedCompass, ImVec2(ScopedCompass.x, ScopedCompass.y + 22.0f),
                                 IM_COL32(120, 200, 120, 230), 2.0f);
-            ScopedDraw->AddText(ImVec2(ScopedCompass.x + 24.0f, ScopedCompass.y - 15.0f),
-                                IM_COL32(235, 150, 155, 235), "X");
-            ScopedDraw->AddText(ImVec2(ScopedCompass.x + 4.0f, ScopedCompass.y + 21.0f),
-                                IM_COL32(150, 215, 150, 235), "Y");
+            ScopedDraw->AddText(ImVec2(ScopedCompass.x + 24.0f, ScopedCompass.y - 15.0f), IM_COL32(235, 150, 155, 235),
+                                "X");
+            ScopedDraw->AddText(ImVec2(ScopedCompass.x + 4.0f, ScopedCompass.y + 21.0f), IM_COL32(150, 215, 150, 235),
+                                "Y");
             char ScopedZoomText[32] = {};
             std::snprintf(ScopedZoomText, sizeof(ScopedZoomText), "%.0f%%", static_cast<double>(camera.zoom * 100.0f));
             ScopedHudLabel(ImVec2(ScopedCompass.x - 16.0f, ScopedCompass.y + 36.0f), ScopedZoomText);
@@ -2987,37 +3144,36 @@ struct EditorSystem::Impl
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
-        // Play/Pause/Stop drive the real PIE loop. The button only records
-        ImGui::BeginDisabled(pie.Active() || !pieInitialized);
-        if (ImGui::Button("Play"))
+        // Play/Pause/Step/Stop drive the real PIE loop. The buttons are square
+        // icons; the one matching the current runtime state is drawn translucent,
+        // like a pressed toggle, while the others stay dark with white glyphs.
+        if (PlaybackIconButton("play", PlaybackIcon::Play, pie.Active() && !piePaused, pie.Active() || !pieInitialized,
+                               "Play"))
         {
             pieCommand = PieCommand::Play;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Play MP"))
+        if (PlaybackIconButton("play_mp", PlaybackIcon::Multiplayer, false, pie.Active() || !pieInitialized,
+                               "Play multiplayer"))
         {
             pieCommand = PieCommand::PlayMultiplayer;
         }
-        ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::BeginDisabled(!pie.Active());
-        if (ImGui::Button(piePaused ? "Resume" : "Pause"))
+        if (PlaybackIconButton("pause", PlaybackIcon::Pause, pie.Active() && piePaused, !pie.Active(),
+                               piePaused ? "Resume" : "Pause"))
         {
             pieCommand = PieCommand::TogglePause;
         }
         ImGui::SameLine();
-        ImGui::BeginDisabled(!piePaused);
-        if (ImGui::Button("Step"))
+        if (PlaybackIconButton("step", PlaybackIcon::Step, false, !piePaused, "Step"))
         {
             pieCommand = PieCommand::Step;
         }
-        ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Stop"))
+        if (PlaybackIconButton("stop", PlaybackIcon::Stop, false, !pie.Active(), "Stop"))
         {
             pieCommand = PieCommand::Stop;
         }
-        ImGui::EndDisabled();
         ImGui::SameLine();
         if (pie.Active())
         {
@@ -3157,8 +3313,8 @@ struct EditorSystem::Impl
         const Entity ScopedSelectedEntity = SelectedEntity(InContext.registry);
         ImGui::BeginDisabled(ScopedSelectedEntity == entt::null);
         const float ScopedStep = snapEnabled ? snapGrid : (ImGui::GetIO().KeyShift ? 10.0f : 1.0f);
-        const float ScopedTurn = snapEnabled ? kSnapAngleDegrees * 0.0174532925f
-                                             : 0.0872665f * (ImGui::GetIO().KeyShift ? 3.0f : 1.0f);
+        const float ScopedTurn =
+            snapEnabled ? kSnapAngleDegrees * 0.0174532925f : 0.0872665f * (ImGui::GetIO().KeyShift ? 3.0f : 1.0f);
         const float ScopedScaleStep = snapEnabled ? kSnapScale : (ImGui::GetIO().KeyShift ? 0.5f : 0.05f);
         if (gizmoOperation == ImGuizmo::TRANSLATE)
         {
@@ -3213,16 +3369,25 @@ struct EditorSystem::Impl
         ImGui::TextUnformatted("Zoom");
         ImGui::SameLine();
         float ScopedZoomPercent = camera.zoom * 100.0f;
-        ImGui::SetNextItemWidth(140.0f);
-        if (ImGui::SliderFloat("##zoom", &ScopedZoomPercent, 25.0f, 800.0f, "%.0f%%", ImGuiSliderFlags_Logarithmic))
+        if (EditorSlider("##zoom", &ScopedZoomPercent, 25.0f, 800.0f, "%.0f%%", 120.0f, sliderGrabOverflow, true))
         {
             camera.zoom = std::clamp(ScopedZoomPercent / 100.0f, 0.05f, 8.0f);
         }
         ImGui::SameLine();
         ImGui::TextUnformatted("Camera speed");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(110.0f);
-        (void)ImGui::SliderFloat("##panSpeed", &camera.panSpeed, 0.25f, 4.0f, "%.2fx");
+        (void)EditorSlider("##panSpeed", &camera.panSpeed, 0.25f, 4.0f, "%.2fx", 96.0f, sliderGrabOverflow);
+        ImGui::SameLine();
+        if (ImGui::Button("Display"))
+        {
+            ImGui::OpenPopup("viewport_display");
+        }
+        if (ImGui::BeginPopup("viewport_display"))
+        {
+            (void)ImGui::Checkbox("Origin compass", &showOriginNavigator);
+            (void)ImGui::Checkbox("Grab spills over track", &sliderGrabOverflow);
+            ImGui::EndPopup();
+        }
         ImGui::SameLine();
         if (ImGui::Button("Fit"))
         {
@@ -3285,7 +3450,7 @@ struct EditorSystem::Impl
                 ScopedSnap = ScopedSnapValues;
             }
             const bool ScopedManipulated = ImGuizmo::Manipulate(ScopedView, ScopedProjection, gizmoOperation, gizmoMode,
-                                                               ScopedModel, nullptr, ScopedSnap);
+                                                                ScopedModel, nullptr, ScopedSnap);
             const bool ScopedGizmoUsing = ImGuizmo::IsUsing();
             if (transformCodec != 0xFFFFu && (ScopedGizmoUsing || ScopedManipulated))
             {
@@ -3629,9 +3794,10 @@ struct EditorSystem::Impl
                     continue;
                 }
                 ScopedOps->emplaceBytes(InContext.registry, ScopedEntity,
-                                         ScopedComponent.bytes.empty() ? nullptr : ScopedComponent.bytes.data());
+                                        ScopedComponent.bytes.empty() ? nullptr : ScopedComponent.bytes.data());
             }
-            if (auto* ScopedTransform = InContext.registry.try_get<Transform2D>(ScopedEntity); ScopedTransform != nullptr)
+            if (auto* ScopedTransform = InContext.registry.try_get<Transform2D>(ScopedEntity);
+                ScopedTransform != nullptr)
             {
                 ScopedTransform->Position += Vector2D{32.0f, 32.0f};
             }
@@ -3699,10 +3865,9 @@ struct EditorSystem::Impl
         {
             CommitInteraction();
         }
-        if (interaction.BeginWithSnapshot(commands, InEntity, ScopedCodec, "Rename entity",
-                                          InteractionTransaction::Source::InspectorField,
-                                          std::span<const std::byte>(ScopedBefore.data(), ScopedSize)) !=
-            CommandStack::Result::Ok)
+        if (interaction.BeginWithSnapshot(
+                commands, InEntity, ScopedCodec, "Rename entity", InteractionTransaction::Source::InspectorField,
+                std::span<const std::byte>(ScopedBefore.data(), ScopedSize)) != CommandStack::Result::Ok)
         {
             return;
         }
@@ -3778,8 +3943,7 @@ struct EditorSystem::Impl
                 {
                     continue;
                 }
-                ScopedOps.emplaceBytes(ScopedPrefab, ScopedCopy,
-                                       ScopedOps.get(InContext.registry, ScopedSource));
+                ScopedOps.emplaceBytes(ScopedPrefab, ScopedCopy, ScopedOps.get(InContext.registry, ScopedSource));
             }
         }
         std::error_code ScopedCode;
@@ -3838,10 +4002,9 @@ struct EditorSystem::Impl
         {
             return;
         }
-        if (interaction.BeginWithSnapshot(commands, ScopedEntity, transformCodec, InLabel,
-                                          InteractionTransaction::Source::InspectorField,
-                                          std::span<const std::byte>(ScopedBefore.data(), ScopedSize)) !=
-            CommandStack::Result::Ok)
+        if (interaction.BeginWithSnapshot(
+                commands, ScopedEntity, transformCodec, InLabel, InteractionTransaction::Source::InspectorField,
+                std::span<const std::byte>(ScopedBefore.data(), ScopedSize)) != CommandStack::Result::Ok)
         {
             return;
         }
@@ -3906,6 +4069,148 @@ struct EditorSystem::Impl
             ImPlot::EndPlot();
         }
         ImGui::Text("%.2f ms  |  %.0f fps", InContext.dt * 1000.0f, ImGui::GetIO().Framerate);
+        if (profiler != nullptr)
+        {
+            // Rows from the shared profiler: phase scopes and the frame total.
+            profilerPanel.Update(*profiler, profilerNames);
+            int ScopedSort = static_cast<int>(profilerPanel.SortMode());
+            if (ImGui::Combo("Sort", &ScopedSort, "Total\0Average\0P95\0Max\0"))
+            {
+                profilerPanel.SetSortMode(static_cast<Fby::Core::ProfileSortMode>(ScopedSort));
+                profilerPanel.Update(*profiler, profilerNames);
+            }
+            if (ImGui::BeginTable("profiler_rows", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+            {
+                ImGui::TableSetupColumn("Category");
+                ImGui::TableSetupColumn("Count");
+                ImGui::TableSetupColumn("Avg");
+                ImGui::TableSetupColumn("P95");
+                ImGui::TableHeadersRow();
+                char ScopedBuffer[32];
+                for (const Fby::Core::ProfileRow& ScopedRow : profilerPanel.Rows())
+                {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(ScopedRow.Name.c_str());
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%llu", static_cast<unsigned long long>(ScopedRow.Count));
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(
+                        Fby::Core::FormatMilliseconds(ScopedRow.AverageMs, ScopedBuffer, sizeof(ScopedBuffer)).data());
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(
+                        Fby::Core::FormatMilliseconds(ScopedRow.P95Ms, ScopedBuffer, sizeof(ScopedBuffer)).data());
+                }
+                ImGui::EndTable();
+            }
+            if (profilerPanel.HiddenCount() > 0)
+            {
+                ImGui::Text("%u more categories", profilerPanel.HiddenCount());
+            }
+        }
+        PopMono();
+        EndEditorPanel();
+    }
+
+    void DrawSdfComposer()
+    {
+        if (!showSdfComposer)
+        {
+            return;
+        }
+        if (!BeginEditorPanel("SDF Composer", &showSdfComposer))
+        {
+            EndEditorPanel();
+            return;
+        }
+        PushMono();
+        if (ImGui::Button("Add Box"))
+        {
+            Fby::SdfShape ScopedShape;
+            ScopedShape.SetType(Fby::SdfShapeType::Box);
+            ScopedShape.HalfExtents = Fby::Vector2D{8.0f, 8.0f};
+            (void)sdfComposer.AddLayer(Fby::SdfComposeOp::Union, ScopedShape);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Add Circle"))
+        {
+            Fby::SdfShape ScopedShape;
+            ScopedShape.SetType(Fby::SdfShapeType::Circle);
+            ScopedShape.Radius = 8.0f;
+            (void)sdfComposer.AddLayer(Fby::SdfComposeOp::Union, ScopedShape);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Subtract"))
+        {
+            Fby::SdfShape ScopedShape;
+            ScopedShape.SetType(Fby::SdfShapeType::Circle);
+            ScopedShape.Radius = 4.0f;
+            (void)sdfComposer.AddLayer(Fby::SdfComposeOp::Subtract, ScopedShape);
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!sdfComposer.CanUndo());
+        if (ImGui::Button("Undo"))
+        {
+            (void)sdfComposer.Undo();
+            composerPreviewValid = false;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!sdfComposer.CanRedo());
+        if (ImGui::Button("Redo"))
+        {
+            (void)sdfComposer.Redo();
+            composerPreviewValid = false;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::Text("%u layers", sdfComposer.Composer().LayerCount());
+
+        ImGui::Separator();
+        const std::span<const Fby::SdfComposeLayer> ScopedLayers = sdfComposer.Composer().Layers();
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedLayers.size(); ++ScopedIndex)
+        {
+            const Fby::SdfComposeLayer& ScopedLayer = ScopedLayers[ScopedIndex];
+            ImGui::PushID(static_cast<int>(ScopedIndex));
+            const char* ScopedOpName = ScopedLayer.Op == Fby::SdfComposeOp::Union
+                                           ? "union"
+                                           : (ScopedLayer.Op == Fby::SdfComposeOp::Subtract ? "subtract" : "intersect");
+            ImGui::Text("%u: %s %s at (%.1f, %.1f)", ScopedIndex, ScopedOpName,
+                        ScopedLayer.Shape.GetType() == Fby::SdfShapeType::Circle ? "circle" : "box",
+                        ScopedLayer.Center.X, ScopedLayer.Center.Y);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Remove"))
+            {
+                (void)sdfComposer.RemoveLayer(ScopedIndex);
+                composerPreviewValid = false;
+                ImGui::PopID();
+                break;
+            }
+            ImGui::PopID();
+        }
+        if (ScopedLayers.empty())
+        {
+            ImGui::TextUnformatted("No layers yet: add a box or a circle.");
+        }
+
+        ImGui::Separator();
+        if (ImGui::Button("Bake preview"))
+        {
+            composerPreviewValid = sdfComposer.Composer().Bake(Fby::Vector2D{-32.0f, -32.0f}, Fby::Vector2D{1.0f, 1.0f},
+                                                               64, 64, &composerPreviewSamples, &composerPreviewField);
+        }
+        if (composerPreviewValid)
+        {
+            std::uint32_t ScopedSolid = 0;
+            for (const float ScopedSample : composerPreviewSamples)
+            {
+                if (ScopedSample < 0.0f)
+                {
+                    ++ScopedSolid;
+                }
+            }
+            ImGui::Text("Preview: %u of %zu cells solid", ScopedSolid, composerPreviewSamples.size());
+        }
         PopMono();
         EndEditorPanel();
     }
@@ -4073,8 +4378,7 @@ struct EditorSystem::Impl
             }
             if (ImGui::BeginMenu("View"))
             {
-                const bool ScopedFullscreen =
-                    window != nullptr && window->Mode() == WindowMode::BorderlessFullscreen;
+                const bool ScopedFullscreen = window != nullptr && window->Mode() == WindowMode::BorderlessFullscreen;
                 if (ImGui::MenuItem("Fullscreen (Borderless)", "F11", ScopedFullscreen) && window != nullptr)
                 {
                     (void)window->SetWindowMode(ScopedFullscreen ? WindowMode::Windowed
@@ -4086,7 +4390,8 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("Inspector", nullptr, &showInspector);
                 ImGui::MenuItem("Viewport", nullptr, &showViewport);
                 ImGui::MenuItem("PIE Client", nullptr, &showPieClient);
-                ImGui::MenuItem("Profiler", nullptr, &showProfiler);
+                ImGui::MenuItem("Profiler", "F7", &showProfiler);
+                ImGui::MenuItem("SDF Composer", "F8", &showSdfComposer);
                 ImGui::MenuItem("Scene Diagnostics", nullptr, &showSceneDiagnostics);
                 ImGui::MenuItem("LogBoy", nullptr, &showLogBoy);
                 ImGui::MenuItem("Physics Debug Draw", nullptr, &showPhysicsDebug);
@@ -4098,7 +4403,8 @@ struct EditorSystem::Impl
                         ClampViewportViewMode(projectConfig.Editor().viewportViewMode);
                     for (const Rhi::ViewportModeDescriptor& ScopedDescriptor : Rhi::AllViewportModes())
                     {
-                        const bool ScopedSelected = static_cast<std::uint32_t>(ScopedDescriptor.Mode) == ScopedCurrentMode;
+                        const bool ScopedSelected =
+                            static_cast<std::uint32_t>(ScopedDescriptor.Mode) == ScopedCurrentMode;
                         if (ImGui::MenuItem(ScopedDescriptor.Label, nullptr, ScopedSelected))
                         {
                             projectConfig.Editor().viewportViewMode = static_cast<std::uint32_t>(ScopedDescriptor.Mode);
@@ -4108,11 +4414,10 @@ struct EditorSystem::Impl
                     ImGui::Separator();
                     if (ImGui::MenuItem("Next Mode", "F6"))
                     {
-                        projectConfig.Editor().viewportViewMode = static_cast<std::uint32_t>(Rhi::CycleViewportMode(
-                            static_cast<Rhi::ViewportMode>(ScopedCurrentMode), 1));
-                        SetStatus(std::string("view mode: ") +
-                                  Rhi::ViewportModeName(static_cast<Rhi::ViewportMode>(
-                                      projectConfig.Editor().viewportViewMode)));
+                        projectConfig.Editor().viewportViewMode = static_cast<std::uint32_t>(
+                            Rhi::CycleViewportMode(static_cast<Rhi::ViewportMode>(ScopedCurrentMode), 1));
+                        SetStatus(std::string("view mode: ") + Rhi::ViewportModeName(static_cast<Rhi::ViewportMode>(
+                                                                   projectConfig.Editor().viewportViewMode)));
                     }
                     ImGui::EndMenu();
                 }
@@ -4128,11 +4433,14 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("AI State Tree", nullptr, &showAIStateTree);
                 ImGui::MenuItem("Animation Graph", nullptr, &showAnimationGraph);
                 ImGui::Separator();
+                ImGui::MenuItem("Level Settings", nullptr, &showLevelSettings);
                 ImGui::MenuItem("Project Settings", nullptr, &showProjectSettings);
                 ImGui::MenuItem("Editor Settings", nullptr, &showEditorSettings);
+                ImGui::MenuItem("Player Settings", nullptr, &showUserSettings);
                 ImGui::MenuItem("Licenses", nullptr, &showLicenses);
                 ImGui::MenuItem("Network Diagnostics", nullptr, &showNetworkDiagnostics);
                 ImGui::MenuItem("Voice Devices", nullptr, &showVoiceDevices);
+                ImGui::MenuItem("Transport Groups", nullptr, &showTransportGroups);
                 ImGui::MenuItem("ImGui demo", nullptr, &showDemo);
                 ImGui::EndMenu();
             }
@@ -4169,8 +4477,16 @@ struct EditorSystem::Impl
             const std::uint32_t ScopedCurrentMode = ClampViewportViewMode(projectConfig.Editor().viewportViewMode);
             projectConfig.Editor().viewportViewMode = static_cast<std::uint32_t>(
                 Rhi::CycleViewportMode(static_cast<Rhi::ViewportMode>(ScopedCurrentMode), 1));
-            SetStatus(std::string("view mode: ") + Rhi::ViewportModeName(static_cast<Rhi::ViewportMode>(
-                                                        projectConfig.Editor().viewportViewMode)));
+            SetStatus(std::string("view mode: ") +
+                      Rhi::ViewportModeName(static_cast<Rhi::ViewportMode>(projectConfig.Editor().viewportViewMode)));
+        }
+        if (!ScopedIo.WantTextInput && !ScopedIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F7, false))
+        {
+            showProfiler = !showProfiler;
+        }
+        if (!ScopedIo.WantTextInput && !ScopedIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F8, false))
+        {
+            showSdfComposer = !showSdfComposer;
         }
         if (!ScopedIo.WantTextInput && pie.Active() && piePaused && ImGui::IsKeyPressed(ImGuiKey_F10, false))
         {
@@ -4221,14 +4537,32 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     MImpl->gpu = InContext.renderer;
     MImpl->window = InContext.window;
     MImpl->vfs = InContext.assets;
+    MImpl->projectSettings.SetUpscalerCaps(MImpl->gpu->Info().upscalers);
+    MImpl->backendCaps = Fby::Rhi::CapabilitiesFromDevice(MImpl->gpu->Info());
+    MImpl->projectSettings.SetBackendCapabilities(MImpl->backendCaps);
     if (InContext.accessibility == nullptr)
     {
         InContext.accessibility = &MImpl->accessibility;
+    }
+    if (InContext.gameplayTags == nullptr)
+    {
+        InContext.gameplayTags = &MImpl->gameplayTags;
+    }
+    if (InContext.gameplayAttributes == nullptr)
+    {
+        InContext.gameplayAttributes = &MImpl->gameplayAttributes;
     }
     MImpl->desc = InDesc;
     MImpl->visible = InDesc.startVisible;
     MImpl->showDemo = InDesc.showDemoWindow;
     MImpl->iniPath = InDesc.iniPath.string();
+    {
+        std::string ScopedUserError;
+        if (!LoadUserSettings("Saved/Config/UserSettings.toml", &MImpl->userSettings, &ScopedUserError))
+        {
+            LogInfo("editor", "user settings not loaded: {}", ScopedUserError);
+        }
+    }
     Scene::RegisterBuiltInComponents(MImpl->components);
     MImpl->textureArray = InDesc.textureArray;
     MImpl->thumbnails.Initialize(InContext.renderer);
@@ -4246,7 +4580,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
 
     ApplyEditorTheme();
     MImpl->styleUiScale = InDesc.uiScale;
-    MImpl->ApplyStyleScale(MImpl->window->DisplayScale());
+    MImpl->ApplyStyleScale();
 
     if (!ImGui_ImplSDL3_InitForVulkan(static_cast<SDL_Window*>(MImpl->window->NativeWindow())))
     {
@@ -4314,8 +4648,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     MImpl->gpu->SetUiRenderer(&Impl::RenderThunk, this);
     // The ImGui ini remembers the dock layout. A stale one (older panel set or
     // the pre-readability split) is rebuilt once and then versioned.
-    const std::filesystem::path ScopedLayoutMarker =
-        std::filesystem::path(InDesc.iniPath.string() + ".layout");
+    const std::filesystem::path ScopedLayoutMarker = std::filesystem::path(InDesc.iniPath.string() + ".layout");
     std::uint32_t ScopedLayoutVersion = 0;
     {
         std::ifstream ScopedMarker(ScopedLayoutMarker);
@@ -4324,8 +4657,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
             ScopedMarker >> ScopedLayoutVersion;
         }
     }
-    MImpl->needsLayout =
-        !std::filesystem::exists(InDesc.iniPath) || ScopedLayoutVersion != kEditorLayoutVersion;
+    MImpl->needsLayout = !std::filesystem::exists(InDesc.iniPath) || ScopedLayoutVersion != kEditorLayoutVersion;
     MImpl->layoutMarker = ScopedLayoutMarker;
     MImpl->initialized = true;
 
@@ -4351,7 +4683,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     MImpl->projectSettings.Initialize(MImpl->commands, MImpl->projectConfig, MImpl->projectSettingsCodec);
     MImpl->editorSettings.Initialize(MImpl->commands, MImpl->projectConfig, MImpl->editorSettingsCodec);
 
-    // Step 2: both visual editors share the same CommandStack as the Inspector.
+    // Both visual editors share the CommandStack with the Inspector.
     (void)MImpl->materialGraph.Initialize(MImpl->commands, MImpl->gpu);
     Script::AotBuildOptions ScopedAotOptions;
     ScopedAotOptions.outputDirectory = std::filesystem::current_path() / "build" / "aot";
@@ -4363,7 +4695,9 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     ScopedDebugAotOptions.moduleName = "script_debug";
     MImpl->scriptDebugger.SetAotOptions(ScopedDebugAotOptions);
     (void)MImpl->aiStateTree.Initialize(MImpl->commands);
+    MImpl->aiStateTree.SetGameplayTagRegistry(&MImpl->gameplayTags);
     (void)MImpl->animationGraph.Initialize(MImpl->commands);
+    MImpl->animationGraph.SetGameplayTagRegistry(&MImpl->gameplayTags);
 
     // Allocate the PIE arena once, at editor startup. Play/Step/Stop then
     MImpl->pieArena.resize(kPieArenaBytes);
@@ -4599,7 +4933,10 @@ bool EditorSystem::Register(Ecs::SystemGraph& InGraph)
     // Function pointer + object pointer: the graph never stores a std::function
     return InGraph.Add(
         Ecs::Phase::Render, "editor",
-        +[](Ecs::SystemContext& InContext, void* InUser) { static_cast<EditorSystem*>(InUser)->Tick(InContext); },
+        +[](Ecs::SystemContext& InContext, void* InUser)
+        {
+            static_cast<EditorSystem*>(InUser)->Tick(InContext);
+        },
         this);
 }
 
@@ -4642,9 +4979,8 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     // Dirty marker and autosave. The marker is derived from the command stack, so
     // undoing back to the saved state clears it again.
     const CommandStack::Stats ScopedCommandStats = MImpl->commands.GetStats();
-    MImpl->sceneDirty =
-        MImpl->projectOpen &&
-        (ScopedCommandStats.commands != MImpl->savedCommandCount || ScopedCommandStats.undoDepth != MImpl->savedCursor);
+    MImpl->sceneDirty = MImpl->projectOpen && (ScopedCommandStats.commands != MImpl->savedCommandCount ||
+                                               ScopedCommandStats.undoDepth != MImpl->savedCursor);
     if (MImpl->window != nullptr && MImpl->titleDirty != MImpl->sceneDirty)
     {
         MImpl->titleDirty = MImpl->sceneDirty;
@@ -4682,8 +5018,8 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             VoiceSystemConfig ScopedConfig{};
             ScopedConfig.LocalPlayer = 0;
             const auto& ScopedProject = MImpl->projectConfig.Config().project;
-            ScopedConfig.Denoise = static_cast<VoiceDenoiseTier>(
-                std::clamp<std::uint32_t>(ScopedProject.voiceDenoise, 0, 3));
+            ScopedConfig.Denoise =
+                static_cast<VoiceDenoiseTier>(std::clamp<std::uint32_t>(ScopedProject.voiceDenoise, 0, 3));
             ScopedConfig.Aec.Enabled = ScopedProject.voiceAec;
             ScopedConfig.Aec.TailMs = ScopedProject.voiceAecTailMs;
             ScopedConfig.Aec.StepSize = ScopedProject.voiceAecStep;
@@ -4692,19 +5028,18 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             {
                 if (MImpl->voiceDevicesReady)
                 {
-                    const AudioDeviceList& ScopedInputs =
-                        MImpl->voiceDevicesEnumerator.Devices(AudioDeviceKind::Input);
-                    std::int32_t ScopedIndex = MImpl->voiceDevicesEnumerator.Resolve(
-                        AudioDeviceKind::Input, ScopedProject.voiceInputDevice);
+                    const AudioDeviceList& ScopedInputs = MImpl->voiceDevicesEnumerator.Devices(AudioDeviceKind::Input);
+                    std::int32_t ScopedIndex =
+                        MImpl->voiceDevicesEnumerator.Resolve(AudioDeviceKind::Input, ScopedProject.voiceInputDevice);
                     if (ScopedIndex < 0 && ScopedInputs.Count > 0)
                     {
                         ScopedIndex = 0;
                     }
                     if (ScopedIndex >= 0)
                     {
-                        (void)ScopedRuntime->StartCapture(
-                            MImpl->voiceDevicesEnumerator,
-                            ScopedInputs.Devices[static_cast<std::uint32_t>(ScopedIndex)], &ScopedVoiceError);
+                        (void)ScopedRuntime->StartCapture(MImpl->voiceDevicesEnumerator,
+                                                          ScopedInputs.Devices[static_cast<std::uint32_t>(ScopedIndex)],
+                                                          &ScopedVoiceError);
                     }
                 }
                 MImpl->voiceRuntime = std::move(ScopedRuntime);
@@ -4746,12 +5081,15 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         if (ScopedReloaded)
         {
             MImpl->visualScript.SetFonts(&MImpl->fonts);
-            MImpl->materialGraph.Canvas().SetModelFonts(
-                MImpl->fonts.ScriptNodeTitle(), MImpl->fonts.ScriptPinInput(), MImpl->fonts.ScriptPinOutput(),
-                MImpl->fonts.PanelTitle());
+            MImpl->materialGraph.Canvas().SetModelFonts(MImpl->fonts.ScriptNodeTitle(), MImpl->fonts.ScriptPinInput(),
+                                                        MImpl->fonts.ScriptPinOutput(), MImpl->fonts.PanelTitle());
             SetEditorFonts(&MImpl->fonts);
             MImpl->PrintConsole("fonts: typography settings reloaded");
         }
+        // The UI scale is part of the same settings block, so the panel
+        // geometry has to follow the new value in the same frame.
+        MImpl->styleUiScale = ScopedFontSpec.uiScale;
+        MImpl->ApplyStyleScale();
     }
     if (MImpl->fonts.DetectFontChanges())
     {
@@ -4768,9 +5106,8 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         if (ScopedReloaded)
         {
             MImpl->visualScript.SetFonts(&MImpl->fonts);
-            MImpl->materialGraph.Canvas().SetModelFonts(
-                MImpl->fonts.ScriptNodeTitle(), MImpl->fonts.ScriptPinInput(), MImpl->fonts.ScriptPinOutput(),
-                MImpl->fonts.PanelTitle());
+            MImpl->materialGraph.Canvas().SetModelFonts(MImpl->fonts.ScriptNodeTitle(), MImpl->fonts.ScriptPinInput(),
+                                                        MImpl->fonts.ScriptPinOutput(), MImpl->fonts.PanelTitle());
             SetEditorFonts(&MImpl->fonts);
             MImpl->PrintConsole("fonts: hot-reloaded from the VFS (GPU idle barrier)");
         }
@@ -4802,22 +5139,22 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         if (ScopedCommitted > 0)
         {
             if (InContext.audio != nullptr)
-    {
-        AudioDeviceEnumerator ScopedDevices;
-        std::string ScopedDeviceError;
-        if (ScopedDevices.Initialize(&ScopedDeviceError))
-        {
-            const char* ScopedPreferred = MImpl->projectConfig.Config().project.voiceOutputDevice;
-            const std::int32_t ScopedIndex = ScopedDevices.Resolve(AudioDeviceKind::Output, ScopedPreferred);
-            if (ScopedIndex >= 0)
             {
-                (void)InContext.audio->ReopenOutput(ScopedDevices, AudioDeviceKind::Output,
-                                                   static_cast<std::uint32_t>(ScopedIndex));
+                AudioDeviceEnumerator ScopedDevices;
+                std::string ScopedDeviceError;
+                if (ScopedDevices.Initialize(&ScopedDeviceError))
+                {
+                    const char* ScopedPreferred = MImpl->projectConfig.Config().project.voiceOutputDevice;
+                    const std::int32_t ScopedIndex = ScopedDevices.Resolve(AudioDeviceKind::Output, ScopedPreferred);
+                    if (ScopedIndex >= 0)
+                    {
+                        (void)InContext.audio->ReopenOutput(ScopedDevices, AudioDeviceKind::Output,
+                                                            static_cast<std::uint32_t>(ScopedIndex));
+                    }
+                }
             }
-        }
-    }
 
-    MImpl->contentBrowser.RequestRefresh();
+            MImpl->contentBrowser.RequestRefresh();
         }
         if (!ScopedImportError.empty())
         {
@@ -5024,6 +5361,10 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     MImpl->animationGraph.Draw("Animation Graph", &MImpl->showAnimationGraph);
     MImpl->DrawViewport(InContext);
     MImpl->DrawPieClientViewport();
+    if (MImpl->showLevelSettings)
+    {
+        MImpl->levelSettings.Draw(InContext, &MImpl->showLevelSettings);
+    }
     if (MImpl->showProjectSettings)
     {
         MImpl->projectSettings.Draw(InContext, &MImpl->showProjectSettings);
@@ -5031,6 +5372,22 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     if (MImpl->showEditorSettings)
     {
         MImpl->editorSettings.Draw(InContext, &MImpl->showEditorSettings);
+    }
+    if (MImpl->showUserSettings)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Player Settings", &MImpl->showUserSettings))
+        {
+            if (UserSettingsPanel::Draw(MImpl->userSettings, &MImpl->backendCaps))
+            {
+                std::string ScopedError;
+                if (!SaveUserSettings("Saved/Config/UserSettings.toml", MImpl->userSettings, &ScopedError))
+                {
+                    LogWarn("editor", "user settings save failed: {}", ScopedError);
+                }
+            }
+        }
+        ImGui::End();
     }
     if (MImpl->showLicenses)
     {
@@ -5047,7 +5404,14 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
         MImpl->voiceDevices.Draw(&MImpl->showVoiceDevices, &MImpl->projectConfig, InContext.audio);
     }
+    if (MImpl->showTransportGroups)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->transportGroups.Draw(&MImpl->showTransportGroups, InContext.registry,
+                                    SelectedEntity(InContext.registry));
+    }
     MImpl->DrawProfiler(InContext);
+    MImpl->DrawSdfComposer();
     MImpl->logBoy.SetFrame(static_cast<std::uint32_t>(InContext.frameIndex));
     if (MImpl->showLogBoy)
     {
@@ -5095,12 +5459,11 @@ void EditorSystem::OnPlatformEvent(const void* InSdlEvent)
     if (ScopedEvent->type == SDL_EVENT_WINDOW_DISPLAY_CHANGED ||
         ScopedEvent->type == SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED)
     {
-        const float ScopedScale = MImpl->window != nullptr ? MImpl->window->DisplayScale() : 1.0f;
-        if (std::abs(ScopedScale - MImpl->lastDisplayScale) > 0.001f)
-        {
-            MImpl->ApplyStyleScale(ScopedScale);
-            MImpl->fonts.RefreshDisplayScale(ImGui::GetIO(), MImpl->window);
-        }
+        // Both calls compare the new display, pixel density and content scale
+        // against the last applied values, so an event that does not change the
+        // effective scale is a no-op.
+        MImpl->ApplyStyleScale();
+        MImpl->fonts.RefreshDisplayScale(ImGui::GetIO(), MImpl->window);
     }
     ImGui_ImplSDL3_ProcessEvent(ScopedEvent);
 }
@@ -5135,12 +5498,47 @@ void EditorSystem::SetVisible(bool InVisible)
     MImpl->visible = InVisible;
 }
 
+void EditorSystem::SetProfiler(Core::Profiler* InProfiler) noexcept
+{
+    MImpl->profiler = InProfiler;
+}
+
 Rhi::RenderTargetHandle EditorSystem::ViewportTarget() const noexcept
 {
     return MImpl->target;
 }
 
+Rhi::RenderTargetHandle EditorSystem::ViewportDisplayTarget() const noexcept
+{
+    return MImpl->displayTarget.IsValid() ? MImpl->displayTarget : MImpl->target;
+}
+
+Rhi::RenderTargetHandle EditorSystem::ViewportHudTarget() const noexcept
+{
+    return MImpl->hudTarget;
+}
+
+Rhi::RenderTargetHandle EditorSystem::ViewportMotionTarget() const noexcept
+{
+    return MImpl->motionTarget;
+}
+
+Rhi::RenderTargetHandle EditorSystem::ViewportFsr1Intermediate() const noexcept
+{
+    return MImpl->fsr1Intermediate;
+}
+
+bool EditorSystem::ViewportUpscaleActive() const noexcept
+{
+    return MImpl->displayTarget.IsValid();
+}
+
 Rhi::Extent2D EditorSystem::ViewportSize() const noexcept
+{
+    return MImpl->displaySize.width > 0 ? MImpl->displaySize : MImpl->targetSize;
+}
+
+Rhi::Extent2D EditorSystem::ViewportRenderSize() const noexcept
 {
     return MImpl->targetSize;
 }
@@ -5216,7 +5614,22 @@ Rhi::RenderTargetHandle EditorSystem::PieClientTarget() const noexcept
     return MImpl->pieClientViewport.Target();
 }
 
+Rhi::RenderTargetHandle EditorSystem::PieClientDisplayTarget() const noexcept
+{
+    return MImpl->pieDisplayTarget;
+}
+
+Rhi::RenderTargetHandle EditorSystem::PieClientFsr1Intermediate() const noexcept
+{
+    return MImpl->pieFsr1Intermediate;
+}
+
 Rhi::Extent2D EditorSystem::PieClientSize() const noexcept
+{
+    return MImpl->displaySize.width > 0 ? MImpl->displaySize : MImpl->pieClientViewport.Size();
+}
+
+Rhi::Extent2D EditorSystem::PieClientRenderSize() const noexcept
 {
     return MImpl->pieClientViewport.Size();
 }
@@ -5259,6 +5672,16 @@ ProjectSettingsPanel& EditorSystem::ProjectSettings() noexcept
 EditorSettingsPanel& EditorSystem::EditorSettings() noexcept
 {
     return MImpl->editorSettings;
+}
+
+UserSettings& EditorSystem::UserConfig() noexcept
+{
+    return MImpl->userSettings;
+}
+
+const UserSettings& EditorSystem::UserConfig() const noexcept
+{
+    return MImpl->userSettings;
 }
 
 AssetImportService& EditorSystem::Importer() noexcept
@@ -5335,6 +5758,7 @@ bool EditorSystem::OpenProject(Ecs::SystemContext& InContext, const ProjectPaths
 
     MImpl->desc.projectRoot = InPaths.root;
     MImpl->desc.showProjectDashboard = false;
+    MImpl->projectConfig.Project().gameplayTags.ApplyToRegistry(MImpl->gameplayTags);
     MImpl->dashboard.Initialize(InPaths, MImpl->projectConfig.Config(), false);
     MImpl->contentBrowser.SetProjectRoot(InPaths.assets);
     MImpl->contentBrowser.Initialize(InContext.assetDb, ContentBrowserPanel::Config{InPaths.assets}, &MImpl->importer);
@@ -5364,6 +5788,7 @@ bool EditorSystem::OpenProject(Ecs::SystemContext& InContext, const ProjectPaths
     }
     MImpl->projectOpen = true;
     MImpl->projectSettings.Apply(InContext);
+    // EditorSettingsPanel::Apply pushes the loaded log limits into the sink.
     MImpl->editorSettings.Apply(InContext);
 
     MImpl->commands.ClearHistory();

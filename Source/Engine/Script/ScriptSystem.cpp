@@ -3,6 +3,7 @@
 
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/Physics/TransportGroups.hpp"
 #include "Engine/Script/AotHost.hpp"
 
 #include <array>
@@ -76,6 +77,59 @@ void NativeRandomRange(Script::ScriptVm& InVm, Script::VmContext& InContext, std
     InVm.SetF(InBase, InContext.rng != nullptr ? InContext.rng->RangeFloat(0.0f, ScopedMaximum) : 0.0f);
 }
 
+void NativeTransportAttach(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.transport == nullptr)
+    {
+        InVm.SetU(InBase, 0);
+        return;
+    }
+    const auto ScopedGroup = static_cast<std::uint32_t>(InVm.F(InBase + 1));
+    const auto ScopedMode = static_cast<std::uint32_t>(InVm.F(InBase + 2));
+    InVm.SetU(InBase, InContext.transport->Attach(InContext.registry, InContext.self, ScopedGroup, ScopedMode,
+                                                  kCarrierFlagInheritRotation)
+                          ? 1u
+                          : 0u);
+}
+
+void NativeTransportDetach(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.transport == nullptr)
+    {
+        InVm.SetU(InBase, 0);
+        return;
+    }
+    InVm.SetU(InBase, InContext.transport->Detach(InContext.registry, InContext.self, true) ? 1u : 0u);
+}
+
+void NativeTransportCreate(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.transport == nullptr)
+    {
+        InVm.SetU(InBase, 0);
+        return;
+    }
+    const auto ScopedGroup = static_cast<std::uint32_t>(InVm.F(InBase + 1));
+    const auto ScopedParent = static_cast<std::uint32_t>(InVm.F(InBase + 2));
+    const auto ScopedPolicy = static_cast<std::uint32_t>(InVm.F(InBase + 3));
+    InVm.SetU(InBase, InContext.transport->CreateGroup(InContext.registry, InContext.self, ScopedGroup, ScopedParent,
+                                                       ScopedPolicy)
+                          ? 1u
+                          : 0u);
+}
+
+void NativeTransportSetParent(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.transport == nullptr)
+    {
+        InVm.SetU(InBase, 0);
+        return;
+    }
+    const auto ScopedGroup = static_cast<std::uint32_t>(InVm.F(InBase + 1));
+    const auto ScopedParent = static_cast<std::uint32_t>(InVm.F(InBase + 2));
+    InVm.SetU(InBase, InContext.transport->SetParentGroup(InContext.registry, ScopedGroup, ScopedParent) ? 1u : 0u);
+}
+
 void NativePlaySound(Script::ScriptVm& InVm, Script::VmContext&, std::uint8_t InBase)
 {
     // Audio bus routing is the audio module's business; the script layer only
@@ -106,7 +160,7 @@ void NativeGetFrameIndex(Script::ScriptVm& InVm, Script::VmContext& InContext, s
 }
 
 [[nodiscard]] bool ReadScriptBigNumber(Script::VmContext& InContext, std::uint32_t InToken,
-                                      Script::BigNumberPool::Value* OutValue) noexcept
+                                       Script::BigNumberPool::Value* OutValue) noexcept
 {
     if (InContext.bigNumbers == nullptr || OutValue == nullptr)
     {
@@ -122,8 +176,7 @@ void NativeBigIntFromInt(Script::ScriptVm& InVm, Script::VmContext& InContext, s
         InVm.SetF(InBase, 0.0f);
         return;
     }
-    const auto ScopedValue =
-        Script::BigNumberPool::Value::FromInt64(static_cast<std::int64_t>(InVm.F(InBase)));
+    const auto ScopedValue = Script::BigNumberPool::Value::FromInt64(static_cast<std::int64_t>(InVm.F(InBase)));
     const auto ScopedHandle = InContext.bigNumbers->Create(ScopedValue);
     InVm.SetF(InBase, static_cast<float>(PackScriptBigNumber(ScopedHandle)));
 }
@@ -173,9 +226,8 @@ void NativeBigIntBinary(Script::ScriptVm& InVm, Script::VmContext& InContext, st
             ScopedStatus = InContext.bigNumbers->DivMod(ScopedLeft, ScopedRight, &ScopedRemainder, &ScopedResult);
             break;
     }
-    InVm.SetF(InBase, ScopedStatus == Fby::BigNum::Status::Ok
-                          ? static_cast<float>(PackScriptBigNumber(ScopedResult))
-                          : 0.0f);
+    InVm.SetF(InBase,
+              ScopedStatus == Fby::BigNum::Status::Ok ? static_cast<float>(PackScriptBigNumber(ScopedResult)) : 0.0f);
 }
 
 void NativeBigIntAdd(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
@@ -288,8 +340,7 @@ void NativeDecimalFromInt(Script::ScriptVm& InVm, Script::VmContext& InContext, 
         InVm.SetF(InBase, 0.0f);
         return;
     }
-    const auto ScopedValue =
-        Script::DecimalPool::Value::FromInt64(static_cast<std::int64_t>(InVm.F(InBase)));
+    const auto ScopedValue = Script::DecimalPool::Value::FromInt64(static_cast<std::int64_t>(InVm.F(InBase)));
     const auto ScopedHandle = InContext.decimals->Create(ScopedValue);
     InVm.SetF(InBase, static_cast<float>(PackScriptDecimal(ScopedHandle)));
 }
@@ -374,14 +425,12 @@ void NativeDecimalDivRounded(Script::ScriptVm& InVm, Script::VmContext& InContex
         return;
     }
     const int ScopedMode = static_cast<int>(InVm.F(InBase + 2));
-    const auto ScopedRounding =
-        ScopedMode >= 0 && ScopedMode <= static_cast<int>(Fby::BigNum::RoundingMode::Ceil)
-            ? static_cast<Fby::BigNum::RoundingMode>(ScopedMode)
-            : Fby::BigNum::RoundingMode::HalfEven;
+    const auto ScopedRounding = ScopedMode >= 0 && ScopedMode <= static_cast<int>(Fby::BigNum::RoundingMode::Ceil)
+                                    ? static_cast<Fby::BigNum::RoundingMode>(ScopedMode)
+                                    : Fby::BigNum::RoundingMode::HalfEven;
     Fby::BigNum::Handle ScopedResult;
-    const Fby::BigNum::Status ScopedStatus =
-        InContext.decimals->Div(ScopedLeft, ScopedRight, &ScopedResult, Fby::BigNum::kDefaultDecimalPrecision,
-                                ScopedRounding);
+    const Fby::BigNum::Status ScopedStatus = InContext.decimals->Div(
+        ScopedLeft, ScopedRight, &ScopedResult, Fby::BigNum::kDefaultDecimalPrecision, ScopedRounding);
     InVm.SetF(InBase, ScopedStatus == Fby::BigNum::Status::Ok || ScopedStatus == Fby::BigNum::Status::Inexact
                           ? static_cast<float>(PackScriptDecimal(ScopedResult))
                           : 0.0f);
@@ -444,6 +493,8 @@ void RegisterScriptableComponents(Script::EcsBridge& InBridge)
     // Built-ins a visual graph can read/write today. Every registration is a
     (void)InBridge.RegisterComponent<Transform2D>("Transform2D");
     (void)InBridge.RegisterComponent<Velocity>("Velocity");
+    (void)InBridge.RegisterComponent<TransportGroupComponent>("TransportGroupComponent");
+    (void)InBridge.RegisterComponent<CarrierMemberComponent>("CarrierMemberComponent");
     (void)InBridge.RegisterComponent<Sprite2D>("Sprite2D");
     (void)InBridge.RegisterComponent<DrawOrder>("DrawOrder");
     (void)InBridge.RegisterComponent<Lifetime>("Lifetime");
@@ -483,6 +534,10 @@ void RegisterDefaultScriptNatives(ScriptRuntime& InRuntime)
     InRuntime.SetNative(Script::NativeId::DecimalToInt, &NativeDecimalToInt);
     InRuntime.SetNative(Script::NativeId::DecimalLog, &NativeDecimalLog);
     InRuntime.SetNative(Script::NativeId::DecimalRelease, &NativeDecimalRelease);
+    InRuntime.SetNative(Script::NativeId::TransportAttach, &NativeTransportAttach);
+    InRuntime.SetNative(Script::NativeId::TransportDetach, &NativeTransportDetach);
+    InRuntime.SetNative(Script::NativeId::TransportSetParent, &NativeTransportSetParent);
+    InRuntime.SetNative(Script::NativeId::TransportCreate, &NativeTransportCreate);
 }
 
 bool ScriptRuntime::Initialize()
@@ -610,6 +665,7 @@ bool RunScriptOnce(ScriptRuntime& InRuntime, std::uint32_t InProgram, Entity InE
         return false;
     }
     InRuntime.ResetTransientNumbers();
+    InContext.self = InEntity;
     Script::VmFault ScopedLocalFault;
     const bool ScopedResult = InRuntime.Vm().Run(*ScopedBound, InEvent, InEntity, InContext,
                                                  InFault != nullptr ? InFault : &ScopedLocalFault);
@@ -635,6 +691,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     ScopedVmContext.decimals = &InRuntime.Decimals();
     ScopedVmContext.dt = InContext.dt;
     ScopedVmContext.frameIndex = InContext.frameIndex;
+    ScopedVmContext.transport = InRuntime.TransportGroups();
 
     auto ScopedView = InContext.registry.view<ScriptComponent>();
     for (const Entity ScopedEntity : ScopedView)
@@ -648,6 +705,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
         {
             continue;
         }
+        ScopedVmContext.self = ScopedEntity;
         const std::uint64_t ScopedHash = InRuntime.ProgramHash(ScopedComponent.Program);
         const bool ScopedNativized = InAot != nullptr && ScopedHash != 0 && InAot->HasProgram(ScopedHash);
         const Script::BoundProgram* ScopedProgram = InRuntime.Program(ScopedComponent.Program);
@@ -661,7 +719,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
         {
             // Cooked-build contract: a program without a native module is a build
             // error, not a reason to start the interpreter.
-            LogError("script", "program {} ({:016x}) has no AOT module and the VM fallback is disabled", 
+            LogError("script", "program {} ({:016x}) has no AOT module and the VM fallback is disabled",
                      ScopedComponent.Program, ScopedHash);
             (void)InRuntime.ReportUnnativized();
             ScopedComponent.Flags |= kScriptFlagStarted;

@@ -98,10 +98,10 @@ extract "$(download "https://github.com/mackron/miniaudio/archive/refs/tags/0.11
     "${THIRD}/miniaudio-master/miniaudio-master"
 echo "miniaudio = 0.11.23" >> "${THIRD}/dependencies.lock"
 
-echo "==> Box2D v3.0.0"
-extract "$(download "https://github.com/erincatto/box2d/archive/refs/tags/v3.0.0.tar.gz" box2d.tar.gz)" \
+echo "==> Box2D v3.2.0"
+extract "$(download "https://github.com/erincatto/box2d/archive/refs/tags/v3.2.0.tar.gz" box2d.tar.gz)" \
     "${THIRD}/box2d-main/box2d-main"
-echo "box2d = v3.0.0" >> "${THIRD}/dependencies.lock"
+echo "box2d = v3.2.0" >> "${THIRD}/dependencies.lock"
 
 echo "==> RNNoise 0.1.1"
 rnnoise_archive="$(download "https://github.com/xiph/rnnoise/archive/refs/tags/v0.1.1.tar.gz" rnnoise.tar.gz)"

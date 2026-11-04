@@ -1,13 +1,13 @@
 # Управление проектом и движком через CMake
 
-Применимо к FemboyEngine2D 0.1.0-alpha.1 и CMake 3.28 или новее.
+Применимо к FemboyEngine2D 0.2.0-alpha.1 и CMake 3.28 или новее.
 
 ## Требования к инструментам
 
 Движку нужен C++26:
 
 - Windows: clang-cl 19+ с MSVC STL или MSVC 19.40+.
-- Linux: Clang 19+ или GCC 15+.
+- Linux: Clang 19+ или GCC 16+.
 - macOS/iOS: Apple Clang с поддержкой C++26.
 - Android: NDK r27+ с C++26-совместимым Clang.
 
@@ -35,10 +35,22 @@ GPU- и video-тестов становится на порядок медлен
 |---|---|---|
 | `FBY_BUILD_EDITOR` | `ON` | Библиотека и приложение редактора на Dear ImGui. |
 | `FBY_BUILD_SANDBOX` | `ON` | Исполняемый файл sandbox. |
+| `FBY_BUILD_SERVER` | `ON` | Выделенный сервер. |
+| `FBY_BUILD_LOBBY` | `ON` | Сервис лобби. |
 | `FBY_BUILD_TESTS` | `OFF` | Сборка набора CTest. |
 | `FBY_BUILD_TOOLS` | `ON` | `fby_fempak`, `fby_aotc`, `fby_fontc`, `fby_scene_tool`. |
 | `FBY_BUILD_PLATFORM_PROVIDERS` | `ON` | Общие библиотеки провайдеров Steam/EGS/GOG. |
 | `FBY_RHI_BACKEND` | `auto` | `auto`, `vulkan`, `metal` или `null`. |
+| `FBY_WITH_ASAN`, `FBY_WITH_UBSAN` | `OFF` | Санитайзеры для движка и тестов. |
+| `FBY_ASAN_LEAKS` | `ON` | LeakSanitizer при выходе на Linux и macOS. |
+| `FBY_WITH_SCRIPT_VM` | `ON` | VM FemboyScript для редактора и dev-сборок. |
+| `FBY_WITH_RNNOISE` | `ON` | Нейросетевое шумоподавление RNNoise. |
+| `FBY_WITH_DLSS`, `FBY_WITH_FIDELITYFX`, `FBY_WITH_METALFX` | `OFF` | Vendor-бэкенды апскейлинга. |
+| `FBY_DLSS_ROOT` | `third_party/dlss` | Локальный корень NVIDIA DLSS SDK; не отслеживается. |
+| `FBY_FIDELITYFX_ROOT` | `third_party/fidelityfx/Kits/FidelityFX` | Локальный корень AMD FidelityFX SDK; не отслеживается. |
+| `FBY_REQUIRE_VENDOR_SDKS` | `OFF` | Отсутствующий vendor SDK становится ошибкой configure, а не предупреждением. |
+| `FBY_WITH_FSR1`, `FBY_WITH_FSR2`, `FBY_WITH_FRAME_GENERATION` | `OFF` | Флаги совместимости; функции ядра и включаются в рантайме. |
+| `FBY_CONSOLE_APPS` | `OFF` | Оставлять консольное окно для редактора и игр. |
 
 Движок собирается без Vulkan SDK: поддерживаются `FBY_RHI_BACKEND=null` и
 null-RHI для headless CI. Если заголовки Vulkan недоступны, редактор
@@ -152,7 +164,7 @@ ctest --test-dir build --output-on-failure
 python Source/Tools/Dev/CheckStyle.py
 ```
 
-38 тестов — самостоятельные исполняемые файлы без фреймворка. Они работают
+Тесты CTest — самостоятельные исполняемые файлы без фреймворка. Они работают
 headless и запускаются по отдельности из `build/bin`.
 
 ## Выбор RHI

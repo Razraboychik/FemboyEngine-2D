@@ -110,7 +110,7 @@ void AnimGraphCaptureRestPose(AnimStateComponent& InState, const SkeletonCompone
 }
 
 bool AnimTransitionMatches(const AnimTransition& InTransition, const AnimStateComponent& InState,
-                           std::uint64_t InTags) noexcept
+                           const GameplayTagsComponent* InTags, const GameplayTagRegistry* InTagRegistry) noexcept
 {
     if (!InTransition.Enabled)
     {
@@ -132,20 +132,45 @@ bool AnimTransitionMatches(const AnimTransition& InTransition, const AnimStateCo
     {
         return false;
     }
-    if ((ScopedConditions & AnimConditionTagsAny) != 0 &&
-        (InTransition.TagsAny == 0 || (InTags & InTransition.TagsAny) == 0))
+    const auto ScopedHasTag = [&](GameplayTag InTag) -> bool
     {
-        return false;
+        return InTags != nullptr && InTagRegistry != nullptr &&
+               GameplayTagContainerHas(InTags->Tags, *InTagRegistry, InTag);
+    };
+    if ((ScopedConditions & AnimConditionTagsAny) != 0)
+    {
+        bool ScopedMatched = false;
+        for (std::uint8_t ScopedI = 0; ScopedI < InTransition.TagsAnyCount && ScopedI < InTransition.TagsAny.size();
+             ++ScopedI)
+        {
+            ScopedMatched = ScopedMatched || ScopedHasTag(InTransition.TagsAny[ScopedI]);
+        }
+        if (!ScopedMatched)
+        {
+            return false;
+        }
     }
-    if ((ScopedConditions & AnimConditionTagsAll) != 0 &&
-        (InTransition.TagsAll == 0 || (InTags & InTransition.TagsAll) != InTransition.TagsAll))
+    if ((ScopedConditions & AnimConditionTagsAll) != 0)
     {
-        return false;
+        for (std::uint8_t ScopedI = 0; ScopedI < InTransition.TagsAllCount && ScopedI < InTransition.TagsAll.size();
+             ++ScopedI)
+        {
+            if (!ScopedHasTag(InTransition.TagsAll[ScopedI]))
+            {
+                return false;
+            }
+        }
     }
-    if ((ScopedConditions & AnimConditionTagsNone) != 0 &&
-        (InTransition.TagsAny == 0 || (InTags & InTransition.TagsAny) != 0))
+    if ((ScopedConditions & AnimConditionTagsNone) != 0)
     {
-        return false;
+        for (std::uint8_t ScopedI = 0; ScopedI < InTransition.TagsAnyCount && ScopedI < InTransition.TagsAny.size();
+             ++ScopedI)
+        {
+            if (ScopedHasTag(InTransition.TagsAny[ScopedI]))
+            {
+                return false;
+            }
+        }
     }
     if ((ScopedConditions & (AnimConditionFloatAtLeast | AnimConditionFloatAtMost)) != 0)
     {
@@ -238,17 +263,19 @@ void AnimGraphApplySpriteClip(const AnimStateComponent& InState, SpriteAnimation
 
 void AnimGraphSystem::Run(Ecs::Registry& InRegistry, float InDt) const noexcept
 {
+    RunWithTags(InRegistry, InDt, MTags);
+}
+
+void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
+                                  const GameplayTagRegistry* InTags) const noexcept
+{
     const float ScopedDt = std::isfinite(InDt) && InDt > 0.0f ? InDt : 0.0f;
     auto ScopedView = InRegistry.view<AnimStateComponent>();
     for (auto [ScopedEntity, ScopedState] : ScopedView.each())
     {
         ScopedState.StateTime += ScopedDt;
 
-        std::uint64_t ScopedTags = 0;
-        if (const auto* ScopedGameplay = InRegistry.try_get<GameplayState>(ScopedEntity); ScopedGameplay != nullptr)
-        {
-            ScopedTags = ScopedGameplay->Bits;
-        }
+        const auto* ScopedTags = InRegistry.try_get<GameplayTagsComponent>(ScopedEntity);
 
         // First transition in authored order wins. The loop is bounded by 8 and
         const AnimTransition* ScopedFired = nullptr;
@@ -260,7 +287,7 @@ void AnimGraphSystem::Run(Ecs::Registry& InRegistry, float InDt) const noexcept
             {
                 continue;
             }
-            if (AnimTransitionMatches(ScopedTransition, ScopedState, ScopedTags))
+            if (AnimTransitionMatches(ScopedTransition, ScopedState, ScopedTags, InTags))
             {
                 ScopedFired = &ScopedTransition;
                 ScopedFiredIndex = ScopedIndex;
@@ -309,7 +336,7 @@ void AnimGraphSystem::Run(Ecs::Registry& InRegistry, float InDt) const noexcept
 
 void AnimGraphSystem::Run(Ecs::SystemContext& InContext) const noexcept
 {
-    Run(InContext.registry, InContext.dt);
+    RunWithTags(InContext.registry, InContext.dt, InContext.gameplayTags != nullptr ? InContext.gameplayTags : MTags);
 }
 
 void RegisterAnimGraphSystem(Ecs::Schedule& InSchedule)

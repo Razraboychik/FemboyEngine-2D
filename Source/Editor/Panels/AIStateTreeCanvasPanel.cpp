@@ -101,49 +101,10 @@ constexpr std::string_view kAIBlockEnd = "# === FBY AI STATE TREE END ===";
     return ScopedDx * ScopedDx + ScopedDy * ScopedDy <= kAIPositionEpsilon * kAIPositionEpsilon;
 }
 
-// Field-wise views used by the inspector
+// Field-wise views used by the inspector. Tag containers are compared as raw
+// arrays because reflection cannot express them.
 static_assert(std::is_standard_layout_v<StateTreeEvaluator>);
 static_assert(std::is_standard_layout_v<StateTreeTask>);
-
-constexpr std::array<Reflect::FieldDesc, 4> kAIEvaluatorFields{{
-    {"Kind", Reflect::FieldKind::UInt32, static_cast<std::uint32_t>(offsetof(StateTreeEvaluator, Kind)),
-     static_cast<std::uint32_t>(sizeof(StateTreeEvaluator::Kind))},
-    {"TagMask", Reflect::FieldKind::UInt64, static_cast<std::uint32_t>(offsetof(StateTreeEvaluator, TagMask)),
-     static_cast<std::uint32_t>(sizeof(StateTreeEvaluator::TagMask))},
-    {"Threshold", Reflect::FieldKind::Float, static_cast<std::uint32_t>(offsetof(StateTreeEvaluator, Threshold)),
-     static_cast<std::uint32_t>(sizeof(StateTreeEvaluator::Threshold))},
-    {"FloatIndex", Reflect::FieldKind::UInt32, static_cast<std::uint32_t>(offsetof(StateTreeEvaluator, FloatIndex)),
-     static_cast<std::uint32_t>(sizeof(StateTreeEvaluator::FloatIndex))},
-}};
-
-constexpr std::array<Reflect::FieldDesc, 5> kAITaskFields{{
-    {"Kind", Reflect::FieldKind::UInt32, static_cast<std::uint32_t>(offsetof(StateTreeTask, Kind)),
-     static_cast<std::uint32_t>(sizeof(StateTreeTask::Kind))},
-    {"TagMask", Reflect::FieldKind::UInt64, static_cast<std::uint32_t>(offsetof(StateTreeTask, TagMask)),
-     static_cast<std::uint32_t>(sizeof(StateTreeTask::TagMask))},
-    {"Speed", Reflect::FieldKind::Float, static_cast<std::uint32_t>(offsetof(StateTreeTask, Speed)),
-     static_cast<std::uint32_t>(sizeof(StateTreeTask::Speed))},
-    {"Range", Reflect::FieldKind::Float, static_cast<std::uint32_t>(offsetof(StateTreeTask, Range)),
-     static_cast<std::uint32_t>(sizeof(StateTreeTask::Range))},
-    {"Flags", Reflect::FieldKind::UInt32, static_cast<std::uint32_t>(offsetof(StateTreeTask, Flags)),
-     static_cast<std::uint32_t>(sizeof(StateTreeTask::Flags))},
-}};
-
-template <std::size_t N>
-[[nodiscard]] bool AIFieldsEqual(const std::array<Reflect::FieldDesc, N>& InFields, const void* InA,
-                                 const void* InB) noexcept
-{
-    const auto* ScopedA = static_cast<const std::byte*>(InA);
-    const auto* ScopedB = static_cast<const std::byte*>(InB);
-    for (const Reflect::FieldDesc& ScopedField : InFields)
-    {
-        if (!Reflect::FieldBytesEqual(ScopedField, ScopedA + ScopedField.offset, ScopedB + ScopedField.offset))
-        {
-            return false;
-        }
-    }
-    return true;
-}
 
 // Compile helpers. Everything here is fixed-capacity stack storage.
 struct AICompileScratch
@@ -196,11 +157,11 @@ struct AICompileScratch
             return AICompileFail(InScratch, "AI node %u has an unknown node kind", static_cast<unsigned>(InEditorNode));
     }
     if (static_cast<std::uint8_t>(ScopedNode.Evaluator.Kind) >
-        static_cast<std::uint8_t>(StateTreeEvaluatorKind::StateTimeAtLeast))
+        static_cast<std::uint8_t>(StateTreeEvaluatorKind::AttributeAbove))
     {
         return AICompileFail(InScratch, "AI node %u has an unknown evaluator", static_cast<unsigned>(InEditorNode));
     }
-    if (static_cast<std::uint8_t>(ScopedNode.Task.Kind) > static_cast<std::uint8_t>(StateTreeTaskKind::ClearTag))
+    if (static_cast<std::uint8_t>(ScopedNode.Task.Kind) > static_cast<std::uint8_t>(StateTreeTaskKind::Action))
     {
         return AICompileFail(InScratch, "AI node %u has an unknown task", static_cast<unsigned>(InEditorNode));
     }
@@ -465,6 +426,106 @@ struct AICycleScratch
     return InFallback;
 }
 
+[[nodiscard]] std::string AITagsToText(const Fby::GameplayTagContainer& InTags,
+                                       const Fby::GameplayTagRegistry* InRegistry)
+{
+    std::string ScopedText;
+    for (std::uint32_t ScopedId = 1; ScopedId <= Fby::kMaxGameplayTags; ++ScopedId)
+    {
+        const Fby::GameplayTag ScopedTag{ScopedId};
+        if (!InTags.Bits.Test(ScopedTag))
+        {
+            continue;
+        }
+        if (!ScopedText.empty())
+        {
+            ScopedText += ", ";
+        }
+        if (InRegistry != nullptr)
+        {
+            ScopedText += std::string(InRegistry->Name(ScopedTag));
+        }
+        else
+        {
+            ScopedText += std::to_string(ScopedId);
+        }
+    }
+    return ScopedText;
+}
+
+void AITextToTags(std::string_view InText, const Fby::GameplayTagRegistry* InRegistry,
+                  Fby::GameplayTagContainer& OutTags)
+{
+    OutTags = Fby::GameplayTagContainer{};
+    while (!InText.empty())
+    {
+        while (!InText.empty() && (InText.front() == ' ' || InText.front() == '\t' || InText.front() == ','))
+        {
+            InText.remove_prefix(1);
+        }
+        if (InText.empty())
+        {
+            break;
+        }
+        const std::size_t ScopedEnd = InText.find(',');
+        std::string_view ScopedToken = InText.substr(0, ScopedEnd);
+        while (!ScopedToken.empty() && (ScopedToken.back() == ' ' || ScopedToken.back() == '\t'))
+        {
+            ScopedToken.remove_suffix(1);
+        }
+        if (InRegistry != nullptr && !ScopedToken.empty())
+        {
+            const Fby::GameplayTag ScopedTag = InRegistry->Find(ScopedToken);
+            if (ScopedTag.IsValid())
+            {
+                OutTags.Add(ScopedTag);
+            }
+        }
+        if (ScopedEnd == std::string_view::npos)
+        {
+            break;
+        }
+        InText.remove_prefix(ScopedEnd + 1);
+    }
+}
+
+void AISetBuffer(std::array<char, 192>& InBuffer, std::string_view InText) noexcept
+{
+    InBuffer = {};
+    const std::size_t ScopedLength = std::min(InText.size(), InBuffer.size() - 1u);
+    std::memcpy(InBuffer.data(), InText.data(), ScopedLength);
+    InBuffer[ScopedLength] = '\0';
+}
+
+void AIAppendString(std::string& InDestination, std::string_view InValue)
+{
+    InDestination += '"';
+    InDestination += InValue;
+    InDestination += '"';
+}
+
+void AIAppendTags(std::string& InDestination, const Fby::GameplayTagContainer& InTags,
+                  const Fby::GameplayTagRegistry* InRegistry)
+{
+    AIAppendString(InDestination, AITagsToText(InTags, InRegistry));
+}
+
+void AIReadTags(const toml::table& InTable, std::string_view InKey, const Fby::GameplayTagRegistry* InRegistry,
+                Fby::GameplayTagContainer& OutTags) noexcept
+{
+    const auto* ScopedNode = InTable.get(InKey);
+    if (ScopedNode == nullptr || !ScopedNode->is_string())
+    {
+        return;
+    }
+    const auto ScopedText = ScopedNode->value<std::string>();
+    if (!ScopedText.has_value())
+    {
+        return;
+    }
+    AITextToTags(*ScopedText, InRegistry, OutTags);
+}
+
 void AIAppendU64(std::string& InDestination, std::uint64_t InValue)
 {
     char ScopedBuffer[32]{};
@@ -504,7 +565,8 @@ void AIAppendBool(std::string& InDestination, bool InValue)
     InDestination += InValue ? "true" : "false";
 }
 
-void AIAppendNode(std::string& InDestination, const StateTreeNode& InNode, std::uint16_t InIndex, const Vector2D& InPosition)
+void AIAppendNode(std::string& InDestination, const StateTreeNode& InNode, std::uint16_t InIndex,
+                  const Vector2D& InPosition, const Fby::GameplayTagRegistry* InRegistry)
 {
     InDestination += "\n[[ai_state_tree.node]]\n";
     InDestination += "index = ";
@@ -525,20 +587,20 @@ void AIAppendNode(std::string& InDestination, const StateTreeNode& InNode, std::
     AIAppendBool(InDestination, InNode.Enabled);
     InDestination += "\nevaluator_kind = ";
     AIAppendInt(InDestination, static_cast<std::int64_t>(InNode.Evaluator.Kind));
-    InDestination += "\nevaluator_tag_mask = ";
-    AIAppendU64(InDestination, InNode.Evaluator.TagMask);
+    InDestination += "\nevaluator_tags = ";
+    AIAppendTags(InDestination, InNode.Evaluator.Tags, InRegistry);
     InDestination += "\nevaluator_threshold = ";
     AIAppendFloat(InDestination, InNode.Evaluator.Threshold);
     InDestination += "\nevaluator_float_index = ";
     AIAppendInt(InDestination, InNode.Evaluator.FloatIndex);
     InDestination += "\ntask_kind = ";
     AIAppendInt(InDestination, static_cast<std::int64_t>(InNode.Task.Kind));
-    InDestination += "\ntask_tag_mask = ";
-    AIAppendU64(InDestination, InNode.Task.TagMask);
+    InDestination += "\ntask_tags = ";
+    AIAppendTags(InDestination, InNode.Task.Tags, InRegistry);
     InDestination += "\ntask_speed = ";
     AIAppendFloat(InDestination, InNode.Task.Speed);
-    InDestination += "\ntask_range = ";
-    AIAppendFloat(InDestination, InNode.Task.Range);
+    InDestination += "\ntask_action_id = ";
+    AIAppendInt(InDestination, InNode.Task.ActionId);
     InDestination += "\ntask_flags = ";
     AIAppendInt(InDestination, InNode.Task.Flags);
     InDestination += "\nposition = [";
@@ -548,7 +610,8 @@ void AIAppendNode(std::string& InDestination, const StateTreeNode& InNode, std::
     InDestination += "]\n";
 }
 
-void AIAppendTransition(std::string& InDestination, const StateTreeTransition& InTransition)
+void AIAppendTransition(std::string& InDestination, const StateTreeTransition& InTransition,
+                        const Fby::GameplayTagRegistry* InRegistry)
 {
     InDestination += "\n[[ai_state_tree.transition]]\n";
     InDestination += "from = ";
@@ -560,9 +623,9 @@ void AIAppendTransition(std::string& InDestination, const StateTreeTransition& I
     InDestination += "\nconsume = ";
     AIAppendU64(InDestination, InTransition.ConsumeMask);
     InDestination += "\nrequire_tags = ";
-    AIAppendU64(InDestination, InTransition.RequireTagsAll);
+    AIAppendTags(InDestination, InTransition.RequireTags, InRegistry);
     InDestination += "\nforbid_tags = ";
-    AIAppendU64(InDestination, InTransition.ForbidTagsAny);
+    AIAppendTags(InDestination, InTransition.ForbidTags, InRegistry);
     InDestination += "\nenabled = ";
     AIAppendBool(InDestination, InTransition.Enabled);
     InDestination += "\nconsume_all = ";
@@ -591,12 +654,15 @@ void AIAppendTransition(std::string& InDestination, const StateTreeTransition& I
 // Field inspection API
 bool AIStateTreeEvaluatorFieldsEqual(const StateTreeEvaluator& InA, const StateTreeEvaluator& InB) noexcept
 {
-    return AIFieldsEqual(kAIEvaluatorFields, &InA, &InB);
+    return InA.Kind == InB.Kind && InA.AttributeId == InB.AttributeId && InA.Threshold == InB.Threshold &&
+           InA.FloatIndex == InB.FloatIndex && InA.SkillSlot == InB.SkillSlot &&
+           std::memcmp(&InA.Tags, &InB.Tags, sizeof(GameplayTagContainer)) == 0;
 }
 
 bool AIStateTreeTaskFieldsEqual(const StateTreeTask& InA, const StateTreeTask& InB) noexcept
 {
-    return AIFieldsEqual(kAITaskFields, &InA, &InB);
+    return InA.Kind == InB.Kind && InA.Speed == InB.Speed && InA.Flags == InB.Flags && InA.ActionId == InB.ActionId &&
+           InA.SkillSlot == InB.SkillSlot && std::memcmp(&InA.Tags, &InB.Tags, sizeof(GameplayTagContainer)) == 0;
 }
 
 const char* AIStateTreeEvaluatorName(StateTreeEvaluatorKind InKind) noexcept
@@ -607,12 +673,18 @@ const char* AIStateTreeEvaluatorName(StateTreeEvaluatorKind InKind) noexcept
             return "AlwaysTrue";
         case StateTreeEvaluatorKind::AlwaysFalse:
             return "AlwaysFalse";
-        case StateTreeEvaluatorKind::TagsAny:
-            return "TagsAny";
-        case StateTreeEvaluatorKind::TagsAll:
-            return "TagsAll";
-        case StateTreeEvaluatorKind::TagsNone:
-            return "TagsNone";
+        case StateTreeEvaluatorKind::GameplayTagsAny:
+            return "GameplayTagsAny";
+        case StateTreeEvaluatorKind::GameplayTagsAll:
+            return "GameplayTagsAll";
+        case StateTreeEvaluatorKind::GameplayTagsNone:
+            return "GameplayTagsNone";
+        case StateTreeEvaluatorKind::SkillReady:
+            return "SkillReady";
+        case StateTreeEvaluatorKind::AttributeBelow:
+            return "AttributeBelow";
+        case StateTreeEvaluatorKind::AttributeAbove:
+            return "AttributeAbove";
         case StateTreeEvaluatorKind::TargetWithinRadius:
             return "TargetWithinRadius";
         case StateTreeEvaluatorKind::TargetBeyondRadius:
@@ -637,12 +709,14 @@ const char* AIStateTreeTaskName(StateTreeTaskKind InKind) noexcept
             return "MoveToTarget";
         case StateTreeTaskKind::Stop:
             return "Stop";
-        case StateTreeTaskKind::AttackTarget:
-            return "AttackTarget";
         case StateTreeTaskKind::SetTag:
             return "SetTag";
         case StateTreeTaskKind::ClearTag:
             return "ClearTag";
+        case StateTreeTaskKind::ActivateSkill:
+            return "ActivateSkill";
+        case StateTreeTaskKind::Action:
+            return "Action";
     }
     return "?";
 }
@@ -666,8 +740,8 @@ AICommandComponent AIStateTreeCommandFor(const StateTreeTask& InTask, std::uint1
     AICommandComponent ScopedCommand;
     ScopedCommand.TaskIndex = InNode;
     ScopedCommand.Speed = InTask.Speed;
-    ScopedCommand.Range = InTask.Range;
     ScopedCommand.Flags = InTask.Flags;
+    ScopedCommand.ActionId = InTask.ActionId;
     switch (InTask.Kind)
     {
         case StateTreeTaskKind::MoveToTarget:
@@ -676,8 +750,12 @@ AICommandComponent AIStateTreeCommandFor(const StateTreeTask& InTask, std::uint1
         case StateTreeTaskKind::Stop:
             ScopedCommand.Kind = static_cast<std::uint32_t>(AICommandKind::Stop);
             break;
-        case StateTreeTaskKind::AttackTarget:
-            ScopedCommand.Kind = static_cast<std::uint32_t>(AICommandKind::Attack);
+        case StateTreeTaskKind::ActivateSkill:
+            ScopedCommand.Kind = static_cast<std::uint32_t>(AICommandKind::ActivateSkill);
+            ScopedCommand.Flags = InTask.SkillSlot;
+            break;
+        case StateTreeTaskKind::Action:
+            ScopedCommand.Kind = static_cast<std::uint32_t>(AICommandKind::Action);
             break;
         case StateTreeTaskKind::None:
         case StateTreeTaskKind::SetTag:
@@ -761,6 +839,8 @@ void AIStateTreeCanvasPanel::ResetDocument() noexcept
     MCompiledDirty = true;
     MSelectedNode = kStateTreeNone;
     MSelectedTransition = 0xFFFFu;
+    MTagBufferNode = kStateTreeNone;
+    MTagBufferTransition = 0xFFFFu;
     MPieActiveCount = 0;
     MPieActiveLeaf = kStateTreeNone;
     MPieActiveSet.fill(false);
@@ -782,42 +862,37 @@ void AIStateTreeCanvasPanel::BuildDefaultDocument() noexcept
         SetStatus("AI canvas: could not create the demo selectors");
         return;
     }
-    const std::uint16_t ScopedAttack = AddAINode(StateTreeNodeKind::Leaf, ScopedCombat, Vector2D{-340.0f, 320.0f});
+    const std::uint16_t ScopedHold = AddAINode(StateTreeNodeKind::Leaf, ScopedCombat, Vector2D{-340.0f, 320.0f});
     const std::uint16_t ScopedChase = AddAINode(StateTreeNodeKind::Leaf, ScopedCombat, Vector2D{-120.0f, 320.0f});
     const std::uint16_t ScopedWander = AddAINode(StateTreeNodeKind::Leaf, ScopedIdle, Vector2D{230.0f, 320.0f});
-    if (ScopedAttack == kStateTreeNone || ScopedChase == kStateTreeNone || ScopedWander == kStateTreeNone)
+    if (ScopedHold == kStateTreeNone || ScopedChase == kStateTreeNone || ScopedWander == kStateTreeNone)
     {
         SetStatus("AI canvas: could not create the demo leaves");
         return;
     }
 
-    StateTreeNode& ScopedAttackNode = MDocument.Tree.Nodes[ScopedAttack];
-    ScopedAttackNode.Evaluator.Kind = StateTreeEvaluatorKind::TargetWithinRadius;
-    ScopedAttackNode.Evaluator.Threshold = 160.0f;
-    ScopedAttackNode.Task.Kind = StateTreeTaskKind::AttackTarget;
-    ScopedAttackNode.Task.Speed = 0.0f;
-    ScopedAttackNode.Task.Range = 48.0f;
+    StateTreeNode& ScopedHoldNode = MDocument.Tree.Nodes[ScopedHold];
+    ScopedHoldNode.Evaluator.Kind = StateTreeEvaluatorKind::TargetWithinRadius;
+    ScopedHoldNode.Evaluator.Threshold = 160.0f;
+    ScopedHoldNode.Task.Kind = StateTreeTaskKind::Stop;
 
     StateTreeNode& ScopedChaseNode = MDocument.Tree.Nodes[ScopedChase];
     ScopedChaseNode.Evaluator.Kind = StateTreeEvaluatorKind::AlwaysTrue;
     ScopedChaseNode.Task.Kind = StateTreeTaskKind::MoveToTarget;
     ScopedChaseNode.Task.Speed = 140.0f;
-    ScopedChaseNode.Task.Range = 24.0f;
 
     StateTreeNode& ScopedWanderNode = MDocument.Tree.Nodes[ScopedWander];
-    ScopedWanderNode.Evaluator.Kind = StateTreeEvaluatorKind::TagsAny;
-    ScopedWanderNode.Evaluator.TagMask = 1ull << 0;
+    ScopedWanderNode.Evaluator.Kind = StateTreeEvaluatorKind::AlwaysTrue;
     ScopedWanderNode.Task.Kind = StateTreeTaskKind::MoveToTarget;
     ScopedWanderNode.Task.Speed = 64.0f;
-    ScopedWanderNode.Task.Range = 16.0f;
 
-    if (AddAITransition(ScopedAttack, ScopedCombat))
+    if (AddAITransition(ScopedHold, ScopedCombat))
     {
         StateTreeTransition& ScopedTransition = MDocument.Tree.Transitions[MDocument.Tree.TransitionCount - 1];
         ScopedTransition.TriggerMask = kStateTreeTriggerLeafFailed;
         ScopedTransition.ConsumeMask = kStateTreeTriggerLeafFailed;
     }
-    if (AddAITransition(ScopedChase, ScopedAttack))
+    if (AddAITransition(ScopedChase, ScopedHold))
     {
         StateTreeTransition& ScopedTransition = MDocument.Tree.Transitions[MDocument.Tree.TransitionCount - 1];
         ScopedTransition.TriggerMask = 1ull << 0;
@@ -912,7 +987,6 @@ std::uint16_t AIStateTreeCanvasPanel::AddAINode(StateTreeNodeKind InKind, std::u
         ScopedNode.Evaluator.Threshold = 128.0f;
         ScopedNode.Task.Kind = StateTreeTaskKind::MoveToTarget;
         ScopedNode.Task.Speed = 128.0f;
-        ScopedNode.Task.Range = 32.0f;
     }
     MSelectedNode = ScopedCreated;
     MSelectedTransition = 0xFFFFu;
@@ -1384,11 +1458,11 @@ bool AIStateTreeCanvasPanel::SaveCompiledToSceneToml()
         const std::uint16_t ScopedEditor = MCompiled.EditorIndex[ScopedNode];
         const Vector2D ScopedPosition =
             ScopedEditor < kMaxStateTreeNodes ? MDocument.Positions[ScopedEditor] : Vector2D{};
-        AIAppendNode(ScopedText, MCompiled.Tree.Nodes[ScopedNode], ScopedNode, ScopedPosition);
+        AIAppendNode(ScopedText, MCompiled.Tree.Nodes[ScopedNode], ScopedNode, ScopedPosition, MTags);
     }
     for (std::uint16_t ScopedT = 0; ScopedT < MCompiled.Tree.TransitionCount; ++ScopedT)
     {
-        AIAppendTransition(ScopedText, MCompiled.Tree.Transitions[ScopedT]);
+        AIAppendTransition(ScopedText, MCompiled.Tree.Transitions[ScopedT], MTags);
     }
     ScopedText += kAIBlockEnd;
     ScopedText += '\n';
@@ -1405,6 +1479,8 @@ bool AIStateTreeCanvasPanel::SaveCompiledToSceneToml()
 
 bool AIStateTreeCanvasPanel::LoadCompiledFromSceneToml()
 {
+    MTagBufferNode = kStateTreeNone;
+    MTagBufferTransition = 0xFFFFu;
     if (MScenePath.empty())
     {
         SetStatus("AI load: no scene path is bound");
@@ -1482,14 +1558,16 @@ bool AIStateTreeCanvasPanel::LoadCompiledFromSceneToml()
         ScopedNode.Depth = static_cast<std::uint8_t>(AIReadInt(*ScopedTable, "depth", 1));
         ScopedNode.Enabled = AIReadBool(*ScopedTable, "enabled", true);
         ScopedNode.Evaluator.Kind = static_cast<StateTreeEvaluatorKind>(AIReadInt(*ScopedTable, "evaluator_kind", 0));
-        ScopedNode.Evaluator.TagMask = AIReadMask(*ScopedTable, "evaluator_tag_mask", 0);
+        ScopedNode.Evaluator.Tags = {};
+        AIReadTags(*ScopedTable, "evaluator_tags", MTags, ScopedNode.Evaluator.Tags);
         ScopedNode.Evaluator.Threshold = AIReadFloat(*ScopedTable, "evaluator_threshold", 0.0f);
         ScopedNode.Evaluator.FloatIndex =
             static_cast<std::uint16_t>(AIReadInt(*ScopedTable, "evaluator_float_index", 0));
         ScopedNode.Task.Kind = static_cast<StateTreeTaskKind>(AIReadInt(*ScopedTable, "task_kind", 0));
-        ScopedNode.Task.TagMask = AIReadMask(*ScopedTable, "task_tag_mask", 0);
+        ScopedNode.Task.Tags = {};
+        AIReadTags(*ScopedTable, "task_tags", MTags, ScopedNode.Task.Tags);
         ScopedNode.Task.Speed = AIReadFloat(*ScopedTable, "task_speed", 0.0f);
-        ScopedNode.Task.Range = AIReadFloat(*ScopedTable, "task_range", 0.0f);
+        ScopedNode.Task.ActionId = static_cast<std::uint32_t>(AIReadInt(*ScopedTable, "task_action_id", 0));
         ScopedNode.Task.Flags = static_cast<std::uint32_t>(AIReadInt(*ScopedTable, "task_flags", 0));
         if (const toml::array* ScopedPosition = (*ScopedTable)["position"].as_array();
             ScopedPosition != nullptr && ScopedPosition->size() >= 2)
@@ -1517,8 +1595,10 @@ bool AIStateTreeCanvasPanel::LoadCompiledFromSceneToml()
             ScopedTransition.ToNode = static_cast<std::uint16_t>(AIReadInt(*ScopedTable, "to", 0));
             ScopedTransition.TriggerMask = AIReadMask(*ScopedTable, "triggers", 0);
             ScopedTransition.ConsumeMask = AIReadMask(*ScopedTable, "consume", 0);
-            ScopedTransition.RequireTagsAll = AIReadMask(*ScopedTable, "require_tags", 0);
-            ScopedTransition.ForbidTagsAny = AIReadMask(*ScopedTable, "forbid_tags", 0);
+            ScopedTransition.RequireTags = {};
+            ScopedTransition.ForbidTags = {};
+            AIReadTags(*ScopedTable, "require_tags", MTags, ScopedTransition.RequireTags);
+            AIReadTags(*ScopedTable, "forbid_tags", MTags, ScopedTransition.ForbidTags);
             ScopedTransition.Enabled = AIReadBool(*ScopedTable, "enabled", true);
             ScopedTransition.ConsumeAll = AIReadBool(*ScopedTable, "consume_all", false);
         }
@@ -2042,6 +2122,12 @@ void AIStateTreeCanvasPanel::DrawNodeInspector(std::uint16_t InNode)
         return;
     }
     StateTreeNode& ScopedNode = MDocument.Tree.Nodes[InNode];
+    if (MTagBufferNode != InNode)
+    {
+        AISetBuffer(MEvaluatorTagText, AITagsToText(ScopedNode.Evaluator.Tags, MTags));
+        AISetBuffer(MTaskTagText, AITagsToText(ScopedNode.Task.Tags, MTags));
+        MTagBufferNode = InNode;
+    }
     ImGui::Text("%s #%u", AIStateTreeKindName(ScopedNode.Kind), static_cast<unsigned>(InNode));
     ImGui::TextDisabled("depth %u / %u | parent %u | children %u", static_cast<unsigned>(ScopedNode.Depth),
                         static_cast<unsigned>(kMaxStateTreeDepth), static_cast<unsigned>(ScopedNode.Parent),
@@ -2060,9 +2146,14 @@ void AIStateTreeCanvasPanel::DrawNodeInspector(std::uint16_t InNode)
 
     if (ScopedNode.Kind == StateTreeNodeKind::Leaf)
     {
+        // Tag evaluators are available to code-authored trees; the canvas tag
+        // picker arrives with the project tag asset.
         StateTreeEvaluatorKind ScopedEvaluatorKinds[] = {
-            StateTreeEvaluatorKind::TargetWithinRadius, StateTreeEvaluatorKind::TagsAny,
-            StateTreeEvaluatorKind::TagsAll, StateTreeEvaluatorKind::FloatBelow};
+            StateTreeEvaluatorKind::AlwaysTrue,       StateTreeEvaluatorKind::TargetWithinRadius,
+            StateTreeEvaluatorKind::GameplayTagsAny,  StateTreeEvaluatorKind::GameplayTagsAll,
+            StateTreeEvaluatorKind::GameplayTagsNone, StateTreeEvaluatorKind::FloatBelow,
+            StateTreeEvaluatorKind::SkillReady,       StateTreeEvaluatorKind::AttributeBelow,
+            StateTreeEvaluatorKind::AttributeAbove};
         if (ImGui::BeginCombo("Evaluator", AIStateTreeEvaluatorName(ScopedNode.Evaluator.Kind)))
         {
             for (const StateTreeEvaluatorKind ScopedKind : ScopedEvaluatorKinds)
@@ -2145,19 +2236,17 @@ void AIStateTreeCanvasPanel::DrawNodeInspector(std::uint16_t InNode)
                 FinishInspectorEdit(true);
             }
         }
-        if (ScopedNode.Evaluator.Kind == StateTreeEvaluatorKind::TagsAny ||
-            ScopedNode.Evaluator.Kind == StateTreeEvaluatorKind::TagsAll)
+        else if (ScopedNode.Evaluator.Kind == StateTreeEvaluatorKind::SkillReady)
         {
-            ImU64 ScopedTagMask = static_cast<ImU64>(ScopedNode.Evaluator.TagMask);
-            const bool ScopedMaskChanged = ImGui::InputScalar("Tag mask", ImGuiDataType_U64, &ScopedTagMask, nullptr,
-                                                              nullptr, "%016llx", ImGuiInputTextFlags_CharsHexadecimal);
+            int ScopedSlot = static_cast<int>(ScopedNode.Evaluator.SkillSlot);
+            const bool ScopedChanged = ImGui::DragInt("Skill slot", &ScopedSlot, 0.1f, 0, 3);
             if (ImGui::IsItemActivated())
             {
-                (void)BeginInspectorEdit("Edit AI evaluator tag mask");
+                (void)BeginInspectorEdit("Edit AI evaluator skill slot");
             }
-            if (ScopedMaskChanged && MEditing && MEditSource == EditSource::Inspector)
+            if (ScopedChanged && MEditing && MEditSource == EditSource::Inspector)
             {
-                ScopedNode.Evaluator.TagMask = static_cast<std::uint64_t>(ScopedTagMask);
+                ScopedNode.Evaluator.SkillSlot = static_cast<std::uint16_t>(ScopedSlot);
                 RecordEdit();
             }
             if (ImGui::IsItemDeactivated())
@@ -2165,8 +2254,62 @@ void AIStateTreeCanvasPanel::DrawNodeInspector(std::uint16_t InNode)
                 FinishInspectorEdit(true);
             }
         }
-
-        StateTreeTaskKind ScopedTaskKinds[] = {StateTreeTaskKind::MoveToTarget, StateTreeTaskKind::AttackTarget};
+        else if (ScopedNode.Evaluator.Kind == StateTreeEvaluatorKind::GameplayTagsAny ||
+                 ScopedNode.Evaluator.Kind == StateTreeEvaluatorKind::GameplayTagsAll ||
+                 ScopedNode.Evaluator.Kind == StateTreeEvaluatorKind::GameplayTagsNone)
+        {
+            ImGui::SetNextItemWidth(320.0f);
+            ImGui::InputTextWithHint("Evaluator tags", "Character.State.Stunned, Character.State.Burning",
+                                     MEvaluatorTagText.data(), MEvaluatorTagText.size());
+            if (ImGui::IsItemActivated())
+            {
+                (void)BeginInspectorEdit("Edit AI evaluator tags");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit() && MEditing && MEditSource == EditSource::Inspector)
+            {
+                AITextToTags(MEvaluatorTagText.data(), MTags, ScopedNode.Evaluator.Tags);
+                RecordEdit();
+                FinishInspectorEdit(true);
+            }
+        }
+        else if (ScopedNode.Evaluator.Kind == StateTreeEvaluatorKind::AttributeBelow ||
+                 ScopedNode.Evaluator.Kind == StateTreeEvaluatorKind::AttributeAbove)
+        {
+            int ScopedAttribute = static_cast<int>(ScopedNode.Evaluator.AttributeId);
+            const bool ScopedAttributeChanged = ImGui::DragInt("Attribute id", &ScopedAttribute, 0.1f, 0, 31);
+            if (ImGui::IsItemActivated())
+            {
+                (void)BeginInspectorEdit("Edit AI evaluator attribute");
+            }
+            if (ScopedAttributeChanged && MEditing && MEditSource == EditSource::Inspector)
+            {
+                ScopedNode.Evaluator.AttributeId = static_cast<std::uint32_t>(ScopedAttribute);
+                RecordEdit();
+            }
+            if (ImGui::IsItemDeactivated())
+            {
+                FinishInspectorEdit(true);
+            }
+            float ScopedThreshold = ScopedNode.Evaluator.Threshold;
+            const bool ScopedThresholdChanged =
+                ImGui::DragFloat("Threshold", &ScopedThreshold, 1.0f, -1000000.0f, 1000000.0f, "%.3f");
+            if (ImGui::IsItemActivated())
+            {
+                (void)BeginInspectorEdit("Edit AI evaluator attribute threshold");
+            }
+            if (ScopedThresholdChanged && MEditing && MEditSource == EditSource::Inspector)
+            {
+                ScopedNode.Evaluator.Threshold = ScopedThreshold;
+                RecordEdit();
+            }
+            if (ImGui::IsItemDeactivated())
+            {
+                FinishInspectorEdit(true);
+            }
+        }
+        StateTreeTaskKind ScopedTaskKinds[] = {StateTreeTaskKind::MoveToTarget,  StateTreeTaskKind::Stop,
+                                               StateTreeTaskKind::SetTag,        StateTreeTaskKind::ClearTag,
+                                               StateTreeTaskKind::ActivateSkill, StateTreeTaskKind::Action};
         if (ImGui::BeginCombo("Task", AIStateTreeTaskName(ScopedNode.Task.Kind)))
         {
             for (const StateTreeTaskKind ScopedKind : ScopedTaskKinds)
@@ -2196,8 +2339,7 @@ void AIStateTreeCanvasPanel::DrawNodeInspector(std::uint16_t InNode)
             }
             ImGui::EndCombo();
         }
-        if (ScopedNode.Task.Kind == StateTreeTaskKind::MoveToTarget ||
-            ScopedNode.Task.Kind == StateTreeTaskKind::AttackTarget)
+        if (ScopedNode.Task.Kind == StateTreeTaskKind::MoveToTarget)
         {
             float ScopedSpeed = ScopedNode.Task.Speed;
             const bool ScopedSpeedChanged = ImGui::DragFloat("Speed", &ScopedSpeed, 1.0f, 0.0f, 10000.0f, "%.1f");
@@ -2214,15 +2356,54 @@ void AIStateTreeCanvasPanel::DrawNodeInspector(std::uint16_t InNode)
             {
                 FinishInspectorEdit(true);
             }
-            float ScopedRange = ScopedNode.Task.Range;
-            const bool ScopedRangeChanged = ImGui::DragFloat("Range", &ScopedRange, 1.0f, 0.0f, 100000.0f, "%.1f");
+        }
+        else if (ScopedNode.Task.Kind == StateTreeTaskKind::Action)
+        {
+            int ScopedActionId = static_cast<int>(ScopedNode.Task.ActionId);
+            const bool ScopedActionChanged = ImGui::DragInt("Action id", &ScopedActionId, 0.1f, 1, 1000000);
             if (ImGui::IsItemActivated())
             {
-                (void)BeginInspectorEdit("Edit AI task range");
+                (void)BeginInspectorEdit("Edit AI action id");
             }
-            if (ScopedRangeChanged && MEditing && MEditSource == EditSource::Inspector)
+            if (ScopedActionChanged && MEditing && MEditSource == EditSource::Inspector)
             {
-                ScopedNode.Task.Range = ScopedRange;
+                ScopedNode.Task.ActionId = static_cast<std::uint32_t>(ScopedActionId);
+                RecordEdit();
+            }
+            if (ImGui::IsItemDeactivated())
+            {
+                FinishInspectorEdit(true);
+            }
+            ImGui::TextDisabled("A game-owned ECS system reads AICommandComponent.ActionId.");
+        }
+        else if (ScopedNode.Task.Kind == StateTreeTaskKind::SetTag ||
+                 ScopedNode.Task.Kind == StateTreeTaskKind::ClearTag)
+        {
+            ImGui::SetNextItemWidth(320.0f);
+            ImGui::InputTextWithHint("Task tags", "Character.State.Alert, Character.State.Searching",
+                                     MTaskTagText.data(), MTaskTagText.size());
+            if (ImGui::IsItemActivated())
+            {
+                (void)BeginInspectorEdit("Edit AI task tags");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit() && MEditing && MEditSource == EditSource::Inspector)
+            {
+                AITextToTags(MTaskTagText.data(), MTags, ScopedNode.Task.Tags);
+                RecordEdit();
+                FinishInspectorEdit(true);
+            }
+        }
+        else if (ScopedNode.Task.Kind == StateTreeTaskKind::ActivateSkill)
+        {
+            int ScopedSlot = static_cast<int>(ScopedNode.Task.SkillSlot);
+            const bool ScopedChanged = ImGui::DragInt("Skill slot", &ScopedSlot, 0.1f, 0, 3);
+            if (ImGui::IsItemActivated())
+            {
+                (void)BeginInspectorEdit("Edit AI task skill slot");
+            }
+            if (ScopedChanged && MEditing && MEditSource == EditSource::Inspector)
+            {
+                ScopedNode.Task.SkillSlot = static_cast<std::uint16_t>(ScopedSlot);
                 RecordEdit();
             }
             if (ImGui::IsItemDeactivated())
@@ -2233,9 +2414,8 @@ void AIStateTreeCanvasPanel::DrawNodeInspector(std::uint16_t InNode)
 
         const AICommandComponent ScopedCommand = AIStateTreeCommandFor(ScopedNode.Task, InNode);
         ImGui::SeparatorText("AICommandComponent");
-        ImGui::TextDisabled("kind %u | speed %.1f | range %.1f | task %u", ScopedCommand.Kind,
-                            static_cast<double>(ScopedCommand.Speed), static_cast<double>(ScopedCommand.Range),
-                            ScopedCommand.TaskIndex);
+        ImGui::TextDisabled("kind %u | speed %.1f | action %u | task %u", ScopedCommand.Kind,
+                            static_cast<double>(ScopedCommand.Speed), ScopedCommand.ActionId, ScopedCommand.TaskIndex);
     }
     else
     {
@@ -2305,6 +2485,12 @@ void AIStateTreeCanvasPanel::DrawTransitionInspector(std::uint16_t InTransition)
         return;
     }
     StateTreeTransition& ScopedTransition = MDocument.Tree.Transitions[InTransition];
+    if (MTagBufferTransition != InTransition)
+    {
+        AISetBuffer(MRequireTagText, AITagsToText(ScopedTransition.RequireTags, MTags));
+        AISetBuffer(MForbidTagText, AITagsToText(ScopedTransition.ForbidTags, MTags));
+        MTagBufferTransition = InTransition;
+    }
     ImGui::Text("AI Transition #%u", static_cast<unsigned>(InTransition));
     ImGui::TextDisabled("from leaf %u -> state %u", static_cast<unsigned>(ScopedTransition.FromLeaf),
                         static_cast<unsigned>(ScopedTransition.ToNode));
@@ -2354,6 +2540,31 @@ void AIStateTreeCanvasPanel::DrawTransitionInspector(std::uint16_t InTransition)
         FinishInspectorEdit(true);
     }
 
+    ImGui::SetNextItemWidth(320.0f);
+    ImGui::InputTextWithHint("Required tags", "Character.State.Alert", MRequireTagText.data(), MRequireTagText.size());
+    if (ImGui::IsItemActivated())
+    {
+        (void)BeginInspectorEdit("Edit AI transition required tags");
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit() && MEditing && MEditSource == EditSource::Inspector)
+    {
+        AITextToTags(MRequireTagText.data(), MTags, ScopedTransition.RequireTags);
+        RecordEdit();
+        FinishInspectorEdit(true);
+    }
+    ImGui::SetNextItemWidth(320.0f);
+    ImGui::InputTextWithHint("Forbidden tags", "Character.State.Stunned", MForbidTagText.data(), MForbidTagText.size());
+    if (ImGui::IsItemActivated())
+    {
+        (void)BeginInspectorEdit("Edit AI transition forbidden tags");
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit() && MEditing && MEditSource == EditSource::Inspector)
+    {
+        AITextToTags(MForbidTagText.data(), MTags, ScopedTransition.ForbidTags);
+        RecordEdit();
+        FinishInspectorEdit(true);
+    }
+
     bool ScopedConsumeAll = ScopedTransition.ConsumeAll;
     if (ImGui::Checkbox("Consume all triggers", &ScopedConsumeAll))
     {
@@ -2363,40 +2574,6 @@ void AIStateTreeCanvasPanel::DrawTransitionInspector(std::uint16_t InTransition)
             RecordEdit();
             FinishInspectorEdit(true);
         }
-    }
-
-    ImU64 ScopedRequireTags = static_cast<ImU64>(ScopedTransition.RequireTagsAll);
-    const bool ScopedRequireChanged = ImGui::InputScalar("Require tags", ImGuiDataType_U64, &ScopedRequireTags, nullptr,
-                                                         nullptr, "%016llx", ImGuiInputTextFlags_CharsHexadecimal);
-    if (ImGui::IsItemActivated())
-    {
-        (void)BeginInspectorEdit("Edit AI transition required tags");
-    }
-    if (ScopedRequireChanged && MEditing && MEditSource == EditSource::Inspector)
-    {
-        ScopedTransition.RequireTagsAll = static_cast<std::uint64_t>(ScopedRequireTags);
-        RecordEdit();
-    }
-    if (ImGui::IsItemDeactivated())
-    {
-        FinishInspectorEdit(true);
-    }
-
-    ImU64 ScopedForbidTags = static_cast<ImU64>(ScopedTransition.ForbidTagsAny);
-    const bool ScopedForbidChanged = ImGui::InputScalar("Forbid tags", ImGuiDataType_U64, &ScopedForbidTags, nullptr,
-                                                        nullptr, "%016llx", ImGuiInputTextFlags_CharsHexadecimal);
-    if (ImGui::IsItemActivated())
-    {
-        (void)BeginInspectorEdit("Edit AI transition forbidden tags");
-    }
-    if (ScopedForbidChanged && MEditing && MEditSource == EditSource::Inspector)
-    {
-        ScopedTransition.ForbidTagsAny = static_cast<std::uint64_t>(ScopedForbidTags);
-        RecordEdit();
-    }
-    if (ImGui::IsItemDeactivated())
-    {
-        FinishInspectorEdit(true);
     }
 
     if (ImGui::Button("Delete AI transition"))
@@ -2513,9 +2690,8 @@ void AIStateTreeCanvasPanel::DrawPIEInspector()
         ScopedCommand != nullptr)
     {
         ImGui::SeparatorText("AICommandComponent");
-        ImGui::Text("kind %u | speed %.1f | range %.1f | sequence %u", ScopedCommand->Kind,
-                    static_cast<double>(ScopedCommand->Speed), static_cast<double>(ScopedCommand->Range),
-                    ScopedCommand->Sequence);
+        ImGui::Text("kind %u | speed %.1f | action %u | sequence %u", ScopedCommand->Kind,
+                    static_cast<double>(ScopedCommand->Speed), ScopedCommand->ActionId, ScopedCommand->Sequence);
     }
 }
 

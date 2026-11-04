@@ -1,0 +1,39 @@
+#version 460
+// FemboyEngine2D - one-level Hi-Z tile maximum.
+//
+// The depth prepass stores closest depth. Each invocation reduces one 16x16
+// tile to its farthest depth (maximum), which is conservative for occlusion:
+// a sprite is only rejected when every texel in the tile is closer.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D uDepth;
+layout(set = 0, binding = 1, r32f) uniform image2D uTileMax;
+
+layout(push_constant) uniform Constants
+{
+    uvec2 DepthSize;
+    uvec2 TileSize;
+} Push;
+
+void main()
+{
+    const uvec2 tile = gl_GlobalInvocationID.xy;
+    const uvec2 tileCount = (Push.DepthSize + Push.TileSize - 1u) / Push.TileSize;
+    if (tile.x >= tileCount.x || tile.y >= tileCount.y)
+    {
+        return;
+    }
+    const uvec2 begin = tile * Push.TileSize;
+    const uvec2 end = min(begin + Push.TileSize, Push.DepthSize);
+    float farthest = 0.0;
+    for (uint y = begin.y; y < end.y; ++y)
+    {
+        for (uint x = begin.x; x < end.x; ++x)
+        {
+            const float depth = texelFetch(uDepth, ivec2(x, y), 0).r;
+            farthest = max(farthest, depth);
+        }
+    }
+    imageStore(uTileMax, ivec2(tile), vec4(farthest));
+}

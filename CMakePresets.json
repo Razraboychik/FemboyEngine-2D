@@ -1,0 +1,175 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev-clang",
+      "displayName": "Debug Clang (GNU-like)",
+      "description": "Ninja debug build with tests and compile_commands.json.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-dev",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FBY_BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "release-clang",
+      "displayName": "RelWithDebInfo Clang (GNU-like)",
+      "description": "Ninja release build with symbols and tests.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "FBY_BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "dev-clangcl",
+      "displayName": "Debug clang-cl",
+      "description": "Ninja debug build using the validated clang-cl toolchain.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-clangcl",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FBY_BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "audit-clang",
+      "displayName": "Existing audit build",
+      "description": "Reuses the existing build-audit directory for clangd.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-audit",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "FBY_BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "ci-clangcl",
+      "displayName": "CI clang-cl gate",
+      "description": "The authoritative Windows gate: RelWithDebInfo with tests.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ci",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "FBY_BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev-clang",
+      "configurePreset": "dev-clang",
+      "jobs": 8
+    },
+    {
+      "name": "release-clang",
+      "configurePreset": "release-clang",
+      "jobs": 8
+    },
+    {
+      "name": "dev-clangcl",
+      "configurePreset": "dev-clangcl",
+      "jobs": 8
+    },
+    {
+      "name": "audit-clang",
+      "configurePreset": "audit-clang",
+      "jobs": 8
+    },
+    {
+      "name": "ci-clangcl",
+      "configurePreset": "ci-clangcl",
+      "jobs": 8
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev-clang",
+      "configurePreset": "dev-clang",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 8
+      }
+    },
+    {
+      "name": "dev-clangcl",
+      "configurePreset": "dev-clangcl",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 8
+      }
+    },
+    {
+      "name": "ci-clangcl",
+      "configurePreset": "ci-clangcl",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 8
+      }
+    },
+    {
+      "name": "release-clang",
+      "configurePreset": "release-clang",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 8
+      }
+    },
+    {
+      "name": "audit-clang",
+      "configurePreset": "audit-clang",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 8
+      }
+    },
+    {
+      "name": "optimization",
+      "displayName": "Optimization gate",
+      "configurePreset": "audit-clang",
+      "filter": {
+        "include": {
+          "label": "optimization"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 8
+      }
+    }
+  ]
+}

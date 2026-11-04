@@ -1,4 +1,4 @@
-// FemboyEngine2D - Step 2 graph editor tests.
+// FemboyEngine2D - graph editor tests.
 #include "Editor/Infrastructure/CommandStack.hpp"
 #include "Editor/Panels/MaterialGraphPanel.hpp"
 #include "Editor/Panels/VisualScriptPanel.hpp"
@@ -48,6 +48,21 @@ void Check(bool InCondition, const char* InExpression, const char* InFile, int I
 [[nodiscard]] bool Contains(std::string_view InHaystack, std::string_view InNeedle)
 {
     return InHaystack.find(InNeedle) != std::string_view::npos;
+}
+
+// The Output node always sits at index 0, so the fixture cannot assume a fixed
+// index for the node it wants to edit. Look the node up by kind instead.
+[[nodiscard]] std::uint16_t FindNodeOfKind(const Fby::Render::MaterialGraph& InGraph,
+                                           Fby::Render::MaterialNodeKind InKind)
+{
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InGraph.NodeCount(); ++ScopedIndex)
+    {
+        if (InGraph.Node(static_cast<std::uint16_t>(ScopedIndex)).kind == InKind)
+        {
+            return static_cast<std::uint16_t>(ScopedIndex);
+        }
+    }
+    return Fby::Render::kInvalidMaterialNode;
 }
 
 // Material graph: the new 2.5D and distortion nodes must validate, emit GLSL
@@ -110,7 +125,9 @@ void TestMaterialNodes()
     const std::uint64_t ScopedHash = ScopedGraph.Hash();
     ScopedGraph.Node(1).uiPosition = Fby::Vector2D{1.0f, 2.0f};
     FBY_CHECK(ScopedGraph.Hash() == ScopedHash);
-    ScopedGraph.Param(ScopedGraph.Node(1).paramIndex).Z = 2.0f;
+    const std::uint16_t ScopedTiltNode = FindNodeOfKind(ScopedGraph, MaterialNodeKind::Tilt25D);
+    FBY_CHECK(ScopedTiltNode != kInvalidMaterialNode);
+    ScopedGraph.Param(ScopedGraph.Node(ScopedTiltNode).paramIndex).Z = 2.0f;
     FBY_CHECK(ScopedGraph.Hash() != ScopedHash);
 }
 

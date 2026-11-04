@@ -1,8 +1,8 @@
-# FemboyEngine2D — P1 Authoring Toolset & IDE Foundations
+# FemboyEngine2D — Authoring Toolset and IDE Foundations
 
-P1 turns the editor from a viewer into an authoring environment. The runtime
-models stay fixed-capacity and allocation-free; the editor layer adds
-transactions, metadata and OS integration. This document maps the code.
+The editor is an authoring environment. The runtime models stay fixed-capacity
+and allocation-free; the editor layer adds transactions, metadata and OS
+integration. This document maps the code.
 
 ## 1. Timeline & Curve editor
 
@@ -43,7 +43,7 @@ AssetMeta   { guid, asset_id, kind, source, cooked,
               content_generation, dependencies }
 ```
 
-Components migrated in P1: `SkeletonAssetRef`, `SpriteAnimationComponent`, `VideoStreamComponent`
+Components using the authoring path: `SkeletonAssetRef`, `SpriteAnimationComponent`, `VideoStreamComponent`
 (`media` handle). `VideoSystem::OpenFromAsset` resolves the row's source path.
 
 ### Transactions
@@ -229,7 +229,7 @@ by `ValidateAotModule` against the live `EcsBridge` layout hashes.
 
 ## 6. Verification
 
-`ctest`: **20/20** green. `graph_editor` covers the new MaterialGraph nodes and
+`ctest`: the full suite is green. `graph_editor` covers the new MaterialGraph nodes and
 SPIR-V path, LogicGraph field/condition/spawn nodes through the VM, sparse graph
 undo, the AOT source shape and the background builder failure path. Running
 `FBY_AOT_TEST_COMPILER=<clang++ path> fby_graph_editor_test` additionally
@@ -237,22 +237,6 @@ compiles and loads a real native plugin end to end. `editor_infrastructure`
 still covers project/config round-trip, `.femeta` auto-import, the background
 PNG -> BC7 cook and settings undo.
 
-## 7. Known gaps
+## 7. Backlog
 
-The live backlog is [ROADMAP.md](../../ROADMAP.md); this chapter keeps no second
-copy. Gaps that were listed here are closed: the PIE toolbar has Play/Stop (and a
-Step command), and material graphs have a `.fgraph` serializer that the cooker
-consumes.
-
-The items that remain true are tracked in the roadmap:
-
-* Timeline panel context (timeline asset, skeleton, SpriteAnimation, audio,
-  scripts) is still not bound by the Content Browser selection UI.
-* Logic fields are limited to `Float` and `Vec2`; int/bool/string fields need a
-  VM conversion opcode and a matching AOT emitter.
-* `AotBuilder::Cancel()` cannot interrupt a compiler process that is already
-  running; the worker joins after it finishes.
-* The command stack stores component bytes and spawn snapshots, not keyframe or
-  timeline edits.
-* OLED pixel shifting applies to the host's Pink UI canvas pool; the editor does
-  not own a game canvas, so the sample app has nothing to shift.
+Open work is tracked in [ROADMAP.md](../ROADMAP.md).

@@ -148,5 +148,5 @@ editor infrastructure test (panel clamp).
   [ROADMAP.md](../ROADMAP.md).
 - Feedback image recreation can happen mid-frame without waiting for the device,
   so a live resize can free images still referenced by in-flight command
-  buffers (ROADMAP P1).
+  buffers (tracked in ROADMAP.md).
 - VT stays opt-in: the editor creates a resource only under `FBY_VT_SELFTEST=1`.

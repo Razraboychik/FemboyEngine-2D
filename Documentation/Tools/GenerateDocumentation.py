@@ -547,13 +547,13 @@ SECTIONS: list[dict] = [
                     "headers": B("Model", "Модель"),
                     "rows": [
                         B("Rigid bodies", "Твёрдые тела"),
-                        B("Rope / chain", "Верёвка / цепь"),
+                        B("Rope / chain / spring graph", "Верёвка / цепь / граф пружин"),
                         B("Cloth", "Ткань"),
                         B("Water", "Вода"),
                     ],
                     "descriptions": [
                         B("Box2D v3 world, fixed step, contact events, teleport flag", "Мир Box2D v3, фиксированный шаг, события контактов, флаг телепорта"),
-                        B("A chain of capsule links with distance or revolute joints; anchors are existing bodies", "Цепочка капсульных звеньев с distance- или revolute-суставами; якоря — существующие тела"),
+                        B("A joint graph of capsule links: chain, rope and spring connections with break limits, ties and repair", "Граф соединений капсульных звеньев: цепь, верёвка и пружины с пределами прочности, связями и ремонтом"),
                         B("32x32 Verlet grid, Gauss-Seidel constraints, overlap query against Box2D shapes", "Verlet-сетка 32x32, ограничения Гаусса-Зейделя, overlap-запрос к формам Box2D"),
                         B("GerstnerField analytic waves plus ShallowWaterGrid on mdspan", "Аналитические волны GerstnerField и ShallowWaterGrid на mdspan"),
                     ],
@@ -562,16 +562,27 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "A rope is not a special body. It is a chain of small rigid links; a rope uses distance joints, a "
-                    "rigid chain replaces every distance joint with a revolute joint and angle limits. The system "
-                    "hard-caps chains, links and joints and allocates nothing on the frame path. It owns the link "
-                    "entities it creates and never the anchor entities; Shutdown order matters because destroying the "
-                    "Box2D world invalidates every stored id.",
-                    "Верёвка — не специальное тело. Это цепочка небольших твёрдых звеньев; верёвка использует "
-                    "distance-суставы, жёсткая цепь заменяет каждый distance на revolute с угловыми лимитами. "
-                    "Система жёстко ограничивает число цепочек, звеньев и суставов и ничего не аллоцирует на кадровом "
-                    "пути. Она владеет созданными звеньями и никогда — якорными сущностями; порядок Shutdown важен, "
-                    "потому что уничтожение мира Box2D инвалидирует все сохранённые id.",
+                    "A rope is not a special body. It is a chain of small rigid links joined by connections; every "
+                    "connection carries its own material (rigid distance, spring distance, revolute with limits, spring "
+                    "revolute), its own break limits in newtons and newton metres, optional damage accumulation and its "
+                    "own repair state. A chain is therefore a builder over a fixed joint graph: sections splice chain "
+                    "and rope runs, ties connect two links across chains or two plain bodies, gameplay cuts enter the "
+                    "deterministic command log, and a broken connection leaves the link entities alive. The system hard-caps "
+                    "chains, links and connections, allocates the pool once and never allocates on the frame path. It "
+                    "owns the link entities it creates and never the anchor entities; Shutdown order matters because "
+                    "destroying the Box2D world invalidates every stored id, and Update must run directly after the "
+                    "physics step to consume Box2D joint events.",
+                    "Верёвка — не специальное тело. Это цепочка небольших твёрдых звеньев, соединённых связями; каждая "
+                    "связь несёт свой материал (жёсткий distance, пружинный distance, revolute с лимитами, пружинный "
+                    "revolute), свои пределы прочности в ньютонах и ньютон-метрах, необязательное накопление повреждений "
+                    "и своё состояние ремонта. Поэтому цепь — это конструктор поверх фиксированного графа соединений: "
+                    "секции сращивают цепь и верёвку, связи соединяют два звена разных цепей или два обычных тела, "
+                    "разрезы из геймплея попадают в детерминированный журнал команд, а разорванная связь оставляет "
+                    "звенья живыми. Система жёстко "
+                    "ограничивает число цепочек, звеньев и соединений, выделяет пул один раз и ничего не аллоцирует на "
+                    "кадровом пути. Она владеет созданными звеньями и никогда — якорными сущностями; порядок Shutdown "
+                    "важен, потому что уничтожение мира Box2D инвалидирует все сохранённые id, а Update должен идти "
+                    "сразу после шага физики, чтобы забрать события суставов Box2D.",
                 ),
             ),
             (
@@ -614,12 +625,14 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "NetRollbackSession is the glue between Snapshot v4, CommandLog, Pcg32 and GameplayState. A session "
+                    "NetRollbackSession is the glue between Snapshot v4, CommandLog, Pcg32 and the gameplay components "
+                    "(tags, attributes, effects and skills). A session "
                     "owns a fixed ring of full snapshots (one per simulated tick), one input ring per player, a stable "
                     "NetEntityId to local EnTT id map and the replay loop. Everything after Initialize() is "
                     "allocation-free: the snapshot arena, entity tables, input rings and frame metadata are fixed "
                     "capacity. The simulation callback is a function pointer plus void*, never std::function.",
-                    "NetRollbackSession связывает Snapshot v4, CommandLog, Pcg32 и GameplayState. Сессия владеет "
+                    "NetRollbackSession связывает Snapshot v4, CommandLog, Pcg32 и геймплейные компоненты "
+                    "(теги, атрибуты, эффекты и скиллы). Сессия владеет "
                     "фиксированным кольцом полных снапшотов (один на симулированный тик), кольцом ввода на игрока, "
                     "картой стабильных NetEntityId в локальные EnTT id и циклом повтора. Всё после Initialize() не "
                     "аллоцирует память: арена снапшотов, таблицы сущностей, кольца ввода и метаданные кадров имеют "
@@ -676,14 +689,15 @@ SECTIONS: list[dict] = [
                 B(
                     "NetEntityId is assigned by the authority (or by the local peer for locally owned objects) and is "
                     "never derived from an EnTT id. A restored snapshot, a different spawn order or a different "
-                    "allocator must not change it. GameplayState is a 64-bit mask, so the whole replicated state fits "
-                    "one register and the checksum is one multiply-fold per entity. CommandLog records structural "
+                    "allocator must not change it. The replicated gameplay state is a compact tag mask plus fixed "
+                    "attribute, effect and skill records; the checksum folds each of them per mapped entity. "
+                    "CommandLog records structural "
                     "spawn/despawn/add/remove, so a rollback can replay structure as well as values.",
                     "NetEntityId назначается авторитетом (или локальным пиром для локально принадлежащих объектов) и "
                     "никогда не выводится из EnTT id. Восстановленный снапшот, другой порядок спавна или другой "
-                    "аллокатор не должны его менять. GameplayState — 64-битная маска, поэтому всё реплицируемое "
-                    "состояние помещается в один регистр, а контрольная сумма — одно multiply-fold на сущность. "
-                    "CommandLog фиксирует структурные spawn/despawn/add/remove, поэтому роллбэк повторяет и "
+                    "аллокатор не должны его менять. Реплицируемое геймплейное состояние — компактная маска тегов "
+                    "плюс фиксированные записи атрибутов, эффектов и скиллов; контрольная сумма сворачивает каждую "
+                    "из них на сущность. CommandLog фиксирует структурные spawn/despawn/add/remove, поэтому роллбэк повторяет и "
                     "структуру, и значения.",
                 ),
             ),
@@ -885,13 +899,13 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "The Release is verified by 38 CTest executables: rollback replay, RNG/noise, network "
+                    "The Release is verified by the CTest suite: rollback replay, RNG/noise, network "
                     "rollback, indirect mesh smoke, script VM, script AOT, PinkUI, DSP mixer, audio cook, material "
                     "graph, video, texture cook, asset metadata, animation timeline, editor command stack, editor "
                     "infrastructure, graph editor, physics extensions, UI accessibility, P3 integration and the "
                     "Definitions contract. Tests are plain executables with no framework, so they run headless and on "
                     "a console devkit.",
-                    "Release candidate проверяется 21 исполняемым файлом CTest: rollback replay, RNG/noise, сетевой "
+                    "Release candidate проверяется набором CTest: rollback replay, RNG/noise, сетевой "
                     "роллбэк, indirect mesh smoke, script VM, script AOT, PinkUI, DSP mixer, audio cook, material "
                     "graph, video, texture cook, метаданные ассетов, animation timeline, editor command stack, "
                     "инфраструктура редактора, graph editor, расширения физики, доступность UI, P3 integration и "
@@ -911,7 +925,8 @@ SECTIONS: list[dict] = [
                         B("RTTI scan", "RTTI scan"),
                     ],
                     "descriptions": [
-                        B("25/25 pass; no GPU required for the headless subset", "25/25 проходят; GPU не требуется для headless-подмножества"),
+                        B("full suite passes; no GPU required for the headless subset",
+                          "полный набор проходит; GPU не требуется для headless-подмножества"),
                         B("PascalCase stems, required tree, no Vec2/3/4, no RTTI tokens, no Cyrillic, Allman, braces", "PascalCase-имена, требуемое дерево, отсутствие Vec2/3/4, RTTI-токенов и кириллицы, Allman, скобки"),
                         B("Allman, 4 spaces, 120 columns, mandatory braces", "Allman, 4 пробела, 120 колонок, обязательные скобки"),
                         B("Parameters In*, outputs Out*, locals Scoped*, no type shadowing", "Параметры In*, выходы Out*, локальные Scoped*, без затенения типов"),
@@ -1183,15 +1198,21 @@ def markdown_escape(value: str) -> str:
 def render_markdown(section_list: list[dict], language: str, language_name: str, include_header: bool) -> str:
     lines: list[str] = []
     if include_header:
+        ScopedTitle = (
+            "FemboyEngine2D — Architecture Specification"
+            if language == "en"
+            else "FemboyEngine2D — Архитектурная спецификация"
+        )
+        ScopedLanguageLabel = "Language section" if language == "en" else "Языковой раздел"
         lines += [
-            "# FemboyEngine2D — Architecture Specification",
+            f"# {ScopedTitle}",
             "",
-            f"**Language section:** {language_name}",
+            f"**{ScopedLanguageLabel}:** {language_name}",
             "",
-            f"**Version:** {DOC_VERSION}  ",
-            f"**Status:** {DOC_STATUS}  ",
-            f"**Date:** {TODAY}  ",
-            f"**Document:** FBY-ARCH-0.1  ",
+            f"**Version:** {DOC_VERSION}",
+            f"**Status:** {DOC_STATUS}",
+            f"**Date:** {TODAY}",
+            f"**Document:** FBY-ARCH-0.1",
             "",
             "---",
             "",

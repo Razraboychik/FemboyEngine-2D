@@ -5,6 +5,7 @@
 #include "Engine/Assets/TextureFormat.hpp"
 #include "Engine/Core/BuildProfile.hpp"
 #include "Engine/Audio/AudioDevices.hpp"
+#include "Engine/Gameplay/GameplayTagDatabase.hpp"
 #include "Engine/Physics/CollisionFilter.hpp"
 #include "Engine/UI/Accessibility.hpp"
 
@@ -87,11 +88,87 @@ struct VirtualTextureSettings
     friend bool operator==(const VirtualTextureSettings&, const VirtualTextureSettings&) = default;
 };
 
+enum class OpaqueRenderMode : std::uint8_t
+{
+    Off = 0,
+    On = 1,
+    Auto = 2
+};
+
+enum class OitMode : std::uint8_t
+{
+    Off = 0,
+    Weighted = 1,
+    Accurate = 2
+};
+
+enum class UpscaleMode : std::uint8_t
+{
+    Nearest = 0,
+    Bilinear = 1,
+    Bicubic = 2,
+    Fsr1 = 3,
+    Fsr2 = 4
+};
+
+enum class UpscalePolicy : std::uint8_t
+{
+    Auto = 0,
+    Universal = 1,
+    Off = 2
+};
+
+enum class UpscalerBackendSetting : std::uint8_t
+{
+    Auto = 0,
+    Fsr1 = 1,
+    Fsr2 = 2,
+    Dlss = 3,
+    MetalFx = 4,
+    XeSs = 5
+};
+
+enum class FrameGenerationPolicySetting : std::uint8_t
+{
+    Auto = 0,
+    Universal = 1,
+    Off = 2
+};
+
+enum class FrameGenerationMode : std::uint8_t
+{
+    Off = 0,
+    Custom = 1,
+    Fsr3 = 2,
+    Dlss = 3,
+    XeSs = 4
+};
+
+enum class HudTargetMode : std::uint8_t
+{
+    Direct = 0,
+    Offscreen = 1,
+    Auto = 2
+};
+
+enum class TemporalUpscaleMode : std::uint8_t
+{
+    Off = 0,
+    Fsr2 = 1,
+    Dlss = 2,
+    Auto = 3
+};
+
 struct ProjectSettings
 {
     char name[kProjectNameCapacity] = "Untitled Project";
     char version[kProjectVersionCapacity] = "0.1.0";
+    char studioName[64] = "Independent Studio";
+    char description[256] = "A 2D project built with FemboyEngine2D.";
+    char copyrightHeader[256] = "Copyright (c) 2026 Independent Studio. All rights reserved.";
     char defaultScene[kProjectScenePathCapacity] = "scenes/main.toml";
+    // Splash is shown once on game launch and can be skipped by any click/key.
+    bool showSplash = true;
 
     float fixedUpdateHz = 120.0f;
     std::uint32_t maxFixedSteps = 8;
@@ -121,11 +198,42 @@ struct ProjectSettings
     // settings panel edits it, AccessibilityKernel::ApplyProfile applies it.
     AccessibilityProfile accessibility{};
 
+    // The single authored tag tree. It lives in the project file, the editor
+    // edits it in Project Settings, and the runtime copies it into
+    // GameplayTagRegistry. Gameplay values stay on entities; only definitions
+    // are project-global.
+    GameplayTagDatabase gameplayTags{};
+
     // Cooker target for imported textures. BC7 is the desktop default; ASTC is
     Assets::TextureFormat textureFormat = Assets::TextureFormat::Bc7Srgb;
 
     VirtualTextureSettings virtualTexture{};
     std::uint32_t maxTextureSize = 2048;
+    // Off/On/Auto for the front-to-back opaque path. Auto enables the path only
+    // for frames whose sprites are all opaque.
+    // Internal render resolution relative to the window. UI stays native.
+    float renderScale = 1.0f;
+    UpscaleMode upscaleMode = UpscaleMode::Bilinear;
+    // Temporal upscaling is a project policy and is off by default. No backend
+    // is compiled in yet; capability flags decide whether it can be selected.
+    bool allowTemporalUpscale = false;
+    TemporalUpscaleMode temporalUpscale = TemporalUpscaleMode::Off;
+    HudTargetMode hudTarget = HudTargetMode::Auto;
+    bool allowFrameGeneration = false;
+    FrameGenerationMode frameGeneration = FrameGenerationMode::Off;
+    FrameGenerationPolicySetting frameGenerationPolicy = FrameGenerationPolicySetting::Auto;
+    UpscalerBackendSetting upscalerBackend = UpscalerBackendSetting::Auto;
+    UpscalePolicy upscalePolicy = UpscalePolicy::Auto;
+    // Project-wide transparency policy. Emitters can override it with flags.
+    OitMode oitMode = OitMode::Off;
+    // Static-layer bake budget. The renderer uses tiles and evicts by LRU.
+    bool staticBakeEnabled = false;
+    std::uint32_t staticBakeTileSize = 256;
+    std::uint32_t staticBakeBudgetMB = 64;
+    OpaqueRenderMode opaqueMode = OpaqueRenderMode::Auto;
+    // Declares that the project's opaque art uses cutout alpha, not soft blend.
+    bool opaqueArtCutout = false;
+    float opaqueAlphaCutoff = 0.5f;
 
     // Final AOT cook policy. Persisted in [build] so the same project always
     Build::BuildProfile build{};

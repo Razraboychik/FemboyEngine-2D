@@ -22,6 +22,11 @@ namespace Rhi
 class VirtualTextureSystem;
 }
 
+namespace Core
+{
+class Profiler;
+}
+
 namespace Net
 {
 class NetSession;
@@ -51,6 +56,7 @@ class ProjectDashboard;
 class ProjectSettingsPanel;
 struct ProjectConfig;
 struct ProjectPaths;
+struct UserSettings;
 class VisualScriptPanel;
 
 struct EditorDesc
@@ -111,6 +117,10 @@ public:
     // The Render-phase system body. Builds one ImGui frame and updates the
     void Tick(Ecs::SystemContext& InContext);
 
+    // Optional frame profiler. The host records phase scopes into it and the
+    // Profiler panel draws the aggregated rows next to the frame graph.
+    void SetProfiler(Core::Profiler* InProfiler) noexcept;
+
     // SDL_Event* from WindowManager's observer.
     void OnPlatformEvent(const void* InSdlEvent);
 
@@ -121,7 +131,13 @@ public:
     void SetVisible(bool InVisible);
 
     [[nodiscard]] Rhi::RenderTargetHandle ViewportTarget() const noexcept;
+    [[nodiscard]] Rhi::RenderTargetHandle ViewportDisplayTarget() const noexcept;
+    [[nodiscard]] Rhi::RenderTargetHandle ViewportHudTarget() const noexcept;
+    [[nodiscard]] Rhi::RenderTargetHandle ViewportMotionTarget() const noexcept;
+    [[nodiscard]] Rhi::RenderTargetHandle ViewportFsr1Intermediate() const noexcept;
+    [[nodiscard]] bool ViewportUpscaleActive() const noexcept;
     [[nodiscard]] Rhi::Extent2D ViewportSize() const noexcept;
+    [[nodiscard]] Rhi::Extent2D ViewportRenderSize() const noexcept;
     [[nodiscard]] EditorCamera& Camera() noexcept;
     [[nodiscard]] const EditorCamera& Camera() const noexcept;
     [[nodiscard]] Scene::ComponentRegistry& Components() noexcept;
@@ -130,7 +146,7 @@ public:
     [[nodiscard]] AnimationTimelinePanel& TimelinePanel() noexcept;
     [[nodiscard]] CommandStack& Commands() noexcept;
     [[nodiscard]] ContentBrowserPanel& ContentBrowser() noexcept;
-    // Step 2 visual editors. The host may bind MaterialGraph().BindRenderItem()
+    // Visual editors. The host may bind MaterialGraph().BindRenderItem()
     [[nodiscard]] MaterialGraphPanel& MaterialGraph() noexcept;
     [[nodiscard]] VisualScriptPanel& VisualScript() noexcept;
     // AI State Tree authoring canvas (ImNodes) + its flat StateTreeDefinition
@@ -145,7 +161,10 @@ public:
     // PlayInEditor's replicated client world during Play (Multiplayer). The
     // target is invalid and the camera is unused outside such a session.
     [[nodiscard]] Rhi::RenderTargetHandle PieClientTarget() const noexcept;
+    [[nodiscard]] Rhi::RenderTargetHandle PieClientDisplayTarget() const noexcept;
+    [[nodiscard]] Rhi::RenderTargetHandle PieClientFsr1Intermediate() const noexcept;
     [[nodiscard]] Rhi::Extent2D PieClientSize() const noexcept;
+    [[nodiscard]] Rhi::Extent2D PieClientRenderSize() const noexcept;
     [[nodiscard]] EditorCamera& PieClientCamera() noexcept;
     [[nodiscard]] Ecs::Registry* PieClientWorld() noexcept;
     [[nodiscard]] bool IsPlaying() const noexcept;
@@ -154,6 +173,8 @@ public:
     [[nodiscard]] ProjectConfigStore& Config() noexcept;
     [[nodiscard]] ProjectSettingsPanel& ProjectSettings() noexcept;
     [[nodiscard]] EditorSettingsPanel& EditorSettings() noexcept;
+    [[nodiscard]] UserSettings& UserConfig() noexcept;
+    [[nodiscard]] const UserSettings& UserConfig() const noexcept;
     [[nodiscard]] AssetImportService& Importer() noexcept;
     [[nodiscard]] AssetDatabaseWatchSystem& Watcher() noexcept;
     [[nodiscard]] bool ProjectOpen() const noexcept;

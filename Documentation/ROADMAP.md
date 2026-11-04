@@ -1,6 +1,6 @@
 # Roadmap
 
-Current public line: **0.1.0-alpha.1**.
+Current public line: **0.2.0-alpha.1**.
 
 FemboyEngine2D is a data-oriented 2D engine. The current alpha focuses on the
 runtime, editor, asset pipeline and deterministic networking that already ship in

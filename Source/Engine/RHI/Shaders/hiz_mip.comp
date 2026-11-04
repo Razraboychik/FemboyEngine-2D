@@ -1,0 +1,35 @@
+#version 460
+// FemboyEngine2D - Hi-Z mip reduction.
+//
+// The source is the previous Hi-Z tile level, already a conservative maximum.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D uSource;
+layout(set = 0, binding = 1, r32f) uniform image2D uDest;
+
+layout(push_constant) uniform Constants
+{
+    uvec2 SourceSize;
+    uvec2 DestSize;
+} Push;
+
+void main()
+{
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (pixel.x >= Push.DestSize.x || pixel.y >= Push.DestSize.y)
+    {
+        return;
+    }
+    const uvec2 sourceBegin = pixel * 2u;
+    const uvec2 sourceEnd = min(sourceBegin + 2u, Push.SourceSize);
+    float farthest = 0.0;
+    for (uint y = sourceBegin.y; y < sourceEnd.y; ++y)
+    {
+        for (uint x = sourceBegin.x; x < sourceEnd.x; ++x)
+        {
+            farthest = max(farthest, texelFetch(uSource, ivec2(x, y), 0).r);
+        }
+    }
+    imageStore(uDest, ivec2(pixel), vec4(farthest));
+}

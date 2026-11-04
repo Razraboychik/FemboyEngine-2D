@@ -67,39 +67,39 @@ bool SecureRng::Fill(void* InDestination, std::size_t InSize) noexcept
     }
     return true;
 #elif defined(__unix__) || defined(__APPLE__) || defined(__ANDROID__)
-    const int descriptor = OpenUrandom();
-    if (descriptor < 0)
+    const int ScopedDescriptor = OpenUrandom();
+    if (ScopedDescriptor < 0)
     {
         return false;
     }
-    auto* cursor = static_cast<unsigned char*>(destination);
-    std::size_t remaining = size;
-    bool ok = true;
-    while (remaining > 0)
+    auto* ScopedCursor = static_cast<unsigned char*>(InDestination);
+    std::size_t ScopedRemaining = InSize;
+    bool ScopedOk = true;
+    while (ScopedRemaining > 0)
     {
-        const ssize_t got = ::read(descriptor, cursor, remaining);
-        if (got < 0)
+        const ssize_t ScopedGot = ::read(ScopedDescriptor, ScopedCursor, ScopedRemaining);
+        if (ScopedGot < 0)
         {
             if (errno == EINTR)
             {
                 continue;
             }
-            ok = false;
+            ScopedOk = false;
             break;
         }
-        if (got == 0)
+        if (ScopedGot == 0)
         {
-            ok = false;
+            ScopedOk = false;
             break;
         }
-        cursor += static_cast<std::size_t>(got);
-        remaining -= static_cast<std::size_t>(got);
+        ScopedCursor += static_cast<std::size_t>(ScopedGot);
+        ScopedRemaining -= static_cast<std::size_t>(ScopedGot);
     }
-    (void)::close(descriptor);
-    return ok;
+    (void)::close(ScopedDescriptor);
+    return ScopedOk;
 #else
-    (void)destination;
-    (void)size;
+    (void)InDestination;
+    (void)InSize;
     return false;
 #endif
 }

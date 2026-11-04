@@ -20,6 +20,13 @@ namespace Fby::Scene
 
 using Registry = entt::registry;
 
+// Optional TOML codec for fixed arrays that Mirror cannot express. The capture
+// hook returns ready-to-append TOML lines; the restore hook receives one key
+// that is not a reflected field.
+using TomlCapture = std::string (*)(const void* InComponent);
+using TomlRestore = bool (*)(void* InComponent, std::string_view InKey, std::string_view InValue,
+                             std::string* OutError);
+
 struct ComponentOps
 {
     // Static storage: points into Reflection<T>
@@ -39,6 +46,8 @@ struct ComponentOps
     [[nodiscard]] void* (*getMutable)(Registry&, Entity) = nullptr;
     [[nodiscard]] bool (*has)(const Registry&, Entity) = nullptr;
     void (*remove)(Registry&, Entity) = nullptr;
+    TomlCapture captureToml = nullptr;
+    TomlRestore restoreToml = nullptr;
 };
 
 namespace Detail
@@ -138,6 +147,10 @@ public:
         MIndex.insert_or_assign(ScopedKey, MOps.size());
         MOps.push_back(ScopedOps);
     }
+
+    // Attaches the optional fixed-array TOML codec to an already registered
+    // component. Passing nulls removes it.
+    bool SetTomlCodec(std::string_view InName, TomlCapture InCapture, TomlRestore InRestore);
 
     [[nodiscard]] const ComponentOps* Find(std::string_view InName) const;
     [[nodiscard]] bool Contains(std::string_view InName) const

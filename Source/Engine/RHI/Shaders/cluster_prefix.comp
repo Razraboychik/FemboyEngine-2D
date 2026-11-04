@@ -1,0 +1,38 @@
+#version 460
+// FemboyEngine2D - prefix sum for clustered-light offsets.
+//
+// The cluster count is small enough that one invocation can write the running
+// offsets deterministically. ClusterCount = Tiles.x * Tiles.y.
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+struct ClusterHeader
+{
+    uint Offset;
+    uint Count;
+    uint OverflowCount;
+    uint Flags;
+};
+
+layout(std430, set = 0, binding = 0) buffer Headers
+{
+    ClusterHeader Items[];
+} HeaderBuffer;
+
+layout(push_constant) uniform ClusterConstants
+{
+    uvec2 Tiles;
+    uint LightCount;
+    uint MaxPerCluster;
+} Constants;
+
+void main()
+{
+    const uint ClusterCount = Constants.Tiles.x * Constants.Tiles.y;
+    uint Running = 0u;
+    for (uint Index = 0u; Index < ClusterCount; ++Index)
+    {
+        HeaderBuffer.Items[Index].Offset = Running;
+        Running += HeaderBuffer.Items[Index].Count;
+    }
+}

@@ -115,10 +115,10 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "The engine targets C++26 with GCC 15 or newer and Clang 19 or newer; the Windows release "
+                    "The engine targets C++26 with GCC 16 or newer and Clang 19 or newer; the Windows release "
                     "candidate is built with clang-cl against the MSVC standard library. Four rules are load "
                     "bearing and every public API is designed around them:",
-                    "Движок рассчитан на C++26 с GCC 15 или новее и Clang 19 или новее; релиз-кандидат под Windows "
+                    "Движок рассчитан на C++26 с GCC 16 или новее и Clang 19 или новее; релиз-кандидат под Windows "
                     "собирается clang-cl со стандартной библиотекой MSVC. Четыре правила являются несущими, и "
                     "каждый публичный API спроектирован вокруг них:",
                 ),
@@ -722,8 +722,11 @@ SECTIONS: list[dict] = [
                     "`DecodeCookedMaterial` and `Acquire`.",
                     "Редактор сохраняет живое редактирование поверх того же кэша: "
                     "`Fby::Editor::MaterialGraphRuntime` перекомпилирует граф при смене хеша, отдаёт ошибки по "
-                    "вкладкам и передаёт владение пайплайном в `MaterialPipelineCache`. Поставленная сборка "
-                    "обходится без glslang и вызывает только `DecodeCookedMaterial` и `Acquire`.",
+                    "вкладкам и передаёт владение пайплайном в `MaterialPipelineCache`. "
+                    "`MaterialGraphRuntime::SetDomain` переключает живую компиляцию между mesh- и "
+                    "sprite-контрактом, а `SaveGraph`/`LoadGraph` панели пишут и читают payload `.fgraph`, "
+                    "который потребляет cooker. Поставленная сборка обходится без glslang и вызывает только "
+                    "`DecodeCookedMaterial` и `Acquire`.",
                 ),
             },
             {
@@ -767,12 +770,16 @@ SECTIONS: list[dict] = [
                     "PhysicsSystem owns one b2WorldId and exposes it to extension modules as a packed uint32, so "
                     "box2d.h never leaks into a public header. Bodies are mirrored from RigidBody2D/Collider2D "
                     "components into Box2D, stepped at the fixed rate, and read back before interpolation. "
-                    "PhysicsJointSystem adds rope and revolute-link chains; ClothSystem integrates a Verlet grid "
+                    "PhysicsJointSystem builds a fixed-capacity joint graph: chain, rope and spring connections with "
+                    "break limits, damage accumulation, gameplay cuts, repair, in-place rebuild and ties. ClothSystem "
+                    "integrates a Verlet grid "
                     "and projects it against the same Box2D colliders.",
                     "PhysicsSystem владеет одним b2WorldId и отдаёт его расширениям как упакованный uint32, "
                     "поэтому box2d.h не попадает в публичные заголовки. Тела зеркалируются из компонентов "
                     "RigidBody2D/Collider2D в Box2D, шагают с фиксированной частотой и читаются обратно перед "
-                    "интерполяцией. PhysicsJointSystem добавляет верёвки и цепочки revolute-звеньев; ClothSystem "
+                    "интерполяцией. PhysicsJointSystem строит фиксированный граф соединений: цепь, верёвка и пружины "
+                    "с пределами прочности, накоплением повреждений, разрезами из геймплея, ремонтом, пересборкой "
+                    "на месте и связями. ClothSystem "
                     "интегрирует Verlet-сетку и проецирует её на те же коллайдеры Box2D.",
                 ),
             },
@@ -845,11 +852,13 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "A session binds snapshot v4, CommandLog, Pcg32 and GameplayState into one fixed-capacity "
+                    "A session binds snapshot v4, CommandLog, Pcg32 and the gameplay components (tags, attributes, "
+                    "effects and skills) into one fixed-capacity "
                     "rollback loop. Everything after Initialize() is allocation-free: one snapshot ring, one "
                     "input ring per player, a fixed entity map and fixed frame metadata. The simulation callback "
                     "is a function pointer plus void*.",
-                    "Сессия связывает snapshot v4, CommandLog, Pcg32 и GameplayState в один контур роллбэка с "
+                    "Сессия связывает snapshot v4, CommandLog, Pcg32 и геймплейные компоненты (теги, атрибуты, "
+                    "эффекты и скиллы) в один контур роллбэка с "
                     "фиксированной ёмкостью. После Initialize() аллокаций нет: одно кольцо снапшотов, одно кольцо "
                     "ввода на игрока, фиксированная карта сущностей и фиксированные метаданные кадров. Колбэк "
                     "симуляции — указатель на функцию плюс void*.",
@@ -1382,21 +1391,13 @@ SECTIONS: list[dict] = [
     },
     {
         "number": "19",
-        "title": B("Known gaps and recommended next work", "Известные пробелы и рекомендуемая следующая работа"),
+        "title": B("Open work", "Открытая работа"),
         "blocks": [
             {
                 "type": "p",
                 "text": B(
-                    "The live backlog, with file/line evidence and a status per item, is Documentation/ROADMAP.md. "
-                    "The items previously listed here (the GOG shim build step, a canvas mixing text with its own "
-                    "image array, std::function in the window observers/dialogs, BlindMode focused-widget "
-                    "narration, SceneDiagnostics simulation time and fixed-step enforcement) are tracked there; "
-                    "this chapter keeps no second copy.",
-                    "Живой бэклог с файлами, строками и статусом каждого пункта — Documentation/ROADMAP.md. "
-                    "Ранее перечисленные здесь пункты (сборка GOG-шима, канвас со смешением текста и собственного "
-                    "массива изображений, std::function в наблюдателях/диалогах окна, озвучивание подписи "
-                    "сфокусированного виджета в BlindMode, время симуляции в SceneDiagnostics и контроль "
-                    "фиксированного шага) отслеживаются там; эта глава не держит вторую копию.",
+                    "Open work is tracked in Documentation/ROADMAP.md.",
+                    "Открытая работа отслеживается в Documentation/ROADMAP.md.",
                 ),
             },
         ],
@@ -1482,11 +1483,16 @@ def render_markdown(lang: str) -> str:
     out.append(f"**{SUBTITLES[lang]}**\n")
     out.append(f"\nVersion {DOC_VERSION} ({DOC_STATUS}) · {TODAY} · {LANGUAGES[lang]}\n")
     out.append("\n---\n")
-    out.append("\n## Table of contents\n")
+    ScopedContents = "Содержание" if lang == "ru" else "Table of contents"
+    ScopedAppendixA = t(B("Appendix A - generated symbol index",
+                          "Приложение A - сгенерированный индекс символов"), lang)
+    ScopedAppendixB = t(B("Appendix B - macros and platform defines",
+                          "Приложение B - макросы и платформенные define"), lang)
+    out.append(f"\n## {ScopedContents}\n")
     for section in SECTIONS:
         out.append(f"\n{section['number']}. {t(section['title'], lang)}")
-    out.append(f"\n{len(SECTIONS) + 1}. Appendix A - generated symbol index")
-    out.append(f"\n{len(SECTIONS) + 2}. Appendix B - macros and platform defines")
+    out.append(f"\n{len(SECTIONS) + 1}. {ScopedAppendixA}")
+    out.append(f"\n{len(SECTIONS) + 2}. {ScopedAppendixB}")
     out.append("\n")
 
     for section in SECTIONS:
@@ -1513,7 +1519,7 @@ def render_markdown(lang: str) -> str:
                 out.append("")
 
     by_module, macros = scan_symbols()
-    out.append(f"\n## {len(SECTIONS) + 1}. Appendix A - generated symbol index\n")
+    out.append(f"\n## {len(SECTIONS) + 1}. {ScopedAppendixA}\n")
     out.append(
         t(
             B(
@@ -1533,7 +1539,7 @@ def render_markdown(lang: str) -> str:
         for name, header, line in entries:
             out.append(f"| `{name}` | {module.split('/')[-1]} | `{header}` | {line} |")
 
-    out.append(f"\n## {len(SECTIONS) + 2}. Appendix B - macros and platform defines\n")
+    out.append(f"\n## {len(SECTIONS) + 2}. {ScopedAppendixB}\n")
     out.append(t(B("| Macro | Header | Line |", "| Макрос | Заголовок | Строка |"), lang))
     out.append("|---|---|---|")
     for name, header, line in sorted(macros):

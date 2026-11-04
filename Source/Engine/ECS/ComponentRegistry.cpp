@@ -15,7 +15,14 @@
 #include "Engine/Physics/Cloth.hpp"
 #include "Engine/Physics/Fluid.hpp"
 #include "Engine/Physics/Physics.hpp"
+#include "Engine/AI/AIController.hpp"
+#include "Engine/Gameplay/GameplayAttributes.hpp"
+#include "Engine/Gameplay/GameplayEffects.hpp"
+#include "Engine/Gameplay/GameplaySkills.hpp"
+#include "Engine/Gameplay/GameplayTags.hpp"
+#include "Engine/Physics/Gravity.hpp"
 #include "Engine/Physics/PhysicsJoints.hpp"
+#include "Engine/Physics/PhysicsJointsScene.hpp"
 #include "Engine/Physics/SdfPrimitives.hpp"
 #include "Engine/Script/ScriptSystem.hpp"
 #include "Engine/UI/Hypertext.hpp"
@@ -37,16 +44,29 @@ std::uint64_t ComponentRegistry::LayoutHashOf(std::string_view InName) const
     return ScopedOps != nullptr ? ScopedOps->layoutHash : 0;
 }
 
+bool ComponentRegistry::SetTomlCodec(std::string_view InName, TomlCapture InCapture, TomlRestore InRestore)
+{
+    const auto ScopedIt = MIndex.find(std::string(InName));
+    if (ScopedIt == MIndex.end())
+    {
+        return false;
+    }
+    MOps[ScopedIt->second].captureToml = InCapture;
+    MOps[ScopedIt->second].restoreToml = InRestore;
+    return true;
+}
+
 void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
 {
     InRegistry.Register<Transform2D>();
     InRegistry.Register<NameComponent>();
     InRegistry.Register<Velocity>();
+    InRegistry.Register<TransportGroupComponent>();
+    InRegistry.Register<CarrierMemberComponent>();
     InRegistry.Register<Sprite2D>();
     InRegistry.Register<DrawOrder>();
     InRegistry.Register<Camera2D>();
     InRegistry.Register<Lifetime>();
-    InRegistry.Register<GameplayState>();
     InRegistry.Register<Light2DComponent>();
     InRegistry.Register<Light2DTargetComponent>();
     InRegistry.Register<Light2DOccluderComponent>();
@@ -58,6 +78,9 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<SleepingStaticComponent>();
     InRegistry.Register<SdfShapeComponent>();
     InRegistry.Register<Navigation::NavAgentSettings>();
+    InRegistry.Register<Navigation::NavAgentPathSettings>();
+    InRegistry.Register<LevelGravityComponent>();
+    InRegistry.Register<GravityBodyComponent>();
     InRegistry.Register<Skeletal::IkGoalComponent>();
     InRegistry.Register<TilemapAssetRefComponent>();
     InRegistry.Register<NarrativeLabelComponent>();
@@ -86,7 +109,20 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     // Physics/media authoring. RigidBody2D/Collider2D stay inspector-editable
     InRegistry.Register<RigidBody2D>(false);
     InRegistry.Register<Collider2D>(false);
+    // Gameplay runtime state is simulation data, not scene authoring data: it
+    // travels in snapshots and is registered for the inspector but not TOML.
+    InRegistry.Register<GameplayTagsComponent>(false);
+    InRegistry.Register<GameplayAttributesComponent>(false);
+    InRegistry.Register<GameplayEffectsComponent>(false);
+    InRegistry.Register<GameplaySkillsComponent>(false);
+    InRegistry.Register<AI::AIAgentSettings>();
+    InRegistry.Register<AI::AIControllerComponent>(false);
+    InRegistry.Register<AI::AIPerceptionSettings>();
+    InRegistry.Register<AI::AIPerceptionComponent>(false);
     InRegistry.Register<JointChainComponent>();
+    // Fixed arrays (Path, Sections) need their own TOML codec; reflection only
+    // covers the scalar fields.
+    (void)InRegistry.SetTomlCodec("JointChainComponent", &CaptureJointChainToml, &RestoreJointChainToml);
     InRegistry.Register<JointLinkComponent>(false);
     InRegistry.Register<ClothComponent>(false);
     InRegistry.Register<FluidInteractorComponent>();

@@ -2,6 +2,8 @@
 #include "Engine/Network/NetRollback.hpp"
 
 #include "Engine/Core/Mirror.hpp"
+#include "Engine/Gameplay/GameplayEffects.hpp"
+#include "Engine/Gameplay/GameplaySkills.hpp"
 #include "Engine/Network/RelevanceGrid.hpp"
 #include "Engine/Physics/Physics.hpp"
 
@@ -562,7 +564,7 @@ NetRollbackSession::Result NetRollbackSession::CaptureFrame(std::uint64_t InTick
     ScopedFrame.tick = InTick;
     ScopedFrame.snapshotBytes = static_cast<std::uint32_t>(ScopedWritten);
     ScopedFrame.snapshotChecksum = ComputeFrameDigest(ScopedHeader);
-    ScopedFrame.stateChecksum = ComputeGameplayStateChecksum(*MRegistry, MEntities);
+    ScopedFrame.stateChecksum = ComputeGameplayChecksum(*MRegistry, MEntities);
     ScopedFrame.rng = MRng.Save();
     ScopedFrame.commandCursor = MCommandCursor;
     return Result::Ok;
@@ -1038,33 +1040,104 @@ std::uint64_t NetRollbackSession::StateChecksum() const noexcept
     {
         return 0;
     }
-    return ComputeGameplayStateChecksum(*MRegistry, MEntities);
+    return ComputeGameplayChecksum(*MRegistry, MEntities);
 }
 
-std::uint64_t NetRollbackSession::ComputeGameplayStateChecksum(const Ecs::Registry& InRegistry,
+std::uint64_t NetRollbackSession::ComputeGameplayChecksum(const Ecs::Registry& InRegistry,
                                                                const NetEntityMap& InEntities) noexcept
 {
     // Order-independent fold: h1 accumulates, h2 xors rotated mixes. Snapshot
     std::uint64_t ScopedSum = 0x243F6A8885A308D3ull;
     std::uint64_t ScopedXored = 0xC2B2AE3D27D4EB4Full;
     std::uint64_t ScopedCount = 0;
-    auto ScopedView = InRegistry.view<GameplayState>();
-    for (const Entity ScopedEntity : ScopedView)
+    const auto ScopedIdentityOf = [&InEntities](Entity InEntity, std::uint64_t* OutIdentity) -> bool
     {
-        const GameplayState& ScopedState = ScopedView.get<GameplayState>(ScopedEntity);
-        const NetEntityId ScopedNet = InEntities.IdOf(ScopedEntity);
+        const NetEntityId ScopedNet = InEntities.IdOf(InEntity);
         if (!ScopedNet.IsValid())
         {
             // Local-only entities are not part of the network state: a peer
             // cannot derive the same local ids, so folding them would make
             // every cross-peer comparison fail.
+            return false;
+        }
+        *OutIdentity = (static_cast<std::uint64_t>(ScopedNet.value) << 1u) | 1u;
+        return true;
+    };
+    const auto ScopedFold = [&ScopedSum, &ScopedXored, &ScopedCount](std::uint64_t InValue, std::uint64_t InIdentity)
+    {
+        const std::uint64_t ScopedMixed = Reflect::MixHash(InValue, InIdentity);
+        ScopedSum += ScopedMixed;
+        ScopedXored ^= std::rotl(ScopedMixed, static_cast<int>(InValue & 63u));
+        ++ScopedCount;
+    };
+
+    auto ScopedTagView = InRegistry.view<GameplayTagsComponent>();
+    for (const Entity ScopedEntity : ScopedTagView)
+    {
+        std::uint64_t ScopedIdentity = 0;
+        if (!ScopedIdentityOf(ScopedEntity, &ScopedIdentity))
+        {
             continue;
         }
-        const std::uint64_t ScopedIdentity = (static_cast<std::uint64_t>(ScopedNet.value) << 1u) | 1u;
-        const std::uint64_t ScopedMixed = Reflect::MixHash(ScopedState.Bits, ScopedIdentity);
-        ScopedSum += ScopedMixed;
-        ScopedXored ^= std::rotl(ScopedMixed, static_cast<int>(ScopedState.Bits & 63u));
-        ++ScopedCount;
+        const GameplayTagsComponent& ScopedTags = ScopedTagView.get<GameplayTagsComponent>(ScopedEntity);
+        for (std::uint32_t ScopedWord = 0; ScopedWord < kGameplayTagWords; ++ScopedWord)
+        {
+            ScopedFold(ScopedTags.Tags.Bits.Words[ScopedWord], ScopedIdentity + ScopedWord);
+        }
+    }
+
+    auto ScopedAttributeView = InRegistry.view<GameplayAttributesComponent>();
+    for (const Entity ScopedEntity : ScopedAttributeView)
+    {
+        std::uint64_t ScopedIdentity = 0;
+        if (!ScopedIdentityOf(ScopedEntity, &ScopedIdentity))
+        {
+            continue;
+        }
+        const GameplayAttributesComponent& ScopedAttributes =
+            ScopedAttributeView.get<GameplayAttributesComponent>(ScopedEntity);
+        for (std::uint32_t ScopedAttribute = 0; ScopedAttribute < kMaxGameplayAttributes; ++ScopedAttribute)
+        {
+            ScopedFold(std::bit_cast<std::uint32_t>(ScopedAttributes.Values.Current[ScopedAttribute]),
+                       ScopedIdentity + ScopedAttribute);
+        }
+    }
+
+    auto ScopedEffectView = InRegistry.view<GameplayEffectsComponent>();
+    for (const Entity ScopedEntity : ScopedEffectView)
+    {
+        std::uint64_t ScopedIdentity = 0;
+        if (!ScopedIdentityOf(ScopedEntity, &ScopedIdentity))
+        {
+            continue;
+        }
+        const GameplayEffectsComponent& ScopedEffects = ScopedEffectView.get<GameplayEffectsComponent>(ScopedEntity);
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedEffects.Count; ++ScopedI)
+        {
+            const ActiveGameplayEffect& ScopedActive = ScopedEffects.Active[ScopedI];
+            ScopedFold(ScopedActive.DefId, ScopedIdentity + ScopedI);
+            ScopedFold(std::bit_cast<std::uint32_t>(ScopedActive.Remaining), ScopedIdentity + ScopedI * 3u);
+            ScopedFold(ScopedActive.Stacks, ScopedIdentity + ScopedI * 5u);
+        }
+    }
+
+    auto ScopedSkillView = InRegistry.view<GameplaySkillsComponent>();
+    for (const Entity ScopedEntity : ScopedSkillView)
+    {
+        std::uint64_t ScopedIdentity = 0;
+        if (!ScopedIdentityOf(ScopedEntity, &ScopedIdentity))
+        {
+            continue;
+        }
+        const GameplaySkillsComponent& ScopedSkills = ScopedSkillView.get<GameplaySkillsComponent>(ScopedEntity);
+        for (std::uint32_t ScopedI = 0; ScopedI < kMaxGameplaySkillSlots; ++ScopedI)
+        {
+            const GameplaySkillSlot& ScopedSlot = ScopedSkills.Slots[ScopedI];
+            ScopedFold(ScopedSlot.SkillId, ScopedIdentity + ScopedI * 7u);
+            ScopedFold(std::bit_cast<std::uint32_t>(ScopedSlot.CooldownRemaining), ScopedIdentity + ScopedI * 11u);
+            ScopedFold(std::bit_cast<std::uint32_t>(ScopedSlot.CastRemaining), ScopedIdentity + ScopedI * 13u);
+            ScopedFold(static_cast<std::uint64_t>(ScopedSlot.State), ScopedIdentity + ScopedI * 17u);
+        }
     }
     return Reflect::MixHash(Reflect::MixHash(ScopedSum, ScopedXored), ScopedCount);
 }

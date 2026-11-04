@@ -48,6 +48,10 @@ enum class NativeId : std::uint16_t
     DecimalToInt,
     DecimalLog,
     DecimalRelease,
+    TransportAttach,
+    TransportDetach,
+    TransportSetParent,
+    TransportCreate,
     Count,
 };
 
@@ -73,7 +77,13 @@ inline constexpr std::uint32_t kNativeFunctionCount = static_cast<std::uint32_t>
         case NativeId::DecimalCmp:
             return 2;
         case NativeId::DecimalDivRounded:
+        case NativeId::TransportSetParent:
             return 3;
+        case NativeId::TransportAttach:
+        case NativeId::TransportCreate:
+            return 4;
+        case NativeId::TransportDetach:
+            return 1;
         case NativeId::LogFloat:
         case NativeId::LogInt:
         case NativeId::LogMessage:

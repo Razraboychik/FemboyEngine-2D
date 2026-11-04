@@ -52,5 +52,12 @@ CMakeFiles/
 /Projects/*
 !/Projects/.gitkeep
 
+# Optional vendor upscaler/frame-generation SDKs. They are multi-gigabyte
+# snapshots fetched locally for capability work; setup or a feature build
+# materialises them without committing them to the engine source.
+/third_party/dlss/
+/third_party/fidelityfx/
+/third_party/xess/
+
 # Python scratch used by the docs tooling.
 __pycache__/

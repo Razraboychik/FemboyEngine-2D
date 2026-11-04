@@ -95,6 +95,16 @@ public:
     {
         MVm.SetNative(InId, InFunction);
     }
+    // Host service for transport_attach / transport_detach / transport_set_parent.
+    // A headless game may leave it null; the natives then return zero.
+    void SetTransportGroups(TransportGroupSystem* InGroups) noexcept
+    {
+        MTransportGroups = InGroups;
+    }
+    [[nodiscard]] TransportGroupSystem* TransportGroups() const noexcept
+    {
+        return MTransportGroups;
+    }
 
     // Called by the system when Run() reports a fault. Logs at most once per
     void ReportFault(std::uint32_t InHandle, Entity InEntity, const Script::VmFault& InFault) noexcept;
@@ -129,6 +139,7 @@ private:
     std::uint64_t MAotRunCount = 0;
     std::uint64_t MUnnativizedSkipCount = 0;
     std::array<bool, kScriptMaxPrograms> MFaultReported{};
+    TransportGroupSystem* MTransportGroups = nullptr;
     bool MInitialized = false;
 };
 
@@ -142,8 +153,8 @@ void RegisterDefaultScriptNatives(ScriptRuntime& InRuntime);
 // When `InAot` is supplied, a program that has a nativized module runs as native
 // code; `InAllowVmFallback == false` turns a missing module into a reported skip
 // instead of an interpreter run (the cooked-build contract: no VM fallback).
-void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
-                        const Script::AotHost* InAot = nullptr, bool InAllowVmFallback = true);
+void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime, const Script::AotHost* InAot = nullptr,
+                        bool InAllowVmFallback = true);
 
 // Test/tool helper: run one event for one entity without a schedule.
 [[nodiscard]] bool RunScriptOnce(ScriptRuntime& InRuntime, std::uint32_t InProgram, Entity InEntity,

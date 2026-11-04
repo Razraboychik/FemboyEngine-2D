@@ -1,6 +1,6 @@
 # Viewport Display Modes and Presentation Policy
 
-FemboyEngine2D 0.1.0-alpha.1 ships six viewport display modes, one collision-policy ladder, one render-mask component and one unified light source. Together they answer the questions a 2D scene raises during authoring: is the shipped image correct, is the art laid out correctly, does the collision setup match what the player feels, what costs the frame, which lights reach a sprite, and does the baked distance field agree with the drawing.
+FemboyEngine2D 0.2.0-alpha.1 ships six viewport display modes, one collision-policy ladder, one render-mask component and one unified light source. Together they answer the questions a 2D scene raises during authoring: is the shipped image correct, is the art laid out correctly, does the collision setup match what the player feels, what costs the frame, which lights reach a sprite, and does the baked distance field agree with the drawing.
 
 This manual is the authored reference for those systems. It describes the exact colour legend of every mode, when to use each one, how to read a bad result and what to change, plus the authoring data behind the diagnostics: the collision mode ladder, render masks, the three light types and their cone behaviour, the static and sleeping-static light lifecycle, time stop, and the SDF primitive palette.
 

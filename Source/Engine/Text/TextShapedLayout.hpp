@@ -157,7 +157,7 @@ struct ShapedGlyphHit
 };
 
 // Coarse glyph hit-testing from shaped advances. It is sufficient for buttons,
-// links and vertical CJK columns; pixel-exact SDF coverage comes later.
+// links and vertical CJK columns.
 [[nodiscard]] inline bool HitTestShapedGlyph(std::span<const ShapedGlyph> InGlyphs,
                                              std::span<const ShapedLine> InLines, Vector2D InOrigin,
                                              float InFontSize, bool InVertical, Vector2D InPoint,

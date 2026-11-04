@@ -101,10 +101,10 @@ SECTIONS: list[dict] = [
                 ],
             )),
             ("note", B(
-                "The engine is validated by 26 CTest executables. The new suites cover the SDK profile and "
+                "The engine is validated by the full CTest suite. The suites cover the SDK profile and "
                 "crypto, the storefront bridge, SDF physics, the render/weather stack and the data-driven "
                 "prefab/DPI/theme path. Run ctest --test-dir build --output-on-failure before trusting a local change.",
-                "Движок проверяется 26 исполняемыми CTest-тестами. Новые наборы покрывают SDK-профиль и "
+                "Движок проверяется полным набором CTest. Наборы покрывают SDK-профиль и "
                 "криптографию, мост магазинов, SDF-физику, стек рендера/погоды и путь data-driven "
                 "префабов/DPI/темы. Перед тем как доверять локальному изменению, запустите ctest --test-dir build --output-on-failure.",
             )),
@@ -114,28 +114,43 @@ SECTIONS: list[dict] = [
         "title": B("2. Setup and the reproducible toolchain", "2. Установка и воспроизводимый тулчейн"),
         "blocks": [
             ("p", B(
-                "The one-click setup scripts install the pinned dependencies and materialise the exact sources under "
-                "third_party/. CMake prefers those local checkouts, so the first configure after setup does not need "
-                "network access. Versions are fixed by the scripts and written to third_party/dependencies.lock.",
-                "Скрипты установки в один клик ставят зафиксированные зависимости и раскладывают точные исходники в "
-                "third_party/. CMake предпочитает эти локальные копии, поэтому первый configure после установки не "
-                "требует сети. Версии фиксируются скриптами и записываются в third_party/dependencies.lock.",
+                "The setup scripts are split by software group. The C++ scripts install the pinned toolchain and "
+                "materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first "
+                "configure after setup does not need network access. Versions are fixed by the scripts and written "
+                "to third_party/dependencies.lock.",
+                "Скрипты установки разделены по группам ПО. C++-скрипты ставят зафиксированный toolchain и "
+                "раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому "
+                "первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в "
+                "third_party/dependencies.lock.",
             )),
             ("code", code(r"""# Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts/Setup.bat
+SetupScripts\SetupCpp.bat
+SetupScripts\SetupArchiver.bat
+# optional vendor SDKs
+SetupScripts\SetupUpscalers.bat
 
 # Ubuntu / Debian
-./SetupScripts/Setup.sh
+./SetupScripts/SetupCpp.sh
+./SetupScripts/SetupArchiver.sh
+# optional vendor SDKs
+./SetupScripts/SetupUpscalers.sh
 
 # macOS (double-click in Finder also works)
-./SetupScripts/Setup.command""")),
+./SetupScripts/SetupCpp.command
+./SetupScripts/SetupArchiver.command
+# optional vendor SDKs
+./SetupScripts/SetupUpscalers.command""")),
+            ("p", B(
+                "The all-in-one Setup.bat, Setup.sh and Setup.command remain available.",
+                "Общие скрипты Setup.bat, Setup.sh и Setup.command остаются доступны.",
+            )),
             ("p", B(
                 "Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, "
-                "Box2D v3.0.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system "
+                "Box2D v3.2.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system "
                 "(or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan "
                 "loader.",
                 "Зафиксированные версии: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio "
-                "0.11.23, Box2D v3.0.0 и LZMA SDK 25.01. Setup по возможности ставит системные пакеты; используйте "
+                "0.11.23, Box2D v3.2.0 и LZMA SDK 25.01. Setup по возможности ставит системные пакеты; используйте "
                 "--skip-system (или -SkipSystem в Windows) на CI-образе, где уже есть CMake, Ninja, Clang/GCC и "
                 "Vulkan loader.",
             )),
@@ -148,10 +163,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure""")),
             ("p", B(
                 "The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and "
-                "GCC 15+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing "
+                "GCC 16+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing "
                 "the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer "
                 "uses the deterministic FbyLZ codec and reports it in the cook log.",
-                "Компилятор — часть контракта: требуется C++26, эталонный тулчейн — Clang 19+, поддерживается GCC 15+. "
+                "Компилятор — часть контракта: требуется C++26, эталонный тулчейн — Clang 19+, поддерживается GCC 16+. "
                 "Сборка определяет FBY_HAS_MDSPAN, FBY_HAS_FORMAT и FBY_HAS_JTHREAD пробой компилятора, а не по "
                 "номеру версии. Наличие LZMA SDK тоже проверяется; без него писатель .femarc использует "
                 "детерминированный кодек FbyLZ и сообщает об этом в логе кукера.",
@@ -280,7 +295,7 @@ struct ProjectileComponent
     registry.emplace<HealthComponent>(entity, HealthComponent{100.0f, 100.0f, 0.0f, 0});
     registry.emplace<InputComponent>(entity, InputComponent{});
     registry.emplace<WeaponComponent>(entity, WeaponComponent{0x51A7u, 0.0f, 0.12f, {18.0f, 0.0f}, 1});
-    registry.emplace<GameplayState>(entity, GameplayState{});
+    registry.emplace<GameplayTagsComponent>(entity, GameplayTagsComponent{});
     return entity;
 }
 
@@ -1131,7 +1146,8 @@ def render_markdown(title: str, language: str, subtitle: str) -> str:
                     lines.append(f"- {item}")
                 lines.append("")
             elif kind == "note":
-                lines.append(f"> **Note / Примечание.** {get(value, language)}")
+                ScopedLabel = "Примечание" if language == "ru" else "Note"
+                lines.append(f"> **{ScopedLabel}.** {get(value, language)}")
                 lines.append("")
             elif kind == "table":
                 rows = get(value, language)

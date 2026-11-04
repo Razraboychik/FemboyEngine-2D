@@ -28,6 +28,7 @@ set(FBY_ENGINE_SOURCES
     Audio/VoiceSystem.cpp
     Audio/VoiceCodec.cpp
     Audio/VoiceDsp.cpp
+    Audio/VoiceEffects.cpp
     Audio/VoiceSession.cpp
     Core/CryptoAead.cpp
     Core/CryptoAsymmetric.cpp
@@ -43,6 +44,7 @@ set(FBY_ENGINE_SOURCES
     Core/ThirdPartyNotices.cpp
     Core/ThreadAffinity.cpp
     Core/WindowManager.cpp
+    Core/WindowHost.cpp
     ECS/AnimationCompression.cpp
     ECS/AnimationTimeline.cpp
     ECS/AnimGraph.cpp
@@ -64,8 +66,17 @@ set(FBY_ENGINE_SOURCES
     ECS/Snapshot.cpp
     ECS/SnapshotWorld.cpp
     ECS/StateTree.cpp
+    AI/AIController.cpp
+    Gameplay/GameplayTags.cpp
+    Gameplay/GameplayTagDatabase.cpp
+    Gameplay/GameplayAttributes.cpp
+    Gameplay/GameplayEffects.cpp
+    Gameplay/GameplaySkills.cpp
+    Gameplay/GameplaySnapshot.cpp
     ECS/SystemGraph.cpp
     ECS/SpriteAnimation.cpp
+    Physics/Gravity.cpp
+    Navigation/NavMesh.cpp
     Network/NetRollback.cpp
     Network/NetProtocol.cpp
     Network/Identity.cpp
@@ -80,18 +91,27 @@ set(FBY_ENGINE_SOURCES
     Network/Session.cpp
     Network/Ticket.cpp
     Network/Transport.cpp
+    Navigation/CrowdPool.cpp
+    Navigation/FlowField.cpp
+    Navigation/PagedNavGrid.cpp
     Navigation/Navigation.cpp
     Physics/Cloth.cpp
     Physics/ClothRenderSystem.cpp
     Physics/Fluid.cpp
     Physics/Physics.cpp
     Physics/PhysicsJoints.cpp
+    Physics/PhysicsJointsScene.cpp
     Physics/SdfCollision.cpp
+    Physics/SdfDestructible.cpp
     Physics/SdfPrimitives.cpp
+    Physics/SdfVolumeAsset.cpp
+    Physics/SdfWorld.cpp
     Physics/SnapshotRemap.cpp
+    Physics/TransportGroups.cpp
     Platform/PlatformService.cpp
     Platform/PlatformSystems.cpp
     RHI/CameraStack.cpp
+    RHI/DynamicResolution.cpp
     RHI/FrameExporter.cpp
     RHI/MaterialAsset.cpp
     RHI/MaterialGraph.cpp
@@ -99,7 +119,16 @@ set(FBY_ENGINE_SOURCES
     RHI/RHI.cpp
     RHI/RenderGraph.cpp
     RHI/RenderPasses.cpp
+    RHI/OitPass.cpp
+    RHI/TemporalResolvePass.cpp
+    RHI/Fsr2Pass.cpp
+    RHI/CustomFrameGenerator.cpp
+    RHI/DlssAdapter.cpp
+    RHI/Fsr2Adapter.cpp
+    RHI/Fsr3FrameGenerator.cpp
     RHI/SkinningBridge.cpp
+    RHI/StaticBake.cpp
+    RHI/StaticBakeRenderer.cpp
     RHI/VirtualTextureSystem.cpp
     RHI/ViewportModes.cpp
     RHI/ViewportPresenter.cpp
@@ -202,10 +231,22 @@ endfunction()
 
 fby_compile_shader(quad_vert quad.vert)
 fby_compile_shader(quad_frag quad.frag)
+fby_compile_shader(depth_only depth_only.frag)
+fby_compile_shader(sprite_cull sprite_cull.comp)
+fby_compile_shader(sprite_cull_finalize sprite_cull_finalize.comp)
+fby_compile_shader(hiz_tile hiz_tile.comp)
+fby_compile_shader(hiz_mip hiz_mip.comp)
 fby_compile_shader(mesh_skinning mesh_skinning.comp)
 fby_compile_shader(mesh_vert mesh.vert)
 fby_compile_shader(mesh_frag mesh.frag)
 fby_compile_shader(fullscreen_vert fullscreen.vert)
+fby_compile_shader(oit_resolve oit_resolve.frag)
+fby_compile_shader(fsr1_upscale fsr1_upscale.frag)
+fby_compile_shader(fsr1_rcas fsr1_rcas.frag)
+fby_compile_shader(hud_composite hud_composite.frag)
+fby_compile_shader(temporal_resolve temporal_resolve.frag)
+fby_compile_shader(motion motion.vert)
+fby_compile_shader(motion_frag motion.frag)
 fby_compile_shader(postfx_bloom_prefilter postfx_bloom_prefilter.comp)
 fby_compile_shader(postfx_bloom_blur postfx_bloom_blur.comp)
 fby_compile_shader(postfx_composite postfx_composite.frag)
@@ -228,6 +269,9 @@ fby_compile_shader(plant_wind_frag plant_wind.frag)
 fby_compile_shader(color_grading color_grading.frag)
 fby_compile_shader(accessibility_composite accessibility_composite.frag)
 fby_compile_shader(accessibility_flash accessibility_flash.comp)
+fby_compile_shader(cluster_count cluster_count.comp)
+fby_compile_shader(cluster_prefix cluster_prefix.comp)
+fby_compile_shader(cluster_fill cluster_fill.comp)
 
 set(FBY_SHADER_BLOBS "${CMAKE_BINARY_DIR}/generated/ShaderBlobs.hpp")
 add_custom_command(
@@ -235,10 +279,10 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND}
             "-DOUTPUT=${FBY_SHADER_BLOBS}"
             "-DNAMESPACE=Fby::Rhi::Shaders"
-            "-DSPEC=accessibility_flash=${accessibility_flash_SPV}|accessibility_composite=${accessibility_composite_SPV}|quad_vert=${quad_vert_SPV}|quad_frag=${quad_frag_SPV}|mesh_skinning=${mesh_skinning_SPV}|mesh_vert=${mesh_vert_SPV}|mesh_frag=${mesh_frag_SPV}|fullscreen_vert=${fullscreen_vert_SPV}|postfx_bloom_prefilter=${postfx_bloom_prefilter_SPV}|postfx_bloom_blur=${postfx_bloom_blur_SPV}|postfx_composite=${postfx_composite_SPV}|sdf_shadow=${sdf_shadow_SPV}|pink_sdf_vert=${pink_sdf_vert_SPV}|pink_sdf_frag=${pink_sdf_frag_SPV}|weather_rain=${weather_rain_SPV}|weather_rain_splash=${weather_rain_splash_SPV}|weather_rain_vert=${weather_rain_vert_SPV}|weather_rain_frag=${weather_rain_frag_SPV}|weather_splash_vert=${weather_splash_vert_SPV}|weather_splash_frag=${weather_splash_frag_SPV}|weather_clouds=${weather_clouds_SPV}|weather_cloud_shadow=${weather_cloud_shadow_SPV}|weather_fog=${weather_fog_SPV}|weather_fire=${weather_fire_SPV}|weather_composite=${weather_composite_SPV}|plant_wind_vert=${plant_wind_vert_SPV}|plant_wind_frag=${plant_wind_frag_SPV}|color_grading=${color_grading_SPV}"
+            "-DSPEC=sprite_cull=${sprite_cull_SPV}|sprite_cull_finalize=${sprite_cull_finalize_SPV}|hiz_tile=${hiz_tile_SPV}|hiz_mip=${hiz_mip_SPV}|depth_only=${depth_only_SPV}|cluster_count=${cluster_count_SPV}|cluster_prefix=${cluster_prefix_SPV}|cluster_fill=${cluster_fill_SPV}|accessibility_flash=${accessibility_flash_SPV}|accessibility_composite=${accessibility_composite_SPV}|quad_vert=${quad_vert_SPV}|quad_frag=${quad_frag_SPV}|mesh_skinning=${mesh_skinning_SPV}|mesh_vert=${mesh_vert_SPV}|mesh_frag=${mesh_frag_SPV}|fullscreen_vert=${fullscreen_vert_SPV}|postfx_bloom_prefilter=${postfx_bloom_prefilter_SPV}|postfx_bloom_blur=${postfx_bloom_blur_SPV}|postfx_composite=${postfx_composite_SPV}|sdf_shadow=${sdf_shadow_SPV}|pink_sdf_vert=${pink_sdf_vert_SPV}|pink_sdf_frag=${pink_sdf_frag_SPV}|weather_rain=${weather_rain_SPV}|weather_rain_splash=${weather_rain_splash_SPV}|weather_rain_vert=${weather_rain_vert_SPV}|weather_rain_frag=${weather_rain_frag_SPV}|weather_splash_vert=${weather_splash_vert_SPV}|weather_splash_frag=${weather_splash_frag_SPV}|weather_clouds=${weather_clouds_SPV}|weather_cloud_shadow=${weather_cloud_shadow_SPV}|weather_fog=${weather_fog_SPV}|weather_fire=${weather_fire_SPV}|weather_composite=${weather_composite_SPV}|plant_wind_vert=${plant_wind_vert_SPV}|plant_wind_frag=${plant_wind_frag_SPV}|color_grading=${color_grading_SPV}|oit_resolve=${oit_resolve_SPV}|fsr1_upscale=${fsr1_upscale_SPV}|fsr1_rcas=${fsr1_rcas_SPV}|hud_composite=${hud_composite_SPV}|temporal_resolve=${temporal_resolve_SPV}|motion=${motion_SPV}|motion_frag=${motion_frag_SPV}"
             -P "${FBY_ENGINE_REPO_ROOT}/cmake/EmbedShaders.cmake"
-    DEPENDS "${accessibility_flash_SPV}" "${accessibility_composite_SPV}" "${quad_vert_SPV}" "${quad_frag_SPV}" "${mesh_skinning_SPV}" "${mesh_vert_SPV}" "${mesh_frag_SPV}"
-            "${fullscreen_vert_SPV}" "${postfx_bloom_prefilter_SPV}" "${postfx_bloom_blur_SPV}"
+    DEPENDS "${sprite_cull_SPV}" "${sprite_cull_finalize_SPV}" "${hiz_tile_SPV}" "${hiz_mip_SPV}" "${depth_only_SPV}" "${cluster_count_SPV}" "${cluster_prefix_SPV}" "${cluster_fill_SPV}" "${accessibility_flash_SPV}" "${accessibility_composite_SPV}" "${quad_vert_SPV}" "${quad_frag_SPV}" "${mesh_skinning_SPV}" "${mesh_vert_SPV}" "${mesh_frag_SPV}"
+            "${fullscreen_vert_SPV}" "${oit_resolve_SPV}" "${fsr1_upscale_SPV}" "${fsr1_rcas_SPV}" "${hud_composite_SPV}" "${temporal_resolve_SPV}" "${motion_SPV}" "${motion_frag_SPV}" "${postfx_bloom_prefilter_SPV}" "${postfx_bloom_blur_SPV}"
             "${postfx_composite_SPV}" "${sdf_shadow_SPV}" "${pink_sdf_vert_SPV}"
             "${pink_sdf_frag_SPV}" "${weather_rain_SPV}" "${weather_rain_splash_SPV}" "${weather_rain_vert_SPV}"
             "${weather_rain_frag_SPV}" "${weather_splash_vert_SPV}" "${weather_splash_frag_SPV}"
@@ -415,6 +459,65 @@ endif()
 if (UNIX AND NOT APPLE)
 # mmap, dlopen and the POSIX file layer.
     target_link_libraries(fby_engine PRIVATE dl)
+endif()
+
+if (FBY_WITH_FIDELITYFX)
+    if(NOT EXISTS "${FBY_FIDELITYFX_ROOT}/api/include/ffx_api.h")
+        if(FBY_REQUIRE_VENDOR_SDKS)
+            message(FATAL_ERROR
+                "FBY_WITH_FIDELITYFX=ON but the FidelityFX SDK was not found at "
+                "'${FBY_FIDELITYFX_ROOT}'. Download the SDK and pass "
+                "-DFBY_FIDELITYFX_ROOT=<path>; the directory is intentionally not tracked.")
+        else()
+            message(WARNING
+                "FBY_WITH_FIDELITYFX=ON ignored: FidelityFX SDK not found at "
+                "'${FBY_FIDELITYFX_ROOT}'. The portable FSR1/FSR2/custom paths remain available. "
+                "Pass -DFBY_REQUIRE_VENDOR_SDKS=ON to make this a configure error.")
+        endif()
+    else()
+        target_include_directories(fby_engine PRIVATE
+            "${FBY_FIDELITYFX_ROOT}/api/include"
+            "${FBY_FIDELITYFX_ROOT}/upscalers/fsr3/include"
+            "${FBY_FIDELITYFX_ROOT}/framegeneration/include"
+            "${FBY_FIDELITYFX_ROOT}/backend/vk"
+            "${FBY_FIDELITYFX_ROOT}/upscalers/include")
+        target_compile_definitions(fby_engine PRIVATE FBY_WITH_FIDELITYFX=1)
+        if(EXISTS "${FBY_FIDELITYFX_ROOT}/signedbin/amd_fidelityfx_upscaler_vk.dll")
+            add_custom_command(TARGET fby_engine POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${FBY_FIDELITYFX_ROOT}/signedbin/amd_fidelityfx_upscaler_vk.dll"
+                    "${CMAKE_BINARY_DIR}/bin/amd_fidelityfx_upscaler_vk.dll"
+                VERBATIM)
+        else()
+            message(STATUS
+                "FidelityFX runtime DLL is absent; the compiled backend will fall back at runtime")
+        endif()
+    endif()
+endif()
+
+if (FBY_WITH_METALFX AND APPLE)
+    target_compile_definitions(fby_engine PRIVATE FBY_WITH_METALFX=1)
+endif()
+
+if (FBY_WITH_DLSS)
+    if(NOT WIN32)
+        message(STATUS "FBY_WITH_DLSS is only available on Windows; the backend stays disabled")
+    elseif(NOT EXISTS "${FBY_DLSS_ROOT}/include/nvsdk_ngx.h")
+        if(FBY_REQUIRE_VENDOR_SDKS)
+            message(FATAL_ERROR
+                "FBY_WITH_DLSS=ON but the NVIDIA DLSS SDK was not found at "
+                "'${FBY_DLSS_ROOT}'. Download the SDK and pass -DFBY_DLSS_ROOT=<path>; "
+                "the directory is intentionally not tracked.")
+        else()
+            message(WARNING
+                "FBY_WITH_DLSS=ON ignored: NVIDIA DLSS SDK not found at "
+                "'${FBY_DLSS_ROOT}'. The portable FSR1/FSR2/custom paths remain available. "
+                "Pass -DFBY_REQUIRE_VENDOR_SDKS=ON to make this a configure error.")
+        endif()
+    else()
+        target_include_directories(fby_engine PRIVATE "${FBY_DLSS_ROOT}/include")
+        target_compile_definitions(fby_engine PRIVATE FBY_WITH_DLSS=1)
+    endif()
 endif()
 
 target_compile_definitions(fby_engine PUBLIC

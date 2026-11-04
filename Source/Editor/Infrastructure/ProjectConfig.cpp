@@ -60,12 +60,14 @@ void SetError(std::string* InError, std::string InText)
     return std::string(std::istreambuf_iterator<char>(ScopedStream), std::istreambuf_iterator<char>());
 }
 
-[[nodiscard]] std::string_view StringField(const toml::table& InTable, std::string_view InKey)
+// Returns the field by value: value<std::string>() hands back a temporary, and a
+// string_view into it dangles before the caller copies it.
+[[nodiscard]] std::string StringField(const toml::table& InTable, std::string_view InKey)
 {
     const auto ScopedNode = InTable[InKey];
     if (const auto ScopedValue = ScopedNode.value<std::string>(); ScopedValue)
     {
-        return std::string_view(*ScopedValue);
+        return *ScopedValue;
     }
     return {};
 }
@@ -686,6 +688,13 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedProjectTable.insert("version",
                               std::string(ProjectString(ScopedProject.version, sizeof(ScopedProject.version))));
     ScopedProjectTable.insert(
+        "studio", std::string(ProjectString(ScopedProject.studioName, sizeof(ScopedProject.studioName))));
+    ScopedProjectTable.insert(
+        "description", std::string(ProjectString(ScopedProject.description, sizeof(ScopedProject.description))));
+    ScopedProjectTable.insert(
+        "copyright", std::string(ProjectString(ScopedProject.copyrightHeader, sizeof(ScopedProject.copyrightHeader))));
+    ScopedProjectTable.insert("show_splash", ScopedProject.showSplash);
+    ScopedProjectTable.insert(
         "default_scene", std::string(ProjectString(ScopedProject.defaultScene, sizeof(ScopedProject.defaultScene))));
     ScopedRoot.insert("project", std::move(ScopedProjectTable));
 
@@ -716,6 +725,23 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedRender.insert("vsync", ScopedEditor.vsync);
     ScopedRender.insert("texture_format", std::string(Assets::TextureFormatName(ScopedProject.textureFormat)));
     ScopedRender.insert("max_texture_size", static_cast<std::int64_t>(ScopedProject.maxTextureSize));
+    ScopedRender.insert("render_scale", static_cast<double>(ScopedProject.renderScale));
+    ScopedRender.insert("upscale_mode", static_cast<std::int64_t>(ScopedProject.upscaleMode));
+    ScopedRender.insert("allow_temporal_upscale", ScopedProject.allowTemporalUpscale);
+    ScopedRender.insert("temporal_upscale", static_cast<std::int64_t>(ScopedProject.temporalUpscale));
+    ScopedRender.insert("hud_target", static_cast<std::int64_t>(ScopedProject.hudTarget));
+    ScopedRender.insert("allow_frame_generation", ScopedProject.allowFrameGeneration);
+    ScopedRender.insert("frame_generation", static_cast<std::int64_t>(ScopedProject.frameGeneration));
+    ScopedRender.insert("frame_generation_policy", static_cast<std::int64_t>(ScopedProject.frameGenerationPolicy));
+    ScopedRender.insert("upscaler_backend", static_cast<std::int64_t>(ScopedProject.upscalerBackend));
+    ScopedRender.insert("upscale_policy", static_cast<std::int64_t>(ScopedProject.upscalePolicy));
+    ScopedRender.insert("oit_mode", static_cast<std::int64_t>(ScopedProject.oitMode));
+    ScopedRender.insert("static_bake_enabled", ScopedProject.staticBakeEnabled);
+    ScopedRender.insert("static_bake_tile_size", static_cast<std::int64_t>(ScopedProject.staticBakeTileSize));
+    ScopedRender.insert("static_bake_budget_mb", static_cast<std::int64_t>(ScopedProject.staticBakeBudgetMB));
+    ScopedRender.insert("opaque_mode", static_cast<std::int64_t>(ScopedProject.opaqueMode));
+    ScopedRender.insert("opaque_art_cutout", ScopedProject.opaqueArtCutout);
+    ScopedRender.insert("opaque_alpha_cutoff", static_cast<double>(ScopedProject.opaqueAlphaCutoff));
     ScopedRoot.insert("render", std::move(ScopedRender));
 
     toml::table ScopedVirtualTexture;
@@ -750,6 +776,13 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedBuild.insert("native_arch", ScopedProject.build.nativeArch);
     ScopedRoot.insert("build", std::move(ScopedBuild));
 
+    toml::array ScopedGameplayTags;
+    for (std::uint32_t ScopedTag = 0; ScopedTag < ScopedProject.gameplayTags.Count; ++ScopedTag)
+    {
+        ScopedGameplayTags.push_back(std::string(ScopedProject.gameplayTags.PathAt(ScopedTag)));
+    }
+    ScopedRoot.insert("gameplay_tags", std::move(ScopedGameplayTags));
+
     const AccessibilityProfile& ScopedProfile = ScopedProject.accessibility;
     toml::table ScopedAccessibility;
     ScopedAccessibility.insert("profile_version", static_cast<std::int64_t>(ScopedProfile.version));
@@ -781,6 +814,8 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedEditorTable.insert("font_script_pin_input", static_cast<double>(ScopedEditor.fontScriptPinInput));
     ScopedEditorTable.insert("font_script_pin_output", static_cast<double>(ScopedEditor.fontScriptPinOutput));
     ScopedEditorTable.insert("font_scene_text", static_cast<double>(ScopedEditor.fontSceneText));
+    ScopedEditorTable.insert("log_max_files", static_cast<std::int64_t>(ScopedEditor.logMaxFiles));
+    ScopedEditorTable.insert("log_max_lines", static_cast<std::int64_t>(ScopedEditor.logMaxLinesPerFile));
     ScopedEditorTable.insert("show_demo", ScopedEditor.showDemoWindow);
     ScopedEditorTable.insert("auto_refresh_browser", ScopedEditor.autoRefreshBrowser);
     ScopedEditorTable.insert("watch_assets", ScopedEditor.watchAssets);
@@ -835,6 +870,14 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
                           StringField(*ScopedProject, "name"));
         CopyProjectString(ScopedConfig.project.version, sizeof(ScopedConfig.project.version),
                           StringField(*ScopedProject, "version"));
+        CopyProjectString(ScopedConfig.project.studioName, sizeof(ScopedConfig.project.studioName),
+                          StringField(*ScopedProject, "studio"));
+        CopyProjectString(ScopedConfig.project.description, sizeof(ScopedConfig.project.description),
+                          StringField(*ScopedProject, "description"));
+        CopyProjectString(ScopedConfig.project.copyrightHeader, sizeof(ScopedConfig.project.copyrightHeader),
+                          StringField(*ScopedProject, "copyright"));
+        ScopedConfig.project.showSplash =
+            BoolField(*ScopedProject, "show_splash", ScopedConfig.project.showSplash);
         CopyProjectString(ScopedConfig.project.defaultScene, sizeof(ScopedConfig.project.defaultScene),
                           StringField(*ScopedProject, "default_scene"));
     }
@@ -842,6 +885,20 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
     {
         SetError(InError, "project file has no [project] table");
         return false;
+    }
+
+    // Missing section means an older project with no authored tags. Invalid
+    // paths are skipped rather than failing the whole project load.
+    ScopedConfig.project.gameplayTags = {};
+    if (const toml::array* ScopedTags = ScopedRoot["gameplay_tags"].as_array(); ScopedTags != nullptr)
+    {
+        for (const toml::node& ScopedNode : *ScopedTags)
+        {
+            if (const auto ScopedPath = ScopedNode.value<std::string>(); ScopedPath.has_value())
+            {
+                (void)ScopedConfig.project.gameplayTags.Add(*ScopedPath);
+            }
+        }
     }
 
     if (const toml::table* ScopedSimulation = Section(ScopedRoot, "simulation"); ScopedSimulation != nullptr)
@@ -884,6 +941,49 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             ParseTextureFormat(StringField(*ScopedRender, "texture_format"), ScopedConfig.project.textureFormat);
         ScopedConfig.project.maxTextureSize = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(IntField(*ScopedRender, "max_texture_size", 2048), 64, 16384));
+        ScopedConfig.project.renderScale = static_cast<float>(
+            std::clamp(FloatField(*ScopedRender, "render_scale", 1.0), 0.25, 1.0));
+        ScopedConfig.project.upscaleMode = static_cast<UpscaleMode>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "upscale_mode", static_cast<std::int64_t>(UpscaleMode::Bilinear)), 0, 4));
+        ScopedConfig.project.allowTemporalUpscale =
+            BoolField(*ScopedRender, "allow_temporal_upscale", ScopedConfig.project.allowTemporalUpscale);
+        ScopedConfig.project.temporalUpscale = static_cast<TemporalUpscaleMode>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "temporal_upscale",
+                     static_cast<std::int64_t>(ScopedConfig.project.temporalUpscale)),
+            0, 3));
+        ScopedConfig.project.hudTarget = static_cast<HudTargetMode>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "hud_target", static_cast<std::int64_t>(ScopedConfig.project.hudTarget)), 0, 2));
+        ScopedConfig.project.allowFrameGeneration =
+            BoolField(*ScopedRender, "allow_frame_generation", ScopedConfig.project.allowFrameGeneration);
+        ScopedConfig.project.frameGeneration = static_cast<FrameGenerationMode>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "frame_generation",
+                     static_cast<std::int64_t>(ScopedConfig.project.frameGeneration)),
+            0, 4));
+        ScopedConfig.project.frameGenerationPolicy = static_cast<FrameGenerationPolicySetting>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "frame_generation_policy",
+                     static_cast<std::int64_t>(ScopedConfig.project.frameGenerationPolicy)),
+            0, 2));
+        ScopedConfig.project.upscalerBackend = static_cast<UpscalerBackendSetting>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "upscaler_backend",
+                     static_cast<std::int64_t>(ScopedConfig.project.upscalerBackend)),
+            0, 5));
+        ScopedConfig.project.upscalePolicy = static_cast<UpscalePolicy>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "upscale_policy", static_cast<std::int64_t>(ScopedConfig.project.upscalePolicy)),
+            0, 2));
+        ScopedConfig.project.oitMode = static_cast<OitMode>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "oit_mode", static_cast<std::int64_t>(OitMode::Off)), 0, 2));
+        ScopedConfig.project.staticBakeEnabled =
+            BoolField(*ScopedRender, "static_bake_enabled", ScopedConfig.project.staticBakeEnabled);
+        ScopedConfig.project.staticBakeTileSize = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "static_bake_tile_size", 256), 64, 1024));
+        ScopedConfig.project.staticBakeBudgetMB = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "static_bake_budget_mb", 64), 8, 1024));
+        ScopedConfig.project.opaqueMode = static_cast<OpaqueRenderMode>(std::clamp<std::int64_t>(
+            IntField(*ScopedRender, "opaque_mode", static_cast<std::int64_t>(OpaqueRenderMode::Auto)), 0, 2));
+        ScopedConfig.project.opaqueArtCutout =
+            BoolField(*ScopedRender, "opaque_art_cutout", ScopedConfig.project.opaqueArtCutout);
+        ScopedConfig.project.opaqueAlphaCutoff = static_cast<float>(
+            std::clamp(FloatField(*ScopedRender, "opaque_alpha_cutoff", 0.5), 0.0, 1.0));
     }
     if (const toml::table* ScopedVirtual = Section(ScopedRoot, "virtual_texture"); ScopedVirtual != nullptr)
     {
@@ -999,6 +1099,10 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             FloatField(*ScopedEditor, "font_script_pin_output", ScopedConfig.editor.fontScriptPinOutput), 16.0, 40.0));
         ScopedConfig.editor.fontSceneText = static_cast<float>(
             std::clamp(FloatField(*ScopedEditor, "font_scene_text", ScopedConfig.editor.fontSceneText), 16.0, 64.0));
+        ScopedConfig.editor.logMaxFiles = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "log_max_files", ScopedConfig.editor.logMaxFiles), 1, 512));
+        ScopedConfig.editor.logMaxLinesPerFile = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "log_max_lines", ScopedConfig.editor.logMaxLinesPerFile), 1000, 2000000));
 
         // Readability pass: an untouched typography block still carries the old
         // 16 px body / 20 px title / 18 px node title defaults. Migrate exactly

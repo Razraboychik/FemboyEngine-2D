@@ -57,6 +57,10 @@ void AppendEditorSettingsIni(std::string& InText, const EditorSettings& InEditor
     InText += std::to_string(InEditor.fontScriptPinOutput);
     InText += "\nfont_scene_text = ";
     InText += std::to_string(InEditor.fontSceneText);
+    InText += "\nlog_max_files = ";
+    InText += std::to_string(InEditor.logMaxFiles);
+    InText += "\nlog_max_lines = ";
+    InText += std::to_string(InEditor.logMaxLinesPerFile);
     InText += "\nvsync = ";
     InText += InEditor.vsync ? "true" : "false";
     InText += "\nshow_demo = ";

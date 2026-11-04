@@ -68,6 +68,18 @@ int main()
     ScopedJobs.WaitIdle();
     Check(GJobHits.load() == 2048, "the background jobs completed during the reloads");
 
+    // Per-plugin reload keeps the host bookkeeping consistent: the plugin is
+    // unloaded through its own entry point and loaded again from the same path.
+    Check(ScopedHost.Reload(FBY_TEST_PLUGIN_PATH, &ScopedError), "the loaded plugin reloads in place");
+    Check(ScopedHost.Plugins().size() == 1, "in-place reload leaves one plugin");
+    Check(ScopedHost.Plugins()[0]->path == FBY_TEST_PLUGIN_PATH, "the reloaded plugin keeps its path");
+    Check(ScopedError.empty(), "the in-place reload reports no error");
+    ScopedHost.UnloadAll();
+    Check(ScopedHost.Plugins().empty(), "unload clears the reloaded plugin");
+    Check(ScopedHost.Reload(FBY_TEST_PLUGIN_PATH, &ScopedError), "reload on an empty host loads the plugin");
+    Check(ScopedHost.Plugins().size() == 1, "reload loads a missing plugin");
+    ScopedHost.UnloadAll();
+
     // The bad-layout fixture must be rejected, not crash the host.
     if (!ScopedHost.Load(FBY_TEST_BAD_PLUGIN_PATH, &ScopedError))
     {

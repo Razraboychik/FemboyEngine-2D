@@ -14,10 +14,10 @@
 namespace Fby::Ecs
 {
 
-inline constexpr std::uint32_t kCommandLogVersion = 3;
+inline constexpr std::uint32_t kCommandLogVersion = 4;
 inline constexpr std::uint32_t kMaxCommandLogCommands = 4096;
 inline constexpr std::uint32_t kMaxCommandLogBytes = 128u * 1024u;
-inline constexpr char kCommandLogMagic[8] = {'F', 'B', 'L', 'O', 'G', '0', '0', '3'};
+inline constexpr char kCommandLogMagic[8] = {'F', 'B', 'L', 'O', 'G', '0', '0', '4'};
 
 enum class CommandType : std::uint16_t
 {
@@ -31,7 +31,22 @@ enum class CommandType : std::uint16_t
     CreateCloth = 7,
     DestroyCloth = 8,
     EmitParticles = 9,
+    // v4: destruction is simulated by the same deterministic stream.
+    Carve = 10,
+    // v4 extension: a gameplay cut of one joint-graph connection.
+    CutChain = 11,
 };
+
+// Payload for CommandType::CutChain. ChainId is the stable handle value of the
+// chain component, so a replay finds the chain again after a restore.
+struct CommandCutChain
+{
+    std::uint32_t chainId = 0;
+    std::uint16_t connection = 0;
+    std::uint16_t reserved = 0;
+};
+
+static_assert(sizeof(CommandCutChain) == 8);
 
 // Replay callbacks for v3 world commands. Function pointers + user context:
 struct CommandWorldCallbacks
@@ -42,6 +57,10 @@ struct CommandWorldCallbacks
     bool (*createCloth)(void* InUser, Entity InEntity, std::span<const std::byte> InPayload) = nullptr;
     bool (*destroyCloth)(void* InUser, Entity InEntity, std::span<const std::byte> InPayload) = nullptr;
     bool (*emitParticles)(void* InUser, Entity InEntity, std::span<const std::byte> InPayload) = nullptr;
+    // v4: carves material out of a destructible object; the payload is the op.
+    bool (*carve)(void* InUser, Entity InEntity, std::span<const std::byte> InPayload) = nullptr;
+    // v4 extension: cuts one connection of the joint graph.
+    bool (*cutChain)(void* InUser, Entity InEntity, std::span<const std::byte> InPayload) = nullptr;
 };
 
 struct CommandLogHeader
@@ -91,11 +110,18 @@ public:
         constexpr std::uint32_t ScopedSize = std::is_empty_v<T> ? 0u : static_cast<std::uint32_t>(sizeof(T));
         if constexpr (!std::is_empty_v<T>)
         {
-            const auto* ScopedSource = reinterpret_cast<const std::byte*>(&InComponent);
-            for (const Reflect::FieldDesc& ScopedField : Reflect::Fields<T>())
+            if constexpr (Reflect::kRawCommandPayload<T>)
             {
-                std::memcpy(ScopedCanonical.data() + ScopedField.offset, ScopedSource + ScopedField.offset,
-                            ScopedField.size);
+                std::memcpy(ScopedCanonical.data(), &InComponent, sizeof(T));
+            }
+            else
+            {
+                const auto* ScopedSource = reinterpret_cast<const std::byte*>(&InComponent);
+                for (const Reflect::FieldDesc& ScopedField : Reflect::Fields<T>())
+                {
+                    std::memcpy(ScopedCanonical.data() + ScopedField.offset, ScopedSource + ScopedField.offset,
+                                ScopedField.size);
+                }
             }
         }
         return AddComponentBytes(InEntity, SnapshotTypeId(Reflect::Reflection<T>::kName),
@@ -116,6 +142,11 @@ public:
     // v3 world command: copies an already-canonical record into the log.
     [[nodiscard]] bool PushWorldCommand(CommandType InType, Entity InEntity, std::span<const std::byte> InPayload,
                                         std::uint64_t InTick) noexcept;
+
+    // Records a gameplay cut. The chain is addressed by its stable ChainId, so a
+    // replay can find it again after a snapshot restore.
+    [[nodiscard]] bool CutChain(Entity InEntity, std::uint32_t InChainId, std::uint16_t InConnection,
+                                std::uint64_t InTick) noexcept;
 
     // Writes the header and the FNV-1a checksum. Idempotent; appending after Seal
     void Seal() const noexcept;

@@ -61,7 +61,9 @@ def load_components() -> list[dict[str, str]]:
             path = ROOT / license_file
             if not path.is_file():
                 fail(f"{name}: license_file does not exist: {license_file}")
-            component["license_text"] = path.read_text(encoding="utf-8").strip()
+            component["license_text"] = "\n".join(
+                line.rstrip() for line in path.read_text(encoding="utf-8").strip().splitlines()
+            )
         else:
             component["license_text"] = (
                 f"The upstream license text is not vendored in this checkout. "

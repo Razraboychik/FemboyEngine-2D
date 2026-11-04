@@ -204,6 +204,10 @@ public:
     {
         return MShadowSamples;
     }
+    [[nodiscard]] std::uint32_t GridBuildCount() const noexcept
+    {
+        return MGridBuilds;
+    }
 
     void SetSdfField(const SdfField* InField) noexcept
     {
@@ -241,6 +245,10 @@ private:
     std::uint32_t MShadowSamples = 0;
     std::uint32_t MStaticRebuilds = 0;
     std::uint32_t MStaticHits = 0;
+    LightGrid2D MLightGrid;
+    std::uint64_t MLightGridSignature = 0;
+    bool MLightGridValid = false;
+    std::uint32_t MGridBuilds = 0;
     const SdfField* MSdfField = nullptr;
 };
 }

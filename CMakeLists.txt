@@ -1,8 +1,8 @@
-# FemboyEngine2D 0.1.0-alpha.1 - public alpha build
+# FemboyEngine2D 0.2.0-alpha.1 - public alpha build
 cmake_minimum_required(VERSION 3.28)
 
 project(FemboyEngine2D
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "Data-oriented 2D game engine"
     LANGUAGES C CXX)
 
@@ -22,6 +22,12 @@ set(FBY_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 # Absolute engine repository root. Nested generated projects set CMAKE_SOURCE_DIR
 set(FBY_ENGINE_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" CACHE INTERNAL "FemboyEngine2D repository root")
 
+# RHI selection must exist before FbyDependencies decides whether to fetch the
+# Vulkan headers.
+set(FBY_RHI_BACKEND "auto" CACHE STRING
+    "Rendering backend: auto, vulkan, metal or null")
+set_property(CACHE FBY_RHI_BACKEND PROPERTY STRINGS auto vulkan metal null)
+
 include(FbyCompiler)
 include(FbyDependencies)
 
@@ -36,6 +42,19 @@ option(FBY_BUILD_PLATFORM_PROVIDERS "Build Steam/EGS provider plugins" ON)
 option(FBY_BUILD_SERVER "Build the dedicated server application" ON)
 option(FBY_BUILD_LOBBY  "Build the lobby service application"     ON)
 option(FBY_WITH_RNNOISE "Build the RNNoise neural denoise tier"    ON)
+option(FBY_WITH_FIDELITYFX "Build the AMD FidelityFX upscaler backend" OFF)
+option(FBY_WITH_METALFX "Build the Apple MetalFX upscaler backend" OFF)
+option(FBY_WITH_FSR1 "Compatibility flag; FSR1 is core and runtime-gated" OFF)
+option(FBY_WITH_FSR2 "Compatibility flag; FSR2 is core and runtime-gated" OFF)
+option(FBY_WITH_DLSS "Build the NVIDIA DLSS temporal upscaler backend" OFF)
+option(FBY_REQUIRE_VENDOR_SDKS "Fail configure when a requested vendor SDK is missing" OFF)
+option(FBY_WITH_FRAME_GENERATION "Compatibility flag; custom FG is core and runtime-gated" OFF)
+# Vendor SDK roots are deliberately not committed. A developer points a build
+# at a local NVIDIA DLSS or AMD FidelityFX SDK, or leaves the feature off.
+set(FBY_DLSS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/dlss" CACHE PATH
+    "NVIDIA DLSS SDK root (contains include/nvsdk_ngx.h)")
+set(FBY_FIDELITYFX_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fidelityfx/Kits/FidelityFX" CACHE PATH
+    "AMD FidelityFX SDK root (contains api/include and signedbin)")
 # Bytecode is a development format: the editor runs it in the VM for hot reload,
 # a cooked game compiles every program to a native AOT module and never links the
 # interpreter. Editor, tests and tools require the VM, so they are skipped when
@@ -137,25 +156,41 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
     endif()
 endif()
 
-set(FBY_RHI_BACKEND "auto" CACHE STRING
-    "Rendering backend: auto, vulkan, metal or null")
-set_property(CACHE FBY_RHI_BACKEND PROPERTY STRINGS auto vulkan metal null)
-
 # Release executables ship as Windows GUI programs: no console window flashes
 # when the editor or a game starts. Logs still go to Saved/Logs; configure with
 # -DFBY_CONSOLE_APPS=ON to keep stdout/stderr attached for development.
 option(FBY_CONSOLE_APPS "Keep the console window for the editor and games" OFF)
 
+# The demo and the editor keep large text, UI and render scratch objects by
+# value in their main frame, so their stack frame is close to one megabyte. The
+# default Windows reservation is one megabyte for the whole thread, which leaves
+# no room for the calls the frame makes. Give the apps the same 16 MiB
+# reservation the test executables already use.
+function(fby_set_app_stack target)
+    if(NOT WIN32)
+        return()
+    endif()
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        target_link_options(${target} PRIVATE "/STACK:16777216")
+    else()
+        # clang++/GCC use the GNU driver and the MSVC linker on Windows; the
+        # LINKER: prefix forwards the switch through that driver.
+        target_link_options(${target} PRIVATE "LINKER:/STACK:16777216")
+    endif()
+endfunction()
+
 function(fby_make_gui_app target)
     if(NOT WIN32 OR FBY_CONSOLE_APPS)
         return()
     endif()
-    set_target_properties(${target} PROPERTIES WIN32_EXECUTABLE TRUE)
-    # The applications keep the portable int main() entry point, so the Windows
-    # subsystem needs the plain CRT startup instead of WinMain.
-    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-        target_link_options(${target} PRIVATE "/ENTRY:mainCRTStartup")
+    # clang++/GCC use the GNU driver: WIN32_EXECUTABLE selects -mwindows, which
+    # expects WinMain. The engine keeps int main(), so only the MSVC-compatible
+    # driver (clang-cl) can switch subsystem while forcing mainCRTStartup.
+    if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        return()
     endif()
+    set_target_properties(${target} PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_link_options(${target} PRIVATE "/ENTRY:mainCRTStartup")
 endfunction()
 
 # Shader compiler first: the engine embeds its SPIR-V output at build time.
