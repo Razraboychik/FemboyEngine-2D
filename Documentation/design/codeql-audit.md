@@ -1,7 +1,10 @@
 # CodeQL audit
 
-The GitHub code-scanning API currently reports 136 open alerts. They are not 136
-independent engine bugs; almost all are the same rule firing in vendored code.
+At the time of the `main` audit (`edaea34`) GitHub reported 136 open alerts.
+They are not 136 independent engine bugs; almost all are the same rule firing in
+vendored code. The later `v0.3.0alpha.1` PR analysis (`7795ed3`) returned
+**0 c-cpp and 0 python results**; the 8 own-code alerts below are the fixes that
+changed that result. The vendor alerts remain visible on the old `main` analysis.
 
 | Category | Count | Location | Decision |
 |---|---|---|---|
