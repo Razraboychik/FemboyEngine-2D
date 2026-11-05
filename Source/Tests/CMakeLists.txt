@@ -45,9 +45,7 @@ fby_add_engine_test(fby_bignumber_store_test bignumber_store BigNumberStoreTest.
 # Fixed-width signed decimals: parsing, arithmetic, rounding and scientific text.
 fby_add_engine_test(fby_decimal_test decimal DecimalTest.cpp)
 
-# libunibreak line, word and grapheme boundaries.
 fby_add_engine_test(fby_unicode_break_test unicode_break UnicodeBreakTest.cpp)
-# Display text never edits; only the explicit Editable Text widget takes focus.
 fby_add_engine_test(fby_pinkui_editable_test pinkui_editable PinkUIEditableTest.cpp)
 
 # Long text: block storage, UTF-8 boundaries and greedy wrapping.
@@ -527,7 +525,6 @@ if(TARGET fby_editor)
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME voice_pie COMMAND fby_voice_pie_test)
 
-    # Step 1 infrastructure: project creation/config, .femeta auto-import,
     add_executable(fby_editor_infrastructure_test EditorInfrastructureTest.cpp)
     target_include_directories(fby_editor_infrastructure_test SYSTEM PRIVATE
         "${FBY_ENGINE_SOURCE_ROOT}/third_party/stb")
@@ -640,7 +637,6 @@ if(TARGET fby_editor)
     set_target_properties(fby_optimization_ab PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 
-# Step 2: MaterialGraph Tilt25D/Distortion + SPIR-V, LogicGraph field nodes
     add_executable(fby_graph_editor_test GraphEditorTest.cpp)
     target_link_libraries(fby_graph_editor_test PRIVATE FemboyEngine2D::Editor)
     target_compile_definitions(fby_graph_editor_test PRIVATE
@@ -684,21 +680,15 @@ endif()
 
 # Physics extensions: Box2D v3 rope/chain construction, Verlet cloth with
 fby_add_engine_test(fby_physics_fx_test physics_fx PhysicsFxTest.cpp)
-# Transport paths, conveyor support and capability fallback.
 fby_add_engine_test(fby_transport_physics_test transport_physics TransportPhysicsTest.cpp)
 fby_add_engine_test(fby_wheel_system_test wheel_system WheelSystemTest.cpp)
 fby_add_engine_test(fby_input_system_test input_system InputSystemTest.cpp)
-# Camera base/resolved split, motion scale and generic distortions.
 fby_add_engine_test(fby_camera_effects_test camera_effects CameraEffectsTest.cpp)
 
-# Backend selection, segment queries and projectile tunneling guards.
 fby_add_engine_test(fby_physics_backend_test physics_backend PhysicsBackendTest.cpp)
-# FemboyScript and LogicGraph camera effects.
 fby_add_engine_test(fby_script_camera_test script_camera ScriptCameraTest.cpp)
 
-# FemboyScript access to the selected backend and its capabilities.
 fby_add_engine_test(fby_script_physics_test script_physics ScriptPhysicsTest.cpp)
-# Backend throughput baseline; the body count is overridable on the command line.
 fby_add_engine_test(fby_physics_backend_benchmark_test physics_backend_benchmark PhysicsBackendBenchmark.cpp)
 set_tests_properties(physics_backend_benchmark PROPERTIES LABELS optimization)
 
