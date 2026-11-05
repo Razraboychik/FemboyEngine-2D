@@ -185,6 +185,36 @@ Content:
 - keep the comment close to the decision it explains;
 - use `TODO` only with an actionable condition, not as a permanent marker.
 
+### Task and progress comments are forbidden
+
+Code comments must describe the code, not the work that produced it. Do not
+write comments that:
+
+- describe a task, ticket, pull request, review comment or assignment;
+- number implementation steps, stages or phases (`// Step 2: ...`,
+  `// Phase 1: ...`);
+- narrate the implementation history (`// Added for ...`, `// Removed ...`,
+  `// This change ...`, `// The fix ...`);
+- record progress, remaining work or a hand-off note;
+- restate the commit message or a task plan in a large block above otherwise
+  self-explanatory code.
+
+Use the issue tracker, pull request description and commit message for that
+information. A future reader needs the invariant in the code, not a diary of how
+it was written.
+
+```cpp
+// Bad: implementation diary, no code invariant.
+// Step 2: added the input mapping after the camera work.
+
+// Bad: task reference.
+// Fixes the ticket about menu input.
+
+// Good: explains a non-obvious constraint.
+// Contexts are evaluated by priority; a consuming context suppresses lower
+// mappings without disabling the underlying gameplay systems.
+```
+
 ASCII-art banners, box drawing, long separator rules and decorative banners are
 forbidden. A short `//` line is the only comment form in new code.
 
@@ -263,7 +293,8 @@ Before a change is ready:
 - every new public name is PascalCase and underscore-free;
 - every new field in a reflected component has a matching `FBY_FIELD`;
 - braces are Allman and every control body is braced;
-- comments are English, ASCII and above the code they describe;
+- comments are English, ASCII and above the code they describe, and describe
+  code rather than task history;
 - no comment sits to the right of code or below a closing brace;
 - no build artifact, log, editor cache or generated document is in the change
   unless it is a checked-in documentation edition;
