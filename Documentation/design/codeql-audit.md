@@ -30,12 +30,18 @@ changed that result. The vendor alerts remain visible on the old `main` analysis
 3. The miniaudio warnings are grouped by the `ma_uint32` multiplication pattern;
    only call paths that accept asset/device-controlled sizes are candidates for
    patching.
-4. The one `pointer-overflow-check` in `stb_vorbis.c` is treated as a vendor
-   defect until reproduced with a crafted Ogg file.
+4. The `pointer-overflow-check` in the optional
+   `miniaudio/extras/stb_vorbis.c` is a real pointer-overflow check, but the file
+   is not compiled by the engine. A `git apply`-able patch now lives at
+   `third_party/patches/miniaudio/stb_vorbis-pointer-overflow.patch`; it is not
+   applied because the Vorbis extras path is disabled, and upstream still has
+   the original code.
 5. CodeQL exclusions for `third_party/**` are not enabled globally; a separate
    scheduled vendor scan keeps those alerts visible instead of silently hiding
    them.
 
 The next step is an upstream update of miniaudio and a fuzz case for the Vorbis
 decoder; until then, the engine keeps the vendor sources unchanged and records
-the audit trail here.
+the audit trail here. The patch set is not a licence exception: miniaudio is
+MIT-0/Unlicense and stb_vorbis is MIT/Public Domain, so both permit modification
+and redistribution under their terms.
