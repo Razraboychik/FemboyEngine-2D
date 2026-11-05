@@ -2,9 +2,9 @@
 
 **Language section:** English
 
-**Version:** 0.2.0-alpha.1
+**Version:** 0.3.0-alpha.1
 **Status:** Alpha
-**Date:** 2026-11-04
+**Date:** 2026-11-05
 **Document:** FBY-ARCH-0.1
 
 ---
@@ -34,7 +34,8 @@ All source lives under Source/. The include root is Source itself, so every incl
 | Source/Engine/Core | Definitions, value types, jobs, platform, plugins, Mirror |
 | Source/Engine/RHI | Render hardware interface, shaders, materials, camera stack |
 | Source/Engine/ECS | Registry, components, scenes, snapshots, skeleton, animation |
-| Source/Engine/Physics | Box2D v3 bridge, joints, cloth, fluid, particles |
+| Source/Engine/Input | Action mapper, contexts, gamepad snapshots, fixed input state |
+| Source/Engine/Physics | Box2D v3 and DOD backends, joints, transport, wheels, cloth, fluid, particles |
 | Source/Engine/Audio | Mixer, DSP graph, limiter, Ogg/Opus |
 | Source/Engine/Network | NetRollbackSession, input rings, snapshot replication |
 | Source/Engine/Assets | VFS, .femeta, cooker, localization, texture/audio formats |
@@ -136,9 +137,9 @@ struct SnapshotHeader {
 
 Every registered component contributes a name, a stable type id, a Mirror layout hash, a canonical size and four function pointers (has, capture, restore, remove). The layout hash rejects a same-size field change; the schema hash rejects a different component set. Restore does not allocate: the snapshot arena and entity tables are fixed at Initialize().
 
-## 6. Physics: Box2D v3, chains, cloth and water
+## 6. Physics: Box2D v3, DOD backend, chains, cloth and water
 
-The physics header does not include box2d.h. RigidBody2D and Collider2D store packed b2BodyId/b2ShapeId values in uint64_t, so gameplay, scene IO and the network layer compile without the C API. PhysicsSystem is the only translation unit that knows Box2D exists. Units are explicit: Box2D works in metres, the renderer in pixels, and PhysicsDesc::pixelsPerMeter is the single conversion point.
+The physics header does not include box2d.h. RigidBody2D and Collider2D store packed b2BodyId/b2ShapeId values in uint64_t, so gameplay, scene IO and the network layer compile without the C API. PhysicsSystem owns the world; TransportGroups, VehicleWheels and the joint systems are explicitly Box2D-aware translation units that keep the C API behind the same packed handles. Units are explicit: Box2D works in metres, the renderer in pixels, and PhysicsDesc::pixelsPerMeter is the single conversion point.
 
 | Model | Details |
 |---|---|
@@ -146,12 +147,17 @@ The physics header does not include box2d.h. RigidBody2D and Collider2D store pa
 | Rope / chain / spring graph | A joint graph of capsule links: chain, rope and spring connections with break limits, ties and repair |
 | Cloth | 32x32 Verlet grid, Gauss-Seidel constraints, overlap query against Box2D shapes |
 | Water | GerstnerField analytic waves plus ShallowWaterGrid on mdspan |
+| DOD backend | SoA AABB solver with a sorted uniform grid; no joints, body CCD or rotational contact response |
+| Transport | Path/motion carriers with contact support and conveyor surfaces; Box2D weld joints when available |
+| Wheels | Box2D wheel-joint suspension, per-wheel motor torque and braking; no implicit powertrain |
 
 A rope is not a special body. It is a chain of small rigid links joined by connections; every connection carries its own material (rigid distance, spring distance, revolute with limits, spring revolute), its own break limits in newtons and newton metres, optional damage accumulation and its own repair state. A chain is therefore a builder over a fixed joint graph: sections splice chain and rope runs, ties connect two links across chains or two plain bodies, gameplay cuts enter the deterministic command log, and a broken connection leaves the link entities alive. The system hard-caps chains, links and connections, allocates the pool once and never allocates on the frame path. It owns the link entities it creates and never the anchor entities; Shutdown order matters because destroying the Box2D world invalidates every stored id, and Update must run directly after the physics step to consume Box2D joint events.
 
 Cloth is a Verlet mass-spring grid projected with a fixed number of Gauss-Seidel iterations, then pushed out of the existing Box2D shapes. It is not a second collision world and does not duplicate level geometry. The CPU writes MeshVertex positions; the renderer streams them through the same deformable path as a skinned mesh, so cloth adds no second draw path. A pinned vertex is simply invMass = 0.
 
 Two water models share one system. GerstnerField is a small sum of trochoidal waves: deterministic, analytic, allocation-free, with a Jacobian that fades foam in at crests. ShallowWaterGrid stores a height/velocity field in mdspan views over fixed arrays and integrates the linearised shallow-water equations with a clamped CFL number. Neither model knows about the RHI; a renderer samples the field or uploads its height view as an R32F texture.
+
+The DOD backend is a second implementation of the same PhysicsSystem contract, selected by project policy or PhysicsDesc.backend. It owns SoA positions, velocities and collider extents and resolves pairs through a sorted uniform grid; PhysicsSystem::Capabilities() is the only supported feature query. Transport and wheels explicitly declare their backend boundary: transport support and conveyors work on both solvers, while weld joints and wheel joints require Box2D.
 
 ## 7. Network rollback and Snapshot v4
 

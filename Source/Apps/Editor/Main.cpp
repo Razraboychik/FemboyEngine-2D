@@ -705,6 +705,7 @@ int main(int argc, char** argv)
         Fby::LogWarn("editor_app", "FemboyScript runtime initialization failed");
     }
     Fby::RegisterDefaultScriptNatives(ScopedScripts);
+    ScopedScripts.SetPhysics(&ScopedPhysics);
 
     Fby::JobSystem ScopedJobs;
     Fby::Ecs::Registry ScopedRegistry;

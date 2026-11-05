@@ -507,6 +507,20 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         ScopedValues.maxFixedSteps = static_cast<std::uint32_t>(ScopedFixedSteps);
     }
 
+    ImGui::SeparatorText("Physics");
+    constexpr const char* kPhysicsBackendNames[] = {"Auto", "Box2D", "DOD"};
+    int ScopedPhysicsBackend = static_cast<int>(ScopedValues.physicsBackend);
+    if (ImGui::Combo("Backend", &ScopedPhysicsBackend, kPhysicsBackendNames, 3))
+    {
+        ScopedValues.physicsBackend = static_cast<std::uint8_t>(std::clamp(ScopedPhysicsBackend, 0, 2));
+    }
+    int ScopedBodyBudget = static_cast<int>(ScopedValues.physicsBodyBudget);
+    if (ImGui::InputInt("Body budget", &ScopedBodyBudget, 256, 4096))
+    {
+        ScopedValues.physicsBodyBudget = static_cast<std::uint32_t>(std::clamp(ScopedBodyBudget, 0, 65536));
+    }
+    ImGui::TextDisabled("Auto uses DOD when the budget is 4096 or more and the world has no joints.");
+
     ImGui::SeparatorText("Mixer");
     ImGui::SliderFloat("Master", &ScopedValues.masterVolume, 0.0f, 2.0f, "%.2f");
     ImGui::SliderFloat("SFX", &ScopedValues.sfxVolume, 0.0f, 2.0f, "%.2f");

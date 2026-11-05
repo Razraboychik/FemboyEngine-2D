@@ -161,9 +161,11 @@ struct PostFxBlock
     Vector4D colorRow0{};
     Vector4D colorRow1{};
     Vector4D colorRow2{};
+    Vector4D distortion0{};
+    Vector4D distortion1{};
 };
 
-static_assert(sizeof(PostFxBlock) == 112);
+static_assert(sizeof(PostFxBlock) == 144);
 
 // One frame's streaming mesh rings.
 struct MeshFrameBuffers

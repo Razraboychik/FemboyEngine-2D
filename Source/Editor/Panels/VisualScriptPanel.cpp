@@ -39,6 +39,12 @@ constexpr Script::LogicNodeKind kAddableKinds[] = {
     Script::LogicNodeKind::DecimalMul,    Script::LogicNodeKind::DecimalDiv,
     Script::LogicNodeKind::DecimalDivRounded, Script::LogicNodeKind::DecimalCmp,
     Script::LogicNodeKind::DecimalToInt, Script::LogicNodeKind::DecimalLog,
+    Script::LogicNodeKind::PhysicsGetBackend, Script::LogicNodeKind::PhysicsSetBackend,
+    Script::LogicNodeKind::PhysicsCapabilities,
+    Script::LogicNodeKind::CameraAddTrauma, Script::LogicNodeKind::CameraDistort,
+    Script::LogicNodeKind::CameraOffset, Script::LogicNodeKind::CameraZoom,
+    Script::LogicNodeKind::CameraRoll, Script::LogicNodeKind::CameraClearEffects,
+    Script::LogicNodeKind::CameraSetMotionScale,
 };
 
 constexpr std::uint32_t kAddableCount = sizeof(kAddableKinds) / sizeof(kAddableKinds[0]);

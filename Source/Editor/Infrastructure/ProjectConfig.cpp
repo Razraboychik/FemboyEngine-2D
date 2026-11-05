@@ -703,6 +703,11 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedSimulation.insert("max_fixed_steps", static_cast<std::int64_t>(ScopedProject.maxFixedSteps));
     ScopedRoot.insert("simulation", std::move(ScopedSimulation));
 
+    toml::table ScopedPhysics;
+    ScopedPhysics.insert("backend", static_cast<std::int64_t>(ScopedProject.physicsBackend));
+    ScopedPhysics.insert("body_budget", static_cast<std::int64_t>(ScopedProject.physicsBodyBudget));
+    ScopedRoot.insert("physics", std::move(ScopedPhysics));
+
     toml::table ScopedAudio;
     ScopedAudio.insert("master", static_cast<double>(ScopedProject.masterVolume));
     ScopedAudio.insert("sfx", static_cast<double>(ScopedProject.sfxVolume));
@@ -907,6 +912,13 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             static_cast<float>(std::clamp(FloatField(*ScopedSimulation, "fixed_update_hz", 120.0), 1.0, 1000.0));
         ScopedConfig.project.maxFixedSteps = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(IntField(*ScopedSimulation, "max_fixed_steps", 8), 1, 64));
+    }
+    if (const toml::table* ScopedPhysics = Section(ScopedRoot, "physics"); ScopedPhysics != nullptr)
+    {
+        ScopedConfig.project.physicsBackend = static_cast<std::uint8_t>(
+            std::clamp<std::int64_t>(IntField(*ScopedPhysics, "backend", 0), 0, 2));
+        ScopedConfig.project.physicsBodyBudget = static_cast<std::uint32_t>(
+            std::clamp<std::int64_t>(IntField(*ScopedPhysics, "body_budget", 0), 0, 65536));
     }
     if (const toml::table* ScopedAudio = Section(ScopedRoot, "audio"); ScopedAudio != nullptr)
     {

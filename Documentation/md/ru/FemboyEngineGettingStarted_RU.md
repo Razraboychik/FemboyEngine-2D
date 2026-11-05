@@ -1,4 +1,4 @@
-# FemboyEngine 0.2.0-alpha.1 — начало работы
+# FemboyEngine 0.3.0-alpha.1 — начало работы
 
 Этот документ описывает, что нужно установить и какие файлы должны лежать рядом с движком, чтобы запустить редактор, рантайм и инструменты разработки на Windows, Linux и macOS, а также какие инструменты нужны для сборки под Android и iOS.
 
@@ -38,18 +38,19 @@
 
 ## Быстрый старт: скрипты установки
 
-Скрипты лежат в каталоге `SetupScripts/` и разделены по группам ПО. Скрипты
+Скрипты лежат в `SetupScripts/<OS>/` и разделены по ОС и группам ПО. Скрипты
 «всё сразу» ставят всё; компонентные скрипты — только одну группу.
 
 | Группа | Windows | macOS | Linux |
 |---|---|---|---|
-| C++ toolchain, CMake и зависимости | `SetupScripts\SetupCpp.bat` | `./SetupScripts/SetupCpp.command` | `./SetupScripts/SetupCpp.sh` |
-| Архиватор 7-Zip | `SetupScripts\SetupArchiver.bat` | `./SetupScripts/SetupArchiver.command` | `./SetupScripts/SetupArchiver.sh` |
-| Опциональные SDK DLSS/FidelityFX/XeSS | `SetupScripts\SetupUpscalers.bat` | `./SetupScripts/SetupUpscalers.command` | `./SetupScripts/SetupUpscalers.sh` |
+| C++ toolchain, CMake и зависимости | `SetupScripts\Windows\SetupCpp.bat` | `./SetupScripts/macOS/SetupCpp.command` | `./SetupScripts/Linux/SetupCpp.sh` |
+| Архиватор 7-Zip | `SetupScripts\Windows\SetupArchiver.bat` | `./SetupScripts/macOS/SetupArchiver.command` | `./SetupScripts/Linux/SetupArchiver.sh` |
+| Опциональные SDK DLSS/FidelityFX/XeSS | `SetupScripts\Windows\SetupUpscalers.bat` | `./SetupScripts/macOS/SetupUpscalers.command` | `./SetupScripts/Linux/SetupUpscalers.sh` |
 
-Общие точки входа остаются `Setup.bat`, `Setup.command` и `Setup.sh`.
+Общие точки входа: `SetupScripts/Windows/Setup.bat`,
+`SetupScripts/macOS/Setup.command` и `SetupScripts/Linux/Setup.sh`.
 C++-скрипты ставят компилятор, CMake, Ninja, Vulkan-заголовки и закреплённые
-зависимости. На Windows `SetupCpp` ставит официальный MSI LLVM 23.1.4 и
+зависимости. На Windows `SetupScripts/Windows/SetupCpp.bat` ставит официальный MSI LLVM 23.1.4 и
 проверяет версию `clang-cl`; Unix-скрипты ставят Clang из пакетного менеджера
 (19+). Скрипты архиватора ставят 7-Zip. Скрипты апскейлеров только
 проверяют или скачивают vendor SDK; они опциональны и никогда не входят в
@@ -64,8 +65,8 @@ C++-скрипты ставят компилятор, CMake, Ninja, Vulkan-за�
 
 1. Открыть страницу репозитория и выбрать **Code > Download ZIP**.
 2. Распаковать архив в каталог без пробелов и не-ASCII символов.
-3. Запустить `SetupCpp` и `SetupArchiver` для своей ОС.
-4. При необходимости запустить `SetupUpscalers` и включить vendor backend.
+3. Запустить `SetupCpp` и `SetupArchiver` для своей ОС из таблицы выше.
+4. При необходимости запустить `SetupUpscalers` для своей ОС и включить vendor backend.
 5. Настроить и собрать:
 
 ```
@@ -119,7 +120,7 @@ cmake --build build-dev
 ctest --test-dir build-dev --output-on-failure
 ```
 
-На Windows те же команды выполняются в окружении `vcvars64`; зависимости и инструменты подготавливает `SetupScripts/SetupWindows.ps1`. Основные опции CMake: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
+На Windows те же команды выполняются в окружении `vcvars64`; зависимости и инструменты подготавливает `SetupScripts/Windows/SetupWindows.ps1`. Основные опции CMake: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
 
 Готовые исполняемые файлы раскладываются по назначению:
 
@@ -327,7 +328,7 @@ cd /path/to/project
 
 Инструменты лежат в `build-dev/bin/tools`, тестовые исполняемые файлы — в `build-dev/bin/tests`.
 
-Сборка и тесты запускаются через пресеты CMake; установка зависимостей — в `SetupScripts/*`.
+Сборка и тесты запускаются через пресеты CMake; установка зависимостей — в `SetupScripts/<OS>/*`.
 
 ## Ярлыки для быстрого запуска
 
@@ -345,7 +346,7 @@ cd /path/to/project
 1. Открыть папку проекта в Finder.
 2. Перетащить `fby_editor` (или `.app`, если собран бандл) в Dock, удерживая `Command`.
 3. Для конкретного проекта создать `.command`-файл с двумя строками: `cd /path/to/project` и `/path/to/fby_editor`; Finder запускает его двойным щелчком, а ярлык можно положить в Dock.
-4. `SetupScripts/Setup.command` запускается так же — двойным щелчком.
+4. `SetupScripts/macOS/Setup.command` запускается так же — двойным щелчком.
 
 ### Linux
 

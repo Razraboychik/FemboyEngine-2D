@@ -298,6 +298,46 @@ private:
         {
             return NativeId::TransportCreate;
         }
+        if (InName == "physics_get_backend")
+        {
+            return NativeId::PhysicsGetBackend;
+        }
+        if (InName == "physics_set_backend")
+        {
+            return NativeId::PhysicsSetBackend;
+        }
+        if (InName == "physics_get_capabilities")
+        {
+            return NativeId::PhysicsGetCapabilities;
+        }
+        if (InName == "camera_add_trauma")
+        {
+            return NativeId::CameraAddTrauma;
+        }
+        if (InName == "camera_distort")
+        {
+            return NativeId::CameraDistort;
+        }
+        if (InName == "camera_offset")
+        {
+            return NativeId::CameraOffset;
+        }
+        if (InName == "camera_zoom")
+        {
+            return NativeId::CameraZoom;
+        }
+        if (InName == "camera_roll")
+        {
+            return NativeId::CameraRoll;
+        }
+        if (InName == "camera_clear_effects")
+        {
+            return NativeId::CameraClearEffects;
+        }
+        if (InName == "camera_set_motion_scale")
+        {
+            return NativeId::CameraSetMotionScale;
+        }
         if (InName == "BigIntFromInt")
         {
             return NativeId::BigIntFromInt;

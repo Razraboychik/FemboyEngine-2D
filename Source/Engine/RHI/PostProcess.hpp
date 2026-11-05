@@ -22,6 +22,9 @@ enum PostFxFlags : std::uint32_t
     // Accessibility colour-vision correction. The matrix travels in the postfx
     // constants, so the kernel and the shader share one source of truth.
     PostFxColorVision = 1u << 8,
+    // Runtime camera distortion is active. The composite pass must run even
+    // when no authored CRT/bloom/AA policy is enabled.
+    PostFxCameraDistortion = 1u << 9,
 };
 
 struct PostFxSettings

@@ -6,6 +6,83 @@ contract. It is an engineering guide, not a promise that the engine owns every
 game rule. Damage thresholds, loot, win conditions, fracture art and particle
 effects stay with the game.
 
+## 0. Backend selection, capabilities and projectiles
+
+The engine has two implementations behind the same `PhysicsSystem` API:
+
+| Backend | Best for | Joints | CCD | Determinism | Recommended body count |
+|---|---|---|---|---|---|
+| `PhysicsBackendKind::Box2D` | general rigid bodies, ropes, vehicles, ragdolls, editor | yes | yes | platform-dependent float | up to about 10000 |
+| `PhysicsBackendKind::Dod` | large joint-free strategy worlds, simple shapes, projectiles | no | swept segment queries only | fixed-order SoA update | up to `kMaxTrackedPhysicsBodies` |
+| `PhysicsBackendKind::Auto` | default policy | chooses Box2D when joints are required | chooses Box2D when a joint/CCD feature is requested | chooses DOD when deterministic or a body budget of 4096+ is requested | depends on the resolved backend |
+
+`Auto` is the project default. Set `PhysicsDesc::backend` before
+`PhysicsSystem::Initialize`, call `SelectBackend` before the world is live, or use
+`SetProjectPolicy` to update the policy copied into a Play-In-Editor world. A
+live world is never swapped in place.
+
+### Project setting
+
+The project file stores:
+
+```toml
+[physics]
+backend = 0      # 0 Auto, 1 Box2D, 2 DOD
+body_budget = 0  # Auto picks DOD at 4096 or more
+```
+
+The same values are edited in **Project Settings > Physics**. They apply to the
+next Play-In-Editor session or game launch; the editor's reference world keeps
+its own backend.
+
+### Capabilities
+
+`PhysicsSystem::Capabilities()` reports joints, CCD, deterministic mode, large
+worlds and a recommended body ceiling. Do not infer support from the backend
+name; query the capabilities. A DOD world asked to create a joint is an explicit
+error or falls back to Box2D only when the policy is `Auto`.
+
+### Projectile modes
+
+`Projectile2D` is an ECS component with these fields:
+
+| Field | Meaning |
+|---|---|
+| `Mode` | `kProjectileModeAuto`, `Hitscan`, `Swept`, `Dynamic` |
+| `Speed` | pixels per second; zero reads the body velocity |
+| `Radius` | projectile radius used to choose Auto mode |
+| `MinWallThickness` | smallest wall the developer wants to guarantee |
+| `Direction` | normalized travel direction |
+| `MaxSubsteps` | reserved cap for dynamic integration |
+| `CollisionMask` | category mask for the segment query |
+
+`Auto` compares `Speed * fixedDt` with `MinWallThickness * 0.5`. Small radii
+become `Hitscan`; larger or physical projectiles become `Swept`; slow projectiles
+stay `Dynamic` and receive the Box2D bullet/CCD flag. A developer can always
+force a mode, so a designer who knows the wall thickness and speed is not at the
+mercy of the heuristic.
+
+`ProjectileSystem::Step` runs before the next physics step for hitscan/swept
+projectiles and records a `ProjectileHitEvent` with the projectile, target,
+point, normal and speed. Game code decides whether to apply damage, spawn an
+impact or despawn the projectile.
+
+### Script and visual language
+
+Text FemboyScript exposes `physics_get_backend()`, `physics_set_backend(backend)`
+and `physics_get_capabilities()`. The LogicGraph palette has `Physics Get
+Backend`, `Physics Set Backend` and `Physics Capabilities` nodes that compile to
+the same natives and AOT calls. Existing scripts that never mention a backend
+use `Auto`.
+
+### Tests and benchmarks
+
+- `physics_backend` covers Auto selection, capability reporting, segment queries
+  and projectile tunneling.
+- `script_physics` covers the text and bytecode bridge.
+- `physics_backend_benchmark` reports Box2D and DOD ms/frame for a configurable
+  body count (default 2000, override on the command line).
+
 ## 1. Units, coordinates and step order
 
 - World positions are pixels. Box2D works in metres; `PhysicsDesc::pixelsPerMeter`
@@ -23,8 +100,9 @@ effects stay with the game.
 ## 2. Rigid bodies and joints
 
 `RigidBody2D` and `Collider2D` are the ECS components. They are plain data and do
-not include `box2d.h`; `PhysicsSystem` is the only translation unit that talks to
-the Box2D C API.
+not include `box2d.h`. `PhysicsSystem` owns the world; the joint, transport and
+wheel systems are explicitly Box2D-aware translation units behind the same
+packed handles.
 
 ```cpp
 Fby::PhysicsSystem Physics;
@@ -392,11 +470,18 @@ separate transform graph.
 |---|---|---|
 | `TransportGroupComponent` | `GroupId`, `ParentGroupId`, `RotationPolicy`, `Flags`, `BoundsMin`, `BoundsMax`, `ParentJoint` | Placed on the group root |
 | `CarrierMemberComponent` | `GroupId`, `Mode`, `Flags`, `LocalPosition`, `LocalRotation`, `RelativeVelocity`, `RelativeAngularVelocity`, `Joint` | Placed on a carried entity |
+| `TransportPath` | `Points`, `Count`, `Closed` | Optional polyline for a kinematic root |
+| `TransportMotion` | `Speed`, `Acceleration`, `Deceleration`, `DwellSeconds`, `Distance`, `Direction`, `Axis`, `Flags` | Kinematic path or linear motion; the ramp fields are reserved for a controller |
+| `TransportSurface` | `Friction`, `TangentSpeed`, `OneWay`, `AllowJump` | Standing/conveyor surface policy |
 
-Both are registered components, so the inspector and the scene format can edit
-them. Group ids are stable integers, not EnTT handles. `ParentJoint` and `Joint`
-are runtime Box2D ids: do not author them, and the system validates or recreates
-them after a scene load.
+All transport components are registered in the component registry and are
+visible in the inspector. Group ids are stable integers, not EnTT handles.
+`ParentJoint` and `Joint` are runtime Box2D ids: do not author them, and the
+system validates or recreates them after a scene load. `TransportPath` exposes
+`Count` and `Closed` to reflection; its point array is authored programmatically
+or by a project asset tool. Transport motion and surface are not part of the
+rollback `SnapshotSchema::BuiltIns`; a networked game must replicate or recreate
+them explicitly.
 
 ### Member modes
 
@@ -404,11 +489,32 @@ them after a scene load.
 |---|---|
 | `kCarrierModeRigid` | Exact attachment; a Box2D weld joint is used when both bodies exist, otherwise the exact local transform is applied |
 | `kCarrierModeCarriedDynamic` | Body stays dynamic; the carrier adds its velocity and the body keeps its own relative motion |
-| `kCarrierModeSupport` | Same velocity carry, intended for a character controller |
+| `kCarrierModeSupport` | Standing contact: normal support, friction-limited tangent velocity and a grounded runtime bit |
+| `kCarrierModeConveyor` | Surface tangent velocity for belts and moving walkways |
 
 `kCarrierFlagInheritRotation` controls whether a member follows the carrier's
 rotation. A character should usually keep its own upright rotation; a crate can
 inherit it.
+
+### Motion, support and DOD
+
+`TransportMotion` advances before the group delta is computed. A path root is
+sampled by arc length; `Closed`, ping-pong, stop-at-ends and face-direction are
+flags. A root without a path moves along `Axis`. A root with `RigidBody2D` is
+teleported so the solver sees the pose; a transform-only root is moved directly.
+
+`Support` and `Conveyor` use `TransportSurface`, not a blind velocity copy.
+`Support` preserves the member's relative motion and applies friction toward the
+carrier surface; `Conveyor` drives the tangent toward `TangentSpeed`. The
+geometric support test reads the carrier/member AABB and stores
+`kCarrierFlagGrounded`, so the same rule works on Box2D and DOD.
+
+DOD has no joints, weld or CCD. `TransportGroupSystem::CapabilitiesFor()` reports
+this; `Rigid` falls back to local-pose teleport, while welded trains need the
+Box2D backend. Motion is fixed-step and distance-based, so it is deterministic for the same
+starting state. `TransportPath`, `TransportMotion` and `TransportSurface` are not
+part of `SnapshotSchema::BuiltIns`; a rollback or networked game must recreate or
+replicate them. Runtime joint handles and group state are transient.
 
 ### Rotation policy
 
@@ -483,9 +589,11 @@ only executes it.
 The editor exposes a dedicated `Transport Groups` panel from the View menu. It
 creates a group on the selected entity, edits the group id, parent id, rotation
 policy, enabled/auto-detach flags and bounds, attaches the selected entity as a
-member, lists members, detaches them and removes the selected group. The same
-data is still ordinary registered components, so it survives scene save/load and
-is visible in the generic inspector.
+member, lists members, detaches them and removes the selected group. For a
+selected root it can add and edit `TransportMotion` and `TransportSurface`; for a
+wheel or chassis it also exposes the `Wheel2D`/`Vehicle2D` drive, suspension and
+steering fields. The same data is still ordinary registered components, so it is
+visible in the generic inspector and follows the project's component persistence.
 
 ### Script access
 
@@ -509,7 +617,7 @@ The components are also registered in the ECS bridge, so a graph can set
   tip. `Physics` keeps the full solver rotation.
 - A carriage body remains a normal Box2D body: collisions, gravity and damping
   are unchanged.
-- Carriers and carried bodies automatically enable Box2D continuous collision
+- On Box2D, carriers and carried bodies automatically enable continuous collision
   detection once their speed exceeds
   `kTransportHighSpeedPixelsPerSecond`. Fixed-step substepping is still the
   authoring choice for extreme speeds; the automatic path is a safety net, not a
@@ -520,3 +628,52 @@ The components are also registered in the ECS bridge, so a graph can set
   for normal rigid cargo.
 - Nested roots that both own bodies are carried by a parent weld joint. Nested
   roots without bodies use the parent delta path. Both paths are supported.
+
+## 12. Vehicle wheels
+
+`WheelSystem` is a small, explicit vehicle base built on Box2D wheel joints. It
+owns suspension, per-wheel drive and braking. It deliberately does not own engine
+RPM, gears, clutch, differential, tire slip, tire wear, or steering geometry.
+
+### Components
+
+| Component | Fields | Meaning |
+|---|---|---|
+| `Vehicle2D` | `Throttle`, `Brake`, `Steering`, `MaxMotorTorque`, `MaxSpeed`, `SteeringTorque`, `Flags` | Chassis input and limits |
+| `Wheel2D` | `Chassis`, `LocalAnchor`, `SuspensionAxis`, `Radius`, `SuspensionHertz`, `SuspensionDamping`, `DriveWeight`, `BrakeWeight`, `Flags`, `Joint` | One wheel body |
+
+A wheel entity is a normal dynamic `RigidBody2D` with a `Collider2D`. The system
+does not create or place wheel bodies automatically; that is an authored chassis
+choice. `Joint` is a runtime packed Box2D wheel joint and must not be serialized.
+
+### Order
+
+```text
+WheelSystem::Initialize(physics)
+WheelSystem::Update(registry, physics, fixedDt)
+PhysicsSystem::Step(registry, fixedDt)
+```
+
+`Update` creates missing joints lazily and sets spring, motor speed and torque
+before the solver step. It does not overwrite linear velocity.
+
+### Drive, brake and steering
+
+- `Throttle` maps to `throttle * MaxSpeed / Radius` wheel angular speed.
+- Per-wheel torque is `abs(throttle) * MaxMotorTorque * DriveWeight`.
+- `DriveWeight = 0` makes a free wheel; front/rear/all-wheel drive is authored
+  per wheel, not assumed by the engine.
+- `Brake` disables the wheel motor and applies the brake torque plus explicit
+  angular damping, so a free-spinning wheel actually stops.
+- `VehicleFlagHandbrake` brakes every wheel with a nonzero `BrakeWeight`.
+- `VehicleFlagArcadeSteering` is opt-in. Only wheels with `kWheelFlagSteer`
+  apply the speed-scaled chassis yaw torque. Physical steering geometry is a
+  game/plugin decision because Box2D wheel joints do not expose a steering angle.
+- The engine does not add a differential or automatic reverse gear.
+
+### Backend
+
+DOD has no wheel joints. `WheelSystem::Initialize` returns `false` and
+`Available()` reports it. Wheeled vehicles require the Box2D backend.
+
+See [vehicle wheels](../../design/vehicle-wheels.md) for the authored/game boundary.

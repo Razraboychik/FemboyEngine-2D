@@ -171,7 +171,7 @@ fallback. XeSS удалён, MetalFX зарезервирован без ада�
 SDK DLSS и FidelityFX намеренно не коммитятся в репозиторий движка. Они
 большие, лицензируются вендором и опциональны; checkout без них всё равно
 собирает переносимые пути FSR1/FSR2/custom. Скрипты
-`SetupScripts/SetupUpscalers.*` проверяют или скачивают локальный SDK после
+`SetupScripts/Windows/SetupUpscalers.*`, `SetupScripts/Linux/SetupUpscalers.*` или `SetupScripts/macOS/SetupUpscalers.*` проверяют или скачивают локальный SDK после
 принятия лицензии. Разработчику, которому нужен vendor backend, следует
 установить SDK локально и указать путь CMake:
 

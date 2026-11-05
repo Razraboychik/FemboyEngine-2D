@@ -45,6 +45,7 @@ set(FBY_ENGINE_SOURCES
     Core/ThreadAffinity.cpp
     Core/WindowManager.cpp
     Core/WindowHost.cpp
+    Input/InputSystem.cpp
     ECS/AnimationCompression.cpp
     ECS/AnimationTimeline.cpp
     ECS/AnimGraph.cpp
@@ -97,8 +98,11 @@ set(FBY_ENGINE_SOURCES
     Navigation/Navigation.cpp
     Physics/Cloth.cpp
     Physics/ClothRenderSystem.cpp
+    Physics/DodPhysicsBackend.cpp
+    Physics/VehicleWheels.cpp
     Physics/Fluid.cpp
     Physics/Physics.cpp
+    Physics/ProjectileSystem.cpp
     Physics/PhysicsJoints.cpp
     Physics/PhysicsJointsScene.cpp
     Physics/SdfCollision.cpp
@@ -146,6 +150,7 @@ set(FBY_ENGINE_SOURCES
     Text/TextBidi.cpp
     Text/TextShapeCache.cpp
     Text/TextShaper.cpp
+    Text/UnicodeBreak.cpp
     UI/Accessibility.cpp
     UI/AccessibilityOverlay.cpp
     UI/CardBoard.cpp
@@ -412,6 +417,7 @@ target_link_libraries(fby_engine
         fby::monocypher
         fby::box2d
         fby::flatbuffers
+        fby::unibreak
         FemboyEngine2D::AssetCook)
 
 if(FBY_WITH_HARFBUZZ AND TARGET harfbuzz)

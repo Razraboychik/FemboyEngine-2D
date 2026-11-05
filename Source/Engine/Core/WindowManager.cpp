@@ -97,7 +97,11 @@ bool WindowManager::Initialize()
     }
 
     // SDL3 handles DPI awareness itself when the window is created with
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
+    // SDL 3.4.18 has an unbalanced Windows HID notification when the legacy
+    // DirectInput joystick backend fails to initialise. DirectInput is only a
+    // fallback for old controllers; XInput/HIDAPI remain enabled.
+    SDL_SetHint(SDL_HINT_JOYSTICK_DIRECTINPUT, "0");
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD))
     {
         LogError("platform", "SDL_Init failed: {}", SDL_GetError());
         return false;
@@ -180,6 +184,17 @@ bool WindowManager::Create(const WindowDesc& InDesc)
 
 void WindowManager::Destroy()
 {
+    for (std::size_t ScopedSlot = 0; ScopedSlot < MGamepads.size(); ++ScopedSlot)
+    {
+        if (MGamepads[ScopedSlot] != nullptr)
+        {
+            SDL_CloseGamepad(static_cast<SDL_Gamepad*>(MGamepads[ScopedSlot]));
+            MGamepads[ScopedSlot] = nullptr;
+            MGamepadIds[ScopedSlot] = 0;
+            MInput.gamepads[ScopedSlot] = GamepadState{};
+        }
+    }
+    MInput.gamepadCount = 0;
     if (MWindow != nullptr)
     {
         SDL_DestroyWindow(static_cast<SDL_Window*>(MWindow));
@@ -189,6 +204,58 @@ void WindowManager::Destroy()
     {
         SDL_Quit();
         MInitialized = false;
+    }
+}
+
+bool WindowManager::OpenGamepad(std::uint32_t InInstanceId) noexcept
+{
+    for (std::size_t ScopedSlot = 0; ScopedSlot < MGamepads.size(); ++ScopedSlot)
+    {
+        if (MGamepads[ScopedSlot] != nullptr)
+        {
+            continue;
+        }
+        SDL_Gamepad* ScopedGamepad = SDL_OpenGamepad(static_cast<SDL_JoystickID>(InInstanceId));
+        if (ScopedGamepad == nullptr)
+        {
+            LogWarn("platform", "cannot open gamepad {}: {}", InInstanceId, SDL_GetError());
+            return false;
+        }
+        MGamepads[ScopedSlot] = ScopedGamepad;
+        MGamepadIds[ScopedSlot] = InInstanceId;
+        GamepadState& ScopedState = MInput.gamepads[ScopedSlot];
+        ScopedState = GamepadState{};
+        ScopedState.connected = true;
+        ScopedState.instanceId = InInstanceId;
+        for (std::size_t ScopedAxis = 0; ScopedAxis < kMaxGamepadAxes; ++ScopedAxis)
+        {
+            const Sint16 ScopedValue =
+                SDL_GetGamepadAxis(ScopedGamepad, static_cast<SDL_GamepadAxis>(ScopedAxis));
+            ScopedState.axes[ScopedAxis] = static_cast<float>(ScopedValue) / 32767.0f;
+        }
+        ++MInput.gamepadCount;
+        LogInfo("platform", "gamepad {} connected: {}", InInstanceId,
+                SDL_GetGamepadName(ScopedGamepad) != nullptr ? SDL_GetGamepadName(ScopedGamepad) : "unknown");
+        return true;
+    }
+    return false;
+}
+
+void WindowManager::CloseGamepad(std::uint32_t InInstanceId) noexcept
+{
+    for (std::size_t ScopedSlot = 0; ScopedSlot < MGamepads.size(); ++ScopedSlot)
+    {
+        if (MGamepadIds[ScopedSlot] != InInstanceId || MGamepads[ScopedSlot] == nullptr)
+        {
+            continue;
+        }
+        SDL_CloseGamepad(static_cast<SDL_Gamepad*>(MGamepads[ScopedSlot]));
+        MGamepads[ScopedSlot] = nullptr;
+        MGamepadIds[ScopedSlot] = 0;
+        MInput.gamepads[ScopedSlot] = GamepadState{};
+        MInput.gamepadCount = MInput.gamepadCount > 0 ? MInput.gamepadCount - 1 : 0;
+        LogInfo("platform", "gamepad {} disconnected", InInstanceId);
+        return;
     }
 }
 
@@ -312,12 +379,62 @@ bool WindowManager::PumpEvents()
                 if (ScopedEvent.button.button < kMaxMouseButtons)
                 {
                     MInput.mouseHeld[ScopedEvent.button.button] = false;
+                    MInput.mouseReleased[ScopedEvent.button.button] = true;
                 }
                 break;
 
             case SDL_EVENT_MOUSE_WHEEL:
                 MInput.wheel += ScopedEvent.wheel.y;
                 break;
+
+            case SDL_EVENT_GAMEPAD_ADDED:
+                (void)OpenGamepad(static_cast<std::uint32_t>(ScopedEvent.gdevice.which));
+                break;
+            case SDL_EVENT_GAMEPAD_REMOVED:
+                CloseGamepad(static_cast<std::uint32_t>(ScopedEvent.gdevice.which));
+                break;
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            case SDL_EVENT_GAMEPAD_BUTTON_UP:
+            {
+                const std::uint32_t ScopedId = static_cast<std::uint32_t>(ScopedEvent.gbutton.which);
+                const std::uint8_t ScopedButton = ScopedEvent.gbutton.button;
+                for (GamepadState& ScopedGamepad : MInput.gamepads)
+                {
+                    if (!ScopedGamepad.connected || ScopedGamepad.instanceId != ScopedId ||
+                        ScopedButton >= kMaxGamepadButtons)
+                    {
+                        continue;
+                    }
+                    if (ScopedEvent.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN)
+                    {
+                        ScopedGamepad.held[ScopedButton] = true;
+                        ScopedGamepad.pressed[ScopedButton] = true;
+                    }
+                    else
+                    {
+                        ScopedGamepad.held[ScopedButton] = false;
+                        ScopedGamepad.released[ScopedButton] = true;
+                    }
+                    break;
+                }
+                break;
+            }
+            case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+            {
+                const std::uint32_t ScopedId = static_cast<std::uint32_t>(ScopedEvent.gaxis.which);
+                const std::uint8_t ScopedAxis = ScopedEvent.gaxis.axis;
+                for (GamepadState& ScopedGamepad : MInput.gamepads)
+                {
+                    if (!ScopedGamepad.connected || ScopedGamepad.instanceId != ScopedId ||
+                        ScopedAxis >= kMaxGamepadAxes)
+                    {
+                        continue;
+                    }
+                    ScopedGamepad.axes[ScopedAxis] = static_cast<float>(ScopedEvent.gaxis.value) / 32767.0f;
+                    break;
+                }
+                break;
+            }
 
             default:
                 break;

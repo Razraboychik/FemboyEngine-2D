@@ -1,4 +1,4 @@
-# FemboyEngine 0.2.0-alpha.1 — getting started
+# FemboyEngine 0.3.0-alpha.1 — getting started
 
 This document lists what to install and which files must sit next to the engine to run the editor, the runtime and the development tools on Windows, Linux and macOS, plus the toolchain needed for Android and iOS builds.
 
@@ -38,18 +38,20 @@ The language standard is C++26, so an older compiler will not work even when its
 
 ## Quick start with the setup scripts
 
-The scripts live in `SetupScripts/` and are split by software group. The
-one-click scripts install everything; the component scripts install one group.
+The scripts live under `SetupScripts/<OS>/` and are split by OS and software
+group. The one-click scripts install everything; the component scripts install
+one group.
 
 | Group | Windows | macOS | Linux |
 |---|---|---|---|
-| C++ toolchain, CMake and source dependencies | `SetupScripts\SetupCpp.bat` | `./SetupScripts/SetupCpp.command` | `./SetupScripts/SetupCpp.sh` |
-| 7-Zip archiver | `SetupScripts\SetupArchiver.bat` | `./SetupScripts/SetupArchiver.command` | `./SetupScripts/SetupArchiver.sh` |
-| Optional DLSS/FidelityFX/XeSS SDKs | `SetupScripts\SetupUpscalers.bat` | `./SetupScripts/SetupUpscalers.command` | `./SetupScripts/SetupUpscalers.sh` |
+| C++ toolchain, CMake and source dependencies | `SetupScripts\Windows\SetupCpp.bat` | `./SetupScripts/macOS/SetupCpp.command` | `./SetupScripts/Linux/SetupCpp.sh` |
+| 7-Zip archiver | `SetupScripts\Windows\SetupArchiver.bat` | `./SetupScripts/macOS/SetupArchiver.command` | `./SetupScripts/Linux/SetupArchiver.sh` |
+| Optional DLSS/FidelityFX/XeSS SDKs | `SetupScripts\Windows\SetupUpscalers.bat` | `./SetupScripts/macOS/SetupUpscalers.command` | `./SetupScripts/Linux/SetupUpscalers.sh` |
 
-The all-in-one entry points remain `Setup.bat`, `Setup.command` and `Setup.sh`.
+The all-in-one entry points are `SetupScripts/Windows/Setup.bat`,
+`SetupScripts/macOS/Setup.command` and `SetupScripts/Linux/Setup.sh`.
 The C++ scripts install the compiler, CMake, Ninja, the Vulkan headers and the
-pinned source dependencies. On Windows, `SetupCpp` installs the official LLVM
+pinned source dependencies. On Windows, `SetupScripts/Windows/SetupCpp.bat` installs the official LLVM
 23.1.4 MSI and verifies the `clang-cl` version; the Unix scripts install the
 distribution Clang (19+). The archiver scripts install 7-Zip. The upscaler
 scripts only verify or download vendor SDKs; they are optional and never part
@@ -64,8 +66,8 @@ At the end it prints the mobile toolchain report: NDK, JDK and Xcode.
 
 1. Open the repository page and choose **Code > Download ZIP**.
 2. Extract the archive to a directory without spaces or non-ASCII characters.
-3. Run `SetupCpp` and `SetupArchiver` for the host platform.
-4. Optionally run `SetupUpscalers` and enable a vendor backend.
+3. Run the host OS `SetupCpp` and `SetupArchiver` entry points from the table above.
+4. Optionally run the host OS `SetupUpscalers` entry point and enable a vendor backend.
 5. Configure and build:
 
 ```
@@ -120,7 +122,7 @@ cmake --build build-dev
 ctest --test-dir build-dev --output-on-failure
 ```
 
-On Windows the same commands run inside a `vcvars64` environment; `SetupScripts/SetupWindows.ps1` prepares the dependencies and the toolchain. Main CMake options: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
+On Windows the same commands run inside a `vcvars64` environment; `SetupScripts/Windows/SetupWindows.ps1` prepares the dependencies and the toolchain. Main CMake options: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
 
 The executables are grouped by purpose:
 
@@ -328,7 +330,7 @@ Besides the editor, `build-dev/bin` contains separate executables. All of them a
 
 The tools live in `build-dev/bin/tools`; the test executables in `build-dev/bin/tests`.
 
-Build and test through the CMake presets; dependency setup lives in `SetupScripts/*`.
+Build and test through the CMake presets; dependency setup lives in `SetupScripts/<OS>/*`.
 
 ## Shortcuts for fast launching
 
@@ -346,7 +348,7 @@ The working directory is the only thing that distinguishes "launching the engine
 1. Open the project folder in Finder.
 2. Drag `fby_editor` (or the `.app` bundle, if built) to the Dock while holding `Command`.
 3. For a specific project create a `.command` file with two lines: `cd /path/to/project` and `/path/to/fby_editor`; Finder runs it on double-click and the alias can live in the Dock.
-4. `SetupScripts/Setup.command` starts the same way — by double-click.
+4. `SetupScripts/macOS/Setup.command` starts the same way — by double-click.
 
 ### Linux
 

@@ -24,6 +24,35 @@ enum CameraStackFlags : std::uint32_t
     CameraStackWriteBack = 1u << 3,
 };
 
+
+// Generic camera-screen effects. The engine deliberately does not name a
+// gameplay state such as intoxication: a game composes these primitives.
+enum CameraDistortionFlags : std::uint32_t
+{
+    CameraDistortionNone = 0,
+    CameraDistortionDoubleVision = 1u << 0,
+    CameraDistortionStretch = 1u << 1,
+    CameraDistortionRadialWarp = 1u << 2,
+    CameraDistortionChromaticSplit = 1u << 3,
+    CameraDistortionWobble = 1u << 4,
+};
+
+struct CameraDistortionSettings
+{
+    std::uint32_t flags = CameraDistortionNone;
+    // Ghost separation in normalized UV units.
+    float doubleVision = 0.0f;
+    // Non-uniform UV scale; 1 keeps the image proportional.
+    float stretchX = 1.0f;
+    float stretchY = 1.0f;
+    // Radial lens warp and RGB split.
+    float radialWarp = 0.0f;
+    float chromaticSplit = 0.0f;
+    // Slow low-frequency displacement.
+    float wobbleAmplitude = 0.0f;
+    float wobbleFrequency = 0.0f;
+};
+
 struct CameraStackDesc
 {
     Entity cameraEntity = entt::null;
@@ -70,12 +99,29 @@ public:
         return MCount == 0;
     }
     [[nodiscard]] const Camera2D& ActiveCamera() const noexcept;
+    [[nodiscard]] const Camera2D& BaseCamera() const noexcept;
     [[nodiscard]] Mat4 ViewProjection() const noexcept;
     // The matrix the renderer should use for a frame that is between two
     [[nodiscard]] Mat4 InterpolatedProjection(float InAlpha) const noexcept;
 
     // Adds trauma to the top camera. This is an impulse, not a per-frame state:
     void AddTrauma(float InAmount) noexcept;
+    [[nodiscard]] float Trauma() const noexcept;
+    void SetShake(float InAmplitude, float InFrequency, float InDecay) noexcept;
+    // Generic transient screen effect; duration <= 0 keeps it until replaced.
+    void SetDistortion(const CameraDistortionSettings& InSettings, float InDuration = 0.0f) noexcept;
+    [[nodiscard]] CameraDistortionSettings ActiveDistortion() const noexcept;
+    void SetOffset(Vector2D InOffset, float InDuration = 0.0f) noexcept;
+    void SetZoom(float InZoom, float InDuration = 0.0f) noexcept;
+    void SetRoll(float InRadians, float InDuration = 0.0f) noexcept;
+    void ClearEffects() noexcept;
+    // Accessibility multiplier applied to shake, sway, distortion and timed
+    // offsets. Zero returns the camera to its exact base each frame.
+    void SetMotionScale(float InScale) noexcept;
+    [[nodiscard]] float MotionScale() const noexcept
+    {
+        return MMotionScale;
+    }
     void SetTilt(float InRadians) noexcept;
     void SetFollowTarget(Entity InEntity) noexcept;
     // Display DPI scale from SDL_GetWindowDisplayScale. The UI uses it to convert
@@ -106,6 +152,19 @@ private:
         float trauma = 0.0f;
         float phaseX = 0.0f;
         float phaseY = 0.0f;
+        float phaseRoll = 0.0f;
+        CameraDistortionSettings distortion{};
+        float distortionRemaining = 0.0f;
+        float distortionDuration = 0.0f;
+        Vector2D timedOffset{};
+        float timedOffsetRemaining = 0.0f;
+        float timedOffsetDuration = 0.0f;
+        float timedZoom = 1.0f;
+        float timedZoomRemaining = 0.0f;
+        float timedZoomDuration = 0.0f;
+        float timedRoll = 0.0f;
+        float timedRollRemaining = 0.0f;
+        float timedRollDuration = 0.0f;
         bool projectionPrimed = false;
     };
 
@@ -116,5 +175,7 @@ private:
     std::uint32_t MCount = 0;
     Rhi::PostFxSettings MDefaultPostFx{};
     float MDisplayScale = 1.0f;
+    float MMotionScale = 1.0f;
+    float MEffectiveMotionScale = 1.0f;
 };
 }

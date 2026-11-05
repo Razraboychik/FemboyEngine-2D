@@ -75,14 +75,16 @@ Bytecode is a development format; a cooked build runs native modules.
 
 ### AOT parity
 
-The plugin ABI is version 5. Parity with the VM is closed:
+The plugin ABI is version 7. Parity with the VM is closed:
 
 - the host log callback is signed (`logI32`);
 - `DespawnSelf` returns the same 1/0 result the VM writes;
 - generated code calls a `fault(code, pc)` hook, with `Aot::FaultCode`
   static-asserted against `VmFault::Code` and fault telemetry in `AotModule`;
 - the `LoadI32` immediate is a signed 16-bit value in the VM and the plugin;
-- `AppendFormat` is dynamically sized, so generated C++ cannot truncate.
+- `AppendFormat` is dynamically sized, so generated C++ cannot truncate;
+- the physics and camera host callbacks use the same `Aot::Context` contract as
+  the VM.
 
 Tests: `LoadI32 decodes a negative immediate`, `AOT logs a signed int32`, `AOT
 writes the DespawnSelf result`, `AOT reports division by zero`.

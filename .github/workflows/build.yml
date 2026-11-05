@@ -55,7 +55,7 @@ jobs:
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-ci/bin/tools/fby_fempak.exe
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.2.0-alpha.1 --out build-ci/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build-ci/release-manifest.json
       - name: Test
         run: ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings"
 
@@ -76,7 +76,7 @@ jobs:
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.2.0-alpha.1 --out build/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build/release-manifest.json
       - name: Test
         run: xvfb-run -a ctest --test-dir build --output-on-failure
 

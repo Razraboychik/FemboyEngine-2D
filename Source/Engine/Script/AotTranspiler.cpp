@@ -579,6 +579,45 @@ private:
                         AppendFormat(MOut, "    ctx.DecimalRelease(static_cast<std::uint32_t>(r.f[%u]));\n",
                                      ScopedD);
                         break;
+                    case NativeId::PhysicsGetBackend:
+                        AppendFormat(MOut, "    r.f[%u] = static_cast<float>(ctx.PhysicsGetBackend());\n", ScopedD);
+                        break;
+                    case NativeId::PhysicsSetBackend:
+                        AppendFormat(MOut, "    r.f[%u] = static_cast<float>(ctx.PhysicsSetBackend(static_cast<std::int32_t>(r.f[%u])));\n",
+                                     ScopedD, ScopedD + 1);
+                        break;
+                    case NativeId::PhysicsGetCapabilities:
+                        AppendFormat(MOut, "    r.f[%u] = static_cast<float>(ctx.PhysicsGetCapabilities());\n", ScopedD);
+                        break;
+                    case NativeId::CameraAddTrauma:
+                        AppendFormat(MOut, "    ctx.CameraAddTrauma(r.f[%u]);\n", ScopedD);
+                        AppendFormat(MOut, "    r.f[%u] = 1.0f;\n", ScopedD);
+                        break;
+                    case NativeId::CameraDistort:
+                        AppendFormat(MOut, "    ctx.CameraDistort(static_cast<std::uint32_t>(r.f[%u]), r.f[%u], r.f[%u], r.f[%u], r.f[%u]);\n",
+                                     ScopedD, ScopedD + 1, ScopedD + 2, ScopedD + 3, ScopedD + 4);
+                        AppendFormat(MOut, "    r.f[%u] = 1.0f;\n", ScopedD);
+                        break;
+                    case NativeId::CameraOffset:
+                        AppendFormat(MOut, "    ctx.CameraOffset(r.f[%u], r.f[%u], r.f[%u]);\n", ScopedD, ScopedD + 1, ScopedD + 2);
+                        AppendFormat(MOut, "    r.f[%u] = 1.0f;\n", ScopedD);
+                        break;
+                    case NativeId::CameraZoom:
+                        AppendFormat(MOut, "    ctx.CameraZoom(r.f[%u], r.f[%u]);\n", ScopedD, ScopedD + 1);
+                        AppendFormat(MOut, "    r.f[%u] = 1.0f;\n", ScopedD);
+                        break;
+                    case NativeId::CameraRoll:
+                        AppendFormat(MOut, "    ctx.CameraRoll(r.f[%u], r.f[%u]);\n", ScopedD, ScopedD + 1);
+                        AppendFormat(MOut, "    r.f[%u] = 1.0f;\n", ScopedD);
+                        break;
+                    case NativeId::CameraClearEffects:
+                        MOut += "    ctx.CameraClear();\n";
+                        AppendFormat(MOut, "    r.f[%u] = 1.0f;\n", ScopedD);
+                        break;
+                    case NativeId::CameraSetMotionScale:
+                        AppendFormat(MOut, "    ctx.CameraSetMotion(r.f[%u]);\n", ScopedD);
+                        AppendFormat(MOut, "    r.f[%u] = 1.0f;\n", ScopedD);
+                        break;
                     case NativeId::Count:
                     default:
                         *InError = "native call uses an unknown NativeId";

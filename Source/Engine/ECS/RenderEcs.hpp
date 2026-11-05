@@ -433,12 +433,16 @@ private:
 
     [[nodiscard]] static std::byte* SlotData(RenderChunk& InChunk, std::uint32_t InSlot) noexcept
     {
-        return InChunk.Payload.data() + static_cast<std::size_t>(InSlot) * sizeof(GpuSpriteInstance);
+        return std::span<std::byte>(InChunk.Payload)
+            .subspan(static_cast<std::size_t>(InSlot) * sizeof(GpuSpriteInstance), sizeof(GpuSpriteInstance))
+            .data();
     }
 
     [[nodiscard]] static const std::byte* SlotData(const RenderChunk& InChunk, std::uint32_t InSlot) noexcept
     {
-        return InChunk.Payload.data() + static_cast<std::size_t>(InSlot) * sizeof(GpuSpriteInstance);
+        return std::span<const std::byte>(InChunk.Payload)
+            .subspan(static_cast<std::size_t>(InSlot) * sizeof(GpuSpriteInstance), sizeof(GpuSpriteInstance))
+            .data();
     }
 
     std::vector<std::unique_ptr<RenderChunk>> MChunks;

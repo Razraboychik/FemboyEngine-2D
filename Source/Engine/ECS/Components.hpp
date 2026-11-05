@@ -54,8 +54,100 @@ inline constexpr std::uint32_t kTransportRotationPhysics = 2;
 inline constexpr std::uint32_t kCarrierModeRigid = 0;
 inline constexpr std::uint32_t kCarrierModeCarriedDynamic = 1;
 inline constexpr std::uint32_t kCarrierModeSupport = 2;
+inline constexpr std::uint32_t kCarrierModeConveyor = 3;
 inline constexpr std::uint32_t kCarrierFlagInheritRotation = 1u << 0;
 inline constexpr std::uint32_t kCarrierFlagDetachRequested = 1u << 1;
+// Runtime marker: the member had a supporting contact on the previous step.
+inline constexpr std::uint32_t kCarrierFlagGrounded = 1u << 2;
+
+// One local input user. Action values and contexts live in the fixed-capacity
+// InputSystem; this component is the ECS binding to a user slot.
+struct InputUserComponent
+{
+    std::uint32_t UserId = 0;
+    // 0xFFFFFFFF means keyboard/mouse only.
+    std::uint32_t GamepadSlot = 0xFFFFFFFFu;
+    std::uint32_t Flags = 0;
+};
+
+// Vehicle drive/control primitives. The engine does not simulate engine RPM,
+// clutch or tire slip; a game maps input to torque and per-wheel drive weights.
+enum VehicleFlags : std::uint32_t
+{
+    VehicleFlagNone = 0,
+    // Optional arcade yaw assist; off by default so physics stays predictable.
+    VehicleFlagArcadeSteering = 1u << 0,
+    VehicleFlagHandbrake = 1u << 1,
+};
+
+struct Vehicle2D
+{
+    // -1 reverse, 0 coast, 1 forward
+    float Throttle = 0.0f;
+    float Brake = 0.0f;
+    // -1..1; applied only with VehicleFlagArcadeSteering
+    float Steering = 0.0f;
+    float MaxMotorTorque = 400.0f;
+    float MaxSpeed = 800.0f;
+    float SteeringTorque = 6000.0f;
+    std::uint32_t Flags = VehicleFlagNone;
+};
+
+inline constexpr std::uint32_t kWheelFlagDrive = 1u << 0;
+inline constexpr std::uint32_t kWheelFlagSteer = 1u << 1;
+
+struct Wheel2D
+{
+    Entity Chassis = entt::null;
+    // Chassis-local suspension anchor, pixels.
+    Vector2D LocalAnchor{};
+    // Chassis-local suspension axis.
+    Vector2D SuspensionAxis{0.0f, 1.0f};
+    float Radius = 12.0f;
+    float SuspensionHertz = 4.0f;
+    float SuspensionDamping = 0.7f;
+    // Multiplier on Vehicle2D.MaxMotorTorque; set 0 for a non-driven wheel.
+    float DriveWeight = 1.0f;
+    // Multiplier on Vehicle2D brake; 1 for braked wheels.
+    float BrakeWeight = 1.0f;
+    // Runtime packed b2WheelJointId.
+    std::uint64_t Joint = 0;
+    std::uint32_t Flags = kWheelFlagDrive;
+};
+
+// Moving surface shared by Support and Conveyor members.
+struct TransportSurface
+{
+    float Friction = 0.6f;
+    float TangentSpeed = 0.0f;
+    bool OneWay = false;
+    bool AllowJump = true;
+};
+
+// Path authoring for kinematic carriers. Points are in world/root space; the
+// system samples the polyline by arc length and keeps distance deterministic.
+struct TransportPath
+{
+    std::array<Vector2D, 64> Points{};
+    std::uint32_t Count = 0;
+    bool Closed = false;
+};
+
+// Kinematic motion profile. A root with Transform2D only moves by pose; a root
+// with a RigidBody2D receives a teleport so the solver sees the new pose.
+struct TransportMotion
+{
+    float Speed = 80.0f;
+    float Acceleration = 240.0f;
+    float Deceleration = 320.0f;
+    float DwellSeconds = 0.0f;
+    float DwellRemaining = 0.0f;
+    float Distance = 0.0f;
+    float TargetDistance = 0.0f;
+    float Direction = 1.0f;
+    Vector2D Axis{1.0f, 0.0f};
+    std::uint32_t Flags = 0;
+};
 
 struct TransportGroupComponent
 {
@@ -326,6 +418,40 @@ FBY_REFLECT_COMPONENT(Fby::CarrierMemberComponent, "CarrierMemberComponent",
                       FBY_FIELD(Fby::CarrierMemberComponent, LocalRotation, Float),
                       FBY_FIELD(Fby::CarrierMemberComponent, RelativeVelocity, Vector2D),
                       FBY_FIELD(Fby::CarrierMemberComponent, RelativeAngularVelocity, Float))
+
+FBY_REFLECT_COMPONENT(Fby::TransportPath, "TransportPath",
+                      FBY_FIELD(Fby::TransportPath, Count, UInt32),
+                      FBY_FIELD(Fby::TransportPath, Closed, Bool))
+
+FBY_REFLECT_COMPONENT(Fby::InputUserComponent, "InputUserComponent",
+                      FBY_FIELD(Fby::InputUserComponent, UserId, UInt32),
+                      FBY_FIELD(Fby::InputUserComponent, GamepadSlot, UInt32),
+                      FBY_FIELD(Fby::InputUserComponent, Flags, UInt32))
+
+FBY_REFLECT_COMPONENT(Fby::Vehicle2D, "Vehicle2D", FBY_FIELD(Fby::Vehicle2D, Throttle, Float),
+                      FBY_FIELD(Fby::Vehicle2D, Brake, Float), FBY_FIELD(Fby::Vehicle2D, Steering, Float),
+                      FBY_FIELD(Fby::Vehicle2D, MaxMotorTorque, Float), FBY_FIELD(Fby::Vehicle2D, MaxSpeed, Float),
+                      FBY_FIELD(Fby::Vehicle2D, SteeringTorque, Float), FBY_FIELD(Fby::Vehicle2D, Flags, UInt32))
+
+FBY_REFLECT_COMPONENT(Fby::Wheel2D, "Wheel2D", FBY_FIELD(Fby::Wheel2D, LocalAnchor, Vector2D),
+                      FBY_FIELD(Fby::Wheel2D, SuspensionAxis, Vector2D), FBY_FIELD(Fby::Wheel2D, Radius, Float),
+                      FBY_FIELD(Fby::Wheel2D, SuspensionHertz, Float),
+                      FBY_FIELD(Fby::Wheel2D, SuspensionDamping, Float),
+                      FBY_FIELD(Fby::Wheel2D, DriveWeight, Float), FBY_FIELD(Fby::Wheel2D, BrakeWeight, Float),
+                      FBY_FIELD(Fby::Wheel2D, Flags, UInt32))
+
+FBY_REFLECT_COMPONENT(Fby::TransportSurface, "TransportSurface", FBY_FIELD(Fby::TransportSurface, Friction, Float),
+                      FBY_FIELD(Fby::TransportSurface, TangentSpeed, Float),
+                      FBY_FIELD(Fby::TransportSurface, OneWay, Bool),
+                      FBY_FIELD(Fby::TransportSurface, AllowJump, Bool))
+
+FBY_REFLECT_COMPONENT(Fby::TransportMotion, "TransportMotion", FBY_FIELD(Fby::TransportMotion, Speed, Float),
+                      FBY_FIELD(Fby::TransportMotion, Acceleration, Float),
+                      FBY_FIELD(Fby::TransportMotion, Deceleration, Float),
+                      FBY_FIELD(Fby::TransportMotion, DwellSeconds, Float),
+                      FBY_FIELD(Fby::TransportMotion, Direction, Float),
+                      FBY_FIELD(Fby::TransportMotion, Axis, Vector2D),
+                      FBY_FIELD(Fby::TransportMotion, Flags, UInt32))
 
 FBY_REFLECT_COMPONENT(Fby::Sprite2D, "Sprite2D", FBY_FIELD(Fby::Sprite2D, Size, Vector2D),
                       FBY_FIELD(Fby::Sprite2D, UVMin, Vector2D), FBY_FIELD(Fby::Sprite2D, UVMax, Vector2D),

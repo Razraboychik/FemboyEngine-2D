@@ -8,7 +8,7 @@
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android-lightgrey.svg)]()
-[![Status: 0.2.0-alpha.1](https://img.shields.io/badge/status-0.2.0--alpha.1-blue.svg)]()
+[![Status: 0.3.0-alpha.1](https://img.shields.io/badge/status-0.3.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D is a compact, deterministic, data-oriented engine for 2D games:
@@ -21,7 +21,7 @@ path, no JSON in the shipped runtime and no hidden object graph. Components are
 trivially copyable data; systems are free functions; the frame is a flat
 `RenderItem` array submitted through one RHI packet.
 
-**Status: 0.2.0-alpha.1.** This is the current public alpha line. The tree
+**Status: 0.3.0-alpha.1.** This is the current public alpha line. The tree
 includes a working FemboyScript debugger (source
 spans, breakpoints, stepping, locals, self fields), isometric and tile-based maps
 with a map editor, skeletal IK, retargeting and clip compression (`.fanim`), grid
@@ -95,9 +95,10 @@ and is used by the editor dashboard and `CreateProject()`.
 | Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, `Vector2D`, `Vector3D`, `Vector4D`, Mirror reflection, jobs, SDL3 platform, plugin ABI |
 | RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts |
 | ECS | EnTT registry, trivially copyable components, four-phase schedule, parallel `SystemGraph` with per-call semaphores, Snapshot v4 |
+| Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input |
 | Gameplay | Project tag database edited in Project Settings, manually authored hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown |
 | AI | `StateTree` → command buffer → `AIController` → perception, navigation and skills; `ActionId` is data for game-owned ECS systems, tag-driven targets, grid and convex navmesh, raw/LOS/Chaikin/Catmull-Rom paths, deterministic route randomization |
-| Physics | Box2D v3 bridge with packed ids, per-level gravity, attractor/repulsor fields, a joint graph of rope/chain/spring connections with tension/break limits, damage, cuts, repair and ties, Verlet cloth, shallow-water fields, SDF collision and destruction with material profiles, and transport groups for elevators, trains and moving platforms (nested carriers, welded rigid members, dynamic roots, editor panel, script control, automatic CCD) |
+| Physics | Two backends under one interface: Box2D v3 for joints, CCD and general rigid bodies, and a data-oriented AABB solver for large joint-free strategy worlds. Per-level gravity, attractor/repulsor fields, rope/chain/spring joints, damage and cuts, Verlet cloth, shallow-water fields, SDF collision/destruction, transport groups, and configurable hitscan/swept/dynamic projectiles |
 | Network | `NetRollbackSession`, 256-tick snapshot ring, input prediction, late-input replay, stable `NetEntityId`, relevance filtering, UDP `NetTransport` with acks, retransmit and MTU fragmentation, and versioned `InputPacket`s that feed `SubmitRemoteInput` |
 | Assets | VFS with owning `Pin()`, `.femeta` transactions, BC7/ASTC texture cooker, audio/localization cookers, watcher, `.fanim` compressed clips |
 | Distribution | `FemArchiver` `.femarc`, optional LZMA, AES-256-GCM / ChaCha20-Poly1305, `fby_fempak secure` |
@@ -107,9 +108,64 @@ and is used by the editor dashboard and `CreateProject()`.
 | Navigation | Cost-grid A* on rect and hex layouts, tilemap-derived maps, authored `NavAgentSettings` separated from runtime paths, per-frame repath budget |
 | Lighting | `Light2DComponent` radial lights, ambient, emissive targets, optional Reinhard tonemap, screen-space SDF shadow mask (render-graph compute pass, static `SdfField` + dynamic `Light2DOccluderComponent` casters), sampled per pixel |
 | Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise and uplink/downlink effects with conditions |
-| UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, a widget kit (border, slider, checkbox, toggle, radio, scrollbar, switcher, overlay, tooltip, text input, text block, nine-slice, custom painters, text buttons), opt-in Tab/arrow focus with an optional ring, inherited visibility, CPU clip rects, a host `TextRuntime` with a HarfBuzz `TextFontStack` in the apps, shaped line-window viewports, accessibility kernel |
+| UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, a widget kit (border, slider, checkbox, toggle, radio, scrollbar, switcher, overlay, tooltip, editable text input, text block, nine-slice, custom painters, text buttons), Unicode line/word/grapheme boundaries through libunibreak, opt-in Tab/arrow focus with an optional ring, inherited visibility, CPU clip rects, a host `TextRuntime` with a HarfBuzz `TextFontStack` in the apps, shaped line-window viewports, accessibility kernel |
 | Editor | Transactional `CommandStack`, ImNodes canvases, project manager, PIE Play/Pause/Stop, Play (Multiplayer) with a second client-world viewport, script debugger, tilemap editor, texture thumbnails and the Transport Groups panel; starts borderless fullscreen (Windowed / Borderless / Exclusive in Editor Settings) |
-| Script | LogicGraph to bytecode VM and LogicGraph to C++26 AOT plugin, debug info (spans, locals), VM breakpoints and stepping; `Compile + Nativize` and an AOT manifest cook gate so a build runs native modules only (`FBY_WITH_SCRIPT_VM=OFF`) |
+| Script | LogicGraph to bytecode VM and LogicGraph to C++26 AOT plugin, physics backend/capability nodes and natives, debug info (spans, locals), VM breakpoints and stepping; `Compile + Nativize` and an AOT manifest cook gate so a build runs native modules only (`FBY_WITH_SCRIPT_VM=OFF`) |
+
+---
+
+## Physics backends and projectiles
+
+`PhysicsDesc::backend` selects `Auto`, `Box2D` or `Dod`. `Auto` keeps Box2D
+unless the project body budget is at least 4096 or deterministic mode is
+requested; joints always force Box2D. The same choice is available in
+**Project Settings > Physics**, from project code through
+`PhysicsSystem::SelectBackend` / `SetProjectPolicy`, and from FemboyScript
+(`physics_get_backend`, `physics_set_backend`, `physics_get_capabilities`).
+
+The data-oriented backend stores bodies in SoA arrays, uses a uniform-grid
+broadphase and handles circles/AABB/segments without joints or CCD. The Box2D
+backend remains the general-purpose choice. Both share the ECS components,
+segment queries and contact event shape, so gameplay code does not branch on the
+backend.
+
+`Projectile2D` has `Auto`, `Hitscan`, `Swept` and `Dynamic` modes. `Auto`
+promotes a projectile to a continuous query when its per-step displacement
+exceeds half of `MinWallThickness`; developers can force a mode, speed, radius or
+substep budget. Hitscan is the right default for bullets, swept is for rockets
+and arrows, and dynamic keeps a regular CCD body. This prevents tunneling
+through thin walls without paying for CCD on every projectile.
+
+## Camera motion and distortion
+
+The camera stack keeps an unshaken **base** pose for gameplay and a **resolved**
+pose for rendering. Trauma shake uses seeded value noise and scales with the
+accessibility motion setting. Scripts compose generic effects rather than a
+named gameplay state: double vision, anisotropic stretch, radial warp, chromatic
+split and low-frequency wobble are available through
+`camera_distort(flags, strength, paramX, paramY, duration)` alongside
+`camera_add_trauma`, `camera_offset`, `camera_zoom`, `camera_roll`,
+`camera_clear_effects` and `camera_set_motion_scale`. LogicGraph has matching
+nodes. See [camera effects](Documentation/design/camera-effects.md).
+
+## Transport physics
+
+Transport is a moving-reference-frame system: `TransportPath` and
+`TransportMotion` drive a carrier by fixed-step distance, `TransportSurface`
+provides friction and conveyor velocity, and `CarrierMemberComponent` modes
+cover rigid cargo, carried bodies, contact support and conveyors.
+`Support` and `Conveyor` use AABB support/tangent logic shared by Box2D and DOD;
+the DOD backend reports that welded trains and CCD require Box2D. See
+[transport physics](Documentation/design/transport-physics.md).
+
+## Vehicle wheels
+
+`WheelSystem` provides Box2D wheel-joint suspension, per-wheel drive and braking.
+`Vehicle2D` owns throttle/brake/limits; `Wheel2D` owns the chassis anchor,
+suspension and per-wheel drive/brake weights. Steering geometry, engine RPM,
+gears and tire slip stay on the game side; an opt-in arcade yaw assist is
+available. DOD has no wheel joints. See
+[vehicle wheels](Documentation/design/vehicle-wheels.md).
 
 ---
 
@@ -123,25 +179,26 @@ and is not an engine dependency - see
 [Documentation/README.md](Documentation/README.md).
 
 ```bat
-SetupScripts/Setup.bat
-SetupScripts/SetupCpp.bat
-SetupScripts/SetupArchiver.bat
-SetupScripts/SetupUpscalers.bat
+SetupScripts/Windows/Setup.bat
+SetupScripts/Windows/SetupCpp.bat
+SetupScripts/Windows/SetupArchiver.bat
+SetupScripts/Windows/SetupUpscalers.bat
 ```
 
 ```bash
-./SetupScripts/Setup.sh          # Ubuntu/Debian, everything
-./SetupScripts/SetupCpp.sh       # compiler, CMake, source dependencies
-./SetupScripts/SetupArchiver.sh  # 7-Zip
-./SetupScripts/SetupUpscalers.sh # optional DLSS/FidelityFX/XeSS SDKs
-./SetupScripts/Setup.command     # macOS, also works from Finder
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
-./SetupScripts/SetupUpscalers.command
+./SetupScripts/Linux/Setup.sh          # Ubuntu/Debian, everything
+./SetupScripts/Linux/SetupCpp.sh       # compiler, CMake, source dependencies
+./SetupScripts/Linux/SetupArchiver.sh  # 7-Zip
+./SetupScripts/Linux/SetupUpscalers.sh # optional DLSS/FidelityFX/XeSS SDKs
+./SetupScripts/macOS/Setup.command     # macOS, also works from Finder
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
+./SetupScripts/macOS/SetupUpscalers.command
 ```
 
 Versions are fixed at SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang
-`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0` and LZMA SDK `25.01`. Vendor
+`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, libunibreak `6.1` and LZMA SDK
+`25.01`. Vendor
 upscaler SDKs are optional and are not part of the archive; see
 [Frame Generation](Documentation/md/en/FemboyEngineFrameGeneration_EN.md).
 
@@ -155,13 +212,13 @@ headers and libraries; the MSVC compiler itself is not a supported toolchain.
 The setup scripts install both compiler families: clang-cl / clang++ for the
 validated build and GCC 16+ (MinGW-w64 UCRT on Windows, Homebrew or the
 distribution package elsewhere) for the second-opinion toolchain. On Windows,
-`SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI and verifies the
+`SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI and verifies the
 `clang-cl` version. The Unix scripts install the distribution Clang (19+); CI
 pins LLVM 23.1.4 for the authoritative Windows gate.
 
 The validated build uses **clang-cl 23.1.4 on Windows and clang++ elsewhere**;
 that is what CI and the release gate run. GCC 16.2.0 (MinGW-W64 UCRT) is
-installed by `SetupCpp.bat` and recorded in the dependency lock; a `-std=c++2c`
+installed by `SetupScripts/Windows/SetupCpp.bat` and recorded in the dependency lock; a `-std=c++2c`
 smoke program and an engine header syntax check pass with it, but the full gate
 has not been run with GCC yet. The honest status for this release is therefore
 `GCC not run` for the full build, until a Linux GCC runner joins CI.
@@ -252,7 +309,7 @@ The editor opens a project from three places:
   association once for the current user so a double-click opens the editor:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File SetupScripts/RegisterFemboyProjects.ps1
+  powershell -ExecutionPolicy Bypass -File SetupScripts/Windows/RegisterFemboyProjects.ps1
   ```
 
 - **Project dashboard**: it appears when no project is open. Open Project browses
@@ -360,6 +417,12 @@ is [README_RU.md](README_RU.md).
 - [Editor workflows and scene authoring](Documentation/design/editor-workflows.md)
 - [Play-In-Editor and the client viewport](Documentation/design/pie-multiplayer.md)
 - [Text stack](Documentation/design/text-stack.md)
+- [Camera motion and distortion](Documentation/design/camera-effects.md)
+- [Transport physics](Documentation/design/transport-physics.md)
+- [Vehicle wheels](Documentation/design/vehicle-wheels.md)
+- [Input system](Documentation/design/input-system.md)
+- [Physics backends design](Documentation/design/physics-backends.md)
+- [CodeQL audit](Documentation/design/codeql-audit.md)
 - [Time, timers and dates](Documentation/design/time.md)
 - [Accessibility contract](Documentation/design/accessibility.md)
 - [World systems: tilemaps, IK and navigation](Documentation/design/world-systems.md)

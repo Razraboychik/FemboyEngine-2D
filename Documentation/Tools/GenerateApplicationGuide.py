@@ -114,35 +114,36 @@ SECTIONS: list[dict] = [
         "title": B("2. Setup and the reproducible toolchain", "2. Установка и воспроизводимый тулчейн"),
         "blocks": [
             ("p", B(
-                "The setup scripts are split by software group. The C++ scripts install the pinned toolchain and "
+                "The setup scripts are split by OS and software group. The C++ scripts install the pinned toolchain and "
                 "materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first "
                 "configure after setup does not need network access. Versions are fixed by the scripts and written "
                 "to third_party/dependencies.lock.",
-                "Скрипты установки разделены по группам ПО. C++-скрипты ставят зафиксированный toolchain и "
+                "Скрипты установки разделены по ОС и группам ПО. C++-скрипты ставят зафиксированный toolchain и "
                 "раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому "
                 "первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в "
                 "third_party/dependencies.lock.",
             )),
             ("code", code(r"""# Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts\SetupCpp.bat
-SetupScripts\SetupArchiver.bat
+SetupScripts\Windows\Setup.bat
+SetupScripts\Windows\SetupCpp.bat
+SetupScripts\Windows\SetupArchiver.bat
 # optional vendor SDKs
-SetupScripts\SetupUpscalers.bat
+SetupScripts\Windows\SetupUpscalers.bat
 
 # Ubuntu / Debian
-./SetupScripts/SetupCpp.sh
-./SetupScripts/SetupArchiver.sh
+./SetupScripts/Linux/SetupCpp.sh
+./SetupScripts/Linux/SetupArchiver.sh
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.sh
+./SetupScripts/Linux/SetupUpscalers.sh
 
 # macOS (double-click in Finder also works)
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.command""")),
+./SetupScripts/macOS/SetupUpscalers.command""")),
             ("p", B(
-                "The all-in-one Setup.bat, Setup.sh and Setup.command remain available.",
-                "Общие скрипты Setup.bat, Setup.sh и Setup.command остаются доступны.",
+                "The all-in-one entry points are SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh and SetupScripts/macOS/Setup.command.",
+                "Общие точки входа: SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh и SetupScripts/macOS/Setup.command.",
             )),
             ("p", B(
                 "Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, "
@@ -507,6 +508,79 @@ if (!graph.Build())
                     "Запускайте весь набор через ctest; одно падение печатает файл и строку и возвращает ненулевой код.",
                 ],
             )),
+            ("h2", B("5.1 Deterministic input and replication while building the game",
+                      "5.1 Детерминированный ввод и репликация при создании игры")),
+            ("p", B(
+                "Build input and replication together, not after the gameplay is finished. The action mapper produces "
+                "the same fixed-tick data on every peer; the network layer carries an input frame, never raw SDL "
+                "events. This is the contract that makes prediction and rollback possible.",
+                "Ввод и репликацию проектируйте вместе, а не после готового геймплея. Маппер действий выдаёт одни и "
+                "те же данные фиксированного тика на каждом пире; сетевой слой передаёт input frame, а не сырые "
+                "SDL-события. Это контракт, который делает возможными предсказание и роллбэк.")),
+            ("code", code(r"""InputSystem input;
+const std::uint16_t Move = input.RegisterAction("Move", InputActionType::Axis2D);
+const std::uint16_t Jump = input.RegisterAction("Jump", InputActionType::Bool);
+const std::uint16_t Gameplay = input.RegisterContext("Gameplay", 0, false);
+
+InputUserComponent user;
+user.UserId = 0;
+user.GamepadSlot = 0;
+registry.emplace<InputUserComponent>(player, user);
+input.BindUser(player, 0, 0);
+input.PushContext(0, Gameplay);
+
+// Once per fixed tick, before gameplay reads actions.
+input.Update(window.Input(), tick, timestampNs, fixedDt);
+const InputActionState& move = *input.Action(0, Move);
+if (input.Action(0, Jump)->Triggered) { JumpPlayer(player); }""")),
+            ("p", B(
+                "The local device layer is allowed to differ: keyboard, mouse and gamepad take different paths into "
+                "InputState. The simulation sees only action values and events. For a networked game, pack the values "
+                "you need into NetInputFrame (or your own schema) and submit the frame for the owning player.",
+                "Локальный слой устройств может отличаться: клавиатура, мышь и геймпад идут в InputState разными "
+                "путями. Симуляция видит только значения действий и события. Для сетевой игры упакуйте нужные "
+                "значения в NetInputFrame (или собственную схему) и отправьте frame для владеющего игрока.")),
+            ("code", code(r"""NetRollbackSession::Config net;
+net.playerCount = 2;
+net.localPlayer = 0;
+net.rollbackTicks = 64;
+NetRollbackSession session;
+session.Initialize(registry, Ecs::SnapshotSchema::BuiltIns(), net);
+session.SetCommandLog(&commands);
+session.RegisterEntity(player, NetEntityId{1});
+
+NetInputFrame frame;
+frame.tick = tick;
+frame.player = 0;
+frame.moveX = static_cast<std::int16_t>(move.X * 32767.0f);
+frame.buttons = input.Action(0, Jump)->Triggered ? 1u : 0u;
+session.SubmitRemoteInput(0, frame);""")),
+            ("bullets", B(
+                [
+                    "Authoritative simulation: the server owns the tick, the RNG seed and the CommandLog. Clients predict with the same tick size and the same gameplay systems.",
+                    "Register gameplay components in SnapshotSchema before the first capture; a component outside the schema silently does not replicate.",
+                    "Use stable NetEntityId values for replicated entities. Never derive one from an EnTT id, a spawn order or an allocator address.",
+                    "Replicate input frames and structural commands, not raw device state or render-only values.",
+                    "On a correction, restore the snapshot before the first bad tick, replay the corrected input and compare the final checksum.",
+                    "Test PIE with two players, artificial latency, packet loss and a forced rollback before adding content.",
+                ],
+                [
+                    "Авторитетная симуляция: сервер владеет тиком, сидом RNG и CommandLog. Клиенты предсказывают с тем же размером тика и теми же геймплейными системами.",
+                    "Регистрируйте геймплейные компоненты в SnapshotSchema до первого захвата; компонент вне схемы молча не реплицируется.",
+                    "Используйте стабильные NetEntityId для реплицируемых сущностей. Никогда не выводите их из EnTT id, порядка спавна или адреса аллокатора.",
+                    "Реплицируйте input frames и структурные команды, а не сырые устройства или render-only значения.",
+                    "При коррекции восстановите снапшот до первого плохого тика, повторите исправленный ввод и сравните итоговую контрольную сумму.",
+                    "Проверяйте PIE на двух игроках, с искусственной задержкой, потерей пакетов и принудительным роллбэком до добавления контента.",
+                ])),
+            ("p", B(
+                "A useful project order is: one player + InputSystem; two local users; snapshot round trip; server-authoritative "
+                "movement; then interaction, weapons and AI. Add replication fields with the feature that owns them, not in a "
+                "single late 'networking pass'. If a system reads wall-clock time, frame delta or a render handle, it is not "
+                "ready for rollback.",
+                "Полезный порядок проекта: один игрок + InputSystem; два локальных пользователя; round-trip снапшота; "
+                "серверно-авторитетное движение; затем взаимодействия, оружие и ИИ. Добавляйте поля репликации вместе с "
+                "фичей-владельцем, а не одним поздним «networking pass». Если система читает wall-clock, delta кадра или "
+                "render handle, она не готова к роллбэку.")),
         ],
     },
     {
@@ -767,6 +841,40 @@ postFx.Build(graph, cameras);""")),
                 "CardBoardComponent раскладывают карточную доску без сцены, а BuildCardBoardPrimitives упаковывает "
                 "каждый слот в два экземпляра (карта и тень).",
             )),
+            ("h2", B("8.2 Moving platforms, transport and wheels", "8.2 Движущиеся платформы, транспорт и колёса")),
+            ("p", B(
+                "A carrier is a transform frame, not a second rigid-body world. TransportGroupSystem is for elevators, "
+                "trains and platforms: it computes carrier deltas before the physics step and refreshes local poses "
+                "after it. A wheel entity is a normal dynamic body with a collider; WheelSystem creates the Box2D wheel "
+                "joint lazily and applies the per-wheel spring, drive and brake settings before the step.",
+                "Носитель — это система отсчёта трансформа, а не второй мир твёрдых тел. TransportGroupSystem подходит "
+                "для лифтов, поездов и платформ: он считает дельты носителя до шага физики и обновляет локальные позы "
+                "после него. Колесо — обычное динамическое тело с коллайдером; WheelSystem лениво создаёт wheel-джойнт "
+                "Box2D и применяет настройки пружины, привода и тормоза колеса до шага.",
+            )),
+            ("code", code(r"""TransportGroupSystem transport;
+transport.CreateGroup(registry, elevator, 1);
+transport.Attach(registry, player, 1, kCarrierModeSupport);
+
+TransportSurface surface;
+surface.Friction = 0.8f;
+registry.emplace<TransportSurface>(elevator, surface);
+
+Vehicle2D vehicle;
+vehicle.MaxMotorTorque = 600.0f;
+registry.emplace<Vehicle2D>(chassis, vehicle);
+
+Wheel2D wheel;
+wheel.Chassis = chassis;
+wheel.LocalAnchor = {-20.0f, 4.0f};
+wheel.Radius = 8.0f;
+wheel.DriveWeight = 1.0f;
+registry.emplace<Wheel2D>(wheelEntity, wheel);
+
+WheelSystem wheels;
+wheels.Initialize(physics);
+wheels.Update(registry, physics, fixedDt);
+physics.Step(registry, fixedDt);""")),
         ],
     },
     {
@@ -1230,7 +1338,7 @@ def build_docx(path: pathlib.Path, language: str, title: str, subtitle: str) -> 
     core = document.core_properties
     core.title = title
     core.subject = subtitle
-    core.author = "FemboyEngine Developer Documentation Group"
+    core.author = "Razraboychik"
     core.keywords = "FemboyEngine, ECS, DOD, texture cooking, BC7, ASTC, indirect draw, SDF, weather"
     core.language = "en-US" if language == "en" else "ru-RU"
 

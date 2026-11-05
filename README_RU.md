@@ -8,7 +8,7 @@
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android-lightgrey.svg)]()
-[![Status: 0.2.0-alpha.1](https://img.shields.io/badge/status-0.2.0--alpha.1-blue.svg)]()
+[![Status: 0.3.0-alpha.1](https://img.shields.io/badge/status-0.3.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D — компактный, детерминированный движок для 2D-игр: собственный
@@ -21,7 +21,7 @@ RHI на Vulkan/Metal, ECS на EnTT, декларативный паралле�
 тривиально копируемые данные; системы — свободные функции; кадр — плоский массив
 `RenderItem`, отправляемый одним RHI-пакетом.
 
-**Статус: 0.2.0-alpha.1.** Это текущая публичная alpha-линия. В дереве есть
+**Статус: 0.3.0-alpha.1.** Это текущая публичная alpha-линия. В дереве есть
 рабочий отладчик FemboyScript (spans, breakpoints, stepping, locals, self-поля),
 изометрические и тайловые карты с редактором, скелетный IK, retargeting и сжатие
 клипов (`.fanim`), навигация по сетке, 2D-освещение, UDP-транспорт с надёжностью
@@ -93,9 +93,10 @@ ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "my_system", &MySystem, &MyState);
 | Core | `Definitions.hpp`, `FemCast<>`, проверяемый `Cast<>`, `FORCEINLINE`, `Vector2D`, `Vector3D`, `Vector4D`, Mirror-рефлексия, jobs, платформа SDL3, plugin ABI |
 | RHI | Постоянные кольца кадров, 48-байтный `RenderItem`, 64-битные ключи, Vulkan indirect MDI, один compute dispatch для LBS, Metal и null backends, контракты апскейлинга класса FSR/DLSS и генерации кадров |
 | ECS | EnTT registry, тривиально копируемые компоненты, четырёхфазный schedule, параллельный `SystemGraph` с семафорами на вызов, Snapshot v4 |
+| Ввод | Фиксированный `InputSystem`: действия/контексты/модификаторы/триггеры, состояние по пользователям, тики и timestamps событий, hotplug и dead zone для SDL3-геймпадов; без руля |
 | Геймплей | База игровых тегов в Project Settings, иерархические `GameplayTags`, реестр атрибутов, data-driven instant/duration/periodic эффекты со стаками, навыки со стоимостью/кастом/кулдауном |
 | ИИ | `StateTree` → command buffer → `AIController` → восприятие, навигация и навыки; `ActionId` как данные для игровых ECS-систем, цели по тегам, grid и convex navmesh, пути raw/LOS/Chaikin/Catmull-Rom, детерминированная рандомизация маршрутов |
-| Физика | Мост Box2D v3 с упакованными id, гравитация на уровень, поля attractor/repulsor, граф верёвочных/цепных/пружинных соединений с лимитами натяжения и разрыва, урон, разрезы, ремонт и связи, ткань Verlet, поля мелкой воды, SDF-коллизии и SDF-разрушение с профилями материалов, а также транспортные группы для лифтов, поездов и движущихся платформ (вложенные носители, приваренные rigid-члены, динамические корни, панель редактора, управление из скрипта, автоматический CCD) |
+| Физика | Два бэкенда под одним интерфейсом: Box2D v3 для соединений, CCD и обычных твёрдых тел и data-oriented AABB-солвер для больших стратегических миров без соединений. Гравитация на уровень, поля attractor/repulsor, верёвочные/цепные/пружинные соединения, урон и разрезы, ткань Verlet, поля мелкой воды, SDF-коллизии/разрушение, транспортные группы и настраиваемые hitscan/swept/dynamic снаряды |
 | Сеть | `NetRollbackSession`, кольцо снапшотов на 256 тиков, предсказание ввода, повтор позднего ввода, стабильный `NetEntityId`, фильтрация релевантности, UDP `NetTransport` с ack, ретрансмиссией и MTU-фрагментацией, версионированные `InputPacket` для `SubmitRemoteInput` |
 | Ассеты | VFS с владеющим `Pin()`, транзакции `.femeta`, кукер текстур BC7/ASTC, аудио/локализационные кукеры, watcher, сжатые клипы `.fanim` |
 | Дистрибуция | `FemArchiver` `.femarc`, опциональный LZMA, AES-256-GCM / ChaCha20-Poly1305, `fby_fempak secure` |
@@ -105,9 +106,65 @@ ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "my_system", &MySystem, &MyState);
 | Навигация | A* по cost-grid на прямоугольных и гексагональных сетках, карты из тайлмапов, авторские `NavAgentSettings` отдельно от runtime-путей, бюджет repath на кадр |
 | Освещение | Радиальные источники `Light2DComponent`, ambient, emissive-цели, опциональный Reinhard-тонмаппинг, экранная SDF-маска теней (compute-pass графа рендера, статический `SdfField` + динамические `Light2DOccluderComponent`), выборка на пиксель |
 | Аудио | DSP-граф с шинами/ducking/reverb, зоны, лимитер, Ogg/Opus, живое пространственное усиление и панорама, захват голоса/AEC/RNNoise и uplink/downlink-эффекты с условиями |
-| UI | Процедурные SDF-примитивы PinkUI, DPI-масштабирование, темы, гипертекст, набор виджетов, опциональный Tab/arrow-фокус с кольцом, наследуемая видимость, CPU clip rects, host `TextRuntime` с HarfBuzz `TextFontStack` в приложениях, shaped line-window viewports, accessibility kernel |
+| UI | Процедурные SDF-примитивы PinkUI, DPI-масштабирование, темы, гипертекст, набор виджетов с явным editable text input, Unicode-границы строк/слов/графем через libunibreak, опциональный Tab/arrow-фокус с кольцом, наследуемая видимость, CPU clip rects, host `TextRuntime` с HarfBuzz `TextFontStack` в приложениях, shaped line-window viewports, accessibility kernel |
 | Редактор | Транзакционный `CommandStack`, канвасы ImNodes, менеджер проектов, PIE Play/Pause/Stop, Play (Multiplayer) со вторым viewport клиентского мира, отладчик скриптов, редактор тайлмапов, превью текстур и панель Transport Groups; стартует в borderless fullscreen (Windowed / Borderless / Exclusive в Editor Settings) |
 | Скрипты | LogicGraph в bytecode VM и LogicGraph в C++26 AOT-плагин, debug info (spans, locals), breakpoints и stepping в VM; `Compile + Nativize` и AOT manifest cook gate, чтобы сборка запускала только нативные модули (`FBY_WITH_SCRIPT_VM=OFF`) |
+
+---
+
+## Физические бэкенды и снаряды
+
+`PhysicsDesc::backend` выбирает `Auto`, `Box2D` или `Dod`. `Auto` оставляет
+Box2D, пока бюджет тел проекта меньше 4096 и не запрошен детерминированный
+режим; соединения всегда требуют Box2D. Тот же выбор доступен в
+**Project Settings > Physics**, из кода через `PhysicsSystem::SelectBackend` /
+`SetProjectPolicy` и из FemboyScript (`physics_get_backend`,
+`physics_set_backend`, `physics_get_capabilities`).
+
+Data-oriented бэкенд хранит тела в SoA-массивах, использует uniform-grid broadphase и
+поддерживает circle/AABB/segment без соединений и CCD. Box2D остаётся
+универсальным выбором. Оба бэкенда используют одни ECS-компоненты, segment
+queries и форму событий контакта, поэтому игровой код не разветвляется по
+бэкенду.
+
+У `Projectile2D` есть режимы `Auto`, `Hitscan`, `Swept` и `Dynamic`. `Auto`
+переводит снаряд на непрерывный запрос, когда смещение за шаг больше половины
+`MinWallThickness`; разработчик может вручную задать режим, скорость, радиус и
+число подшагов. Hitscan — для пуль, swept — для ракет и стрел, dynamic — для
+обычного тела с CCD. Это не даёт пулям проходить сквозь тонкие стены, не платя
+за CCD для каждого снаряда.
+
+## Движение камеры и искажения
+
+Стек камеры хранит нетрясущуюся **базовую** позу для геймплея и **итоговую**
+позу для рендера. Тряска использует seed-шум и масштабируется настройкой
+accessibility. Скрипты собирают универсальные эффекты, а не именованное
+игровое состояние: двойное зрение, непропорциональное растяжение, радиальное
+искажение, хроматическое расщепление и низкочастотное покачивание доступны
+через `camera_distort(flags, strength, paramX, paramY, duration)`, а также
+`camera_add_trauma`, `camera_offset`, `camera_zoom`, `camera_roll`,
+`camera_clear_effects` и `camera_set_motion_scale`. В LogicGraph есть
+соответствующие узлы. См. [эффекты камеры](Documentation/design/camera-effects.md).
+
+## Физика транспорта
+
+Транспорт — это слой движущейся системы отсчёта: `TransportPath` и
+`TransportMotion` ведут носитель по фиксированному расстоянию,
+`TransportSurface` задаёт трение и скорость конвейера, а режимы
+`CarrierMemberComponent` покрывают жёсткий груз, переносимые тела, контактную
+опору и конвейеры. `Support` и `Conveyor` используют общую AABB-логику опоры и
+тангенциальной скорости для Box2D и DOD; DOD-бэкенд сообщает, что сцепленные
+поезда и CCD требуют Box2D. См.
+[физику транспорта](Documentation/design/transport-physics.md).
+
+## Колёса транспорта
+
+`WheelSystem` даёт подвеску на wheel-джойнтах Box2D, привод и торможение по
+колёсам. `Vehicle2D` хранит газ/тормоз/лимиты, `Wheel2D` — крепление к шасси,
+подвеску и веса привода/тормоза. Геометрия руля, RPM, коробка и проскальзывание
+шин остаются на стороне игры; опционально доступен аркадный момент рыскания.
+В DOD нет wheel-джойнтов. См.
+[колёса транспорта](Documentation/design/vehicle-wheels.md).
 
 ---
 
@@ -121,25 +178,26 @@ DjVu-просмотрщике). Инструменты документации 
 [Documentation/README.md](Documentation/README.md).
 
 ```bat
-SetupScripts/Setup.bat
-SetupScripts/SetupCpp.bat
-SetupScripts/SetupArchiver.bat
-SetupScripts/SetupUpscalers.bat
+SetupScripts/Windows/Setup.bat
+SetupScripts/Windows/SetupCpp.bat
+SetupScripts/Windows/SetupArchiver.bat
+SetupScripts/Windows/SetupUpscalers.bat
 ```
 
 ```bash
-./SetupScripts/Setup.sh          # Ubuntu/Debian, всё сразу
-./SetupScripts/SetupCpp.sh       # компилятор, CMake, зависимости
-./SetupScripts/SetupArchiver.sh  # 7-Zip
-./SetupScripts/SetupUpscalers.sh # опциональные SDK DLSS/FidelityFX/XeSS
-./SetupScripts/Setup.command     # macOS, работает и из Finder
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
-./SetupScripts/SetupUpscalers.command
+./SetupScripts/Linux/Setup.sh          # Ubuntu/Debian, всё сразу
+./SetupScripts/Linux/SetupCpp.sh       # компилятор, CMake, зависимости
+./SetupScripts/Linux/SetupArchiver.sh  # 7-Zip
+./SetupScripts/Linux/SetupUpscalers.sh # опциональные SDK DLSS/FidelityFX/XeSS
+./SetupScripts/macOS/Setup.command     # macOS, работает и из Finder
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
+./SetupScripts/macOS/SetupUpscalers.command
 ```
 
 Версии закреплены: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang
-`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0` и LZMA SDK `25.01`. Vendor SDK
+`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, libunibreak `6.1` и LZMA SDK
+`25.01`. Vendor SDK
 апскейлеров опциональны и не входят в архив; см.
 [Генерацию кадров](Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).
 
@@ -152,14 +210,14 @@ Unix) или GCC 16+. На Windows запускайте из оболочки, �
 заголовки и библиотеки Windows SDK; сам компилятор MSVC не поддерживается.
 Скрипты установки ставят оба семейства компиляторов: clang-cl / clang++ для
 проверенной сборки и GCC 16+ (MinGW-w64 UCRT на Windows, Homebrew или пакет
-дистрибутива в остальных случаях) для второго мнения. На Windows `SetupCpp.bat`
+дистрибутива в остальных случаях) для второго мнения. На Windows `SetupScripts/Windows/SetupCpp.bat`
 скачивает официальный MSI **LLVM 23.1.4** и проверяет версию `clang-cl`.
 Unix-скрипты ставят Clang из пакетного менеджера (19+); CI закрепляет LLVM
 23.1.4 для авторитетного Windows-гейта.
 
 Проверенная сборка использует **clang-cl 23.1.4 на Windows и clang++ на других
 платформах**; именно её запускают CI и release gate. GCC 16.2.0 (MinGW-W64 UCRT)
-устанавливается `SetupCpp.bat` и записывается в dependency lock; smoke-программа
+устанавливается `SetupScripts/Windows/SetupCpp.bat` и записывается в dependency lock; smoke-программа
 `-std=c++2c` и проверка синтаксиса заголовков движка проходят, но полный гейт
 под GCC пока не запускался. Честный статус этой версии — `GCC not run` для
 полной сборки, пока в CI не появится Linux GCC-runner.
@@ -252,7 +310,7 @@ python Source/Tools/Dev/CheckStyle.py
   клик открывал редактор:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File SetupScripts/RegisterFemboyProjects.ps1
+  powershell -ExecutionPolicy Bypass -File SetupScripts/Windows/RegisterFemboyProjects.ps1
   ```
 
 - **Панель проектов**: появляется, когда проект не открыт. Open Project
@@ -361,6 +419,13 @@ file>` (нажать Open на панели после `FBY_EDITOR_SMOKE_DASHBOA
 - [Workflow редактора и создание сцен](Documentation/design/editor-workflows.md)
 - [Play-In-Editor и viewport клиента](Documentation/design/pie-multiplayer.md)
 - [Текстовый стек](Documentation/design/text-stack.md)
+- [Движение камеры и искажения](Documentation/design/camera-effects.md)
+- [Эффекты камеры](Documentation/design/camera-effects.md)
+- [Физика транспорта](Documentation/design/transport-physics.md)
+- [Колёса транспорта](Documentation/design/vehicle-wheels.md)
+- [Система ввода](Documentation/design/input-system.md)
+- [Дизайн физических бэкендов](Documentation/design/physics-backends.md)
+- [Аудит CodeQL](Documentation/design/codeql-audit.md)
 - [Время, таймеры и даты](Documentation/design/time.md)
 - [Контракт доступности](Documentation/design/accessibility.md)
 - [Мировые системы: тайлмапы, IK и навигация](Documentation/design/world-systems.md)

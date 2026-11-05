@@ -31,6 +31,26 @@ else()
     message(FATAL_ERROR "EnTT not found in third_party/entt-main/entt-main")
 endif()
 
+# libunibreak - Unicode line, word and grapheme boundaries (Zlib licence).
+set(FBY_LIBUNIBREAK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libunibreak")
+if (EXISTS "${FBY_LIBUNIBREAK_DIR}/src/linebreak.c")
+    add_library(fby_libunibreak STATIC
+        "${FBY_LIBUNIBREAK_DIR}/src/linebreak.c"
+        "${FBY_LIBUNIBREAK_DIR}/src/linebreakdata.c"
+        "${FBY_LIBUNIBREAK_DIR}/src/linebreakdef.c"
+        "${FBY_LIBUNIBREAK_DIR}/src/wordbreak.c"
+        "${FBY_LIBUNIBREAK_DIR}/src/graphemebreak.c"
+        "${FBY_LIBUNIBREAK_DIR}/src/eastasianwidthdef.c"
+        "${FBY_LIBUNIBREAK_DIR}/src/emojidef.c"
+        "${FBY_LIBUNIBREAK_DIR}/src/unibreakbase.c"
+        "${FBY_LIBUNIBREAK_DIR}/src/unibreakdef.c")
+    target_include_directories(fby_libunibreak PUBLIC "${FBY_LIBUNIBREAK_DIR}/src")
+    set_target_properties(fby_libunibreak PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)
+    add_library(fby::unibreak ALIAS fby_libunibreak)
+else()
+    message(FATAL_ERROR "libunibreak not found in third_party/libunibreak")
+endif()
+
 # SDL3 (platform layer: window, input, native file dialogs)
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
@@ -183,7 +203,7 @@ if (EXISTS "${MONOCYPHER_DIR}/monocypher.c")
     add_library(fby::monocypher ALIAS fby_monocypher)
     message(STATUS "Monocypher: ${MONOCYPHER_DIR}")
 else()
-    message(FATAL_ERROR "Monocypher not found in third_party/monocypher (run SetupScripts/Setup)")
+    message(FATAL_ERROR "Monocypher not found in third_party/monocypher (run a setup script under SetupScripts/<OS>)")
 endif()
 
 

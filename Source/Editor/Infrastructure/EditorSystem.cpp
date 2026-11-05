@@ -1070,6 +1070,14 @@ struct EditorSystem::Impl
         // sandbox second copy applies that baseline before any delta.
         ExternalClientDesc ScopedExternal;
         ScopedExternal.executable = desc.pieClientExecutable.string();
+        if (InContext.physics != nullptr)
+        {
+            const std::uint8_t ScopedBackend = projectConfig.Project().physicsBackend;
+            const Fby::PhysicsBackendKind ScopedKind =
+                ScopedBackend == 1 ? Fby::PhysicsBackendKind::Box2D
+                                    : (ScopedBackend == 2 ? Fby::PhysicsBackendKind::Dod : Fby::PhysicsBackendKind::Auto);
+            InContext.physics->SetProjectPolicy(ScopedKind, projectConfig.Project().physicsBodyBudget);
+        }
         const PlayInEditor::Result ScopedResult =
             InMultiplayer
                 ? pie.StartMultiplayer(InContext.registry, ScopedSchema, InContext, 1, 1, nullptr, &ScopedExternal)

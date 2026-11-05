@@ -157,6 +157,15 @@ url = "https://github.com/LoupVaillant/Monocypher"
 license_file = "third_party/monocypher/LICENCE.md"
 
 [[component]]
+name = "libunibreak"
+version = "6.1"
+spdx = "Zlib"
+purpose = "Unicode line, word and grapheme boundary algorithms (UAX #14, #29)"
+copyright = "Copyright (C) Wu Yongwei, Tom Hacohen, Petr Filipsky and Andreas Röver"
+url = "https://github.com/adah1972/libunibreak"
+license_file = "third_party/libunibreak/LICENCE"
+
+[[component]]
 name = "HarfBuzz"
 version = "15.0.0"
 spdx = "MIT"

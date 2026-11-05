@@ -19,6 +19,23 @@ inline constexpr std::uint32_t kTransportInvalidGroup = 0xFFFFFFFFu;
 // Above this speed the carrier enables Box2D continuous collision detection.
 inline constexpr float kTransportHighSpeedPixelsPerSecond = 1200.0f;
 
+// TransportMotion flags.
+inline constexpr std::uint32_t kTransportMotionPath = 1u << 0;
+inline constexpr std::uint32_t kTransportMotionPingPong = 1u << 1;
+inline constexpr std::uint32_t kTransportMotionStopAtEnds = 1u << 2;
+inline constexpr std::uint32_t kTransportMotionFaceDirection = 1u << 3;
+
+// Capabilities the active physics backend can provide for transport joints and
+// continuous support. DOD has no joints or CCD, so rigid/weld transport must
+// either fall back to kinematic carry or force the Box2D backend.
+struct TransportCapabilities
+{
+    bool Joints = false;
+    bool Ccd = false;
+    bool Weld = false;
+    bool ContactSupport = true;
+};
+
 // Runtime view of one carrier. The root is a normal entity with Transform2D and
 // optionally a kinematic RigidBody2D; the group is not a second physics world.
 struct TransportGroupState
@@ -75,6 +92,7 @@ public:
         return MGroupCount;
     }
     [[nodiscard]] const TransportGroupState* Group(std::uint32_t InGroupId) const noexcept;
+    [[nodiscard]] static TransportCapabilities CapabilitiesFor(const PhysicsSystem& InPhysics) noexcept;
 
 protected:
     [[nodiscard]] TransportGroupState* FindGroup(std::uint32_t InGroupId) noexcept;
@@ -87,6 +105,9 @@ protected:
     [[nodiscard]] bool ParentChainContains(Ecs::Registry& InRegistry, std::uint32_t InStartGroupId,
                                            std::uint32_t InWantedGroupId) const noexcept;
 
+    void AdvanceMotion(Ecs::Registry& InRegistry, Entity InRoot, float InFixedDt) noexcept;
+    [[nodiscard]] bool IsMemberSupported(Ecs::Registry& InRegistry, Entity InMember, Entity InRoot,
+                                         Vector2D InMemberPosition) const noexcept;
     void EnsureRigidJoint(Ecs::Registry& InRegistry, Entity InMember, CarrierMemberComponent& InComponent,
                           const TransportGroupState& InGroup) noexcept;
     void EnsureParentJoint(Ecs::Registry& InRegistry, TransportGroupState& InChild,

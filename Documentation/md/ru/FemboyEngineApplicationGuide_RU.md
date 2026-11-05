@@ -1,6 +1,6 @@
 # FemboyEngine2D — Практическое руководство
 
-*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-04*
+*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-05*
 
 ## 1. Для чего это руководство
 
@@ -18,29 +18,30 @@ FemboyEngine2D — двумерный движок, построенный во�
 
 ## 2. Установка и воспроизводимый тулчейн
 
-Скрипты установки разделены по группам ПО. C++-скрипты ставят зафиксированный toolchain и раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в third_party/dependencies.lock.
+Скрипты установки разделены по ОС и группам ПО. C++-скрипты ставят зафиксированный toolchain и раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в third_party/dependencies.lock.
 
 ```cpp
 # Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts\SetupCpp.bat
-SetupScripts\SetupArchiver.bat
+SetupScripts\Windows\Setup.bat
+SetupScripts\Windows\SetupCpp.bat
+SetupScripts\Windows\SetupArchiver.bat
 # optional vendor SDKs
-SetupScripts\SetupUpscalers.bat
+SetupScripts\Windows\SetupUpscalers.bat
 
 # Ubuntu / Debian
-./SetupScripts/SetupCpp.sh
-./SetupScripts/SetupArchiver.sh
+./SetupScripts/Linux/SetupCpp.sh
+./SetupScripts/Linux/SetupArchiver.sh
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.sh
+./SetupScripts/Linux/SetupUpscalers.sh
 
 # macOS (double-click in Finder also works)
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.command
+./SetupScripts/macOS/SetupUpscalers.command
 ```
 
-Общие скрипты Setup.bat, Setup.sh и Setup.command остаются доступны.
+Общие точки входа: SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh и SetupScripts/macOS/Setup.command.
 
 Зафиксированные версии: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.2.0 и LZMA SDK 25.01. Setup по возможности ставит системные пакеты; используйте --skip-system (или -SkipSystem в Windows) на CI-образе, где уже есть CMake, Ninja, Clang/GCC и Vulkan loader.
 
@@ -300,6 +301,58 @@ if (!graph.Build())
 - Один исполняемый тест на задачу; без фреймворка и динамической регистрации.
 - Запускайте весь набор через ctest; одно падение печатает файл и строку и возвращает ненулевой код.
 
+### 5.1 Детерминированный ввод и репликация при создании игры
+
+Ввод и репликацию проектируйте вместе, а не после готового геймплея. Маппер действий выдаёт одни и те же данные фиксированного тика на каждом пире; сетевой слой передаёт input frame, а не сырые SDL-события. Это контракт, который делает возможными предсказание и роллбэк.
+
+```cpp
+InputSystem input;
+const std::uint16_t Move = input.RegisterAction("Move", InputActionType::Axis2D);
+const std::uint16_t Jump = input.RegisterAction("Jump", InputActionType::Bool);
+const std::uint16_t Gameplay = input.RegisterContext("Gameplay", 0, false);
+
+InputUserComponent user;
+user.UserId = 0;
+user.GamepadSlot = 0;
+registry.emplace<InputUserComponent>(player, user);
+input.BindUser(player, 0, 0);
+input.PushContext(0, Gameplay);
+
+// Once per fixed tick, before gameplay reads actions.
+input.Update(window.Input(), tick, timestampNs, fixedDt);
+const InputActionState& move = *input.Action(0, Move);
+if (input.Action(0, Jump)->Triggered) { JumpPlayer(player); }
+```
+
+Локальный слой устройств может отличаться: клавиатура, мышь и геймпад идут в InputState разными путями. Симуляция видит только значения действий и события. Для сетевой игры упакуйте нужные значения в NetInputFrame (или собственную схему) и отправьте frame для владеющего игрока.
+
+```cpp
+NetRollbackSession::Config net;
+net.playerCount = 2;
+net.localPlayer = 0;
+net.rollbackTicks = 64;
+NetRollbackSession session;
+session.Initialize(registry, Ecs::SnapshotSchema::BuiltIns(), net);
+session.SetCommandLog(&commands);
+session.RegisterEntity(player, NetEntityId{1});
+
+NetInputFrame frame;
+frame.tick = tick;
+frame.player = 0;
+frame.moveX = static_cast<std::int16_t>(move.X * 32767.0f);
+frame.buttons = input.Action(0, Jump)->Triggered ? 1u : 0u;
+session.SubmitRemoteInput(0, frame);
+```
+
+- Авторитетная симуляция: сервер владеет тиком, сидом RNG и CommandLog. Клиенты предсказывают с тем же размером тика и теми же геймплейными системами.
+- Регистрируйте геймплейные компоненты в SnapshotSchema до первого захвата; компонент вне схемы молча не реплицируется.
+- Используйте стабильные NetEntityId для реплицируемых сущностей. Никогда не выводите их из EnTT id, порядка спавна или адреса аллокатора.
+- Реплицируйте input frames и структурные команды, а не сырые устройства или render-only значения.
+- При коррекции восстановите снапшот до первого плохого тика, повторите исправленный ввод и сравните итоговую контрольную сумму.
+- Проверяйте PIE на двух игроках, с искусственной задержкой, потерей пакетов и принудительным роллбэком до добавления контента.
+
+Полезный порядок проекта: один игрок + InputSystem; два локальных пользователя; round-trip снапшота; серверно-авторитетное движение; затем взаимодействия, оружие и ИИ. Добавляйте поля репликации вместе с фичей-владельцем, а не одним поздним «networking pass». Если система читает wall-clock, delta кадра или render handle, она не готова к роллбэку.
+
 ---
 
 ## 6. Сжатие памяти и вызовов отрисовки
@@ -460,6 +513,36 @@ postFx.Build(graph, cameras);
 ```
 
 Для UI SDF-путь полностью убирает текстурную память. pink_sdf.frag аналитически вычисляет круги, скруглённые прямоугольники, капсулы и кольца; сглаживание берётся из fwidth. SlotComponent и CardBoardComponent раскладывают карточную доску без сцены, а BuildCardBoardPrimitives упаковывает каждый слот в два экземпляра (карта и тень).
+
+### 8.2 Движущиеся платформы, транспорт и колёса
+
+Носитель — это система отсчёта трансформа, а не второй мир твёрдых тел. TransportGroupSystem подходит для лифтов, поездов и платформ: он считает дельты носителя до шага физики и обновляет локальные позы после него. Колесо — обычное динамическое тело с коллайдером; WheelSystem лениво создаёт wheel-джойнт Box2D и применяет настройки пружины, привода и тормоза колеса до шага.
+
+```cpp
+TransportGroupSystem transport;
+transport.CreateGroup(registry, elevator, 1);
+transport.Attach(registry, player, 1, kCarrierModeSupport);
+
+TransportSurface surface;
+surface.Friction = 0.8f;
+registry.emplace<TransportSurface>(elevator, surface);
+
+Vehicle2D vehicle;
+vehicle.MaxMotorTorque = 600.0f;
+registry.emplace<Vehicle2D>(chassis, vehicle);
+
+Wheel2D wheel;
+wheel.Chassis = chassis;
+wheel.LocalAnchor = {-20.0f, 4.0f};
+wheel.Radius = 8.0f;
+wheel.DriveWeight = 1.0f;
+registry.emplace<Wheel2D>(wheelEntity, wheel);
+
+WheelSystem wheels;
+wheels.Initialize(physics);
+wheels.Update(registry, physics, fixedDt);
+physics.Step(registry, fixedDt);
+```
 
 ---
 

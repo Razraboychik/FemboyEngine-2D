@@ -27,10 +27,10 @@ const FbyComponentInfo kComponents[] = {
 
 #if defined(FBY_PLUGIN_BAD_LAYOUT)
 constexpr const char* kPluginName = "hello_mod_bad_layout";
-constexpr const char* kPluginVersion = "0.2.0-alpha.1-bad";
+constexpr const char* kPluginVersion = "0.3.0-alpha.1-bad";
 #else
 constexpr const char* kPluginName = "hello_mod";
-constexpr const char* kPluginVersion = "0.2.0-alpha.1";
+constexpr const char* kPluginVersion = "0.3.0-alpha.1";
 #endif
 
 const FbyPluginInfo kInfo = {

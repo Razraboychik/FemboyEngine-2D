@@ -3,6 +3,7 @@
 
 #include "Engine/Core/Pcg32.hpp"
 #include "Engine/Core/WindowManager.hpp"
+#include "Engine/UI/Accessibility.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -16,6 +17,41 @@ namespace
 
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kTwoPi = 2.0f * kPi;
+
+[[nodiscard]] std::uint32_t HashNoise(std::uint32_t InValue) noexcept
+{
+    InValue ^= InValue >> 16u;
+    InValue *= 0x7FEB352Du;
+    InValue ^= InValue >> 15u;
+    InValue *= 0x846CA68Bu;
+    InValue ^= InValue >> 16u;
+    return InValue;
+}
+
+[[nodiscard]] float ValueNoise(float InPhase, std::uint32_t InSeed) noexcept
+{
+    const float ScopedFloor = std::floor(InPhase);
+    const auto ScopedCell = static_cast<std::uint32_t>(static_cast<std::int32_t>(ScopedFloor));
+    const float ScopedFraction = InPhase - ScopedFloor;
+    const float ScopedSmooth = ScopedFraction * ScopedFraction * (3.0f - 2.0f * ScopedFraction);
+    const auto ScopedSample = [InSeed](std::uint32_t InCell) noexcept
+    {
+        return static_cast<float>(HashNoise(InCell ^ InSeed) & 0xFFFFFFu) / static_cast<float>(0xFFFFFFu);
+    };
+    const float ScopedA = ScopedSample(ScopedCell);
+    const float ScopedB = ScopedSample(ScopedCell + 1u);
+    return (ScopedA + (ScopedB - ScopedA) * ScopedSmooth) * 2.0f - 1.0f;
+}
+
+[[nodiscard]] float TimedWeight(float InRemaining, float InDuration) noexcept
+{
+    if (InDuration <= 0.0f)
+    {
+        return InRemaining < 0.0f ? 1.0f : 0.0f;
+    }
+    const float ScopedT = std::clamp(InRemaining / InDuration, 0.0f, 1.0f);
+    return ScopedT * ScopedT * (3.0f - 2.0f * ScopedT);
+}
 
 [[nodiscard]] float ApproachFactor(float InSharpness, float InDt) noexcept
 {
@@ -152,25 +188,77 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
             }
         }
 
-        // Shake is applied on top of the unshaken base, never accumulated into
+        // Effects are layered on the unshaken base. The base is what gameplay
+        // and scripts read; the resolved pose is render-only.
         Camera2D ScopedResolved = ScopedBase;
+        float ScopedAccessibilityScale = 1.0f;
+        if (InContext.accessibility != nullptr)
+        {
+            ScopedAccessibilityScale = InContext.accessibility->Profile().presentation.motionScale;
+        }
+        MEffectiveMotionScale = std::clamp(MMotionScale * ScopedAccessibilityScale, 0.0f, 1.0f);
+        const float ScopedMotion = MEffectiveMotionScale;
+
+        if (ScopedSlot.timedOffsetRemaining != 0.0f)
+        {
+            const float ScopedWeight = TimedWeight(ScopedSlot.timedOffsetRemaining, ScopedSlot.timedOffsetDuration);
+            ScopedResolved.Center += ScopedSlot.timedOffset * (ScopedWeight * ScopedMotion);
+            if (ScopedSlot.timedOffsetDuration > 0.0f)
+            {
+                ScopedSlot.timedOffsetRemaining =
+                    std::max(0.0f, ScopedSlot.timedOffsetRemaining - InContext.dt);
+            }
+        }
+        if (ScopedSlot.timedZoomRemaining != 0.0f)
+        {
+            const float ScopedWeight = TimedWeight(ScopedSlot.timedZoomRemaining, ScopedSlot.timedZoomDuration);
+            const float ScopedZoom = 1.0f + (ScopedSlot.timedZoom - 1.0f) * ScopedWeight * ScopedMotion;
+            ScopedResolved.Zoom *= ScopedZoom;
+            if (ScopedSlot.timedZoomDuration > 0.0f)
+            {
+                ScopedSlot.timedZoomRemaining = std::max(0.0f, ScopedSlot.timedZoomRemaining - InContext.dt);
+            }
+        }
+        if (ScopedSlot.timedRollRemaining != 0.0f)
+        {
+            const float ScopedWeight = TimedWeight(ScopedSlot.timedRollRemaining, ScopedSlot.timedRollDuration);
+            ScopedResolved.Rotation += ScopedSlot.timedRoll * ScopedWeight * ScopedMotion;
+            if (ScopedSlot.timedRollDuration > 0.0f)
+            {
+                ScopedSlot.timedRollRemaining = std::max(0.0f, ScopedSlot.timedRollRemaining - InContext.dt);
+            }
+        }
+
         if ((ScopedSlot.desc.flags & CameraStackShake) != 0 && InContext.dt > 0.0f)
         {
             ScopedSlot.trauma = std::max(0.0f, ScopedSlot.trauma - ScopedSlot.desc.shakeDecay * InContext.dt);
-            const float ScopedIntensity = ScopedSlot.trauma * ScopedSlot.trauma;
+            const float ScopedIntensity = ScopedSlot.trauma * ScopedSlot.trauma * ScopedMotion;
             if (ScopedIntensity > 0.0f)
             {
                 ScopedSlot.phaseX += InContext.dt * ScopedSlot.desc.shakeFrequency * kTwoPi;
                 ScopedSlot.phaseY += InContext.dt * ScopedSlot.desc.shakeFrequency * 1.37f * kTwoPi;
+                ScopedSlot.phaseRoll += InContext.dt * ScopedSlot.desc.shakeFrequency * 0.63f * kTwoPi;
                 const float ScopedAmplitude = ScopedSlot.desc.shakeAmplitude * ScopedIntensity;
-                // Vertical is intentionally a little softer than horizontal;
-                ScopedResolved.Center.X += std::sin(ScopedSlot.phaseX) * ScopedAmplitude;
-                ScopedResolved.Center.Y += std::sin(ScopedSlot.phaseY) * ScopedAmplitude * 0.78f;
-                ScopedResolved.Rotation += std::sin(ScopedSlot.phaseX * 0.63f + 1.1f) * 0.012f * ScopedIntensity;
+                ScopedResolved.Center.X += ValueNoise(ScopedSlot.phaseX, ScopedSlot.desc.seed) * ScopedAmplitude;
+                ScopedResolved.Center.Y += ValueNoise(ScopedSlot.phaseY, ScopedSlot.desc.seed ^ 0x9E3779B9u) *
+                                           ScopedAmplitude * 0.78f;
+                ScopedResolved.Rotation +=
+                    ValueNoise(ScopedSlot.phaseRoll, ScopedSlot.desc.seed ^ 0x85EBCA6Bu) * 0.012f * ScopedIntensity;
             }
         }
 
-        // `previousProjection` is the last rendered frame. A frame recorded
+        if (ScopedSlot.distortionRemaining != 0.0f && ScopedSlot.distortionDuration > 0.0f)
+        {
+            ScopedSlot.distortionRemaining = std::max(0.0f, ScopedSlot.distortionRemaining - InContext.dt);
+            if (ScopedSlot.distortionRemaining == 0.0f)
+            {
+                ScopedSlot.distortion = CameraDistortionSettings{};
+                ScopedSlot.distortionDuration = 0.0f;
+                ScopedSlot.desc.postFx.flags &= ~Rhi::PostFxCameraDistortion;
+            }
+        }
+
+        // Projection history is render-only; writeback below stores the base.
         if (ScopedSlot.projectionPrimed)
         {
             ScopedSlot.previousProjection = ScopedSlot.currentProjection;
@@ -185,8 +273,8 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
             if (auto* ScopedAuthored = InContext.registry.try_get<Camera2D>(ScopedSlot.desc.cameraEntity);
                 ScopedAuthored != nullptr)
             {
-                ScopedAuthored->Center = ScopedResolved.Center;
-                ScopedAuthored->Rotation = ScopedResolved.Rotation;
+                ScopedAuthored->Center = ScopedBase.Center;
+                ScopedAuthored->Rotation = ScopedBase.Rotation;
             }
         }
 
@@ -224,6 +312,125 @@ void CameraStackSystem::AddTrauma(float InAmount) noexcept
     {
         ScopedSlot->trauma = std::clamp(ScopedSlot->trauma + InAmount, 0.0f, 1.0f);
     }
+}
+
+float CameraStackSystem::Trauma() const noexcept
+{
+    const Slot* ScopedSlot = Top();
+    return ScopedSlot == nullptr ? 0.0f : ScopedSlot->trauma;
+}
+
+void CameraStackSystem::SetShake(float InAmplitude, float InFrequency, float InDecay) noexcept
+{
+    if (Slot* ScopedSlot = Top(); ScopedSlot != nullptr)
+    {
+        ScopedSlot->desc.shakeAmplitude = std::max(InAmplitude, 0.0f);
+        ScopedSlot->desc.shakeFrequency = std::max(InFrequency, 0.0f);
+        ScopedSlot->desc.shakeDecay = std::max(InDecay, 0.0f);
+    }
+}
+
+void CameraStackSystem::SetDistortion(const CameraDistortionSettings& InSettings, float InDuration) noexcept
+{
+    if (Slot* ScopedSlot = Top(); ScopedSlot != nullptr)
+    {
+        ScopedSlot->distortion = InSettings;
+        if (InSettings.flags != CameraDistortionNone)
+        {
+            ScopedSlot->desc.postFx.flags |= Rhi::PostFxCameraDistortion;
+        }
+        else
+        {
+            ScopedSlot->desc.postFx.flags &= ~Rhi::PostFxCameraDistortion;
+        }
+        ScopedSlot->distortionDuration = std::max(InDuration, 0.0f);
+        ScopedSlot->distortionRemaining = InDuration > 0.0f ? InDuration : -1.0f;
+    }
+}
+
+CameraDistortionSettings CameraStackSystem::ActiveDistortion() const noexcept
+{
+    const Slot* ScopedSlot = Top();
+    if (ScopedSlot == nullptr || ScopedSlot->distortion.flags == CameraDistortionNone)
+    {
+        return CameraDistortionSettings{};
+    }
+    CameraDistortionSettings ScopedResult = ScopedSlot->distortion;
+    const float ScopedWeight = ScopedSlot->distortionDuration > 0.0f
+                                   ? TimedWeight(ScopedSlot->distortionRemaining, ScopedSlot->distortionDuration)
+                                   : 1.0f;
+    const float ScopedMotion = MEffectiveMotionScale;
+    const float ScopedScale = ScopedWeight * ScopedMotion;
+    ScopedResult.doubleVision *= ScopedScale;
+    ScopedResult.radialWarp *= ScopedScale;
+    ScopedResult.chromaticSplit *= ScopedScale;
+    ScopedResult.wobbleAmplitude *= ScopedScale;
+    ScopedResult.stretchX = 1.0f + (ScopedResult.stretchX - 1.0f) * ScopedScale;
+    ScopedResult.stretchY = 1.0f + (ScopedResult.stretchY - 1.0f) * ScopedScale;
+    return ScopedResult;
+}
+
+void CameraStackSystem::SetOffset(Vector2D InOffset, float InDuration) noexcept
+{
+    if (Slot* ScopedSlot = Top(); ScopedSlot != nullptr)
+    {
+        ScopedSlot->timedOffset = InOffset;
+        ScopedSlot->timedOffsetDuration = std::max(InDuration, 0.0f);
+        ScopedSlot->timedOffsetRemaining = InDuration > 0.0f ? InDuration : -1.0f;
+    }
+}
+
+void CameraStackSystem::SetZoom(float InZoom, float InDuration) noexcept
+{
+    if (Slot* ScopedSlot = Top(); ScopedSlot != nullptr)
+    {
+        ScopedSlot->timedZoom = std::max(InZoom, 0.01f);
+        ScopedSlot->timedZoomDuration = std::max(InDuration, 0.0f);
+        ScopedSlot->timedZoomRemaining = InDuration > 0.0f ? InDuration : -1.0f;
+    }
+}
+
+void CameraStackSystem::SetRoll(float InRadians, float InDuration) noexcept
+{
+    if (Slot* ScopedSlot = Top(); ScopedSlot != nullptr)
+    {
+        ScopedSlot->timedRoll = InRadians;
+        ScopedSlot->timedRollDuration = std::max(InDuration, 0.0f);
+        ScopedSlot->timedRollRemaining = InDuration > 0.0f ? InDuration : -1.0f;
+    }
+}
+
+void CameraStackSystem::ClearEffects() noexcept
+{
+    if (Slot* ScopedSlot = Top(); ScopedSlot != nullptr)
+    {
+        ScopedSlot->trauma = 0.0f;
+        ScopedSlot->distortion = CameraDistortionSettings{};
+        ScopedSlot->desc.postFx.flags &= ~Rhi::PostFxCameraDistortion;
+        ScopedSlot->distortionRemaining = 0.0f;
+        ScopedSlot->distortionDuration = 0.0f;
+        ScopedSlot->timedOffset = Vector2D{};
+        ScopedSlot->timedOffsetRemaining = 0.0f;
+        ScopedSlot->timedOffsetDuration = 0.0f;
+        ScopedSlot->timedZoom = 1.0f;
+        ScopedSlot->timedZoomRemaining = 0.0f;
+        ScopedSlot->timedZoomDuration = 0.0f;
+        ScopedSlot->timedRoll = 0.0f;
+        ScopedSlot->timedRollRemaining = 0.0f;
+        ScopedSlot->timedRollDuration = 0.0f;
+    }
+}
+
+void CameraStackSystem::SetMotionScale(float InScale) noexcept
+{
+    MMotionScale = std::clamp(InScale, 0.0f, 1.0f);
+}
+
+const Camera2D& CameraStackSystem::BaseCamera() const noexcept
+{
+    const Slot* ScopedSlot = Top();
+    static const Camera2D ScopedKFallback{};
+    return ScopedSlot == nullptr ? ScopedKFallback : ScopedSlot->baseCamera;
 }
 
 void CameraStackSystem::SetTilt(float InRadians) noexcept

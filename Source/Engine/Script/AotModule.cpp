@@ -2,6 +2,8 @@
 #include "Engine/Script/AotModule.hpp"
 
 #include "Engine/Core/Log.hpp"
+#include "Engine/Physics/Physics.hpp"
+#include "Engine/RHI/CameraStack.hpp"
 
 #include <array>
 #include <cstdio>
@@ -73,6 +75,139 @@ std::uint32_t HostDespawn(void* InUser, std::uint32_t InEntity) noexcept
     }
     (void)ScopedHost->context->commands->Destroy(ScopedTyped);
     return 1u;
+}
+
+std::int32_t HostPhysicsGetBackend(void* InUser) noexcept
+{
+    const auto* ScopedUser = static_cast<const HostUser*>(InUser);
+    if (ScopedUser == nullptr || ScopedUser->context == nullptr || ScopedUser->context->physics == nullptr)
+    {
+        return -1;
+    }
+    return static_cast<std::int32_t>(ScopedUser->context->physics->Backend());
+}
+
+std::uint32_t HostPhysicsSetBackend(void* InUser, std::int32_t InBackend) noexcept
+{
+    auto* ScopedUser = static_cast<HostUser*>(InUser);
+    if (ScopedUser == nullptr || ScopedUser->context == nullptr || ScopedUser->context->physics == nullptr)
+    {
+        return 0;
+    }
+    const PhysicsBackendKind ScopedKind = InBackend == 1 ? PhysicsBackendKind::Box2D
+                                                          : (InBackend == 2 ? PhysicsBackendKind::Dod
+                                                                            : PhysicsBackendKind::Auto);
+    ScopedUser->context->physics->SetProjectPolicy(ScopedKind,
+                                                   ScopedUser->context->physics->Description().bodyBudget);
+    return 1;
+}
+
+std::uint32_t HostPhysicsGetCapabilities(void* InUser) noexcept
+{
+    const auto* ScopedUser = static_cast<const HostUser*>(InUser);
+    if (ScopedUser == nullptr || ScopedUser->context == nullptr || ScopedUser->context->physics == nullptr)
+    {
+        return 0;
+    }
+    const PhysicsCapabilities ScopedCaps = ScopedUser->context->physics->Capabilities();
+    std::uint32_t ScopedBits = 0;
+    ScopedBits |= ScopedCaps.Joints ? 1u : 0u;
+    ScopedBits |= ScopedCaps.Ccd ? 2u : 0u;
+    ScopedBits |= ScopedCaps.SoftBodies ? 4u : 0u;
+    ScopedBits |= ScopedCaps.Deterministic ? 8u : 0u;
+    ScopedBits |= ScopedCaps.LargeWorlds ? 16u : 0u;
+    return ScopedBits;
+}
+
+void HostCameraAddTrauma(void* InUser, float InAmount) noexcept
+{
+    auto* ScopedUser = static_cast<HostUser*>(InUser);
+    if (ScopedUser != nullptr && ScopedUser->context != nullptr && ScopedUser->context->camera != nullptr)
+    {
+        ScopedUser->context->camera->AddTrauma(InAmount);
+    }
+}
+
+void HostCameraDistort(void* InUser, std::uint32_t InFlags, float InStrength, float InParamX, float InParamY,
+                       float InDuration) noexcept
+{
+    auto* ScopedUser = static_cast<HostUser*>(InUser);
+    if (ScopedUser == nullptr || ScopedUser->context == nullptr || ScopedUser->context->camera == nullptr)
+    {
+        return;
+    }
+    CameraDistortionSettings ScopedDistortion;
+    ScopedDistortion.flags = InFlags & (CameraDistortionDoubleVision | CameraDistortionStretch |
+                                        CameraDistortionRadialWarp | CameraDistortionChromaticSplit |
+                                        CameraDistortionWobble);
+    if ((InFlags & CameraDistortionDoubleVision) != 0)
+    {
+        ScopedDistortion.doubleVision = InStrength;
+    }
+    if ((InFlags & CameraDistortionStretch) != 0)
+    {
+        ScopedDistortion.stretchX = InParamX;
+        ScopedDistortion.stretchY = InParamY;
+    }
+    if ((InFlags & CameraDistortionRadialWarp) != 0)
+    {
+        ScopedDistortion.radialWarp = InStrength;
+    }
+    if ((InFlags & CameraDistortionChromaticSplit) != 0)
+    {
+        ScopedDistortion.chromaticSplit = InStrength;
+    }
+    if ((InFlags & CameraDistortionWobble) != 0)
+    {
+        ScopedDistortion.wobbleAmplitude = InStrength;
+        ScopedDistortion.wobbleFrequency = InParamX;
+    }
+    ScopedUser->context->camera->SetDistortion(ScopedDistortion, InDuration);
+}
+
+void HostCameraOffset(void* InUser, float InX, float InY, float InDuration) noexcept
+{
+    auto* ScopedUser = static_cast<HostUser*>(InUser);
+    if (ScopedUser != nullptr && ScopedUser->context != nullptr && ScopedUser->context->camera != nullptr)
+    {
+        ScopedUser->context->camera->SetOffset(Vector2D{InX, InY}, InDuration);
+    }
+}
+
+void HostCameraZoom(void* InUser, float InZoom, float InDuration) noexcept
+{
+    auto* ScopedUser = static_cast<HostUser*>(InUser);
+    if (ScopedUser != nullptr && ScopedUser->context != nullptr && ScopedUser->context->camera != nullptr)
+    {
+        ScopedUser->context->camera->SetZoom(InZoom, InDuration);
+    }
+}
+
+void HostCameraRoll(void* InUser, float InRadians, float InDuration) noexcept
+{
+    auto* ScopedUser = static_cast<HostUser*>(InUser);
+    if (ScopedUser != nullptr && ScopedUser->context != nullptr && ScopedUser->context->camera != nullptr)
+    {
+        ScopedUser->context->camera->SetRoll(InRadians, InDuration);
+    }
+}
+
+void HostCameraClear(void* InUser) noexcept
+{
+    auto* ScopedUser = static_cast<HostUser*>(InUser);
+    if (ScopedUser != nullptr && ScopedUser->context != nullptr && ScopedUser->context->camera != nullptr)
+    {
+        ScopedUser->context->camera->ClearEffects();
+    }
+}
+
+void HostCameraSetMotion(void* InUser, float InScale) noexcept
+{
+    auto* ScopedUser = static_cast<HostUser*>(InUser);
+    if (ScopedUser != nullptr && ScopedUser->context != nullptr && ScopedUser->context->camera != nullptr)
+    {
+        ScopedUser->context->camera->SetMotionScale(InScale);
+    }
 }
 
 std::uint32_t HostSpawn(void* InUser, std::uint32_t InPrefabId) noexcept
@@ -555,6 +690,16 @@ bool RunAotModule(const Aot::Module& InModule, ScriptEvent InEvent, Entity InSel
     ScopedHost.decimalToInt = &HostDecimalToInt;
     ScopedHost.decimalLog = &HostDecimalLog;
     ScopedHost.decimalRelease = &HostDecimalRelease;
+    ScopedHost.physicsGetBackend = &HostPhysicsGetBackend;
+    ScopedHost.physicsSetBackend = &HostPhysicsSetBackend;
+    ScopedHost.physicsGetCapabilities = &HostPhysicsGetCapabilities;
+    ScopedHost.cameraAddTrauma = &HostCameraAddTrauma;
+    ScopedHost.cameraDistort = &HostCameraDistort;
+    ScopedHost.cameraOffset = &HostCameraOffset;
+    ScopedHost.cameraZoom = &HostCameraZoom;
+    ScopedHost.cameraRoll = &HostCameraRoll;
+    ScopedHost.cameraClear = &HostCameraClear;
+    ScopedHost.cameraSetMotion = &HostCameraSetMotion;
     ScopedHost.fault = &HostFault;
 
     Aot::Context ScopedAotContext;

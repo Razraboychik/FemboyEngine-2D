@@ -1,8 +1,8 @@
-# FemboyEngine2D 0.2.0-alpha.1 - public alpha build
+# FemboyEngine2D 0.3.0-alpha.1 - public alpha build
 cmake_minimum_required(VERSION 3.28)
 
 project(FemboyEngine2D
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Data-oriented 2D game engine"
     LANGUAGES C CXX)
 

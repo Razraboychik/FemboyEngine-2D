@@ -46,6 +46,23 @@ faces of a script for the current text, and a chain of faces provides the
 in-script fallback. A missing glyph moves to the next face of the same script;
 `.notdef` only appears when no face covers the codepoint.
 
+## Unicode boundaries and editable text
+
+libunibreak supplies UAX #14 line opportunities, UAX #29 word boundaries and
+grapheme clusters to `Text::ComputeLineBreaks`, `ComputeWordBreaks` and
+`ComputeGraphemeBreaks`. The wrapping pass uses line opportunities in addition
+to ASCII whitespace, so CJK, Thai and mixed bidi text wrap without splitting a
+grapheme. Outputs are indexed by UTF-8 byte offset and the helper API has a fixed
+capacity, so a layout call does not allocate.
+
+Pink UI separates display text from input widgets. `Label`, `TextBlock`,
+`Hypertext` and tooltips are display-only; their default `FocusPolicy` is
+`None`. Only `WidgetKind::TextInput` (the explicit **Editable Text** widget) is
+editable and receives caret, selection and IME input when focused. A click on
+display text therefore cannot start editing during gameplay. Word and grapheme
+helpers are shared by the editor selection code; callers that need selectable but
+non-editable text set `FocusPolicy::Pointer` without using `TextInput`.
+
 ## Hot path
 
 A shape cache keyed by text/font/size/direction/locale stores glyph and line
