@@ -25,3 +25,16 @@ path is enabled. Apply it only once on a clean vendor checkout.
 
 License: the target is MIT-0 OR Unlicense (miniaudio) and MIT OR Public Domain
 (stb_vorbis). This patch may be distributed under the target's license.
+
+
+## `miniaudio-size-hardening.patch`
+
+The compiled `miniaudio.h` had 35 `cpp/integer-multiplication-cast-to-long`
+alerts: frame counts, channel counts and byte counts were multiplied in 32-bit
+before conversion to `size_t`/`ma_uint64`. The patch promotes the first operand
+before each multiplication. This is API hardening: miniaudio callers supply
+these sizes, so it is not treated as a remote exploit.
+
+The patch is applied to the vendored header on this branch. It was validated by
+a full build and CTest on the patched tree. `stb_vorbis.c` is a separate optional
+extras file and is not compiled by the engine.

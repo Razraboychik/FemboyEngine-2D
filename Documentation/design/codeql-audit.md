@@ -40,9 +40,10 @@ changed that result. The vendor alerts remain visible on the old `main` analysis
    scheduled vendor scan keeps those alerts visible instead of silently hiding
    them.
 
-The first compiled-asset patches are now in `third_party/patches`:
-`stb/stb_image-size-overflow.patch` and the two
-`imgui/imstb_truetype-*size-overflow.patch` files. They are validated with
+The compiled-asset patches are now in `third_party/patches`:
+`stb/stb_image-size-overflow.patch`, the two
+`imgui/imstb_truetype-*size-overflow.patch` files and
+`miniaudio/miniaudio-size-hardening.patch`. They are validated with
 `git apply --check`, by compiling standalone patched copies and by a full build
 and CTest run after applying them. They are applied to the vendored files on this
 branch; the patch files remain for upstream and for a clean reapply after a
