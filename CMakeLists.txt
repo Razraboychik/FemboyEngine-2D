@@ -16,6 +16,9 @@ if(APPLE)
     set(CMAKE_OBJCXX_STANDARD 20)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
     set(CMAKE_OBJCXX_EXTENSIONS OFF)
+    # The macOS SDK's CoreFoundation headers use opaque fixed-base enums that
+    # Clang 19+ diagnoses in C++26 parsing. They are valid API declarations.
+    add_compile_options(-Wno-elaborated-enum-base)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
