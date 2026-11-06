@@ -15,4 +15,4 @@ set(FBY_LOCK_GLSLANG_COMMIT "e1b562a8bed273a02f30b59b66a5d499793cede5")
 # Box2D 3.2.0 (the version comes from its CMakeLists project()).
 set(FBY_LOCK_BOX2D_TREE "5356bedc401f3a5948f099a407ea72f7ab7a876d0813fcc5e97a55fa61dca5d2")
 # Opus vendored snapshot; the download did not keep a tag or package_version.
-set(FBY_LOCK_OPUS_TREE "9484105f0189dcec3cc4a001c94ca858aaf4236ab9592fde99758650ca76ac8d")
+set(FBY_LOCK_OPUS_TREE "37881463767626a2544d595e7e0494ed04849699c849798f9232b36162a9dc66")
