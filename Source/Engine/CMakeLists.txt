@@ -376,6 +376,11 @@ if(FBY_WITH_HARFBUZZ)
     set(HB_HAVE_GRAPHITE2 OFF CACHE BOOL "" FORCE)
     add_subdirectory("${FBY_ENGINE_REPO_ROOT}/third_party/harfbuzz-download/harfbuzz-15.0.0"
                      "${CMAKE_BINARY_DIR}/harfbuzz" EXCLUDE_FROM_ALL)
+    if(APPLE AND TARGET harfbuzz)
+        # CoreFoundation headers use legacy casts that HarfBuzz promotes to
+        # errors globally; the SDK declaration is outside our control.
+        target_compile_definitions(harfbuzz PUBLIC HB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR=1)
+    endif()
 endif()
 
 add_library(fby_engine STATIC ${FBY_ENGINE_SOURCES} "${FBY_SHADER_BLOBS}" "${FBY_LOC_GENERATED}"
