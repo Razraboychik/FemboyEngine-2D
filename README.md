@@ -507,7 +507,7 @@ much lighter than the tools that produced it.
 | GPU | Vulkan 1.4-capable driver or Metal 2, 2 GB VRAM, e.g. GTX 1050, RX 560, Iris Xe | Vulkan 1.4 or Metal 3, 6-8 GB VRAM, e.g. RTX 3060, RX 6600, Apple M1 Pro |
 | Storage | 10 GB free on an SSD | 25 GB free on NVMe |
 | Display | 1920x1080 | 2560x1440 |
-| OS | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 13+ | Windows 11, Ubuntu 24.04, macOS 14+ on Apple Silicon |
+| OS | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 14+ | Windows 11, Ubuntu 24.04, macOS 14+ on Apple Silicon |
 
 The minimum column is for a small project: a few hundred sprites, one tilemap,
 modest audio and a single viewport. The recommended column is for a medium 2D

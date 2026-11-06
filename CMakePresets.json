@@ -119,7 +119,7 @@
         "FBY_BUILD_EDITOR": "ON",
         "FBY_RHI_BACKEND": "metal",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0"
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0"
       }
     },
     {
@@ -135,7 +135,7 @@
         "FBY_BUILD_EDITOR": "ON",
         "FBY_RHI_BACKEND": "metal",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0"
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0"
       }
     },
     {

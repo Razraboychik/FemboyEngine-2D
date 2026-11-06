@@ -512,7 +512,7 @@ FemboyEngine2D распространяется по **Mozilla Public License 2.
 | GPU | Драйвер с Vulkan 1.4 или Metal 2, 2 ГБ VRAM, например GTX 1050, RX 560, Iris Xe | Vulkan 1.4 или Metal 3, 6-8 ГБ VRAM, например RTX 3060, RX 6600, Apple M1 Pro |
 | Диск | 10 ГБ свободно на SSD | 25 ГБ свободно на NVMe |
 | Монитор | 1920x1080 | 2560x1440 |
-| ОС | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 13+ | Windows 11, Ubuntu 24.04, macOS 14+ на Apple Silicon |
+| ОС | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 14+ | Windows 11, Ubuntu 24.04, macOS 14+ на Apple Silicon |
 
 Минимальная колонка — для маленького проекта: несколько сотен спрайтов, одна
 tilemap, скромное аудио и один viewport. Рекомендованная — для средней 2D-игры:

@@ -11,7 +11,7 @@ servers and tests.
 |---|---|---|---|---|---|
 | Windows 10/11 x64 | clang-cl 23.1.4 + MSVC headers/libraries | Vulkan | `windows-release` | editor Build & Pack Game | authoritative |
 | Linux x64 | clang++ 19+ / GCC 16+ | Vulkan | `linux-release` | editor Build & Pack Game | advisory until green |
-| macOS 12+ arm64/x86_64 | clang++ from Xcode CLT | Metal | `macos-release` | editor Build & Pack Game | advisory until green |
+| macOS 14+ arm64/x86_64 | clang++ from Xcode CLT | Metal | `macos-release` | editor Build & Pack Game | advisory until green |
 
 The presets configure `FBY_BUILD_EDITOR=ON`, `FBY_BUILD_TESTS=ON` and
 `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. The generated build trees are
