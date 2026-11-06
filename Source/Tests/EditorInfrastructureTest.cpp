@@ -475,6 +475,10 @@ void TestAutoImportAndBackgroundCook()
         }
     }
 
+    // Windows cannot replace a file while its mapping is alive. Release the
+    // lazy mapping after parsing, then let the watcher refresh it.
+    ScopedVfs.RefreshDirectoryMounts();
+
     // A changed source goes through the watcher's Poll() path (the same path
     const std::uint32_t ScopedGenerationBefore = ScopedCooked != nullptr ? ScopedCooked->contentGeneration : 0;
     Check(WritePng(ScopedRoot / "textures" / "hero.png", 8, 8, 80), "rewrite source png");
