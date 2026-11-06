@@ -241,7 +241,8 @@ cmake --preset macos-release && cmake --build --preset macos-release
 
 The Metal backend is selected on Apple; Vulkan on Windows/Linux; the null
 backend keeps CI and servers headless. Windows is the locally validated gate;
-the Linux and macOS CI jobs are advisory until their first hosted run is green.
+the Linux and full Windows gates are green, and the focused macOS build/package
+gate is green. The macOS runner does not cover physical Metal GPU behavior.
 
 The per-platform status, seams and cook flow are tracked in
 [Platform support](Documentation/design/platform-support.md).

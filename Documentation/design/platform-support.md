@@ -11,7 +11,7 @@ servers and tests.
 |---|---|---|---|---|---|
 | Windows 10/11 x64 | clang-cl 23.1.4 + MSVC headers/libraries | Vulkan | `windows-release` | editor Build & Pack Game | authoritative |
 | Linux x64 | clang++ 19+ / GCC 16+ | Vulkan | `linux-release` | editor Build & Pack Game | advisory until green |
-| macOS 14+ arm64/x86_64 | clang++ from Xcode CLT | Metal | `macos-release` | editor Build & Pack Game | advisory until green |
+| macOS 14+ x86_64 | Homebrew Clang 19+ | Metal | `macos-release` | editor Build & Pack Game | focused gate green |
 
 The presets configure `FBY_BUILD_EDITOR=ON`, `FBY_BUILD_TESTS=ON` and
 `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. The generated build trees are
@@ -86,11 +86,16 @@ same cooked archive on another system when the player executable is built there.
 
 Windows is the locally validated gate for this branch and its hosted CI job is
 green. The hosted Linux `linux-clang` job builds the editor and passes the test
-scope. macOS has the build preset, platform code, a compiled-file review and a CI
-job. The hosted macOS build, pak reproducibility, release checklist and desktop
-package steps are green; the functional test scope is being re-run after moving
-host-timing benchmarks off that runner. macOS GUI behavior is not declared
-verified until that run is green. Do not treat a successful Windows build as proof of Linux or
+scope. macOS has the build preset, platform code, a compiled-file review and a CI job.
+The hosted macOS job now builds the editor, sandbox and tools, runs pak
+reproducibility, the release checklist, the desktop package and the focused
+editor/input/text/frame-composer/release-cooker tests.
+
+The macOS gate is a hosted Intel runner with a headless test scope. It proves
+the build, cook and core engine seams; it does not prove a physical Apple
+Silicon GPU, a visible Metal window, or every GPU-dependent test. The full
+197-test suite remains the Windows/Linux gate. Do not describe macOS GPU
+behavior as hardware-verified until a physical Mac run is recorded. Do not treat a successful Windows build as proof of Linux or
 macOS runtime behavior.
 
 Every dependency update repeats the compiled-file and license review described

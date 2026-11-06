@@ -240,8 +240,8 @@ cmake --preset macos-release && cmake --build --preset macos-release
 
 На Apple выбирается Metal backend; на Windows/Linux — Vulkan; null backend
 оставляет CI и серверы без графического окружения. Windows — локально
-проверенный гейт; CI-задания Linux и macOS считаются приёмочными после первого
-зелёного запуска на runner’ах.
+проверенный гейт; Linux и Windows CI зелёные, а на macOS зелёный сфокусированный
+build/package-гейт. Физическое поведение Metal GPU на macOS пока не проверено.
 
 Статус платформ, платформенные швы и путь сборки игры описаны в
 [Platform support](Documentation/design/platform-support.md).
