@@ -40,8 +40,12 @@ changed that result. The vendor alerts remain visible on the old `main` analysis
    scheduled vendor scan keeps those alerts visible instead of silently hiding
    them.
 
-The next step is an upstream update of miniaudio and a fuzz case for the Vorbis
-decoder; until then, the engine keeps the vendor sources unchanged and records
-the audit trail here. The patch set is not a licence exception: miniaudio is
+The first compiled-asset patches are now in `third_party/patches`:
+`stb/stb_image-size-overflow.patch` and the two
+`imgui/imstb_truetype-*size-overflow.patch` files. They are validated with
+`git apply --check` and by compiling standalone patched copies; they are not
+applied in the tree because the next dependency update should carry the upstream
+change. The next step is an upstream update of miniaudio and a fuzz case for the
+Vorbis decoder. The patch set is not a licence exception: miniaudio is
 MIT-0/Unlicense and stb_vorbis is MIT/Public Domain, so both permit modification
 and redistribution under their terms.

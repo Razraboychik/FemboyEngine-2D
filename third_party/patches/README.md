@@ -23,3 +23,6 @@ patches:
 | Patch | Upstream license |
 |---|---|
 | `miniaudio/stb_vorbis-pointer-overflow.patch` | miniaudio MIT-0 OR Unlicense; stb_vorbis MIT OR Public Domain |
+| `stb/stb_image-size-overflow.patch` | stb MIT OR Public Domain |
+| `imgui/imstb_truetype-size-overflow.patch` | Dear ImGui MIT; imstb_truetype MIT OR Public Domain |
+| `imgui/imstb_truetype-sdf-size-overflow.patch` | Dear ImGui MIT; imstb_truetype MIT OR Public Domain |
