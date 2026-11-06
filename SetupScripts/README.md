@@ -43,3 +43,20 @@ Launchers resolve the repository root from their own directory, so they work
 from Explorer, Finder, a terminal and CI without an absolute path. Do not copy a
 single script out of its OS directory: the wrappers rely on their sibling
 implementation and on the two-level root.
+
+## Desktop package
+
+The package wrappers build the release preset when needed, then write a
+versioned bundle with the editor, sandbox, asset tools, licenses and a source
+offer. They all call the same Python implementation:
+
+```bat
+SetupScripts\Windows\Package.ps1
+```
+
+```bash
+./SetupScripts/Linux/Package.sh
+./SetupScripts/macOS/Package.command
+```
+
+Pass `--skip-build` to package the existing `build-<platform>-release` tree.

@@ -56,6 +56,8 @@ jobs:
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-ci/bin/tools/fby_fempak.exe
       - name: Release checklist
         run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build-ci/release-manifest.json
+      - name: Desktop package
+        run: python Source/Tools/Dev/PackageDesktop.py --platform windows --preset ci-clangcl --build-dir build-ci --output build/package --skip-build
       - name: Test
         run: ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings"
 
@@ -77,6 +79,8 @@ jobs:
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Release checklist
         run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build/release-manifest.json
+      - name: Desktop package
+        run: python Source/Tools/Dev/PackageDesktop.py --platform linux --build-dir build --output build/package --skip-build
       - name: Test
         run: xvfb-run -a ctest --test-dir build --output-on-failure
 
@@ -196,7 +200,7 @@ jobs:
       SDL_VIDEODRIVER: dummy
     # Advisory until the first green hosted run. It builds the editor, tools and
     # game packer with the Metal RHI, then runs the non-GPU test scope.
-    runs-on: macos-13
+    runs-on: macos-15-intel
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -210,5 +214,7 @@ jobs:
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-macos-release/bin/tools/fby_fempak
       - name: Release checklist
         run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-macos-release/bin --artifacts build-macos-release/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build-macos-release/release-manifest.json
+      - name: Desktop package
+        run: python Source/Tools/Dev/PackageDesktop.py --platform macos --build-dir build-macos-release --output build-macos-release/package --skip-build
       - name: Test
         run: ctest --preset macos-release --output-on-failure --timeout 120 -E "mesh_indirect_smoke|accessibility_composite|settings"

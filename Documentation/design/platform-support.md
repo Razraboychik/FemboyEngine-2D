@@ -26,6 +26,21 @@ cmake --preset macos-release   && cmake --build --preset macos-release
 The editor is `build-<platform>/bin/fby_editor` (`.exe` on Windows). The game
 packer is `build-<platform>/bin/tools/fby_fempak`.
 
+The package wrappers build the same preset and produce a versioned desktop
+bundle with the editor, sandbox, tools, licenses and a source offer:
+
+```bat
+SetupScripts\Windows\Package.ps1
+```
+
+```bash
+./SetupScripts/Linux/Package.sh
+./SetupScripts/macOS/Package.command
+```
+
+They all call `Source/Tools/Dev/PackageDesktop.py`; pass `--skip-build` to
+package an existing release tree.
+
 ## Platform seams
 
 - SDL3 owns windows, input, gamepads and dialogs on every desktop target.
