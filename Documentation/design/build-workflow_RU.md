@@ -32,7 +32,10 @@ ctest --preset dev-clang
 - `dev-clang` — Debug, clang++, tests;
 - `release-clang` — RelWithDebInfo;
 - `dev-clangcl` — clang-cl;
-- `audit-clang` — существующий `build-audit`.
+- `audit-clang` — существующий `build-audit`;
+- `windows-release` — clang-cl, Vulkan, редактор и тесты;
+- `linux-release` — clang++, Vulkan, редактор и тесты;
+- `macos-release` — clang++, Metal, редактор и тесты.
 
 Проверены на этой машине:
 
@@ -46,6 +49,12 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 ```
 
 Оба `fby_frame_composer_test` проходят.
+
+Матрица desktop использует `windows-release`, `linux-release` и `macos-release`.
+Каждый пресет собирает редактор, sandbox, инструменты и упаковщик игры. Редактор
+создаёт `bin/fby_editor`; Build & Pack Game вызывает `bin/tools/fby_fempak` на
+всех трёх системах. Статус проверки — в
+[platform support](platform-support.md).
 
 Быстрый профильный gate:
 

@@ -1,6 +1,6 @@
 # FemboyEngine2D — Практическое руководство
 
-*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-05*
+*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-06*
 
 ## 1. Для чего это руководство
 
@@ -58,6 +58,31 @@ ctest --test-dir build --output-on-failure
 Компилятор — часть контракта: требуется C++26, эталонный тулчейн — Clang 19+, поддерживается GCC 16+. Сборка определяет FBY_HAS_MDSPAN, FBY_HAS_FORMAT и FBY_HAS_JTHREAD пробой компилятора, а не по номеру версии. Наличие LZMA SDK тоже проверяется; без него писатель .femarc использует детерминированный кодек FbyLZ и сообщает об этом в логе кукера.
 
 > **Примечание.** Setup никогда не изменяет исходники. Можно удалить third_party/<name>-src и повторить запуск с --force; lock-файл перегенерируется, а CMake-кэш не содержит машинно-зависимого пути.
+
+### 2.1 Редактор и собранная игра на Windows, Linux и macOS
+
+Одни и те же пресеты собирают редактор, sandbox, инструменты ассетов и упаковщик игры. Windows использует clang-cl и Vulkan; Linux — clang++ и Vulkan; macOS — clang++ и Metal. Каждый пресет экспортирует compile_commands.json и оставляет тесты включёнными.
+
+```cpp
+# Windows 10/11, from an LLVM + Visual Studio developer shell
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+
+# Linux, from a shell with Clang, Ninja and Vulkan headers
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release
+
+# macOS, from a shell with Xcode command-line tools and Homebrew
+cmake --preset macos-release
+cmake --build --preset macos-release
+ctest --preset macos-release
+```
+
+Редактор находится в build-<platform>/bin/fby_editor (в Windows добавляется .exe). Build & Pack Game использует один и тот же редактор на всех трёх системах: готовит ассеты через fby_fempak, пишет AOT-модуль при наличии LogicGraph и раскладывает архивы в stores/ проекта. POSIX-путь релиза использует posix_spawn и возвращает код выхода дочернего процесса; Windows-путь — CreateProcess.
+
+> **Примечание.** Windows — локально проверенный gate. Для Linux и macOS есть пресеты, платформенный код и CI-задания; считайте их первые запуски на runner’ах приёмочным gate, пока матрица не станет зелёной. RHI — Metal на macOS и Vulkan на Windows/Linux.
 
 ---
 

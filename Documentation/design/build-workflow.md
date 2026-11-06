@@ -32,7 +32,10 @@ Available presets:
 - `dev-clang` — Debug, clang++, tests;
 - `release-clang` — RelWithDebInfo;
 - `dev-clangcl` — clang-cl;
-- `audit-clang` — the existing `build-audit` tree.
+- `audit-clang` — the existing `build-audit` tree;
+- `windows-release` — clang-cl, Vulkan, editor and tests;
+- `linux-release` — clang++, Vulkan, editor and tests;
+- `macos-release` — clang++, Metal, editor and tests.
 
 Verified on this machine:
 
@@ -46,6 +49,12 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 ```
 
 Both `fby_frame_composer_test` runs pass.
+
+The desktop matrix uses `windows-release`, `linux-release` and `macos-release`.
+Each preset builds the editor, sandbox, tools and the game packer. The editor
+produces `bin/fby_editor`; Build & Pack Game invokes `bin/tools/fby_fempak` on
+all three systems. See
+[platform support](platform-support.md) for the verification status.
 
 Quick optimization gate:
 

@@ -226,26 +226,34 @@ has not been run with GCC yet. The honest status for this release is therefore
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
 
-cmake -S . -B build -G Ninja ^
-      -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl ^
-      -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
-      -DFBY_BUILD_TESTS=ON
-cmake --build build --parallel 8
-ctest --test-dir build --output-on-failure
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release --output-on-failure
 ```
 
-On Linux/macOS use `-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`.
+Linux and macOS use the matching presets; they select Vulkan and Metal
+respectively and build the editor, tools and tests:
+
+```bash
+cmake --preset linux-release && cmake --build --preset linux-release
+cmake --preset macos-release && cmake --build --preset macos-release
+```
+
 The Metal backend is selected on Apple; Vulkan on Windows/Linux; the null
-backend keeps CI and servers headless.
+backend keeps CI and servers headless. Windows is the locally validated gate;
+the Linux and macOS CI jobs are advisory until their first hosted run is green.
+
+The per-platform status, seams and cook flow are tracked in
+[Platform support](Documentation/design/platform-support.md).
 
 Main executables:
 
 ```text
 build/bin/fby_sandbox
 build/bin/fby_editor
-build/bin/fby_fempak
-build/bin/fby_scene_tool
-build/bin/fby_aotc
+build/bin/tools/fby_fempak
+build/bin/tools/fby_scene_tool
+build/bin/tools/fby_aotc
 ```
 
 Optional vendor upscalers are opt-in: DLSS and FidelityFX SDKs are not committed.

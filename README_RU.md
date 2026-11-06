@@ -225,26 +225,35 @@ Unix-скрипты ставят Clang из пакетного менеджер�
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
 
-cmake -S . -B build -G Ninja ^
-      -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl ^
-      -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
-      -DFBY_BUILD_TESTS=ON
-cmake --build build --parallel 8
-ctest --test-dir build --output-on-failure
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release --output-on-failure
 ```
 
-На Linux/macOS используйте `-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`.
+Для Linux и macOS используйте соответствующие пресеты: они выбирают Vulkan и
+Metal, собирают редактор, инструменты и тесты:
+
+```bash
+cmake --preset linux-release && cmake --build --preset linux-release
+cmake --preset macos-release && cmake --build --preset macos-release
+```
+
 На Apple выбирается Metal backend; на Windows/Linux — Vulkan; null backend
-оставляет CI и серверы без графического окружения.
+оставляет CI и серверы без графического окружения. Windows — локально
+проверенный гейт; CI-задания Linux и macOS считаются приёмочными после первого
+зелёного запуска на runner’ах.
+
+Статус платформ, платформенные швы и путь сборки игры описаны в
+[Platform support](Documentation/design/platform-support.md).
 
 Основные исполняемые файлы:
 
 ```text
 build/bin/fby_sandbox
 build/bin/fby_editor
-build/bin/fby_fempak
-build/bin/fby_scene_tool
-build/bin/fby_aotc
+build/bin/tools/fby_fempak
+build/bin/tools/fby_scene_tool
+build/bin/tools/fby_aotc
 ```
 
 Опциональные vendor-апскейлеры включаются явно: SDK DLSS и FidelityFX не

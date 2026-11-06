@@ -1,6 +1,6 @@
 # FemboyEngine2D Application Guide
 
-*ECS in practice, production optimisation and the distribution SDK — 2026-11-05*
+*ECS in practice, production optimisation and the distribution SDK — 2026-11-06*
 
 ## 1. What this guide is for
 
@@ -58,6 +58,31 @@ ctest --test-dir build --output-on-failure
 The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and GCC 16+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer uses the deterministic FbyLZ codec and reports it in the cook log.
 
 > **Note.** Setup never modifies a source file. It is safe to delete third_party/<name>-src and re-run with --force; the lock file is regenerated and the CMake cache does not embed a machine-specific path.
+
+### 2.1 Editor and cooked game on Windows, Linux and macOS
+
+The same presets build the editor, the sandbox, the asset tools and the game packer. Windows uses clang-cl with Vulkan; Linux uses clang++ with Vulkan; macOS uses clang++ with Metal. Every preset exports compile_commands.json and keeps the tests enabled.
+
+```cpp
+# Windows 10/11, from an LLVM + Visual Studio developer shell
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+
+# Linux, from a shell with Clang, Ninja and Vulkan headers
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release
+
+# macOS, from a shell with Xcode command-line tools and Homebrew
+cmake --preset macos-release
+cmake --build --preset macos-release
+ctest --preset macos-release
+```
+
+The editor is build-<platform>/bin/fby_editor (Windows adds .exe). Build & Pack Game uses the same editor on all three systems: it cooks assets through fby_fempak, writes the AOT module when the project has a LogicGraph, and stages archives under the project stores/. The POSIX release path uses posix_spawn and reports the child exit code; the Windows path uses CreateProcess.
+
+> **Note.** Windows is the locally validated gate. Linux and macOS have presets, platform code and CI jobs; treat their first hosted runs as the acceptance gate until the matrix is green. The RHI is Metal on macOS and Vulkan on Windows/Linux.
 
 ---
 

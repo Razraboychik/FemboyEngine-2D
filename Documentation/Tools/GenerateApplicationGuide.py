@@ -178,6 +178,49 @@ ctest --test-dir build --output-on-failure""")),
                 "Setup никогда не изменяет исходники. Можно удалить third_party/<name>-src и повторить запуск с "
                 "--force; lock-файл перегенерируется, а CMake-кэш не содержит машинно-зависимого пути.",
             )),
+            ("h2", B("2.1 Editor and cooked game on Windows, Linux and macOS",
+                      "2.1 Редактор и собранная игра на Windows, Linux и macOS")),
+            ("p", B(
+                "The same presets build the editor, the sandbox, the asset tools and the game packer. Windows uses "
+                "clang-cl with Vulkan; Linux uses clang++ with Vulkan; macOS uses clang++ with Metal. Every preset "
+                "exports compile_commands.json and keeps the tests enabled.",
+                "Одни и те же пресеты собирают редактор, sandbox, инструменты ассетов и упаковщик игры. Windows "
+                "использует clang-cl и Vulkan; Linux — clang++ и Vulkan; macOS — clang++ и Metal. Каждый пресет "
+                "экспортирует compile_commands.json и оставляет тесты включёнными.",
+            )),
+            ("code", code(r"""# Windows 10/11, from an LLVM + Visual Studio developer shell
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+
+# Linux, from a shell with Clang, Ninja and Vulkan headers
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release
+
+# macOS, from a shell with Xcode command-line tools and Homebrew
+cmake --preset macos-release
+cmake --build --preset macos-release
+ctest --preset macos-release""")),
+            ("p", B(
+                "The editor is build-<platform>/bin/fby_editor (Windows adds .exe). Build & Pack Game uses the same "
+                "editor on all three systems: it cooks assets through fby_fempak, writes the AOT module when the "
+                "project has a LogicGraph, and stages archives under the project stores/. The POSIX release path "
+                "uses posix_spawn and reports the child exit code; the Windows path uses CreateProcess.",
+                "Редактор находится в build-<platform>/bin/fby_editor (в Windows добавляется .exe). Build & Pack "
+                "Game использует один и тот же редактор на всех трёх системах: готовит ассеты через fby_fempak, "
+                "пишет AOT-модуль при наличии LogicGraph и раскладывает архивы в stores/ проекта. POSIX-путь "
+                "релиза использует posix_spawn и возвращает код выхода дочернего процесса; Windows-путь — "
+                "CreateProcess.",
+            )),
+            ("note", B(
+                "Windows is the locally validated gate. Linux and macOS have presets, platform code and CI jobs; "
+                "treat their first hosted runs as the acceptance gate until the matrix is green. The RHI is Metal "
+                "on macOS and Vulkan on Windows/Linux.",
+                "Windows — локально проверенный gate. Для Linux и macOS есть пресеты, платформенный код и CI-задания; "
+                "считайте их первые запуски на runner’ах приёмочным gate, пока матрица не станет зелёной. RHI — "
+                "Metal на macOS и Vulkan на Windows/Linux.",
+            )),
         ],
     },
     {
