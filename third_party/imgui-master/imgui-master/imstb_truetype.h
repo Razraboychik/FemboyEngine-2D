@@ -3746,8 +3746,13 @@ STBTT_DEF unsigned char *stbtt_GetGlyphBitmapSubpixel(const stbtt_fontinfo *info
    if (xoff  ) *xoff   = ix0;
    if (yoff  ) *yoff   = iy0;
 
+   if (gbm.w > 0 && gbm.h > 0 &&
+       (size_t) gbm.w > (size_t) -1 / (size_t) gbm.h) {
+      STBTT_free(vertices, info->userdata);
+      return NULL;
+   }
    if (gbm.w && gbm.h) {
-      gbm.pixels = (unsigned char *) STBTT_malloc(gbm.w * gbm.h, info->userdata);
+      gbm.pixels = (unsigned char *) STBTT_malloc((size_t) gbm.w * (size_t) gbm.h, info->userdata);
       if (gbm.pixels) {
          gbm.stride = gbm.w;
 
@@ -4616,8 +4621,12 @@ STBTT_DEF unsigned char * stbtt_GetGlyphSDF(const stbtt_fontinfo *info, float sc
       float *precompute;
       stbtt_vertex *verts;
       int num_verts = stbtt_GetGlyphShape(info, glyph, &verts);
-      data = (unsigned char *) STBTT_malloc(w * h, info->userdata);
-      precompute = (float *) STBTT_malloc(num_verts * sizeof(float), info->userdata);
+      if (w > 0 && h > 0 && (size_t) w > (size_t) -1 / (size_t) h) {
+         STBTT_free(verts, info->userdata);
+         return NULL;
+      }
+      data = (unsigned char *) STBTT_malloc((size_t) w * (size_t) h, info->userdata);
+      precompute = (float *) STBTT_malloc((size_t) num_verts * sizeof(float), info->userdata);
 
       for (i=0,j=num_verts-1; i < num_verts; j=i++) {
          if (verts[i].type == STBTT_vline) {

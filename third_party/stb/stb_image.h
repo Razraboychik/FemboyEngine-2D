@@ -1817,7 +1817,13 @@ static stbi__uint16 *stbi__convert_format16(stbi__uint16 *data, int img_n, int r
    if (req_comp == img_n) return data;
    STBI_ASSERT(req_comp >= 1 && req_comp <= 4);
 
-   good = (stbi__uint16 *) stbi__malloc(req_comp * x * y * 2);
+   const size_t ScopedPixelCount = (size_t) req_comp * x * y;
+   if ((x && y && (ScopedPixelCount / x / y != (size_t) req_comp)) ||
+       ScopedPixelCount > (size_t) -1 / sizeof(stbi__uint16)) {
+      STBI_FREE(data);
+      return (stbi__uint16 *) stbi__errpuc("too large", "Corrupt image");
+   }
+   good = (stbi__uint16 *) stbi__malloc(ScopedPixelCount * sizeof(stbi__uint16));
    if (good == NULL) {
       STBI_FREE(data);
       return (stbi__uint16 *) stbi__errpuc("outofmem", "Out of memory");

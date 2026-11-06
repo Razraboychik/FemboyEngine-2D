@@ -43,9 +43,10 @@ changed that result. The vendor alerts remain visible on the old `main` analysis
 The first compiled-asset patches are now in `third_party/patches`:
 `stb/stb_image-size-overflow.patch` and the two
 `imgui/imstb_truetype-*size-overflow.patch` files. They are validated with
-`git apply --check` and by compiling standalone patched copies; they are not
-applied in the tree because the next dependency update should carry the upstream
-change. The next step is an upstream update of miniaudio and a fuzz case for the
+`git apply --check`, by compiling standalone patched copies and by a full build
+and CTest run after applying them. They are applied to the vendored files on this
+branch; the patch files remain for upstream and for a clean reapply after a
+dependency update. The next step is an upstream update of miniaudio and a fuzz case for the
 Vorbis decoder. The patch set is not a licence exception: miniaudio is
 MIT-0/Unlicense and stb_vorbis is MIT/Public Domain, so both permit modification
 and redistribution under their terms.
