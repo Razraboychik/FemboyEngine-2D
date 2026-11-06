@@ -90,81 +90,88 @@ and is used by the editor dashboard and `CreateProject()`.
 
 ## What is in the engine
 
-| Domain | Highlights |
-|---|---|
-| Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, `Vector2D`, `Vector3D`, `Vector4D`, Mirror reflection, jobs, SDL3 platform, plugin ABI |
-| RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts |
-| ECS | EnTT registry, trivially copyable components, four-phase schedule, parallel `SystemGraph` with per-call semaphores, Snapshot v4 |
-| Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input |
-| Gameplay | Project tag database edited in Project Settings, manually authored hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown |
-| AI | `StateTree` → command buffer → `AIController` → perception, navigation and skills; `ActionId` is data for game-owned ECS systems, tag-driven targets, grid and convex navmesh, raw/LOS/Chaikin/Catmull-Rom paths, deterministic route randomization |
-| Physics | Two backends under one interface: Box2D v3 for joints, CCD and general rigid bodies, and a data-oriented AABB solver for large joint-free strategy worlds. Per-level gravity, attractor/repulsor fields, rope/chain/spring joints, damage and cuts, Verlet cloth, shallow-water fields, SDF collision/destruction, transport groups, and configurable hitscan/swept/dynamic projectiles |
-| Network | `NetRollbackSession`, 256-tick snapshot ring, input prediction, late-input replay, stable `NetEntityId`, relevance filtering, UDP `NetTransport` with acks, retransmit and MTU fragmentation, and versioned `InputPacket`s that feed `SubmitRemoteInput` |
-| Assets | VFS with owning `Pin()`, `.femeta` transactions, BC7/ASTC texture cooker, audio/localization cookers, watcher, `.fanim` compressed clips |
-| Distribution | `FemArchiver` `.femarc`, optional LZMA, AES-256-GCM / ChaCha20-Poly1305, `fby_fempak secure` |
-| Platform | C-ABI `PlatformService`, Steam/EGS providers, deterministic achievements/cloud saves |
-| Animation | 2D skeleton SoA, LBS, blend cycles, `AnimGraph`, animation timeline, PIE seqlock hand-off, two-bone/FABRIK IK, retargeting, pose and clip quantization |
-| Isometry | `Grid::ProjectionMode` side/top-down/iso-rect/iso-hex, cell/world conversion, depth keys, `TilemapComponent` with a culled render bridge and a tilemap editor |
-| Navigation | Cost-grid A* on rect and hex layouts, tilemap-derived maps, authored `NavAgentSettings` separated from runtime paths, per-frame repath budget |
-| Lighting | `Light2DComponent` radial lights, ambient, emissive targets, optional Reinhard tonemap, screen-space SDF shadow mask (render-graph compute pass, static `SdfField` + dynamic `Light2DOccluderComponent` casters), sampled per pixel |
-| Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise and uplink/downlink effects with conditions |
-| UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, a widget kit (border, slider, checkbox, toggle, radio, scrollbar, switcher, overlay, tooltip, editable text input, text block, nine-slice, custom painters, text buttons), Unicode line/word/grapheme boundaries through libunibreak, opt-in Tab/arrow focus with an optional ring, inherited visibility, CPU clip rects, a host `TextRuntime` with a HarfBuzz `TextFontStack` in the apps, shaped line-window viewports, accessibility kernel |
-| Editor | Transactional `CommandStack`, ImNodes canvases, project manager, PIE Play/Pause/Stop, Play (Multiplayer) with a second client-world viewport, script debugger, tilemap editor, texture thumbnails and the Transport Groups panel; starts borderless fullscreen (Windowed / Borderless / Exclusive in Editor Settings) |
-| Script | LogicGraph to bytecode VM and LogicGraph to C++26 AOT plugin, physics backend/capability nodes and natives, debug info (spans, locals), VM breakpoints and stepping; `Compile + Nativize` and an AOT manifest cook gate so a build runs native modules only (`FBY_WITH_SCRIPT_VM=OFF`) |
+FemboyEngine2D is built around three ideas: **ECS** for ownership, **DOD** for
+layout and **SDF** for geometry that must stay independent of resolution. The
+table maps the subsystems; the architecture section explains why they share one
+memory model.
+
+| Domain | Core pieces | Memory and execution contract |
+|---|---|---|
+| Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, vectors, Mirror reflection, jobs, SDL3 platform, plugin ABI | Value types, checked casts compile away, no RTTI in hot paths, fixed-capacity job queues |
+| RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts | One flat packet per frame, explicit frame lifetime, no per-item allocations, bindless-style keys |
+| ECS | EnTT registry, trivially copyable components, four-phase schedule, parallel `SystemGraph` with per-call semaphores, Snapshot v4 | Archetype storage, systems borrow spans instead of owning objects, snapshots are explicit copies |
+| Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input | No heap in the input path; bounded events and mapping tables; deterministic per-tick sampling |
+| Gameplay | Project tag database edited in Project Settings, hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown | Data tables and fixed component layouts; effects run through command buffers, not hidden object graphs |
+| AI | `StateTree` to command buffer to `AIController` to perception, navigation and skills; `ActionId` is data for game-owned ECS systems, tag-driven targets, grid and convex navmesh, raw/LOS/Chaikin/Catmull-Rom paths, deterministic route randomization | Bounded state trees, per-frame repath budget, no background allocation from the AI tick |
+| Physics | Box2D v3 for joints, CCD and general bodies; data-oriented AABB solver for large joint-free worlds; per-level gravity, fields, joints, cloth, shallow water and configurable hitscan/swept/dynamic projectiles | DOD stores bodies in SoA arrays and a uniform grid; joint/CCD paths route to Box2D; no solver allocation per body |
+| Network | `NetRollbackSession`, 256-tick snapshot ring, input prediction, late-input replay, stable `NetEntityId`, relevance filtering, UDP `NetTransport` with acks, retransmit and MTU fragmentation, versioned `InputPacket`s | Ring-allocated history, bounded queued inputs, explicit rollback copies and no hidden per-packet heap churn |
+| Assets | VFS with owning `Pin()`, `.femeta` transactions, BC7/ASTC texture cooker, audio/localization cookers, watcher, `.fanim` compressed clips | `mmap` or owning pin, explicit lifetimes, transactional metadata, cooker writes outside the frame path |
+| Distribution | `FemArchiver` `.femarc`, optional LZMA, AES-256-GCM / ChaCha20-Poly1305, `fby_fempak secure` | Streaming archive writer, bounded block buffers, deterministic layout |
+| Platform | C-ABI `PlatformService`, Steam/EGS providers, deterministic achievements/cloud saves | Plain C ABI, fixed provider table, no C++ ABI leak into plugins |
+| Animation | 2D skeleton SoA, LBS, blend cycles, `AnimGraph`, animation timeline, PIE seqlock hand-off, two-bone/FABRIK IK, retargeting, pose and clip quantization | Skeleton and pose data stay in flat arrays; the PIE snapshot uses a seqlock, not a locked scene copy |
+| Isometry | `Grid::ProjectionMode` side/top-down/iso-rect/iso-hex, cell/world conversion, depth keys, `TilemapComponent` with a culled render bridge and a tilemap editor | Integer grid math and packed depth keys; tile rendering uses a culled span, not per-tile objects |
+| Navigation | Cost-grid A* on rect and hex layouts, tilemap-derived maps, authored `NavAgentSettings` separated from runtime paths, per-frame repath budget | Cost grids are contiguous arrays; path storage is bounded and reused across frames |
+| Lighting | `Light2DComponent` radial lights, ambient, emissive targets, optional Reinhard tonemap, screen-space SDF shadow mask, static `SdfField` and dynamic `Light2DOccluderComponent` casters | Static SDF is uploaded once per version; dynamic casters live in a bounded UBO; the shadow pass samples textures, not scene objects |
+| Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise and uplink/downlink effects with conditions | Preallocated voices and buses, no per-frame graph construction, explicit capture buffers |
+| UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, widget kit, Unicode boundaries through libunibreak, opt-in Tab/arrow focus, CPU clip rects, HarfBuzz text stack, accessibility kernel | Retained data, per-frame command spans, clipped quads and SDF primitives instead of one allocation per widget |
+| Editor | Transactional `CommandStack`, ImNodes canvases, project manager, PIE Play/Pause/Stop, Play (Multiplayer), script debugger, tilemap editor, texture thumbnails, Transport Groups panel, borderless fullscreen | Authoring commands are explicit transactions; PIE owns an isolated world and releases it on Stop |
+| Script | LogicGraph to bytecode VM and to C++26 AOT plugin, physics/capability nodes and natives, debug info, VM breakpoints and stepping, `Compile + Nativize`, AOT manifest cook gate | Fixed VM stack and register file, native modules for cooked builds, no script allocation in the fixed step |
 
 ---
 
-## Physics backends and projectiles
+## Architecture: ECS, DOD and SDF
 
-`PhysicsDesc::backend` selects `Auto`, `Box2D` or `Dod`. `Auto` keeps Box2D
-unless the project body budget is at least 4096 or deterministic mode is
-requested; joints always force Box2D. The same choice is available in
-**Project Settings > Physics**, from project code through
-`PhysicsSystem::SelectBackend` / `SetProjectPolicy`, and from FemboyScript
-(`physics_get_backend`, `physics_set_backend`, `physics_get_capabilities`).
+### ECS: data owns behavior
 
-The data-oriented backend stores bodies in SoA arrays, uses a uniform-grid
-broadphase and handles circles/AABB/segments without joints or CCD. The Box2D
-backend remains the general-purpose choice. Both share the ECS components,
-segment queries and contact event shape, so gameplay code does not branch on the
-backend.
+Entities are identifiers. Components are plain, trivially copyable values. Systems
+are free functions or small stateless classes that receive an `Ecs::SystemContext`
+and borrow spans from the registry. There is no `Update()` on a component, no
+virtual dispatch in the tick and no hidden owner for gameplay state.
 
-`Projectile2D` has `Auto`, `Hitscan`, `Swept` and `Dynamic` modes. `Auto`
-promotes a projectile to a continuous query when its per-step displacement
-exceeds half of `MinWallThickness`; developers can force a mode, speed, radius or
-substep budget. Hitscan is the right default for bullets, swept is for rockets
-and arrows, and dynamic keeps a regular CCD body. This prevents tunneling
-through thin walls without paying for CCD on every projectile.
+The schedule has four phases: `PreUpdate`, `FixedUpdate`, `PostUpdate` and
+`Render`. `SystemGraph` runs independent systems in parallel with per-call
+semaphores, while snapshots and the command log make the result explicit. A
+system that mutates a component is registered by stable name, so determinism and
+replay do not depend on declaration order.
 
-## Camera motion and distortion
+### DOD: memory is the frame budget
 
-The camera stack keeps an unshaken **base** pose for gameplay and a **resolved**
-pose for rendering. Trauma shake uses seeded value noise and scales with the
-accessibility motion setting. Scripts compose generic effects rather than a
-named gameplay state: double vision, anisotropic stretch, radial warp, chromatic
-split and low-frequency wobble are available through
-`camera_distort(flags, strength, paramX, paramY, duration)` alongside
-`camera_add_trauma`, `camera_offset`, `camera_zoom`, `camera_roll`,
-`camera_clear_effects` and `camera_set_motion_scale`. LogicGraph has matching
-nodes. See [camera effects](Documentation/design/camera-effects.md).
+DOD is not an extra layer on top of ECS; it is the rule that governs storage.
+Components and render items live in flat arrays. Hot systems iterate contiguous
+spans, use fixed-capacity pools and frame arenas, and do not allocate on the
+frame path. A 48-byte `RenderItem` and 64-bit sort keys are part of that
+contract: the renderer consumes one flat packet, not a tree of objects.
 
-## Transport physics
+There is no tracing garbage collector and no hidden ownership graph. Memory is
+released by scope, arena reset, mount unmount or an explicit `Shutdown()`. This
+is the main reason the engine can keep frame time predictable: cache locality is
+the default, and the cost of a system is visible in its data layout.
 
-Transport is a moving-reference-frame system: `TransportPath` and
-`TransportMotion` drive a carrier by fixed-step distance, `TransportSurface`
-provides friction and conveyor velocity, and `CarrierMemberComponent` modes
-cover rigid cargo, carried bodies, contact support and conveyors.
-`Support` and `Conveyor` use AABB support/tangent logic shared by Box2D and DOD;
-the DOD backend reports that welded trains and CCD require Box2D. See
-[transport physics](Documentation/design/transport-physics.md).
+### SDF: geometry without resolution
 
-## Vehicle wheels
+Signed distance fields are the resolution-independent geometry layer. The same
+field drives collision, CSG carve/destruction, screen-space shadow masks and the
+procedural SDF primitives in PinkUI. Static fields are uploaded once per version;
+moving occluders are small bounded buffers; sparse brick atlases keep large
+fields practical. A field can be evaluated on the CPU for gameplay and sampled on
+the GPU for lighting without rebuilding the scene.
 
-`WheelSystem` provides Box2D wheel-joint suspension, per-wheel drive and braking.
-`Vehicle2D` owns throttle/brake/limits; `Wheel2D` owns the chassis anchor,
-suspension and per-wheel drive/brake weights. Steering geometry, engine RPM,
-gears and tire slip stay on the game side; an opt-in arcade yaw assist is
-available. DOD has no wheel joints. See
+### Why this matters for high resolution
+
+The render path is built to scale by memory bandwidth, not by object count. That
+is why **8K, 16K and even 32K are a realistic target on top-tier hardware**: the
+frame is a flat packet, the geometry is resolution-independent, and the SDF
+layers do not turn every pixel into a scene-graph traversal. This is a design
+ceiling, not a benchmark promise; actual frame time depends on the scene,
+overdraw, upscaling mode and VRAM. Measure on the target GPU before shipping a
+resolution tier.
+
+The same model keeps memory efficient without a garbage collector: fixed
+capacities are reserved up front, snapshots are explicit, and systems reuse
+buffers across frames instead of allocating per entity or per widget.
+
+Related design notes: [camera effects](Documentation/design/camera-effects.md),
+[transport physics](Documentation/design/transport-physics.md) and
 [vehicle wheels](Documentation/design/vehicle-wheels.md).
 
 ---
