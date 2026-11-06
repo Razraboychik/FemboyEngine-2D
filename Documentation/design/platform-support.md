@@ -87,8 +87,10 @@ same cooked archive on another system when the player executable is built there.
 Windows is the locally validated gate for this branch and its hosted CI job is
 green. The hosted Linux `linux-clang` job builds the editor and passes the test
 scope. macOS has the build preset, platform code, a compiled-file review and a CI
-job; its first hosted run is still queued, so macOS runtime behavior is not
-declared verified yet. Do not treat a successful Windows build as proof of Linux or
+job. The hosted macOS build, pak reproducibility, release checklist and desktop
+package steps are green; the functional test scope is being re-run after moving
+host-timing benchmarks off that runner. macOS GUI behavior is not declared
+verified until that run is green. Do not treat a successful Windows build as proof of Linux or
 macOS runtime behavior.
 
 Every dependency update repeats the compiled-file and license review described
