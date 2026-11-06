@@ -265,6 +265,10 @@ build graph, not with the file tree:
   case. Do not mass-edit a vendor library;
 - put every vendor fix in `third_party/patches/<library>/<name>.patch`, and
   validate it with `git apply --check`, a build and the relevant tests.
+- inspect the read-only
+  `python Source/Tools/Dev/ReportVendorUsage.py --build <build>` report before
+  removing anything from `third_party/`; a file unused by one target may be a
+  platform backend, test, license or optional extension.
 
 When a dependency is updated:
 

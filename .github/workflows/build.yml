@@ -58,6 +58,8 @@ jobs:
         run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build-ci/release-manifest.json
       - name: Desktop package
         run: python Source/Tools/Dev/PackageDesktop.py --platform windows --preset ci-clangcl --build-dir build-ci --output build/package --skip-build
+      - name: Vendor usage report
+        run: python Source/Tools/Dev/ReportVendorUsage.py --build build-ci --output build-ci/vendor-usage.md --strict
       - name: Test
         run: ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings"
 

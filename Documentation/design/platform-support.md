@@ -98,5 +98,18 @@ Silicon GPU, a visible Metal window, or every GPU-dependent test. The full
 behavior as hardware-verified until a physical Mac run is recorded. Do not treat a successful Windows build as proof of Linux or
 macOS runtime behavior.
 
+## Vendor usage report
+
+Before considering a slimmer vendor checkout, generate the read-only report:
+
+```bash
+python Source/Tools/Dev/ReportVendorUsage.py --build build-dev   --output build/vendor-usage.md --json-output build/vendor-usage.json
+```
+
+It classifies `third_party/` as compiled source, transitively included header,
+uncompiled source, unreferenced header or resource. It never deletes or edits a
+file. A file that is absent from one build can still be the Linux/macOS backend,
+a test, a license, a patch or an optional codec for another configuration.
+
 Every dependency update repeats the compiled-file and license review described
 in the code style standard and `third_party/patches/README.md`.
