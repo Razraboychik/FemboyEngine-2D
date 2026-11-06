@@ -4,7 +4,7 @@
 
 | Version | Supported |
 |---|---|
-| 0.1.x (alpha) | Yes, security and release-blocking fixes |
+| 0.3.x (alpha) | Yes, security and release-blocking fixes |
 | older | No |
 
 ## Reporting a vulnerability
