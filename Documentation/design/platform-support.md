@@ -59,10 +59,11 @@ same cooked archive on another system when the player executable is built there.
 
 ## Verification status
 
-Windows is the locally validated gate for this branch. Linux and macOS have
-build presets, platform code, a compiled-file review and CI jobs, but their first
-hosted runs are the acceptance gate and must be green before the matrix is
-declared verified. Do not treat a successful Windows build as proof of Linux or
+Windows is the locally validated gate for this branch and its hosted CI job is
+green. The hosted Linux `linux-clang` job builds the editor and passes the test
+scope. macOS has the build preset, platform code, a compiled-file review and a CI
+job; its first hosted run is still queued, so macOS runtime behavior is not
+declared verified yet. Do not treat a successful Windows build as proof of Linux or
 macOS runtime behavior.
 
 Every dependency update repeats the compiled-file and license review described
