@@ -196,7 +196,7 @@ jobs:
       SDL_VIDEODRIVER: dummy
     # Advisory until the first green hosted run. It builds the editor, tools and
     # game packer with the Metal RHI, then runs the non-GPU test scope.
-    runs-on: macos-14
+    runs-on: macos-13
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
