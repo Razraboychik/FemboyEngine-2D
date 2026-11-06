@@ -205,9 +205,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: brew install cmake ninja
+        run: brew install cmake ninja llvm
       - name: Configure
-        run: cmake --preset macos-release
+        run: |
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          cmake --preset macos-release             -DCMAKE_C_COMPILER="${LLVM_PREFIX}/bin/clang"             -DCMAKE_CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
       - name: Build
         run: cmake --build --preset macos-release -- -k 0
       - name: Pak reproducibility
