@@ -26,6 +26,16 @@ cmake --preset macos-release   && cmake --build --preset macos-release
 The editor is `build-<platform>/bin/fby_editor` (`.exe` on Windows). The game
 packer is `build-<platform>/bin/tools/fby_fempak`.
 
+On macOS, configure with Homebrew LLVM rather than the Xcode AppleClang if the
+AppleClang standard library does not provide `std::jthread`:
+
+```bash
+LLVM_PREFIX="$(brew --prefix llvm)"
+cmake --preset macos-release   -DCMAKE_C_COMPILER="${LLVM_PREFIX}/bin/clang"   -DCMAKE_CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
+```
+
+`SetupScripts/macOS/SetupCpp.command` installs that LLVM.
+
 The package wrappers build the same preset and produce a versioned desktop
 bundle with the editor, sandbox, tools, licenses and a source offer:
 
