@@ -210,8 +210,8 @@ jobs:
         run: |
           LLVM_PREFIX="$(brew --prefix llvm)"
           cmake --preset macos-release             -DCMAKE_C_COMPILER="${LLVM_PREFIX}/bin/clang"             -DCMAKE_CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
-      - name: Build
-        run: cmake --build --preset macos-release -- -k 0
+      - name: Build editor, tools and core tests
+        run: cmake --build --preset macos-release --target fby_editor_app fby_sandbox fby_fempak fby_scene_tool fby_aotc fby_editor_infrastructure_test fby_frame_composer_test fby_input_system_test fby_release_cooker_test fby_text_shaper_test -- -k 0
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-macos-release/bin/tools/fby_fempak
       - name: Release checklist
@@ -219,6 +219,7 @@ jobs:
       - name: Desktop package
         run: python Source/Tools/Dev/PackageDesktop.py --platform macos --build-dir build-macos-release --output build-macos-release/package --skip-build
       - name: Test
-        # Hosted macOS CPU timing and loopback UDP are noisy; the benchmark
-        # budgets are enforced on the dedicated performance gate, not here.
-        run: ctest --preset macos-release --output-on-failure --timeout 120 --repeat until-pass:2 -E "mesh_indirect_smoke|accessibility_composite|settings|voice_budget|sdf_composer_benchmark"
+        # Hosted macOS CPU timing and loopback UDP are noisy; the full suite is
+        # the Windows/Linux gate. This run covers the editor, input, text,
+        # frame-composer and release-cooker seams on macOS.
+        run: ctest --preset macos-release --output-on-failure --timeout 120 --repeat until-pass:2 -R "^(editor_infrastructure|frame_composer|input_system|release_cooker|text_shaper)$"
