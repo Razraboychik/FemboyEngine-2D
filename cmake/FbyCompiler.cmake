@@ -13,6 +13,10 @@ endif()
 if(FBY_IS_CLANG_CL)
 # clang-cl speaks the clang driver, but the standard switch is spelled the
     set(FBY_CXX_STANDARD_FLAG "/std:c++latest")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    # AppleClang 17 still spells the C++26 draft as c++2c; c++26 is accepted
+    # from the upstream Clang toolchain used on Linux and by the setup scripts.
+    set(FBY_CXX_STANDARD_FLAG "-std=c++2c")
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(FBY_CXX_STANDARD_FLAG "-std=c++26")
 else()
@@ -87,7 +91,7 @@ function(fby_try_compile_probe name source out_var)
             ERROR_QUIET)
     else()
         execute_process(
-            COMMAND "${CMAKE_CXX_COMPILER}" -std=c++26 -fsyntax-only "${source_file}"
+            COMMAND "${CMAKE_CXX_COMPILER}" ${FBY_CXX_STANDARD_FLAG} -fsyntax-only "${source_file}"
             RESULT_VARIABLE result
             OUTPUT_QUIET
             ERROR_QUIET)

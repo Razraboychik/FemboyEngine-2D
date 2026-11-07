@@ -155,7 +155,7 @@ void TestStateMachine()
     Fby::AnimGraphSystem ScopedGraph;
 
     // No tag yet: no transition, no clip, arm keeps the rest rotation.
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.CurrentState == 0);
     FBY_CHECK(ScopedState.TransitionCount == 0);
     FBY_CHECK(std::fabs(ScopedSkeleton.LocalRotations[1]) < 1.0e-6f);
@@ -165,7 +165,7 @@ void TestStateMachine()
     ScopedEntityTags.BaseTags.Add(ScopedGrounded);
     ScopedEntityTags.Tags.Add(ScopedGrounded);
     ScopedContext.dt = 0.1f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.CurrentState == 1);
     FBY_CHECK(ScopedState.PreviousState == 0);
     FBY_CHECK(ScopedState.TransitionCount == 1);
@@ -184,10 +184,10 @@ void TestStateMachine()
 
     // At weight 0 the pose is still the rest pose; one more tick completes the
     FBY_CHECK(std::fabs(ScopedSkeleton.LocalRotations[1]) < 1.0e-6f);
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.BlendWeight > 0.0f && ScopedState.BlendWeight < 1.0f);
     ScopedContext.dt = 0.1f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.BlendWeight == 1.0f);
     FBY_CHECK(std::fabs(ScopedSkeleton.LocalRotations[1] - 0.5f) < 1.0e-4f);
     // The palette the GPU consumes was rebuilt from the blended pose.
@@ -196,12 +196,12 @@ void TestStateMachine()
     // Float parameter below the threshold: no attack transition yet.
     ScopedState.StateTime = 1.0f;
     ScopedState.Floats[0] = 0.5f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.CurrentState == 1);
 
     // Both conditions now hold: transition to the attack clip, no blend.
     ScopedState.Floats[0] = 1.0f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.CurrentState == 2);
     FBY_CHECK(ScopedState.PreviousState == 1);
     FBY_CHECK(ScopedState.TransitionCount == 2);
@@ -212,7 +212,7 @@ void TestStateMachine()
 
     // FromState mismatch: the idle transition cannot fire from the attack state.
     ScopedState.StateTime = 100.0f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionCount == 2);
 }
 

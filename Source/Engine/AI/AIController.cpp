@@ -154,24 +154,27 @@ void AIControllerSystem::Update(Registry& InRegistry, float InDeltaSeconds) noex
     }
 }
 
-void AIControllerSystem::Update(Ecs::SystemContext& InContext) noexcept
+void AIControllerSystem::Update(const Ecs::GameplaySystemView& InView) noexcept
 {
-    if (InContext.gameplaySkills != nullptr)
+    if (InView.gameplay.gameplaySkills != nullptr)
     {
-        MSkills = InContext.gameplaySkills;
+        MSkills = InView.gameplay.gameplaySkills;
     }
-    Update(InContext.registry, InContext.dt);
+    Update(InView.registry, InView.dt);
+}
+
+namespace
+{
+void AIControllerSystemThunk(const Ecs::GameplaySystemView& InView, void* InUser)
+{
+    static_cast<AIControllerSystem*>(InUser)->Update(InView);
+}
 }
 
 bool AIControllerSystem::Register(Ecs::SystemGraph& InGraph, AIControllerSystem& InSystem)
 {
-    return InGraph.Add(
-        Ecs::Phase::FixedUpdate, "AIControllerSystem",
-        +[](Ecs::SystemContext& InContext, void* InUser)
-        {
-            static_cast<AIControllerSystem*>(InUser)->Update(InContext);
-        },
-        &InSystem);
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "AIControllerSystem",
+                       Ecs::BindGameplaySystem<&AIControllerSystemThunk>(), &InSystem);
 }
 
 void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry* InTags, float InDeltaSeconds) noexcept
@@ -237,19 +240,22 @@ void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry*
     }
 }
 
-void AIPerceptionSystem::Update(Ecs::SystemContext& InContext) noexcept
+void AIPerceptionSystem::Update(const Ecs::GameplaySystemView& InView) noexcept
 {
-    Update(InContext.registry, InContext.gameplayTags, InContext.dt);
+    Update(InView.registry, InView.gameplay.gameplayTags, InView.dt);
+}
+
+namespace
+{
+void AIPerceptionSystemThunk(const Ecs::GameplaySystemView& InView, void* InUser)
+{
+    static_cast<AIPerceptionSystem*>(InUser)->Update(InView);
+}
 }
 
 bool AIPerceptionSystem::Register(Ecs::SystemGraph& InGraph, AIPerceptionSystem& InSystem)
 {
-    return InGraph.Add(
-        Ecs::Phase::FixedUpdate, "AIPerceptionSystem",
-        +[](Ecs::SystemContext& InContext, void* InUser)
-        {
-            static_cast<AIPerceptionSystem*>(InUser)->Update(InContext);
-        },
-        &InSystem);
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "AIPerceptionSystem",
+                       Ecs::BindGameplaySystem<&AIPerceptionSystemThunk>(), &InSystem);
 }
 }

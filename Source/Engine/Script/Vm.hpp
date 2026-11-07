@@ -14,6 +14,8 @@
 namespace Fby
 {
 class TransportGroupSystem;
+class PhysicsSystem;
+class CameraStackSystem;
 }
 
 namespace Fby::Script
@@ -101,6 +103,10 @@ struct VmContext
     std::uint64_t frameIndex = 0;
     // Optional host service for transport_attach / transport_detach natives.
     Fby::TransportGroupSystem* transport = nullptr;
+    // Optional host service for the physics_* natives.
+    Fby::PhysicsSystem* physics = nullptr;
+    // Optional host service for camera_* natives.
+    Fby::CameraStackSystem* camera = nullptr;
     void* user = nullptr;
     // Prefab spawn is a host hook because prefab instantiation lives in the
     std::uint32_t (*spawn)(VmContext& InContext, std::uint32_t InPrefabId) noexcept = nullptr;

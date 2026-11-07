@@ -32,6 +32,7 @@
 CMakeLists.txt text eol=lf
 *.md text eol=lf
 *.py text eol=lf
+*.patch text eol=lf
 
 # Setup scripts are text: PowerShell and batch keep CRLF, shell scripts use LF.
 *.ps1 text eol=crlf

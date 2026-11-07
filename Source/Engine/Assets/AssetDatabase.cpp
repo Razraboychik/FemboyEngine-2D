@@ -32,27 +32,24 @@ bool AssetDatabase::Register(AssetId InId, AssetKind InKind, std::string_view In
     {
         return false;
     }
-    if (Find(InId) != nullptr)
+    if (MRecordIndex.contains(InId.value))
     {
         // Deterministic id already registered; first path wins
         return true;
-    }
-    if (MCount >= kMaxAssetRecords)
-    {
-        return false;
     }
     const std::string ScopedNormalized = NormalizePakPath(InPath);
     if (ScopedNormalized.empty() || ScopedNormalized.size() >= kAssetDbPathCapacity)
     {
         return false;
     }
-    AssetRecord& ScopedRecord = MRecords[MCount];
+    AssetRecord ScopedRecord;
     ScopedRecord.id = InId;
     ScopedRecord.kind = InKind;
     ScopedRecord.size = InSize;
     std::memcpy(ScopedRecord.path, ScopedNormalized.data(), ScopedNormalized.size());
     ScopedRecord.path[ScopedNormalized.size()] = '\0';
-    ++MCount;
+    MRecordIndex.insert_or_assign(InId.value, static_cast<std::uint32_t>(MRecords.size()));
+    MRecords.push_back(ScopedRecord);
     return true;
 }
 
@@ -68,14 +65,8 @@ AssetId AssetDatabase::RegisterPath(std::string_view InPath, AssetKind InKind, s
 
 const AssetRecord* AssetDatabase::Find(AssetId InId) const noexcept
 {
-    for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
-    {
-        if (MRecords[ScopedI].id == InId)
-        {
-            return &MRecords[ScopedI];
-        }
-    }
-    return nullptr;
+    const auto ScopedIt = MRecordIndex.find(InId.value);
+    return ScopedIt != MRecordIndex.end() ? &MRecords[ScopedIt->second] : nullptr;
 }
 
 std::string_view AssetDatabase::Path(AssetId InId) const noexcept
@@ -93,25 +84,17 @@ AssetKind AssetDatabase::Kind(AssetId InId) const noexcept
 // Metadata registry
 std::uint32_t AssetDatabase::AllocateSlot(AssetGuid InGuid, std::string* InError)
 {
-    for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxAssetMeta; ++ScopedSlot)
-    {
-        if (!MMetaUsed[ScopedSlot])
-        {
-            MMetaUsed[ScopedSlot] = true;
-            ++MMetaGenerations[ScopedSlot];
-            if (MMetaGenerations[ScopedSlot] == 0)
-            {
-                // Generation 0 is reserved for "never used"
-                ++MMetaGenerations[ScopedSlot];
-            }
-            MHandles[ScopedSlot] = MakeAssetHandle(ScopedSlot, MMetaGenerations[ScopedSlot]);
-            MMetas[ScopedSlot] = {};
-            MMetas[ScopedSlot].guid = InGuid;
-            return ScopedSlot;
-        }
-    }
-    SetError(InError, "asset metadata table is full");
-    return AssetHandle::kInvalidIndex;
+    (void)InError;
+    // Slots are append-only: a handle keeps its generation for the life of the
+    // database, so the table grows with the project instead of rejecting it.
+    const std::uint32_t ScopedSlot = static_cast<std::uint32_t>(MMetas.size());
+    MMetas.push_back(AssetMeta{});
+    MMetas.back().guid = InGuid;
+    MMetaGenerations.push_back(1);
+    MMetaUsed.push_back(1);
+    MHandles.push_back(MakeAssetHandle(ScopedSlot, 1));
+    MStaged.push_back(StagedRow{});
+    return ScopedSlot;
 }
 
 AssetHandle AssetDatabase::RegisterMeta(const AssetMeta& InMeta, std::span<const AssetDependency> InDependencies,
@@ -129,7 +112,7 @@ AssetHandle AssetDatabase::RegisterMeta(const AssetMeta& InMeta, std::span<const
         return ScopedExisting;
     }
     if (InDependencies.size() > kMaxAssetDependencies ||
-        MDependencyCount + InDependencies.size() > kMaxAssetMeta * kMaxAssetDependencies)
+        MDependencyCount + InDependencies.size() > kMaxAssetDependencyEntries)
     {
         SetError(InError, "asset dependency table is full");
         return {};
@@ -151,8 +134,12 @@ AssetHandle AssetDatabase::RegisterMeta(const AssetMeta& InMeta, std::span<const
     ScopedStored.dependencyCount = static_cast<std::uint16_t>(InDependencies.size());
     for (const AssetDependency& ScopedDependency : InDependencies)
     {
-        MDependencies[MDependencyCount++] = ScopedDependency;
+        MDependencies.push_back(ScopedDependency);
+        ++MDependencyCount;
     }
+    MGuidIndex.insert_or_assign(ScopedGuid, ScopedSlot);
+    MIdIndex.insert_or_assign(ScopedStored.id.value, ScopedSlot);
+    MPathIndex.insert_or_assign(std::string(ScopedStored.sourcePath), ScopedSlot);
     // Keep the legacy id/path table in sync for the scene loader and VFS.
     (void)Register(ScopedStored.id, ScopedStored.kind, ScopedStored.sourcePath);
     return MHandles[ScopedSlot];
@@ -200,14 +187,8 @@ AssetHandle AssetDatabase::FindHandleByGuid(AssetGuid InGuid) const noexcept
     {
         return {};
     }
-    for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxAssetMeta; ++ScopedSlot)
-    {
-        if (MMetaUsed[ScopedSlot] && MMetas[ScopedSlot].guid == InGuid)
-        {
-            return MHandles[ScopedSlot];
-        }
-    }
-    return {};
+    const auto ScopedIt = MGuidIndex.find(InGuid);
+    return ScopedIt != MGuidIndex.end() ? MHandles[ScopedIt->second] : AssetHandle{};
 }
 
 AssetHandle AssetDatabase::FindHandleByAssetId(AssetId InId) const noexcept
@@ -216,14 +197,8 @@ AssetHandle AssetDatabase::FindHandleByAssetId(AssetId InId) const noexcept
     {
         return {};
     }
-    for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxAssetMeta; ++ScopedSlot)
-    {
-        if (MMetaUsed[ScopedSlot] && MMetas[ScopedSlot].id == InId)
-        {
-            return MHandles[ScopedSlot];
-        }
-    }
-    return {};
+    const auto ScopedIt = MIdIndex.find(InId.value);
+    return ScopedIt != MIdIndex.end() ? MHandles[ScopedIt->second] : AssetHandle{};
 }
 
 AssetHandle AssetDatabase::FindHandleBySourcePath(std::string_view InSourcePath) const noexcept
@@ -233,20 +208,14 @@ AssetHandle AssetDatabase::FindHandleBySourcePath(std::string_view InSourcePath)
         return {};
     }
     const std::string ScopedNormalized = NormalizePakPath(InSourcePath);
-    for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxAssetMeta; ++ScopedSlot)
-    {
-        if (MMetaUsed[ScopedSlot] && ScopedNormalized == MMetas[ScopedSlot].sourcePath)
-        {
-            return MHandles[ScopedSlot];
-        }
-    }
-    return {};
+    const auto ScopedIt = MPathIndex.find(ScopedNormalized);
+    return ScopedIt != MPathIndex.end() ? MHandles[ScopedIt->second] : AssetHandle{};
 }
 
 const AssetMeta* AssetDatabase::Meta(AssetHandle InHandle) const noexcept
 {
-    if (!InHandle.IsValid() || InHandle.index >= kMaxAssetMeta || !MMetaUsed[InHandle.index] ||
-        MHandles[InHandle.index] != InHandle)
+    if (!InHandle.IsValid() || InHandle.index >= MMetas.size() || MMetaUsed[InHandle.index] == 0 ||
+        !(MHandles[InHandle.index] == InHandle))
     {
         return nullptr;
     }
@@ -278,7 +247,7 @@ std::span<const AssetDependency> AssetDatabase::Dependencies(AssetHandle InHandl
     {
         return {};
     }
-    return {MDependencies + ScopedMeta->dependencyFirst, ScopedMeta->dependencyCount};
+    return {MDependencies.data() + ScopedMeta->dependencyFirst, ScopedMeta->dependencyCount};
 }
 
 std::uint32_t AssetDatabase::CollectDependents(AssetGuid InGuid, std::span<AssetHandle> Out) const noexcept
@@ -288,9 +257,9 @@ std::uint32_t AssetDatabase::CollectDependents(AssetGuid InGuid, std::span<Asset
         return 0;
     }
     std::uint32_t ScopedCount = 0;
-    for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxAssetMeta; ++ScopedSlot)
+    for (std::uint32_t ScopedSlot = 0; ScopedSlot < MMetas.size(); ++ScopedSlot)
     {
-        if (!MMetaUsed[ScopedSlot])
+        if (MMetaUsed[ScopedSlot] == 0)
         {
             continue;
         }
@@ -301,8 +270,7 @@ std::uint32_t AssetDatabase::CollectDependents(AssetGuid InGuid, std::span<Asset
         }
         for (std::uint16_t ScopedDependency = 0; ScopedDependency < ScopedMeta.dependencyCount; ++ScopedDependency)
         {
-            const AssetDependency& ScopedEntry =
-                MDependencies[ScopedMeta.dependencyFirst + ScopedDependency];
+            const AssetDependency& ScopedEntry = MDependencies[ScopedMeta.dependencyFirst + ScopedDependency];
             if (ScopedEntry.guid != InGuid)
             {
                 continue;
@@ -325,7 +293,7 @@ bool AssetDatabase::BeginTransaction() noexcept
     {
         return false;
     }
-    for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxAssetMeta; ++ScopedSlot)
+    for (std::uint32_t ScopedSlot = 0; ScopedSlot < MStaged.size(); ++ScopedSlot)
     {
         MStaged[ScopedSlot].staged = false;
         MStaged[ScopedSlot].meta = {};
@@ -368,7 +336,7 @@ bool AssetDatabase::CommitTransaction() noexcept
     {
         return false;
     }
-    for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxAssetMeta; ++ScopedSlot)
+    for (std::uint32_t ScopedSlot = 0; ScopedSlot < MStaged.size(); ++ScopedSlot)
     {
         if (!MStaged[ScopedSlot].staged)
         {
@@ -397,7 +365,7 @@ bool AssetDatabase::CommitTransaction() noexcept
 
 void AssetDatabase::RollbackTransaction() noexcept
 {
-    for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxAssetMeta; ++ScopedSlot)
+    for (std::uint32_t ScopedSlot = 0; ScopedSlot < MStaged.size(); ++ScopedSlot)
     {
         MStaged[ScopedSlot].staged = false;
         MStaged[ScopedSlot].meta = {};

@@ -1,5 +1,5 @@
 // FemboyEngine2D - FrameComposer scale benchmark.
-#include "Editor/Infrastructure/FrameComposer.hpp"
+#include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/ECS/Components.hpp"
 
 #include <cstdio>
@@ -22,7 +22,7 @@ void RunCase(std::uint32_t InCount)
                                          static_cast<float>(ScopedIndex) * 0.001f});
     }
 
-    Fby::Editor::FrameComposer ScopedComposer;
+    Fby::Rhi::FrameComposer ScopedComposer;
     // Large view so both cases measure the full extract/sort path rather than
     // the offscreen-culling fast path.
     const Fby::Rhi::CameraData ScopedCamera{Fby::Vector2D{1024.0f, 2048.0f},
@@ -39,11 +39,11 @@ void RunCase(std::uint32_t InCount)
     }
     ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Fby::Color32::Black(), 0u);
 
-    const auto& ScopedStats = ScopedComposer.Stats();
+    const auto ScopedPlainStats = ScopedComposer.Stats();
     std::printf("frame_composer_benchmark: %u sprites, extract %.3f ms, sort %.3f ms, gather %.3f ms, culled %u\n",
-                InCount, ScopedStats.ExtractMilliseconds, ScopedStats.SortMilliseconds,
-                ScopedStats.GatherMilliseconds, ScopedStats.CulledSprites);
-    if (ScopedComposer.Packet().items.size() + ScopedStats.CulledSprites != InCount)
+                InCount, ScopedPlainStats.ExtractMilliseconds, ScopedPlainStats.SortMilliseconds,
+                ScopedPlainStats.GatherMilliseconds, ScopedPlainStats.CulledSprites);
+    if (ScopedComposer.Packet().items.size() + ScopedPlainStats.CulledSprites != InCount)
     {
         std::fprintf(stderr, "frame_composer_benchmark: item count mismatch\n");
         std::exit(1);
@@ -76,10 +76,10 @@ void RunCase(std::uint32_t InCount)
         // 18 ms regression a per-sprite hash map once caused.
         constexpr double kExtractBudgetMilliseconds = 25.0;
         constexpr double kMotionBudgetMilliseconds = 50.0;
-        if (ScopedStats.ExtractMilliseconds > kExtractBudgetMilliseconds)
+        if (ScopedPlainStats.ExtractMilliseconds > kExtractBudgetMilliseconds)
         {
             std::fprintf(stderr, "frame_composer_benchmark: extract %.3f ms over the %.1f ms budget\n",
-                         ScopedStats.ExtractMilliseconds, kExtractBudgetMilliseconds);
+                         ScopedPlainStats.ExtractMilliseconds, kExtractBudgetMilliseconds);
             std::exit(1);
         }
         if (ScopedMotionStats.ExtractMilliseconds > kMotionBudgetMilliseconds)

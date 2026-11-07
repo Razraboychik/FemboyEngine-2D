@@ -45,6 +45,7 @@ set(FBY_ENGINE_SOURCES
     Core/ThreadAffinity.cpp
     Core/WindowManager.cpp
     Core/WindowHost.cpp
+    Input/InputSystem.cpp
     ECS/AnimationCompression.cpp
     ECS/AnimationTimeline.cpp
     ECS/AnimGraph.cpp
@@ -97,8 +98,11 @@ set(FBY_ENGINE_SOURCES
     Navigation/Navigation.cpp
     Physics/Cloth.cpp
     Physics/ClothRenderSystem.cpp
+    Physics/DodPhysicsBackend.cpp
+    Physics/VehicleWheels.cpp
     Physics/Fluid.cpp
     Physics/Physics.cpp
+    Physics/ProjectileSystem.cpp
     Physics/PhysicsJoints.cpp
     Physics/PhysicsJointsScene.cpp
     Physics/SdfCollision.cpp
@@ -112,6 +116,7 @@ set(FBY_ENGINE_SOURCES
     Platform/PlatformSystems.cpp
     RHI/CameraStack.cpp
     RHI/DynamicResolution.cpp
+    RHI/FrameComposer.cpp
     RHI/FrameExporter.cpp
     RHI/MaterialAsset.cpp
     RHI/MaterialGraph.cpp
@@ -133,6 +138,9 @@ set(FBY_ENGINE_SOURCES
     RHI/ViewportModes.cpp
     RHI/ViewportPresenter.cpp
     RHI/Vulkan/VulkanRHI.cpp
+    RHI/Vulkan/VulkanDevice.cpp
+    RHI/Vulkan/VulkanResources.cpp
+    RHI/Vulkan/VulkanFrame.cpp
     Script/AotBuilder.cpp
     Script/AotGraphCompiler.cpp
     Script/AotHost.cpp
@@ -146,6 +154,7 @@ set(FBY_ENGINE_SOURCES
     Text/TextBidi.cpp
     Text/TextShapeCache.cpp
     Text/TextShaper.cpp
+    Text/UnicodeBreak.cpp
     UI/Accessibility.cpp
     UI/AccessibilityOverlay.cpp
     UI/CardBoard.cpp
@@ -371,6 +380,11 @@ if(FBY_WITH_HARFBUZZ)
     set(HB_HAVE_GRAPHITE2 OFF CACHE BOOL "" FORCE)
     add_subdirectory("${FBY_ENGINE_REPO_ROOT}/third_party/harfbuzz-download/harfbuzz-15.0.0"
                      "${CMAKE_BINARY_DIR}/harfbuzz" EXCLUDE_FROM_ALL)
+    if(APPLE AND TARGET harfbuzz)
+        # CoreFoundation headers use legacy casts that HarfBuzz promotes to
+        # errors globally; the SDK declaration is outside our control.
+        target_compile_definitions(harfbuzz PUBLIC HB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR=1)
+    endif()
 endif()
 
 add_library(fby_engine STATIC ${FBY_ENGINE_SOURCES} "${FBY_SHADER_BLOBS}" "${FBY_LOC_GENERATED}"
@@ -412,6 +426,7 @@ target_link_libraries(fby_engine
         fby::monocypher
         fby::box2d
         fby::flatbuffers
+        fby::unibreak
         FemboyEngine2D::AssetCook)
 
 if(FBY_WITH_HARFBUZZ AND TARGET harfbuzz)

@@ -17,6 +17,22 @@ namespace Fby
 
 inline constexpr std::size_t kMaxScancodes = 512;
 inline constexpr std::size_t kMaxMouseButtons = 8;
+inline constexpr std::size_t kMaxGamepads = 8;
+inline constexpr std::size_t kMaxGamepadButtons = 16;
+inline constexpr std::size_t kMaxGamepadAxes = 6;
+
+// Snapshot of one SDL gamepad. The window layer owns the SDL handle; this POD
+// is the only device state gameplay and the input mapper see.
+struct GamepadState
+{
+    bool connected = false;
+    std::uint32_t instanceId = 0;
+    std::array<bool, kMaxGamepadButtons> held{};
+    std::array<bool, kMaxGamepadButtons> pressed{};
+    std::array<bool, kMaxGamepadButtons> released{};
+    // Left/right stick X/Y followed by left/right trigger.
+    std::array<float, kMaxGamepadAxes> axes{};
+};
 
 struct WindowExtent
 {
@@ -102,6 +118,9 @@ struct InputState
     std::array<bool, kMaxScancodes> released{};
     std::array<bool, kMaxMouseButtons> mouseHeld{};
     std::array<bool, kMaxMouseButtons> mousePressed{};
+    std::array<bool, kMaxMouseButtons> mouseReleased{};
+    std::array<GamepadState, kMaxGamepads> gamepads{};
+    std::uint32_t gamepadCount = 0;
 
     // Client-space pixels
     Vector2D mouse{};
@@ -138,6 +157,10 @@ struct InputState
     {
         return InButton < mouseHeld.size() && mouseHeld[InButton];
     }
+    [[nodiscard]] const GamepadState* Gamepad(std::uint32_t InIndex) const noexcept
+    {
+        return InIndex < gamepads.size() && gamepads[InIndex].connected ? &gamepads[InIndex] : nullptr;
+    }
 
     // Called by WindowManager once per PumpEvents(): pressed/released and the
     void BeginFrame() noexcept
@@ -145,8 +168,14 @@ struct InputState
         pressed.fill(false);
         released.fill(false);
         mousePressed.fill(false);
+        mouseReleased.fill(false);
         mouseDelta = {};
         wheel = 0.0f;
+        for (GamepadState& ScopedGamepad : gamepads)
+        {
+            ScopedGamepad.pressed.fill(false);
+            ScopedGamepad.released.fill(false);
+        }
         textInputLength = 0;
     }
 };
@@ -264,8 +293,13 @@ private:
     // of the presentation mode.
     [[nodiscard]] bool ApplyWindowMode(WindowMode InMode) noexcept;
 
+    [[nodiscard]] bool OpenGamepad(std::uint32_t InInstanceId) noexcept;
+    void CloseGamepad(std::uint32_t InInstanceId) noexcept;
+
     void* MWindow = nullptr;
     InputState MInput{};
+    std::array<void*, kMaxGamepads> MGamepads{};
+    std::array<std::uint32_t, kMaxGamepads> MGamepadIds{};
     EventObserver MEventObserver = nullptr;
     void* MEventObserverUser = nullptr;
     bool MInitialized = false;

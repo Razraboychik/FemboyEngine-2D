@@ -94,11 +94,11 @@ public:
     }
     [[nodiscard]] iterator upper_bound(const Key& InKey)
     {
-        return std::upper_bound(MData.begin(), MData.end(), InKey, KeyLess{MCompare});
+        return std::upper_bound(MData.begin(), MData.end(), InKey, KeyUpperLess{MCompare});
     }
     [[nodiscard]] const_iterator upper_bound(const Key& InKey) const
     {
-        return std::upper_bound(MData.begin(), MData.end(), InKey, KeyLess{MCompare});
+        return std::upper_bound(MData.begin(), MData.end(), InKey, KeyUpperLess{MCompare});
     }
 
     [[nodiscard]] iterator find(const Key& InKey)
@@ -206,6 +206,18 @@ private:
         [[nodiscard]] bool operator()(const value_type& InEntry, const Key& InKey) const
         {
             return compare(InEntry.first, InKey);
+        }
+    };
+
+    // std::upper_bound calls the comparator as (value, element), so the key
+    // comes first here; KeyLess compares an entry against a key and cannot be
+    // reused for the upper bound.
+    struct KeyUpperLess
+    {
+        const Compare& compare;
+        [[nodiscard]] bool operator()(const Key& InKey, const value_type& InEntry) const
+        {
+            return compare(InKey, InEntry.first);
         }
     };
 

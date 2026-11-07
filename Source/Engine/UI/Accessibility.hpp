@@ -367,7 +367,7 @@ public:
     void ApplyCpuColorFallback(std::span<Rhi::RenderItem> InItems, Color32& InClear) const noexcept;
 
     // Fixed/PostUpdate call. In blind mode it emits physics contacts and
-    void Update(Ecs::SystemContext& InContext) noexcept;
+    void Update(const Ecs::AccessibilitySystemView& InView) noexcept;
 
     // Sound timeline hook: call when an audio marker becomes audible. The
     void PublishSoundTrigger(const SoundTrigger& InTrigger, std::string_view InText) noexcept;
@@ -421,7 +421,7 @@ private:
     };
 
     void TrackGameplayTags(Ecs::Registry& InRegistry) noexcept;
-    void EmitContacts(Ecs::SystemContext& InContext) noexcept;
+    void EmitContacts(const Ecs::AccessibilitySystemView& InView) noexcept;
     void ApplyTtsLanguage() noexcept;
     [[nodiscard]] StateTrack* FindTrack(Entity InEntity) noexcept;
 

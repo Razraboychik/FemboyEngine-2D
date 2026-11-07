@@ -1,5 +1,5 @@
 // FemboyEngine2D - retained frame composer ordering tests.
-#include "Editor/Infrastructure/FrameComposer.hpp"
+#include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Lighting.hpp"
 
@@ -54,7 +54,7 @@ int main()
     ScopedLight.Intensity = 1.0f;
     ScopedRegistry.emplace<Light2DComponent>(ScopedLamp, ScopedLight);
 
-    Editor::FrameComposer ScopedComposer;
+    Rhi::FrameComposer ScopedComposer;
     const Rhi::CameraData ScopedCamera{Vector2D{0.0f, 0.0f}, Vector2D{1280.0f, 720.0f}, 1.0f};
     ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Color32::Black(), 0u);
     Check(ScopedComposer.Packet().items.size() == 2u, "the offscreen sprite is culled");
@@ -132,7 +132,7 @@ int main()
     ScopedSingleRegistry.emplace<Transform2D>(ScopedSingle, Transform2D{Vector2D{0.0f, 0.0f}});
     ScopedSingleRegistry.emplace<Sprite2D>(ScopedSingle, Sprite2D{});
     ScopedSingleRegistry.emplace<DrawOrder>(ScopedSingle, DrawOrder{0u, 0.0f});
-    Editor::FrameComposer ScopedSingleComposer;
+    Rhi::FrameComposer ScopedSingleComposer;
     ScopedSingleComposer.BuildFramePacket(ScopedSingleRegistry, ScopedCamera, Color32::Black(), 0u);
     Check(ScopedSingleComposer.Packet().batches.size() == 1u, "single batch");
     Check(ScopedSingleComposer.Stats().DepthItems == 1u, "single depth item");
@@ -158,7 +158,7 @@ int main()
         ScopedMaterialRegistry.emplace<Sprite2D>(ScopedEntity, Sprite2D{});
         ScopedMaterialRegistry.emplace<DrawOrder>(ScopedEntity, DrawOrder{0u, 0.0f, 2u - ScopedBucket});
     }
-    Editor::FrameComposer ScopedMaterialComposer;
+    Rhi::FrameComposer ScopedMaterialComposer;
     const std::array<std::uint32_t, 3> ScopedPipelines{0u, 10u, 20u};
     ScopedMaterialComposer.SetMaterialPipelines(ScopedPipelines);
     ScopedMaterialComposer.BuildFramePacket(ScopedMaterialRegistry, ScopedCamera, Color32::Black(), 0u);
@@ -180,12 +180,42 @@ int main()
     ScopedTransparentSprite.Color = Color32::FromBytes(255, 255, 255, 128);
     ScopedTransparentRegistry.emplace<Sprite2D>(ScopedTransparent, ScopedTransparentSprite);
     ScopedTransparentRegistry.emplace<DrawOrder>(ScopedTransparent, DrawOrder{0u, 0.5f});
-    Editor::FrameComposer ScopedTransparentComposer;
+    Rhi::FrameComposer ScopedTransparentComposer;
     ScopedTransparentComposer.BuildFramePacket(ScopedTransparentRegistry, ScopedCamera, Color32::Black(), 0u);
     Check(ScopedTransparentComposer.Packet().items.size() == 1u, "the transparent sprite is extracted");
     Check((ScopedTransparentComposer.Packet().items[0].flags & Rhi::DepthWriteMask) == 0u,
           "transparent sprites skip depth-write");
     Check(ScopedTransparentComposer.Packet().depthBatches.empty(), "transparent sprites form no depth batches");
+
+    // Front-to-back opaque ordering must be stable across repeated frames: the
+    // permutation is applied to the gathered copy, so a static frame may not flip
+    // the order or detach keys from items.
+    {
+        Ecs::Registry ScopedFrontRegistry;
+        for (std::uint16_t ScopedLayer = 0; ScopedLayer < 2; ++ScopedLayer)
+        {
+            const Entity ScopedEntity = ScopedFrontRegistry.create();
+            ScopedFrontRegistry.emplace<Transform2D>(
+                ScopedEntity, Transform2D{Vector2D{static_cast<float>(ScopedLayer) * 10.0f, 0.0f}});
+            ScopedFrontRegistry.emplace<Sprite2D>(ScopedEntity, Sprite2D{});
+            ScopedFrontRegistry.emplace<DrawOrder>(ScopedEntity,
+                                                   DrawOrder{0u, ScopedLayer == 0 ? 0.0f : 0.5f});
+        }
+        Rhi::FrameComposer ScopedFrontComposer;
+        ScopedFrontComposer.SetOpaqueFrontToBack(true);
+        ScopedFrontComposer.SetForceOpaqueCutout(true);
+        ScopedFrontComposer.BuildFramePacket(ScopedFrontRegistry, ScopedCamera, Color32::Black(), 0u);
+        Check(ScopedFrontComposer.Packet().items.size() == 2u, "front-to-back frame has two items");
+        const float ScopedFirstFrameX = ScopedFrontComposer.Packet().items[0].position.X;
+        const Rhi::RenderKey ScopedFirstKey = ScopedFrontComposer.Packet().keys[0];
+        Check(ScopedFrontComposer.Packet().keys[0] > ScopedFrontComposer.Packet().keys[1],
+              "front-to-back reverses the layer order");
+        ScopedFrontComposer.BuildFramePacket(ScopedFrontRegistry, ScopedCamera, Color32::Black(), 0u);
+        Check(Near(ScopedFrontComposer.Packet().items[0].position.X, ScopedFirstFrameX),
+              "a repeated front-to-back frame keeps the item order");
+        Check(ScopedFrontComposer.Packet().keys[0] == ScopedFirstKey,
+              "a repeated front-to-back frame keeps keys aligned with items");
+    }
 
     ScopedComposer.SetTemporalState(true);
     ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Color32::Black(), 0u);

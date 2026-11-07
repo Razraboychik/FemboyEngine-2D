@@ -80,7 +80,7 @@ int main()
     std::array<Rhi::RenderKey, 32> ScopedKeys{};
     std::array<Rhi::DrawBatch, 4> ScopedBatches{};
     Ui::FrameOutput ScopedOutput{ScopedItems, ScopedKeys, ScopedBatches, 0};
-    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext, ScopedCanvas, ScopedOutput) == Ui::BuildStatus::Ok);
+    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext.UiView(), ScopedCanvas, ScopedOutput) == Ui::BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 1);
     FBY_CHECK(ScopedOutput.batchesWritten == 1);
     FBY_CHECK(Near(ScopedItems[0].position.X, 22.0f));
@@ -313,22 +313,23 @@ int main()
     ScopedCameraDesc.perspectiveDistance = 900.0f;
     FBY_CHECK(ScopedCameras.Push(ScopedRegistry, ScopedCameraDesc));
     ScopedContext.dt = 1.0f / 60.0f;
+    Ecs::RenderSystemView ScopedRender{ScopedRegistry, ScopedJobs, ScopedContext, ScopedContext, ScopedContext.dt};
     for (int ScopedFrame = 0; ScopedFrame < 60; ++ScopedFrame)
     {
-        ScopedCameras.Update(ScopedContext);
+        ScopedCameras.Update(ScopedRender);
     }
     FBY_CHECK(ScopedCameras.ActiveCamera().Center.X > 200.0f);
     FBY_CHECK(Near(ScopedCameras.ActiveCamera().Center.X, 400.0f, 5.0f));
     const Mat4 ScopedProjection = ScopedCameras.ViewProjection();
     FBY_CHECK(std::isfinite(ScopedProjection.m[0]) && std::isfinite(ScopedProjection.m[15]));
     ScopedCameras.AddTrauma(1.0f);
-    ScopedCameras.Update(ScopedContext);
+    ScopedCameras.Update(ScopedRender);
     const Mat4 ScopedBlended = ScopedCameras.InterpolatedProjection(0.5f);
     FBY_CHECK(std::isfinite(ScopedBlended.m[5]));
     // Shake must decay back to the followed base, not integrate into it.
     for (int ScopedFrame = 0; ScopedFrame < 180; ++ScopedFrame)
     {
-        ScopedCameras.Update(ScopedContext);
+        ScopedCameras.Update(ScopedRender);
     }
     FBY_CHECK(Near(ScopedCameras.ActiveCamera().Center.X, 400.0f, 1.0f));
     FBY_CHECK(Near(ScopedCameras.ActiveCamera().Rotation, 0.0f, 0.002f));

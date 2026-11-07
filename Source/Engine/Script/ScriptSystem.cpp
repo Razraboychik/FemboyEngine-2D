@@ -3,6 +3,8 @@
 
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/Physics/Physics.hpp"
+#include "Engine/RHI/CameraStack.hpp"
 #include "Engine/Physics/TransportGroups.hpp"
 #include "Engine/Script/AotHost.hpp"
 
@@ -128,6 +130,149 @@ void NativeTransportSetParent(Script::ScriptVm& InVm, Script::VmContext& InConte
     const auto ScopedGroup = static_cast<std::uint32_t>(InVm.F(InBase + 1));
     const auto ScopedParent = static_cast<std::uint32_t>(InVm.F(InBase + 2));
     InVm.SetU(InBase, InContext.transport->SetParentGroup(InContext.registry, ScopedGroup, ScopedParent) ? 1u : 0u);
+}
+
+void NativePhysicsGetBackend(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    InVm.SetF(InBase, InContext.physics != nullptr ? static_cast<float>(InContext.physics->Backend()) : -1.0f);
+}
+
+void NativePhysicsSetBackend(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.physics == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    const std::int32_t ScopedRequested = static_cast<std::int32_t>(InVm.F(InBase + 1));
+    const PhysicsBackendKind ScopedKind =
+        ScopedRequested == 1 ? PhysicsBackendKind::Box2D
+                              : (ScopedRequested == 2 ? PhysicsBackendKind::Dod : PhysicsBackendKind::Auto);
+    InContext.physics->SetProjectPolicy(ScopedKind, InContext.physics->Description().bodyBudget);
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativePhysicsGetCapabilities(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.physics == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    const PhysicsCapabilities ScopedCaps = InContext.physics->Capabilities();
+    std::int32_t ScopedBits = 0;
+    ScopedBits |= ScopedCaps.Joints ? 1 : 0;
+    ScopedBits |= ScopedCaps.Ccd ? 2 : 0;
+    ScopedBits |= ScopedCaps.SoftBodies ? 4 : 0;
+    ScopedBits |= ScopedCaps.Deterministic ? 8 : 0;
+    ScopedBits |= ScopedCaps.LargeWorlds ? 16 : 0;
+    InVm.SetF(InBase, static_cast<float>(ScopedBits));
+}
+
+void NativeCameraAddTrauma(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->AddTrauma(InVm.F(InBase));
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraDistort(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    const auto ScopedFlags = static_cast<std::uint32_t>(InVm.F(InBase));
+    const float ScopedStrength = InVm.F(InBase + 1);
+    const float ScopedX = InVm.F(InBase + 2);
+    const float ScopedY = InVm.F(InBase + 3);
+    const float ScopedDuration = InVm.F(InBase + 4);
+    CameraDistortionSettings ScopedDistortion;
+    ScopedDistortion.flags = ScopedFlags & (CameraDistortionDoubleVision | CameraDistortionStretch |
+                                            CameraDistortionRadialWarp | CameraDistortionChromaticSplit |
+                                            CameraDistortionWobble);
+    if ((ScopedFlags & CameraDistortionDoubleVision) != 0)
+    {
+        ScopedDistortion.doubleVision = ScopedStrength;
+    }
+    if ((ScopedFlags & CameraDistortionStretch) != 0)
+    {
+        ScopedDistortion.stretchX = ScopedX;
+        ScopedDistortion.stretchY = ScopedY;
+    }
+    if ((ScopedFlags & CameraDistortionRadialWarp) != 0)
+    {
+        ScopedDistortion.radialWarp = ScopedStrength;
+    }
+    if ((ScopedFlags & CameraDistortionChromaticSplit) != 0)
+    {
+        ScopedDistortion.chromaticSplit = ScopedStrength;
+    }
+    if ((ScopedFlags & CameraDistortionWobble) != 0)
+    {
+        ScopedDistortion.wobbleAmplitude = ScopedStrength;
+        ScopedDistortion.wobbleFrequency = ScopedX;
+    }
+    InContext.camera->SetDistortion(ScopedDistortion, ScopedDuration);
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraOffset(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->SetOffset(Vector2D{InVm.F(InBase), InVm.F(InBase + 1)}, InVm.F(InBase + 2));
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraZoom(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->SetZoom(InVm.F(InBase), InVm.F(InBase + 1));
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraRoll(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->SetRoll(InVm.F(InBase), InVm.F(InBase + 1));
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraClearEffects(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera != nullptr)
+    {
+        InContext.camera->ClearEffects();
+    }
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraSetMotionScale(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->SetMotionScale(InVm.F(InBase));
+    InVm.SetF(InBase, 1.0f);
 }
 
 void NativePlaySound(Script::ScriptVm& InVm, Script::VmContext&, std::uint8_t InBase)
@@ -538,6 +683,16 @@ void RegisterDefaultScriptNatives(ScriptRuntime& InRuntime)
     InRuntime.SetNative(Script::NativeId::TransportDetach, &NativeTransportDetach);
     InRuntime.SetNative(Script::NativeId::TransportSetParent, &NativeTransportSetParent);
     InRuntime.SetNative(Script::NativeId::TransportCreate, &NativeTransportCreate);
+    InRuntime.SetNative(Script::NativeId::PhysicsGetBackend, &NativePhysicsGetBackend);
+    InRuntime.SetNative(Script::NativeId::PhysicsSetBackend, &NativePhysicsSetBackend);
+    InRuntime.SetNative(Script::NativeId::PhysicsGetCapabilities, &NativePhysicsGetCapabilities);
+    InRuntime.SetNative(Script::NativeId::CameraAddTrauma, &NativeCameraAddTrauma);
+    InRuntime.SetNative(Script::NativeId::CameraDistort, &NativeCameraDistort);
+    InRuntime.SetNative(Script::NativeId::CameraOffset, &NativeCameraOffset);
+    InRuntime.SetNative(Script::NativeId::CameraZoom, &NativeCameraZoom);
+    InRuntime.SetNative(Script::NativeId::CameraRoll, &NativeCameraRoll);
+    InRuntime.SetNative(Script::NativeId::CameraClearEffects, &NativeCameraClearEffects);
+    InRuntime.SetNative(Script::NativeId::CameraSetMotionScale, &NativeCameraSetMotionScale);
 }
 
 bool ScriptRuntime::Initialize()
@@ -692,6 +847,8 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     ScopedVmContext.dt = InContext.dt;
     ScopedVmContext.frameIndex = InContext.frameIndex;
     ScopedVmContext.transport = InRuntime.TransportGroups();
+    ScopedVmContext.physics = InRuntime.Physics();
+    ScopedVmContext.camera = InRuntime.CameraStack();
 
     auto ScopedView = InContext.registry.view<ScriptComponent>();
     for (const Entity ScopedEntity : ScopedView)

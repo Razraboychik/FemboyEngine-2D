@@ -14,6 +14,8 @@
 
 namespace Fby
 {
+class PhysicsSystem;
+class CameraStackSystem;
 
 namespace Script
 {
@@ -105,6 +107,22 @@ public:
     {
         return MTransportGroups;
     }
+    void SetPhysics(PhysicsSystem* InPhysics) noexcept
+    {
+        MPhysics = InPhysics;
+    }
+    [[nodiscard]] PhysicsSystem* Physics() const noexcept
+    {
+        return MPhysics;
+    }
+    void SetCameraStack(CameraStackSystem* InCamera) noexcept
+    {
+        MCamera = InCamera;
+    }
+    [[nodiscard]] CameraStackSystem* CameraStack() const noexcept
+    {
+        return MCamera;
+    }
 
     // Called by the system when Run() reports a fault. Logs at most once per
     void ReportFault(std::uint32_t InHandle, Entity InEntity, const Script::VmFault& InFault) noexcept;
@@ -140,6 +158,8 @@ private:
     std::uint64_t MUnnativizedSkipCount = 0;
     std::array<bool, kScriptMaxPrograms> MFaultReported{};
     TransportGroupSystem* MTransportGroups = nullptr;
+    PhysicsSystem* MPhysics = nullptr;
+    CameraStackSystem* MCamera = nullptr;
     bool MInitialized = false;
 };
 

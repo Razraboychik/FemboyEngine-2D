@@ -30,24 +30,20 @@ struct DrawKey
 }
 }
 
-void ClothRenderSystem::Collect(Ecs::SystemContext& InContext) noexcept
+void ClothRenderSystem::Collect(Ecs::Registry& InRegistry) noexcept
 {
     MCount = 0;
     MTruncated = false;
     if (MCloth == nullptr)
     {
-        MCloth = InContext.cloth;
-    }
-    if (MCloth == nullptr)
-    {
         return;
     }
 
-    auto ScopedView = InContext.registry.view<ClothComponent>();
+    auto ScopedView = InRegistry.view<ClothComponent>();
     std::array<DrawKey, kMaxClothDraws> ScopedKeys{};
     for (const Entity ScopedEntity : ScopedView)
     {
-        const ClothComponent& ScopedComponent = InContext.registry.get<ClothComponent>(ScopedEntity);
+        const ClothComponent& ScopedComponent = InRegistry.get<ClothComponent>(ScopedEntity);
         const ClothHandle ScopedHandle{ScopedComponent.ClothIndex, ScopedComponent.Generation,
                                        ScopedComponent.ClothID};
         if (!MCloth->IsValid(ScopedHandle))
@@ -91,11 +87,12 @@ void ClothRenderSystem::Collect(Ecs::SystemContext& InContext) noexcept
 
 bool ClothRenderSystem::Register(Ecs::SystemGraph& InGraph, ClothRenderSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "ClothRenderSystem", &ClothRenderSystem::Tick, &InSystem);
+    return InGraph.Add(Ecs::Phase::PostUpdate, "ClothRenderSystem",
+                       Ecs::BindRenderSystem<&ClothRenderSystem::Tick>(), &InSystem);
 }
 
-void ClothRenderSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
+void ClothRenderSystem::Tick(Ecs::RenderSystemView& InView, void* InUser)
 {
-    static_cast<ClothRenderSystem*>(InUser)->Collect(InContext);
+    static_cast<ClothRenderSystem*>(InUser)->Collect(InView.registry);
 }
 }

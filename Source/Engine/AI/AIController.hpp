@@ -72,7 +72,7 @@ public:
     // FixedUpdate, before StateTree. Writes StateTreeComponent::Target only; a
     // tree decides what to do with the perceived entity.
     void Update(Registry& InRegistry, const GameplayTagRegistry* InTags, float InDeltaSeconds) noexcept;
-    void Update(Ecs::SystemContext& InContext) noexcept;
+    void Update(const Ecs::GameplaySystemView& InView) noexcept;
 
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, AIPerceptionSystem& InSystem);
 };
@@ -97,7 +97,7 @@ public:
 
     // FixedUpdate, after StateTree and before NavigationSystem.
     void Update(Registry& InRegistry, float InDeltaSeconds) noexcept;
-    void Update(Ecs::SystemContext& InContext) noexcept;
+    void Update(const Ecs::GameplaySystemView& InView) noexcept;
 
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, AIControllerSystem& InSystem);
 

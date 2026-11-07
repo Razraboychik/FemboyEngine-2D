@@ -118,9 +118,11 @@ load system, matching how rollback snapshots treat them.
 
 ### Project tree
 
-`ProjectDashboard::New Project` creates exactly `assets/textures`,
-`assets/audio`, `assets/scenes`, `configs`, an empty-but-valid
-`assets/scenes/main.toml`, and `project.femproj`. `Open Project` validates the
+`ProjectDashboard::New Project` creates exactly `Plan`, `Disdocs`,
+`assets/textures`, `assets/audio`, `assets/scenes`, `configs`, an empty-but-valid
+`assets/scenes/main.toml`, and `project.femproj`. `Plan` and `Disdocs` are
+authoring-only and stay outside `assets/`, so the cooker and a player build never
+see their files. `Open Project` validates the
 TOML before handing the paths to `EditorSystem::OpenProject`, which mounts the
 project's `assets/` at a higher VFS priority, loads every `.femeta`, starts the
 watcher/importer and opens the default scene.

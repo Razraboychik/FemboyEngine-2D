@@ -53,10 +53,14 @@ public:
             MKeys[ScopedSlot] = 0;
             MOutputIndex[ScopedSlot] = 0;
             MActive[ScopedSlot] = 0;
+            MActiveSlots[ScopedSlot] = 0;
+            MSlotInActive[ScopedSlot] = 0;
             MFreeNext[ScopedSlot] = ScopedSlot + 1u < Capacity ? ScopedSlot + 1u : kInvalidExtractSlot;
         }
         MFreeHead = 0;
         MUsedSlots = 0;
+        MActiveSlotCount = 0;
+        MLookupTombstones = 0;
         MFrame = 0;
         MOutputValid = false;
         MOutputCount = 0;
@@ -80,21 +84,23 @@ public:
         bool ScopedStructural = false;
         bool ScopedOk = true;
 
-        // 1. Drop slots whose entity died or lost a render component.
-        for (std::uint32_t ScopedSlot = 0; ScopedSlot < Capacity; ++ScopedSlot)
+        // 1. Drop slots whose entity died or lost a render component. The active
+        // list keeps this pass proportional to live entities, not to Capacity.
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < MActiveSlotCount;)
         {
-            if (MActive[ScopedSlot] == 0)
-            {
-                continue;
-            }
+            const std::uint32_t ScopedSlot = MActiveSlots[ScopedIndex];
             const Entity ScopedEntity = MEntities[ScopedSlot];
             if (!InRegistry.valid(ScopedEntity) || InRegistry.try_get<Transform2D>(ScopedEntity) == nullptr ||
                 InRegistry.try_get<Sprite2D>(ScopedEntity) == nullptr ||
                 InRegistry.try_get<ComponentChangeMask>(ScopedEntity) == nullptr)
             {
+                // The release swaps the last active slot into this position, so
+                // the cursor must not advance after it.
                 ReleaseSlot(ScopedSlot);
                 ScopedStructural = true;
+                continue;
             }
+            ++ScopedIndex;
         }
 
         // 2. Walk masked entities. A static entity reaches the (mask == 0) branch
@@ -312,8 +318,14 @@ private:
         return kInvalidExtractSlot;
     }
 
-    void InsertLookup(Entity InEntity, std::uint32_t InSlot) noexcept
+    [[nodiscard]] bool InsertLookup(Entity InEntity, std::uint32_t InSlot) noexcept
     {
+        // Tombstones accumulate until the table fills; rehashing before the load
+        // factor reaches the limit keeps insertion from failing under churn.
+        if ((MLookupCount + MLookupTombstones) * 4u >= kLookupCapacity * 3u)
+        {
+            RehashLookup();
+        }
         const std::uint32_t ScopedKey = EntityKey(InEntity);
         std::uint32_t ScopedIndex = HashKey(ScopedKey) & kLookupMask;
         std::uint32_t ScopedTombstone = kInvalidExtractSlot;
@@ -322,23 +334,62 @@ private:
             LookupEntry& ScopedEntry = MLookup[ScopedIndex];
             if (ScopedEntry.key == kEmptyKey)
             {
-                LookupEntry& ScopedTarget =
-                    ScopedTombstone != kInvalidExtractSlot ? MLookup[ScopedTombstone] : ScopedEntry;
-                ScopedTarget.key = ScopedKey;
-                ScopedTarget.slot = InSlot;
+                if (ScopedTombstone != kInvalidExtractSlot)
+                {
+                    LookupEntry& ScopedTarget = MLookup[ScopedTombstone];
+                    ScopedTarget.key = ScopedKey;
+                    ScopedTarget.slot = InSlot;
+                    --MLookupTombstones;
+                }
+                else
+                {
+                    ScopedEntry.key = ScopedKey;
+                    ScopedEntry.slot = InSlot;
+                }
                 ++MLookupCount;
-                return;
+                return true;
             }
-            if (ScopedEntry.key == kTombstoneKey && ScopedTombstone == kInvalidExtractSlot)
+            if (ScopedEntry.key == kTombstoneKey)
             {
-                ScopedTombstone = ScopedIndex;
+                if (ScopedTombstone == kInvalidExtractSlot)
+                {
+                    ScopedTombstone = ScopedIndex;
+                }
             }
             else if (ScopedEntry.key == ScopedKey)
             {
                 ScopedEntry.slot = InSlot;
-                return;
+                return true;
             }
             ScopedIndex = (ScopedIndex + 1u) & kLookupMask;
+        }
+        return false;
+    }
+
+    void RehashLookup() noexcept
+    {
+        MRehashScratch = MLookup;
+        for (LookupEntry& ScopedEntry : MLookup)
+        {
+            ScopedEntry = LookupEntry{};
+        }
+        MLookupCount = 0;
+        MLookupTombstones = 0;
+        for (const LookupEntry& ScopedEntry : MRehashScratch)
+        {
+            if (ScopedEntry.key == kEmptyKey || ScopedEntry.key == kTombstoneKey)
+            {
+                continue;
+            }
+            // Every surviving key is inserted into an empty table, so this probe
+            // always terminates.
+            std::uint32_t ScopedIndex = HashKey(ScopedEntry.key) & kLookupMask;
+            while (MLookup[ScopedIndex].key != kEmptyKey)
+            {
+                ScopedIndex = (ScopedIndex + 1u) & kLookupMask;
+            }
+            MLookup[ScopedIndex] = ScopedEntry;
+            ++MLookupCount;
         }
     }
 
@@ -357,6 +408,7 @@ private:
             {
                 ScopedEntry.key = kTombstoneKey;
                 ScopedEntry.slot = kInvalidExtractSlot;
+                ++MLookupTombstones;
                 if (MLookupCount != 0)
                 {
                     --MLookupCount;
@@ -378,7 +430,15 @@ private:
         MEntities[ScopedSlot] = InEntity;
         MActive[ScopedSlot] = 1;
         ++MUsedSlots;
-        InsertLookup(InEntity, ScopedSlot);
+        MSlotInActive[ScopedSlot] = MActiveSlotCount;
+        MActiveSlots[MActiveSlotCount++] = ScopedSlot;
+        if (!InsertLookup(InEntity, ScopedSlot))
+        {
+            // The rehash above makes this unreachable; releasing the slot keeps
+            // the entity from being rendered twice under two slots.
+            ReleaseSlot(ScopedSlot);
+            return kInvalidExtractSlot;
+        }
         return ScopedSlot;
     }
 
@@ -389,6 +449,15 @@ private:
             return;
         }
         RemoveLookup(MEntities[InSlot]);
+        const std::uint32_t ScopedActiveIndex = MSlotInActive[InSlot];
+        const std::uint32_t ScopedLast = MActiveSlotCount - 1u;
+        if (ScopedActiveIndex != ScopedLast)
+        {
+            const std::uint32_t ScopedMoved = MActiveSlots[ScopedLast];
+            MActiveSlots[ScopedActiveIndex] = ScopedMoved;
+            MSlotInActive[ScopedMoved] = ScopedActiveIndex;
+        }
+        --MActiveSlotCount;
         MActive[InSlot] = 0;
         MEntities[InSlot] = entt::null;
         MItems[InSlot] = RenderItem{};
@@ -433,12 +502,9 @@ private:
     void RebuildOutput() noexcept
     {
         MOutputCount = 0;
-        for (std::uint32_t ScopedSlot = 0; ScopedSlot < Capacity; ++ScopedSlot)
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < MActiveSlotCount; ++ScopedIndex)
         {
-            if (MActive[ScopedSlot] != 0)
-            {
-                MOutputOrder[MOutputCount++] = ScopedSlot;
-            }
+            MOutputOrder[MOutputCount++] = MActiveSlots[ScopedIndex];
         }
         std::sort(MOutputOrder.begin(), MOutputOrder.begin() + MOutputCount,
                   [this](std::uint32_t InLeft, std::uint32_t InRight) noexcept
@@ -517,6 +583,10 @@ private:
     std::array<std::uint32_t, Capacity> MOutputIndex{};
     std::array<std::uint8_t, Capacity> MActive{};
     std::array<std::uint32_t, Capacity> MFreeNext{};
+    // Dense list of active slots so the per-frame passes scale with the world,
+    // not with Capacity.
+    std::array<std::uint32_t, Capacity> MActiveSlots{};
+    std::array<std::uint32_t, Capacity> MSlotInActive{};
 
     // Sorted output cache.
     std::array<RenderItem, Capacity> MOutputItems{};
@@ -531,10 +601,13 @@ private:
 
     // Entity -> slot open-addressing table.
     std::array<LookupEntry, kLookupCapacity> MLookup{};
+    std::array<LookupEntry, kLookupCapacity> MRehashScratch{};
 
     std::uint32_t MFreeHead = 0;
     std::uint32_t MUsedSlots = 0;
+    std::uint32_t MActiveSlotCount = 0;
     std::uint32_t MLookupCount = 0;
+    std::uint32_t MLookupTombstones = 0;
     std::uint32_t MFrame = 0;
     std::uint32_t MOutputCount = 0;
     std::uint32_t MBatchCount = 0;

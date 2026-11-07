@@ -127,7 +127,7 @@ int main()
     // The render-graph path records the same composite through the generic
     // graphics-pass API; an unknown pipeline must be refused.
     {
-        std::array<std::byte, 112> ScopedFxBlock{};
+        std::array<std::byte, 144> ScopedFxBlock{};
         FBY_CHECK(ScopedGpu->BeginFrame());
         FBY_CHECK(ScopedGpu->RecordGraphicsPass("postfx_composite.frag", ScopedFxBlock.data(),
                                                 static_cast<std::uint32_t>(ScopedFxBlock.size()), {320, 200}, 1));

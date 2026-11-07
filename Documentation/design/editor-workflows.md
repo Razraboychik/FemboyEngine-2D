@@ -12,7 +12,7 @@ dirty/autosave rules. The task walkthrough stays in
   file. A folder is only a project when it contains `project.femproj`; a random
   working directory is never offered as "Current project".
 - `fby_editor <project.femproj>` and `--project` open a project directly.
-  `SetupScripts/RegisterFemboyProjects.ps1` registers the `.femproj` association
+  `SetupScripts/Windows/RegisterFemboyProjects.ps1` registers the `.femproj` association
   for the current user.
 - File dialogs use SDL's bare extension syntax (`femproj`), not
   `project.femproj`; the longer form made the dialog look for

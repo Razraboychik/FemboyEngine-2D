@@ -196,7 +196,7 @@ primary = "#102030"
     std::array<Rhi::RenderKey, 8> ScopedKeys{};
     std::array<Rhi::DrawBatch, 2> ScopedBatches{};
     Ui::FrameOutput ScopedOutput{ScopedItems, ScopedKeys, ScopedBatches, 0};
-    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext, ScopedCanvas, ScopedOutput) == Ui::BuildStatus::Ok);
+    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext.UiView(), ScopedCanvas, ScopedOutput) == Ui::BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 1);
     FBY_CHECK(ScopedItems[0].size.X == 200.0f);
     FBY_CHECK(ScopedItems[0].size.Y == 100.0f);

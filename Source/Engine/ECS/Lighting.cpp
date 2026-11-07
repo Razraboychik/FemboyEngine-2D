@@ -442,19 +442,20 @@ bool BuildSdfLightingFrame(Ecs::Registry& InRegistry, const SdfField* InField, R
     return true;
 }
 
-void LightingSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
+void LightingSystem::Tick(Ecs::RenderSystemView& InView, void* InUser)
 {
     if (InUser == nullptr)
     {
         return;
     }
     auto* ScopedSelf = static_cast<LightingSystem*>(InUser);
-    (void)ScopedSelf->Run(InContext.registry, ScopedSelf->Settings, ScopedSelf->SdfFieldView(),
+    (void)ScopedSelf->Run(InView.registry, ScopedSelf->Settings, ScopedSelf->SdfFieldView(),
                           ScopedSelf->SdfBrickMapView(), ScopedSelf->SdfGiVolumeView());
 }
 
 bool LightingSystem::Register(Ecs::SystemGraph& InGraph, LightingSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "LightingSystem", &LightingSystem::Tick, &InSystem);
+    return InGraph.Add(Ecs::Phase::PostUpdate, "LightingSystem",
+                       Ecs::BindRenderSystem<&LightingSystem::Tick>(), &InSystem);
 }
 }

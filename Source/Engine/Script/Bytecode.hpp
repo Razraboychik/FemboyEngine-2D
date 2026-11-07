@@ -52,6 +52,16 @@ enum class NativeId : std::uint16_t
     TransportDetach,
     TransportSetParent,
     TransportCreate,
+    PhysicsGetBackend,
+    PhysicsSetBackend,
+    PhysicsGetCapabilities,
+    CameraAddTrauma,
+    CameraDistort,
+    CameraOffset,
+    CameraZoom,
+    CameraRoll,
+    CameraClearEffects,
+    CameraSetMotionScale,
     Count,
 };
 
@@ -83,7 +93,23 @@ inline constexpr std::uint32_t kNativeFunctionCount = static_cast<std::uint32_t>
         case NativeId::TransportCreate:
             return 4;
         case NativeId::TransportDetach:
+        case NativeId::PhysicsGetBackend:
+        case NativeId::PhysicsGetCapabilities:
             return 1;
+        case NativeId::CameraAddTrauma:
+        case NativeId::CameraSetMotionScale:
+            return 2;
+        case NativeId::CameraOffset:
+            return 3;
+        case NativeId::CameraZoom:
+        case NativeId::CameraRoll:
+            return 3;
+        case NativeId::CameraDistort:
+            return 6;
+        case NativeId::CameraClearEffects:
+            return 1;
+        case NativeId::PhysicsSetBackend:
+            return 2;
         case NativeId::LogFloat:
         case NativeId::LogInt:
         case NativeId::LogMessage:

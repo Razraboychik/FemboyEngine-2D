@@ -1,6 +1,7 @@
 // FemboyEngine2D - Gerstner background waves and the mdspan shallow-water grid.
 #include "Engine/Physics/Fluid.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Physics/Physics.hpp"
 
 #include <algorithm>
@@ -62,8 +63,8 @@ GerstnerSample GerstnerField::Sample(Vector2D InBase, float InTimeSeconds) const
         const float ScopedAngularSpeed = std::sqrt(kGravity * ScopedWaveNumber) * ScopedWave.speed;
         const float ScopedPhase =
             ScopedWaveNumber * ScopedWave.direction.Dot(InBase) - ScopedAngularSpeed * InTimeSeconds + ScopedWave.phase;
-        const float ScopedSine = std::sin(ScopedPhase);
-        const float ScopedCosine = std::cos(ScopedPhase);
+        const float ScopedSine = Sim::Sin(ScopedPhase);
+        const float ScopedCosine = Sim::Cos(ScopedPhase);
         // Q/k is the horizontal particle radius. Q is exposed as steepness so
         const float ScopedAmplitude = ScopedWave.steepness / ScopedWaveNumber;
 
@@ -92,7 +93,7 @@ float GerstnerField::Height(Vector2D InBase, float InTimeSeconds) const noexcept
         const float ScopedAngularSpeed = std::sqrt(kGravity * ScopedWaveNumber) * ScopedWave.speed;
         const float ScopedPhase =
             ScopedWaveNumber * ScopedWave.direction.Dot(InBase) - ScopedAngularSpeed * InTimeSeconds + ScopedWave.phase;
-        ScopedHeight += (ScopedWave.steepness / ScopedWaveNumber) * std::sin(ScopedPhase);
+        ScopedHeight += (ScopedWave.steepness / ScopedWaveNumber) * Sim::Sin(ScopedPhase);
     }
     return ScopedHeight;
 }
@@ -142,7 +143,7 @@ void ShallowWaterGrid::Step(float InDt) noexcept
     const float ScopedWaveSpeed = std::sqrt(MDesc.gravity * MDesc.baseDepth);
     const float ScopedMaxDt = 0.45f * std::min(ScopedDx, ScopedDy) / std::max(ScopedWaveSpeed, 0.001f);
     const float ScopedStep = std::min(InDt, ScopedMaxDt);
-    const float ScopedDamping = std::pow(MDesc.damping, ScopedStep * 60.0f);
+    const float ScopedDamping = Sim::Pow(MDesc.damping, ScopedStep * 60.0f);
     const float ScopedVelocityLimit = std::max(4.0f * ScopedWaveSpeed, 100.0f);
 
     for (std::uint32_t ScopedY = 1; ScopedY + 1 < MRows; ++ScopedY)
@@ -232,7 +233,7 @@ void ShallowWaterGrid::AddDrop(Vector2D InWorldPosition, float InRadiusCells, fl
         {
             const float ScopedDx = static_cast<float>(ScopedX) - ScopedCell.X;
             const float ScopedDy = static_cast<float>(ScopedY) - ScopedCell.Y;
-            const float ScopedWeight = std::exp(-(ScopedDx * ScopedDx + ScopedDy * ScopedDy) / ScopedTwoSigmaSquared);
+            const float ScopedWeight = Sim::Exp(-(ScopedDx * ScopedDx + ScopedDy * ScopedDy) / ScopedTwoSigmaSquared);
             const std::size_t ScopedIndex =
                 static_cast<std::size_t>(ScopedY) * MColumns + static_cast<std::size_t>(ScopedX);
             MHeight[ScopedIndex] =

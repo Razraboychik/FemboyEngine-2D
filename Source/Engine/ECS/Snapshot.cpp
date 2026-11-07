@@ -894,10 +894,19 @@ SnapshotView SnapshotView::Open(std::span<const std::byte> InBytes, std::string_
     {
         return ScopedFail("snapshot entity count exceeds the rollback limit");
     }
+    // Bounds are checked by subtraction: adding payload, extension and header
+    // sizes can wrap and let a crafted header pass the size comparison, after
+    // which the subspan below would read past the buffer.
+    const std::size_t ScopedHeaderBytes = sizeof(SnapshotHeader);
+    if (ScopedHeader.payloadBytes > InBytes.size() - ScopedHeaderBytes)
+    {
+        return ScopedFail("snapshot payload exceeds its buffer");
+    }
+    const std::size_t ScopedPayloadBytes = static_cast<std::size_t>(ScopedHeader.payloadBytes);
     // Every component record carries a ComponentHeader, so a count larger than
     // the payload divided by that header is impossible and must not reach a
     // reserve() inside a noexcept parser.
-    if (ScopedHeader.componentCount > ScopedHeader.payloadBytes / sizeof(ComponentHeader))
+    if (ScopedHeader.componentCount > ScopedPayloadBytes / sizeof(ComponentHeader))
     {
         return ScopedFail("snapshot component count exceeds its payload");
     }
@@ -905,19 +914,18 @@ SnapshotView SnapshotView::Open(std::span<const std::byte> InBytes, std::string_
     {
         return ScopedFail("snapshot world-extension offset is invalid");
     }
-    const std::size_t ScopedExpected = sizeof(SnapshotHeader) + static_cast<std::size_t>(ScopedHeader.payloadBytes) +
-                                       static_cast<std::size_t>(ScopedHeader.extensionBytes);
-    if (InBytes.size() != ScopedExpected)
+    const std::size_t ScopedExtensionBytes = InBytes.size() - ScopedHeaderBytes - ScopedPayloadBytes;
+    if (ScopedHeader.extensionBytes != ScopedExtensionBytes)
     {
         return ScopedFail("snapshot size does not match its header");
     }
-    const std::span<const std::byte> ScopedPayload = InBytes.subspan(sizeof(SnapshotHeader), ScopedHeader.payloadBytes);
+    const std::span<const std::byte> ScopedPayload = InBytes.subspan(ScopedHeaderBytes, ScopedPayloadBytes);
     if (HashBytes(ScopedPayload) != ScopedHeader.checksum)
     {
         return ScopedFail("snapshot checksum mismatch");
     }
     const std::span<const std::byte> ScopedExtension =
-        InBytes.subspan(sizeof(SnapshotHeader) + ScopedHeader.payloadBytes, ScopedHeader.extensionBytes);
+        InBytes.subspan(ScopedHeaderBytes + ScopedPayloadBytes, ScopedExtensionBytes);
     if (HashBytes(ScopedExtension) != ScopedHeader.extensionChecksum)
     {
         return ScopedFail("snapshot world-extension checksum mismatch");

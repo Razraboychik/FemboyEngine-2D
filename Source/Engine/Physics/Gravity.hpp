@@ -123,7 +123,7 @@ public:
     using Registry = Ecs::Registry;
 
     void Update(Registry& InRegistry, PhysicsSystem& InPhysics, float InDeltaSeconds) noexcept;
-    void Update(Ecs::SystemContext& InContext) noexcept;
+    void Update(Ecs::PhysicsSystemView& InView) noexcept;
 
     // When true and no LevelGravityComponent exists, a side-view tilemap gets
     // down gravity and top-down/iso tilemaps get zero. A level component always

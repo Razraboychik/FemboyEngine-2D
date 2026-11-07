@@ -1,11 +1,13 @@
-# FemboyEngine2D: сборка и редактор
+# FemboyEngine2D: build and editor
 
-## Рекомендуемый редактор
+[English](build-workflow.md) | [Русский](build-workflow_RU.md)
+
+## Recommended editor
 
 - VS Code + clangd + CMake Tools;
-- альтернатива — CLion.
+- CLion is a viable alternative.
 
-Встроенный IntelliSense VS Code нужно отключить: проект использует clangd и
+Disable VS Code's built-in IntelliSense: the project uses clangd and
 `compile_commands.json`.
 
 ```json
@@ -17,7 +19,7 @@
 }
 ```
 
-## Пресеты
+## Presets
 
 ```bat
 cmake --preset dev-clang
@@ -25,14 +27,17 @@ cmake --build --preset dev-clang
 ctest --preset dev-clang
 ```
 
-Доступны:
+Available presets:
 
 - `dev-clang` — Debug, clang++, tests;
 - `release-clang` — RelWithDebInfo;
 - `dev-clangcl` — clang-cl;
-- `audit-clang` — существующий `build-audit`.
+- `audit-clang` — the existing `build-audit` tree;
+- `windows-release` — clang-cl, Vulkan, editor and tests;
+- `linux-release` — clang++, Vulkan, editor and tests;
+- `macos-release` — clang++, Metal, editor and tests.
 
-Проверены на этой машине:
+Verified on this machine:
 
 ```text
 cmake --preset dev-clang
@@ -43,26 +48,32 @@ cmake --preset dev-clangcl
 cmake --build --preset dev-clangcl --target fby_frame_composer_test
 ```
 
-Оба `fby_frame_composer_test` проходят.
+Both `fby_frame_composer_test` runs pass.
 
-Быстрый профильный gate:
+The desktop matrix uses `windows-release`, `linux-release` and `macos-release`.
+Each preset builds the editor, sandbox, tools and the game packer. The editor
+produces `bin/fby_editor`; Build & Pack Game invokes `bin/tools/fby_fempak` on
+all three systems. See
+[platform support](platform-support.md) for the verification status.
+
+Quick optimization gate:
 
 ```bat
 ctest --preset optimization
 ```
 
-Нельзя смешивать toolchain’ы в одном build-каталоге. Для clang++ и clang-cl
-используются разные каталоги.
+Never mix toolchains in one build directory. clang++ and clang-cl use separate
+directories.
 
 ## Windows: GUI subsystem
 
-`FBY_CONSOLE_APPS=ON` оставляет консоль у приложений. Для clang-cl проект
-собирает GUI-subsystem executable с `/ENTRY:mainCRTStartup`. Для GNU-like
-clang++/GCC `WIN32_EXECUTABLE` не включается: эти драйверы ожидают `WinMain`,
-а движок использует обычный `int main()`. Поэтому `dev-clang` на Windows
-собирает консольные приложения, а `dev-clangcl` — GUI-приложения.
+`FBY_CONSOLE_APPS=ON` keeps a console on applications. With clang-cl the project
+builds a GUI-subsystem executable using `/ENTRY:mainCRTStartup`. For GNU-like
+clang++/GCC, `WIN32_EXECUTABLE` is not enabled: those drivers expect `WinMain`,
+while the engine uses a normal `int main()`. Therefore on Windows `dev-clang`
+builds console applications and `dev-clangcl` builds GUI applications.
 
-## Ручная сборка
+## Manual build
 
 ```bat
 cmake -S . -B build -G Ninja ^
@@ -88,33 +99,33 @@ cmake --build build-clang --parallel 8
 
 ## clangd
 
-`.clangd` указывает на `build-audit`. Если используется другой каталог, поменять
-`CompilationDatabase` или передать `--compile-commands-dir`.
+`.clangd` points at `build-audit`. If another directory is used, change
+`CompilationDatabase` or pass `--compile-commands-dir`.
 
-Для системных заголовков Windows может понадобиться:
+Windows system headers may require:
 
 ```text
 --query-driver=C:/Users/<user>/AppData/Local/Programs/LLVM/bin/clang++.exe
 ```
 
-## Отладка
+## Debugging
 
-`launch.json` содержит конфигурации для:
+`launch.json` contains configurations for:
 
 - `fby_editor`;
 - `fby_frame_composer_test`.
 
-Для GPU-отладки использовать RenderDoc, а не встраивать отладчик в редактор.
+Use RenderDoc for GPU debugging; do not embed a debugger in the editor.
 
-## Интеграция в редактор движка
+## Engine editor integration
 
-Не писать собственный текстовый редактор. Интеграция должна быть через:
+Do not write a custom text editor. Integrate through:
 
 - `compile_commands.json`;
-- CMake-пресеты;
+- CMake presets;
 - LSP;
 - DAP;
 - `project.femproj`.
 
-Этого достаточно для автодополнения, переходов и отладки без создания
-собственного аналога IDE.
+That is enough for completion, navigation and debugging without building an IDE
+clone.

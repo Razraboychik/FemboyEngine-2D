@@ -1,6 +1,7 @@
 // FemboyEngine2D - column-major 4x4 matrix.
 #pragma once
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 
 #include <array>
@@ -40,8 +41,8 @@ struct Mat4
 
     [[nodiscard]] static Mat4 Rotation(float InRadians) noexcept
     {
-        const float ScopedCosine = std::cos(InRadians);
-        const float ScopedSine = std::sin(InRadians);
+        const float ScopedCosine = Sim::Cos(InRadians);
+        const float ScopedSine = Sim::Sin(InRadians);
         Mat4 ScopedResult;
         ScopedResult.m[0] = ScopedCosine;
         ScopedResult.m[1] = ScopedSine;

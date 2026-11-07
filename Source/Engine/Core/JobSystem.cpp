@@ -2,9 +2,11 @@
 #include "Engine/Core/JobSystem.hpp"
 
 #include "Engine/Core/Assert.hpp"
+#include "Engine/Core/Log.hpp"
 
 #include <algorithm>
 #include <cstdio>
+#include <exception>
 #include <string>
 
 namespace Fby
@@ -31,6 +33,7 @@ struct ParallelShared
     std::uint32_t count = 0;
     void* context = nullptr;
     RangeFunction function = nullptr;
+    JobSystem* owner = nullptr;
     std::counting_semaphore<JobSystem::kMaxThreadSlots>* completed = nullptr;
 };
 
@@ -97,11 +100,30 @@ void JobSystem::Submit(RangeFunction InRun, void* InContext, std::uint32_t InBeg
 {
     FBY_ASSERT(InRun != nullptr);
     MPending.fetch_add(1, std::memory_order_relaxed);
+    try
     {
         const std::scoped_lock ScopedLock(MMutex);
         MQueue.push_back(Task{InRun, InContext, InBegin, InEnd});
     }
+    // A task that cannot be queued would leave the caller waiting for a completion
+    // that never arrives, so it runs on the submitting thread instead.
+    catch (...)
+    {
+        MPending.fetch_sub(1, std::memory_order_relaxed);
+        ReportFault("job queue allocation");
+        InRun(InContext, InBegin, InEnd);
+        return;
+    }
     MWake.notify_one();
+}
+
+void JobSystem::ReportFault(std::string_view InOperation) noexcept
+{
+    const bool ScopedFirst = !MFaulted.exchange(true, std::memory_order_acq_rel);
+    if (ScopedFirst)
+    {
+        LogError("jobs", "a job task failed on thread '{}' ({})", CurrentThreadName(), InOperation);
+    }
 }
 
 void JobSystem::WaitIdle()
@@ -150,9 +172,11 @@ void JobSystem::WorkerMain(std::stop_token InToken, std::uint32_t InIndex)
         {
             ScopedTask.run(ScopedTask.context, ScopedTask.begin, ScopedTask.end);
         }
-        // A task exception must not terminate the process or leave the queue and the idle waiter stuck.
+        // A task exception must not terminate the process or leave the queue and
+        // the idle waiter stuck, but it is latched so the main loop can stop.
         catch (...)
         {
+            ReportFault("worker task");
         }
         AddBusy(InIndex + 1, NowNanoseconds() - ScopedStart);
         MCounters[InIndex + 1].taskCount.fetch_add(1, std::memory_order_relaxed);
@@ -195,6 +219,7 @@ void JobSystem::DispatchParallel(std::uint32_t InCount, std::uint32_t InGrain, v
     // The caller keeps one chunk, so a one-worker pool still makes progress and
     const std::uint32_t ScopedHelpers = std::min<std::uint32_t>(ScopedChunks - 1, ThreadCount());
 
+    ScopedShared.owner = this;
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedHelpers; ++ScopedI)
     {
         // Captureless thunk: the context is a pointer, not a std::function.
@@ -202,7 +227,16 @@ void JobSystem::DispatchParallel(std::uint32_t InCount, std::uint32_t InGrain, v
             +[](void* InRaw, std::uint32_t, std::uint32_t)
             {
                 auto* ScopedShared = static_cast<ParallelShared*>(InRaw);
-                RunChunks(ScopedShared);
+                // The caller blocks until this release, so a throwing chunk is
+                // contained here instead of escaping into the worker loop.
+                try
+                {
+                    RunChunks(ScopedShared);
+                }
+                catch (...)
+                {
+                    ScopedShared->owner->ReportFault("parallel for chunk");
+                }
                 ScopedShared->completed->release();
             },
             &ScopedShared, 0, 0);

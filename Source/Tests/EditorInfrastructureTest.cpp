@@ -94,6 +94,13 @@ void TestProjectCreationAndConfig()
     Fby::Editor::ProjectConfig ScopedConfig;
     Check(Fby::Editor::CreateProject(ScopedRoot, "DemoProject", &ScopedPaths, &ScopedConfig), "create project");
     Check(std::filesystem::is_directory(ScopedPaths.assets), "assets directory exists");
+    Check(std::filesystem::is_directory(ScopedPaths.plans), "Plan directory exists");
+    Check(std::filesystem::is_directory(ScopedPaths.disdocs), "Disdocs directory exists");
+    Check(ScopedPaths.plans.parent_path() == ScopedPaths.root && ScopedPaths.disdocs.parent_path() == ScopedPaths.root,
+          "authoring directories stay at the project root");
+    Check(ScopedPaths.plans.lexically_relative(ScopedPaths.assets).generic_string().rfind("..", 0) == 0 &&
+              ScopedPaths.disdocs.lexically_relative(ScopedPaths.assets).generic_string().rfind("..", 0) == 0,
+          "authoring directories are outside the cooked assets root");
     Check(std::filesystem::is_directory(ScopedPaths.textures), "assets/textures exists");
     Check(std::filesystem::is_directory(ScopedPaths.audio), "assets/audio exists");
     Check(std::filesystem::is_directory(ScopedPaths.scenes), "assets/scenes exists");
@@ -474,6 +481,10 @@ void TestAutoImportAndBackgroundCook()
             Check(ScopedView->width == 8 && ScopedView->height == 8, "cooked dimensions match the source");
         }
     }
+
+    // Windows cannot replace a file while its mapping is alive. Release the
+    // lazy mapping after parsing, then let the watcher refresh it.
+    ScopedVfs.RefreshDirectoryMounts();
 
     // A changed source goes through the watcher's Poll() path (the same path
     const std::uint32_t ScopedGenerationBefore = ScopedCooked != nullptr ? ScopedCooked->contentGeneration : 0;

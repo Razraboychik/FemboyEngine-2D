@@ -2,9 +2,9 @@
 
 **Language section:** English
 
-**Version:** 0.2.0-alpha.1
+**Version:** 0.3.0-alpha.1
 **Status:** Alpha
-**Date:** 2026-11-04
+**Date:** 2026-11-05
 **Document:** FBY-ARCH-0.1
 
 ---
@@ -34,7 +34,8 @@ All source lives under Source/. The include root is Source itself, so every incl
 | Source/Engine/Core | Definitions, value types, jobs, platform, plugins, Mirror |
 | Source/Engine/RHI | Render hardware interface, shaders, materials, camera stack |
 | Source/Engine/ECS | Registry, components, scenes, snapshots, skeleton, animation |
-| Source/Engine/Physics | Box2D v3 bridge, joints, cloth, fluid, particles |
+| Source/Engine/Input | Action mapper, contexts, gamepad snapshots, fixed input state |
+| Source/Engine/Physics | Box2D v3 and DOD backends, joints, transport, wheels, cloth, fluid, particles |
 | Source/Engine/Audio | Mixer, DSP graph, limiter, Ogg/Opus |
 | Source/Engine/Network | NetRollbackSession, input rings, snapshot replication |
 | Source/Engine/Assets | VFS, .femeta, cooker, localization, texture/audio formats |
@@ -104,11 +105,15 @@ Draws are emitted as one vkCmdDrawIndexedIndirect per (texture array, layer, geo
 
 Three frames in flight are the default. Each slice owns an instance ring, a mesh vertex ring and a mesh index ring allocated once at device creation. Capacity is a startup decision, not a per-frame allocation: the defaults cover 1,048,576 sprite items, 65,536 mesh vertices and 131,072 mesh indices per slice.
 
+The engine-side `Rhi::FrameComposer` turns one ECS world into that packet. It culls sprites against the camera, folds the authored colour with the light result, packs motion vectors for temporal upscalers, key-sorts sprites and tilemap quads into material and layer batches, builds the OIT and depth-prepass splits, and reserves its arrays from the device item cap so a steady frame does not allocate. The editor and a game use the same class; a viewport owns one composer, and the packet stays valid until the next composition on that composer.
+
 ## 5. ECS, schedule and Snapshot v4
 
 The ECS is EnTT's registry with a strict component contract: trivially copyable, standard layout, no string, no container, no vtable. Components are data; behaviour lives in systems. The frame has four phases: PreUpdate (variable dt, input and streaming), FixedUpdate (constant dt, gameplay and physics), PostUpdate (camera, culling, audio) and Render (extract and editor).
 
-SystemGraph is the production scheduler. Dependencies are explicit after/before bitmasks; a one-time topological sort produces the order; a cycle or a cross-phase dependency fails Build(). The graph holds up to 64 nodes and uses function pointers plus an opaque user pointer, never std::function. PluginHost removes every node whose user pointer matches when a plugin unloads.
+The `SystemContext` a system receives carries the registry and the job system directly and groups the remaining pointers into domain bundles (render, assets, audio, physics, text, accessibility, gameplay); a system reads only the bundles it declares. Core components live in `CoreComponents.hpp`, so hierarchy and transform users do not include text or big-number headers. Scheduled systems receive one of the narrow views (`PhysicsSystemView`, `RenderSystemView`, `GameplaySystemView`, `AudioSystemView`, `UiSystemView`, `AccessibilitySystemView`, `CoreSystemView`); `Bind*System<&Function>()` adapts it to the graph ABI.
+
+SystemGraph is the production scheduler. Dependencies are explicit after/before bitmasks; a one-time topological sort produces the order; a cycle or a cross-phase dependency fails Build(). A system may also declare which engine services it reads and writes, and two same-phase systems that conflict on a service are ordered by registration instead of running together. The graph holds up to 64 nodes and uses function pointers plus an opaque user pointer, never std::function. PluginHost removes every node whose user pointer matches when a plugin unloads and rebuilds the compiled order before the next frame.
 
 | Phase | Details |
 |---|---|
@@ -121,7 +126,7 @@ Snapshot v4 is a canonical, checksummed byte image. The 104-byte header carries 
 
 ```cpp
 struct SnapshotHeader {
-    char magic[8];              // FBYSNP3\0
+    char magic[8];              // FBSNAP03
     uint32 version;             // kSnapshotVersion
     uint32 flags;               // full or delta
     uint32 entityCount;
@@ -136,9 +141,9 @@ struct SnapshotHeader {
 
 Every registered component contributes a name, a stable type id, a Mirror layout hash, a canonical size and four function pointers (has, capture, restore, remove). The layout hash rejects a same-size field change; the schema hash rejects a different component set. Restore does not allocate: the snapshot arena and entity tables are fixed at Initialize().
 
-## 6. Physics: Box2D v3, chains, cloth and water
+## 6. Physics: Box2D v3, DOD backend, chains, cloth and water
 
-The physics header does not include box2d.h. RigidBody2D and Collider2D store packed b2BodyId/b2ShapeId values in uint64_t, so gameplay, scene IO and the network layer compile without the C API. PhysicsSystem is the only translation unit that knows Box2D exists. Units are explicit: Box2D works in metres, the renderer in pixels, and PhysicsDesc::pixelsPerMeter is the single conversion point.
+The physics header does not include box2d.h. RigidBody2D and Collider2D store packed b2BodyId/b2ShapeId values in uint64_t, so gameplay, scene IO and the network layer compile without the C API. PhysicsSystem owns the world; TransportGroups, VehicleWheels and the joint systems are explicitly Box2D-aware translation units that keep the C API behind the same packed handles. Units are explicit: Box2D works in metres, the renderer in pixels, and PhysicsDesc::pixelsPerMeter is the single conversion point.
 
 | Model | Details |
 |---|---|
@@ -146,12 +151,19 @@ The physics header does not include box2d.h. RigidBody2D and Collider2D store pa
 | Rope / chain / spring graph | A joint graph of capsule links: chain, rope and spring connections with break limits, ties and repair |
 | Cloth | 32x32 Verlet grid, Gauss-Seidel constraints, overlap query against Box2D shapes |
 | Water | GerstnerField analytic waves plus ShallowWaterGrid on mdspan |
+| DOD backend | SoA AABB solver with a sorted uniform grid; no joints, body CCD or rotational contact response |
+| Transport | Path/motion carriers with contact support and conveyor surfaces; Box2D weld joints when available |
+| Wheels | Box2D wheel-joint suspension, per-wheel motor torque and braking; no implicit powertrain |
 
 A rope is not a special body. It is a chain of small rigid links joined by connections; every connection carries its own material (rigid distance, spring distance, revolute with limits, spring revolute), its own break limits in newtons and newton metres, optional damage accumulation and its own repair state. A chain is therefore a builder over a fixed joint graph: sections splice chain and rope runs, ties connect two links across chains or two plain bodies, gameplay cuts enter the deterministic command log, and a broken connection leaves the link entities alive. The system hard-caps chains, links and connections, allocates the pool once and never allocates on the frame path. It owns the link entities it creates and never the anchor entities; Shutdown order matters because destroying the Box2D world invalidates every stored id, and Update must run directly after the physics step to consume Box2D joint events.
 
 Cloth is a Verlet mass-spring grid projected with a fixed number of Gauss-Seidel iterations, then pushed out of the existing Box2D shapes. It is not a second collision world and does not duplicate level geometry. The CPU writes MeshVertex positions; the renderer streams them through the same deformable path as a skinned mesh, so cloth adds no second draw path. A pinned vertex is simply invMass = 0.
 
 Two water models share one system. GerstnerField is a small sum of trochoidal waves: deterministic, analytic, allocation-free, with a Jacobian that fades foam in at crests. ShallowWaterGrid stores a height/velocity field in mdspan views over fixed arrays and integrates the linearised shallow-water equations with a clamped CFL number. Neither model knows about the RHI; a renderer samples the field or uploads its height view as an R32F texture.
+
+The DOD backend is a second implementation of the same PhysicsSystem contract, selected by project policy or PhysicsDesc.backend. It keeps positions, previous positions, velocities, accelerations, rotations, inverse masses, gravity scales, extents, flags and sleep counters in parallel SoA columns and resolves pairs through a sorted uniform grid. Each body carries its own gravity and time scale, frozen bodies drop motion, and contacts report begin and end touch once per pair. PhysicsSystem::Capabilities() is the only supported feature query. Transport and wheels explicitly declare their backend boundary: transport support and conveyors work on both solvers, while weld joints and wheel joints require Box2D.
+
+The simulation does not call the platform libm. `Engine/Core/SimMath.hpp` provides `Sin`/`Cos`/`SinCos`, `Atan2`, `Acos`, `Cbrt`, `Exp`, `Log`, `Pow` and `WrapPi`, built from exact range reduction and fused multiply-add polynomials with `ldexp` only for exponent scaling. Angles in transforms, IK and transport, water waves, gravity falloff, damping, gameplay modifiers, light falloff and input curves all use that layer, so rollback checksums agree across Clang and GCC on every supported target. Box2D keeps its own floating-point path, which is why joints and CCD stay on the general-purpose solver.
 
 ## 7. Network rollback and Snapshot v4
 

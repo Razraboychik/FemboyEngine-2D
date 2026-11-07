@@ -105,9 +105,13 @@ struct PostFxConstants
     Vector4D colorRow0{};
     Vector4D colorRow1{};
     Vector4D colorRow2{};
+    // Generic camera distortion: flags, double-vision, stretch X/Y; warp,
+    // chromatic split, wobble amplitude and frequency.
+    Vector4D distortion0{};
+    Vector4D distortion1{};
 };
 
-static_assert(sizeof(PostFxConstants) == 112, "the composite UBO is layout-checked against the shader");
+static_assert(sizeof(PostFxConstants) == 144, "the composite UBO is layout-checked against the shader");
 
 struct ColorGradingSettings
 {

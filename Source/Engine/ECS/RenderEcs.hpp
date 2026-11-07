@@ -333,12 +333,16 @@ public:
             return;
         }
         RenderChunk& ScopedChunk = *MChunks[InEntity.Chunk];
-        if (ScopedChunk.Header.ActiveCount == 0u)
+        if (ScopedChunk.Header.ActiveCount == 0u || InEntity.Slot >= ScopedChunk.Header.Capacity)
         {
             return;
         }
         std::byte* ScopedSlot = SlotData(ScopedChunk, InEntity.Slot);
         std::fill_n(ScopedSlot, sizeof(GpuSpriteInstance), std::byte{0});
+        // The zeroed slot must reach the GPU on the next upload; without the dirty
+        // mark a released sprite would stay visible in the packed chunk.
+        MarkDirty(ScopedChunk, InEntity.Slot * static_cast<std::uint32_t>(sizeof(GpuSpriteInstance)),
+                  static_cast<std::uint32_t>(sizeof(GpuSpriteInstance)));
         --ScopedChunk.Header.ActiveCount;
         --MActiveCount;
         MFreeSlots.push_back(InEntity);
@@ -433,12 +437,16 @@ private:
 
     [[nodiscard]] static std::byte* SlotData(RenderChunk& InChunk, std::uint32_t InSlot) noexcept
     {
-        return InChunk.Payload.data() + static_cast<std::size_t>(InSlot) * sizeof(GpuSpriteInstance);
+        return std::span<std::byte>(InChunk.Payload)
+            .subspan(static_cast<std::size_t>(InSlot) * sizeof(GpuSpriteInstance), sizeof(GpuSpriteInstance))
+            .data();
     }
 
     [[nodiscard]] static const std::byte* SlotData(const RenderChunk& InChunk, std::uint32_t InSlot) noexcept
     {
-        return InChunk.Payload.data() + static_cast<std::size_t>(InSlot) * sizeof(GpuSpriteInstance);
+        return std::span<const std::byte>(InChunk.Payload)
+            .subspan(static_cast<std::size_t>(InSlot) * sizeof(GpuSpriteInstance), sizeof(GpuSpriteInstance))
+            .data();
     }
 
     std::vector<std::unique_ptr<RenderChunk>> MChunks;

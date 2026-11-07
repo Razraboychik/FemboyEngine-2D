@@ -192,7 +192,7 @@ public:
     }
 
     // One pass per update. Allocation-free; reads/writes only components.
-    void Run(Ecs::SystemContext& InContext) const noexcept;
+    void Run(const Ecs::GameplaySystemView& InView) const noexcept;
     void Run(Ecs::Registry& InRegistry, float InDt) const noexcept;
 
 private:

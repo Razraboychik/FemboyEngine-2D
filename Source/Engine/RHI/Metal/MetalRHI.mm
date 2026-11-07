@@ -317,7 +317,7 @@ bool MetalRHI::CreateLibraryAndPipelines()
     NSError* error = nil;
     const auto errorText = [](NSError* value) -> const char*
     { return value != nil ? value.localizedDescription.UTF8String : "unknown"; };
-    NSString* source = [NSString stringWithUTF8String:Fby::Rhi::metal_shaders::kMetalLibrarySource];
+    NSString* source = [NSString stringWithUTF8String:fby::rhi::metal_shaders::kMetalLibrarySource];
     MLibrary = [MDevice newLibraryWithSource:source options:nil error:&error];
     if (MLibrary == nil)
     {
@@ -343,8 +343,8 @@ bool MetalRHI::CreateLibraryAndPipelines()
         return false;
     }
 
-    const auto makeRenderPipeline = [&](id<MTLFunction> vertexFunction, id<MTLFunction> fragmentFunction,
-                                        id<MTLRenderPipelineState>* out) -> bool
+    const auto makeRenderPipeline = [&](id<MTLFunction> vertexFunction,
+                                        id<MTLFunction> fragmentFunction) -> id<MTLRenderPipelineState>
     {
         MTLRenderPipelineDescriptor* descriptor = [MTLRenderPipelineDescriptor new];
         descriptor.vertexFunction = vertexFunction;
@@ -355,17 +355,17 @@ bool MetalRHI::CreateLibraryAndPipelines()
         descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
         descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
         descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-        *out = [MDevice newRenderPipelineStateWithDescriptor:descriptor error:&error];
-        if (*out == nil)
+        id<MTLRenderPipelineState> pipeline = [MDevice newRenderPipelineStateWithDescriptor:descriptor error:&error];
+        if (pipeline == nil)
         {
             LogError("metal", "render pipeline failed: {}", errorText(error));
-            return false;
         }
-        return true;
+        return pipeline;
     };
 
-    if (!makeRenderPipeline(meshVertex, meshFragment, &MMeshPipeline) ||
-        !makeRenderPipeline(spriteVertex, spriteFragment, &MSpritePipeline))
+    MMeshPipeline = makeRenderPipeline(meshVertex, meshFragment);
+    MSpritePipeline = makeRenderPipeline(spriteVertex, spriteFragment);
+    if (MMeshPipeline == nil || MSpritePipeline == nil)
     {
         return false;
     }
@@ -442,7 +442,8 @@ TextureArrayHandle MetalRHI::CreateTextureArray(const TextureArrayDesc& desc, st
                        mipmapLevel:0
                              slice:layer
                          withBytes:pixels.data() + layerBytes * layer
-                       bytesPerRow:static_cast<NSUInteger>(desc.size.width) * 4];
+                       bytesPerRow:static_cast<NSUInteger>(desc.size.width) * 4
+                      bytesPerImage:0];
         }
     }
 

@@ -13,7 +13,7 @@ inline constexpr std::uint32_t kMagic = 0x544F4146u;
 // Bumped when HostApi gains callbacks. Generated plugins and the loader must
 // agree, so a stale .dll is rejected with "ABI version mismatch" instead of
 // calling through a short function table.
-inline constexpr std::uint16_t kAbiVersion = 5;
+inline constexpr std::uint16_t kAbiVersion = 7;
 inline constexpr std::uint32_t kMaxModuleComponents = 32;
 
 // Fault codes mirror VmFault::Code so the VM and an AOT plugin report the same
@@ -91,6 +91,20 @@ struct HostApi
     std::int64_t (*decimalToInt)(void* InUser, std::uint32_t InHandle) noexcept = nullptr;
     void (*decimalLog)(void* InUser, std::uint32_t InHandle) noexcept = nullptr;
     void (*decimalRelease)(void* InUser, std::uint32_t InHandle) noexcept = nullptr;
+    // Physics policy queries. The interpreter and plugin both use the same
+    // project-level backend selection; a live world is never swapped in place.
+    std::int32_t (*physicsGetBackend)(void* InUser) noexcept = nullptr;
+    std::uint32_t (*physicsSetBackend)(void* InUser, std::int32_t InBackend) noexcept = nullptr;
+    std::uint32_t (*physicsGetCapabilities)(void* InUser) noexcept = nullptr;
+    // Generic camera effects. Flags match CameraDistortionFlags.
+    void (*cameraAddTrauma)(void* InUser, float InAmount) noexcept = nullptr;
+    void (*cameraDistort)(void* InUser, std::uint32_t InFlags, float InStrength, float InParamX, float InParamY,
+                          float InDuration) noexcept = nullptr;
+    void (*cameraOffset)(void* InUser, float InX, float InY, float InDuration) noexcept = nullptr;
+    void (*cameraZoom)(void* InUser, float InZoom, float InDuration) noexcept = nullptr;
+    void (*cameraRoll)(void* InUser, float InRadians, float InDuration) noexcept = nullptr;
+    void (*cameraClear)(void* InUser) noexcept = nullptr;
+    void (*cameraSetMotion)(void* InUser, float InScale) noexcept = nullptr;
     // Raised by generated code when the interpreter would report a VmFault.
     void (*fault)(void* InUser, std::uint32_t InCode, std::uint32_t InPc) noexcept = nullptr;
 };
@@ -155,6 +169,63 @@ struct Context
         LogU32(static_cast<std::uint32_t>(InValue));
     }
 
+    void CameraAddTrauma(float InAmount) const noexcept
+    {
+        if (host != nullptr && host->cameraAddTrauma != nullptr)
+        {
+            host->cameraAddTrauma(user, InAmount);
+        }
+    }
+
+    void CameraDistort(std::uint32_t InFlags, float InStrength, float InParamX, float InParamY,
+                       float InDuration) const noexcept
+    {
+        if (host != nullptr && host->cameraDistort != nullptr)
+        {
+            host->cameraDistort(user, InFlags, InStrength, InParamX, InParamY, InDuration);
+        }
+    }
+
+    void CameraOffset(float InX, float InY, float InDuration) const noexcept
+    {
+        if (host != nullptr && host->cameraOffset != nullptr)
+        {
+            host->cameraOffset(user, InX, InY, InDuration);
+        }
+    }
+
+    void CameraZoom(float InZoom, float InDuration) const noexcept
+    {
+        if (host != nullptr && host->cameraZoom != nullptr)
+        {
+            host->cameraZoom(user, InZoom, InDuration);
+        }
+    }
+
+    void CameraRoll(float InRadians, float InDuration) const noexcept
+    {
+        if (host != nullptr && host->cameraRoll != nullptr)
+        {
+            host->cameraRoll(user, InRadians, InDuration);
+        }
+    }
+
+    void CameraClear() const noexcept
+    {
+        if (host != nullptr && host->cameraClear != nullptr)
+        {
+            host->cameraClear(user);
+        }
+    }
+
+    void CameraSetMotion(float InScale) const noexcept
+    {
+        if (host != nullptr && host->cameraSetMotion != nullptr)
+        {
+            host->cameraSetMotion(user, InScale);
+        }
+    }
+
     // Reports a fault the VM would surface as VmFault. Generated code calls this
     // before returning so a plugin fault is observable instead of silent.
     void Fault(std::uint32_t InCode, std::uint32_t InPc) const noexcept
@@ -176,6 +247,21 @@ struct Context
     [[nodiscard]] std::uint32_t BigIntFromInt(std::int32_t InValue) const noexcept
     {
         return (host != nullptr && host->bigIntFromInt != nullptr) ? host->bigIntFromInt(user, InValue) : 0u;
+    }
+
+    [[nodiscard]] std::int32_t PhysicsGetBackend() const noexcept
+    {
+        return (host != nullptr && host->physicsGetBackend != nullptr) ? host->physicsGetBackend(user) : -1;
+    }
+
+    [[nodiscard]] std::uint32_t PhysicsSetBackend(std::int32_t InBackend) const noexcept
+    {
+        return (host != nullptr && host->physicsSetBackend != nullptr) ? host->physicsSetBackend(user, InBackend) : 0u;
+    }
+
+    [[nodiscard]] std::uint32_t PhysicsGetCapabilities() const noexcept
+    {
+        return (host != nullptr && host->physicsGetCapabilities != nullptr) ? host->physicsGetCapabilities(user) : 0u;
     }
 
     [[nodiscard]] std::uint32_t BigIntAdd(std::uint32_t InLeft, std::uint32_t InRight) const noexcept

@@ -1,5 +1,5 @@
 // FemboyEngine2D - PIE client viewport: target lifetime and client frame composition.
-#include "Editor/Infrastructure/FrameComposer.hpp"
+#include "Engine/RHI/FrameComposer.hpp"
 #include "Editor/Infrastructure/PlayInEditor.hpp"
 #include "Editor/Panels/PieClientViewport.hpp"
 
@@ -168,7 +168,7 @@ int main()
     FBY_CHECK(ScopedRhi.destroyed == 0);
 
     // Compose the replicated client world and record it into that target.
-    Editor::FrameComposer ScopedComposer;
+    Rhi::FrameComposer ScopedComposer;
     const Rhi::CameraData ScopedCamera{Vector2D{320.0f, 180.0f}, Vector2D{640.0f, 360.0f}, 1.0f};
     ScopedComposer.BuildFramePacket(ScopedPie.ClientWorld(), ScopedCamera, Color32::FromBytes(12, 14, 22), 0u);
     FBY_CHECK(ScopedComposer.Packet().items.size() == 3);

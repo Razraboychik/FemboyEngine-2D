@@ -76,6 +76,8 @@ def ContentEn() -> list[tuple]:
             ["build.unity_build", "true", "true", "true; disable only for build memory"],
             ["build.native_arch", "false", "false", "false"],
             ["collision layers", "3-4 used", "up to 6 used", "named set, unused pairs off"],
+            ["physics_backend", "Auto", "Auto", "Auto or DOD for 4096+ simple bodies"],
+            ["physics_body_budget", "0", "0", "50000 for strategy, 0 for general games"],
             ["virtual_texture.enabled", "false", "true for zoom-heavy maps", "true"],
             ["VT page/tile/layers/table", "-", "1024/64/2/128", "2048/64/4/256"],
             ["VT budget / prefetch", "-", "6 / 1", "8 / 2"],
@@ -95,6 +97,12 @@ def ContentEn() -> list[tuple]:
               "commercial value. Raising it beyond 8 turns a single hitch into a spiral of death: "
               "the simulation runs more steps, the frame gets slower and the next frame needs even "
               "more steps. Lower it, do not raise it, if you see that pattern in a profile."),
+        ("h3", "physics_backend / physics_body_budget"),
+        ("p", "Auto keeps Box2D for joints, CCD and general rigid bodies and switches to the "
+              "data-oriented backend only when the world is large and joint-free. Set the backend "
+              "explicitly only after profiling. The body budget is a policy hint, not a hard "
+              "limit: 4096 starts the Auto switch, 50000 is a strategy-world target. DOD bodies "
+              "are simple AABB shapes without joints; use swept projectiles instead of CCD."),
         ("h2", "Audio"),
         ("h3", "audio master / sfx / music"),
         ("p", "Keep the defaults at 1.0 and build headroom into the assets: mix music around -6 dBFS "
@@ -331,6 +339,8 @@ def ContentRu() -> list[tuple]:
             ["build.unity_build", "true", "true", "true; выключать только при нехватке памяти сборки"],
             ["build.native_arch", "false", "false", "false"],
             ["слои коллизий", "3-4 используемых", "до 6 используемых", "именованный набор, лишние пары выключены"],
+            ["physics_backend", "Auto", "Auto", "Auto или DOD для 4096+ простых тел"],
+            ["physics_body_budget", "0", "0", "50000 для стратегии, 0 для обычных игр"],
             ["virtual_texture.enabled", "false", "true для карт с зумом", "true"],
             ["VT page/tile/layers/table", "-", "1024/64/2/128", "2048/64/4/256"],
             ["VT budget / prefetch", "-", "6 / 1", "8 / 2"],
@@ -345,6 +355,12 @@ def ContentRu() -> list[tuple]:
               "снарядах и везде, где заметны 16 мс задержки ввода. Файтинги и ритм-игры могут "
               "оправдать 240 Гц, но тогда каждая фиксированная система должна укладываться в ~4 мс. "
               "Частота рендера независима: не привязывайте симуляцию к герцовке монитора."),
+        ("h3", "physics_backend / physics_body_budget"),
+        ("p", "Auto оставляет Box2D для соединений, CCD и обычных твёрдых тел и переключается "
+              "на data-oriented бэкенд только для большого мира без соединений. Задавайте бэкенд "
+              "явно только после профилирования. Бюджет тел — это подсказка политике, а не жёсткий "
+              "лимит: 4096 включает Auto-переключение, 50000 — цель для стратегии. Тела DOD — "
+              "простые AABB без соединений; вместо CCD используйте swept-снаряды."),
         ("h3", "max_fixed_steps"),
         ("p", "Предел догоняющих шагов при медленном кадре. 4 хватает лёгким сценам, 8 — обычное "
               "коммерческое значение. Поднимать выше 8 опасно: один провал кадра превращается в "
@@ -656,16 +672,18 @@ def main() -> int:
         ("en", "ProjectSettingsRecommendations_EN", ContentEn()),
         ("ru", "ProjectSettingsRecommendations_RU", ContentRu()),
     ]
+    failed = False
     for language, name, blocks in documents:
         DocPaths.Md(language, f"{name}.md").write_text(Markdown(blocks), encoding="utf-8")
         docx_path = DocPaths.Docx(language, f"{name}.docx")
         BuildDocx(blocks, docx_path)
         pdf_path = DocPaths.Pdf(language, f"{name}.pdf")
         if not ExportPdf(docx_path, pdf_path):
-            return 1
+            failed = True
+            continue
         docconvert.BuildDjvu(pdf_path, DocPaths.Djvu(language, f"{name}.djvu"))
         print(f"wrote {name}.md/.docx/.pdf ({language})")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

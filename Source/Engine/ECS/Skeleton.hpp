@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Engine/Core/Mat4.hpp"
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/ECS/Schedule.hpp"
 
@@ -50,8 +51,8 @@ struct Mat3
 
 [[nodiscard]] inline Mat3 Mat3Rotation(float InRadians) noexcept
 {
-    const float ScopedCosine = std::cos(InRadians);
-    const float ScopedSine = std::sin(InRadians);
+    const float ScopedCosine = Sim::Cos(InRadians);
+    const float ScopedSine = Sim::Sin(InRadians);
     Mat3 ScopedResult;
     ScopedResult.m[0] = ScopedCosine;
     ScopedResult.m[1] = ScopedSine;
@@ -203,6 +204,6 @@ public:
 
     // Runs Evaluate (and optionally Deform) for every entity with a skeleton.
     void Run(entt::registry& InRegistry) const;
-    void Run(Ecs::SystemContext& InContext) const;
+    void Run(const Ecs::CoreSystemView& InView) const;
 };
 }

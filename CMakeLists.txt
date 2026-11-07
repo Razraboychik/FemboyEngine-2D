@@ -1,8 +1,8 @@
-# FemboyEngine2D 0.2.0-alpha.1 - public alpha build
+# FemboyEngine2D 0.3.0-alpha.1 - public alpha build
 cmake_minimum_required(VERSION 3.28)
 
 project(FemboyEngine2D
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Data-oriented 2D game engine"
     LANGUAGES C CXX)
 
@@ -13,6 +13,12 @@ set(FBY_VERSION_STRING "${PROJECT_VERSION}${FBY_VERSION_SUFFIX}")
 
 if(APPLE)
     enable_language(OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 20)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+    set(CMAKE_OBJCXX_EXTENSIONS OFF)
+    # The macOS SDK's CoreFoundation headers use opaque fixed-base enums that
+    # Clang 19+ diagnoses in C++26 parsing. They are valid API declarations.
+    add_compile_options(-Wno-elaborated-enum-base)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")

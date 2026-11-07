@@ -204,7 +204,7 @@ public:
     LightingSettings Settings{};
 
 private:
-    static void Tick(Ecs::SystemContext& InContext, void* InUser);
+    static void Tick(Ecs::RenderSystemView& InView, void* InUser);
 
     const SdfField* MSdfField = nullptr;
     const SdfBrickMap* MSdfBrickMap = nullptr;

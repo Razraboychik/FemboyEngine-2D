@@ -172,6 +172,10 @@ struct ProjectSettings
 
     float fixedUpdateHz = 120.0f;
     std::uint32_t maxFixedSteps = 8;
+    // 0 Auto, 1 Box2D, 2 DOD. Auto uses the body budget below to pick the
+    // data-oriented backend for large, joint-free strategy worlds.
+    std::uint8_t physicsBackend = 0;
+    std::uint32_t physicsBodyBudget = 0;
 
     float masterVolume = 1.0f;
     float sfxVolume = 1.0f;
@@ -273,6 +277,10 @@ struct ProjectPaths
 {
     std::filesystem::path root;
     std::filesystem::path projectFile;
+    // Authoring-only documentation, kept outside assets so the cooker never
+    // sees it.
+    std::filesystem::path plans;
+    std::filesystem::path disdocs;
     std::filesystem::path assets;
     std::filesystem::path textures;
     std::filesystem::path audio;

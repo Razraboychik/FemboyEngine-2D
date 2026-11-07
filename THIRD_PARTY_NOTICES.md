@@ -28,6 +28,7 @@ Do not edit it by hand; change the manifest and regenerate.
 | LZMA SDK | 25.01 | Public Domain | FemArchiver distribution compression |
 | RNNoise | 0.1.1 | BSD-3-Clause | Neural speech denoise tier for the voice chain |
 | Monocypher | 4.0.2 | BSD-2-Clause OR CC0-1.0 | BLAKE2b, X25519 and EdDSA primitives for the network layer |
+| libunibreak | 6.1 | Zlib | Unicode line, word and grapheme boundary algorithms (UAX #14, #29) |
 | HarfBuzz | 15.0.0 | MIT | OpenType shaping for complex scripts, ligatures and mark positioning |
 | SheenBidi | 3.0.0 | Apache-2.0 | Unicode Bidirectional Algorithm (UAX #9) runs |
 | IBM Plex Sans / IBM Plex Mono | IBM Plex 6.4.0 | OFL-1.1 | Default text family: regular, bold, italic, bold italic and mono slots |
@@ -829,6 +830,36 @@ Special notes
 
 The files in `tests/externals/` were placed in the public domain by
 their respective authors.  See the `AUTHORS.md` files in each directory.
+```
+
+### libunibreak 6.1
+
+- SPDX: `Zlib`
+- Copyright: Copyright (C) Wu Yongwei, Tom Hacohen, Petr Filipsky and Andreas Röver
+- Upstream: https://github.com/adah1972/libunibreak
+
+```text
+Copyright (C) Wu Yongwei <wuyongwei at gmail dot com>
+Copyright (C) Tom Hacohen <tom at stosb dot com>
+Copyright (C) Petr Filipsky <philodej at gmail dot com>
+Copyright (C) Andreas Röver <roever at users dot sf dot net>
+
+This software is provided 'as-is', without any express or implied
+warranty.  In no event will the author be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software.  If you use this software
+   in a product, an acknowledgement in the product documentation would
+   be appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not
+   be misrepresented as being the original software.
+3. This notice may not be removed or altered from any source
+   distribution.
 ```
 
 ### HarfBuzz 15.0.0

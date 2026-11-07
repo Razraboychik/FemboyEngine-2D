@@ -197,7 +197,11 @@ namespace
     }
     else
     {
+#if defined(__APPLE__)
+        ScopedCommand += " -std=c++26 -O3 -dynamiclib";
+#else
         ScopedCommand += " -std=c++26 -O3 -shared";
+#endif
 #if !defined(_WIN32)
         ScopedCommand += " -fPIC";
 #endif

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Engine/Text/TextBidi.hpp"
+#include "Engine/Text/UnicodeBreak.hpp"
 #include "Engine/Text/TextStyle.hpp"
 #include "Engine/UI/FontAtlas.hpp"
 
@@ -384,6 +385,29 @@ struct TextInlineHit
     return ScopedCount;
 }
 
+// Unicode line opportunities are most valuable for scripts without spaces.
+// Keep the legacy word splitter for Latin/Cyrillic so existing wrapping stays
+// byte-for-byte stable.
+[[nodiscard]] inline bool HasWordlessScript(std::string_view InText) noexcept
+{
+    std::size_t ScopedOffset = 0;
+    while (ScopedOffset < InText.size())
+    {
+        const std::uint32_t ScopedCodepoint = DecodeTextUtf8(InText, ScopedOffset);
+        if ((ScopedCodepoint >= 0x0E00u && ScopedCodepoint <= 0x0E7Fu) ||
+            (ScopedCodepoint >= 0x1100u && ScopedCodepoint <= 0x11FFu) ||
+            (ScopedCodepoint >= 0x2E80u && ScopedCodepoint <= 0x9FFFu) ||
+            (ScopedCodepoint >= 0xAC00u && ScopedCodepoint <= 0xD7AFu) ||
+            (ScopedCodepoint >= 0xF900u && ScopedCodepoint <= 0xFAFFu) ||
+            (ScopedCodepoint >= 0xFF00u && ScopedCodepoint <= 0xFFEFu) ||
+            ScopedCodepoint >= 0x20000u)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Greedy word wrapping by pixel width. Inline atoms reserve their own Width and
 // the output ranges still point into the original UTF-8 buffer.
 [[nodiscard]] inline bool LayoutText(std::string_view InText, const TextLayoutParams& InParams,
@@ -400,6 +424,17 @@ struct TextInlineHit
         std::span<TextRun>(OutResult->Runs.data(), OutResult->Runs.size()));
     const float ScopedAdvance = InParams.Advance > 0.0f ? InParams.Advance : 1.0f;
     const float ScopedWidth = InParams.MaxWidth > 0.0f ? InParams.MaxWidth : ScopedAdvance;
+
+    constexpr std::size_t kMaxBreakBytes = 8192;
+    std::array<UnicodeBoundary, kMaxBreakBytes> ScopedBreaks{};
+    const bool ScopedHasBreaks =
+        InParams.Inlines.empty() && HasWordlessScript(InText) && InText.size() <= kMaxBreakBytes &&
+        ComputeLineBreaks(InText, std::span<UnicodeBoundary>(ScopedBreaks.data(), InText.size()));
+    const auto ScopedAllowsLineBreak = [&ScopedBreaks, ScopedHasBreaks](std::size_t InOffset) noexcept
+    {
+        return ScopedHasBreaks && InOffset < ScopedBreaks.size() &&
+               ScopedBreaks[InOffset] != UnicodeBoundary::None;
+    };
 
     const auto ScopedEmit = [OutResult](std::size_t InBegin, std::size_t InEnd, std::uint32_t InGlyphs,
                                         float InWidth, float InHeight) noexcept
@@ -459,7 +494,8 @@ struct TextInlineHit
         {
             const std::size_t ScopedBefore = ScopedCursor;
             const std::uint32_t ScopedCodepoint = DecodeTextUtf8(InText, ScopedCursor);
-            if (ScopedCodepoint == ' ' || ScopedCodepoint == '\t' || ScopedCodepoint == '\n')
+            if (ScopedCodepoint == ' ' || ScopedCodepoint == '\t' || ScopedCodepoint == '\n' ||
+                (ScopedCursor != ScopedWordBegin && ScopedAllowsLineBreak(ScopedBefore)))
             {
                 ScopedCursor = ScopedBefore;
                 break;
@@ -523,6 +559,11 @@ struct TextInlineHit
         {
             const std::size_t ScopedSeparator = ScopedCursor;
             const std::uint32_t ScopedCodepoint = DecodeTextUtf8(InText, ScopedCursor);
+            if (ScopedAllowsLineBreak(ScopedSeparator) && ScopedCodepoint != ' ' && ScopedCodepoint != '\t' &&
+                ScopedCodepoint != '\n')
+            {
+                continue;
+            }
             if (ScopedCodepoint == '\n')
             {
                 ScopedEmit(ScopedLineBegin, ScopedSeparator, ScopedLineGlyphs, ScopedLineWidth, ScopedLineHeight);

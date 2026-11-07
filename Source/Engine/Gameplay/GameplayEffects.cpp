@@ -1,6 +1,8 @@
 // FemboyEngine2D - gameplay effect runtime and attribute/tag aggregation.
 #include "Engine/Gameplay/GameplayEffects.hpp"
 
+#include "Engine/Core/SimMath.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -16,7 +18,7 @@ namespace
         case GameplayModifierOp::Add:
             return InModifier.Magnitude * ScopedStacks;
         case GameplayModifierOp::Multiply:
-            return std::pow(InModifier.Magnitude, ScopedStacks);
+            return Sim::Pow(InModifier.Magnitude, ScopedStacks);
         case GameplayModifierOp::Override:
             return InModifier.Magnitude;
     }

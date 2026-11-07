@@ -1,6 +1,7 @@
 // FemboyEngine2D - baked SDF GI: direct sun visibility plus one bounce.
 #pragma once
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/Physics/SdfBrickMap.hpp"
 
@@ -103,7 +104,7 @@ public:
                         const float ScopedAngle =
                             (static_cast<float>(ScopedSample) + 0.5f) * 6.28318530718f /
                             static_cast<float>(ScopedBounceSamples);
-                        const Vector2D ScopedOffset{std::cos(ScopedAngle), std::sin(ScopedAngle)};
+                        const Vector2D ScopedOffset{Sim::Cos(ScopedAngle), Sim::Sin(ScopedAngle)};
                         const Vector2D ScopedNeighbor = ScopedCenter + ScopedOffset * ScopedBounceDistance;
                         if (InMap.Sample(ScopedNeighbor) <= 0.0f)
                         {

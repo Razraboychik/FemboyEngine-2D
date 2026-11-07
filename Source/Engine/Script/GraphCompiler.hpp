@@ -171,6 +171,17 @@ enum class LogicNodeKind : std::uint8_t
     DecimalLog = 43,
     // Two Decimal tokens + rounding mode float -> Decimal token
     DecimalDivRounded = 44,
+    // Physics backend policy; values are exposed as floats/ints for scripts.
+    PhysicsGetBackend = 45,
+    PhysicsSetBackend = 46,
+    PhysicsCapabilities = 47,
+    CameraAddTrauma = 48,
+    CameraDistort = 49,
+    CameraOffset = 50,
+    CameraZoom = 51,
+    CameraRoll = 52,
+    CameraClearEffects = 53,
+    CameraSetMotionScale = 54,
     Count
 };
 
@@ -266,6 +277,26 @@ enum class LogicNodeKind : std::uint8_t
             return "Decimal To Int";
         case LogicNodeKind::DecimalLog:
             return "Decimal Log";
+        case LogicNodeKind::PhysicsGetBackend:
+            return "Physics Get Backend";
+        case LogicNodeKind::PhysicsSetBackend:
+            return "Physics Set Backend";
+        case LogicNodeKind::PhysicsCapabilities:
+            return "Physics Capabilities";
+        case LogicNodeKind::CameraAddTrauma:
+            return "Camera Add Trauma";
+        case LogicNodeKind::CameraDistort:
+            return "Camera Distort";
+        case LogicNodeKind::CameraOffset:
+            return "Camera Offset";
+        case LogicNodeKind::CameraZoom:
+            return "Camera Zoom";
+        case LogicNodeKind::CameraRoll:
+            return "Camera Roll";
+        case LogicNodeKind::CameraClearEffects:
+            return "Camera Clear Effects";
+        case LogicNodeKind::CameraSetMotionScale:
+            return "Camera Motion Scale";
         case LogicNodeKind::Count:
             break;
     }
@@ -460,7 +491,18 @@ struct LogicGraph
             case LogicNodeKind::DecimalToInt:
                 return PinType::Float;
             case LogicNodeKind::DecimalLog:
+            case LogicNodeKind::PhysicsSetBackend:
+            case LogicNodeKind::CameraAddTrauma:
+            case LogicNodeKind::CameraDistort:
+            case LogicNodeKind::CameraOffset:
+            case LogicNodeKind::CameraZoom:
+            case LogicNodeKind::CameraRoll:
+            case LogicNodeKind::CameraClearEffects:
+            case LogicNodeKind::CameraSetMotionScale:
                 return PinType::Exec;
+            case LogicNodeKind::PhysicsGetBackend:
+            case LogicNodeKind::PhysicsCapabilities:
+                return PinType::Float;
             case LogicNodeKind::Branch:
                 // Pin 0 = "true" exec branch, pin 1 = "false" exec branch.
                 return PinType::Exec;
@@ -497,6 +539,8 @@ struct LogicGraph
             case LogicNodeKind::SelfRotation:
             case LogicNodeKind::DeltaTime:
             case LogicNodeKind::Random01:
+            case LogicNodeKind::PhysicsGetBackend:
+            case LogicNodeKind::PhysicsCapabilities:
                 return 0;
             case LogicNodeKind::Add:
             case LogicNodeKind::Sub:
@@ -554,6 +598,25 @@ struct LogicGraph
             case LogicNodeKind::SpawnEntity:
                 // Exec
                 return 1;
+            case LogicNodeKind::PhysicsSetBackend:
+                // Exec, backend selector
+                return 2;
+            case LogicNodeKind::CameraAddTrauma:
+            case LogicNodeKind::CameraSetMotionScale:
+                // Exec, value
+                return 2;
+            case LogicNodeKind::CameraOffset:
+                // Exec, x, y, duration
+                return 4;
+            case LogicNodeKind::CameraZoom:
+            case LogicNodeKind::CameraRoll:
+                // Exec, value, duration
+                return 3;
+            case LogicNodeKind::CameraDistort:
+                // Exec, flags, strength, x, y, duration
+                return 6;
+            case LogicNodeKind::CameraClearEffects:
+                return 1;
             case LogicNodeKind::Count:
                 break;
         }
@@ -573,6 +636,15 @@ struct LogicGraph
                 return InPin == 0 ? PinType::Exec : PinType::Vector2D;
             case LogicNodeKind::DespawnSelf:
                 return PinType::Exec;
+            case LogicNodeKind::PhysicsSetBackend:
+            case LogicNodeKind::CameraAddTrauma:
+            case LogicNodeKind::CameraDistort:
+            case LogicNodeKind::CameraOffset:
+            case LogicNodeKind::CameraZoom:
+            case LogicNodeKind::CameraRoll:
+            case LogicNodeKind::CameraClearEffects:
+            case LogicNodeKind::CameraSetMotionScale:
+                return InPin == 0 ? PinType::Exec : PinType::Float;
             case LogicNodeKind::Add:
             case LogicNodeKind::Sub:
             case LogicNodeKind::Mul:

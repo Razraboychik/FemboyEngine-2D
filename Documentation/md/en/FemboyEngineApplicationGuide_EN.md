@@ -1,6 +1,6 @@
 # FemboyEngine2D Application Guide
 
-*ECS in practice, production optimisation and the distribution SDK — 2026-11-04*
+*ECS in practice, production optimisation and the distribution SDK — 2026-11-06*
 
 ## 1. What this guide is for
 
@@ -18,29 +18,30 @@ The running project is deliberately small. A player, three enemy archetypes, a b
 
 ## 2. Setup and the reproducible toolchain
 
-The setup scripts are split by software group. The C++ scripts install the pinned toolchain and materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first configure after setup does not need network access. Versions are fixed by the scripts and written to third_party/dependencies.lock.
+The setup scripts are split by OS and software group. The C++ scripts install the pinned toolchain and materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first configure after setup does not need network access. Versions are fixed by the scripts and written to third_party/dependencies.lock.
 
 ```cpp
 # Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts\SetupCpp.bat
-SetupScripts\SetupArchiver.bat
+SetupScripts\Windows\Setup.bat
+SetupScripts\Windows\SetupCpp.bat
+SetupScripts\Windows\SetupArchiver.bat
 # optional vendor SDKs
-SetupScripts\SetupUpscalers.bat
+SetupScripts\Windows\SetupUpscalers.bat
 
 # Ubuntu / Debian
-./SetupScripts/SetupCpp.sh
-./SetupScripts/SetupArchiver.sh
+./SetupScripts/Linux/SetupCpp.sh
+./SetupScripts/Linux/SetupArchiver.sh
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.sh
+./SetupScripts/Linux/SetupUpscalers.sh
 
 # macOS (double-click in Finder also works)
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.command
+./SetupScripts/macOS/SetupUpscalers.command
 ```
 
-The all-in-one Setup.bat, Setup.sh and Setup.command remain available.
+The all-in-one entry points are SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh and SetupScripts/macOS/Setup.command.
 
 Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.2.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system (or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan loader.
 
@@ -57,6 +58,31 @@ ctest --test-dir build --output-on-failure
 The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and GCC 16+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer uses the deterministic FbyLZ codec and reports it in the cook log.
 
 > **Note.** Setup never modifies a source file. It is safe to delete third_party/<name>-src and re-run with --force; the lock file is regenerated and the CMake cache does not embed a machine-specific path.
+
+### 2.1 Editor and cooked game on Windows, Linux and macOS
+
+The same presets build the editor, the sandbox, the asset tools and the game packer. Windows uses clang-cl with Vulkan; Linux uses clang++ with Vulkan; macOS uses clang++ with Metal. Every preset exports compile_commands.json and keeps the tests enabled.
+
+```cpp
+# Windows 10/11, from an LLVM + Visual Studio developer shell
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+
+# Linux, from a shell with Clang, Ninja and Vulkan headers
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release
+
+# macOS, from a shell with Xcode command-line tools and Homebrew
+cmake --preset macos-release
+cmake --build --preset macos-release
+ctest --preset macos-release
+```
+
+The editor is build-<platform>/bin/fby_editor (Windows adds .exe). Build & Pack Game uses the same editor on all three systems: it cooks assets through fby_fempak, writes the AOT module when the project has a LogicGraph, and stages archives under the project stores/. The POSIX release path uses posix_spawn and reports the child exit code; the Windows path uses CreateProcess.
+
+> **Note.** Windows is the locally validated gate. Linux and macOS have presets, platform code and CI jobs; treat their first hosted runs as the acceptance gate until the matrix is green. The RHI is Metal on macOS and Vulkan on Windows/Linux.
 
 ---
 
@@ -300,6 +326,58 @@ Determinism is a property of the data, not of a hope. FixedUpdate receives a con
 - One test executable per concern; no test framework and no dynamic registration.
 - Run the whole suite with ctest; a single failure prints file and line and returns non-zero.
 
+### 5.1 Deterministic input and replication while building the game
+
+Build input and replication together, not after the gameplay is finished. The action mapper produces the same fixed-tick data on every peer; the network layer carries an input frame, never raw SDL events. This is the contract that makes prediction and rollback possible.
+
+```cpp
+InputSystem input;
+const std::uint16_t Move = input.RegisterAction("Move", InputActionType::Axis2D);
+const std::uint16_t Jump = input.RegisterAction("Jump", InputActionType::Bool);
+const std::uint16_t Gameplay = input.RegisterContext("Gameplay", 0, false);
+
+InputUserComponent user;
+user.UserId = 0;
+user.GamepadSlot = 0;
+registry.emplace<InputUserComponent>(player, user);
+input.BindUser(player, 0, 0);
+input.PushContext(0, Gameplay);
+
+// Once per fixed tick, before gameplay reads actions.
+input.Update(window.Input(), tick, timestampNs, fixedDt);
+const InputActionState& move = *input.Action(0, Move);
+if (input.Action(0, Jump)->Triggered) { JumpPlayer(player); }
+```
+
+The local device layer is allowed to differ: keyboard, mouse and gamepad take different paths into InputState. The simulation sees only action values and events. For a networked game, pack the values you need into NetInputFrame (or your own schema) and submit the frame for the owning player.
+
+```cpp
+NetRollbackSession::Config net;
+net.playerCount = 2;
+net.localPlayer = 0;
+net.rollbackTicks = 64;
+NetRollbackSession session;
+session.Initialize(registry, Ecs::SnapshotSchema::BuiltIns(), net);
+session.SetCommandLog(&commands);
+session.RegisterEntity(player, NetEntityId{1});
+
+NetInputFrame frame;
+frame.tick = tick;
+frame.player = 0;
+frame.moveX = static_cast<std::int16_t>(move.X * 32767.0f);
+frame.buttons = input.Action(0, Jump)->Triggered ? 1u : 0u;
+session.SubmitRemoteInput(0, frame);
+```
+
+- Authoritative simulation: the server owns the tick, the RNG seed and the CommandLog. Clients predict with the same tick size and the same gameplay systems.
+- Register gameplay components in SnapshotSchema before the first capture; a component outside the schema silently does not replicate.
+- Use stable NetEntityId values for replicated entities. Never derive one from an EnTT id, a spawn order or an allocator address.
+- Replicate input frames and structural commands, not raw device state or render-only values.
+- On a correction, restore the snapshot before the first bad tick, replay the corrected input and compare the final checksum.
+- Test PIE with two players, artificial latency, packet loss and a forced rollback before adding content.
+
+A useful project order is: one player + InputSystem; two local users; snapshot round trip; server-authoritative movement; then interaction, weapons and AI. Add replication fields with the feature that owns them, not in a single late 'networking pass'. If a system reads wall-clock time, frame delta or a render handle, it is not ready for rollback.
+
 ---
 
 ## 6. Memory and draw-call compression
@@ -460,6 +538,36 @@ postFx.Build(graph, cameras);
 ```
 
 For UI, the SDF path removes texture memory entirely. pink_sdf.frag evaluates circles, rounded boxes, capsules and rings analytically; anti-aliasing comes from fwidth. SlotComponent and CardBoardComponent lay out a card board without a scene, and BuildCardBoardPrimitives packs each slot into two instances (card and shadow).
+
+### 8.2 Moving platforms, transport and wheels
+
+A carrier is a transform frame, not a second rigid-body world. TransportGroupSystem is for elevators, trains and platforms: it computes carrier deltas before the physics step and refreshes local poses after it. A wheel entity is a normal dynamic body with a collider; WheelSystem creates the Box2D wheel joint lazily and applies the per-wheel spring, drive and brake settings before the step.
+
+```cpp
+TransportGroupSystem transport;
+transport.CreateGroup(registry, elevator, 1);
+transport.Attach(registry, player, 1, kCarrierModeSupport);
+
+TransportSurface surface;
+surface.Friction = 0.8f;
+registry.emplace<TransportSurface>(elevator, surface);
+
+Vehicle2D vehicle;
+vehicle.MaxMotorTorque = 600.0f;
+registry.emplace<Vehicle2D>(chassis, vehicle);
+
+Wheel2D wheel;
+wheel.Chassis = chassis;
+wheel.LocalAnchor = {-20.0f, 4.0f};
+wheel.Radius = 8.0f;
+wheel.DriveWeight = 1.0f;
+registry.emplace<Wheel2D>(wheelEntity, wheel);
+
+WheelSystem wheels;
+wheels.Initialize(physics);
+wheels.Update(registry, physics, fixedDt);
+physics.Step(registry, fixedDt);
+```
 
 ---
 

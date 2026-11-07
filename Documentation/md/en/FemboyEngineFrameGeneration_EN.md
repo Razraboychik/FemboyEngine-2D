@@ -174,7 +174,7 @@ back. XeSS has been removed; MetalFX is reserved without an adapter.
 The DLSS and FidelityFX SDKs are intentionally not committed to the engine
 repository. They are large, vendor-licensed and optional; a checkout without
 them still builds the portable FSR1/FSR2/custom paths. The
-`SetupScripts/SetupUpscalers.*` helpers verify or download a local SDK after
+`SetupScripts/Windows/SetupUpscalers.*`, `SetupScripts/Linux/SetupUpscalers.*` or `SetupScripts/macOS/SetupUpscalers.*` helpers verify or download a local SDK after
 the license is accepted. A developer who needs a vendor backend installs the
 SDK locally and points CMake at it:
 

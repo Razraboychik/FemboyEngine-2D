@@ -1,6 +1,8 @@
 // FemboyEngine2D - destructible object implementation.
 #include "Engine/Physics/SdfDestructible.hpp"
 
+#include "Engine/Core/SimMath.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -31,8 +33,8 @@ static_assert(sizeof(SdfOpsHeader) == 24, "SdfOpsHeader must stay 24 bytes");
 
 [[nodiscard]] Vector2D RotatePoint(Vector2D InPoint, float InRadians) noexcept
 {
-    const float ScopedCos = std::cos(InRadians);
-    const float ScopedSin = std::sin(InRadians);
+    const float ScopedCos = Sim::Cos(InRadians);
+    const float ScopedSin = Sim::Sin(InRadians);
     return Vector2D{InPoint.X * ScopedCos - InPoint.Y * ScopedSin, InPoint.X * ScopedSin + InPoint.Y * ScopedCos};
 }
 

@@ -1,6 +1,7 @@
 // FemboyEngine2D - unified light source solver with a static contribution cache.
 #include "Engine/ECS/LightSource.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/LightGrid.hpp"
 #include "Engine/ECS/Presentation.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
@@ -170,7 +171,7 @@ struct CombinedField
     const Vector2D ScopedToTarget = InTarget - InLight.Position;
     const float ScopedCross = InLight.Direction.X * ScopedToTarget.Y - InLight.Direction.Y * ScopedToTarget.X;
     const float ScopedDot = InLight.Direction.X * ScopedToTarget.X + InLight.Direction.Y * ScopedToTarget.Y;
-    const float ScopedAngle = std::atan2(ScopedCross, ScopedDot);
+    const float ScopedAngle = Sim::Atan2(ScopedCross, ScopedDot);
     return LightConeAttenuation(ScopedAngle, InLight.Aperture, InLight.Softness);
 }
 
@@ -300,7 +301,7 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
         }
         LightSample& ScopedLight = ScopedLights[ScopedLightCount++];
         ScopedLight.Position = ScopedTransform->Position + ScopedSource.Offset;
-        ScopedLight.Direction = Vector2D{std::cos(ScopedTransform->Rotation), std::sin(ScopedTransform->Rotation)};
+        ScopedLight.Direction = Vector2D{Sim::Cos(ScopedTransform->Rotation), Sim::Sin(ScopedTransform->Rotation)};
         ScopedLight.Radius = std::max(ScopedSource.Radius, 1.0f);
         ScopedLight.Intensity = std::max(ScopedSource.Intensity, 0.0f);
         ScopedLight.Red = UnpackChannel(ScopedSource.Color.rgba, 0);
@@ -522,18 +523,19 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
     return ScopedLit;
 }
 
-void LightSourceSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
+void LightSourceSystem::Tick(Ecs::RenderSystemView& InView, void* InUser)
 {
     if (InUser == nullptr)
     {
         return;
     }
     auto* ScopedSelf = static_cast<LightSourceSystem*>(InUser);
-    (void)ScopedSelf->Run(InContext.registry, ScopedSelf->Settings, ScopedSelf->SdfFieldView());
+    (void)ScopedSelf->Run(InView.registry, ScopedSelf->Settings, ScopedSelf->SdfFieldView());
 }
 
 bool LightSourceSystem::Register(Ecs::SystemGraph& InGraph, LightSourceSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "LightSourceSystem", &LightSourceSystem::Tick, &InSystem);
+    return InGraph.Add(Ecs::Phase::PostUpdate, "LightSourceSystem",
+                       Ecs::BindRenderSystem<&LightSourceSystem::Tick>(), &InSystem);
 }
 }

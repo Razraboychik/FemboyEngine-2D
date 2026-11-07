@@ -45,9 +45,14 @@ fby_add_engine_test(fby_bignumber_store_test bignumber_store BigNumberStoreTest.
 # Fixed-width signed decimals: parsing, arithmetic, rounding and scientific text.
 fby_add_engine_test(fby_decimal_test decimal DecimalTest.cpp)
 
+fby_add_engine_test(fby_unicode_break_test unicode_break UnicodeBreakTest.cpp)
+fby_add_engine_test(fby_pinkui_editable_test pinkui_editable PinkUIEditableTest.cpp)
+
 # Long text: block storage, UTF-8 boundaries and greedy wrapping.
 # Clocks, timer pools, frame timing and calendar formatting.
 fby_add_engine_test(fby_time_test time TimeTest.cpp)
+# Deterministic simulation math: trig, atan2 and wrap accuracy.
+fby_add_engine_test(fby_sim_math_test sim_math SimMathTest.cpp)
 # Job pool: exception isolation and shutdown drain.
 fby_add_engine_test(fby_job_system_test job_system JobSystemTest.cpp)
 # System graph: dependency order, cycle rejection, mask validation, removal.
@@ -522,7 +527,6 @@ if(TARGET fby_editor)
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME voice_pie COMMAND fby_voice_pie_test)
 
-    # Step 1 infrastructure: project creation/config, .femeta auto-import,
     add_executable(fby_editor_infrastructure_test EditorInfrastructureTest.cpp)
     target_include_directories(fby_editor_infrastructure_test SYSTEM PRIVATE
         "${FBY_ENGINE_SOURCE_ROOT}/third_party/stb")
@@ -635,7 +639,6 @@ if(TARGET fby_editor)
     set_target_properties(fby_optimization_ab PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 
-# Step 2: MaterialGraph Tilt25D/Distortion + SPIR-V, LogicGraph field nodes
     add_executable(fby_graph_editor_test GraphEditorTest.cpp)
     target_link_libraries(fby_graph_editor_test PRIVATE FemboyEngine2D::Editor)
     target_compile_definitions(fby_graph_editor_test PRIVATE
@@ -679,6 +682,17 @@ endif()
 
 # Physics extensions: Box2D v3 rope/chain construction, Verlet cloth with
 fby_add_engine_test(fby_physics_fx_test physics_fx PhysicsFxTest.cpp)
+fby_add_engine_test(fby_transport_physics_test transport_physics TransportPhysicsTest.cpp)
+fby_add_engine_test(fby_wheel_system_test wheel_system WheelSystemTest.cpp)
+fby_add_engine_test(fby_input_system_test input_system InputSystemTest.cpp)
+fby_add_engine_test(fby_camera_effects_test camera_effects CameraEffectsTest.cpp)
+
+fby_add_engine_test(fby_physics_backend_test physics_backend PhysicsBackendTest.cpp)
+fby_add_engine_test(fby_script_camera_test script_camera ScriptCameraTest.cpp)
+
+fby_add_engine_test(fby_script_physics_test script_physics ScriptPhysicsTest.cpp)
+fby_add_engine_test(fby_physics_backend_benchmark_test physics_backend_benchmark PhysicsBackendBenchmark.cpp)
+set_tests_properties(physics_backend_benchmark PROPERTIES LABELS optimization)
 
 # Gameplay: manual tags, attributes, effects, skills, StateTree integration and
 fby_add_engine_test(fby_skills_test skills SkillsTest.cpp)

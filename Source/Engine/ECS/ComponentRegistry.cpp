@@ -63,6 +63,12 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<Velocity>();
     InRegistry.Register<TransportGroupComponent>();
     InRegistry.Register<CarrierMemberComponent>();
+    InRegistry.Register<TransportMotion>();
+    InRegistry.Register<TransportSurface>();
+    InRegistry.Register<TransportPath>();
+    InRegistry.Register<Vehicle2D>();
+    InRegistry.Register<InputUserComponent>();
+    InRegistry.Register<Wheel2D>();
     InRegistry.Register<Sprite2D>();
     InRegistry.Register<DrawOrder>();
     InRegistry.Register<Camera2D>();

@@ -3,7 +3,7 @@
 **Архитектура, рендеринг, ECS, холсты анимации/ИИ с контрактами циклов блендинга и PIE-передачи, глобальный аудит, DOD-оптимизация и продакшн-дистрибуция**
 
 
-Version 0.2.0-alpha.1 (Alpha) · 2026-11-04 · Russian
+Version 0.3.0-alpha.1 (Alpha) · 2026-11-05 · Russian
 
 
 ---
@@ -216,18 +216,19 @@ ThreadLoad содержит busyNanoseconds (время внутри работ�
 
 ## 6. ECS, планирование и снапшоты
 
-Реестр — это EnTT. Системы регистрируются в SystemGraph в одной из пяти фаз (PreUpdate, FixedUpdate, Update, PostUpdate, Render). SystemContext — единственный параметр системы; он содержит реестр, JobSystem, кадровую арену, рендерер, окно, VFS, AssetDatabase, аудио, физику, суставы, ткань, жидкость, стек камер, ядро доступности и атласы шрифтов.
+Реестр — это EnTT. Системы регистрируются в SystemGraph в одной из четырёх фаз (PreUpdate, FixedUpdate, PostUpdate, Render). SystemContext — единственный параметр системы; он содержит реестр и JobSystem напрямую, а указатели на подсистемы сгруппированы в доменные бандлы (render, assets, audio, physics, text, accessibility, gameplay), поэтому система читает только объявленные бандлы. Запланированная система получает узкий view: `PhysicsSystemView`, `RenderSystemView`, `GameplaySystemView`, `AudioSystemView`, `UiSystemView`, `AccessibilitySystemView` или `CoreSystemView`, адаптированный через `Bind*System<&Function>()`.
 
 ```cpp
-Fby::Ecs::Schedule schedule;
-schedule.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
-schedule.Add(Fby::Ecs::Phase::Update, "movement", &MovementSystem, nullptr);
-schedule.Add(Fby::Ecs::Phase::PostUpdate, "platform", &GogAchievementSystem, &gog);
+Fby::Ecs::SystemGraph graph;
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr, 1ull << 0);
+graph.Add(Fby::Ecs::Phase::PostUpdate, "platform", &GogAchievementSystem, &gog);
 
 Fby::Ecs::SystemContext context{registry, jobs};
 context.physics = &physics;
 context.window = &window;
-schedule.Run(Fby::Ecs::Phase::FixedUpdate, context);
+graph.Build();
+graph.Run(Fby::Ecs::Phase::FixedUpdate, context);
 ```
 
 Snapshot v4 — канонический образ реестра с контрольной суммой. Компоненты с рантайм-хэндлами (b2BodyId, b2ShapeId) пишутся рукописными кодеками; снапшот никогда не сериализует эти хэндлы, а восстановление пересоздаёт тела из полей компонента. Схема хранит Mirror-имя и LayoutHash каждого компонента, поэтому изменение поля отклоняется, а не читается молча неверно.
@@ -488,11 +489,11 @@ typedef struct FbyPlatformApi {
 
 ```cpp
 // 4-7 in code: systems, accessibility and rollback for one match.
-Fby::Ecs::Schedule schedule;
-schedule.Add(Fby::Ecs::Phase::PreUpdate, "input", &InputSystem);
-schedule.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
-schedule.Add(Fby::Ecs::Phase::Update, "movement", &MovementSystem);
-schedule.Add(Fby::Ecs::Phase::Render, "ui", &UiSystem, &ui);
+Fby::Ecs::SystemGraph graph;
+graph.Add(Fby::Ecs::Phase::PreUpdate, "input", &InputSystem);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr, 1ull << 1);
+graph.Add(Fby::Ecs::Phase::Render, "ui", &UiSystem, &ui);
 
 Fby::AccessibilityKernel kernel;
 kernel.Configure(settings);              // blind/deaf/colour/flash
@@ -1247,7 +1248,7 @@ void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept
 - Поиск резидентности — открытая адресация с tombstone. Попадание стоит одного зонда и записи lastUsedFrame; отображение чанка никогда не перечитывается для резидентного тайла.
 - Сам VirtualTextureSystem занимает около 2 МиБ (таблица страниц и хеш на 65536 записей). Это стартовый объект, один раз выделяемый в куче, а не стековая переменная кадровой функции.
 
-31.2 Маски изменений компонентов. Видимая для рендера сущность несёт ComponentChangeMask рядом с Transform2D/Sprite2D. Система, меняющая данные, вызывает change::MarkTransform(), MarkSprite() или MarkDrawOrder(); отметка — один атомарный fetch_or по 64-битному слову. Extract читает слово, потребляет его через fetch_and(0) и пересчитывает RenderItem только если присутствовал один из трёх рендер-битов. Сущность с нулевой маской стоит одного поиска указателя и одной relaxed-загрузки — без чтения Transform, копирования Sprite и вычисления RenderKey.
+31.2 Маски изменений компонентов. Видимая для рендера сущность несёт ComponentChangeMask рядом с Transform2D/Sprite2D. Система, меняющая данные, вызывает Fby::Change::MarkTransform(), MarkSprite() или MarkDrawOrder(); отметка — один атомарный fetch_or по 64-битному слову. Extract читает слово, потребляет его через fetch_and(0) и пересчитывает RenderItem только если присутствовал один из трёх рендер-битов. Сущность с нулевой маской стоит одного поиска указателя и одной relaxed-загрузки — без чтения Transform, копирования Sprite и вычисления RenderKey.
 
 | Бит | Имя | Потребитель | Эффект |
 |---|---|---|---|
@@ -1273,9 +1274,9 @@ Fby::Change::MarkTransform(registry, entity, frameIndex);
 
 // Extract: static items fall through after one relaxed load.
 for (auto [e, mask, transform, sprite] : view.each()) {
-    const ChangeMask Bits = change::Peek(mask);
+    const ChangeMask Bits = Fby::Change::Peek(mask);
     if (Bits == 0 && SlotKnown(e)) { ++stats.skippedStatic; continue; }
-    const ChangeMask Hit = change::Consume(mask);
+    const ChangeMask Hit = Fby::Change::Consume(mask);
     if ((Hit & kRenderBits) == 0) { continue; }
     BuildItem(registry, e, &items[slot], &keys[slot]);
 }
@@ -1299,6 +1300,7 @@ if (OldKey != NewKey) { RebuildOutput(); return DirtyRange{0, MOutputCount}; }
 FillPacket() публикует те же диапазоны как FramePacket::instanceRanges и выставляет instanceRangesAreDeltas. VulkanRHI копирует только эти диапазоны в постоянный срез instance-буфера кадра после того, как срез получил один полный образ; первое использование, resize или структурная пересборка откатываются к полному копированию. MetalRHI сохраняет полное копирование как fallback, поэтому контракт пакета переносим, а оптимизация явная.
 
 - Без аллокаций: каждый слот, ключ, батч, диапазон и бакет поиска живут внутри объекта, параметризованного Capacity. Значение по умолчанию 4096 покрывает большую 2D-сцену; стриминговый мир инстанцирует ChangeMaskRenderExtract<1u << 18> без изменения API.
+- Поиск сущность → слот — открытая адресация с tombstone’ами, таблица пересобирается при превышении порога загрузки, поэтому долгая сессия spawn/despawn не может её исчерпать. Покадровые проходы идут по плотному списку активных слотов, поэтому их стоимость зависит от числа живых сущностей, а не от Capacity.
 - Extract отдаёт оба представления: Items()/Keys()/Batches() заполняют существующий FramePacket, а DirtyRanges() — план загрузки для бэкенда с постоянным instance SSBO. Кадр без изменений и без структурных правок даёт пустой список диапазонов.
 - Смена слоя намеренно считается структурной, даже если float-глубина не изменилась: батчинг группирует по старшим 16 битам RenderKey, поэтому стабильный порядок — условие корректности, а не оптимизация.
 
@@ -1845,8 +1847,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `EditorSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 100 |
 | `Entry` | Infrastructure | `Source/Editor/Infrastructure/TextureThumbnails.hpp` | 52 |
 | `ExternalClientDesc` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 37 |
-| `FrameComposer` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 64 |
-| `FrameComposerStats` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 45 |
+| `FrameComposer` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 64 |
+| `FrameComposerStats` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 45 |
 | `FrameGenerationMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 138 |
 | `FrameGenerationPolicySetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 131 |
 | `HudTargetMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 147 |
@@ -1858,7 +1860,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `MaterialGraphPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 52 |
 | `MaterialGraphRuntime` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 41 |
 | `MaterialRuntimeStats` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 25 |
-| `MotionHistory2D` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 30 |
+| `MotionHistory2D` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 30 |
 | `NetSession` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 32 |
 | `NetworkDiagnosticsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 53 |
 | `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 98 |
@@ -1875,12 +1877,12 @@ ScopedMaterials.Shutdown(InRhi);
 | `PlayInEditor` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 44 |
 | `Profiler` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 27 |
 | `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 57 |
-| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 250 |
+| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 254 |
 | `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 54 |
-| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 310 |
+| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 314 |
 | `ProjectDashboard` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 55 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 58 |
-| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 272 |
+| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 276 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 21 |
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 162 |
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 22 |
@@ -1896,8 +1898,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 43 |
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 47 |
 | `SdfCollisionSystem` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 13 |
-| `SdfField` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 20 |
-| `SdfGiVolume` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 21 |
+| `SdfField` | Physics | `Source/Engine/Physics/SdfCollision.hpp` | 20 |
+| `SdfGiVolume` | Physics | `Source/Engine/Physics/SdfGi.hpp` | 21 |
 | `Services` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 220 |
 | `SettingDesc` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 28 |
 | `SettingKind` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 20 |
@@ -2193,7 +2195,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `VoiceWhisperSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 185 |
 | `VorbisIdentInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 121 |
 
-### Engine/Core (102)
+### Engine/Core (103)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -2222,18 +2224,19 @@ ScopedMaterials.Shutdown(InRhi);
 | `EddsaKeyPair` | Core | `Source/Engine/Core/CryptoAsymmetric.hpp` | 31 |
 | `FieldDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 37 |
 | `FieldKind` | Core | `Source/Engine/Core/Mirror.hpp` | 17 |
-| `FileFilter` | Core | `Source/Engine/Core/WindowManager.hpp` | 154 |
+| `FileFilter` | Core | `Source/Engine/Core/WindowManager.hpp` | 183 |
 | `FormatSpec` | Core | `Source/Engine/Core/BigInt.hpp` | 36 |
 | `FrameArena` | Core | `Source/Engine/Core/FrameArena.hpp` | 12 |
 | `FrameTimer` | Core | `Source/Engine/Core/Time.hpp` | 501 |
+| `GamepadState` | Core | `Source/Engine/Core/WindowManager.hpp` | 26 |
 | `GridDesc` | Core | `Source/Engine/Core/Grid.hpp` | 91 |
 | `Handle` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 20 |
 | `Handle` | Core | `Source/Engine/Core/Types.hpp` | 275 |
 | `Handle` | Core | `Source/Engine/Core/WindowHost.hpp` | 20 |
 | `Host` | Core | `Source/Engine/Core/Plugin.hpp` | 20 |
-| `InputState` | Core | `Source/Engine/Core/WindowManager.hpp` | 98 |
+| `InputState` | Core | `Source/Engine/Core/WindowManager.hpp` | 114 |
 | `JobSystem` | Core | `Source/Engine/Core/JobSystem.hpp` | 25 |
-| `Key` | Core | `Source/Engine/Core/WindowManager.hpp` | 30 |
+| `Key` | Core | `Source/Engine/Core/WindowManager.hpp` | 46 |
 | `KeyLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 203 |
 | `LoadedPlugin` | Core | `Source/Engine/Core/PluginHost.hpp` | 64 |
 | `LogLevel` | Core | `Source/Engine/Core/Log.hpp` | 13 |
@@ -2292,15 +2295,15 @@ ScopedMaterials.Shutdown(InRhi);
 | `Vector2D` | Core | `Source/Engine/Core/Types.hpp` | 13 |
 | `Vector3D` | Core | `Source/Engine/Core/Types.hpp` | 90 |
 | `Vector4D` | Core | `Source/Engine/Core/Types.hpp` | 139 |
-| `WindowDesc` | Core | `Source/Engine/Core/WindowManager.hpp` | 175 |
-| `WindowExtent` | Core | `Source/Engine/Core/WindowManager.hpp` | 21 |
+| `WindowDesc` | Core | `Source/Engine/Core/WindowManager.hpp` | 204 |
+| `WindowExtent` | Core | `Source/Engine/Core/WindowManager.hpp` | 37 |
 | `WindowHost` | Core | `Source/Engine/Core/WindowHost.hpp` | 17 |
-| `WindowManager` | Core | `Source/Engine/Core/WindowManager.hpp` | 186 |
-| `WindowMode` | Core | `Source/Engine/Core/WindowManager.hpp` | 166 |
+| `WindowManager` | Core | `Source/Engine/Core/WindowManager.hpp` | 215 |
+| `WindowMode` | Core | `Source/Engine/Core/WindowManager.hpp` | 195 |
 | `WindowRecord` | Core | `Source/Engine/Core/WindowHost.hpp` | 30 |
 | `X25519KeyPair` | Core | `Source/Engine/Core/CryptoAsymmetric.hpp` | 20 |
 
-### Engine/ECS (204)
+### Engine/ECS (211)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -2318,11 +2321,11 @@ ScopedMaterials.Shutdown(InRhi);
 | `AssetDatabase` | ECS | `Source/Engine/ECS/Scene.hpp` | 21 |
 | `AssetDatabase` | ECS | `Source/Engine/ECS/Schedule.hpp` | 33 |
 | `AudioSystem` | ECS | `Source/Engine/ECS/Schedule.hpp` | 16 |
-| `BigIntComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 173 |
+| `BigIntComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 265 |
 | `CachedTarget` | ECS | `Source/Engine/ECS/LightSource.hpp` | 229 |
-| `Camera2D` | ECS | `Source/Engine/ECS/Components.hpp` | 126 |
+| `Camera2D` | ECS | `Source/Engine/ECS/Components.hpp` | 218 |
 | `CameraStackSystem` | ECS | `Source/Engine/ECS/Schedule.hpp` | 26 |
-| `CarrierMemberComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 76 |
+| `CarrierMemberComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 168 |
 | `ChainIdTag` | ECS | `Source/Engine/ECS/StableIds.hpp` | 12 |
 | `ChainSaveV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 28 |
 | `ChangeMaskBit` | ECS | `Source/Engine/ECS/ChangeMask.hpp` | 19 |
@@ -2354,9 +2357,9 @@ ScopedMaterials.Shutdown(InRhi);
 | `CompressedTrack` | ECS | `Source/Engine/ECS/AnimationCompression.hpp` | 31 |
 | `CompressionReport` | ECS | `Source/Engine/ECS/AnimationCompression.hpp` | 63 |
 | `Cursor` | ECS | `Source/Engine/ECS/CommandLog.hpp` | 177 |
-| `DecimalComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 184 |
-| `DrawOrder` | ECS | `Source/Engine/ECS/Components.hpp` | 115 |
-| `EditorSelected` | ECS | `Source/Engine/ECS/Components.hpp` | 140 |
+| `DecimalComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 276 |
+| `DrawOrder` | ECS | `Source/Engine/ECS/Components.hpp` | 207 |
+| `EditorSelected` | ECS | `Source/Engine/ECS/Components.hpp` | 232 |
 | `EmitterIdTag` | ECS | `Source/Engine/ECS/StableIds.hpp` | 14 |
 | `EmitterSaveV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 79 |
 | `EntityRemap` | ECS | `Source/Engine/ECS/Scene.hpp` | 59 |
@@ -2375,14 +2378,15 @@ ScopedMaterials.Shutdown(InRhi);
 | `GpuEntity` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 31 |
 | `GpuSpriteInstance` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 245 |
 | `GraphSystem` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 17 |
-| `Hidden` | ECS | `Source/Engine/ECS/Components.hpp` | 145 |
+| `Hidden` | ECS | `Source/Engine/ECS/Components.hpp` | 237 |
 | `IkChain` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 43 |
 | `IkComponent` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 64 |
 | `IkGoalComponent` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 77 |
 | `IkSolver` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 19 |
+| `InputUserComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 65 |
 | `Interpolation` | ECS | `Source/Engine/ECS/AnimationTimeline.hpp` | 29 |
 | `ITextShaper` | ECS | `Source/Engine/ECS/Schedule.hpp` | 47 |
-| `Lifetime` | ECS | `Source/Engine/ECS/Components.hpp` | 134 |
+| `Lifetime` | ECS | `Source/Engine/ECS/Components.hpp` | 226 |
 | `Light2DComponent` | ECS | `Source/Engine/ECS/Lighting.hpp` | 37 |
 | `Light2DOccluderComponent` | ECS | `Source/Engine/ECS/Lighting.hpp` | 106 |
 | `Light2DResultComponent` | ECS | `Source/Engine/ECS/Lighting.hpp` | 69 |
@@ -2397,11 +2401,11 @@ ScopedMaterials.Shutdown(InRhi);
 | `LightSourceSystem` | ECS | `Source/Engine/ECS/LightSource.hpp` | 168 |
 | `LightSourceType` | ECS | `Source/Engine/ECS/LightSource.hpp` | 22 |
 | `LocalizationTable` | ECS | `Source/Engine/ECS/Schedule.hpp` | 22 |
-| `LocalizedTextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 231 |
+| `LocalizedTextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 323 |
 | `LocalTransform2D` | ECS | `Source/Engine/ECS/Components.hpp` | 34 |
 | `Mat3` | ECS | `Source/Engine/ECS/Skeleton.hpp` | 31 |
-| `NameComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 152 |
-| `NarrativeLabelComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 162 |
+| `NameComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 244 |
+| `NarrativeLabelComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 254 |
 | `NativeCleanupHook` | ECS | `Source/Engine/ECS/RegistryOps.hpp` | 12 |
 | `PackedTransform2D` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 229 |
 | `Parent2D` | ECS | `Source/Engine/ECS/Components.hpp` | 42 |
@@ -2419,7 +2423,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `QuantizedPose` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 165 |
 | `RenderChunk` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 62 |
 | `RenderChunkArena` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 304 |
-| `RenderEcs` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 452 |
+| `RenderEcs` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 456 |
 | `RenderMaskComponent` | ECS | `Source/Engine/ECS/Presentation.hpp` | 139 |
 | `RenderPassMask` | ECS | `Source/Engine/ECS/Presentation.hpp` | 126 |
 | `ReplayPlayback` | ECS | `Source/Engine/ECS/ReplayRecorder.hpp` | 103 |
@@ -2459,7 +2463,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `SnapshotSchema` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 91 |
 | `SnapshotSchema` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 206 |
 | `SnapshotView` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 255 |
-| `Sprite2D` | ECS | `Source/Engine/ECS/Components.hpp` | 100 |
+| `Sprite2D` | ECS | `Source/Engine/ECS/Components.hpp` | 192 |
 | `SpriteAnimationComponent` | ECS | `Source/Engine/ECS/SpriteAnimation.hpp` | 21 |
 | `SpriteAnimationEventQueue` | ECS | `Source/Engine/ECS/SpriteAnimation.hpp` | 74 |
 | `SpriteAnimationSystem` | ECS | `Source/Engine/ECS/SpriteAnimation.hpp` | 118 |
@@ -2480,13 +2484,13 @@ ScopedMaterials.Shutdown(InRhi);
 | `SystemContext` | ECS | `Source/Engine/ECS/Schedule.hpp` | 87 |
 | `SystemGraph` | ECS | `Source/Engine/ECS/Schedule.hpp` | 55 |
 | `SystemGraph` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 29 |
-| `TextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 203 |
-| `TextConditionComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 287 |
-| `TextEffectComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 257 |
-| `TextFormatComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 269 |
+| `TextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 295 |
+| `TextConditionComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 379 |
+| `TextEffectComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 349 |
+| `TextFormatComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 361 |
 | `TextService` | ECS | `Source/Engine/ECS/Schedule.hpp` | 45 |
 | `TextShapeCache` | ECS | `Source/Engine/ECS/Schedule.hpp` | 46 |
-| `TextShapeComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 246 |
+| `TextShapeComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 338 |
 | `TilemapAssetRefComponent` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 130 |
 | `TilemapComponent` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 63 |
 | `TilemapRenderSystem` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 150 |
@@ -2499,13 +2503,19 @@ ScopedMaterials.Shutdown(InRhi);
 | `TimeScaleComponent` | ECS | `Source/Engine/ECS/Presentation.hpp` | 168 |
 | `TrackKind` | ECS | `Source/Engine/ECS/AnimationTimeline.hpp` | 20 |
 | `Transform2D` | ECS | `Source/Engine/ECS/Components.hpp` | 23 |
-| `TransportGroupComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 60 |
-| `Velocity` | ECS | `Source/Engine/ECS/Components.hpp` | 94 |
+| `TransportGroupComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 152 |
+| `TransportMotion` | ECS | `Source/Engine/ECS/Components.hpp` | 138 |
+| `TransportPath` | ECS | `Source/Engine/ECS/Components.hpp` | 129 |
+| `TransportSurface` | ECS | `Source/Engine/ECS/Components.hpp` | 119 |
+| `Vehicle2D` | ECS | `Source/Engine/ECS/Components.hpp` | 83 |
+| `VehicleFlags` | ECS | `Source/Engine/ECS/Components.hpp` | 75 |
+| `Velocity` | ECS | `Source/Engine/ECS/Components.hpp` | 186 |
 | `View` | ECS | `Source/Engine/ECS/CommandLog.hpp` | 187 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/Scene.hpp` | 18 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/Schedule.hpp` | 20 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/SkeletonAsset.hpp` | 18 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 20 |
+| `Wheel2D` | ECS | `Source/Engine/ECS/Components.hpp` | 99 |
 | `WindowManager` | ECS | `Source/Engine/ECS/Schedule.hpp` | 19 |
 | `WorldSnapshotV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 86 |
 
@@ -2544,6 +2554,25 @@ ScopedMaterials.Shutdown(InRhi);
 | `GameplayTagMask` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 38 |
 | `GameplayTagRegistry` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 132 |
 | `GameplayTagsComponent` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 211 |
+
+### Engine/Input (14)
+
+| Символ | Вид | Заголовок | Строка |
+|---|---|---|---|
+| `InputActionDesc` | Input | `Source/Engine/Input/InputSystem.hpp` | 81 |
+| `InputActionState` | Input | `Source/Engine/Input/InputSystem.hpp` | 108 |
+| `InputActionType` | Input | `Source/Engine/Input/InputSystem.hpp` | 23 |
+| `InputContextDesc` | Input | `Source/Engine/Input/InputSystem.hpp` | 87 |
+| `InputEvent` | Input | `Source/Engine/Input/InputSystem.hpp` | 120 |
+| `InputEventType` | Input | `Source/Engine/Input/InputSystem.hpp` | 60 |
+| `InputMappingDesc` | Input | `Source/Engine/Input/InputSystem.hpp` | 94 |
+| `InputModifier` | Input | `Source/Engine/Input/InputSystem.hpp` | 74 |
+| `InputModifierKind` | Input | `Source/Engine/Input/InputSystem.hpp` | 39 |
+| `InputSource` | Input | `Source/Engine/Input/InputSystem.hpp` | 68 |
+| `InputSourceKind` | Input | `Source/Engine/Input/InputSystem.hpp` | 30 |
+| `InputSystem` | Input | `Source/Engine/Input/InputSystem.hpp` | 132 |
+| `InputTriggerKind` | Input | `Source/Engine/Input/InputSystem.hpp` | 50 |
+| `UserSlot` | Input | `Source/Engine/Input/InputSystem.hpp` | 175 |
 
 ### Engine/Navigation (25)
 
@@ -2669,12 +2698,13 @@ ScopedMaterials.Shutdown(InRhi);
 | `TransportPeer` | Network | `Source/Engine/Network/Transport.hpp` | 85 |
 | `TransportStats` | Network | `Source/Engine/Network/Transport.hpp` | 69 |
 
-### Engine/Physics (122)
+### Engine/Physics (134)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `BodyRecord` | Physics | `Source/Engine/Physics/Physics.hpp` | 226 |
-| `BodyType` | Physics | `Source/Engine/Physics/Physics.hpp` | 22 |
+| `Body` | Physics | `Source/Engine/Physics/DodPhysicsBackend.hpp` | 57 |
+| `BodyRecord` | Physics | `Source/Engine/Physics/Physics.hpp` | 284 |
+| `BodyType` | Physics | `Source/Engine/Physics/Physics.hpp` | 44 |
 | `ChainBreakEvent` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 314 |
 | `ChainError` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 146 |
 | `ChainRuntime` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 618 |
@@ -2685,10 +2715,12 @@ ScopedMaterials.Shutdown(InRhi);
 | `ClothInfo` | Physics | `Source/Engine/Physics/Cloth.hpp` | 99 |
 | `ClothRenderSystem` | Physics | `Source/Engine/Physics/ClothRenderSystem.hpp` | 15 |
 | `ClothSystem` | Physics | `Source/Engine/Physics/Cloth.hpp` | 110 |
-| `Collider2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 59 |
+| `Collider2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 81 |
 | `CollisionFilterMatrix` | Physics | `Source/Engine/Physics/CollisionFilter.hpp` | 48 |
 | `CollisionLayer` | Physics | `Source/Engine/Physics/CollisionFilter.hpp` | 15 |
 | `ConnectionRuntime` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 590 |
+| `DodPhysicsBackend` | Physics | `Source/Engine/Physics/DodPhysicsBackend.hpp` | 17 |
+| `DodPhysicsBackend` | Physics | `Source/Engine/Physics/Physics.hpp` | 20 |
 | `FluidDesc` | Physics | `Source/Engine/Physics/Fluid.hpp` | 114 |
 | `FluidInteractorComponent` | Physics | `Source/Engine/Physics/Fluid.hpp` | 208 |
 | `FluidWaveSystem` | Physics | `Source/Engine/Physics/Fluid.hpp` | 219 |
@@ -2701,6 +2733,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `GravityDirection` | Physics | `Source/Engine/Physics/Gravity.hpp` | 15 |
 | `GravityFalloff` | Physics | `Source/Engine/Physics/Gravity.hpp` | 25 |
 | `GravitySystem` | Physics | `Source/Engine/Physics/Gravity.hpp` | 120 |
+| `GridEntry` | Physics | `Source/Engine/Physics/DodPhysicsBackend.hpp` | 90 |
 | `JointBreakReason` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 72 |
 | `JointChainComponent` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 378 |
 | `JointChainDesc` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 187 |
@@ -2724,16 +2757,22 @@ ScopedMaterials.Shutdown(InRhi);
 | `ParticleEmitterGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 65 |
 | `ParticleSeedPush` | Physics | `Source/Engine/Physics/Particles.hpp` | 88 |
 | `ParticleStateGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 96 |
+| `PhysicsBackendKind` | Physics | `Source/Engine/Physics/Physics.hpp` | 27 |
 | `PhysicsBodyRemapEntry` | Physics | `Source/Engine/Physics/SnapshotRemap.hpp` | 17 |
 | `PhysicsBodyRemapTable` | Physics | `Source/Engine/Physics/SnapshotRemap.hpp` | 24 |
-| `PhysicsContactEvent` | Physics | `Source/Engine/Physics/Physics.hpp` | 87 |
-| `PhysicsDesc` | Physics | `Source/Engine/Physics/Physics.hpp` | 98 |
-| `PhysicsEventType` | Physics | `Source/Engine/Physics/Physics.hpp` | 80 |
+| `PhysicsCapabilities` | Physics | `Source/Engine/Physics/Physics.hpp` | 34 |
+| `PhysicsContactEvent` | Physics | `Source/Engine/Physics/Physics.hpp` | 109 |
+| `PhysicsDesc` | Physics | `Source/Engine/Physics/Physics.hpp` | 145 |
+| `PhysicsEventType` | Physics | `Source/Engine/Physics/Physics.hpp` | 102 |
 | `PhysicsJointSystem` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 444 |
-| `PhysicsSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 107 |
+| `PhysicsRayHit` | Physics | `Source/Engine/Physics/Physics.hpp` | 120 |
+| `PhysicsSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 159 |
 | `PhysicsSystem` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 13 |
-| `RigidBody2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 42 |
-| `RigidBodyFlags` | Physics | `Source/Engine/Physics/Physics.hpp` | 29 |
+| `Projectile2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 134 |
+| `ProjectileHitEvent` | Physics | `Source/Engine/Physics/ProjectileSystem.hpp` | 12 |
+| `ProjectileSystem` | Physics | `Source/Engine/Physics/ProjectileSystem.hpp` | 24 |
+| `RigidBody2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 64 |
+| `RigidBodyFlags` | Physics | `Source/Engine/Physics/Physics.hpp` | 51 |
 | `Runtime` | Physics | `Source/Engine/Physics/Cloth.hpp` | 156 |
 | `SdfAtlasImage` | Physics | `Source/Engine/Physics/SdfAtlas.hpp` | 18 |
 | `SdfBrickGpu` | Physics | `Source/Engine/Physics/SdfBrickMap.hpp` | 48 |
@@ -2792,9 +2831,11 @@ ScopedMaterials.Shutdown(InRhi);
 | `Storage` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 642 |
 | `TilemapComponent` | Physics | `Source/Engine/Physics/SdfWorld.hpp` | 15 |
 | `Tracked` | Physics | `Source/Engine/Physics/Fluid.hpp` | 248 |
-| `TransportGroupState` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 24 |
-| `TransportGroupSystem` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 46 |
+| `TransportCapabilities` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 31 |
+| `TransportGroupState` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 41 |
+| `TransportGroupSystem` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 63 |
 | `WaterView` | Physics | `Source/Engine/Physics/Fluid.hpp` | 85 |
+| `WheelSystem` | Physics | `Source/Engine/Physics/VehicleWheels.hpp` | 16 |
 
 ### Engine/Platform (21)
 
@@ -2822,7 +2863,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `StagedSave` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 291 |
 | `SteamAchievementSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 148 |
 
-### Engine/RHI (159)
+### Engine/RHI (161)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -2831,17 +2872,19 @@ ScopedMaterials.Shutdown(InRhi);
 | `BackendCapabilities` | RHI | `Source/Engine/RHI/UpscalerCapabilities.hpp` | 28 |
 | `BackendSelection` | RHI | `Source/Engine/RHI/UpscalerBackend.hpp` | 28 |
 | `CameraData` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 240 |
-| `CameraStackDesc` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 27 |
+| `CameraDistortionFlags` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 30 |
+| `CameraDistortionSettings` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 40 |
+| `CameraStackDesc` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 56 |
 | `CameraStackFlags` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 17 |
-| `CameraStackSystem` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 52 |
+| `CameraStackSystem` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 81 |
 | `CameraStackSystem` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 16 |
 | `CameraStackSystem` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 12 |
 | `ChangeMaskRenderExtract` | RHI | `Source/Engine/RHI/ChangeMaskExtract.hpp` | 33 |
 | `ClusterGridConstants` | RHI | `Source/Engine/RHI/GpuLighting.hpp` | 46 |
 | `ClusterHeader` | RHI | `Source/Engine/RHI/GpuLighting.hpp` | 36 |
-| `ColorGradingConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 124 |
-| `ColorGradingPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 132 |
-| `ColorGradingSettings` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 112 |
+| `ColorGradingConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 128 |
+| `ColorGradingPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 136 |
+| `ColorGradingSettings` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 116 |
 | `CookedMaterialView` | RHI | `Source/Engine/RHI/MaterialAsset.hpp` | 152 |
 | `CustomFrameGenerator` | RHI | `Source/Engine/RHI/CustomFrameGenerator.hpp` | 10 |
 | `DeviceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 49 |
@@ -2921,8 +2964,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `PlatformKind` | RHI | `Source/Engine/RHI/UpscalerCapabilities.hpp` | 11 |
 | `PostFxConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 97 |
 | `PostFxFlags` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 10 |
-| `PostFxPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 153 |
-| `PostFxSettings` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 27 |
+| `PostFxPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 157 |
+| `PostFxSettings` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 30 |
 | `RenderBlendMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 190 |
 | `RenderCommandRecord` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 52 |
 | `RenderFlags` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 42 |
@@ -2947,7 +2990,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `ShaderPipelineDomain` | RHI | `Source/Engine/RHI/RHI.hpp` | 161 |
 | `ShaderPipelineHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 178 |
 | `SkinnedVertex` | RHI | `Source/Engine/RHI/Mesh.hpp` | 30 |
-| `Slot` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 96 |
+| `Slot` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 142 |
 | `SpatialUpscaleMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 90 |
 | `StaticBakeCache` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 58 |
 | `StaticBakeRenderer` | RHI | `Source/Engine/RHI/StaticBakeRenderer.hpp` | 14 |
@@ -2986,7 +3029,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `VirtualTextureTileUpload` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 77 |
 | `VisibleSprite` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 87 |
 
-### Engine/Script (63)
+### Engine/Script (67)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -2996,65 +3039,69 @@ ScopedMaterials.Shutdown(InRhi);
 | `AotBuildState` | Script | `Source/Engine/Script/AotBuilder.hpp` | 19 |
 | `AotGraphTranspileOptions` | Script | `Source/Engine/Script/AotGraphCompiler.hpp` | 13 |
 | `AotHost` | Script | `Source/Engine/Script/AotHost.hpp` | 32 |
-| `AotHost` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 21 |
+| `AotHost` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 23 |
 | `AotModule` | Script | `Source/Engine/Script/AotModule.hpp` | 22 |
 | `AotProgramRef` | Script | `Source/Engine/Script/AotHost.hpp` | 22 |
 | `AotTranspileOptions` | Script | `Source/Engine/Script/AotTranspiler.hpp` | 12 |
 | `BoundProgram` | Script | `Source/Engine/Script/EcsBridge.hpp` | 101 |
-| `Code` | Script | `Source/Engine/Script/Vm.hpp` | 30 |
-| `CompiledDebug` | Script | `Source/Engine/Script/Bytecode.hpp` | 462 |
-| `CompiledProgram` | Script | `Source/Engine/Script/Bytecode.hpp` | 477 |
+| `CameraStackSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 18 |
+| `CameraStackSystem` | Script | `Source/Engine/Script/Vm.hpp` | 18 |
+| `Code` | Script | `Source/Engine/Script/Vm.hpp` | 32 |
+| `CompiledDebug` | Script | `Source/Engine/Script/Bytecode.hpp` | 488 |
+| `CompiledProgram` | Script | `Source/Engine/Script/Bytecode.hpp` | 503 |
 | `ComponentAccessor` | Script | `Source/Engine/Script/EcsBridge.hpp` | 17 |
-| `ComponentBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 406 |
-| `Context` | Script | `Source/Engine/Script/AotAbi.hpp` | 98 |
+| `ComponentBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 432 |
+| `Context` | Script | `Source/Engine/Script/AotAbi.hpp` | 112 |
 | `DebugField` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 123 |
 | `DebugFrame` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 103 |
-| `DebugSectionHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 155 |
-| `DebugSpan` | Script | `Source/Engine/Script/Bytecode.hpp` | 133 |
-| `DebugSpanFlags` | Script | `Source/Engine/Script/Bytecode.hpp` | 124 |
-| `DebugVariable` | Script | `Source/Engine/Script/Bytecode.hpp` | 146 |
+| `DebugSectionHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 181 |
+| `DebugSpan` | Script | `Source/Engine/Script/Bytecode.hpp` | 159 |
+| `DebugSpanFlags` | Script | `Source/Engine/Script/Bytecode.hpp` | 150 |
+| `DebugVariable` | Script | `Source/Engine/Script/Bytecode.hpp` | 172 |
 | `EcsBridge` | Script | `Source/Engine/Script/EcsBridge.hpp` | 26 |
-| `FieldBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 416 |
-| `FunctionEntry` | Script | `Source/Engine/Script/Bytecode.hpp` | 429 |
+| `FieldBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 442 |
+| `FunctionEntry` | Script | `Source/Engine/Script/Bytecode.hpp` | 455 |
 | `HostApi` | Script | `Source/Engine/Script/AotAbi.hpp` | 54 |
-| `Instruction` | Script | `Source/Engine/Script/Bytecode.hpp` | 386 |
+| `Instruction` | Script | `Source/Engine/Script/Bytecode.hpp` | 412 |
 | `LogicCompareOp` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 22 |
-| `LogicCompileOptions` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 669 |
-| `LogicCompileResult` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 676 |
+| `LogicCompileOptions` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 741 |
+| `LogicCompileResult` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 748 |
 | `LogicFieldBinding` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 90 |
-| `LogicGraph` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 319 |
-| `LogicLink` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 308 |
+| `LogicGraph` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 350 |
+| `LogicLink` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 339 |
 | `LogicMathOp` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 56 |
-| `LogicNode` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 290 |
+| `LogicNode` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 321 |
 | `LogicNodeKind` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 111 |
-| `Module` | Script | `Source/Engine/Script/AotAbi.hpp` | 293 |
+| `Module` | Script | `Source/Engine/Script/AotAbi.hpp` | 379 |
 | `NativeId` | Script | `Source/Engine/Script/Bytecode.hpp` | 18 |
-| `OpCode` | Script | `Source/Engine/Script/Bytecode.hpp` | 204 |
-| `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 543 |
-| `PinType` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 275 |
-| `ProgramBuilder` | Script | `Source/Engine/Script/Bytecode.hpp` | 508 |
-| `ProgramHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 439 |
+| `OpCode` | Script | `Source/Engine/Script/Bytecode.hpp` | 230 |
+| `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 569 |
+| `PhysicsSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 17 |
+| `PhysicsSystem` | Script | `Source/Engine/Script/Vm.hpp` | 17 |
+| `PinType` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 306 |
+| `ProgramBuilder` | Script | `Source/Engine/Script/Bytecode.hpp` | 534 |
+| `ProgramHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 465 |
 | `ResolvedComponent` | Script | `Source/Engine/Script/EcsBridge.hpp` | 93 |
 | `ScriptComponent` | Script | `Source/Engine/Script/ScriptComponent.hpp` | 16 |
-| `ScriptEvent` | Script | `Source/Engine/Script/Bytecode.hpp` | 179 |
-| `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 20 |
-| `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 24 |
-| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 109 |
-| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 223 |
+| `ScriptEvent` | Script | `Source/Engine/Script/Bytecode.hpp` | 205 |
+| `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 22 |
+| `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 26 |
+| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 115 |
+| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 229 |
 | `Slot` | Script | `Source/Engine/Script/AotHost.hpp` | 94 |
-| `Slot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 122 |
+| `Slot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 140 |
 | `SourceLocation` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 17 |
 | `TextCompileOptions` | Script | `Source/Engine/Script/TextScript.hpp` | 14 |
 | `TransportGroupSystem` | Script | `Source/Engine/Script/Vm.hpp` | 16 |
 | `Vector2D` | Script | `Source/Engine/Script/AotAbi.hpp` | 28 |
-| `VmContext` | Script | `Source/Engine/Script/Vm.hpp` | 92 |
-| `VmDebugState` | Script | `Source/Engine/Script/Vm.hpp` | 148 |
-| `VmFault` | Script | `Source/Engine/Script/Vm.hpp` | 28 |
-| `VmHalt` | Script | `Source/Engine/Script/Vm.hpp` | 121 |
-| `VmPauseReason` | Script | `Source/Engine/Script/Vm.hpp` | 112 |
-| `VmStopInfo` | Script | `Source/Engine/Script/Vm.hpp` | 128 |
+| `VmContext` | Script | `Source/Engine/Script/Vm.hpp` | 94 |
+| `VmDebugState` | Script | `Source/Engine/Script/Vm.hpp` | 154 |
+| `VmFault` | Script | `Source/Engine/Script/Vm.hpp` | 30 |
+| `VmHalt` | Script | `Source/Engine/Script/Vm.hpp` | 127 |
+| `VmPauseReason` | Script | `Source/Engine/Script/Vm.hpp` | 118 |
+| `VmStopInfo` | Script | `Source/Engine/Script/Vm.hpp` | 134 |
 
-### Engine/Text (67)
+### Engine/Text (68)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -3096,13 +3143,13 @@ ScopedMaterials.Shutdown(InRhi);
 | `TextFormatArg` | Text | `Source/Engine/Text/TextFormat.hpp` | 45 |
 | `TextFormatStatus` | Text | `Source/Engine/Text/TextFormat.hpp` | 33 |
 | `TextGradientParams` | Text | `Source/Engine/Text/TextRender.hpp` | 22 |
-| `TextInlineHit` | Text | `Source/Engine/Text/TextLayout.hpp` | 203 |
+| `TextInlineHit` | Text | `Source/Engine/Text/TextLayout.hpp` | 204 |
 | `TextInlineKind` | Text | `Source/Engine/Text/TextStyle.hpp` | 73 |
 | `TextInlineObject` | Text | `Source/Engine/Text/TextStyle.hpp` | 83 |
 | `TextInlineSprite` | Text | `Source/Engine/Text/TextStyle.hpp` | 99 |
-| `TextLayoutParams` | Text | `Source/Engine/Text/TextLayout.hpp` | 53 |
-| `TextLayoutResult` | Text | `Source/Engine/Text/TextLayout.hpp` | 71 |
-| `TextLine` | Text | `Source/Engine/Text/TextLayout.hpp` | 21 |
+| `TextLayoutParams` | Text | `Source/Engine/Text/TextLayout.hpp` | 54 |
+| `TextLayoutResult` | Text | `Source/Engine/Text/TextLayout.hpp` | 72 |
+| `TextLine` | Text | `Source/Engine/Text/TextLayout.hpp` | 22 |
 | `TextMarkupStatus` | Text | `Source/Engine/Text/TextMarkup.hpp` | 16 |
 | `TextRenderEffects` | Text | `Source/Engine/Text/TextRender.hpp` | 44 |
 | `TextRenderParams` | Text | `Source/Engine/Text/TextRender.hpp` | 57 |
@@ -3124,6 +3171,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `TextStyle` | Text | `Source/Engine/Text/TextStyle.hpp` | 27 |
 | `TextStyledBlock` | Text | `Source/Engine/Text/TextMarkup.hpp` | 30 |
 | `TextStyleFlags` | Text | `Source/Engine/Text/TextStyle.hpp` | 12 |
+| `UnicodeBoundary` | Text | `Source/Engine/Text/UnicodeBreak.hpp` | 13 |
 | `VerticalFormEntry` | Text | `Source/Engine/Text/TextVertical.hpp` | 16 |
 
 ### Engine/UI (101)
@@ -3278,8 +3326,8 @@ ScopedMaterials.Shutdown(InRhi);
 
 | Макрос | Заголовок | Строка |
 |---|---|---|
-| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 310 |
-| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 312 |
+| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 396 |
+| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 398 |
 | `FBY_ASSERT` | `Source/Engine/Core/Assert.hpp` | 13 |
 | `FBY_ASSERT` | `Source/Engine/Core/Assert.hpp` | 31 |
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 22 |

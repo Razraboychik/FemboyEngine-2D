@@ -1,6 +1,7 @@
 // FemboyEngine2D - CPU SDF GI probe volume and one-bounce reference.
 #pragma once
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/Physics/SdfBrickMap.hpp"
 #include "Engine/RHI/GpuLighting.hpp"
@@ -197,7 +198,7 @@ private:
         for (std::uint32_t ScopedLobe = 0; ScopedLobe < SdfGiLobes; ++ScopedLobe)
         {
             const float ScopedAngle = static_cast<float>(ScopedLobe) * 1.57079632679f;
-            const Vector2D ScopedBase{std::cos(ScopedAngle), std::sin(ScopedAngle)};
+            const Vector2D ScopedBase{Sim::Cos(ScopedAngle), Sim::Sin(ScopedAngle)};
             float ScopedLobeOpen = 0.0f;
             for (std::uint32_t ScopedRay = 0; ScopedRay < MRaysPerLobe; ++ScopedRay)
             {

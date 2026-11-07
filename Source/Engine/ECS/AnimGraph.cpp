@@ -334,9 +334,18 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
     }
 }
 
-void AnimGraphSystem::Run(Ecs::SystemContext& InContext) const noexcept
+void AnimGraphSystem::Run(const Ecs::GameplaySystemView& InView) const noexcept
 {
-    RunWithTags(InContext.registry, InContext.dt, InContext.gameplayTags != nullptr ? InContext.gameplayTags : MTags);
+    RunWithTags(InView.registry, InView.dt,
+                InView.gameplay.gameplayTags != nullptr ? InView.gameplay.gameplayTags : MTags);
+}
+
+namespace
+{
+void AnimGraphSystemThunk(const Ecs::GameplaySystemView& InView, void*)
+{
+    AnimGraphSystem{}.Run(InView);
+}
 }
 
 void RegisterAnimGraphSystem(Ecs::Schedule& InSchedule)
@@ -344,13 +353,15 @@ void RegisterAnimGraphSystem(Ecs::Schedule& InSchedule)
     // FixedUpdate keeps the cross-fade and the SpriteAnimation frame advance on the same
     (void)InSchedule.Add(
         Ecs::Phase::FixedUpdate, "anim_graph",
-        +[](Ecs::SystemContext& InContext, void*) { AnimGraphSystem{}.Run(InContext); });
+        +[](Ecs::SystemContext& InContext, void*)
+        {
+            Ecs::GameplaySystemView ScopedView = InContext.GameplayView();
+            AnimGraphSystem{}.Run(ScopedView);
+        });
 }
 
 void RegisterAnimGraphSystem(Ecs::SystemGraph& InGraph)
 {
-    (void)InGraph.Add(
-        Ecs::Phase::FixedUpdate, "anim_graph",
-        +[](Ecs::SystemContext& InContext, void*) { AnimGraphSystem{}.Run(InContext); });
+    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "anim_graph", Ecs::BindGameplaySystem<&AnimGraphSystemThunk>());
 }
 }

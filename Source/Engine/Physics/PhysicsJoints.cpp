@@ -1,6 +1,7 @@
 // FemboyEngine2D - Box2D v3 joint graph construction and break handling.
 #include "Engine/Physics/PhysicsJoints.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Schedule.hpp"
 
@@ -1691,7 +1692,7 @@ JointChainHandle PhysicsJointSystem::CreateChainInternal(Ecs::Registry& InRegist
         const float ScopedHalfLength = std::max(
             ScopedLengthMetres * 0.5f - ScopedRadiusMetres - 0.5f * ScopedJointGapMetres, 0.6f * B2_LINEAR_SLOP);
         const Vector2D ScopedCentre = (ScopedFrom + ScopedTo) * 0.5f;
-        const float ScopedAngle = std::atan2(ScopedDelta.Y, ScopedDelta.X);
+        const float ScopedAngle = Sim::Atan2(ScopedDelta.Y, ScopedDelta.X);
 
         const Entity ScopedEntity = InRegistry.create();
         ScopedStaged.Links[ScopedI] = ScopedEntity;
