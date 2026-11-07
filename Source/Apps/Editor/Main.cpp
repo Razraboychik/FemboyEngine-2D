@@ -42,7 +42,7 @@
 #include "Engine/RHI/SkinningBridge.hpp"
 #include "Editor/Infrastructure/EditorSystem.hpp"
 #include "Editor/Panels/AIStateTreeCanvasPanel.hpp"
-#include "Editor/Infrastructure/FrameComposer.hpp"
+#include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/RHI/Fsr2Pass.hpp"
 #include "Engine/RHI/DlssAdapter.hpp"
 #include "Engine/Core/WindowHost.hpp"
@@ -133,39 +133,39 @@ struct EditorGameSystems
     }
 };
 
-void EventsClear(Fby::Ecs::SystemContext&, void* InUser)
+void EventsClear(const Fby::Ecs::CoreSystemView&, void* InUser)
 {
     static_cast<EditorGameSystems*>(InUser)->spriteAnimationEvents.Clear();
 }
 
-void GravityStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void GravityStepSystem(Fby::Ecs::PhysicsSystemView& InView, void* InUser)
 {
-    static_cast<EditorGameSystems*>(InUser)->gravity.Update(InContext);
+    static_cast<EditorGameSystems*>(InUser)->gravity.Update(InView);
 }
 
-void MovementSystem(Fby::Ecs::SystemContext& InContext, void*)
+void MovementSystem(const Fby::Ecs::CoreSystemView& InView, void*)
 {
-    auto ScopedView = InContext.registry.view<Fby::Transform2D, Fby::Velocity>();
+    auto ScopedView = InView.registry.view<Fby::Transform2D, Fby::Velocity>();
     for (auto [ScopedEntity, ScopedTransform, ScopedVelocity] : ScopedView.each())
     {
         (void)ScopedEntity;
-        ScopedTransform.Position += ScopedVelocity.Value * InContext.dt;
+        ScopedTransform.Position += ScopedVelocity.Value * InView.dt;
     }
 }
 
-void PhysicsStepSystem(Fby::Ecs::SystemContext& InContext, void*)
+void PhysicsStepSystem(Fby::Ecs::PhysicsSystemView& InView, void*)
 {
-    if (InContext.physics != nullptr)
+    if (InView.services.physics != nullptr)
     {
-        InContext.physics->Step(InContext.registry, InContext.dt);
+        InView.services.physics->Step(InView.registry, InView.dt);
     }
 }
 
-void ContactToSpriteAnimationSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void ContactToSpriteAnimationSystem(Fby::Ecs::PhysicsSystemView& InView, void* InUser)
 {
-    if (InContext.physics != nullptr)
+    if (InView.services.physics != nullptr)
     {
-        Fby::Gameplay::RouteContactEvents(InContext.physics->Contacts(), InContext.registry,
+        Fby::Gameplay::RouteContactEvents(InView.services.physics->Contacts(), InView.registry,
                                           static_cast<EditorGameSystems*>(InUser)->spriteAnimationEvents);
     }
 }
@@ -175,9 +175,9 @@ void ScriptSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
     Fby::FemboyScriptSystem(InContext, *static_cast<Fby::ScriptRuntime*>(InUser));
 }
 
-void IkSystem(Fby::Ecs::SystemContext& InContext, void*)
+void IkSystem(const Fby::Ecs::CoreSystemView& InView, void*)
 {
-    Fby::Skeletal::IkSystem(InContext);
+    Fby::Skeletal::IkSystem(InView);
 }
 
 // Both lighting solvers write the same result component, so one bridge decides
@@ -188,7 +188,7 @@ struct LightingBridge
     Fby::LightSourceSystem* Unified = nullptr;
 };
 
-void LightingStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void LightingStepSystem(Fby::Ecs::RenderSystemView& InView, void* InUser)
 {
     auto* ScopedBridge = static_cast<LightingBridge*>(InUser);
     if (ScopedBridge == nullptr)
@@ -199,7 +199,7 @@ void LightingStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
     // sources one entity at a time; the presence of any unified source selects
     // the new solver so the two never write the same result component.
     bool ScopedUnified = false;
-    auto ScopedView = InContext.registry.view<Fby::LightSourceComponent>();
+    auto ScopedView = InView.registry.view<Fby::LightSourceComponent>();
     for (const Fby::Entity ScopedEntity : ScopedView)
     {
         (void)ScopedEntity;
@@ -208,53 +208,53 @@ void LightingStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
     }
     if (ScopedUnified && ScopedBridge->Unified != nullptr)
     {
-        (void)ScopedBridge->Unified->Run(InContext.registry, ScopedBridge->Unified->Settings,
+        (void)ScopedBridge->Unified->Run(InView.registry, ScopedBridge->Unified->Settings,
                                          ScopedBridge->Unified->SdfFieldView());
         return;
     }
     if (ScopedBridge->Legacy != nullptr)
     {
-        (void)ScopedBridge->Legacy->Run(InContext.registry, ScopedBridge->Legacy->Settings,
+        (void)ScopedBridge->Legacy->Run(InView.registry, ScopedBridge->Legacy->Settings,
                                         ScopedBridge->Legacy->SdfFieldView());
     }
 }
 
-void SpriteAnimationStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void SpriteAnimationStepSystem(const Fby::Ecs::CoreSystemView& InView, void* InUser)
 {
-    Fby::SpriteAnimationSystem{}.Run(InContext, static_cast<EditorGameSystems*>(InUser)->spriteAnimationEvents);
+    Fby::SpriteAnimationSystem{}.Run(InView, static_cast<EditorGameSystems*>(InUser)->spriteAnimationEvents);
 }
 
-void AudioUpdateSystem(Fby::Ecs::SystemContext& InContext, void*)
+void AudioUpdateSystem(const Fby::Ecs::AudioSystemView& InView, void*)
 {
-    if (InContext.audio != nullptr)
+    if (InView.audio.audio != nullptr)
     {
-        InContext.audio->Update(InContext.registry);
+        InView.audio.audio->Update(InView.registry);
     }
 }
 
-void SkeletalAnimateSystem(Fby::Ecs::SystemContext& InContext, void*)
+void SkeletalAnimateSystem(const Fby::Ecs::CoreSystemView& InView, void*)
 {
-    auto ScopedView = InContext.registry.view<Fby::SkeletonComponent, SkeletonDemo>();
+    auto ScopedView = InView.registry.view<Fby::SkeletonComponent, SkeletonDemo>();
     for (auto [ScopedEntity, ScopedSkeleton, ScopedDemo] : ScopedView.each())
     {
         (void)ScopedEntity;
-        ScopedDemo.time += InContext.dt;
+        ScopedDemo.time += InView.dt;
         ScopedSkeleton.LocalRotations[ScopedDemo.arm] = std::sin(ScopedDemo.time * 1.4f) * 0.42f;
         ScopedSkeleton.LocalRotations[ScopedDemo.hand] = std::sin(ScopedDemo.time * 2.3f) * 0.75f;
     }
 }
 
-void SkeletalEvaluateSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void SkeletalEvaluateSystem(const Fby::Ecs::CoreSystemView& InView, void* InUser)
 {
-    static_cast<EditorGameSystems*>(InUser)->skeletonSystem.Run(InContext.registry);
+    static_cast<EditorGameSystems*>(InUser)->skeletonSystem.Run(InView.registry);
 }
 
-void AIPerceptionStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void AIPerceptionStepSystem(const Fby::Ecs::GameplaySystemView& InView, void* InUser)
 {
-    static_cast<EditorGameSystems*>(InUser)->perception.Update(InContext);
+    static_cast<EditorGameSystems*>(InUser)->perception.Update(InView);
 }
 
-void StateTreeStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void StateTreeStepSystem(const Fby::Ecs::GameplaySystemView& InView, void* InUser)
 {
     auto* ScopedSystems = static_cast<EditorGameSystems*>(InUser);
     if (ScopedSystems->editor != nullptr)
@@ -275,29 +275,29 @@ void StateTreeStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
             }
         }
     }
-    ScopedSystems->stateTree.Run(InContext);
+    ScopedSystems->stateTree.Run(InView);
 }
 
-void AICommandApplySystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void AICommandApplySystem(const Fby::Ecs::GameplaySystemView& InView, void* InUser)
 {
-    if (InContext.commands != nullptr)
+    if (InView.core.commands != nullptr)
     {
-        InContext.commands->Play(InContext.registry);
+        InView.core.commands->Play(InView.registry);
         static_cast<EditorGameSystems*>(InUser)->commandArena.Reset();
     }
 }
 
-void AIControllerStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void AIControllerStepSystem(const Fby::Ecs::GameplaySystemView& InView, void* InUser)
 {
-    static_cast<EditorGameSystems*>(InUser)->aiController.Update(InContext);
+    static_cast<EditorGameSystems*>(InUser)->aiController.Update(InView);
 }
 
-void NavigationStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void NavigationStepSystem(const Fby::Ecs::CoreSystemView& InView, void* InUser)
 {
     auto* ScopedSystems = static_cast<EditorGameSystems*>(InUser);
     if (!ScopedSystems->navMapBuilt)
     {
-        auto ScopedTiles = InContext.registry.view<Fby::TilemapComponent>();
+        auto ScopedTiles = InView.registry.view<Fby::TilemapComponent>();
         for (const Fby::Entity ScopedEntity : ScopedTiles)
         {
             if (Fby::Navigation::BuildFromTilemap(ScopedTiles.get<Fby::TilemapComponent>(ScopedEntity),
@@ -313,14 +313,14 @@ void NavigationStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
             }
         }
     }
-    ScopedSystems->navigation.Update(InContext.registry, InContext.dt);
+    ScopedSystems->navigation.Update(InView.registry, InView.dt);
 }
 
-void PhysicsInterpolateSystem(Fby::Ecs::SystemContext& InContext, void*)
+void PhysicsInterpolateSystem(Fby::Ecs::PhysicsSystemView& InView, void*)
 {
-    if (InContext.physics != nullptr)
+    if (InView.services.physics != nullptr)
     {
-        InContext.physics->Interpolate(InContext.registry, InContext.interpolationAlpha);
+        InView.services.physics->Interpolate(InView.registry, InView.interpolationAlpha);
     }
 }
 
@@ -754,9 +754,13 @@ int main(int argc, char** argv)
                      ScopedUiFontError);
         ScopedTextRuntime.SetShaper(&ScopedUiFallbackShaper);
     }
-    Fby::Ecs::SystemContext ScopedContext{ScopedRegistry,  ScopedJobs,    0.0f,       0,
-                                          ScopedGpu.get(), &ScopedWindow, &ScopedVfs, &ScopedAssetDb,
-                                          &ScopedAudio,    &ScopedPhysics};
+    Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs, 0.0f, 0};
+    ScopedContext.renderer = ScopedGpu.get();
+    ScopedContext.window = &ScopedWindow;
+    ScopedContext.assets = &ScopedVfs;
+    ScopedContext.assetDb = &ScopedAssetDb;
+    ScopedContext.audio = &ScopedAudio;
+    ScopedContext.physics = &ScopedPhysics;
     ScopedContext.cloth = &ScopedCloth;
     ScopedContext.text = &ScopedTextRuntime.Service();
     ScopedContext.textShapes = &ScopedTextRuntime.Shapes();
@@ -775,32 +779,41 @@ int main(int argc, char** argv)
     constexpr std::uint64_t kAfterPhysics = 1ull << 3;
     constexpr std::uint64_t kAfterContacts = 1ull << 4;
     constexpr std::uint64_t kAfterSpriteAnimation = 1ull << 5;
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "events_clear", &EventsClear, &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "gravity", &GravityStepSystem, &ScopedGameSystems,
-                          kAfterEvents);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr,
-                          kAfterEvents | kAfterGravity);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, nullptr, kAfterMovement);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "contact_to_spriteAnimation", &ContactToSpriteAnimationSystem,
-                          &ScopedGameSystems, kAfterPhysics);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "spriteAnimation", &SpriteAnimationStepSystem,
-                          &ScopedGameSystems, kAfterContacts);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "skeletal_animate", &SkeletalAnimateSystem, nullptr,
-                          kAfterSpriteAnimation);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ik", &IkSystem, nullptr);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "events_clear",
+                          Fby::Ecs::BindCoreSystem<&EventsClear>(), &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "gravity",
+                          Fby::Ecs::BindPhysicsSystem<&GravityStepSystem>(), &ScopedGameSystems, kAfterEvents);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement",
+                          Fby::Ecs::BindCoreSystem<&MovementSystem>(), nullptr, kAfterEvents | kAfterGravity);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "physics",
+                          Fby::Ecs::BindPhysicsSystem<&PhysicsStepSystem>(), nullptr, kAfterMovement);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "contact_to_spriteAnimation",
+                          Fby::Ecs::BindPhysicsSystem<&ContactToSpriteAnimationSystem>(), &ScopedGameSystems,
+                          kAfterPhysics);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "spriteAnimation",
+                          Fby::Ecs::BindCoreSystem<&SpriteAnimationStepSystem>(), &ScopedGameSystems, kAfterContacts);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "skeletal_animate",
+                          Fby::Ecs::BindCoreSystem<&SkeletalAnimateSystem>(), nullptr, kAfterSpriteAnimation);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ik", Fby::Ecs::BindCoreSystem<&IkSystem>(), nullptr);
     // AI pipeline order: StateTree writes intents, the command buffer applies
     // them, the controller turns them into navigation/skill requests, and the
     // navigation system moves the agents. Appended after the existing FixedUpdate
     // nodes, so their relative order is the insertion order.
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_perception", &AIPerceptionStepSystem, &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "state_tree", &StateTreeStepSystem, &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_commands", &AICommandApplySystem, &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_controller", &AIControllerStepSystem, &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "navigation", &NavigationStepSystem, &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::PreUpdate, "audio", &AudioUpdateSystem);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "skeletal_evaluate", &SkeletalEvaluateSystem,
-                          &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "physics_interpolate", &PhysicsInterpolateSystem);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_perception",
+                          Fby::Ecs::BindGameplaySystem<&AIPerceptionStepSystem>(), &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "state_tree",
+                          Fby::Ecs::BindGameplaySystem<&StateTreeStepSystem>(), &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_commands",
+                          Fby::Ecs::BindGameplaySystem<&AICommandApplySystem>(), &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_controller",
+                          Fby::Ecs::BindGameplaySystem<&AIControllerStepSystem>(), &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "navigation",
+                          Fby::Ecs::BindCoreSystem<&NavigationStepSystem>(), &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::PreUpdate, "audio", Fby::Ecs::BindAudioSystem<&AudioUpdateSystem>());
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "skeletal_evaluate",
+                          Fby::Ecs::BindCoreSystem<&SkeletalEvaluateSystem>(), &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "physics_interpolate",
+                          Fby::Ecs::BindPhysicsSystem<&PhysicsInterpolateSystem>());
     Fby::LightingSystem ScopedLighting;
     // The demo world field is a real `.fsdf` image: analytic sources bake it on
     // the first run, the bake is cached under Saved/Worlds, and the lighting
@@ -968,7 +981,8 @@ int main(int argc, char** argv)
     // point-light tint so shadows are not applied twice.
     ScopedLighting.Settings.SdfShadows = false;
     ScopedLighting.Settings.SdfAmbientOcclusion = 0.0f;
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "lighting", &LightingStepSystem, &ScopedLightingBridge);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "lighting",
+                          Fby::Ecs::BindRenderSystem<&LightingStepSystem>(), &ScopedLightingBridge);
     (void)Fby::ClothRenderSystem::Register(ScopedGraph, ScopedClothRender);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "scripts", &ScriptSystem, &ScopedScripts,
                           kAfterSpriteAnimation);
@@ -1297,8 +1311,16 @@ int main(int argc, char** argv)
     std::vector<std::byte> ScopedVtCapture;
     Fby::Rhi::RenderGraph ScopedShadowGraph;
     Fby::Rhi::SdfShadowPass ScopedShadowPass;
-    Fby::Editor::FrameComposer ScopedExtract;
-    Fby::Editor::FrameComposer ScopedPieExtract;
+    Fby::Rhi::FrameComposer ScopedExtract;
+    Fby::Rhi::FrameComposer ScopedPieExtract;
+    // The viewport composes into fixed storage and does not need the diagnostic
+    // render-ECS mirror, so both composers skip the per-sprite pack.
+    const std::uint32_t ScopedComposerItems =
+        std::min<std::uint32_t>(ScopedGpu->Info().maxItemsPerFrame, 1u << 16);
+    ScopedExtract.Reserve(ScopedComposerItems);
+    ScopedPieExtract.Reserve(ScopedComposerItems);
+    ScopedExtract.SetRenderEcsMirror(false);
+    ScopedPieExtract.SetRenderEcsMirror(false);
     std::uint32_t ScopedLastCachedViewTarget = 0xFFFFFFFFu;
     std::uint32_t ScopedLastCachedPieTarget = 0xFFFFFFFFu;
     Fby::Rhi::OitPass ScopedOitPass;
@@ -1790,7 +1812,7 @@ int main(int argc, char** argv)
                 {
                     Fby::AccessibilityKernel& ScopedKernel = *ScopedContext.accessibility;
                     ScopedKernel.AdvanceCaptionClock(ScopedDt);
-                    (void)ScopedPieOverlay.Build(ScopedContext, ScopedKernel,
+                    (void)ScopedPieOverlay.Build(ScopedContext.UiView(), ScopedKernel,
                                                  Fby::Vector2D{static_cast<float>(ScopedPieViewport.width),
                                                                static_cast<float>(ScopedPieViewport.height)});
                     ScopedPieItems.resize(ScopedPiePacket.items.size() + Fby::AccessibilityOverlay::kMaxOverlayItems);

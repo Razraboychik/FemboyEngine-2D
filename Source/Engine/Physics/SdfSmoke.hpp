@@ -1,6 +1,7 @@
 // FemboyEngine2D - smoke regions that attenuate the baked GI probes.
 #pragma once
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/Physics/SdfGiBake.hpp"
 
@@ -168,7 +169,7 @@ public:
                 InFrom + ScopedDirection * (ScopedStepLength * (static_cast<float>(ScopedStep) + 0.5f));
             ScopedOptical += SampleWorld(ScopedPoint) * ScopedStepLength;
         }
-        return std::exp(-MDesc.Absorption * ScopedOptical);
+        return Sim::Exp(-MDesc.Absorption * ScopedOptical);
     }
 
     // Dims the baked direct light by the smoke along the sun ray. The indirect

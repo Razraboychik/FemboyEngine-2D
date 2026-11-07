@@ -616,16 +616,16 @@ void AccessibilityKernel::TrackGameplayTags(Ecs::Registry& InRegistry) noexcept
     }
 }
 
-void AccessibilityKernel::EmitContacts(Ecs::SystemContext& InContext) noexcept
+void AccessibilityKernel::EmitContacts(const Ecs::AccessibilitySystemView& InView) noexcept
 {
-    if (InContext.physics == nullptr)
+    if (InView.physics.physics == nullptr)
     {
         return;
     }
-    for (const PhysicsContactEvent& ScopedContact : InContext.physics->Contacts())
+    for (const PhysicsContactEvent& ScopedContact : InView.physics.physics->Contacts())
     {
         char ScopedBuffer[kNarrativeTextBytes]{};
-        (void)MNarrative.DescribeContact(InContext.registry, ScopedContact.a, ScopedContact.b,
+        (void)MNarrative.DescribeContact(InView.registry, ScopedContact.a, ScopedContact.b,
                                          static_cast<std::uint32_t>(ScopedContact.type), ScopedContact.speed,
                                          ScopedBuffer, sizeof(ScopedBuffer));
         PublishNarrative(100 + static_cast<std::uint32_t>(ScopedContact.type), ScopedContact.a, ScopedContact.point,
@@ -633,41 +633,41 @@ void AccessibilityKernel::EmitContacts(Ecs::SystemContext& InContext) noexcept
     }
 }
 
-void AccessibilityKernel::Update(Ecs::SystemContext& InContext) noexcept
+void AccessibilityKernel::Update(const Ecs::AccessibilitySystemView& InView) noexcept
 {
-    AdvanceCaptionClock(InContext.dt);
+    AdvanceCaptionClock(InView.dt);
     PollVoiceCaptions();
     if (BlindMode())
     {
-        MNarrative.Build(InContext.registry);
-        if (InContext.gameplayTags != nullptr)
+        MNarrative.Build(InView.registry);
+        if (InView.gameplay.gameplayTags != nullptr)
         {
-            SetGameplayTagRegistry(InContext.gameplayTags);
+            SetGameplayTagRegistry(InView.gameplay.gameplayTags);
         }
-        TrackGameplayTags(InContext.registry);
-        EmitContacts(InContext);
+        TrackGameplayTags(InView.registry);
+        EmitContacts(InView);
     // Speech is deliberately not flushed here: Update() is the simulation
     }
 
     if (SubtitlesVisible())
     {
-        MSubtitles.Tick(InContext.dt > 0.0f ? InContext.dt : 0.0f);
+        MSubtitles.Tick(InView.dt > 0.0f ? InView.dt : 0.0f);
     }
     if (DeafMode())
     {
-        if (InContext.audio != nullptr && !MAudioMuted)
+        if (InView.audio.audio != nullptr && !MAudioMuted)
         {
-            MAudioWasMuted = InContext.audio->MasterMuted();
-            InContext.audio->SetMasterMuted(true);
+            MAudioWasMuted = InView.audio.audio->MasterMuted();
+            InView.audio.audio->SetMasterMuted(true);
             MAudioMuted = true;
         }
     }
-    else if (MAudioMuted && InContext.audio != nullptr)
+    else if (MAudioMuted && InView.audio.audio != nullptr)
     {
         // Only undo a mute this kernel applied; a game-initiated master mute
         if (!MAudioWasMuted)
         {
-            InContext.audio->SetMasterMuted(false);
+            InView.audio.audio->SetMasterMuted(false);
         }
         MAudioMuted = false;
         MAudioWasMuted = false;

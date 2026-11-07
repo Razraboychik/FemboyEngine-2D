@@ -335,6 +335,8 @@ bool ResolveProjectPaths(const std::filesystem::path& InRootOrProjectFile, Proje
     ProjectPaths ScopedPaths;
     ScopedPaths.root = ScopedRoot;
     ScopedPaths.projectFile = ScopedRoot / "project.femproj";
+    ScopedPaths.plans = ScopedRoot / "Plan";
+    ScopedPaths.disdocs = ScopedRoot / "Disdocs";
     ScopedPaths.assets = ScopedRoot / "assets";
     ScopedPaths.textures = ScopedPaths.assets / "textures";
     ScopedPaths.audio = ScopedPaths.assets / "audio";
@@ -381,11 +383,12 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
 
     // The layout is intentionally small and typed. Nothing is created lazily:
     const std::filesystem::path ScopedDirectories[] = {
-        ScopedPaths.root,      ScopedPaths.assets,  ScopedPaths.textures,
-        ScopedPaths.audio,     ScopedPaths.scenes,  ScopedPaths.configs,
-        ScopedPaths.build,     ScopedPaths.release, ScopedPaths.release / "aot",
-        ScopedPaths.archives,  ScopedPaths.stores,  ScopedPaths.steamStore,
-        ScopedPaths.epicStore, ScopedPaths.gogStore};
+        ScopedPaths.root,      ScopedPaths.plans,   ScopedPaths.disdocs,
+        ScopedPaths.assets,    ScopedPaths.textures, ScopedPaths.audio,
+        ScopedPaths.scenes,    ScopedPaths.configs, ScopedPaths.build,
+        ScopedPaths.release,   ScopedPaths.release / "aot", ScopedPaths.archives,
+        ScopedPaths.stores,    ScopedPaths.steamStore, ScopedPaths.epicStore,
+        ScopedPaths.gogStore};
     for (const std::filesystem::path& ScopedDirectory : ScopedDirectories)
     {
         std::filesystem::create_directories(ScopedDirectory, ScopedCode);

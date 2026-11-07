@@ -1,5 +1,6 @@
 // FemboyEngine2D - backend selection, segment queries and projectile modes.
 #include "Engine/ECS/Schedule.hpp"
+#include "Engine/ECS/Presentation.hpp"
 #include "Engine/Physics/Physics.hpp"
 #include "Engine/Physics/ProjectileSystem.hpp"
 
@@ -58,10 +59,42 @@ int main()
     ScopedMoverTransform->Position = Vector2D{0.0f, 100.0f};
     ScopedMoverBody->Position = ScopedMoverTransform->Position;
 
+    // A destroyed body must not leave a ghost in the broadphase. The freed slot
+    // used to keep Body{} defaults (enabled dynamic body at the origin) and
+    // collided with real bodies until it was reused.
+    const Entity ScopedGhost = MakeBody(ScopedRegistry, Vector2D{0.0f, 0.0f}, Vector2D{4.0f, 4.0f}, BodyType::Dynamic);
+    ScopedPhysics.EnsureBodies(ScopedRegistry);
+    Check(ScopedPhysics.LiveBodyCount() == 2, "two live DOD bodies before the destroy");
+    ScopedRegistry.destroy(ScopedGhost);
+    ScopedPhysics.Step(ScopedRegistry, 0.1f);
+    Check(ScopedPhysics.LiveBodyCount() == 1, "a destroyed body releases its live slot");
+    const Entity ScopedProbe = MakeBody(ScopedRegistry, Vector2D{0.0f, 0.0f}, Vector2D{1.0f, 1.0f}, BodyType::Dynamic);
+    ScopedPhysics.Step(ScopedRegistry, 0.1f);
+    const Transform2D* ScopedProbeTransform = ScopedRegistry.try_get<Transform2D>(ScopedProbe);
+    Check(ScopedProbeTransform->Position.X == 0.0f && ScopedProbeTransform->Position.Y == 0.0f,
+          "a freed slot does not collide with a body at the origin");
+    Check(ScopedPhysics.LiveBodyCount() == 2, "the reused slot is live again");
+
+    // The ray and projectile checks need a clear x axis: both helper bodies
+    // still overlap it, and DOD keeps its own position columns.
+    ScopedRegistry.destroy(ScopedMover);
+    ScopedRegistry.destroy(ScopedProbe);
+
+    // TimeScaleComponent freezes a DOD body: it does not integrate and drops the
+    // velocity the game assigned before the step.
+    const Entity ScopedFrozen =
+        MakeBody(ScopedRegistry, Vector2D{-200.0f, 0.0f}, Vector2D{1.0f, 1.0f}, BodyType::Dynamic);
+    ScopedRegistry.try_get<RigidBody2D>(ScopedFrozen)->LinearVelocity = Vector2D{100.0f, 0.0f};
+    ScopedRegistry.emplace<TimeScaleComponent>(ScopedFrozen, TimeScaleComponent{0.0f});
+    ScopedPhysics.Step(ScopedRegistry, 0.1f);
+    const Transform2D* ScopedFrozenTransform = ScopedRegistry.try_get<Transform2D>(ScopedFrozen);
+    Check(ScopedFrozenTransform != nullptr && ScopedFrozenTransform->Position.X == -200.0f,
+          "a frozen DOD body does not integrate");
+
     const Entity ScopedWall = MakeBody(ScopedRegistry, Vector2D{50.0f, 0.0f}, Vector2D{5.0f, 20.0f}, BodyType::Static);
     PhysicsRayHit ScopedHit;
-    Check(ScopedPhysics.RayCast(ScopedRegistry, Vector2D{0.0f, 0.0f}, Vector2D{100.0f, 0.0f}, ScopedMover, 0xFFFFFFFFu,
-                                ScopedHit),
+    Check(ScopedPhysics.RayCast(ScopedRegistry, Vector2D{0.0f, 0.0f}, Vector2D{100.0f, 0.0f}, entt::null,
+                                0xFFFFFFFFu, ScopedHit),
           "segment query finds a wall");
     Check(ScopedHit.entity == ScopedWall, "segment query returns the wall");
     Check(ScopedHit.point.X < 46.0f, "segment query stops at the near face");

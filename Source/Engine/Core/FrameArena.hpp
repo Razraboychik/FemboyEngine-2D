@@ -31,7 +31,10 @@ public:
 
     [[nodiscard]] void* Allocate(std::size_t InSize, std::size_t InAlignment = alignof(std::max_align_t)) noexcept
     {
-        if (InSize == 0 || InAlignment == 0 || MBase == nullptr)
+        // The masked rounding below is only correct for powers of two; a caller
+        // that passes any other alignment gets nullptr instead of a misaligned
+        // pointer that faults later.
+        if (InSize == 0 || InAlignment == 0 || (InAlignment & (InAlignment - 1u)) != 0 || MBase == nullptr)
         {
             return nullptr;
         }

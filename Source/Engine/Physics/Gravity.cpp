@@ -1,6 +1,7 @@
 // FemboyEngine2D - level gravity and local gravity fields.
 #include "Engine/Physics/Gravity.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/ECS/Tilemap.hpp"
@@ -37,8 +38,8 @@ namespace
         case GravityFalloff::Exponential:
         {
             const float ScopedPower = std::clamp(InPower, 1.0f, 16.0f);
-            const float ScopedScale = std::exp(ScopedPower) - 1.0f;
-            return ScopedScale > 1.0e-6f ? (std::exp(ScopedPower * ScopedT) - 1.0f) / ScopedScale : ScopedT;
+            const float ScopedScale = Sim::Exp(ScopedPower) - 1.0f;
+            return ScopedScale > 1.0e-6f ? (Sim::Exp(ScopedPower * ScopedT) - 1.0f) / ScopedScale : ScopedT;
         }
     }
     return ScopedT;
@@ -213,8 +214,8 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
                 continue;
             }
             const Transform2D& ScopedTransform = ScopedFieldView.get<Transform2D>(ScopedSource);
-            const float ScopedCos = std::cos(ScopedTransform.Rotation);
-            const float ScopedSin = std::sin(ScopedTransform.Rotation);
+            const float ScopedCos = Sim::Cos(ScopedTransform.Rotation);
+            const float ScopedSin = Sim::Sin(ScopedTransform.Rotation);
             const Vector2D ScopedCenter{
                 ScopedTransform.Position.X + ScopedField.Offset.X * ScopedCos - ScopedField.Offset.Y * ScopedSin,
                 ScopedTransform.Position.Y + ScopedField.Offset.X * ScopedSin + ScopedField.Offset.Y * ScopedCos};
@@ -262,22 +263,25 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
     }
 }
 
-void GravitySystem::Update(Ecs::SystemContext& InContext) noexcept
+void GravitySystem::Update(Ecs::PhysicsSystemView& InView) noexcept
 {
-    if (InContext.physics != nullptr)
+    if (InView.services.physics != nullptr)
     {
-        Update(InContext.registry, *InContext.physics, InContext.dt);
+        Update(InView.registry, *InView.services.physics, InView.dt);
     }
+}
+
+namespace
+{
+void GravitySystemThunk(Ecs::PhysicsSystemView& InView, void* InUser)
+{
+    static_cast<GravitySystem*>(InUser)->Update(InView);
+}
 }
 
 bool GravitySystem::Register(Ecs::SystemGraph& InGraph, GravitySystem& InSystem)
 {
-    return InGraph.Add(
-        Ecs::Phase::FixedUpdate, "GravitySystem",
-        +[](Ecs::SystemContext& InContext, void* InUser)
-        {
-            static_cast<GravitySystem*>(InUser)->Update(InContext);
-        },
-        &InSystem);
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "GravitySystem", Ecs::BindPhysicsSystem<&GravitySystemThunk>(),
+                       &InSystem);
 }
 }

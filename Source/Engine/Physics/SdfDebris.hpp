@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Engine/Core/Pcg32.hpp"
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/Physics/SdfDestructible.hpp"
 
@@ -47,8 +48,8 @@ struct SdfDebrisSettings
         return std::sqrt(ScopedDelta.LengthSquared()) - InOp.Radius;
     }
     const Vector2D ScopedDelta = InPoint - InOp.Center;
-    const float ScopedCos = std::cos(InOp.Angle);
-    const float ScopedSin = std::sin(InOp.Angle);
+    const float ScopedCos = Sim::Cos(InOp.Angle);
+    const float ScopedSin = Sim::Sin(InOp.Angle);
     const Vector2D ScopedLocal{ScopedDelta.X * ScopedCos + ScopedDelta.Y * ScopedSin,
                                -ScopedDelta.X * ScopedSin + ScopedDelta.Y * ScopedCos};
     const float ScopedDx = std::abs(ScopedLocal.X) - InOp.HalfExtents.X;

@@ -543,24 +543,33 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
     }
 }
 
-void StateTreeSystem::Run(Ecs::SystemContext& InContext) const noexcept
+void StateTreeSystem::Run(const Ecs::GameplaySystemView& InView) const noexcept
 {
-    RunWithTags(InContext.registry, InContext.dt, InContext.commands, InContext.gameplayTags);
+    RunWithTags(InView.registry, InView.dt, InView.core.commands, InView.gameplay.gameplayTags);
+}
+
+namespace
+{
+void StateTreeSystemThunk(const Ecs::GameplaySystemView& InView, void* InUser)
+{
+    static_cast<StateTreeSystem*>(InUser)->Run(InView);
+}
 }
 
 void RegisterStateTreeSystem(Ecs::Schedule& InSchedule, StateTreeSystem& InSystem)
 {
-    (void)InSchedule.Add(
-        Ecs::Phase::FixedUpdate, "state_tree",
-        +[](Ecs::SystemContext& InContext, void* InUser) { static_cast<StateTreeSystem*>(InUser)->Run(InContext); },
-        &InSystem);
+    (void)InSchedule.Add(Ecs::Phase::FixedUpdate, "state_tree",
+                         +[](Ecs::SystemContext& InContext, void* InUser)
+                         {
+                             Ecs::GameplaySystemView ScopedView = InContext.GameplayView();
+                             static_cast<StateTreeSystem*>(InUser)->Run(ScopedView);
+                         },
+                         &InSystem);
 }
 
 void RegisterStateTreeSystem(Ecs::SystemGraph& InGraph, StateTreeSystem& InSystem)
 {
-    (void)InGraph.Add(
-        Ecs::Phase::FixedUpdate, "state_tree",
-        +[](Ecs::SystemContext& InContext, void* InUser) { static_cast<StateTreeSystem*>(InUser)->Run(InContext); },
-        &InSystem);
+    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "state_tree",
+                      Ecs::BindGameplaySystem<&StateTreeSystemThunk>(), &InSystem);
 }
 }

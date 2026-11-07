@@ -199,7 +199,7 @@ int main()
     ScopedSlot.flags = SlotFaceUp;
     ScopedSlot.cardId = 42;
     ScopedRegistry.emplace<SlotComponent>(ScopedSlotEntity, ScopedSlot);
-    CardBoardSystem::Update(ScopedContext);
+    CardBoardSystem::Update(ScopedContext.CoreView());
     const Transform2D& ScopedSlotTransform = ScopedRegistry.get<Transform2D>(ScopedSlotEntity);
     FBY_CHECK(ScopedSlotTransform.Position.X > 100.0f);
     FBY_CHECK(ScopedRegistry.get<SlotComponent>(ScopedSlotEntity).isOccupied);
@@ -257,6 +257,7 @@ int main()
             FBY_CHECK(ScopedShadowRecords[ScopedI].groupCountX == (320u + 7u) / 8u);
             FBY_CHECK(ScopedShadowRecords[ScopedI].groupCountY == (240u + 7u) / 8u);
             FBY_CHECK(ScopedShadowRecords[ScopedI].constantsBytes == sizeof(SdfShadowConstants));
+            FBY_CHECK(ScopedShadowRecords[ScopedI].constants == ScopedShadowRecords[ScopedI].ConstantBytes.data());
             const auto* ScopedConstants = static_cast<const SdfShadowConstants*>(ScopedShadowRecords[ScopedI].constants);
             FBY_CHECK(ScopedConstants->camera.Z == 1.0f);
             FBY_CHECK(ScopedConstants->encode.Z == 1.0f);

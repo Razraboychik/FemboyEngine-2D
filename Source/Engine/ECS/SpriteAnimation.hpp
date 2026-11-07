@@ -118,8 +118,8 @@ void ApplySpriteFrame(const SpriteAnimationComponent& InSpriteAnimation, const S
 class SpriteAnimationSystem
 {
 public:
-    void Run(Ecs::SystemContext& InContext) const;
-    void Run(Ecs::SystemContext& InContext, SpriteAnimationEventQueue& InEvents) const;
+    void Run(const Ecs::CoreSystemView& InView) const;
+    void Run(const Ecs::CoreSystemView& InView, SpriteAnimationEventQueue& InEvents) const;
     void Run(Ecs::Registry& InRegistry, float InDt) const;
     void Run(Ecs::Registry& InRegistry, float InDt, SpriteAnimationEventQueue* InEvents) const;
 };

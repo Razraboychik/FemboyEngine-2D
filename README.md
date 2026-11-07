@@ -48,12 +48,17 @@ A new project is deliberately empty. `CreateProject()` writes only:
 ├─ CMakeLists.txt          links FemboyEngine2D::Engine
 ├─ GameMain.cpp            window -> RHI -> registry -> fixed step -> extract
 ├─ project.femproj         project descriptor (paths, simulation, render, build)
+├─ Plan/                   plans and roadmaps (never cooked)
+├─ Disdocs/                design documents (never cooked)
 ├─ assets/
 │  └─ scenes/main.toml
 ├─ build/
 ├─ archives/
 └─ stores/
 ```
+
+`Plan/` and `Disdocs/` are authoring-only: they sit outside `assets/`, so
+nothing from them enters `.fempak`, `.femarc` or a player build.
 
 There are no player, enemy, camera or gameplay components in the template. The
 generated `GameMain.cpp` contains exactly the system boundary every project
@@ -97,15 +102,15 @@ memory model.
 
 | Domain | Core pieces | Memory and execution contract |
 |---|---|---|
-| Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, vectors, Mirror reflection, jobs, SDL3 platform, plugin ABI | Value types, checked casts compile away, no RTTI in hot paths, fixed-capacity job queues |
-| RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts | One flat packet per frame, explicit frame lifetime, no per-item allocations, bindless-style keys |
-| ECS | EnTT registry, trivially copyable components, four-phase schedule, parallel `SystemGraph` with per-call semaphores, Snapshot v4 | Archetype storage, systems borrow spans instead of owning objects, snapshots are explicit copies |
+| Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, vectors, Mirror reflection, jobs, SDL3 platform, plugin ABI | Value types, checked casts compile away, no RTTI in hot paths, worker pool with latched task-fault containment |
+| RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, engine-side `Rhi::FrameComposer`, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts | One flat packet per frame, explicit frame lifetime, no per-item allocations, bindless-style keys |
+| ECS | EnTT registry, trivially copyable components, four-phase schedule, parallel `SystemGraph` with per-call semaphores and declared service-access conflicts, Snapshot v4 | Archetype storage, systems borrow spans instead of owning objects, snapshots are explicit copies |
 | Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input | No heap in the input path; bounded events and mapping tables; deterministic per-tick sampling |
 | Gameplay | Project tag database edited in Project Settings, hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown | Data tables and fixed component layouts; effects run through command buffers, not hidden object graphs |
 | AI | `StateTree` to command buffer to `AIController` to perception, navigation and skills; `ActionId` is data for game-owned ECS systems, tag-driven targets, grid and convex navmesh, raw/LOS/Chaikin/Catmull-Rom paths, deterministic route randomization | Bounded state trees, per-frame repath budget, no background allocation from the AI tick |
-| Physics | Box2D v3 for joints, CCD and general bodies; data-oriented AABB solver for large joint-free worlds; per-level gravity, fields, joints, cloth, shallow water and configurable hitscan/swept/dynamic projectiles | DOD stores bodies in SoA arrays and a uniform grid; joint/CCD paths route to Box2D; no solver allocation per body |
+| Physics | Box2D v3 for joints, CCD and general bodies; data-oriented AABB solver for large joint-free worlds; per-level gravity, fields, joints, cloth, shallow water and configurable hitscan/swept/dynamic projectiles | DOD stores bodies in SoA columns and a uniform grid, with per-body time and gravity scale and begin/end touch events; joint/CCD paths route to Box2D; no solver allocation per body |
 | Network | `NetRollbackSession`, 256-tick snapshot ring, input prediction, late-input replay, stable `NetEntityId`, relevance filtering, UDP `NetTransport` with acks, retransmit and MTU fragmentation, versioned `InputPacket`s | Ring-allocated history, bounded queued inputs, explicit rollback copies and no hidden per-packet heap churn |
-| Assets | VFS with owning `Pin()`, `.femeta` transactions, BC7/ASTC texture cooker, audio/localization cookers, watcher, `.fanim` compressed clips | `mmap` or owning pin, explicit lifetimes, transactional metadata, cooker writes outside the frame path |
+| Assets | VFS with owning `Pin()`, `.femeta` transactions, BC7/ASTC texture cooker, audio/localization cookers, watcher, `.fanim` compressed clips | `mmap` or owning pin, explicit lifetimes, transactional metadata, a sorted path index mounted in one pass, cooker writes outside the frame path |
 | Distribution | `FemArchiver` `.femarc`, optional LZMA, AES-256-GCM / ChaCha20-Poly1305, `fby_fempak secure` | Streaming archive writer, bounded block buffers, deterministic layout |
 | Platform | C-ABI `PlatformService`, Steam/EGS providers, deterministic achievements/cloud saves | Plain C ABI, fixed provider table, no C++ ABI leak into plugins |
 | Animation | 2D skeleton SoA, LBS, blend cycles, `AnimGraph`, animation timeline, PIE seqlock hand-off, two-bone/FABRIK IK, retargeting, pose and clip quantization | Skeleton and pose data stay in flat arrays; the PIE snapshot uses a seqlock, not a locked scene copy |
@@ -126,26 +131,53 @@ memory model.
 Entities are identifiers. Components are plain, trivially copyable values. Systems
 are free functions or small stateless classes that receive an `Ecs::SystemContext`
 and borrow spans from the registry. There is no `Update()` on a component, no
-virtual dispatch in the tick and no hidden owner for gameplay state.
+virtual dispatch in the tick and no hidden owner for gameplay state. The context
+groups subsystem pointers into domain bundles (render, physics, audio, text,
+gameplay), and a system reads only the bundles it declares; the core components
+live in `CoreComponents.hpp`, so a module that only needs transforms does not pull
+in text or big-number headers. A scheduled system receives a narrow view built by
+`SystemContext`: `PhysicsSystemView`, `RenderSystemView`, `GameplaySystemView`,
+`AudioSystemView`, `UiSystemView`, `AccessibilitySystemView` or `CoreSystemView`.
+`Bind*System<&Function>()` adapts that view to the graph's function-pointer ABI.
+The editor coordinator, the script host and the plugin thunk keep the full context
+because they deliberately bind every domain.
 
 The schedule has four phases: `PreUpdate`, `FixedUpdate`, `PostUpdate` and
 `Render`. `SystemGraph` runs independent systems in parallel with per-call
-semaphores, while snapshots and the command log make the result explicit. A
-system that mutates a component is registered by stable name, so determinism and
-replay do not depend on declaration order.
+semaphores. A system may declare which engine services it reads and writes; two
+same-phase systems that conflict on a service are ordered by registration instead
+of running together. A system that mutates a component is registered by stable
+name, so determinism and replay do not depend on declaration order. Loading,
+reloading or unloading a plugin rebuilds the compiled order before the next frame.
 
 ### DOD: memory is the frame budget
 
 DOD is not an extra layer on top of ECS; it is the rule that governs storage.
-Components and render items live in flat arrays. Hot systems iterate contiguous
-spans, use fixed-capacity pools and frame arenas, and do not allocate on the
-frame path. A 48-byte `RenderItem` and 64-bit sort keys are part of that
-contract: the renderer consumes one flat packet, not a tree of objects.
+Components and render items live in flat arrays. The DOD physics backend keeps
+positions, previous positions, velocities, accelerations, rotations, inverse
+masses, gravity scales, extents, flags and sleep counters in separate columns, so
+integration and the uniform-grid broadphase stream only the values they read. Hot
+systems iterate contiguous spans, use bounded pools and frame arenas, and do not
+allocate on the frame path. A 48-byte `RenderItem` and 64-bit sort keys are part
+of that contract: the renderer consumes one flat packet, not a tree of objects.
 
 There is no tracing garbage collector and no hidden ownership graph. Memory is
 released by scope, arena reset, mount unmount or an explicit `Shutdown()`. This
 is the main reason the engine can keep frame time predictable: cache locality is
 the default, and the cost of a system is visible in its data layout.
+
+### Determinism: one arithmetic contract
+
+Rollback compares state by value, so the simulation does not use the platform
+libm. `Engine/Core/SimMath.hpp` provides `Sin`/`Cos`/`SinCos`, `Atan2`, `Acos`,
+`Cbrt`, `Exp`, `Log`, `Pow` and `WrapPi` built from exact range reduction and
+fused multiply-add polynomials, with `ldexp` only for exponent scaling. The
+results are bit-identical across Clang and GCC on every supported target, and
+every simulation-side angle, falloff and damping curve uses that layer. Box2D
+still owns its own internal floating-point path, which is why joints and CCD are
+kept on the general-purpose solver rather than mixed into deterministic DOD
+worlds.
+
 
 ### SDF: geometry without resolution
 
@@ -166,9 +198,10 @@ ceiling, not a benchmark promise; actual frame time depends on the scene,
 overdraw, upscaling mode and VRAM. Measure on the target GPU before shipping a
 resolution tier.
 
-The same model keeps memory efficient without a garbage collector: fixed
-capacities are reserved up front, snapshots are explicit, and systems reuse
-buffers across frames instead of allocating per entity or per widget.
+The same model keeps memory efficient without a garbage collector: frame pools
+and arenas reserve up front, authoring tables grow on demand, snapshots are
+explicit, and systems reuse buffers across frames instead of allocating per
+entity or per widget.
 
 Related design notes: [camera effects](Documentation/design/camera-effects.md),
 [transport physics](Documentation/design/transport-physics.md) and

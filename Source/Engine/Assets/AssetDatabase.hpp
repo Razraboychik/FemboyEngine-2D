@@ -3,18 +3,26 @@
 
 #include "Engine/Assets/AssetMeta.hpp"
 #include "Engine/Core/AssetId.hpp"
+#include "Engine/Core/FlatMap.hpp"
 
 #include <cstdint>
 #include <cstring>
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace Fby::Assets
 {
 
-inline constexpr std::uint32_t kMaxAssetRecords = 1024;
+// Initial storage for the identity and metadata tables. The tables grow on
+// demand; this value only reserves memory so a typical project does not reallocate
+// while it imports.
+inline constexpr std::uint32_t kInitialAssetRecordCapacity = 1024;
 inline constexpr std::uint32_t kAssetDbPathCapacity = kAssetPathCapacity;
 inline constexpr std::uint32_t kMaxAssetReloadNotices = 64;
+// AssetMeta::dependencyFirst is a 16-bit index into the dependency table.
+inline constexpr std::uint32_t kMaxAssetDependencyEntries = 65535u;
 
 struct AssetRecord
 {
@@ -39,11 +47,11 @@ public:
 
     [[nodiscard]] std::span<const AssetRecord> Records() const noexcept
     {
-        return {MRecords, MCount};
+        return MRecords;
     }
     [[nodiscard]] std::uint32_t Count() const noexcept
     {
-        return MCount;
+        return static_cast<std::uint32_t>(MRecords.size());
     }
 
     // Registers a new asset row and returns a stable handle. The id/path legacy
@@ -114,18 +122,23 @@ private:
     [[nodiscard]] std::uint32_t AllocateSlot(AssetGuid InGuid, std::string* InError);
     void PushReload(AssetHandle InHandle, const AssetMeta& InMeta) noexcept;
 
-    AssetRecord MRecords[kMaxAssetRecords]{};
-    std::uint32_t MCount = 0;
+    // Identity table. The id index keeps Register() and Find() from scanning the
+    // record array once a project grows past a few hundred assets.
+    std::vector<AssetRecord> MRecords;
+    Fby::FlatMap<std::uint64_t, std::uint32_t> MRecordIndex;
 
-    AssetMeta MMetas[kMaxAssetMeta]{};
-    // Handle generation per slot
-    std::uint32_t MMetaGenerations[kMaxAssetMeta]{};
-    AssetHandle MHandles[kMaxAssetMeta]{};
-    bool MMetaUsed[kMaxAssetMeta]{};
-    AssetDependency MDependencies[kMaxAssetMeta * kMaxAssetDependencies]{};
+    // Metadata table. Slots are append-only; handles carry the generation.
+    std::vector<AssetMeta> MMetas;
+    std::vector<std::uint32_t> MMetaGenerations;
+    std::vector<AssetHandle> MHandles;
+    std::vector<std::uint8_t> MMetaUsed;
+    std::vector<AssetDependency> MDependencies;
     std::uint32_t MDependencyCount = 0;
-
-    StagedRow MStaged[kMaxAssetMeta]{};
+    std::vector<StagedRow> MStaged;
+    // Lookup indexes over MMetas: guid, deterministic AssetId and normalized path.
+    Fby::FlatMap<std::uint64_t, std::uint32_t> MGuidIndex;
+    Fby::FlatMap<std::uint64_t, std::uint32_t> MIdIndex;
+    Fby::FlatMap<std::string, std::uint32_t> MPathIndex;
     bool MInTransaction = false;
     std::uint32_t MStagedCount = 0;
 

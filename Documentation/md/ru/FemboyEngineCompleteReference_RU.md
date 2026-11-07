@@ -216,18 +216,19 @@ ThreadLoad содержит busyNanoseconds (время внутри работ�
 
 ## 6. ECS, планирование и снапшоты
 
-Реестр — это EnTT. Системы регистрируются в SystemGraph в одной из пяти фаз (PreUpdate, FixedUpdate, Update, PostUpdate, Render). SystemContext — единственный параметр системы; он содержит реестр, JobSystem, кадровую арену, рендерер, окно, VFS, AssetDatabase, аудио, физику, суставы, ткань, жидкость, стек камер, ядро доступности и атласы шрифтов.
+Реестр — это EnTT. Системы регистрируются в SystemGraph в одной из четырёх фаз (PreUpdate, FixedUpdate, PostUpdate, Render). SystemContext — единственный параметр системы; он содержит реестр и JobSystem напрямую, а указатели на подсистемы сгруппированы в доменные бандлы (render, assets, audio, physics, text, accessibility, gameplay), поэтому система читает только объявленные бандлы. Запланированная система получает узкий view: `PhysicsSystemView`, `RenderSystemView`, `GameplaySystemView`, `AudioSystemView`, `UiSystemView`, `AccessibilitySystemView` или `CoreSystemView`, адаптированный через `Bind*System<&Function>()`.
 
 ```cpp
-Fby::Ecs::Schedule schedule;
-schedule.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
-schedule.Add(Fby::Ecs::Phase::Update, "movement", &MovementSystem, nullptr);
-schedule.Add(Fby::Ecs::Phase::PostUpdate, "platform", &GogAchievementSystem, &gog);
+Fby::Ecs::SystemGraph graph;
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr, 1ull << 0);
+graph.Add(Fby::Ecs::Phase::PostUpdate, "platform", &GogAchievementSystem, &gog);
 
 Fby::Ecs::SystemContext context{registry, jobs};
 context.physics = &physics;
 context.window = &window;
-schedule.Run(Fby::Ecs::Phase::FixedUpdate, context);
+graph.Build();
+graph.Run(Fby::Ecs::Phase::FixedUpdate, context);
 ```
 
 Snapshot v4 — канонический образ реестра с контрольной суммой. Компоненты с рантайм-хэндлами (b2BodyId, b2ShapeId) пишутся рукописными кодеками; снапшот никогда не сериализует эти хэндлы, а восстановление пересоздаёт тела из полей компонента. Схема хранит Mirror-имя и LayoutHash каждого компонента, поэтому изменение поля отклоняется, а не читается молча неверно.
@@ -488,11 +489,11 @@ typedef struct FbyPlatformApi {
 
 ```cpp
 // 4-7 in code: systems, accessibility and rollback for one match.
-Fby::Ecs::Schedule schedule;
-schedule.Add(Fby::Ecs::Phase::PreUpdate, "input", &InputSystem);
-schedule.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
-schedule.Add(Fby::Ecs::Phase::Update, "movement", &MovementSystem);
-schedule.Add(Fby::Ecs::Phase::Render, "ui", &UiSystem, &ui);
+Fby::Ecs::SystemGraph graph;
+graph.Add(Fby::Ecs::Phase::PreUpdate, "input", &InputSystem);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr, 1ull << 1);
+graph.Add(Fby::Ecs::Phase::Render, "ui", &UiSystem, &ui);
 
 Fby::AccessibilityKernel kernel;
 kernel.Configure(settings);              // blind/deaf/colour/flash
@@ -1247,7 +1248,7 @@ void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept
 - Поиск резидентности — открытая адресация с tombstone. Попадание стоит одного зонда и записи lastUsedFrame; отображение чанка никогда не перечитывается для резидентного тайла.
 - Сам VirtualTextureSystem занимает около 2 МиБ (таблица страниц и хеш на 65536 записей). Это стартовый объект, один раз выделяемый в куче, а не стековая переменная кадровой функции.
 
-31.2 Маски изменений компонентов. Видимая для рендера сущность несёт ComponentChangeMask рядом с Transform2D/Sprite2D. Система, меняющая данные, вызывает change::MarkTransform(), MarkSprite() или MarkDrawOrder(); отметка — один атомарный fetch_or по 64-битному слову. Extract читает слово, потребляет его через fetch_and(0) и пересчитывает RenderItem только если присутствовал один из трёх рендер-битов. Сущность с нулевой маской стоит одного поиска указателя и одной relaxed-загрузки — без чтения Transform, копирования Sprite и вычисления RenderKey.
+31.2 Маски изменений компонентов. Видимая для рендера сущность несёт ComponentChangeMask рядом с Transform2D/Sprite2D. Система, меняющая данные, вызывает Fby::Change::MarkTransform(), MarkSprite() или MarkDrawOrder(); отметка — один атомарный fetch_or по 64-битному слову. Extract читает слово, потребляет его через fetch_and(0) и пересчитывает RenderItem только если присутствовал один из трёх рендер-битов. Сущность с нулевой маской стоит одного поиска указателя и одной relaxed-загрузки — без чтения Transform, копирования Sprite и вычисления RenderKey.
 
 | Бит | Имя | Потребитель | Эффект |
 |---|---|---|---|
@@ -1273,9 +1274,9 @@ Fby::Change::MarkTransform(registry, entity, frameIndex);
 
 // Extract: static items fall through after one relaxed load.
 for (auto [e, mask, transform, sprite] : view.each()) {
-    const ChangeMask Bits = change::Peek(mask);
+    const ChangeMask Bits = Fby::Change::Peek(mask);
     if (Bits == 0 && SlotKnown(e)) { ++stats.skippedStatic; continue; }
-    const ChangeMask Hit = change::Consume(mask);
+    const ChangeMask Hit = Fby::Change::Consume(mask);
     if ((Hit & kRenderBits) == 0) { continue; }
     BuildItem(registry, e, &items[slot], &keys[slot]);
 }
@@ -1299,6 +1300,7 @@ if (OldKey != NewKey) { RebuildOutput(); return DirtyRange{0, MOutputCount}; }
 FillPacket() публикует те же диапазоны как FramePacket::instanceRanges и выставляет instanceRangesAreDeltas. VulkanRHI копирует только эти диапазоны в постоянный срез instance-буфера кадра после того, как срез получил один полный образ; первое использование, resize или структурная пересборка откатываются к полному копированию. MetalRHI сохраняет полное копирование как fallback, поэтому контракт пакета переносим, а оптимизация явная.
 
 - Без аллокаций: каждый слот, ключ, батч, диапазон и бакет поиска живут внутри объекта, параметризованного Capacity. Значение по умолчанию 4096 покрывает большую 2D-сцену; стриминговый мир инстанцирует ChangeMaskRenderExtract<1u << 18> без изменения API.
+- Поиск сущность → слот — открытая адресация с tombstone’ами, таблица пересобирается при превышении порога загрузки, поэтому долгая сессия spawn/despawn не может её исчерпать. Покадровые проходы идут по плотному списку активных слотов, поэтому их стоимость зависит от числа живых сущностей, а не от Capacity.
 - Extract отдаёт оба представления: Items()/Keys()/Batches() заполняют существующий FramePacket, а DirtyRanges() — план загрузки для бэкенда с постоянным instance SSBO. Кадр без изменений и без структурных правок даёт пустой список диапазонов.
 - Смена слоя намеренно считается структурной, даже если float-глубина не изменилась: батчинг группирует по старшим 16 битам RenderKey, поэтому стабильный порядок — условие корректности, а не оптимизация.
 
@@ -1845,8 +1847,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `EditorSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 100 |
 | `Entry` | Infrastructure | `Source/Editor/Infrastructure/TextureThumbnails.hpp` | 52 |
 | `ExternalClientDesc` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 37 |
-| `FrameComposer` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 64 |
-| `FrameComposerStats` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 45 |
+| `FrameComposer` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 64 |
+| `FrameComposerStats` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 45 |
 | `FrameGenerationMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 138 |
 | `FrameGenerationPolicySetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 131 |
 | `HudTargetMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 147 |
@@ -1858,7 +1860,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `MaterialGraphPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 52 |
 | `MaterialGraphRuntime` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 41 |
 | `MaterialRuntimeStats` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 25 |
-| `MotionHistory2D` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 30 |
+| `MotionHistory2D` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 30 |
 | `NetSession` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 32 |
 | `NetworkDiagnosticsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 53 |
 | `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 98 |
@@ -1896,8 +1898,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 43 |
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 47 |
 | `SdfCollisionSystem` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 13 |
-| `SdfField` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 20 |
-| `SdfGiVolume` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 21 |
+| `SdfField` | Physics | `Source/Engine/Physics/SdfCollision.hpp` | 20 |
+| `SdfGiVolume` | Physics | `Source/Engine/Physics/SdfGi.hpp` | 21 |
 | `Services` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 220 |
 | `SettingDesc` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 28 |
 | `SettingKind` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 20 |

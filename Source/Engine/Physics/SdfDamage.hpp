@@ -1,6 +1,7 @@
 // FemboyEngine2D - impact, material and local damage infrastructure for SDF objects.
 #pragma once
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/Physics/SdfCollision.hpp"
 
@@ -128,7 +129,7 @@ using SdfDamagePolicy = float (*)(void* InUser, const SdfImpact& InImpact, const
     const float ScopedToughness = std::max(InMaterial.Toughness, 0.01f);
     const float ScopedHardness = std::max(InMaterial.Hardness, 0.01f);
     const float ScopedExponent = std::max(InMaterial.ThicknessExponent, 0.01f);
-    const float ScopedDenominator = ScopedToughness * std::pow(ScopedThickness, ScopedExponent);
+    const float ScopedDenominator = ScopedToughness * Sim::Pow(ScopedThickness, ScopedExponent);
     const float ScopedDamage = ScopedEnergy * InMaterial.EnergyToDamage * ScopedHardness / ScopedDenominator;
     return std::clamp(ScopedDamage, 0.0f, std::clamp(InMaterial.MaximumDamageFraction, 0.0f, 1.0f));
 }

@@ -258,7 +258,7 @@ public:
     }
 
     // FixedUpdate pass. Allocation-free. Tasks write AICommandComponent through
-    void Run(Ecs::SystemContext& InContext) const noexcept;
+    void Run(const Ecs::GameplaySystemView& InView) const noexcept;
     void Run(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuffer* InCommands) const noexcept;
 
 private:

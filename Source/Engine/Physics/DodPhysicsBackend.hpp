@@ -11,7 +11,7 @@
 namespace Fby
 {
 
-// Deterministic fixed-capacity AABB solver used by the strategy-oriented
+// Deterministic structure-of-arrays AABB solver used by the strategy-oriented
 // backend. It deliberately omits joints and rotational collision response;
 // the Box2D backend remains the general-purpose choice.
 class DodPhysicsBackend
@@ -32,7 +32,7 @@ public:
 
     [[nodiscard]] std::uint32_t LiveBodyCount() const noexcept
     {
-        return static_cast<std::uint32_t>(MBodies.size());
+        return MAliveCount;
     }
     [[nodiscard]] std::span<const PhysicsContactEvent> Contacts() const noexcept
     {
@@ -54,38 +54,66 @@ public:
     std::uint32_t DestroyAllBodies(Ecs::Registry* InRegistry) noexcept;
 
 private:
-    struct Body
+    // Structure of arrays. The integration and broadphase loops stream positions,
+    // extents and velocities through separate vectors, so a step does not pull the
+    // cold metadata of every body into the same cache lines.
+    struct BodyColumns
     {
-        Entity entity = entt::null;
-        Vector2D position{};
-        Vector2D previousPosition{};
-        Vector2D velocity{};
-        float rotation = 0.0f;
-        float previousRotation = 0.0f;
-        float angularVelocity = 0.0f;
-        float inverseMass = 0.0f;
-        float halfWidth = 0.5f;
-        float halfHeight = 0.5f;
-        std::uint32_t category = 1u;
-        std::uint32_t mask = 0xFFFFFFFFu;
-        std::uint32_t flags = RigidBodyAwake | RigidBodyEnabled;
-        BodyType type = BodyType::Dynamic;
-        bool sensor = false;
-        bool contactEvents = true;
-        std::uint32_t sleepFrames = 0;
+        std::vector<Entity> Entities;
+        std::vector<Vector2D> Positions;
+        std::vector<Vector2D> PreviousPositions;
+        std::vector<Vector2D> Velocities;
+        // Per-step acceleration in pixels per second squared. It is integrated
+        // once and cleared so a caller that applies it every tick behaves the
+        // same at any fixed step.
+        std::vector<Vector2D> Accelerations;
+        std::vector<float> Rotations;
+        std::vector<float> PreviousRotations;
+        std::vector<float> AngularVelocities;
+        std::vector<float> InverseMasses;
+        // World gravity multiplier from RigidBody2D::GravityScale.
+        std::vector<float> GravityScales;
+        std::vector<float> HalfWidths;
+        std::vector<float> HalfHeights;
+        std::vector<std::uint32_t> Categories;
+        std::vector<std::uint32_t> Masks;
+        std::vector<std::uint32_t> Flags;
+        std::vector<BodyType> Types;
+        std::vector<std::uint8_t> Sensors;
+        std::vector<std::uint8_t> ContactEvents;
+        std::vector<std::uint32_t> SleepFrames;
     };
 
     void PruneDeadBodies(Ecs::Registry& InRegistry);
     [[nodiscard]] std::uint32_t FindBody(Entity InEntity) const noexcept;
-    [[nodiscard]] static Vector2D MinCorner(const Body& InBody) noexcept;
-    [[nodiscard]] static Vector2D MaxCorner(const Body& InBody) noexcept;
-    [[nodiscard]] static bool Overlaps(const Body& InA, const Body& InB) noexcept;
-    void Resolve(Body& InA, Body& InB, std::uint32_t InAIndex, std::uint32_t InBIndex) noexcept;
+    // Returns the body index for `InEntity`, synchronizing bodies first only when
+    // the entity is not registered yet. The setters call this instead of a full
+    // EnsureBodies scan on every impulse.
+    [[nodiscard]] std::uint32_t EnsureBodyIndex(Ecs::Registry& InRegistry, Entity InEntity);
+    // Takes a free slot or appends a new one and resets every column of that slot.
+    [[nodiscard]] std::uint32_t AcquireBodySlot() noexcept;
+    void ResetBodySlot(std::uint32_t InIndex) noexcept;
+    void ClearColumns() noexcept;
+    [[nodiscard]] std::uint32_t BodyCount() const noexcept
+    {
+        return static_cast<std::uint32_t>(MColumns.Entities.size());
+    }
+    // Stable entity pair key used to turn raw overlaps into begin/end touch
+    // events across steps; indices are reused, entity ids are not.
+    [[nodiscard]] static std::uint64_t PairKey(Entity InA, Entity InB) noexcept;
+    [[nodiscard]] static Entity EntityFromKey(std::uint32_t InRaw) noexcept;
+    void EmitContactEvents() noexcept;
+    [[nodiscard]] Vector2D MinCorner(std::uint32_t InIndex) const noexcept;
+    [[nodiscard]] Vector2D MaxCorner(std::uint32_t InIndex) const noexcept;
+    [[nodiscard]] bool Overlaps(std::uint32_t InA, std::uint32_t InB) const noexcept;
+    void Resolve(std::uint32_t InA, std::uint32_t InB) noexcept;
     void EmitContact(Entity InA, Entity InB, Vector2D InPoint, Vector2D InNormal, float InSpeed,
                      PhysicsEventType InType) noexcept;
 
     PhysicsDesc MDesc{};
-    std::vector<Body> MBodies{};
+    BodyColumns MColumns{};
+    // Per-body time scale for the current step, filled from TimeScaleComponent.
+    std::vector<float> MBodyTimeScale{};
     std::vector<std::uint32_t> MFreeIndices{};
     struct GridEntry
     {
@@ -94,10 +122,24 @@ private:
     };
     std::vector<GridEntry> MGrid{};
     std::vector<std::uint64_t> MPairKeys{};
+    // Contacts that overlap during the current step. The previous step's keys are
+    // kept to derive BeginTouch and EndTouch exactly once per pair.
+    struct ContactRecord
+    {
+        std::uint64_t key = 0;
+        Vector2D point{};
+        Vector2D normal{};
+        float speed = 0.0f;
+    };
+    std::vector<ContactRecord> MCurrentContacts{};
+    std::vector<std::uint64_t> MPreviousPairKeys{};
     std::vector<PhysicsContactEvent> MEvents{};
     std::unordered_map<Entity, std::uint32_t> MEntityToIndex{};
     std::uint32_t MEventCount = 0;
     std::uint32_t MSequence = 0;
+    // Live records only. The columns also hold freed slots waiting for reuse, so
+    // their size is the capacity, not the body count.
+    std::uint32_t MAliveCount = 0;
     bool MInitialized = false;
 };
 

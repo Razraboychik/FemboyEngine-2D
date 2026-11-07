@@ -1,6 +1,8 @@
 // FemboyEngine2D - Verlet cloth implementation.
 #include "Engine/Physics/Cloth.hpp"
 
+#include "Engine/Core/SimMath.hpp"
+
 #include <box2d/box2d.h>
 
 #include <algorithm>
@@ -467,7 +469,7 @@ void ClothSystem::Step(float InDt) noexcept
 
         const Vector2D ScopedAcceleration =
             ScopedCloth.gravity + ((ScopedCloth.flags & ClothAffectedByWind) != 0 ? ScopedCloth.wind : Vector2D{});
-        const float ScopedDamping = std::pow(std::clamp(ScopedCloth.damping, 0.0f, 1.0f), ScopedStep * 60.0f);
+        const float ScopedDamping = Sim::Pow(std::clamp(ScopedCloth.damping, 0.0f, 1.0f), ScopedStep * 60.0f);
         const float ScopedMaxDisplacement = std::max(ScopedCloth.cellSize.X, ScopedCloth.cellSize.Y) * 0.5f;
 
         for (std::uint32_t ScopedI = 0; ScopedI < ScopedCloth.particleCount; ++ScopedI)
@@ -580,11 +582,11 @@ void ClothSystem::Step(float InDt) noexcept
     }
 }
 
-void ClothSystem::Update(Ecs::SystemContext& InContext) noexcept
+void ClothSystem::Update(Ecs::PhysicsSystemView& InView) noexcept
 {
-    if (InContext.dt > 0.0f)
+    if (InView.dt > 0.0f)
     {
-        Step(InContext.dt);
+        Step(InView.dt);
     }
 }
 

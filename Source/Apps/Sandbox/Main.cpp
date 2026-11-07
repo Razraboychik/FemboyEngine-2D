@@ -239,16 +239,16 @@ void MovementSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
                                });
 }
 
-void RenderExtractSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+void RenderExtractSystem(Fby::Ecs::RenderSystemView& InView, void* InUser)
 {
     SandboxSystems& ScopedSystems = *static_cast<SandboxSystems*>(InUser);
     const std::uint32_t ScopedCount = static_cast<std::uint32_t>(ScopedSystems.world->sprites.size());
     ScopedSystems.extract->Begin(ScopedCount);
-    auto ScopedView = InContext.registry.view<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder>();
+    auto ScopedView = InView.registry.view<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder>();
     Fby::Rhi::RenderItem* ScopedItems = ScopedSystems.extract->Items();
     Fby::Rhi::RenderKey* ScopedKeys = ScopedSystems.extract->Keys();
 
-    InContext.jobs.ParallelFor(
+    InView.jobs.ParallelFor(
         ScopedCount, kChunkSize,
         [&](std::uint32_t InBegin, std::uint32_t InEnd)
         {
@@ -641,7 +641,8 @@ int main(int argc, char** argv)
     SandboxSystems ScopedSystems{&ScopedWorld, &ScopedExtract};
 
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, &ScopedSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::Render, "render_extract", &RenderExtractSystem, &ScopedSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::Render, "render_extract",
+                          Fby::Ecs::BindRenderSystem<&RenderExtractSystem>(), &ScopedSystems);
     if (!ScopedGraph.Build())
     {
         Fby::LogError("sandbox", "SystemGraph build failed");
@@ -842,7 +843,7 @@ int main(int argc, char** argv)
             }
             ScopedFrame.timeSeconds = static_cast<float>(ScopedClock.Elapsed());
             ScopedAccessibility.AdvanceCaptionClock(ScopedDt);
-            (void)ScopedOverlay.Build(ScopedContext, ScopedAccessibility,
+            (void)ScopedOverlay.Build(ScopedContext.UiView(), ScopedAccessibility,
                                       Fby::Vector2D{static_cast<float>(ScopedDeviceDesc.size.width),
                                                     static_cast<float>(ScopedDeviceDesc.size.height)});
             ScopedFrameItems.resize(ScopedFrame.items.size() + Fby::AccessibilityOverlay::kMaxOverlayItems);

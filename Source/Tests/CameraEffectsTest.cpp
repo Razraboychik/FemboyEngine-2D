@@ -40,13 +40,14 @@ int main()
     JobSystem ScopedJobs(1);
     Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
     ScopedContext.dt = 1.0f / 60.0f;
+    Ecs::RenderSystemView ScopedRender{ScopedRegistry, ScopedJobs, ScopedContext, ScopedContext, ScopedContext.dt};
     CameraStackSystem ScopedCameras;
     CameraStackDesc ScopedDesc;
     ScopedDesc.cameraEntity = ScopedCamera;
     ScopedDesc.followTarget = ScopedTarget;
     ScopedDesc.camera = ScopedAuthored;
     Check(ScopedCameras.Push(ScopedRegistry, ScopedDesc), "camera pushes");
-    ScopedCameras.Update(ScopedContext);
+    ScopedCameras.Update(ScopedRender);
 
     // Motion scale zero must return exactly the unshaken base, even with trauma.
     ScopedCameras.SetMotionScale(0.0f);
@@ -57,7 +58,7 @@ int main()
     ScopedDistortion.stretchX = 1.3f;
     ScopedDistortion.stretchY = 0.7f;
     ScopedCameras.SetDistortion(ScopedDistortion, 4.0f);
-    ScopedCameras.Update(ScopedContext);
+    ScopedCameras.Update(ScopedRender);
     Check(Near(ScopedCameras.ActiveCamera().Center.X, ScopedCameras.BaseCamera().Center.X, 0.001f), "motion scale zero keeps X");
     Check(Near(ScopedCameras.ActiveCamera().Center.Y, ScopedCameras.BaseCamera().Center.Y, 0.001f), "motion scale zero keeps Y");
     Check(Near(ScopedCameras.ActiveCamera().Rotation, ScopedCameras.BaseCamera().Rotation, 0.001f), "motion scale zero keeps rotation");
@@ -67,7 +68,7 @@ int main()
     ScopedCameras.SetOffset(Vector2D{10.0f, -6.0f}, 0.5f);
     ScopedCameras.SetZoom(1.1f, 0.5f);
     ScopedCameras.SetRoll(0.1f, 0.5f);
-    ScopedCameras.Update(ScopedContext);
+    ScopedCameras.Update(ScopedRender);
     Check(ScopedCameras.ActiveCamera().Center.X != ScopedCameras.BaseCamera().Center.X, "offset changes the resolved camera");
     Check(ScopedCameras.ActiveCamera().Zoom > 1.0f, "zoom changes the resolved camera");
     Check(std::abs(ScopedCameras.ActiveCamera().Rotation) > 0.0f, "roll changes the resolved camera");
@@ -91,12 +92,12 @@ int main()
     ScopedContext.accessibility = &ScopedAccessibility;
     ScopedCameras.SetMotionScale(1.0f);
     ScopedCameras.AddTrauma(1.0f);
-    ScopedCameras.Update(ScopedContext);
+    ScopedCameras.Update(ScopedRender);
     Check(Near(ScopedCameras.ActiveCamera().Center.X, ScopedCameras.BaseCamera().Center.X, 0.001f),
           "accessibility motion scale zero keeps the base");
 
     ScopedCameras.ClearEffects();
-    ScopedCameras.Update(ScopedContext);
+    ScopedCameras.Update(ScopedRender);
     Check(Near(ScopedCameras.ActiveCamera().Center.X, ScopedCameras.BaseCamera().Center.X, 0.01f),
           "clear returns to the base");
     Check(ScopedCameras.ActiveDistortion().flags == CameraDistortionNone, "clear removes distortion");

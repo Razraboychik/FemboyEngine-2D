@@ -1,6 +1,8 @@
 // FemboyEngine2D - evaluation of the 2D signed distance primitive palette.
 #include "Engine/Physics/SdfPrimitives.hpp"
 
+#include "Engine/Core/SimMath.hpp"
+
 #include <array>
 #include <cmath>
 
@@ -144,9 +146,9 @@ constexpr float kTinyLength = 1.0e-6f;
         {
             return ScopedFallback;
         }
-        const float ScopedH = std::acos(ClampValue(ScopedQ / ScopedC3, -1.0f, 1.0f)) / 3.0f;
-        const float ScopedS = std::cos(ScopedH);
-        const float ScopedT = std::sin(ScopedH) * kSqrt3;
+        const float ScopedH = Sim::Acos(ClampValue(ScopedQ / ScopedC3, -1.0f, 1.0f)) / 3.0f;
+        const float ScopedS = Sim::Cos(ScopedH);
+        const float ScopedT = Sim::Sin(ScopedH) * kSqrt3;
         const float ScopedRx =
             std::sqrt(std::fmax(-ScopedC * (ScopedS + ScopedT + 2.0f) + ScopedM2, 0.0f));
         const float ScopedRy =
@@ -162,10 +164,8 @@ constexpr float kTinyLength = 1.0e-6f;
     else
     {
         const float ScopedH = 2.0f * ScopedM * ScopedN * std::sqrt(std::fmax(ScopedD, 0.0f));
-        const float ScopedS =
-            SdfSign(ScopedQ + ScopedH) * std::pow(std::fabs(ScopedQ + ScopedH), 1.0f / 3.0f);
-        const float ScopedU =
-            SdfSign(ScopedQ - ScopedH) * std::pow(std::fabs(ScopedQ - ScopedH), 1.0f / 3.0f);
+        const float ScopedS = Sim::Cbrt(ScopedQ + ScopedH);
+        const float ScopedU = Sim::Cbrt(ScopedQ - ScopedH);
         const float ScopedRx = -ScopedS - ScopedU - ScopedC * 4.0f + 2.0f * ScopedM2;
         const float ScopedRy = (ScopedS - ScopedU) * kSqrt3;
         const float ScopedRm = std::sqrt(ScopedRx * ScopedRx + ScopedRy * ScopedRy);
@@ -331,15 +331,15 @@ constexpr float kTinyLength = 1.0e-6f;
     const float ScopedTurn = kTwoPi / static_cast<float>(ScopedSides);
     const float ScopedHalf = ScopedTurn * 0.5f;
     const float ScopedLength = Length(InPoint);
-    float ScopedFolded = std::fmod(std::atan2(InPoint.Y, InPoint.X), ScopedTurn);
+    float ScopedFolded = std::fmod(Sim::Atan2(InPoint.Y, InPoint.X), ScopedTurn);
     if (ScopedFolded < 0.0f)
     {
         ScopedFolded += ScopedTurn;
     }
-    const Vector2D ScopedPoint{ScopedLength * std::cos(ScopedFolded), ScopedLength * std::sin(ScopedFolded)};
+    const Vector2D ScopedPoint{ScopedLength * Sim::Cos(ScopedFolded), ScopedLength * Sim::Sin(ScopedFolded)};
     const Vector2D ScopedOuter0{ScopedOuter, 0.0f};
-    const Vector2D ScopedInnerPoint{ScopedInner * std::cos(ScopedHalf), ScopedInner * std::sin(ScopedHalf)};
-    const Vector2D ScopedOuter1{ScopedOuter * std::cos(ScopedTurn), ScopedOuter * std::sin(ScopedTurn)};
+    const Vector2D ScopedInnerPoint{ScopedInner * Sim::Cos(ScopedHalf), ScopedInner * Sim::Sin(ScopedHalf)};
+    const Vector2D ScopedOuter1{ScopedOuter * Sim::Cos(ScopedTurn), ScopedOuter * Sim::Sin(ScopedTurn)};
     const float ScopedDistance =
         std::fmin(SegmentDistance(ScopedPoint, ScopedOuter0, ScopedInnerPoint),
                   SegmentDistance(ScopedPoint, ScopedInnerPoint, ScopedOuter1));
@@ -357,7 +357,7 @@ constexpr float kTinyLength = 1.0e-6f;
 [[nodiscard]] float PieDistance(Vector2D InPoint, float InRadius, float InHalfAperture) noexcept
 {
     const float ScopedHalf = ClampValue(InHalfAperture, 0.0f, kHalfPi);
-    const Vector2D ScopedEdge{std::sin(ScopedHalf), std::cos(ScopedHalf)};
+    const Vector2D ScopedEdge{Sim::Sin(ScopedHalf), Sim::Cos(ScopedHalf)};
     const Vector2D ScopedPoint{std::fabs(InPoint.X), InPoint.Y};
     const float ScopedArc = Length(ScopedPoint) - InRadius;
     const float ScopedEdgeDistance =
@@ -377,7 +377,7 @@ constexpr float kTinyLength = 1.0e-6f;
                                 float InHalfAperture) noexcept
 {
     const float ScopedHalf = ClampValue(InHalfAperture, 0.0f, kHalfPi);
-    const Vector2D ScopedEdge{std::sin(ScopedHalf), std::cos(ScopedHalf)};
+    const Vector2D ScopedEdge{Sim::Sin(ScopedHalf), Sim::Cos(ScopedHalf)};
     const Vector2D ScopedPoint{std::fabs(InPoint.X), InPoint.Y};
     const bool ScopedOutsideAperture = ScopedEdge.Y * ScopedPoint.X > ScopedEdge.X * ScopedPoint.Y;
     if (ScopedOutsideAperture)
@@ -557,8 +557,8 @@ SdfShape MakeSdfShape(SdfShapeType InType) noexcept
 
 float SdfDistance(const SdfShape& InShape, Vector2D InPoint) noexcept
 {
-    const float ScopedCos = std::cos(InShape.Angle);
-    const float ScopedSin = std::sin(InShape.Angle);
+    const float ScopedCos = Sim::Cos(InShape.Angle);
+    const float ScopedSin = Sim::Sin(InShape.Angle);
     const Vector2D ScopedPoint{ScopedCos * InPoint.X + ScopedSin * InPoint.Y,
                                -ScopedSin * InPoint.X + ScopedCos * InPoint.Y};
     const Vector2D ScopedHalfExtents{std::fabs(InShape.HalfExtents.X), std::fabs(InShape.HalfExtents.Y)};

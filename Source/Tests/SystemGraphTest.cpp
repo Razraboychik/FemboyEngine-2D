@@ -84,9 +84,29 @@ int main()
         Check(GSecond == 1, "surviving system runs without a ghost dependency");
     }
 
+    {
+        // A declared write/read conflict on the same service orders two systems
+        // even though neither declares an explicit dependency edge.
+        Fby::Ecs::SystemGraph Graph;
+        Fby::Ecs::SystemAccess ScopedWrite;
+        ScopedWrite.Writes = Fby::Ecs::kServicePhysics;
+        Fby::Ecs::SystemAccess ScopedRead;
+        ScopedRead.Reads = Fby::Ecs::kServicePhysics;
+        Check(Graph.Add(Fby::Ecs::Phase::FixedUpdate, "physics_write", &RunSecond, nullptr, 0, 0, ScopedWrite),
+              "add conflicting writer");
+        Check(Graph.Add(Fby::Ecs::Phase::FixedUpdate, "physics_read", &RunFirst, nullptr, 0, 0, ScopedRead),
+              "add conflicting reader");
+        Check(Graph.Build(), "access conflicts build");
+        GOrder = 0;
+        GFirst = 0;
+        GSecond = 0;
+        Graph.Run(Fby::Ecs::Phase::FixedUpdate, Context);
+        Check(GSecond == 1 && GFirst == 2, "a write/read conflict keeps registration order");
+    }
+
     if (GFailures == 0)
     {
-        std::printf("system_graph: OK (order, cycle, mask validation, remove)\n");
+        std::printf("system_graph: OK (order, cycle, mask validation, remove, access conflict)\n");
         return 0;
     }
     std::fprintf(stderr, "system_graph: %d failure(s)\n", GFailures);

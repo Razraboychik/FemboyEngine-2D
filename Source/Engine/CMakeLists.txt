@@ -116,6 +116,7 @@ set(FBY_ENGINE_SOURCES
     Platform/PlatformSystems.cpp
     RHI/CameraStack.cpp
     RHI/DynamicResolution.cpp
+    RHI/FrameComposer.cpp
     RHI/FrameExporter.cpp
     RHI/MaterialAsset.cpp
     RHI/MaterialGraph.cpp
@@ -137,6 +138,9 @@ set(FBY_ENGINE_SOURCES
     RHI/ViewportModes.cpp
     RHI/ViewportPresenter.cpp
     RHI/Vulkan/VulkanRHI.cpp
+    RHI/Vulkan/VulkanDevice.cpp
+    RHI/Vulkan/VulkanResources.cpp
+    RHI/Vulkan/VulkanFrame.cpp
     Script/AotBuilder.cpp
     Script/AotGraphCompiler.cpp
     Script/AotHost.cpp

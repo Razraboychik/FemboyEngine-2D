@@ -156,7 +156,7 @@ void TestSystem()
     ScopedState.Target = ScopedTarget;
 
     ScopedContext.dt = 0.1f;
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
 
     // Initial descent selected the move leaf: root -> group -> move.
     FBY_CHECK(ScopedState.Initialized);
@@ -181,7 +181,7 @@ void TestSystem()
     ScopedArena.Reset();
 
     // Steady state without triggers: no transition, same path.
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionsFired == 0);
     FBY_CHECK(ScopedState.ActiveStates[2] == ScopedTree.Move);
     ScopedCommands.Play(ScopedRegistry);
@@ -191,7 +191,7 @@ void TestSystem()
     // Player spotted: the external trigger fires exactly one transition.
     ScopedTargetTransform.Position = Fby::Vector2D{10.0f, 0.0f};
     Fby::StateTreeRaiseTrigger(ScopedState, 1ull << 0);
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionsFired == 1);
     FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Approach);
     FBY_CHECK(ScopedState.ActiveDepth == 3);
@@ -209,7 +209,7 @@ void TestSystem()
     ScopedArena.Reset();
 
     // The guard still holds: approach stays active, no scan-driven transition.
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionsFired == 1);
     FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Approach);
     ScopedCommands.Play(ScopedRegistry);
@@ -218,7 +218,7 @@ void TestSystem()
 
     // Target left the radius: the leaf guard fails, the internal trigger fires
     ScopedTargetTransform.Position = Fby::Vector2D{1000.0f, 0.0f};
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionsFired == 2);
     FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Move);
     FBY_CHECK((ScopedState.Triggers & Fby::kStateTreeTriggerLeafFailed) == 0);
@@ -230,7 +230,7 @@ void TestSystem()
 
     // Tag-gated transition: the trigger alone is not enough while the required
     Fby::StateTreeRaiseTrigger(ScopedState, 1ull << 1);
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionsFired == 2);
     FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Move);
     FBY_CHECK((ScopedState.Triggers & (1ull << 1)) != 0);
@@ -241,7 +241,7 @@ void TestSystem()
     // With the tag the same trigger now fires.
     ScopedTags.BaseTags.Add(ApproachingTag());
     ScopedTags.Tags.Add(ApproachingTag());
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionsFired == 3);
     FBY_CHECK(ScopedState.CurrentLeaf == ScopedTree.Approach);
     FBY_CHECK((ScopedState.Triggers & (1ull << 1)) == 0);
@@ -249,7 +249,7 @@ void TestSystem()
     // A task cannot use a missing tree; inactive entities are skipped.
     ScopedState.Active = false;
     const std::uint32_t ScopedFired = ScopedState.TransitionsFired;
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionsFired == ScopedFired);
 }
 
@@ -304,7 +304,7 @@ void TestWithoutCommandBuffer()
     ScopedState.TreeId = 7;
 
     // No CommandBuffer and no pre-existing AICommandComponent: the system must
-    ScopedSystem.Run(ScopedContext);
+    ScopedSystem.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.Initialized);
     FBY_CHECK(ScopedRegistry.try_get<Fby::AICommandComponent>(ScopedEntity) == nullptr);
 }

@@ -28,7 +28,9 @@ inline constexpr std::uint32_t DepthWriteMask = 1u << 9;
     {
         return ScopedBase;
     }
-    const float ScopedClamped = InDepth < 0.0f ? 0.0f : (InDepth > 1.0f ? 1.0f : InDepth);
+    // The negated comparison also catches NaN; without it the float-to-integer
+    // conversion below would be undefined.
+    const float ScopedClamped = !(InDepth >= 0.0f) ? 0.0f : (InDepth > 1.0f ? 1.0f : InDepth);
     const std::uint32_t ScopedByte = static_cast<std::uint32_t>(ScopedClamped * 255.0f + 0.5f);
     return ScopedBase | (ScopedByte << kDepthFlagShift) | DepthWriteMask;
 }
@@ -74,7 +76,10 @@ inline constexpr std::uint32_t kSdfEffectWidthShift = 16u;
 
 [[nodiscard]] constexpr std::uint32_t EncodeSdfEffectWidth(float InNormalizedWidth) noexcept
 {
-    const float ScopedWidth = InNormalizedWidth < 0.0f ? 0.0f : (InNormalizedWidth > 1.0f ? 1.0f : InNormalizedWidth);
+    // The negated comparison also catches NaN; without it the float-to-integer
+    // conversion below would be undefined.
+    const float ScopedWidth =
+        !(InNormalizedWidth >= 0.0f) ? 0.0f : (InNormalizedWidth > 1.0f ? 1.0f : InNormalizedWidth);
     return static_cast<std::uint32_t>(ScopedWidth * 255.0f + 0.5f) << kSdfEffectWidthShift;
 }
 
@@ -180,8 +185,15 @@ inline constexpr std::uint32_t kLayerKeyShift = kMaterialKeyShift + kMaterialBit
                                                         float InDepth, std::uint8_t InSequence = 0) noexcept
 {
     // Map [-32768, 32767] world depth to [0, 2^32): a monotonic, branch-free
-    const float ScopedClamped = InDepth < -32768.0f ? -32768.0f : (InDepth > 32767.0f ? 32767.0f : InDepth);
-    const std::uint64_t ScopedDepthBits = static_cast<std::uint64_t>(ScopedClamped + 32768.0f) << kSequenceBits;
+    // range. The negated comparison also catches NaN, which would otherwise
+    // reach a float-to-integer conversion with an out-of-range value.
+    const float ScopedClamped =
+        !(InDepth >= -32768.0f) ? -32768.0f : (InDepth > 32767.0f ? 32767.0f : InDepth);
+    // Scale by the sequence-bit count before the integer conversion, so
+    // sub-unit depths survive; converting first truncated every fractional
+    // depth to the same key.
+    const std::uint64_t ScopedDepthBits = static_cast<std::uint64_t>(
+        (static_cast<double>(ScopedClamped) + 32768.0) * static_cast<double>(1u << kSequenceBits));
     return (static_cast<std::uint64_t>(InLayer) << kLayerKeyShift) |
            (static_cast<std::uint64_t>(InMaterialBucket) << kMaterialKeyShift) | (ScopedDepthBits & kDepthScale) |
            InSequence;

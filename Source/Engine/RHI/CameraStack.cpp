@@ -131,11 +131,11 @@ void CameraStackSystem::Clear() noexcept
     MSlots.fill(Slot{});
 }
 
-void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
+void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
 {
-    if (InContext.window != nullptr)
+    if (InView.services.window != nullptr)
     {
-        void* ScopedNative = InContext.window->NativeWindow();
+        void* ScopedNative = InView.services.window->NativeWindow();
         if (ScopedNative != nullptr)
         {
             const float ScopedScale = SDL_GetWindowDisplayScale(static_cast<SDL_Window*>(ScopedNative));
@@ -156,9 +156,9 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
         Camera2D ScopedBase = ScopedSlot.baseCamera;
 
         // Pick up authoring changes (zoom, viewport) without overwriting the
-        if (ScopedSlot.desc.cameraEntity != entt::null && InContext.registry.valid(ScopedSlot.desc.cameraEntity))
+        if (ScopedSlot.desc.cameraEntity != entt::null && InView.registry.valid(ScopedSlot.desc.cameraEntity))
         {
-            if (const auto* ScopedAuthored = InContext.registry.try_get<Camera2D>(ScopedSlot.desc.cameraEntity);
+            if (const auto* ScopedAuthored = InView.registry.try_get<Camera2D>(ScopedSlot.desc.cameraEntity);
                 ScopedAuthored != nullptr)
             {
                 ScopedBase.ViewSize = ScopedAuthored->ViewSize;
@@ -170,13 +170,13 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
             }
         }
 
-        if (ScopedSlot.desc.followTarget != entt::null && InContext.registry.valid(ScopedSlot.desc.followTarget))
+        if (ScopedSlot.desc.followTarget != entt::null && InView.registry.valid(ScopedSlot.desc.followTarget))
         {
-            if (const auto* ScopedTarget = InContext.registry.try_get<Transform2D>(ScopedSlot.desc.followTarget);
+            if (const auto* ScopedTarget = InView.registry.try_get<Transform2D>(ScopedSlot.desc.followTarget);
                 ScopedTarget != nullptr)
             {
                 const Vector2D ScopedDesired = ScopedTarget->Position + ScopedSlot.desc.followOffset;
-                const float ScopedFactor = ApproachFactor(ScopedSlot.desc.followSharpness, InContext.dt);
+                const float ScopedFactor = ApproachFactor(ScopedSlot.desc.followSharpness, InView.dt);
                 if ((ScopedSlot.desc.flags & CameraStackFollowX) != 0)
                 {
                     ScopedBase.Center.X += (ScopedDesired.X - ScopedBase.Center.X) * ScopedFactor;
@@ -192,9 +192,9 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
         // and scripts read; the resolved pose is render-only.
         Camera2D ScopedResolved = ScopedBase;
         float ScopedAccessibilityScale = 1.0f;
-        if (InContext.accessibility != nullptr)
+        if (InView.accessibilityServices.accessibility != nullptr)
         {
-            ScopedAccessibilityScale = InContext.accessibility->Profile().presentation.motionScale;
+            ScopedAccessibilityScale = InView.accessibilityServices.accessibility->Profile().presentation.motionScale;
         }
         MEffectiveMotionScale = std::clamp(MMotionScale * ScopedAccessibilityScale, 0.0f, 1.0f);
         const float ScopedMotion = MEffectiveMotionScale;
@@ -206,7 +206,7 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
             if (ScopedSlot.timedOffsetDuration > 0.0f)
             {
                 ScopedSlot.timedOffsetRemaining =
-                    std::max(0.0f, ScopedSlot.timedOffsetRemaining - InContext.dt);
+                    std::max(0.0f, ScopedSlot.timedOffsetRemaining - InView.dt);
             }
         }
         if (ScopedSlot.timedZoomRemaining != 0.0f)
@@ -216,7 +216,7 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
             ScopedResolved.Zoom *= ScopedZoom;
             if (ScopedSlot.timedZoomDuration > 0.0f)
             {
-                ScopedSlot.timedZoomRemaining = std::max(0.0f, ScopedSlot.timedZoomRemaining - InContext.dt);
+                ScopedSlot.timedZoomRemaining = std::max(0.0f, ScopedSlot.timedZoomRemaining - InView.dt);
             }
         }
         if (ScopedSlot.timedRollRemaining != 0.0f)
@@ -225,19 +225,19 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
             ScopedResolved.Rotation += ScopedSlot.timedRoll * ScopedWeight * ScopedMotion;
             if (ScopedSlot.timedRollDuration > 0.0f)
             {
-                ScopedSlot.timedRollRemaining = std::max(0.0f, ScopedSlot.timedRollRemaining - InContext.dt);
+                ScopedSlot.timedRollRemaining = std::max(0.0f, ScopedSlot.timedRollRemaining - InView.dt);
             }
         }
 
-        if ((ScopedSlot.desc.flags & CameraStackShake) != 0 && InContext.dt > 0.0f)
+        if ((ScopedSlot.desc.flags & CameraStackShake) != 0 && InView.dt > 0.0f)
         {
-            ScopedSlot.trauma = std::max(0.0f, ScopedSlot.trauma - ScopedSlot.desc.shakeDecay * InContext.dt);
+            ScopedSlot.trauma = std::max(0.0f, ScopedSlot.trauma - ScopedSlot.desc.shakeDecay * InView.dt);
             const float ScopedIntensity = ScopedSlot.trauma * ScopedSlot.trauma * ScopedMotion;
             if (ScopedIntensity > 0.0f)
             {
-                ScopedSlot.phaseX += InContext.dt * ScopedSlot.desc.shakeFrequency * kTwoPi;
-                ScopedSlot.phaseY += InContext.dt * ScopedSlot.desc.shakeFrequency * 1.37f * kTwoPi;
-                ScopedSlot.phaseRoll += InContext.dt * ScopedSlot.desc.shakeFrequency * 0.63f * kTwoPi;
+                ScopedSlot.phaseX += InView.dt * ScopedSlot.desc.shakeFrequency * kTwoPi;
+                ScopedSlot.phaseY += InView.dt * ScopedSlot.desc.shakeFrequency * 1.37f * kTwoPi;
+                ScopedSlot.phaseRoll += InView.dt * ScopedSlot.desc.shakeFrequency * 0.63f * kTwoPi;
                 const float ScopedAmplitude = ScopedSlot.desc.shakeAmplitude * ScopedIntensity;
                 ScopedResolved.Center.X += ValueNoise(ScopedSlot.phaseX, ScopedSlot.desc.seed) * ScopedAmplitude;
                 ScopedResolved.Center.Y += ValueNoise(ScopedSlot.phaseY, ScopedSlot.desc.seed ^ 0x9E3779B9u) *
@@ -249,7 +249,7 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
 
         if (ScopedSlot.distortionRemaining != 0.0f && ScopedSlot.distortionDuration > 0.0f)
         {
-            ScopedSlot.distortionRemaining = std::max(0.0f, ScopedSlot.distortionRemaining - InContext.dt);
+            ScopedSlot.distortionRemaining = std::max(0.0f, ScopedSlot.distortionRemaining - InView.dt);
             if (ScopedSlot.distortionRemaining == 0.0f)
             {
                 ScopedSlot.distortion = CameraDistortionSettings{};
@@ -268,9 +268,9 @@ void CameraStackSystem::Update(Ecs::SystemContext& InContext) noexcept
         ScopedSlot.projectionPrimed = true;
 
         if ((ScopedSlot.desc.flags & CameraStackWriteBack) != 0 && ScopedSlot.desc.cameraEntity != entt::null &&
-            InContext.registry.valid(ScopedSlot.desc.cameraEntity))
+            InView.registry.valid(ScopedSlot.desc.cameraEntity))
         {
-            if (auto* ScopedAuthored = InContext.registry.try_get<Camera2D>(ScopedSlot.desc.cameraEntity);
+            if (auto* ScopedAuthored = InView.registry.try_get<Camera2D>(ScopedSlot.desc.cameraEntity);
                 ScopedAuthored != nullptr)
             {
                 ScopedAuthored->Center = ScopedBase.Center;

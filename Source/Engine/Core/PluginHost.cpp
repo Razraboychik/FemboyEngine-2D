@@ -90,6 +90,20 @@ PluginHost::~PluginHost()
     UnloadAll();
 }
 
+bool PluginHost::RebuildGraph(std::string* InError)
+{
+    if (MSystemGraph == nullptr || MSystemGraph->Build())
+    {
+        return true;
+    }
+    if (InError != nullptr)
+    {
+        *InError = "system graph rebuild failed (cycle or invalid phase dependency)";
+    }
+    LogError("plugin", "system graph rebuild failed after a plugin changed its system set");
+    return false;
+}
+
 bool PluginHost::Load(const std::string& InPath, std::string* InError)
 {
     const auto ScopedFail = [InError](std::string InMessage)
@@ -189,9 +203,21 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
                 {
                     MSystemGraph->RemoveUser(&ScopedRegistered);
                 }
+                (void)RebuildGraph(nullptr);
                 CloseLibrary(ScopedLibrary);
                 return ScopedFail(std::format("'{}': SystemGraph rejected system '{}'", InPath, ScopedSystem.name));
             }
+        }
+        std::string ScopedGraphError;
+        if (!RebuildGraph(&ScopedGraphError))
+        {
+            for (PluginSystem& ScopedRegistered : ScopedPlugin->systems)
+            {
+                MSystemGraph->RemoveUser(&ScopedRegistered);
+            }
+            (void)RebuildGraph(nullptr);
+            CloseLibrary(ScopedLibrary);
+            return ScopedFail(std::format("'{}': {}", InPath, ScopedGraphError));
         }
     }
 
@@ -226,6 +252,9 @@ bool PluginHost::Reload(const std::string& InPath, std::string* InError)
         CloseLibrary(static_cast<LibraryHandle>(ScopedPlugin.handle));
         ScopedPlugin.handle = nullptr;
         MPlugins.erase(ScopedIt);
+        // The removed nodes leave the graph dirty even when the following Load
+        // fails, so the surviving systems must be rebuilt before Load runs.
+        (void)RebuildGraph(nullptr);
         LogInfo("plugin", "reloading {}", InPath);
         return Load(InPath, InError);
     }
@@ -258,6 +287,9 @@ void PluginHost::UnloadAll()
         LogInfo("plugin", "unloaded {}", ScopedPlugin->name);
     }
     MPlugins.clear();
+    // Unloading happens at shutdown, but a later Run still needs a compiled
+    // order; rebuilding here keeps the graph usable after a partial unload.
+    (void)RebuildGraph(nullptr);
 }
 
 void* PluginHost::HostAlloc(void* InUser, std::size_t InSize, std::size_t InAlignment)

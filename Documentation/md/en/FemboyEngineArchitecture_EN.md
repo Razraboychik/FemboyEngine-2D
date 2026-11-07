@@ -105,11 +105,15 @@ Draws are emitted as one vkCmdDrawIndexedIndirect per (texture array, layer, geo
 
 Three frames in flight are the default. Each slice owns an instance ring, a mesh vertex ring and a mesh index ring allocated once at device creation. Capacity is a startup decision, not a per-frame allocation: the defaults cover 1,048,576 sprite items, 65,536 mesh vertices and 131,072 mesh indices per slice.
 
+The engine-side `Rhi::FrameComposer` turns one ECS world into that packet. It culls sprites against the camera, folds the authored colour with the light result, packs motion vectors for temporal upscalers, key-sorts sprites and tilemap quads into material and layer batches, builds the OIT and depth-prepass splits, and reserves its arrays from the device item cap so a steady frame does not allocate. The editor and a game use the same class; a viewport owns one composer, and the packet stays valid until the next composition on that composer.
+
 ## 5. ECS, schedule and Snapshot v4
 
 The ECS is EnTT's registry with a strict component contract: trivially copyable, standard layout, no string, no container, no vtable. Components are data; behaviour lives in systems. The frame has four phases: PreUpdate (variable dt, input and streaming), FixedUpdate (constant dt, gameplay and physics), PostUpdate (camera, culling, audio) and Render (extract and editor).
 
-SystemGraph is the production scheduler. Dependencies are explicit after/before bitmasks; a one-time topological sort produces the order; a cycle or a cross-phase dependency fails Build(). The graph holds up to 64 nodes and uses function pointers plus an opaque user pointer, never std::function. PluginHost removes every node whose user pointer matches when a plugin unloads.
+The `SystemContext` a system receives carries the registry and the job system directly and groups the remaining pointers into domain bundles (render, assets, audio, physics, text, accessibility, gameplay); a system reads only the bundles it declares. Core components live in `CoreComponents.hpp`, so hierarchy and transform users do not include text or big-number headers. Scheduled systems receive one of the narrow views (`PhysicsSystemView`, `RenderSystemView`, `GameplaySystemView`, `AudioSystemView`, `UiSystemView`, `AccessibilitySystemView`, `CoreSystemView`); `Bind*System<&Function>()` adapts it to the graph ABI.
+
+SystemGraph is the production scheduler. Dependencies are explicit after/before bitmasks; a one-time topological sort produces the order; a cycle or a cross-phase dependency fails Build(). A system may also declare which engine services it reads and writes, and two same-phase systems that conflict on a service are ordered by registration instead of running together. The graph holds up to 64 nodes and uses function pointers plus an opaque user pointer, never std::function. PluginHost removes every node whose user pointer matches when a plugin unloads and rebuilds the compiled order before the next frame.
 
 | Phase | Details |
 |---|---|
@@ -122,7 +126,7 @@ Snapshot v4 is a canonical, checksummed byte image. The 104-byte header carries 
 
 ```cpp
 struct SnapshotHeader {
-    char magic[8];              // FBYSNP3\0
+    char magic[8];              // FBSNAP03
     uint32 version;             // kSnapshotVersion
     uint32 flags;               // full or delta
     uint32 entityCount;
@@ -157,7 +161,9 @@ Cloth is a Verlet mass-spring grid projected with a fixed number of Gauss-Seidel
 
 Two water models share one system. GerstnerField is a small sum of trochoidal waves: deterministic, analytic, allocation-free, with a Jacobian that fades foam in at crests. ShallowWaterGrid stores a height/velocity field in mdspan views over fixed arrays and integrates the linearised shallow-water equations with a clamped CFL number. Neither model knows about the RHI; a renderer samples the field or uploads its height view as an R32F texture.
 
-The DOD backend is a second implementation of the same PhysicsSystem contract, selected by project policy or PhysicsDesc.backend. It owns SoA positions, velocities and collider extents and resolves pairs through a sorted uniform grid; PhysicsSystem::Capabilities() is the only supported feature query. Transport and wheels explicitly declare their backend boundary: transport support and conveyors work on both solvers, while weld joints and wheel joints require Box2D.
+The DOD backend is a second implementation of the same PhysicsSystem contract, selected by project policy or PhysicsDesc.backend. It keeps positions, previous positions, velocities, accelerations, rotations, inverse masses, gravity scales, extents, flags and sleep counters in parallel SoA columns and resolves pairs through a sorted uniform grid. Each body carries its own gravity and time scale, frozen bodies drop motion, and contacts report begin and end touch once per pair. PhysicsSystem::Capabilities() is the only supported feature query. Transport and wheels explicitly declare their backend boundary: transport support and conveyors work on both solvers, while weld joints and wheel joints require Box2D.
+
+The simulation does not call the platform libm. `Engine/Core/SimMath.hpp` provides `Sin`/`Cos`/`SinCos`, `Atan2`, `Acos`, `Cbrt`, `Exp`, `Log`, `Pow` and `WrapPi`, built from exact range reduction and fused multiply-add polynomials with `ldexp` only for exponent scaling. Angles in transforms, IK and transport, water waves, gravity falloff, damping, gameplay modifiers, light falloff and input curves all use that layer, so rollback checksums agree across Clang and GCC on every supported target. Box2D keeps its own floating-point path, which is why joints and CCD stay on the general-purpose solver.
 
 ## 7. Network rollback and Snapshot v4
 

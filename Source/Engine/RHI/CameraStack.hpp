@@ -88,7 +88,7 @@ public:
     void Clear() noexcept;
 
     // Follows targets, applies shake and rebuilds the tilted projection. Call
-    void Update(Ecs::SystemContext& InContext) noexcept;
+    void Update(Ecs::RenderSystemView& InView) noexcept;
 
     [[nodiscard]] std::uint32_t Depth() const noexcept
     {

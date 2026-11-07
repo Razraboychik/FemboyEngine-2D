@@ -21,7 +21,7 @@ struct SdfField;
 class SdfGiVolume;
 }
 
-namespace Fby::Editor
+namespace Fby::Rhi
 {
 
 // Previous-frame transform of one sprite. This is derived render state that feeds
@@ -71,6 +71,17 @@ public:
                           std::span<const Rhi::MeshRenderItem> InExtraMeshItems = {},
                           std::span<const TileQuad> InTileQuads = {},
                           const Rhi::PostFxSettings& InPostFx = Rhi::PostFxDisabled());
+
+    // Reserves the compose buffers once so a growing scene does not allocate on
+    // the first heavy frame. `InMaxItems` is the frame contract's item cap.
+    void Reserve(std::uint32_t InMaxItems);
+
+    // The packed render ECS mirror is a diagnostic view; a shipping viewport can
+    // turn it off and skip the per-sprite pack and trigonometry.
+    void SetRenderEcsMirror(bool InEnabled) noexcept
+    {
+        MRenderEcsMirror = InEnabled;
+    }
 
     [[nodiscard]] const Rhi::FramePacket& Packet() const noexcept
     {
@@ -242,6 +253,7 @@ private:
     float MSdfGiStrength = 0.35f;
     std::span<const std::uint32_t> MMaterialPipelines{};
     bool MGpuLighting = false;
+    bool MRenderEcsMirror = true;
     Rhi::KeySorter MSorter;
     Rhi::FramePacket MPacket{};
     Rhi::ViewportPresenter MViewportPresenter{};

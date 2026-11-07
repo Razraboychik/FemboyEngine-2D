@@ -119,8 +119,8 @@ public:
 
     // Call from Phase::FixedUpdate with the constant fixed dt. Returns the number
     std::uint32_t Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, float InFixedDt) noexcept;
-    // ECS convenience: uses context.physics and context.dt, clamped to a safe
-    std::uint32_t Update(Ecs::SystemContext& InContext) noexcept;
+    // Narrow FixedUpdate view: registry, physics bundle and dt.
+    std::uint32_t Update(Ecs::PhysicsSystemView& InView) noexcept;
 
     [[nodiscard]] std::span<const SdfContact> Contacts() const noexcept
     {
@@ -147,7 +147,7 @@ public:
     [[nodiscard]] bool Register(Ecs::SystemGraph& InGraph);
 
 private:
-    static void Tick(Ecs::SystemContext& InContext, void* InUser);
+    static void Tick(Ecs::PhysicsSystemView& InView, void* InUser);
 
     SdfField MField{};
     SdfCollisionDesc MDesc{};

@@ -1,6 +1,7 @@
 // FemboyEngine2D - wheel suspension, drive and brake primitives.
 #include "Engine/Physics/VehicleWheels.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/Components.hpp"
 
 #include <box2d/box2d.h>
@@ -94,7 +95,7 @@ bool WheelSystem::EnsureJoint(Ecs::Registry& InRegistry, PhysicsSystem& InPhysic
     {
         ScopedAxis = ScopedAxis / ScopedAxisLength;
     }
-    ScopedDefinition.base.localFrameA.q = b2MakeRot(std::atan2(ScopedAxis.Y, ScopedAxis.X));
+    ScopedDefinition.base.localFrameA.q = b2MakeRot(Sim::Atan2(ScopedAxis.Y, ScopedAxis.X));
     ScopedDefinition.enableSpring = true;
     ScopedDefinition.hertz = std::max(ScopedWheel->SuspensionHertz, 0.0f);
     ScopedDefinition.dampingRatio = std::clamp(ScopedWheel->SuspensionDamping, 0.0f, 1.0f);

@@ -51,6 +51,8 @@ fby_add_engine_test(fby_pinkui_editable_test pinkui_editable PinkUIEditableTest.
 # Long text: block storage, UTF-8 boundaries and greedy wrapping.
 # Clocks, timer pools, frame timing and calendar formatting.
 fby_add_engine_test(fby_time_test time TimeTest.cpp)
+# Deterministic simulation math: trig, atan2 and wrap accuracy.
+fby_add_engine_test(fby_sim_math_test sim_math SimMathTest.cpp)
 # Job pool: exception isolation and shutdown drain.
 fby_add_engine_test(fby_job_system_test job_system JobSystemTest.cpp)
 # System graph: dependency order, cycle rejection, mask validation, removal.

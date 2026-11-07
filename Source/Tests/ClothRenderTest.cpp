@@ -64,7 +64,7 @@ int main()
 
     ClothRenderSystem ScopedBridge;
     ScopedBridge.Initialize(&ScopedCloth);
-    ScopedBridge.Collect(ScopedContext);
+    ScopedBridge.Collect(ScopedRegistry);
     FBY_CHECK(!ScopedBridge.Truncated());
     FBY_CHECK(ScopedBridge.DrawCount() == 1);
 
@@ -99,8 +99,7 @@ int main()
     // A missing cloth system is a clean no-op, not a crash.
     ClothRenderSystem ScopedDetached;
     ScopedDetached.Initialize(nullptr);
-    Ecs::SystemContext ScopedNoCloth{ScopedRegistry, ScopedJobs};
-    ScopedDetached.Collect(ScopedNoCloth);
+    ScopedDetached.Collect(ScopedRegistry);
     FBY_CHECK(ScopedDetached.DrawCount() == 0);
 
     ScopedCloth.Shutdown(ScopedRegistry);

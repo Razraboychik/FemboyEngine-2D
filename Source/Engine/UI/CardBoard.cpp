@@ -34,7 +34,7 @@ SlotLayout ComputeSlotLayout(const CardBoardComponent& InBoard, const SlotCompon
     return ScopedResult;
 }
 
-void CardBoardSystem::Update(Ecs::SystemContext& InContext) noexcept
+void CardBoardSystem::Update(const Ecs::CoreSystemView& InView) noexcept
 {
     struct BoardRef
     {
@@ -43,7 +43,7 @@ void CardBoardSystem::Update(Ecs::SystemContext& InContext) noexcept
     };
     std::array<BoardRef, kMaxBoards> ScopedBoards{};
     std::uint32_t ScopedBoardCount = 0;
-    auto ScopedBoardView = InContext.registry.view<CardBoardComponent>();
+    auto ScopedBoardView = InView.registry.view<CardBoardComponent>();
     for (const Entity ScopedEntity : ScopedBoardView)
     {
         if (ScopedBoardCount >= ScopedBoards.size())
@@ -55,7 +55,7 @@ void CardBoardSystem::Update(Ecs::SystemContext& InContext) noexcept
         ScopedBoards[ScopedBoardCount].board = &ScopedBoard;
         ++ScopedBoardCount;
     }
-    auto ScopedSlotView = InContext.registry.view<SlotComponent>();
+    auto ScopedSlotView = InView.registry.view<SlotComponent>();
     for (const Entity ScopedEntity : ScopedSlotView)
     {
         SlotComponent& ScopedSlot = ScopedSlotView.get<SlotComponent>(ScopedEntity);
@@ -75,26 +75,26 @@ void CardBoardSystem::Update(Ecs::SystemContext& InContext) noexcept
         const SlotLayout ScopedLayout = ComputeSlotLayout(*ScopedBoard, ScopedSlot);
         ScopedSlot.position = ScopedLayout.position;
         ScopedSlot.isOccupied = ScopedSlot.cardId != 0u;
-        Transform2D& ScopedTransform = InContext.registry.get_or_emplace<Transform2D>(ScopedEntity);
+        Transform2D& ScopedTransform = InView.registry.get_or_emplace<Transform2D>(ScopedEntity);
         ScopedTransform.Position = ScopedLayout.position;
         ScopedTransform.Rotation = ScopedLayout.rotation;
-        if (InContext.registry.try_get<DrawOrder>(ScopedEntity) == nullptr)
+        if (InView.registry.try_get<DrawOrder>(ScopedEntity) == nullptr)
         {
             DrawOrder ScopedOrder{};
             ScopedOrder.Layer = ScopedSlot.layer;
-            InContext.registry.emplace<DrawOrder>(ScopedEntity, ScopedOrder);
+            InView.registry.emplace<DrawOrder>(ScopedEntity, ScopedOrder);
         }
     }
 }
 
 bool CardBoardSystem::Register(Ecs::SystemGraph& InGraph)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "CardBoardSystem", &CardBoardSystem::Tick, nullptr);
+    return InGraph.Add(Ecs::Phase::PostUpdate, "CardBoardSystem", Ecs::BindCoreSystem<&CardBoardSystem::Tick>());
 }
 
-void CardBoardSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
+void CardBoardSystem::Tick(const Ecs::CoreSystemView& InView, void* InUser)
 {
     (void)InUser;
-    Update(InContext);
+    Update(InView);
 }
 }

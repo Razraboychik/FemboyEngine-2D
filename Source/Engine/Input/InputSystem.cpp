@@ -1,6 +1,8 @@
 // FemboyEngine2D - fixed-capacity Enhanced-style input mapping for ECS/DOD.
 #include "Engine/Input/InputSystem.hpp"
 
+#include "Engine/Core/SimMath.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -319,8 +321,8 @@ Vector2D InputSystem::ApplyModifiers(const InputMappingDesc& InMapping, Vector2D
                 InValue.Y = std::clamp(InValue.Y, -ScopedA, ScopedA);
                 break;
             case InputModifierKind::Curve:
-                InValue.X = std::copysign(std::pow(std::abs(InValue.X), std::max(ScopedA, 0.01f)), InValue.X);
-                InValue.Y = std::copysign(std::pow(std::abs(InValue.Y), std::max(ScopedA, 0.01f)), InValue.Y);
+                InValue.X = std::copysign(Sim::Pow(std::abs(InValue.X), std::max(ScopedA, 0.01f)), InValue.X);
+                InValue.Y = std::copysign(Sim::Pow(std::abs(InValue.Y), std::max(ScopedA, 0.01f)), InValue.Y);
                 break;
         }
     }

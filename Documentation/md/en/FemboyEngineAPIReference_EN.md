@@ -178,18 +178,19 @@ ThreadLoad carries busyNanoseconds (wall time inside engine work), taskCount and
 
 ## 6. ECS, scheduling and snapshots
 
-The registry is EnTT. Systems are registered on a SystemGraph in one of five phases (PreUpdate, FixedUpdate, Update, PostUpdate, Render). SystemContext is the only parameter a system receives; it carries the registry, JobSystem, frame arena, renderer, window, VFS, AssetDatabase, audio, physics, joints, cloth, fluid, camera stack, accessibility kernel and font atlases.
+The registry is EnTT. Systems are registered on a SystemGraph in one of four phases (PreUpdate, FixedUpdate, PostUpdate, Render). SystemContext is the only parameter a system receives; it carries the registry and job system directly and groups the subsystem pointers into domain bundles (render, assets, audio, physics, text, accessibility, gameplay), so a system reads only the bundles it declares. Scheduled systems take a narrow view: `PhysicsSystemView`, `RenderSystemView`, `GameplaySystemView`, `AudioSystemView`, `UiSystemView`, `AccessibilitySystemView` or `CoreSystemView`, adapted by `Bind*System<&Function>()`.
 
 ```cpp
-Fby::Ecs::Schedule schedule;
-schedule.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
-schedule.Add(Fby::Ecs::Phase::Update, "movement", &MovementSystem, nullptr);
-schedule.Add(Fby::Ecs::Phase::PostUpdate, "platform", &GogAchievementSystem, &gog);
+Fby::Ecs::SystemGraph graph;
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr, 1ull << 0);
+graph.Add(Fby::Ecs::Phase::PostUpdate, "platform", &GogAchievementSystem, &gog);
 
 Fby::Ecs::SystemContext context{registry, jobs};
 context.physics = &physics;
 context.window = &window;
-schedule.Run(Fby::Ecs::Phase::FixedUpdate, context);
+graph.Build();
+graph.Run(Fby::Ecs::Phase::FixedUpdate, context);
 ```
 
 Snapshot v4 is a canonical, checksummed byte image of the registry. Components are written by hand-written codecs when they contain runtime handles (b2BodyId, b2ShapeId); the snapshot never serializes those handles, and the restore path recreates bodies from the component fields. The schema stores the Mirror name and LayoutHash of every component, so a field change is rejected instead of silently misread.
@@ -450,11 +451,11 @@ This walkthrough produces a playable project with a sprite, physics, keyboard in
 
 ```cpp
 // 4-7 in code: systems, accessibility and rollback for one match.
-Fby::Ecs::Schedule schedule;
-schedule.Add(Fby::Ecs::Phase::PreUpdate, "input", &InputSystem);
-schedule.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
-schedule.Add(Fby::Ecs::Phase::Update, "movement", &MovementSystem);
-schedule.Add(Fby::Ecs::Phase::Render, "ui", &UiSystem, &ui);
+Fby::Ecs::SystemGraph graph;
+graph.Add(Fby::Ecs::Phase::PreUpdate, "input", &InputSystem);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "physics", &PhysicsStepSystem, &physics);
+graph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, nullptr, 1ull << 1);
+graph.Add(Fby::Ecs::Phase::Render, "ui", &UiSystem, &ui);
 
 Fby::AccessibilityKernel kernel;
 kernel.Configure(settings);              // blind/deaf/colour/flash
@@ -530,8 +531,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `EditorSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 100 |
 | `Entry` | Infrastructure | `Source/Editor/Infrastructure/TextureThumbnails.hpp` | 52 |
 | `ExternalClientDesc` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 37 |
-| `FrameComposer` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 64 |
-| `FrameComposerStats` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 45 |
+| `FrameComposer` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 64 |
+| `FrameComposerStats` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 45 |
 | `FrameGenerationMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 138 |
 | `FrameGenerationPolicySetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 131 |
 | `HudTargetMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 147 |
@@ -543,7 +544,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `MaterialGraphPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 52 |
 | `MaterialGraphRuntime` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 41 |
 | `MaterialRuntimeStats` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 25 |
-| `MotionHistory2D` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 30 |
+| `MotionHistory2D` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 30 |
 | `NetSession` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 32 |
 | `NetworkDiagnosticsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 53 |
 | `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 98 |
@@ -581,8 +582,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 43 |
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 47 |
 | `SdfCollisionSystem` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 13 |
-| `SdfField` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 20 |
-| `SdfGiVolume` | Infrastructure | `Source/Editor/Infrastructure/FrameComposer.hpp` | 21 |
+| `SdfField` | Physics | `Source/Engine/Physics/SdfCollision.hpp` | 20 |
+| `SdfGiVolume` | Physics | `Source/Engine/Physics/SdfGi.hpp` | 21 |
 | `Services` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 220 |
 | `SettingDesc` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 28 |
 | `SettingKind` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 20 |

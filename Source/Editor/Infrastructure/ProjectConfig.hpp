@@ -277,6 +277,10 @@ struct ProjectPaths
 {
     std::filesystem::path root;
     std::filesystem::path projectFile;
+    // Authoring-only documentation, kept outside assets so the cooker never
+    // sees it.
+    std::filesystem::path plans;
+    std::filesystem::path disdocs;
     std::filesystem::path assets;
     std::filesystem::path textures;
     std::filesystem::path audio;

@@ -1,6 +1,8 @@
 // FemboyEngine2D - gameplay attribute registry and aggregation.
 #include "Engine/Gameplay/GameplayAttributes.hpp"
 
+#include "Engine/Core/SimMath.hpp"
+
 #include <cmath>
 #include <cstring>
 
@@ -138,7 +140,7 @@ void ApplyInstantAttributeModifiers(GameplayAttributesComponent& InComponent,
                 ScopedBase += ScopedModifier.Magnitude * ScopedStacks;
                 break;
             case GameplayModifierOp::Multiply:
-                ScopedBase *= std::pow(ScopedModifier.Magnitude, ScopedStacks);
+                ScopedBase *= Sim::Pow(ScopedModifier.Magnitude, ScopedStacks);
                 break;
             case GameplayModifierOp::Override:
                 ScopedBase = ScopedModifier.Magnitude;

@@ -37,6 +37,12 @@ public:
     // Allocates `bytes` with `alignment` (power of two) inside the current
     [[nodiscard]] std::span<std::byte> Allocate(std::size_t InBytes, std::size_t InAlignment = 16) noexcept
     {
+        // Zero would pass the power-of-two mask test and underflow the rounding
+        // expression; reject it before the assert so a release build is safe too.
+        if (InAlignment == 0)
+        {
+            return {};
+        }
         FBY_ASSERT((InAlignment & (InAlignment - 1)) == 0);
         const std::size_t ScopedAligned = (MOffset + InAlignment - 1) & ~(InAlignment - 1);
         if (ScopedAligned + InBytes > MSliceBytes)

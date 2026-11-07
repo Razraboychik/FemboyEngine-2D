@@ -1,5 +1,5 @@
 // FemboyEngine2D - frame packet composition implementation.
-#include "Editor/Infrastructure/FrameComposer.hpp"
+#include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/Physics/SdfGi.hpp"
 
 #include "Engine/ECS/Components.hpp"
@@ -14,9 +14,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
-#include <cstring>
 
-namespace Fby::Editor
+namespace Fby::Rhi
 {
 namespace
 {
@@ -81,7 +80,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         // no structural registry change and no hashing.
         for (const Entity ScopedEntity : ScopedView)
         {
-            InRegistry.get_or_emplace<MotionHistory2D>(ScopedEntity);
+            (void)InRegistry.get_or_emplace<MotionHistory2D>(ScopedEntity);
         }
     }
 
@@ -243,7 +242,6 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         ++ScopedIndex;
     }
     MCount = static_cast<std::uint32_t>(ScopedIndex);
-    MPacket.opaqueFrontToBack = MOpaqueFrontToBack;
     MStats.ExtractMilliseconds =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - ScopedStart).count();
     const auto ScopedSortStart = std::chrono::steady_clock::now();
@@ -258,6 +256,9 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         ScopedSameCount && (MCount == 0u ||
                             std::memcmp(MItems.data(), MLastItems.data(),
                                         static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderItem)) == 0);
+    // The OIT and opaque splits depend only on the gathered order and flags, so
+    // an unchanged frame reuses the arrays instead of copying every item again.
+    const bool ScopedOutputsReusable = MHasLastFrame && ScopedSameKeys && ScopedSameItems;
 
     if (!ScopedSameKeys)
     {
@@ -294,7 +295,8 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - ScopedSortStart).count();
     const auto ScopedGatherStart = std::chrono::steady_clock::now();
 
-    if (!ScopedSameKeys || !ScopedSameItems)
+    const bool ScopedGathered = !ScopedSameKeys || !ScopedSameItems;
+    if (ScopedGathered)
     {
         for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
         {
@@ -330,7 +332,19 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         }
         if (ScopedAllOpaque)
         {
+            // The gather pass is skipped on a static frame, and this block rewrites
+            // the sorted copy. Rebuild it from the cached items first so the order
+            // and the keys stay aligned and do not flip on every repeated frame.
+            if (!ScopedGathered)
+            {
+                for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+                {
+                    MSorted[ScopedI] = MItems[MOrder[ScopedI]];
+                    MSortedKeys[ScopedI] = MKeys[MOrder[ScopedI]];
+                }
+            }
             std::reverse(MSorted.begin(), MSorted.begin() + MCount);
+            std::reverse(MSortedKeys.begin(), MSortedKeys.begin() + MCount);
             for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
             {
                 const float ScopedRatio =
@@ -392,9 +406,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     MHasLastCamera = true;
 
     // Mirror the gathered instances into the packed render ECS. Static frames
-    // reuse the previous packed chunks; only order/content changes repack.
+    // reuse the previous packed chunks; only order/content changes repack. The
+    // mirror is a diagnostic view, so a viewport may switch it off and skip the
+    // per-sprite pack and trigonometry.
     const bool ScopedMirrorDirty =
-        !ScopedSameKeys || !ScopedSameItems || MRenderEcsEntities.size() != MCount;
+        MRenderEcsMirror && (!ScopedSameKeys || !ScopedSameItems || MRenderEcsEntities.size() != MCount);
     if (ScopedMirrorDirty)
     {
         if (MRenderEcsEntities.size() > MCount)
@@ -417,8 +433,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             }
         }
     }
-    MStats.RenderEcsSprites = MRenderEcs.ActiveCount();
-    MStats.RenderEcsChunks = static_cast<std::uint32_t>(MRenderEcs.ChunkCount());
+    if (MRenderEcsMirror)
+    {
+        MStats.RenderEcsSprites = MRenderEcs.ActiveCount();
+        MStats.RenderEcsChunks = static_cast<std::uint32_t>(MRenderEcs.ChunkCount());
+    }
 
     MLastCount = MCount;
     MHasLastFrame = true;
@@ -499,6 +518,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     }
 
     MPacket = Rhi::FramePacket{};
+    MPacket.opaqueFrontToBack = MOpaqueFrontToBack;
     MPacket.items = std::span<const Rhi::RenderItem>(MSorted.data(), MCount);
     MPacket.motionItems = std::span<const Rhi::MotionVectorItem>(MMotionItems.data(), MMotionItems.size());
     MPacket.keys = std::span<const Rhi::RenderKey>(MSortedKeys.data(), MCount);
@@ -596,20 +616,23 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     MPacket.postFx = InPostFx;
     MPacket.postFxEnabled = InPostFx.flags != Rhi::PostFxNone;
 
-    MOitItems.clear();
-    MOitKeys.clear();
-    MOitBatches.clear();
-    for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+    if (!ScopedOutputsReusable)
     {
-        if ((MSorted[ScopedI].flags & Rhi::DepthWriteMask) == 0u)
+        MOitItems.clear();
+        MOitKeys.clear();
+        MOitBatches.clear();
+        for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
         {
-            MOitItems.push_back(MSorted[ScopedI]);
-            MOitKeys.push_back(MSortedKeys[ScopedI]);
+            if ((MSorted[ScopedI].flags & Rhi::DepthWriteMask) == 0u)
+            {
+                MOitItems.push_back(MSorted[ScopedI]);
+                MOitKeys.push_back(MSortedKeys[ScopedI]);
+            }
         }
-    }
-    if (!MOitItems.empty())
-    {
-        MOitBatches.push_back(Rhi::DrawBatch{0, static_cast<std::uint32_t>(MOitItems.size()), 0, 0});
+        if (!MOitItems.empty())
+        {
+            MOitBatches.push_back(Rhi::DrawBatch{0, static_cast<std::uint32_t>(MOitItems.size()), 0, 0});
+        }
     }
     MOitPacket = Rhi::FramePacket{};
     MOitPacket.items = std::span<const Rhi::RenderItem>(MOitItems.data(), MOitItems.size());
@@ -624,21 +647,24 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
 
     if (MOitMode != 0u)
     {
-        MOpaqueItems.clear();
-        MOpaqueKeys.clear();
-        MOpaqueBatches.clear();
-        for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+        if (!ScopedOutputsReusable)
         {
-            if ((MSorted[ScopedI].flags & Rhi::DepthWriteMask) != 0u)
+            MOpaqueItems.clear();
+            MOpaqueKeys.clear();
+            MOpaqueBatches.clear();
+            for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
             {
-                MOpaqueItems.push_back(MSorted[ScopedI]);
-                MOpaqueKeys.push_back(MSortedKeys[ScopedI]);
+                if ((MSorted[ScopedI].flags & Rhi::DepthWriteMask) != 0u)
+                {
+                    MOpaqueItems.push_back(MSorted[ScopedI]);
+                    MOpaqueKeys.push_back(MSortedKeys[ScopedI]);
+                }
             }
-        }
-        if (!MOpaqueItems.empty())
-        {
-            MOpaqueBatches.push_back(
-                Rhi::DrawBatch{0, static_cast<std::uint32_t>(MOpaqueItems.size()), 0, 0});
+            if (!MOpaqueItems.empty())
+            {
+                MOpaqueBatches.push_back(
+                    Rhi::DrawBatch{0, static_cast<std::uint32_t>(MOpaqueItems.size()), 0, 0});
+            }
         }
         MPacket.items = std::span<const Rhi::RenderItem>(MOpaqueItems.data(), MOpaqueItems.size());
         MPacket.keys = std::span<const Rhi::RenderKey>(MOpaqueKeys.data(), MOpaqueKeys.size());
@@ -650,5 +676,24 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     MLastCamera = InCamera;
     MPreviousJitterX = MPacket.jitterX;
     MPreviousJitterY = MPacket.jitterY;
+}
+
+void FrameComposer::Reserve(std::uint32_t InMaxItems)
+{
+    const std::size_t ScopedItems = InMaxItems;
+    MItems.reserve(ScopedItems);
+    MKeys.reserve(ScopedItems);
+    MOrder.reserve(ScopedItems);
+    MSorted.reserve(ScopedItems);
+    MSortedKeys.reserve(ScopedItems);
+    MLastItems.reserve(ScopedItems);
+    MLastKeys.reserve(ScopedItems);
+    MOitItems.reserve(ScopedItems);
+    MOitKeys.reserve(ScopedItems);
+    MOpaqueItems.reserve(ScopedItems);
+    MOpaqueKeys.reserve(ScopedItems);
+    MMotionItems.reserve(ScopedItems);
+    MRenderEcsEntities.reserve(ScopedItems);
+    MBatches.reserve(std::min<std::size_t>(ScopedItems, 4096u));
 }
 }

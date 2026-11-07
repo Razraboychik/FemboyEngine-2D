@@ -4,6 +4,8 @@
 #include "Engine/ECS/RegistryOps.hpp"
 
 #include "Engine/ECS/Schedule.hpp"
+#include "Engine/Core/Log.hpp"
+#include "Engine/Core/SimMath.hpp"
 
 #include <box2d/box2d.h>
 
@@ -86,8 +88,39 @@ namespace
 
 [[nodiscard]] float LerpAngle(float InFrom, float InTo, float InAlpha) noexcept
 {
-    float ScopedDelta = std::remainder(InTo - InFrom, 6.28318530718f);
+    const float ScopedDelta = Sim::WrapPi(InTo - InFrom);
     return InFrom + ScopedDelta * InAlpha;
+}
+
+// Nearest hit of a Box2D ray query. The callback filters the ignored entity and
+// tracks the smallest fraction instead of trusting the first callback order.
+struct RayCastCollector
+{
+    Entity ignore = entt::null;
+    bool found = false;
+    float fraction = 1.0f;
+    b2ShapeId shape{};
+    b2Pos point{};
+    b2Vec2 normal{};
+};
+
+float CollectRayHit(b2ShapeId InShape, b2Pos InPoint, b2Vec2 InNormal, float InFraction, void* InContext)
+{
+    auto* ScopedCollector = static_cast<RayCastCollector*>(InContext);
+    const Entity ScopedEntity = EntityFromShape(InShape);
+    if (ScopedEntity == entt::null || ScopedEntity == ScopedCollector->ignore)
+    {
+        return -1.0f;
+    }
+    if (!ScopedCollector->found || InFraction < ScopedCollector->fraction)
+    {
+        ScopedCollector->found = true;
+        ScopedCollector->fraction = InFraction;
+        ScopedCollector->shape = InShape;
+        ScopedCollector->point = InPoint;
+        ScopedCollector->normal = InNormal;
+    }
+    return 1.0f;
 }
 }
 
@@ -191,6 +224,7 @@ void PhysicsSystem::Shutdown()
         MWorld = 0;
     }
     MBodies.clear();
+    MTrackOverflowWarned = false;
     MEventCount = 0;
 }
 
@@ -221,10 +255,20 @@ bool PhysicsSystem::IsValid() const noexcept
     return MWorld != 0;
 }
 
-void PhysicsSystem::TrackBody(Entity InEntity, std::uint64_t InPackedBody) noexcept
+void PhysicsSystem::TrackBody(Entity InEntity, std::uint64_t InPackedBody)
 {
-    if (InPackedBody == 0 || MBodies.size() >= kMaxTrackedPhysicsBodies)
+    if (InPackedBody == 0)
     {
+        return;
+    }
+    if (MBodies.size() >= kMaxTrackedPhysicsBodies)
+    {
+        if (!MTrackOverflowWarned)
+        {
+            MTrackOverflowWarned = true;
+            LogWarn("physics", "body tracking table is full ({}); extra native bodies stay outside the prune list",
+                    kMaxTrackedPhysicsBodies);
+        }
         return;
     }
     // O(1) append. A duplicate record is harmless: DestroyAllBodies() validates
@@ -417,6 +461,10 @@ void PhysicsSystem::CreateMissingBodies(Ecs::Registry& InRegistry)
     }
 }
 
+// Velocity, rotation and position are outputs of the solver: they are written
+// into the component by ReadBodiesIntoRegistry after the step. Copying the body
+// velocity back here would overwrite a value the game assigned to the component
+// before Step, so gameplay must use SetLinearVelocity/ApplyImpulse instead.
 void PhysicsSystem::SyncBodiesFromRegistry(Ecs::Registry& InRegistry)
 {
     auto ScopedView = InRegistry.view<RigidBody2D, Transform2D>();
@@ -441,11 +489,6 @@ void PhysicsSystem::SyncBodiesFromRegistry(Ecs::Registry& InRegistry)
             ScopedBody.Rotation = ScopedTransform.Rotation;
             ScopedBody.PreviousRotation = ScopedTransform.Rotation;
             ScopedBody.Flags &= ~RigidBodyTeleport;
-        }
-        if (ScopedBody.Type == BodyType::Dynamic)
-        {
-            ScopedBody.LinearVelocity = ToPixelsVelocity(b2Body_GetLinearVelocity(ScopedBodyId), MDesc.pixelsPerMeter);
-            ScopedBody.AngularVelocity = b2Body_GetAngularVelocity(ScopedBodyId);
         }
         ScopedBody.PreviousPosition = ScopedBody.Position;
         ScopedBody.PreviousRotation = ScopedBody.Rotation;
@@ -921,6 +964,29 @@ bool PhysicsSystem::RayCast(Ecs::Registry& InRegistry, Vector2D InFrom, Vector2D
     if (!(ScopedLength > 0.0001f))
     {
         return false;
+    }
+
+    // The Box2D backend answers the query from its broadphase, so the ray sees
+    // rotated shapes and scaled bodies instead of the registry AABB approximation.
+    if (MBackendKind == PhysicsBackendKind::Box2D && MWorld != 0)
+    {
+        b2QueryFilter ScopedFilter = b2DefaultQueryFilter();
+        ScopedFilter.categoryBits = 0xFFFFFFFFFFFFFFFFull;
+        ScopedFilter.maskBits = InMask;
+        RayCastCollector ScopedCollector;
+        ScopedCollector.ignore = InIgnore;
+        (void)b2World_CastRay(b2LoadWorldId(MWorld), ToBox(InFrom, MDesc.pixelsPerMeter),
+                              b2Vec2{ScopedDelta.X / MDesc.pixelsPerMeter, ScopedDelta.Y / MDesc.pixelsPerMeter},
+                              ScopedFilter, &CollectRayHit, &ScopedCollector);
+        if (!ScopedCollector.found)
+        {
+            return false;
+        }
+        OutHit.entity = EntityFromShape(ScopedCollector.shape);
+        OutHit.point = ToPixels(ScopedCollector.point, MDesc.pixelsPerMeter);
+        OutHit.normal = Vector2D{ScopedCollector.normal.x, ScopedCollector.normal.y};
+        OutHit.distance = ScopedCollector.fraction * ScopedLength;
+        return true;
     }
 
     bool ScopedFound = false;

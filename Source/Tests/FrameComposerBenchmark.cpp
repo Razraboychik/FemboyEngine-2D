@@ -1,5 +1,5 @@
 // FemboyEngine2D - FrameComposer scale benchmark.
-#include "Editor/Infrastructure/FrameComposer.hpp"
+#include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/ECS/Components.hpp"
 
 #include <cstdio>
@@ -22,7 +22,7 @@ void RunCase(std::uint32_t InCount)
                                          static_cast<float>(ScopedIndex) * 0.001f});
     }
 
-    Fby::Editor::FrameComposer ScopedComposer;
+    Fby::Rhi::FrameComposer ScopedComposer;
     // Large view so both cases measure the full extract/sort path rather than
     // the offscreen-culling fast path.
     const Fby::Rhi::CameraData ScopedCamera{Fby::Vector2D{1024.0f, 2048.0f},

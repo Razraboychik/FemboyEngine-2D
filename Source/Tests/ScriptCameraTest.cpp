@@ -51,6 +51,7 @@ event update {
     ScopedRegistry.emplace<Camera2D>(ScopedCamera);
     Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
     ScopedContext.dt = 1.0f / 60.0f;
+    Ecs::RenderSystemView ScopedRender{ScopedRegistry, ScopedJobs, ScopedContext, ScopedContext, ScopedContext.dt};
     CameraStackSystem ScopedCameras;
     CameraStackDesc ScopedDesc;
     ScopedDesc.cameraEntity = ScopedCamera;
@@ -70,7 +71,7 @@ event update {
     Check(ScopedCameras.Trauma() > 0.0f, "script adds trauma");
     Check((ScopedCameras.ActiveDistortion().flags & CameraDistortionDoubleVision) != 0,
           "script activates double vision");
-    ScopedCameras.Update(ScopedContext);
+    ScopedCameras.Update(ScopedRender);
     Check(ScopedCameras.ActiveCamera().Center.X != ScopedCameras.BaseCamera().Center.X,
           "script offset changes the resolved camera");
 

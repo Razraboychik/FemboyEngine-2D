@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <string_view>
 #include <type_traits>
@@ -48,10 +49,17 @@ enum class RenderResourceKind : std::uint8_t
     return ScopedHash;
 }
 
+// Inline capacity of the per-command constant block. It covers the largest
+// engine block (SdfShadowConstants, 672 bytes) with headroom; a larger block
+// fails the static_assert in the Make* helpers instead of being truncated.
+inline constexpr std::uint32_t kMaxRenderConstantsBytes = 768;
+
 // One recorded unit of GPU work. The RHI backend turns this into a pipeline bind,
 struct RenderCommandRecord
 {
     const char* pipelineName = nullptr;
+    // Valid until the record array is destroyed. Push re-points this field at
+    // ConstantBytes, so the block a producer passed to Make* may be temporary.
     const void* constants = nullptr;
     std::uint32_t constantsBytes = 0;
     std::uint32_t groupCountX = 0;
@@ -64,6 +72,9 @@ struct RenderCommandRecord
     std::uint32_t instanceCount = 1;
     RenderPassKind kind = RenderPassKind::Graphics;
     std::uint32_t flags = 0;
+    // The block is 16-byte aligned so a backend may cast the pointer to the
+    // engine constant structs (Vector4D members are 16-byte aligned).
+    alignas(16) std::array<std::byte, kMaxRenderConstantsBytes> ConstantBytes{};
 };
 
 struct RenderGraphContext
@@ -84,7 +95,12 @@ struct RenderGraphContext
         {
             return false;
         }
-        records[(*recordCount)++] = InRecord;
+        RenderCommandRecord& ScopedStored = records[(*recordCount)++];
+        ScopedStored = InRecord;
+        // The source block may be a temporary; only the copy inside the record
+        // survives. A record built by Make* carries its bytes here.
+        ScopedStored.constants =
+            ScopedStored.constantsBytes != 0 ? ScopedStored.ConstantBytes.data() : nullptr;
         return true;
     }
 };
@@ -168,9 +184,13 @@ template <typename Constants>
                                                     std::uint32_t InGroupsZ = 1) noexcept
 {
     static_assert(std::is_trivially_copyable_v<Constants>);
+    static_assert(sizeof(Constants) <= kMaxRenderConstantsBytes, "constants exceed the inline record block");
     RenderCommandRecord ScopedRecord{};
     ScopedRecord.pipelineName = InPipeline;
-    ScopedRecord.constants = &InConstants;
+    // The block is copied now; Push points the record at its own copy so the
+    // caller's constants, including a temporary, may die immediately.
+    std::memcpy(ScopedRecord.ConstantBytes.data(), &InConstants, sizeof(Constants));
+    ScopedRecord.constants = nullptr;
     ScopedRecord.constantsBytes = static_cast<std::uint32_t>(sizeof(Constants));
     ScopedRecord.groupCountX = InGroupsX;
     ScopedRecord.groupCountY = InGroupsY;
@@ -185,9 +205,13 @@ template <typename Constants>
                                                      std::uint32_t InInstanceCount = 1) noexcept
 {
     static_assert(std::is_trivially_copyable_v<Constants>);
+    static_assert(sizeof(Constants) <= kMaxRenderConstantsBytes, "constants exceed the inline record block");
     RenderCommandRecord ScopedRecord{};
     ScopedRecord.pipelineName = InPipeline;
-    ScopedRecord.constants = &InConstants;
+    // The block is copied now; Push points the record at its own copy so the
+    // caller's constants, including a temporary, may die immediately.
+    std::memcpy(ScopedRecord.ConstantBytes.data(), &InConstants, sizeof(Constants));
+    ScopedRecord.constants = nullptr;
     ScopedRecord.constantsBytes = static_cast<std::uint32_t>(sizeof(Constants));
     ScopedRecord.width = InWidth;
     ScopedRecord.height = InHeight;

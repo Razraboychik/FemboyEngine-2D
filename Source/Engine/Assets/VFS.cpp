@@ -3,6 +3,7 @@
 #include "Engine/Assets/PakFormat.hpp"
 #include "Engine/Core/Log.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include <fstream>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #if defined(_WIN32)
 #if !defined(WIN32_LEAN_AND_MEAN)
@@ -242,6 +244,10 @@ bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, 
     const std::uint32_t ScopedMountId = ScopedMount->id;
     std::size_t ScopedAdded = 0;
 
+    // Collect and sort before indexing: inserting an ascending key sequence keeps
+    // every vector insert at the end, so mounting a large tree is O(n log n)
+    // instead of O(n^2) shifts in the sorted index.
+    std::vector<std::string> ScopedKeys;
     for (const fs::directory_entry& ScopedItem :
          fs::recursive_directory_iterator(ScopedRootPath, fs::directory_options::skip_permission_denied, ScopedCode))
     {
@@ -254,7 +260,12 @@ bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, 
         {
             continue;
         }
-        const std::string ScopedKey = Normalize(ScopedRelative.generic_string());
+        ScopedKeys.push_back(Normalize(ScopedRelative.generic_string()));
+    }
+    std::sort(ScopedKeys.begin(), ScopedKeys.end());
+    MEntries.reserve(MEntries.size() + ScopedKeys.size());
+    for (const std::string& ScopedKey : ScopedKeys)
+    {
         // Directory mounts are lazy: index the path now, map on first Read().
         AddEntry(ScopedKey, VfsEntry{ScopedMountId, InPriority, {}}, nullptr);
         ++ScopedAdded;
@@ -288,6 +299,7 @@ void VirtualFileSystem::RefreshDirectoryMounts()
             MEntries.erase(ScopedPath);
         }
         std::error_code ScopedCode;
+        std::vector<std::string> ScopedKeys;
         for (const fs::directory_entry& ScopedItem : fs::recursive_directory_iterator(
                  ScopedMount->root, fs::directory_options::skip_permission_denied, ScopedCode))
         {
@@ -300,8 +312,13 @@ void VirtualFileSystem::RefreshDirectoryMounts()
             {
                 continue;
             }
-            AddEntry(Normalize(ScopedRelative.generic_string()),
-                     VfsEntry{ScopedMount->id, ScopedMount->priority, {}}, nullptr);
+            ScopedKeys.push_back(Normalize(ScopedRelative.generic_string()));
+        }
+        std::sort(ScopedKeys.begin(), ScopedKeys.end());
+        MEntries.reserve(MEntries.size() + ScopedKeys.size());
+        for (const std::string& ScopedKey : ScopedKeys)
+        {
+            AddEntry(ScopedKey, VfsEntry{ScopedMount->id, ScopedMount->priority, {}}, nullptr);
         }
     }
 }

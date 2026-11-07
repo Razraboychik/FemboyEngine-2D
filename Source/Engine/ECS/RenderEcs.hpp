@@ -333,12 +333,16 @@ public:
             return;
         }
         RenderChunk& ScopedChunk = *MChunks[InEntity.Chunk];
-        if (ScopedChunk.Header.ActiveCount == 0u)
+        if (ScopedChunk.Header.ActiveCount == 0u || InEntity.Slot >= ScopedChunk.Header.Capacity)
         {
             return;
         }
         std::byte* ScopedSlot = SlotData(ScopedChunk, InEntity.Slot);
         std::fill_n(ScopedSlot, sizeof(GpuSpriteInstance), std::byte{0});
+        // The zeroed slot must reach the GPU on the next upload; without the dirty
+        // mark a released sprite would stay visible in the packed chunk.
+        MarkDirty(ScopedChunk, InEntity.Slot * static_cast<std::uint32_t>(sizeof(GpuSpriteInstance)),
+                  static_cast<std::uint32_t>(sizeof(GpuSpriteInstance)));
         --ScopedChunk.Header.ActiveCount;
         --MActiveCount;
         MFreeSlots.push_back(InEntity);

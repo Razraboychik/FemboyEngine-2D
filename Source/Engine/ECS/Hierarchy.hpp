@@ -1,7 +1,7 @@
 // FemboyEngine2D - opt-in transform hierarchy.
 #pragma once
 
-#include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/CoreComponents.hpp"
 #include "Engine/ECS/Schedule.hpp"
 
 #include <cstdint>

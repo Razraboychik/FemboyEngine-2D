@@ -3,6 +3,7 @@
 
 #include "Engine/Core/Types.hpp"
 #include "Engine/Core/Mirror.hpp"
+#include "Engine/ECS/SystemContext.hpp"
 #include "Engine/RHI/RenderItem.hpp"
 #include "Engine/Text/TextAsset.hpp"
 #include "Engine/UI/FontAtlas.hpp"
@@ -1461,9 +1462,9 @@ public:
     // Cold path only: call from app init / scene load, never from BuildFrame or
     [[nodiscard]] bool MountFonts(Rhi::RHI& InRhi);
 
-    [[nodiscard]] static BuildStatus BuildFrame(Fby::Ecs::SystemContext& InContext, const WidgetCanvas& InCanvas,
+    [[nodiscard]] static BuildStatus BuildFrame(const Ecs::UiSystemView& InView, const WidgetCanvas& InCanvas,
                                                 FrameOutput& Output) noexcept;
-    static void Update(Fby::Ecs::SystemContext& InContext, std::span<WidgetCanvas> InCanvases,
+    static void Update(const Ecs::UiSystemView& InView, std::span<WidgetCanvas> InCanvases,
                        FrameOutput& Output) noexcept;
 
 private:

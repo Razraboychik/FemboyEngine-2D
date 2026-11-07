@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Engine/Core/Mirror.hpp"
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Lighting.hpp"
@@ -135,7 +136,7 @@ static_assert(sizeof(LightSourceComponent) == 40);
     const float ScopedDistance = InDistance < 0.0f ? 0.0f : InDistance;
     const float ScopedBase = 1.0f - ScopedDistance / InRadius;
     const float ScopedExponent = InFalloff > 0.0f ? InFalloff : 1.0f;
-    return std::pow(ScopedBase, ScopedExponent);
+    return Sim::Pow(ScopedBase, ScopedExponent);
 }
 
 // Wakes a sleeping light: the static and sleeping bits are cleared so the next
@@ -223,7 +224,7 @@ public:
     LightSourceSettings Settings{};
 
 private:
-    static void Tick(Ecs::SystemContext& InContext, void* InUser);
+    static void Tick(Ecs::RenderSystemView& InView, void* InUser);
 
     // One target's pre-tonemap static contribution, cached across frames.
     struct CachedTarget

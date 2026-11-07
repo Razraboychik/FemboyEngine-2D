@@ -13,7 +13,7 @@ The engine has two implementations behind the same `PhysicsSystem` API:
 | Backend | Best for | Joints | CCD | Determinism | Recommended body count |
 |---|---|---|---|---|---|
 | `PhysicsBackendKind::Box2D` | general rigid bodies, ropes, vehicles, ragdolls, editor | yes | yes | platform-dependent float | up to about 10000 |
-| `PhysicsBackendKind::Dod` | large joint-free strategy worlds, simple shapes, projectiles | no | swept segment queries only | fixed-order SoA update | up to `kMaxTrackedPhysicsBodies` |
+| `PhysicsBackendKind::Dod` | large joint-free strategy worlds, simple shapes, projectiles | no | swept segment queries only | fixed-order SoA update | grows with the live body count |
 | `PhysicsBackendKind::Auto` | default policy | chooses Box2D when joints are required | chooses Box2D when a joint/CCD feature is requested | chooses DOD when deterministic or a body budget of 4096+ is requested | depends on the resolved backend |
 
 `Auto` is the project default. Set `PhysicsDesc::backend` before
@@ -41,6 +41,15 @@ its own backend.
 worlds and a recommended body ceiling. Do not infer support from the backend
 name; query the capabilities. A DOD world asked to create a joint is an explicit
 error or falls back to Box2D only when the policy is `Auto`.
+
+### Per-body clocks, gravity scale and contacts
+
+`TimeScaleComponent` freezes a body when its `Scale` is zero or negative: both
+backends drop its velocity, angular velocity and accumulated acceleration, and a
+scale in (0, 1) scales authored impulses, acceleration and integration.
+`RigidBody2D::GravityScale` multiplies world gravity per body. Contacts report
+`BeginTouch` once when a pair starts to overlap and `EndTouch` once when it
+separates; sensors emit the same pair events without resolving the contact.
 
 ### Projectile modes
 

@@ -1,6 +1,7 @@
 // FemboyEngine2D - transport group implementation.
 #include "Engine/Physics/TransportGroups.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Physics/Physics.hpp"
 
 #include <box2d/box2d.h>
@@ -22,8 +23,8 @@ constexpr float kTransportPi = 3.14159265358979323846f;
     {
         return InValue;
     }
-    const float ScopedCos = std::cos(InRadians);
-    const float ScopedSin = std::sin(InRadians);
+    const float ScopedCos = Sim::Cos(InRadians);
+    const float ScopedSin = Sim::Sin(InRadians);
     return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin, InValue.X * ScopedSin + InValue.Y * ScopedCos};
 }
 
@@ -262,7 +263,7 @@ void TransportGroupSystem::AdvanceMotion(Ecs::Registry& InRegistry, Entity InRoo
         ScopedPose.Position = SamplePath(*ScopedPath, ScopedMotion->Distance, &ScopedDirectionVector);
         if ((ScopedMotion->Flags & kTransportMotionFaceDirection) != 0)
         {
-            ScopedPose.Rotation = std::atan2(ScopedDirectionVector.Y, ScopedDirectionVector.X);
+            ScopedPose.Rotation = Sim::Atan2(ScopedDirectionVector.Y, ScopedDirectionVector.X);
         }
     }
     else

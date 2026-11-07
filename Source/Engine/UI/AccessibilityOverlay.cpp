@@ -61,7 +61,7 @@ bool ComposeUiOverlay(Rhi::FramePacket& InPacket, std::span<const Rhi::RenderIte
     return true;
 }
 
-bool AccessibilityOverlay::Build(Ecs::SystemContext& InContext, const AccessibilityKernel& InKernel,
+bool AccessibilityOverlay::Build(const Ecs::UiSystemView& InView, const AccessibilityKernel& InKernel,
                                  Vector2D InCanvasSize) noexcept
 {
     MItemCount = 0;
@@ -80,7 +80,7 @@ bool AccessibilityOverlay::Build(Ecs::SystemContext& InContext, const Accessibil
     MOutput.items = std::span<Rhi::RenderItem>(MItems);
     MOutput.keys = std::span<Rhi::RenderKey>(MKeys);
     MOutput.batches = std::span<Rhi::DrawBatch>(MBatches);
-    if (Ui::WidgetCanvasSystem::BuildFrame(InContext, MCanvas, MOutput) != Ui::BuildStatus::Ok)
+    if (Ui::WidgetCanvasSystem::BuildFrame(InView, MCanvas, MOutput) != Ui::BuildStatus::Ok)
     {
         return false;
     }

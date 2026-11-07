@@ -140,7 +140,7 @@ public:
     // Fixed-step simulation. Collisions are resolved against PhysicsSystem's
     void Step(float InDt) noexcept;
     // ECS-facing convenience: uses context.dt if positive. Does not touch the
-    void Update(Ecs::SystemContext& InContext) noexcept;
+    void Update(Ecs::PhysicsSystemView& InView) noexcept;
 
     [[nodiscard]] bool IsValid(ClothHandle InHandle) const noexcept;
     [[nodiscard]] ClothInfo Info(ClothHandle InHandle) const noexcept;

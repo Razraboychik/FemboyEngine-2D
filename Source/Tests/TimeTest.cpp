@@ -101,6 +101,7 @@ int main()
     Check(!ScopedPool.IsActive(ScopedOneShot), "a stale handle stays invalid");
     Check(!ScopedPool.Cancel(ScopedOneShot) && ScopedPool.Cancel(ScopedReused),
           "cancel accepts only live handles");
+    Check(!ScopedPool.Cancel(TimerHandle{}), "a default handle is rejected without touching storage");
 
     const TimerHandle ScopedRepeating = ScopedPool.Create(0.25, true);
     Check(ScopedPool.IsRepeating(ScopedRepeating), "a repeating timer is marked");

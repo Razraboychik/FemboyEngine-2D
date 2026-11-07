@@ -77,10 +77,10 @@ public:
     static constexpr std::uint32_t kMaxBoards = 16;
 
     // PostUpdate. Materialises/updates Transform2D for every slot. A headless
-    static void Update(Ecs::SystemContext& InContext) noexcept;
+    static void Update(const Ecs::CoreSystemView& InView) noexcept;
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph);
 
 private:
-    static void Tick(Ecs::SystemContext& InContext, void* InUser);
+    static void Tick(const Ecs::CoreSystemView& InView, void* InUser);
 };
 }

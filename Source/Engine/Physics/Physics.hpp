@@ -188,7 +188,7 @@ public:
     void EnsureBodies(Ecs::Registry& InRegistry);
 
     // Ownership tracking. CreateMissingBodies() calls TrackBody() itself; an
-    void TrackBody(Entity InEntity, std::uint64_t InPackedBody) noexcept;
+    void TrackBody(Entity InEntity, std::uint64_t InPackedBody);
     void UntrackBody(std::uint64_t InPackedBody) noexcept;
 
     // Destroys every live Box2D body owned by this world before the registry
@@ -303,6 +303,9 @@ private:
     float MTimeScale = 1.0f;
     // Reserved in Initialize(); TrackBody() never allocates after that.
     std::vector<BodyRecord> MBodies{};
+    // Set once when the tracking table is full so the failure is visible instead
+    // of silently leaving native bodies outside the prune list.
+    bool MTrackOverflowWarned = false;
 };
 }
 

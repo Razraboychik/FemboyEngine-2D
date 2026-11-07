@@ -1,6 +1,7 @@
 // FemboyEngine2D - SDF terrain collision for Box2D v3.
 #include "Engine/Physics/SdfCollision.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/Physics/SdfBrickMap.hpp"
 
@@ -26,8 +27,8 @@ namespace
 
 [[nodiscard]] Vector2D Rotate(Vector2D InValue, float InRadians) noexcept
 {
-    const float ScopedCos = std::cos(InRadians);
-    const float ScopedSin = std::sin(InRadians);
+    const float ScopedCos = Sim::Cos(InRadians);
+    const float ScopedSin = Sim::Sin(InRadians);
     return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin, InValue.X * ScopedSin + InValue.Y * ScopedCos};
 }
 }
@@ -301,22 +302,23 @@ std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem&
     return MLastCorrected;
 }
 
-std::uint32_t SdfCollisionSystem::Update(Ecs::SystemContext& InContext) noexcept
+std::uint32_t SdfCollisionSystem::Update(Ecs::PhysicsSystemView& InView) noexcept
 {
-    if (InContext.physics == nullptr || InContext.dt <= 0.0f)
+    if (InView.services.physics == nullptr || InView.dt <= 0.0f)
     {
         return 0;
     }
-    return Step(InContext.registry, *InContext.physics, std::clamp(InContext.dt, 1.0f / 240.0f, 1.0f / 30.0f));
+    return Step(InView.registry, *InView.services.physics, std::clamp(InView.dt, 1.0f / 240.0f, 1.0f / 30.0f));
 }
 
 bool SdfCollisionSystem::Register(Ecs::SystemGraph& InGraph)
 {
-    return InGraph.Add(Ecs::Phase::FixedUpdate, "SdfCollisionSystem", &SdfCollisionSystem::Tick, this);
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "SdfCollisionSystem",
+                       Ecs::BindPhysicsSystem<&SdfCollisionSystem::Tick>(), this);
 }
 
-void SdfCollisionSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
+void SdfCollisionSystem::Tick(Ecs::PhysicsSystemView& InView, void* InUser)
 {
-    static_cast<SdfCollisionSystem*>(InUser)->Update(InContext);
+    static_cast<SdfCollisionSystem*>(InUser)->Update(InView);
 }
 }
