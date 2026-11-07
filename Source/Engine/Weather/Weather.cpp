@@ -1,6 +1,7 @@
 // FemboyEngine2D - global weather integrator.
 #include "Engine/Weather/Weather.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/Physics/Cloth.hpp"
 
@@ -14,8 +15,8 @@ namespace
 
 [[nodiscard]] Vector2D Rotate(Vector2D InValue, float InRadians) noexcept
 {
-    const float ScopedCos = std::cos(InRadians);
-    const float ScopedSin = std::sin(InRadians);
+    const float ScopedCos = Sim::Cos(InRadians);
+    const float ScopedSin = Sim::Sin(InRadians);
     return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin,
                     InValue.X * ScopedSin + InValue.Y * ScopedCos};
 }
@@ -34,6 +35,16 @@ void WeatherSystem::Update(Ecs::SystemContext& InContext) noexcept
     const float ScopedDt = std::clamp(InContext.dt, 0.0f, 0.25f);
     MTimeSeconds += ScopedDt;
     auto ScopedView = InContext.registry.view<WeatherContextComponent>();
+    // Several contexts are legal (zones), but the single global wind field must
+    // resolve deterministically: the lowest entity id is the primary context.
+    Entity ScopedPrimary = entt::null;
+    for (const Entity ScopedEntity : ScopedView)
+    {
+        if (ScopedPrimary == entt::null || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedPrimary))
+        {
+            ScopedPrimary = ScopedEntity;
+        }
+    }
     for (const Entity ScopedEntity : ScopedView)
     {
         WeatherContextComponent& ScopedContext = ScopedView.get<WeatherContextComponent>(ScopedEntity);
@@ -85,16 +96,19 @@ void WeatherSystem::Update(Ecs::SystemContext& InContext) noexcept
         {
             ScopedContext.flags |= WeatherFire;
         }
-        MWindField.windAndGust =
-            Vector4D{ScopedContext.resolvedWindX, ScopedContext.resolvedWindY, ScopedGust, ScopedTurbulence};
-        MWindField.atmosphere = Vector4D{ScopedContext.atmosphereDensity, ScopedContext.airViscosity,
-                                         ScopedContext.gravityScale, ScopedContext.temperatureCelsius};
-        MWindField.cloud = Vector4D{ScopedContext.cloudCoverage, ScopedContext.cloudSpeed, ScopedContext.cloudHeight,
-                                    ScopedContext.cloudShadowStrength};
-        MWindField.precipitation = Vector4D{ScopedContext.rainIntensity, ScopedContext.snowIntensity,
-                                            ScopedContext.fireIntensity, ScopedContext.wetness};
-        MWindField.fog = Vector4D{ScopedContext.fogDensity, ScopedContext.fogFalloff, ScopedTime,
-                                  static_cast<float>(ScopedContext.flags)};
+        if (ScopedEntity == ScopedPrimary)
+        {
+            MWindField.windAndGust =
+                Vector4D{ScopedContext.resolvedWindX, ScopedContext.resolvedWindY, ScopedGust, ScopedTurbulence};
+            MWindField.atmosphere = Vector4D{ScopedContext.atmosphereDensity, ScopedContext.airViscosity,
+                                             ScopedContext.gravityScale, ScopedContext.temperatureCelsius};
+            MWindField.cloud = Vector4D{ScopedContext.cloudCoverage, ScopedContext.cloudSpeed,
+                                        ScopedContext.cloudHeight, ScopedContext.cloudShadowStrength};
+            MWindField.precipitation = Vector4D{ScopedContext.rainIntensity, ScopedContext.snowIntensity,
+                                                ScopedContext.fireIntensity, ScopedContext.wetness};
+            MWindField.fog = Vector4D{ScopedContext.fogDensity, ScopedContext.fogFalloff, ScopedTime,
+                                      static_cast<float>(ScopedContext.flags)};
+        }
     }
     if (InContext.cloth != nullptr)
     {

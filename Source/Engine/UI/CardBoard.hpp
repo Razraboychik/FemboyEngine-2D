@@ -26,21 +26,21 @@ enum SlotFlags : std::uint32_t
 
 struct SlotComponent
 {
-    std::uint32_t boardId = 0;
-    std::uint32_t slotIndex = 0;
-    std::uint32_t cardId = 0;
-    std::uint32_t flags = 0;
+    std::uint32_t BoardId = 0;
+    std::uint32_t SlotIndex = 0;
+    std::uint32_t CardId = 0;
+    std::uint32_t Flags = 0;
     // 0..3 for suit, 0..14 for rank; opaque to the layout system
-    std::uint16_t suit = 0;
-    std::uint16_t rank = 0;
+    std::uint16_t Suit = 0;
+    std::uint16_t Rank = 0;
     // Local nudge in board space, used for a lifted/selected card
-    Vector2D offset{};
-    float rotation = 0.0f;
-    std::uint16_t layer = 0;
-    std::uint16_t reserved = 0;
+    Vector2D Offset{};
+    float Rotation = 0.0f;
+    std::uint16_t Layer = 0;
+    std::uint16_t Reserved = 0;
     // Resolved board-space position and occupancy. An anchored slot uses this
-    Vector2D position{};
-    bool isOccupied = false;
+    Vector2D Position{};
+    bool IsOccupied = false;
 };
 
 static_assert(std::is_trivially_copyable_v<SlotComponent>);
@@ -48,24 +48,24 @@ static_assert(std::is_standard_layout_v<SlotComponent>);
 
 struct CardBoardComponent
 {
-    std::uint32_t boardId = 0;
-    std::uint32_t columns = 8;
-    std::uint32_t rows = 2;
-    Vector2D origin{0.0f, 0.0f};
-    Vector2D cardSize{72.0f, 104.0f};
-    Vector2D spacing{12.0f, 12.0f};
-    float rotation = 0.0f;
-    std::uint32_t flags = 0;
+    std::uint32_t BoardId = 0;
+    std::uint32_t Columns = 8;
+    std::uint32_t Rows = 2;
+    Vector2D Origin{0.0f, 0.0f};
+    Vector2D CardSize{72.0f, 104.0f};
+    Vector2D Spacing{12.0f, 12.0f};
+    float Rotation = 0.0f;
+    std::uint32_t Flags = 0;
     // Colour used by the procedural SDF card back
-    Color32 backColor = Color32::White();
+    Color32 BackColor = Color32::White();
 };
 
 static_assert(std::is_trivially_copyable_v<CardBoardComponent>);
 
 struct SlotLayout
 {
-    Vector2D position{};
-    float rotation = 0.0f;
+    Vector2D Position{};
+    float Rotation = 0.0f;
 };
 
 // Pure layout function shared by the ECS system and the UI packer. `slotIndex` is

@@ -167,11 +167,11 @@ using SdfDamagePolicy = float (*)(void* InUser, const SdfImpact& InImpact, const
 [[nodiscard]] inline SdfImpact MakeSdfImpact(const SdfContact& InContact, float InLocalThickness = 0.0f) noexcept
 {
     SdfImpact ScopedImpact{};
-    ScopedImpact.Target = InContact.entity;
-    ScopedImpact.Point = InContact.point;
-    ScopedImpact.Normal = InContact.normal;
+    ScopedImpact.Target = InContact.Entity;
+    ScopedImpact.Point = InContact.Point;
+    ScopedImpact.Normal = InContact.Normal;
     ScopedImpact.RelativeSpeed = InContact.RelativeSpeed;
-    ScopedImpact.Impulse = InContact.impulse;
+    ScopedImpact.Impulse = InContact.Impulse;
     ScopedImpact.KineticEnergy = InContact.KineticEnergy;
     ScopedImpact.Mass = InContact.Mass;
     ScopedImpact.LocalThickness = InLocalThickness;
@@ -181,7 +181,7 @@ using SdfDamagePolicy = float (*)(void* InUser, const SdfImpact& InImpact, const
 [[nodiscard]] inline SdfImpact MakeSdfImpact(const SdfContact& InContact, const SdfField& InField,
                                              float InMaxThickness = 32.0f) noexcept
 {
-    return MakeSdfImpact(InContact, SdfThicknessInward(InField, InContact.point, InContact.normal, InMaxThickness));
+    return MakeSdfImpact(InContact, SdfThicknessInward(InField, InContact.Point, InContact.Normal, InMaxThickness));
 }
 
 // Fixed-capacity damage and connection graph. The model is deterministic, has no

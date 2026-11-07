@@ -737,13 +737,13 @@ SECTIONS: list[dict] = [
                 B(
                     "A component never stores a path. It stores a small, generation-checked AssetHandle that names one "
                     "row of the AssetDatabase metadata table. The row owns the stable AssetId/GUID, resource kind, "
-                    "source and cooked paths, dependency list and import settings. AssetHandle::generation detects a "
+                    "source and cooked paths, dependency list and import settings. AssetHandle::Generation detects a "
                     "reused slot; AssetMeta::contentGeneration lets a renderer or cache compare content versions. "
                     "Hot reload never exposes a half-updated asset: edits are staged and committed atomically.",
                     "Компонент никогда не хранит путь. Он хранит небольшой AssetHandle с проверкой поколения, "
                     "указывающий на строку таблицы метаданных AssetDatabase. Строка владеет стабильными AssetId/GUID, "
                     "видом ресурса, исходным и приготовленным путями, списком зависимостей и настройками импорта. "
-                    "AssetHandle::generation обнаруживает переиспользованный слот; AssetMeta::contentGeneration "
+                    "AssetHandle::Generation обнаруживает переиспользованный слот; AssetMeta::contentGeneration "
                     "позволяет рендереру или кешу сравнивать версии содержимого. Горячая перезагрузка никогда не "
                     "показывает наполовину обновлённый ассет: правки готовятся и фиксируются атомарно.",
                 ),

@@ -43,6 +43,8 @@ private:
     void ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, Entity InWheel) noexcept;
 
     PhysicsSystem* MPhysics = nullptr;
+    std::uint64_t MPhysicsInstanceId = 0;
+    std::uint32_t MPhysicsGeneration = 0;
     std::uint32_t MWheelCount = 0;
     bool MAvailable = false;
 };

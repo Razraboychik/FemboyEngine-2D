@@ -239,7 +239,23 @@ void VoiceSystem::BindParticipants(VoiceSession& InSession) noexcept
     }
     for (std::uint8_t ScopedPlayer = 0; ScopedPlayer < kVoiceMaxPeers; ++ScopedPlayer)
     {
-        if (MBound[ScopedPlayer] || !MChannel.IsParticipant(ScopedPlayer))
+        if (!MChannel.IsParticipant(ScopedPlayer))
+        {
+            // The peer left: release its stream voice instead of leaving a
+            // silent voice slot occupied until Stop().
+            if (MBound[ScopedPlayer])
+            {
+                if (MVoices[ScopedPlayer] != 0)
+                {
+                    (void)MGraph->StopVoice(MVoices[ScopedPlayer]);
+                    MVoices[ScopedPlayer] = 0;
+                }
+                MBound[ScopedPlayer] = false;
+                InSession.SetParticipantVoice(ScopedPlayer, 0);
+            }
+            continue;
+        }
+        if (MBound[ScopedPlayer])
         {
             continue;
         }

@@ -2,6 +2,7 @@
 #include "Engine/RHI/CameraStack.hpp"
 
 #include "Engine/Core/Pcg32.hpp"
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/WindowManager.hpp"
 #include "Engine/UI/Accessibility.hpp"
 
@@ -108,6 +109,7 @@ bool CameraStackSystem::Push(Ecs::Registry& InRegistry, const CameraStackDesc& I
     ScopedSlot.phaseY = ScopedRng.NextFloat() * kTwoPi;
     ScopedSlot.currentProjection = BuildProjection(ScopedSlot.camera, InDesc.tiltRadians, InDesc.perspectiveDistance);
     ScopedSlot.previousProjection = ScopedSlot.currentProjection;
+    ScopedSlot.previousCamera = ScopedSlot.camera;
     ScopedSlot.projectionPrimed = true;
     ScopedSlot.active = true;
     ++MCount;
@@ -153,6 +155,9 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
             continue;
         }
 
+        // Keep last frame's resolved camera so the renderer can interpolate the
+        // camera parameters rather than the projection matrix.
+        ScopedSlot.previousCamera = ScopedSlot.camera;
         Camera2D ScopedBase = ScopedSlot.baseCamera;
 
         // Pick up authoring changes (zoom, viewport) without overwriting the
@@ -303,7 +308,22 @@ Mat4 CameraStackSystem::InterpolatedProjection(float InAlpha) const noexcept
     {
         return Mat4::Identity();
     }
-    return LerpProjection(ScopedSlot->previousProjection, ScopedSlot->currentProjection, InAlpha);
+    // Interpolate the camera parameters, then build the matrix: blending matrix
+    // elements distorts rotation and perspective. The clamp keeps the result
+    // inside the authored projection range.
+    const float ScopedBlend = std::clamp(InAlpha, 0.0f, 1.0f);
+    Camera2D ScopedCamera = ScopedSlot->camera;
+    ScopedCamera.Center =
+        ScopedSlot->previousCamera.Center +
+        (ScopedSlot->camera.Center - ScopedSlot->previousCamera.Center) * ScopedBlend;
+    ScopedCamera.ViewSize =
+        ScopedSlot->previousCamera.ViewSize +
+        (ScopedSlot->camera.ViewSize - ScopedSlot->previousCamera.ViewSize) * ScopedBlend;
+    ScopedCamera.Zoom =
+        ScopedSlot->previousCamera.Zoom + (ScopedSlot->camera.Zoom - ScopedSlot->previousCamera.Zoom) * ScopedBlend;
+    ScopedCamera.Rotation = ScopedSlot->previousCamera.Rotation +
+                            (ScopedSlot->camera.Rotation - ScopedSlot->previousCamera.Rotation) * ScopedBlend;
+    return BuildProjection(ScopedCamera, ScopedSlot->desc.tiltRadians, ScopedSlot->desc.perspectiveDistance);
 }
 
 void CameraStackSystem::AddTrauma(float InAmount) noexcept
@@ -482,8 +502,8 @@ Mat4 CameraStackSystem::BuildProjection(const Camera2D& InCamera, float InTiltRa
     const float ScopedViewHeight = std::max(InCamera.ViewSize.Y, 1.0f);
     const float ScopedZoom = std::max(InCamera.Zoom, 0.0001f);
     const float ScopedTilt = std::clamp(InTiltRadians, -1.35f, 1.35f);
-    const float ScopedCosine = std::cos(InCamera.Rotation);
-    const float ScopedSine = std::sin(InCamera.Rotation);
+    const float ScopedCosine = Sim::Cos(InCamera.Rotation);
+    const float ScopedSine = Sim::Sin(InCamera.Rotation);
     const float ScopedScaleX = 2.0f * ScopedZoom / ScopedViewWidth;
     const float ScopedScaleY = 2.0f * ScopedZoom / ScopedViewHeight;
 
@@ -491,14 +511,14 @@ Mat4 CameraStackSystem::BuildProjection(const Camera2D& InCamera, float InTiltRa
     ScopedResult.m[0] = ScopedScaleX * ScopedCosine;
     ScopedResult.m[4] = ScopedScaleX * ScopedSine;
     ScopedResult.m[12] = -ScopedScaleX * (ScopedCosine * InCamera.Center.X + ScopedSine * InCamera.Center.Y);
-    ScopedResult.m[1] = -ScopedScaleY * ScopedSine * std::cos(ScopedTilt);
-    ScopedResult.m[5] = ScopedScaleY * ScopedCosine * std::cos(ScopedTilt);
+    ScopedResult.m[1] = -ScopedScaleY * ScopedSine * Sim::Cos(ScopedTilt);
+    ScopedResult.m[5] = ScopedScaleY * ScopedCosine * Sim::Cos(ScopedTilt);
     ScopedResult.m[13] =
-        ScopedScaleY * (ScopedSine * InCamera.Center.X - ScopedCosine * InCamera.Center.Y) * std::cos(ScopedTilt);
+        ScopedScaleY * (ScopedSine * InCamera.Center.X - ScopedCosine * InCamera.Center.Y) * Sim::Cos(ScopedTilt);
 
     // Perspective term in the w row. With distance <= 0 this stays exactly
     const float ScopedWSlope =
-        InPerspectiveDistance > 0.0f ? std::sin(ScopedTilt) / std::max(InPerspectiveDistance, 1.0f) : 0.0f;
+        InPerspectiveDistance > 0.0f ? Sim::Sin(ScopedTilt) / std::max(InPerspectiveDistance, 1.0f) : 0.0f;
     ScopedResult.m[7] = ScopedWSlope;
     ScopedResult.m[15] = 1.0f - ScopedWSlope * InCamera.Center.Y;
     ScopedResult.m[10] = 1.0f;

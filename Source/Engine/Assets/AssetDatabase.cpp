@@ -214,12 +214,12 @@ AssetHandle AssetDatabase::FindHandleBySourcePath(std::string_view InSourcePath)
 
 const AssetMeta* AssetDatabase::Meta(AssetHandle InHandle) const noexcept
 {
-    if (!InHandle.IsValid() || InHandle.index >= MMetas.size() || MMetaUsed[InHandle.index] == 0 ||
-        !(MHandles[InHandle.index] == InHandle))
+    if (!InHandle.IsValid() || InHandle.Index >= MMetas.size() || MMetaUsed[InHandle.Index] == 0 ||
+        !(MHandles[InHandle.Index] == InHandle))
     {
         return nullptr;
     }
-    return &MMetas[InHandle.index];
+    return &MMetas[InHandle.Index];
 }
 
 AssetId AssetDatabase::Id(AssetHandle InHandle) const noexcept
@@ -320,7 +320,7 @@ bool AssetDatabase::StageMeta(AssetHandle InHandle, const AssetMeta& InMeta, std
         SetError(InError, "StageMeta: invalid metadata");
         return false;
     }
-    const std::uint32_t ScopedSlot = InHandle.index;
+    const std::uint32_t ScopedSlot = InHandle.Index;
     if (!MStaged[ScopedSlot].staged)
     {
         ++MStagedCount;

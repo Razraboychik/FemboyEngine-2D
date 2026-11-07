@@ -169,6 +169,10 @@ struct LightSourceSettings
 class LightSourceSystem
 {
 public:
+    static constexpr std::uint32_t kMaxCachedTargets = 1024;
+    static constexpr std::uint32_t kTargetIndexSize = 2 * kMaxCachedTargets;
+    static constexpr std::uint32_t kInvalidTargetSlot = 0xFFFFFFFFu;
+
     [[nodiscard]] std::uint32_t Run(Ecs::Registry& InRegistry, const LightSourceSettings& InSettings,
                                     const SdfField* InField = nullptr) noexcept;
 
@@ -235,7 +239,19 @@ private:
         float Blue = 0.0f;
     };
 
-    std::array<CachedTarget, 1024> MStaticTargets{};
+    // Open-addressing index from entity to cache slot; the table is rebuilt with
+    // the cache, so a hit does not scan every cached target.
+    struct TargetIndexEntry
+    {
+        Entity Owner = entt::null;
+        std::uint32_t Slot = 0;
+    };
+
+    [[nodiscard]] std::uint32_t FindStaticTarget(Entity InEntity) const noexcept;
+    void InsertStaticTarget(Entity InEntity, std::uint32_t InSlot) noexcept;
+
+    std::array<CachedTarget, kMaxCachedTargets> MStaticTargets{};
+    std::array<TargetIndexEntry, kTargetIndexSize> MTargetIndex{};
     std::uint32_t MStaticTargetCount = 0;
     std::uint64_t MStaticSignature = 0;
     bool MStaticValid = false;
@@ -246,6 +262,7 @@ private:
     std::uint32_t MShadowSamples = 0;
     std::uint32_t MStaticRebuilds = 0;
     std::uint32_t MStaticHits = 0;
+    std::uint32_t MFrame = 0;
     LightGrid2D MLightGrid;
     std::uint64_t MLightGridSignature = 0;
     bool MLightGridValid = false;

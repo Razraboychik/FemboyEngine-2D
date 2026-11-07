@@ -420,8 +420,8 @@ void DrawSpriteAnimationInspector(Ecs::SystemContext& InContext, Entity InEntity
     ImGui::EndChild();
 
     std::array<char, 24> ScopedAtlasBuffer{};
-    std::snprintf(ScopedAtlasBuffer.data(), ScopedAtlasBuffer.size(), "0x%08X:%08X", ScopedSpriteAnimation->TextureAtlas.index,
-                  ScopedSpriteAnimation->TextureAtlas.generation);
+    std::snprintf(ScopedAtlasBuffer.data(), ScopedAtlasBuffer.size(), "0x%08X:%08X", ScopedSpriteAnimation->TextureAtlas.Index,
+                  ScopedSpriteAnimation->TextureAtlas.Generation);
     ImGui::TextDisabled("atlas handle %s", ScopedSpriteAnimation->TextureAtlas.IsValid() ? ScopedAtlasBuffer.data() : "(none)");
     if (InContext.assetDb != nullptr)
     {

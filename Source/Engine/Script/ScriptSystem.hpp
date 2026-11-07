@@ -126,6 +126,20 @@ public:
 
     // Called by the system when Run() reports a fault. Logs at most once per
     void ReportFault(std::uint32_t InHandle, Entity InEntity, const Script::VmFault& InFault) noexcept;
+    // Cooked builds run without the VM. A program with no AOT module is a build
+    // error; report it once per program instead of once per entity per tick.
+    void ReportMissingAot(std::uint32_t InHandle, std::uint64_t InHash) noexcept;
+
+    // Destroy-event bookkeeping: the system marks the scripts it saw this tick,
+    // then runs Destroy for the ones that disappeared (component removed or
+    // script disabled). A program without a Destroy entry is a no-op.
+    void BeginScriptFrame() noexcept;
+    void TrackScript(Entity InEntity, std::uint32_t InProgram, bool InNativized) noexcept;
+    void RunDestroyForInactive(Ecs::Registry& InRegistry, Script::VmContext& InContext, bool InAllowVmFallback) noexcept;
+    [[nodiscard]] std::uint32_t DroppedDestroyEvents() const noexcept
+    {
+        return MDroppedDestroyEvents;
+    }
 
     [[nodiscard]] std::uint32_t ProgramCount() const noexcept
     {
@@ -157,6 +171,18 @@ private:
     std::uint64_t MAotRunCount = 0;
     std::uint64_t MUnnativizedSkipCount = 0;
     std::array<bool, kScriptMaxPrograms> MFaultReported{};
+    struct ActiveScript
+    {
+        Entity Owner = entt::null;
+        std::uint32_t Program = 0;
+        std::uint32_t Stamp = 0;
+        bool Nativized = false;
+    };
+    static constexpr std::uint32_t kMaxActiveScripts = 256;
+    std::array<ActiveScript, kMaxActiveScripts> MActiveScripts{};
+    std::uint32_t MActiveScriptCount = 0;
+    std::uint32_t MActiveStamp = 0;
+    std::uint32_t MDroppedDestroyEvents = 0;
     TransportGroupSystem* MTransportGroups = nullptr;
     PhysicsSystem* MPhysics = nullptr;
     CameraStackSystem* MCamera = nullptr;

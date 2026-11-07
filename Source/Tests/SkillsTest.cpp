@@ -269,7 +269,7 @@ int main()
     if (ScopedCommand != nullptr)
     {
         FBY_CHECK(ScopedCommand->Kind == static_cast<std::uint32_t>(AICommandKind::ActivateSkill));
-        FBY_CHECK(ScopedCommand->Flags == 1);
+        FBY_CHECK(ScopedCommand->SkillSlot == 1);
     }
 
     if (GFailures == 0)

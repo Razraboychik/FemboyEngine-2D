@@ -239,9 +239,59 @@ bool WakeLightSource(LightSourceComponent& InLight, bool InFromContact) noexcept
     return true;
 }
 
+namespace
+{
+[[nodiscard]] std::uint32_t TargetIndexCursor(Entity InEntity) noexcept
+{
+    constexpr std::uint32_t ScopedMask = LightSourceSystem::kTargetIndexSize - 1u;
+    return (static_cast<std::uint32_t>(entt::to_integral(InEntity)) * 2654435761u) & ScopedMask;
+}
+}
+
+std::uint32_t LightSourceSystem::FindStaticTarget(Entity InEntity) const noexcept
+{
+    std::uint32_t ScopedCursor = TargetIndexCursor(InEntity);
+    for (std::uint32_t ScopedProbe = 0; ScopedProbe < kTargetIndexSize; ++ScopedProbe)
+    {
+        const TargetIndexEntry& ScopedEntry = MTargetIndex[ScopedCursor];
+        if (ScopedEntry.Owner == InEntity)
+        {
+            return ScopedEntry.Slot;
+        }
+        if (ScopedEntry.Owner == entt::null)
+        {
+            return kInvalidTargetSlot;
+        }
+        ScopedCursor = (ScopedCursor + 1u) & (kTargetIndexSize - 1u);
+    }
+    return kInvalidTargetSlot;
+}
+
+void LightSourceSystem::InsertStaticTarget(Entity InEntity, std::uint32_t InSlot) noexcept
+{
+    std::uint32_t ScopedCursor = TargetIndexCursor(InEntity);
+    for (std::uint32_t ScopedProbe = 0; ScopedProbe < kTargetIndexSize; ++ScopedProbe)
+    {
+        TargetIndexEntry& ScopedEntry = MTargetIndex[ScopedCursor];
+        if (ScopedEntry.Owner == entt::null || ScopedEntry.Owner == InEntity)
+        {
+            ScopedEntry.Owner = InEntity;
+            ScopedEntry.Slot = InSlot;
+            return;
+        }
+        ScopedCursor = (ScopedCursor + 1u) & (kTargetIndexSize - 1u);
+    }
+}
+
 std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourceSettings& InSettings,
                                      const SdfField* InField) noexcept
 {
+    // The legacy solver wins when both light kinds are present; without unified
+    // lights this pass has nothing to own.
+    if (InRegistry.view<LightSourceComponent>().empty() || !InRegistry.view<Light2DComponent>().empty())
+    {
+        return 0;
+    }
     std::array<LightSample, kMaxLightSamples> ScopedLights{};
     std::array<OccluderSample, kMaxDynamicOccluders> ScopedOccluders{};
     std::uint32_t ScopedOccluderCount = 0;
@@ -270,9 +320,13 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
     float ScopedBaseGreen = UnpackChannel(InSettings.Ambient.rgba, 8) * ScopedAmbientStrength;
     float ScopedBaseBlue = UnpackChannel(InSettings.Ambient.rgba, 16) * ScopedAmbientStrength;
 
-    // Every target is cleared first: a sprite that loses its light target keeps
-    // no stale tint.
-    InRegistry.clear<Light2DResultComponent>();
+    // Results are stamped instead of cleared: an unchanged target keeps its
+    // component, and a stale stamp is swept after the pass.
+    ++MFrame;
+    if (MFrame == 0)
+    {
+        MFrame = 1;
+    }
 
     std::uint32_t ScopedLightCount = 0;
     std::uint32_t ScopedStaticCount = 0;
@@ -374,11 +428,18 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
         ScopedSignature = MixValue(ScopedSignature, ScopedOccluders[ScopedI].Center.X);
         ScopedSignature = MixValue(ScopedSignature, ScopedOccluders[ScopedI].Center.Y);
         ScopedSignature = MixValue(ScopedSignature, ScopedOccluders[ScopedI].Radius);
+        // Shape and flags change the shadow too; without them a resized box kept
+        // the old cached contribution.
+        ScopedSignature = MixValue(ScopedSignature, ScopedOccluders[ScopedI].HalfExtents.X);
+        ScopedSignature = MixValue(ScopedSignature, ScopedOccluders[ScopedI].HalfExtents.Y);
+        ScopedSignature = MixValue(ScopedSignature, static_cast<float>(ScopedOccluders[ScopedI].Flags));
     }
     ScopedSignature = MixValue(ScopedSignature, InSettings.SdfSoftness);
     ScopedSignature = MixValue(ScopedSignature, InSettings.SdfAmbientOcclusion);
+    ScopedSignature = MixValue(ScopedSignature, InSettings.SdfOcclusionRadius);
     ScopedSignature = MixValue(ScopedSignature, static_cast<float>(InSettings.SdfMaxSteps));
     ScopedSignature = MixValue(ScopedSignature, InSettings.SdfShadows ? 1.0f : 0.0f);
+    ScopedSignature = MixValue(ScopedSignature, InSettings.Tonemap ? 1.0f : 0.0f);
     // The ambient and global contribution is baked into each cached target, so
     // changing either must invalidate the cache as well.
     ScopedSignature = MixValue(ScopedSignature, ScopedBaseRed);
@@ -410,6 +471,7 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
     if (ScopedCacheRequested && !ScopedHadValidCache)
     {
         MStaticTargetCount = 0;
+        MTargetIndex.fill(TargetIndexEntry{});
         MStaticSignature = ScopedSignature;
         MStaticValid = true;
         ++MStaticRebuilds;
@@ -422,7 +484,9 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
             {
                 continue;
             }
-            CachedTarget& ScopedEntry = MStaticTargets[MStaticTargetCount++];
+            const std::uint32_t ScopedSlot = MStaticTargetCount++;
+            InsertStaticTarget(ScopedEntity, ScopedSlot);
+            CachedTarget& ScopedEntry = MStaticTargets[ScopedSlot];
             ScopedEntry.Owner = ScopedEntity;
             ScopedEntry.Red = ScopedBaseRed;
             ScopedEntry.Green = ScopedBaseGreen;
@@ -467,15 +531,12 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
         float ScopedBlue = ScopedBaseBlue;
         if (ScopedUsingCache)
         {
-            for (std::uint32_t ScopedI = 0; ScopedI < MStaticTargetCount; ++ScopedI)
+            const std::uint32_t ScopedSlot = FindStaticTarget(ScopedEntity);
+            if (ScopedSlot != kInvalidTargetSlot && ScopedSlot < MStaticTargetCount)
             {
-                if (MStaticTargets[ScopedI].Owner == ScopedEntity)
-                {
-                    ScopedRed = MStaticTargets[ScopedI].Red;
-                    ScopedGreen = MStaticTargets[ScopedI].Green;
-                    ScopedBlue = MStaticTargets[ScopedI].Blue;
-                    break;
-                }
+                ScopedRed = MStaticTargets[ScopedSlot].Red;
+                ScopedGreen = MStaticTargets[ScopedSlot].Green;
+                ScopedBlue = MStaticTargets[ScopedSlot].Blue;
             }
         }
         else
@@ -514,9 +575,27 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
             ScopedGreen += (1.0f - ScopedGreen) * ScopedEmissive;
             ScopedBlue += (1.0f - ScopedBlue) * ScopedEmissive;
         }
-        InRegistry.emplace_or_replace<Light2DResultComponent>(
-            ScopedEntity, Light2DResultComponent{Color32{PackRgb(ScopedRed, ScopedGreen, ScopedBlue, 0xFF000000u)}});
+        Light2DResultComponent& ScopedResult = InRegistry.get_or_emplace<Light2DResultComponent>(ScopedEntity);
+        ScopedResult.Color = Color32{PackRgb(ScopedRed, ScopedGreen, ScopedBlue, 0xFF000000u)};
+        ScopedResult.Frame = MFrame;
         ++ScopedLit;
+    }
+    // Remove tints this pass did not touch (lost target, removed light, or a
+    // frame produced by the other solver).
+    std::array<Entity, kMaxCachedTargets> ScopedStale{};
+    std::uint32_t ScopedStaleCount = 0;
+    auto ScopedResultView = InRegistry.view<Light2DResultComponent>();
+    for (const Entity ScopedEntity : ScopedResultView)
+    {
+        if (ScopedResultView.get<Light2DResultComponent>(ScopedEntity).Frame != MFrame &&
+            ScopedStaleCount < ScopedStale.size())
+        {
+            ScopedStale[ScopedStaleCount++] = ScopedEntity;
+        }
+    }
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedStaleCount; ++ScopedI)
+    {
+        InRegistry.remove<Light2DResultComponent>(ScopedStale[ScopedI]);
     }
     MLitCount = ScopedLit;
     MShadowSamples = ScopedShadowSamples;

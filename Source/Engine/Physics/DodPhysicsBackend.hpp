@@ -73,6 +73,8 @@ private:
         std::vector<float> InverseMasses;
         // World gravity multiplier from RigidBody2D::GravityScale.
         std::vector<float> GravityScales;
+        std::vector<float> LinearDampings;
+        std::vector<float> AngularDampings;
         std::vector<float> HalfWidths;
         std::vector<float> HalfHeights;
         std::vector<std::uint32_t> Categories;

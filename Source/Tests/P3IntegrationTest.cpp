@@ -395,13 +395,13 @@ int main()
     ClothSystem ScopedCloth;
     FBY_CHECK(ScopedCloth.Initialize(nullptr));
     ClothDesc ScopedClothDesc;
-    ScopedClothDesc.origin = Vector2D{0.0f, 0.0f};
-    ScopedClothDesc.size = Vector2D{64.0f, 64.0f};
-    ScopedClothDesc.columns = 4;
-    ScopedClothDesc.rows = 4;
+    ScopedClothDesc.Origin = Vector2D{0.0f, 0.0f};
+    ScopedClothDesc.Size = Vector2D{64.0f, 64.0f};
+    ScopedClothDesc.Columns = 4;
+    ScopedClothDesc.Rows = 4;
     const ClothHandle ScopedClothHandle = ScopedCloth.Create(ScopedRegistry, ScopedClothDesc);
     FBY_CHECK(ScopedClothHandle.IsValid());
-    FBY_CHECK(ScopedCloth.Info(ScopedClothHandle).clothId.IsValid());
+    FBY_CHECK(ScopedCloth.Info(ScopedClothHandle).Id.IsValid());
     Rhi::MeshRenderItem ScopedMesh{};
     FBY_CHECK(ScopedCloth.WriteMesh(ScopedClothHandle, ScopedMesh));
     FBY_CHECK((ScopedMesh.flags & Rhi::MeshItemUnskinned) != 0);

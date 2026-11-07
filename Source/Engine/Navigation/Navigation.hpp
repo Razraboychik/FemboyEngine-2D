@@ -261,10 +261,18 @@ inline constexpr std::uint32_t kNavAgentFlagRepathDeferred = 1u << 3;
 
 // Moves agents along their path. Requires Transform2D, NavAgentSettings and
 // NavAgentComponent on the agent entity; the system creates the runtime
-// component for a settings-only entity before iterating.
+// component for a settings-only entity before iterating. Agents must be
+// body-less: the system writes Transform2D directly, and a dynamic RigidBody2D
+// would overwrite the pose on the next physics readback.
 class NavigationSystem
 {
 public:
+    NavigationSystem() = default;
+    // The path finder owns about 300 KiB of scratch arrays; copying a system
+    // would duplicate them silently.
+    NavigationSystem(const NavigationSystem&) = delete;
+    NavigationSystem& operator=(const NavigationSystem&) = delete;
+
     void SetMap(const NavMap* InMap) noexcept
     {
         MMap = InMap;
@@ -299,6 +307,11 @@ public:
     {
         return MRepathsThisFrame;
     }
+    // Settings-only agents that missed the per-tick runtime-state budget.
+    [[nodiscard]] std::uint32_t DroppedRuntimeStates() const noexcept
+    {
+        return MDroppedRuntimeStates;
+    }
 
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, NavigationSystem& InSystem);
 
@@ -311,6 +324,7 @@ private:
     const NavMesh* MNavMesh = nullptr;
     PathFinder MFinder;
     std::uint32_t MRepathsThisFrame = 0;
+    std::uint32_t MDroppedRuntimeStates = 0;
 };
 
 // Follows `InPath` from world position `InPosition` and returns the new

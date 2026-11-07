@@ -19,6 +19,11 @@ namespace Fby
 
 class DodPhysicsBackend;
 
+namespace Ecs
+{
+class SystemGraph;
+}
+
 // Body records are fixed-capacity diagnostics/ownership data, not a simulation
 inline constexpr std::uint32_t kMaxTrackedPhysicsBodies = 65536;
 
@@ -119,10 +124,10 @@ struct PhysicsContactEvent
 
 struct PhysicsRayHit
 {
-    Entity entity = entt::null;
-    Vector2D point{};
-    Vector2D normal{0.0f, -1.0f};
-    float distance = 0.0f;
+    Entity Entity = entt::null;
+    Vector2D Point{};
+    Vector2D Normal{0.0f, -1.0f};
+    float Distance = 0.0f;
 };
 
 // Integer-valued modes keep the reflected component script and prefab friendly.
@@ -211,6 +216,20 @@ public:
         return MDesc;
     }
     [[nodiscard]] bool IsValid() const noexcept;
+    // Process-local identity. Systems that keep a non-owning PhysicsSystem*
+    // check IsLive() before dereferencing it, so a destroyed system is never
+    // touched through a stale pointer.
+    [[nodiscard]] std::uint64_t InstanceId() const noexcept
+    {
+        return MInstanceId;
+    }
+    // Incremented on every successful Initialize(); a cached world generation
+    // lets dependent systems drop stale body/joint handles.
+    [[nodiscard]] std::uint32_t Generation() const noexcept
+    {
+        return MGeneration;
+    }
+    [[nodiscard]] static bool IsLive(const PhysicsSystem* InSystem, std::uint64_t InInstanceId) noexcept;
 
     // Packed b2WorldId. Exposed as an integer so extension modules (joint
     [[nodiscard]] std::uint32_t WorldId() const noexcept
@@ -306,6 +325,19 @@ private:
     // Set once when the tracking table is full so the failure is visible instead
     // of silently leaving native bodies outside the prune list.
     bool MTrackOverflowWarned = false;
+    std::uint64_t MInstanceId = 0;
+    std::uint32_t MGeneration = 0;
+};
+
+// The canonical fixed-step entry. Register it after every system that writes
+// forces or corrects velocities (gravity, SDF) and pass their dependency bits;
+// the world advance then happens at one well-defined point in the graph instead
+// of an arbitrary host call site.
+class PhysicsFixedStepSystem
+{
+public:
+    [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, PhysicsSystem& InSystem,
+                                       std::uint64_t InDependencies = 0);
 };
 }
 

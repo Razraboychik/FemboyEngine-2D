@@ -153,14 +153,6 @@ void MovementSystem(const Fby::Ecs::CoreSystemView& InView, void*)
     }
 }
 
-void PhysicsStepSystem(Fby::Ecs::PhysicsSystemView& InView, void*)
-{
-    if (InView.services.physics != nullptr)
-    {
-        InView.services.physics->Step(InView.registry, InView.dt);
-    }
-}
-
 void ContactToSpriteAnimationSystem(Fby::Ecs::PhysicsSystemView& InView, void* InUser)
 {
     if (InView.services.physics != nullptr)
@@ -785,8 +777,7 @@ int main(int argc, char** argv)
                           Fby::Ecs::BindPhysicsSystem<&GravityStepSystem>(), &ScopedGameSystems, kAfterEvents);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement",
                           Fby::Ecs::BindCoreSystem<&MovementSystem>(), nullptr, kAfterEvents | kAfterGravity);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "physics",
-                          Fby::Ecs::BindPhysicsSystem<&PhysicsStepSystem>(), nullptr, kAfterMovement);
+    (void)Fby::PhysicsFixedStepSystem::Register(ScopedGraph, ScopedPhysics, kAfterMovement);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "contact_to_spriteAnimation",
                           Fby::Ecs::BindPhysicsSystem<&ContactToSpriteAnimationSystem>(), &ScopedGameSystems,
                           kAfterPhysics);

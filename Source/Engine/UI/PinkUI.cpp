@@ -555,7 +555,7 @@ bool EmitCustomQuad(void* InState, Rect InLocal, std::uint32_t InLayer, std::uin
             {
                 return false;
             }
-            const auto ScopedTargetSlot = static_cast<std::uint32_t>(ScopedTarget.widget);
+            const auto ScopedTargetSlot = static_cast<std::uint32_t>(ScopedTarget.Widget);
             if (!HasFlag(InCanvas.flags[ScopedTargetSlot], WidgetFlags::Hovered) ||
                 InCanvas.hoverSeconds[ScopedTargetSlot] < InCanvas.tooltipDelays[ScopedSlot])
             {
@@ -572,11 +572,11 @@ bool EmitCustomQuad(void* InState, Rect InLocal, std::uint32_t InLayer, std::uin
         {
             const WidgetHandle ScopedActive = InCanvas.switcherActive[ScopedParentSlot];
             const bool ScopedActiveSet =
-                IsHandleSet(ScopedActive) && ScopedActive.generation == InCanvas.generation &&
-                ScopedActive.widget >= 0 && static_cast<std::uint32_t>(ScopedActive.widget) < InCanvas.widgetCount;
+                IsHandleSet(ScopedActive) && ScopedActive.Generation == InCanvas.Generation &&
+                ScopedActive.Widget >= 0 && static_cast<std::uint32_t>(ScopedActive.Widget) < InCanvas.widgetCount;
             if (ScopedActiveSet)
             {
-                if (ScopedActive.widget != static_cast<std::int32_t>(ScopedSlot))
+                if (ScopedActive.Widget != static_cast<std::int32_t>(ScopedSlot))
                 {
                     return false;
                 }
@@ -917,11 +917,11 @@ void WidgetCanvas::AdvanceOledShift(float InDt) noexcept
 void WidgetCanvas::Clear() noexcept
 {
     // Whole-object reset: canvas size, layer, grid, all widget arrays and the
-    // layout cache. The generation advances so every outstanding handle goes
+    // layout cache. The Generation advances so every outstanding handle goes
     // stale instead of silently pointing at a new widget.
-    const std::uint32_t ScopedGeneration = generation + 1;
+    const std::uint32_t ScopedGeneration = Generation + 1;
     *this = WidgetCanvas{};
-    generation = ScopedGeneration;
+    Generation = ScopedGeneration;
     tintPalettes.fill(kPaletteInherit);
     fillPalettes.fill(kPaletteInherit);
     textPalettes.fill(kPaletteInherit);
@@ -980,7 +980,7 @@ bool WidgetCanvas::SetActiveWidget(std::int32_t InSwitcher, WidgetHandle InWidge
         switcherActive[ScopedSlot] = WidgetHandle{};
         return true;
     }
-    if (!ResolveHandle(InWidget) || parents[static_cast<std::uint32_t>(InWidget.widget)] != InSwitcher)
+    if (!ResolveHandle(InWidget) || parents[static_cast<std::uint32_t>(InWidget.Widget)] != InSwitcher)
     {
         return false;
     }
@@ -1000,14 +1000,14 @@ WidgetHandle WidgetCanvas::ActiveWidget(std::int32_t InSwitcher) const noexcept
         return {};
     }
     const WidgetHandle ScopedStored = switcherActive[ScopedSlot];
-    if (IsHandleSet(ScopedStored) && ScopedStored.generation == generation && ValidWidget(ScopedStored.widget))
+    if (IsHandleSet(ScopedStored) && ScopedStored.Generation == Generation && ValidWidget(ScopedStored.Widget))
     {
         return ScopedStored;
     }
     // The accessor is const, so the first-child fallback is reported without
     // writing the cache; WidgetShown applies the same rule.
     const std::int32_t ScopedFirst = firstChild[ScopedSlot];
-    return ValidWidget(ScopedFirst) ? WidgetHandle{ScopedFirst, generation} : WidgetHandle{};
+    return ValidWidget(ScopedFirst) ? WidgetHandle{ScopedFirst, Generation} : WidgetHandle{};
 }
 
 void WidgetCanvas::SetActivePage(std::int32_t InSwitcher, std::uint32_t InPage) noexcept
@@ -1059,7 +1059,7 @@ std::uint32_t WidgetCanvas::ActivePage(std::int32_t InSwitcher) const noexcept
     for (std::int32_t ScopedChild = firstChild[ScopedSlot]; ScopedChild != kNoWidget;
          ScopedChild = nextSibling[static_cast<std::uint32_t>(ScopedChild)])
     {
-        if (ScopedChild == ScopedActive.widget)
+        if (ScopedChild == ScopedActive.Widget)
         {
             return ScopedPage;
         }
@@ -1905,9 +1905,9 @@ void ScrollView::Bind(WidgetCanvas& InCanvas, WidgetHandle InPanel, WidgetHandle
     {
         return;
     }
-    panel = InPanel.widget;
-    content = InContent.widget;
-    scrollbar = IsHandleSet(InScrollbar) ? InScrollbar.widget : kNoWidget;
+    panel = InPanel.Widget;
+    content = InContent.Widget;
+    scrollbar = IsHandleSet(InScrollbar) ? InScrollbar.Widget : kNoWidget;
     const auto ScopedContent = static_cast<std::uint32_t>(content);
     contentBaseMin = InCanvas.offsetMins[ScopedContent];
     contentBaseMax = InCanvas.offsetMaxs[ScopedContent];
@@ -1967,7 +1967,7 @@ void TabBar::Bind(WidgetCanvas& InCanvas, WidgetHandle InSwitcher)
     {
         return;
     }
-    switcher = InSwitcher.widget;
+    switcher = InSwitcher.Widget;
     tabCount = 0;
     bound = true;
     InCanvas.SetActivePage(switcher, 0);
@@ -1980,8 +1980,8 @@ bool TabBar::AddTab(WidgetCanvas& InCanvas, WidgetHandle InButton)
         return false;
     }
     const std::uint32_t ScopedSlot = tabCount;
-    tabs[ScopedSlot] = InButton.widget;
-    baseTints[ScopedSlot] = InCanvas.tints[static_cast<std::uint32_t>(InButton.widget)];
+    tabs[ScopedSlot] = InButton.Widget;
+    baseTints[ScopedSlot] = InCanvas.tints[static_cast<std::uint32_t>(InButton.Widget)];
     ++tabCount;
     if (ScopedSlot == 0)
     {
@@ -2023,8 +2023,8 @@ void Dropdown::Bind(WidgetCanvas& InCanvas, WidgetHandle InTrigger, WidgetHandle
     {
         return;
     }
-    trigger = InTrigger.widget;
-    popup = InPopup.widget;
+    trigger = InTrigger.Widget;
+    popup = InPopup.Widget;
     itemCount = 0;
     selected = 0;
     open = false;
@@ -2039,8 +2039,8 @@ bool Dropdown::AddItem(WidgetCanvas& InCanvas, WidgetHandle InItem)
         return false;
     }
     const std::uint32_t ScopedSlot = itemCount;
-    items[ScopedSlot] = InItem.widget;
-    baseTints[ScopedSlot] = InCanvas.tints[static_cast<std::uint32_t>(InItem.widget)];
+    items[ScopedSlot] = InItem.Widget;
+    baseTints[ScopedSlot] = InCanvas.tints[static_cast<std::uint32_t>(InItem.Widget)];
     if (ScopedSlot == 0)
     {
         InCanvas.SetTint(items[ScopedSlot], activeTint);
@@ -2100,8 +2100,8 @@ void ListView::Bind(WidgetCanvas& InCanvas, WidgetHandle InViewport, WidgetHandl
     {
         return;
     }
-    viewport = InViewport.widget;
-    content = InContent.widget;
+    viewport = InViewport.Widget;
+    content = InContent.Widget;
     rowPool = InRowCapacity > kMaxRows ? kMaxRows : InRowCapacity;
     const Rect ScopedViewport = InCanvas.RectOf(InViewport);
     const float ScopedWidth = ScopedViewport.max.X - ScopedViewport.min.X;
@@ -2231,8 +2231,8 @@ void RadialProgress::Configure(WidgetCanvas& InCanvas, WidgetHandle InWidget, fl
     {
         return;
     }
-    const auto ScopedSlot = static_cast<std::uint32_t>(InWidget.widget);
-    InCanvas.SetCustomPaint(InWidget.widget, &RadialProgress::Paint);
+    const auto ScopedSlot = static_cast<std::uint32_t>(InWidget.Widget);
+    InCanvas.SetCustomPaint(InWidget.Widget, &RadialProgress::Paint);
     InCanvas.customParams[ScopedSlot] =
         Vector4D{InProgress, InThicknessRatio, static_cast<float>(InSegments), InStartAngle};
 }
@@ -2243,7 +2243,7 @@ void RadialProgress::SetProgress(WidgetCanvas& InCanvas, WidgetHandle InWidget, 
     {
         return;
     }
-    InCanvas.customParams[static_cast<std::uint32_t>(InWidget.widget)].X = InProgress;
+    InCanvas.customParams[static_cast<std::uint32_t>(InWidget.Widget)].X = InProgress;
 }
 
 void TooltipPlacer::Bind(WidgetCanvas& InCanvas, WidgetHandle InTooltip, WidgetHandle InTarget)
@@ -2252,8 +2252,8 @@ void TooltipPlacer::Bind(WidgetCanvas& InCanvas, WidgetHandle InTooltip, WidgetH
     {
         return;
     }
-    tooltip = InTooltip.widget;
-    target = InTarget.widget;
+    tooltip = InTooltip.Widget;
+    target = InTarget.Widget;
     const Rect ScopedRect = InCanvas.RectOf(InTooltip);
     tooltipSize = Vector2D{ScopedRect.max.X - ScopedRect.min.X, ScopedRect.max.Y - ScopedRect.min.Y};
     // The placer owns the tooltip position, so it needs fixed anchors.
@@ -3233,7 +3233,7 @@ bool WidgetCanvasSystem::MountFonts(Rhi::RHI& InRhi)
         ScopedPanic("FontAtlasSet::MountToTextureArray() rejected the set (see the preceding 'fonts' line)");
         return false;
     }
-    LogInfo("pinkui", "font array #{} mounted and current (generation {})", MFonts->TextureArray().id,
+    LogInfo("pinkui", "font array #{} mounted and current (Generation {})", MFonts->TextureArray().id,
             MFonts->Generation());
     return true;
 }
@@ -4509,6 +4509,26 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
     // Scene placement is data, not a system service: read the entity transform,
     std::uint32_t ScopedItemCursor = Output.startCursor;
     std::uint32_t ScopedBatchCursor = 0;
+    // One canvas can be referenced by several entities. Pick a deterministic
+    // owner (lowest entity id) in a small pre-pass; only the owner advances the
+    // canvas clock and builds the frame.
+    const std::uint64_t ScopedFrame = InView.frameIndex + 1u;
+    auto ScopedOwnerView = InView.registry.view<WidgetComponent>();
+    for (auto [ScopedEntity, ScopedComponent] : ScopedOwnerView.each())
+    {
+        if ((ScopedComponent.Flags & static_cast<std::uint32_t>(WidgetComponentFlags::Visible)) == 0 ||
+            ScopedComponent.CanvasID >= InCanvases.size())
+        {
+            continue;
+        }
+        WidgetCanvas& ScopedCanvas = InCanvases[ScopedComponent.CanvasID];
+        const std::uint32_t ScopedRaw = static_cast<std::uint32_t>(entt::to_integral(ScopedEntity));
+        if (ScopedCanvas.ownerFrameStamp != ScopedFrame || ScopedRaw < ScopedCanvas.ownerEntityRaw)
+        {
+            ScopedCanvas.ownerFrameStamp = ScopedFrame;
+            ScopedCanvas.ownerEntityRaw = ScopedRaw;
+        }
+    }
     auto ScopedView = InView.registry.view<WidgetComponent, Transform2D>();
     for (auto [ScopedEntity, ScopedComponent, ScopedTransform] : ScopedView.each())
     {
@@ -4523,6 +4543,13 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
             continue;
         }
         WidgetCanvas& ScopedCanvas = InCanvases[ScopedComponent.CanvasID];
+        const std::uint32_t ScopedRawEntity = static_cast<std::uint32_t>(entt::to_integral(ScopedEntity));
+        if (ScopedCanvas.ownerFrameStamp != ScopedFrame || ScopedCanvas.ownerEntityRaw != ScopedRawEntity ||
+            ScopedCanvas.processedFrame == ScopedFrame)
+        {
+            continue;
+        }
+        ScopedCanvas.processedFrame = ScopedFrame;
         ScopedCanvas.AdvanceOledShift(InView.dt);
         ScopedCanvas.AdvanceHover(InView.dt);
         ScopedCanvas.AdvanceTime(InView.dt);
@@ -4581,6 +4608,6 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
         Output.glyphQuads += ScopedSingle.glyphQuads;
         Output.requiredItems += ScopedSingle.requiredItems;
     }
-    Output.startCursor = ScopedItemCursor;
+    Output.endCursor = ScopedItemCursor;
 }
 }

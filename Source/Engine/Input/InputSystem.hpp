@@ -170,6 +170,10 @@ public:
     {
         return MUserCount;
     }
+    [[nodiscard]] std::uint32_t DroppedEvents() const noexcept
+    {
+        return MDroppedEvents;
+    }
 
 private:
     struct UserSlot
@@ -200,6 +204,7 @@ private:
     std::uint32_t MMappingCount = 0;
     std::array<UserSlot, kMaxInputUsers> MUsers{};
     std::uint32_t MUserCount = 0;
+    std::uint32_t MDroppedEvents = 0;
 };
 
 }

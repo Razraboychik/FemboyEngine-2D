@@ -455,11 +455,12 @@ void TransportGroupSystem::ApplyRootPolicy(Ecs::Registry& InRegistry, PhysicsSys
 void TransportGroupSystem::EnableHighSpeed(PhysicsSystem& InPhysics, Ecs::Registry& InRegistry, Entity InEntity,
                                            Vector2D InVelocity) noexcept
 {
-    if (InVelocity.LengthSquared() < kTransportHighSpeedPixelsPerSecond * kTransportHighSpeedPixelsPerSecond)
-    {
-        return;
-    }
-    InPhysics.SetBullet(InRegistry, InEntity, true);
+    // CCD is switched with the current speed: leaving the bullet flag latched on
+    // after one fast frame changed contact behaviour for the rest of the body's
+    // life.
+    const bool ScopedHighSpeed =
+        InVelocity.LengthSquared() >= kTransportHighSpeedPixelsPerSecond * kTransportHighSpeedPixelsPerSecond;
+    InPhysics.SetBullet(InRegistry, InEntity, ScopedHighSpeed);
 }
 
 void TransportGroupSystem::Clear() noexcept
@@ -747,7 +748,10 @@ void TransportGroupSystem::PrePhysics(Ecs::Registry& InRegistry, PhysicsSystem& 
                     {
                         ScopedTarget.X += ScopedSurface.TangentSpeed;
                     }
-                    const float ScopedBlend = std::clamp(ScopedSurface.Friction * InFixedDt * 60.0f, 0.0f, 1.0f);
+                    // Exponential approach with the authored friction per 60 Hz
+                    // reference step: dt-correct and stable at any fixed rate.
+                    const float ScopedBlend =
+                        std::clamp(1.0f - std::exp(-ScopedSurface.Friction * 60.0f * InFixedDt), 0.0f, 1.0f);
                     const float ScopedTargetX =
                         ScopedBody->LinearVelocity.X +
                         (ScopedTarget.X - ScopedBody->LinearVelocity.X) * ScopedBlend;
@@ -868,9 +872,16 @@ void TransportGroupSystem::PostPhysics(Ecs::Registry& InRegistry, PhysicsSystem&
         const bool ScopedRequested = (ScopedMember.Flags & kCarrierFlagDetachRequested) != 0;
         const bool ScopedOutside = (ScopedGroup->Flags & kTransportGroupAutoDetachOutside) != 0 &&
                                    OutsideBounds(*ScopedGroup, ScopedMember.LocalPosition);
-        if ((ScopedRequested || ScopedOutside) && ScopedDetachCount < ScopedToDetach.size())
+        if (ScopedRequested || ScopedOutside)
         {
-            ScopedToDetach[ScopedDetachCount++] = ScopedEntity;
+            if (ScopedDetachCount < ScopedToDetach.size())
+            {
+                ScopedToDetach[ScopedDetachCount++] = ScopedEntity;
+            }
+            else
+            {
+                ++MDroppedDetaches;
+            }
         }
     }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedDetachCount; ++ScopedIndex)
@@ -913,12 +924,24 @@ TransportGroupState* TransportGroupSystem::FindGroup(std::uint32_t InGroupId) no
 
 const TransportGroupState* TransportGroupSystem::FindGroup(std::uint32_t InGroupId) const noexcept
 {
-    for (std::uint32_t ScopedIndex = 0; ScopedIndex < MGroupCount; ++ScopedIndex)
+    if (InGroupId == 0)
     {
-        if (MGroups[ScopedIndex].Active && MGroups[ScopedIndex].GroupId == InGroupId)
+        return nullptr;
+    }
+    std::uint32_t ScopedCursor = (InGroupId * 2654435761u) & (kGroupIndexSize - 1u);
+    for (std::uint32_t ScopedProbe = 0; ScopedProbe < kGroupIndexSize; ++ScopedProbe)
+    {
+        const GroupIndexEntry& ScopedEntry = MGroupIndex[ScopedCursor];
+        if (ScopedEntry.GroupId == 0)
         {
-            return &MGroups[ScopedIndex];
+            return nullptr;
         }
+        if (ScopedEntry.GroupId == InGroupId && ScopedEntry.Slot < MGroupCount &&
+            MGroups[ScopedEntry.Slot].Active && MGroups[ScopedEntry.Slot].GroupId == InGroupId)
+        {
+            return &MGroups[ScopedEntry.Slot];
+        }
+        ScopedCursor = (ScopedCursor + 1u) & (kGroupIndexSize - 1u);
     }
     return nullptr;
 }
@@ -979,6 +1002,21 @@ void TransportGroupSystem::RefreshGroups(Ecs::Registry& InRegistry) noexcept
     }
     MGroups = ScopedNew;
     MGroupCount = ScopedCount;
+    // Rebuild the open-addressing index in the same pass as the group array.
+    MGroupIndex.fill(GroupIndexEntry{});
+    for (std::uint32_t ScopedI = 0; ScopedI < MGroupCount; ++ScopedI)
+    {
+        if (!MGroups[ScopedI].Active)
+        {
+            continue;
+        }
+        std::uint32_t ScopedCursor = (MGroups[ScopedI].GroupId * 2654435761u) & (kGroupIndexSize - 1u);
+        while (MGroupIndex[ScopedCursor].GroupId != 0)
+        {
+            ScopedCursor = (ScopedCursor + 1u) & (kGroupIndexSize - 1u);
+        }
+        MGroupIndex[ScopedCursor] = GroupIndexEntry{MGroups[ScopedI].GroupId, static_cast<std::uint16_t>(ScopedI)};
+    }
 }
 
 bool TransportGroupSystem::ProcessGroup(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, std::uint32_t InIndex,

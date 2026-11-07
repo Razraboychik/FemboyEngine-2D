@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace
 {
@@ -584,17 +585,17 @@ int main()
     ClothSystem ScopedCloth;
     FBY_CHECK(ScopedCloth.Initialize(nullptr));
     ClothDesc ScopedClothDesc;
-    ScopedClothDesc.origin = Vector2D{0.0f, 0.0f};
-    ScopedClothDesc.size = Vector2D{160.0f, 160.0f};
-    ScopedClothDesc.columns = 8;
-    ScopedClothDesc.rows = 8;
-    ScopedClothDesc.flags = ClothPinTopRow;
-    ScopedClothDesc.gravity = Vector2D{0.0f, 980.0f};
+    ScopedClothDesc.Origin = Vector2D{0.0f, 0.0f};
+    ScopedClothDesc.Size = Vector2D{160.0f, 160.0f};
+    ScopedClothDesc.Columns = 8;
+    ScopedClothDesc.Rows = 8;
+    ScopedClothDesc.Flags = ClothPinTopRow;
+    ScopedClothDesc.Gravity = Vector2D{0.0f, 980.0f};
     const ClothHandle ScopedClothHandle = ScopedCloth.Create(ScopedRegistry, ScopedClothDesc);
     FBY_CHECK(ScopedClothHandle.IsValid());
-    FBY_CHECK(ScopedCloth.Info(ScopedClothHandle).particles == 64);
+    FBY_CHECK(ScopedCloth.Info(ScopedClothHandle).Particles == 64);
     const ClothInfo ScopedClothInfo = ScopedCloth.Info(ScopedClothHandle);
-    FBY_CHECK(ScopedClothInfo.constraints > 64);
+    FBY_CHECK(ScopedClothInfo.Constraints > 64);
 
     const auto ScopedInitialPositions = ScopedCloth.ParticlePositions(ScopedClothHandle);
     FBY_CHECK(!ScopedInitialPositions.empty());
@@ -659,6 +660,33 @@ int main()
     ScopedRegistry.emplace<FluidInteractorComponent>(ScopedDrop, FluidInteractorComponent{2.0f, 1.0f, 2.0f, 0});
     ScopedFluid.Update(ScopedRegistry, 1.0f / 60.0f);
     FBY_CHECK(ScopedRegistry.valid(ScopedDrop));
+
+    // JN-4 regression: destroying link entities while the joint system is alive
+    // must mark the connections broken instead of querying dead bodies.
+    JointChainDesc ScopedDangling;
+    ScopedDangling.Kind = JointChainKind::Rope;
+    ScopedDangling.Flags = JointChainPinStart;
+    ScopedDangling.Start = Vector2D{0.0f, -32.0f};
+    ScopedDangling.End = Vector2D{0.0f, 32.0f};
+    ScopedDangling.SegmentCount = 4;
+    const JointChainHandle ScopedDanglingHandle = ScopedJoints.CreateChain(ScopedRegistry, ScopedDangling, &ScopedError);
+    FBY_CHECK(ScopedDanglingHandle.IsValid());
+    ScopedPhysics.Step(ScopedRegistry, 1.0f / 60.0f);
+    std::vector<Entity> ScopedLinkEntities;
+    for (const Entity ScopedLink : ScopedRegistry.view<JointLinkComponent>())
+    {
+        ScopedLinkEntities.push_back(ScopedLink);
+    }
+    FBY_CHECK(!ScopedLinkEntities.empty());
+    for (const Entity ScopedLink : ScopedLinkEntities)
+    {
+        ScopedRegistry.destroy(ScopedLink);
+    }
+    // The step prunes the native bodies; Update must see the stale handles and
+    // stop touching them.
+    ScopedPhysics.Step(ScopedRegistry, 1.0f / 60.0f);
+    ScopedJoints.Update(ScopedRegistry, 1.0f / 60.0f);
+    FBY_CHECK(ScopedJoints.Info(ScopedDanglingHandle).BrokenCount > 0);
 
     ScopedFluid.Shutdown();
     ScopedPhysics.Shutdown();

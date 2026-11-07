@@ -37,11 +37,16 @@ namespace
     return kInvalidInputId;
 }
 
-void CopyName(std::array<char, 32>& OutName, std::string_view InName) noexcept
+[[nodiscard]] bool CopyName(std::array<char, 32>& OutName, std::string_view InName) noexcept
 {
-    const std::size_t ScopedLength = std::min(InName.size(), OutName.size() - 1u);
-    std::memcpy(OutName.data(), InName.data(), ScopedLength);
-    OutName[ScopedLength] = '\0';
+    // Truncating silently produced two actions with the same stored name.
+    if (InName.size() >= OutName.size())
+    {
+        return false;
+    }
+    std::memcpy(OutName.data(), InName.data(), InName.size());
+    OutName[InName.size()] = '\0';
+    return true;
 }
 }
 
@@ -62,7 +67,10 @@ std::uint16_t InputSystem::RegisterAction(std::string_view InName, InputActionTy
         return kInvalidInputId;
     }
     InputActionDesc& ScopedAction = MActions[MActionCount];
-    CopyName(ScopedAction.Name, InName);
+    if (!CopyName(ScopedAction.Name, InName))
+    {
+        return kInvalidInputId;
+    }
     ScopedAction.Type = InType;
     return static_cast<std::uint16_t>(MActionCount++);
 }
@@ -80,7 +88,10 @@ std::uint16_t InputSystem::RegisterContext(std::string_view InName, std::int32_t
         return kInvalidInputId;
     }
     InputContextDesc& ScopedContext = MContexts[MContextCount];
-    CopyName(ScopedContext.Name, InName);
+    if (!CopyName(ScopedContext.Name, InName))
+    {
+        return kInvalidInputId;
+    }
     ScopedContext.Priority = InPriority;
     ScopedContext.Consume = InConsume;
     return static_cast<std::uint16_t>(MContextCount++);
@@ -334,6 +345,7 @@ void InputSystem::EmitEvent(UserSlot& InUser, std::uint16_t InAction, InputEvent
 {
     if (InUser.EventCount >= kMaxInputEvents)
     {
+        ++MDroppedEvents;
         return;
     }
     InputEvent& ScopedEvent = InUser.Events[InUser.EventCount++];
@@ -409,6 +421,11 @@ void InputSystem::Update(const InputState& InInput, std::uint64_t InTick, std::u
                 ScopedAction.HeldSeconds = 0.0f;
             }
 
+            // Crossing checks instead of phase comparisons: a long frame must
+            // not skip a pulse/repeat boundary, and a first frame that already
+            // passes the threshold still fires once.
+            const float ScopedNow = ScopedAction.HeldSeconds;
+            const float ScopedPrevious = std::max(ScopedNow - ScopedDelta, 0.0f);
             bool ScopedTrigger = false;
             switch (ScopedMapping.Trigger)
             {
@@ -419,20 +436,19 @@ void InputSystem::Update(const InputState& InInput, std::uint64_t InTick, std::u
                     ScopedTrigger = ScopedReleased;
                     break;
                 case InputTriggerKind::Hold:
-                    ScopedTrigger = ScopedHeld && ScopedAction.HeldSeconds >= ScopedMapping.TriggerA &&
-                                    ScopedAction.HeldSeconds - ScopedDelta < ScopedMapping.TriggerA;
+                {
+                    const float ScopedHold = std::max(ScopedMapping.TriggerA, 0.0f);
+                    ScopedTrigger = ScopedHeld && ScopedNow >= ScopedHold && ScopedPrevious < ScopedHold;
                     break;
+                }
                 case InputTriggerKind::Tap:
-                    ScopedTrigger = ScopedReleased && ScopedAction.HeldSeconds > 0.0f &&
-                                    ScopedAction.HeldSeconds <= ScopedMapping.TriggerA;
+                    ScopedTrigger = ScopedReleased && ScopedNow > 0.0f && ScopedNow <= ScopedMapping.TriggerA;
                     break;
                 case InputTriggerKind::Pulse:
                 {
                     const float ScopedInterval = std::max(ScopedMapping.TriggerA, 0.001f);
-                    if (ScopedHeld && std::fmod(ScopedAction.HeldSeconds, ScopedInterval) < ScopedDelta)
-                    {
-                        ScopedTrigger = true;
-                    }
+                    ScopedTrigger = ScopedHeld && std::floor(ScopedNow / ScopedInterval) >
+                                                      std::floor(ScopedPrevious / ScopedInterval);
                     break;
                 }
                 case InputTriggerKind::Repeat:
@@ -442,11 +458,12 @@ void InputSystem::Update(const InputState& InInput, std::uint64_t InTick, std::u
                         std::max(ScopedMapping.TriggerB > 0.0f ? ScopedMapping.TriggerB : ScopedInitial, 0.001f);
                     if (ScopedHeld)
                     {
-                        const float ScopedElapsed = ScopedAction.HeldSeconds;
-                        const float ScopedPhase = ScopedElapsed < ScopedInitial ? 0.0f : ScopedElapsed - ScopedInitial;
-                        ScopedTrigger = ScopedElapsed < ScopedInitial
-                                            ? (ScopedElapsed - ScopedDelta < ScopedInitial)
-                                            : (std::fmod(ScopedPhase, ScopedInterval) < ScopedDelta);
+                        const bool ScopedInitialCrossed = ScopedPrevious < ScopedInitial && ScopedNow >= ScopedInitial;
+                        const float ScopedPhaseNow = std::max(ScopedNow - ScopedInitial, 0.0f);
+                        const float ScopedPhasePrevious = std::max(ScopedPrevious - ScopedInitial, 0.0f);
+                        ScopedTrigger =
+                            ScopedInitialCrossed || std::floor(ScopedPhaseNow / ScopedInterval) >
+                                                        std::floor(ScopedPhasePrevious / ScopedInterval);
                     }
                     break;
                 }

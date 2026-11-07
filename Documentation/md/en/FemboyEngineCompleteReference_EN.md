@@ -961,7 +961,7 @@ LogWarn("tts", "no installed voice matches '{}'; falling back to LCID 0x{:04X}",
 
 ## 31. State-Driven Gameplay: AnimGraph, StateTree AI and the Animation Graph Canvas
 
-The high-level gameplay layer follows the same rule as the renderer: behaviour is a function over plain data, not a graph of objects. AnimGraph is a flat animation state machine and StateTree is a flat AI state tree. Neither one has a base class, a virtual Evaluate(), a per-node heap allocation or a std::function callback. An entity owns a fixed-size POD component; the system owns the shared tables (the animation clips and the AI node/transition arrays) and walks only the active path.
+The high-level gameplay layer follows the same rule as the renderer: behaviour is a function over plain data, not a graph of objects. AnimGraph is a flat animation state machine and StateTree is a flat AI state tree. Neither one has a base class, a virtual Evaluate(), a per-node heap allocation or a std::function callback. An entity owns fixed-size POD components; the system owns the shared tables (the animation clips and the AI node/transition arrays) and walks only the active path.
 
 Why not a Behaviour Tree: a BT re-walks its hierarchy from the root every tick, so the cost of an idle NPC is proportional to the size of its tree. A State Tree stores the active path once and re-evaluates one guard; transitions are a flat, trigger-indexed array. The same reasoning applies to AnimGraph: transition conditions are state-time, tag and float comparisons on the component, and the expensive part - the bone pose - is blended once per tick, never per graph node.
 
@@ -974,12 +974,18 @@ The AI runtime is perception -> StateTree -> buffered AICommand -> AIController 
 | CurrentState | uint64_t | Opaque logical state id. 0 = rest pose; gameplay owns the numbering. |
 | PreviousState | uint64_t | Source pose of the active cross-fade. |
 | StateTime | float | Seconds in the current state; reset on every fired transition. |
-| TransitionCount | uint32_t | Diagnostics. Placed at offset 20 to fill the pad before the 8-byte-aligned transition array. |
-| Transitions[8] | AnimTransition | Authored transitions, evaluated in array order; first match wins. Inert when Conditions == AnimConditionNone. |
-| Clips[8] / ClipCount | AnimClip | Per-entity clip table: bone keys plus the SpriteAnimation frame range for the same state. |
+| TransitionCount | uint32_t | Diagnostics: transitions fired so far. |
 | Floats[8] | float | Float parameters (speed, health, aim) read by the transition conditions. |
-| RestPose[128] | AnimRestBone | Captured once from the skeleton; a clip only authors the bones it moves. |
 | BlendDuration / BlendTime / BlendWeight | float | Cross-fade timing and the eased weight the SkeletalAnimation bridge applies. |
+| LastTransition | uint16_t | Index of the last fired transition, or kNoAnimTransition. |
+
+| AnimGraphDefinitionComponent field | Type | Role |
+|---|---|---|
+| Transitions[8] | AnimTransition | Authored transitions, evaluated in array order; first match wins. Inert when Conditions == AnimConditionNone. |
+| Clips[8] / ClipCount | AnimClip | Clip table: bone keys plus the SpriteAnimation frame range for the same state. |
+| TransitionCount | uint32_t | Number of authored transition slots in use. |
+
+The rest pose is skeleton-owned: `SkeletonComponent::RestPositions/RestRotations/RestScales` are captured once and `RestPoseCaptured` marks the capture. An entity that plays an AnimGraph carries both `AnimStateComponent` (hot state) and `AnimGraphDefinitionComponent` (the graph itself).
 
 | Condition flag | Evaluator |
 |---|---|
@@ -991,27 +997,33 @@ The AI runtime is perception -> StateTree -> buffered AICommand -> AIController 
 | AnimConditionFloatAtLeast / AtMost | Floats[FloatParam] compared with FloatThreshold; a non-finite value fails closed. |
 
 ```cpp
-// AnimGraph.hpp - the component prefix is stable and visible in an inspector.
+// AnimGraph.hpp - hot state and the compiled graph are separate components.
 struct AnimStateComponent
 {
-    std::uint64_t CurrentState = 0;   // 0  logical state, 0 = rest
-    std::uint64_t PreviousState = 0;  // 8  cross-fade source
-    float StateTime = 0.0f;           // 16 seconds in state
-    std::uint32_t TransitionCount = 0;// 20 diagnostics / pad
-    std::array<AnimTransition, 8> Transitions{};  // 24
-    std::array<AnimClip, 8> Clips{};
+    std::uint64_t CurrentState = 0;   // logical state, 0 = rest
+    std::uint64_t PreviousState = 0;  // cross-fade source
+    float StateTime = 0.0f;           // seconds in state
+    std::uint32_t TransitionCount = 0;// transitions fired (diagnostics)
     std::array<float, 8> Floats{};
-    std::array<AnimRestBone, kMaxBones> RestPose{};
     float BlendDuration = 0.0f, BlendTime = 0.0f, BlendWeight = 1.0f;
-    // ...
+    std::uint16_t LastTransition = kNoAnimTransition;
+};
+
+struct AnimGraphDefinitionComponent
+{
+    std::array<AnimTransition, 8> Transitions{};
+    std::array<AnimClip, 8> Clips{};
+    std::uint32_t TransitionCount = 0;
+    std::uint32_t ClipCount = 0;
 };
 
 // Once per fixed tick: conditions -> state -> two bridges.
-for (auto [entity, state] : registry.view<AnimStateComponent>().each())
+for (auto [entity, state, graph] :
+     registry.view<AnimStateComponent, AnimGraphDefinitionComponent>().each())
 {
     state.StateTime += dt;
     const std::uint64_t tags = gameplayBits(registry, entity);
-    for (auto& t : state.Transitions)
+    for (auto& t : graph.Transitions)
     {
         if (t.FromState != kAnimAnyState && t.FromState != state.CurrentState) continue;
         if (!AnimTransitionMatches(t, state, tags)) continue;
@@ -1023,9 +1035,9 @@ for (auto [entity, state] : registry.view<AnimStateComponent>().each())
     }
     // SkeletalAnimation: blend local TRS, then one hierarchy pass.
     if (auto* skeleton = registry.try_get<SkeletonComponent>(entity))
-        AnimGraphApplySkeletal(state, *skeleton);
+        AnimGraphApplySkeletal(state, graph, *skeleton);
     // SpriteAnimation: only on a state change, so the frame advance is not fought.
-    if (changed) AnimGraphApplySpriteClip(state, spriteAnimation, grid, spritePtr);
+    if (changed) AnimGraphApplySpriteClip(state, graph, spriteAnimation, grid, spritePtr);
 }
 ```
 
@@ -1108,8 +1120,9 @@ The runtime tables above are authored by AnimationGraphCanvasPanel, the ImNodes 
 | LinkCount / Links[32] | uint16_t / AnimationGraphLink | Kind, endpoints, pins and the direct AnimTransition payload. The four link kinds are Transition, BlendSource, BlendParameter and BlendTarget. |
 
 ```cpp
-// CompileGraph(): fixed storage, one flat AnimStateComponent, no allocation.
-AnimStateComponent out;
+// CompileGraph(): fixed storage, hot state + graph definition, no allocation.
+AnimStateComponent state;
+AnimGraphDefinitionComponent graph;
 std::array<bool, kMaxAnimParams> paramUsed{};
 std::array<std::uint64_t, kMaxAnimClips> stateIds{};
 std::uint16_t clipCount = 0, transitionCount = 0;
@@ -1118,24 +1131,25 @@ for (node : document.Nodes)
     {
         if (node.Clip.State == 0 || duplicate(stateIds, node.Clip.State)) reject();
         stateIds[clipCount] = node.Clip.State;
-        out.Clips[clipCount++] = node.Clip;
+        graph.Clips[clipCount++] = node.Clip;
     }
     else if (node.Kind == FloatParameter)
-        out.Floats[node.ParameterIndex] = node.ParameterValue;
+        state.Floats[node.ParameterIndex] = node.ParameterValue;
 // Isolated-node check: every node needs at least one incident link.
 for (node : document.Nodes) if (degree[node] == 0) reject("isolated");
 // Direct links become transitions; each Blend needs one source, one target
 // and at most one parameter binding.
 for (link : document.Links)
     if (link.Kind == Transition && conditionsValid(link.Transition))
-        out.Transitions[transitionCount++] = link.Transition;
+        graph.Transitions[transitionCount++] = link.Transition;
 for (blend : document.Nodes)
     if (blend.Kind == Blend)
-        out.Transitions[transitionCount++] = makeTransition(blend, source, target);
+        graph.Transitions[transitionCount++] = makeTransition(blend, source, target);
 for (i = transitionCount; i < 8; ++i)
-    out.Transitions[i].Enabled = false;   // inert slots, not garbage
-out.ClipCount = clipCount;
-out.TransitionCount = 0;                  // runtime diagnostic, not an authored count
+    graph.Transitions[i].Enabled = false;   // inert slots, not garbage
+graph.ClipCount = clipCount;
+graph.TransitionCount = transitionCount;
+state.TransitionCount = 0;                  // runtime diagnostic, not an authored count
 ```
 
 Every gesture is one CommandStack transaction. The document is a single external buffer, so a node drag records only the changed position bytes and a condition toggle records only the changed condition word. The ImNodes callbacks never call Record() directly: DrawCanvas reports a state change, ProcessCanvasEvents opens BeginEdit(), the edit method mutates the document, RecordEdit() captures the new bytes, and CommitEdit() commits one undo group. Ctrl+Z/Ctrl+Y are handled by EditorSystem, which first commits any open canvas transaction and then asks CommandStack to apply the inverse delta. Inspector edits use the Mirror-backed AnimationGraphTransitionFieldsEqual()/_ClipFieldsEqual() helpers; both compare only the FieldDesc byte ranges through reflect::FieldBytesEqual(), so padding bytes cannot create an empty undo command.
@@ -1205,7 +1219,7 @@ Chapter 32 documents the four pipelines added to the Release build. They share o
 constexpr std::uint64_t kPageBytes = 2048ull * 2048ull * 4ull;
 const std::uint64_t Budget = layerCount * kPageBytes;
 
-// Residency is a two-pass clock over a fixed page table.
+// Residency is a two-pass clock over a fixed page table; IO runs on a worker.
 void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept
 {
     ++MFrame;
@@ -1225,13 +1239,13 @@ void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept
                 MSlots[Layer * 1024u + MHash[Hash].slot].lastUsedFrame = MFrame;
                 continue;
             }
-            std::uint32_t Slot = 0;
-            if (LoadTile(Tx, Ty, Layer, &Slot))   // mmap chunk, upload one 64x64 tile
+            if (!IsPending(Tx, Ty))
             {
-                MSlots[Layer * 1024u + Slot].lastUsedFrame = MFrame;
-                ++MStats.uploads;               // one vkCmdCopyBufferToImage
+                EnqueueLoad(Tx, Ty, Layer);    // worker reads the chunk
             }
         }
+    // Main thread: commit finished chunks within the per-frame budget.
+    PollLoads();
 }
 ```
 
@@ -1704,7 +1718,7 @@ The release gate is the full CTest suite, the C++ style gate and the documentati
 8000 FPS is 125 microseconds per frame. That number is meaningful only together with the scene, resolution and hardware: a 2D batch of a few thousand sprites at 1080p is a different problem from a 4K frame with post-processing. Treat 8000 FPS as a target for the engine's own frame cost (simulation + extract + submission) on a Zen 5 machine with a warm cache, and always report the 99th percentile frame time, not just the average FPS. A stable 8000+ means p99 <= 125 us, not one lucky frame.
 
 - Step 1 — baseline. Record CPU and GPU frame time separately. On Windows use WPA/ETW or AMD uProf; on Linux use perf stat with cache-references, cache-misses, L1-dcache-load-misses, LLC-load-misses and stalled-cycles-frontend. Store the numbers in the repository so a regression is visible.
-- Step 2 — find the hot array. The animation tick walks AnimStateComponent per entity (4 KB stride); the extract walks RenderItem; the job pool touches one shared cache line. A 4 KB stride with 8 transitions and 8 clips per component thrashes L1 and L2 before any math runs.
+- Step 2 — find the hot array. The animation tick walks the small AnimStateComponent per entity; the graph definition and skeleton pose are separate components touched only when a transition or clip is resolved. The extract walks RenderItem; the job pool touches one shared cache line.
 - Step 3 — split hot/cold. Keep a 64-byte AnimHot per entity (states, StateTime, Blend*) and move Transitions/Clips/RestPose into a shared graph object or a cold side table. The system then streams a dense array; the shared tables stay L1-resident.
 - Step 4 — vectorise the presentation blend, not the deterministic simulation. Use __restrict, SoA float arrays (X[], Y[], Rotation[], Scale[]) and check the vectoriser report. Do not reorder floating-point reductions used by rollback or physics.
 - Step 5 — reduce RHI binds. Sort draws by (pipeline, material, texture array), use push constants for the draw id, keep one bindless set, and record one indirect draw per batch. Descriptor-set churn is usually more expensive than the draw itself at 8k FPS.
@@ -2316,7 +2330,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AnimConditionFlags` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 28 |
 | `AnimGraphSystem` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 180 |
 | `AnimRestBone` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 104 |
-| `AnimStateComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 114 |
+| `AnimStateComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 130 |
+| `AnimGraphDefinitionComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 116 |
 | `AnimTransition` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 48 |
 | `AssetDatabase` | ECS | `Source/Engine/ECS/Scene.hpp` | 21 |
 | `AssetDatabase` | ECS | `Source/Engine/ECS/Schedule.hpp` | 33 |
@@ -2765,7 +2780,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `PhysicsDesc` | Physics | `Source/Engine/Physics/Physics.hpp` | 145 |
 | `PhysicsEventType` | Physics | `Source/Engine/Physics/Physics.hpp` | 102 |
 | `PhysicsJointSystem` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 444 |
-| `PhysicsRayHit` | Physics | `Source/Engine/Physics/Physics.hpp` | 120 |
+| `PhysicsRayHit` | Physics | `Source/Engine/Physics/Physics.hpp` | 125 |
 | `PhysicsSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 159 |
 | `PhysicsSystem` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 13 |
 | `Projectile2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 134 |
@@ -3023,7 +3038,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VirtualTextureRhiTarget` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 118 |
 | `VirtualTextureSample` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 58 |
 | `VirtualTextureStats` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 45 |
-| `VirtualTextureSystem` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 111 |
+| `VirtualTextureSystem` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 117 |
 | `VirtualTextureTableUpdate` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 101 |
 | `VirtualTextureTileId` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 92 |
 | `VirtualTextureTileUpload` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 77 |
@@ -3273,7 +3288,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `WidgetComponentFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 263 |
 | `WidgetDesc` | UI | `Source/Engine/UI/PinkUI.hpp` | 309 |
 | `WidgetFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 145 |
-| `WidgetHandle` | UI | `Source/Engine/UI/PinkUI.hpp` | 80 |
+| `WidgetHandle` | UI | `Source/Engine/UI/PinkUI.hpp` | 81 |
 | `WidgetHyperlink` | UI | `Source/Engine/UI/PinkUI.hpp` | 300 |
 | `WidgetKind` | UI | `Source/Engine/UI/PinkUI.hpp` | 99 |
 | `WidgetLayoutAsset` | UI | `Source/Engine/UI/WidgetLayoutAsset.hpp` | 15 |
@@ -3295,7 +3310,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `MappedFile` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 22 |
 | `RHI` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 27 |
 | `VideoPlayer` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 33 |
-| `VideoStreamComponent` | Video | `Source/Engine/Video/VideoStream.hpp` | 31 |
+| `VideoStreamComponent` | Video | `Source/Engine/Video/VideoStream.hpp` | 36 |
 | `VideoStreamFlags` | Video | `Source/Engine/Video/VideoTypes.hpp` | 20 |
 | `VideoSystem` | Video | `Source/Engine/Video/VideoStream.hpp` | 49 |
 | `VirtualFileSystem` | Video | `Source/Engine/Video/VideoStream.hpp` | 20 |

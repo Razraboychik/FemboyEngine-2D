@@ -56,7 +56,7 @@ void Check(bool InCondition, const char* InExpression, const char* InFile, int I
     return 0xFFFFu;
 }
 
-[[nodiscard]] std::uint16_t CountCompiledTransitions(const Fby::AnimStateComponent& InState)
+[[nodiscard]] std::uint16_t CountCompiledTransitions(const Fby::AnimGraphDefinitionComponent& InState)
 {
     std::uint16_t ScopedCount = 0;
     for (const Fby::AnimTransition& ScopedTransition : InState.Transitions)
@@ -81,18 +81,19 @@ void TestCompileDefaultGraph()
     FBY_CHECK(ScopedPanel.CompileGraph());
     FBY_CHECK(ScopedPanel.Compiled());
     const Fby::AnimStateComponent& ScopedCompiled = ScopedPanel.CompiledComponent();
-    FBY_CHECK(ScopedCompiled.ClipCount == 2);
-    FBY_CHECK(ScopedCompiled.Clips[0].State == 1);
-    FBY_CHECK(ScopedCompiled.Clips[1].State == 2);
+    const Fby::AnimGraphDefinitionComponent& ScopedGraph = ScopedPanel.CompiledGraph();
+    FBY_CHECK(ScopedGraph.ClipCount == 2);
+    FBY_CHECK(ScopedGraph.Clips[0].State == 1);
+    FBY_CHECK(ScopedGraph.Clips[1].State == 2);
     FBY_CHECK(ScopedCompiled.Floats[0] == 1.0f);
-    FBY_CHECK(CountCompiledTransitions(ScopedCompiled) == 2);
+    FBY_CHECK(CountCompiledTransitions(ScopedGraph) == 2);
     // The direct Attack -> Idle link is compiled before the Idle -> Attack
-    FBY_CHECK(ScopedCompiled.Transitions[0].FromState == 2);
-    FBY_CHECK(ScopedCompiled.Transitions[0].ToState == 1);
-    FBY_CHECK(ScopedCompiled.Transitions[1].FromState == 1);
-    FBY_CHECK(ScopedCompiled.Transitions[1].ToState == 2);
-    FBY_CHECK(ScopedCompiled.Transitions[1].FloatParam == 0);
-    FBY_CHECK(ScopedCompiled.Transitions[1].BlendDuration == 0.2f);
+    FBY_CHECK(ScopedGraph.Transitions[0].FromState == 2);
+    FBY_CHECK(ScopedGraph.Transitions[0].ToState == 1);
+    FBY_CHECK(ScopedGraph.Transitions[1].FromState == 1);
+    FBY_CHECK(ScopedGraph.Transitions[1].ToState == 2);
+    FBY_CHECK(ScopedGraph.Transitions[1].FloatParam == 0);
+    FBY_CHECK(ScopedGraph.Transitions[1].BlendDuration == 0.2f);
     // TransitionCount is a runtime diagnostic (fired transitions), so a freshly
     FBY_CHECK(ScopedCompiled.TransitionCount == 0);
     FBY_CHECK(ScopedCompiled.LastTransition == Fby::kNoAnimTransition);
@@ -282,9 +283,9 @@ void TestSceneTomlRoundTrip()
     FBY_CHECK(ScopedReloaded.Compiled());
     FBY_CHECK(ScopedReloaded.Document().NodeCount == ScopedPanel.Document().NodeCount);
     FBY_CHECK(ScopedReloaded.Document().LinkCount == ScopedPanel.Document().LinkCount);
-    FBY_CHECK(ScopedReloaded.CompiledComponent().ClipCount == 2);
-    FBY_CHECK(CountCompiledTransitions(ScopedReloaded.CompiledComponent()) == 2);
-    FBY_CHECK(ScopedReloaded.CompiledComponent().Clips[0].State == 1);
+    FBY_CHECK(ScopedReloaded.CompiledGraph().ClipCount == 2);
+    FBY_CHECK(CountCompiledTransitions(ScopedReloaded.CompiledGraph()) == 2);
+    FBY_CHECK(ScopedReloaded.CompiledGraph().Clips[0].State == 1);
     FBY_CHECK(ScopedReloaded.CompiledComponent().Floats[0] == 1.0f);
     bool ScopedTagRoundtrip = false;
     for (std::uint16_t ScopedLink = 0; ScopedLink < ScopedReloaded.Document().LinkCount; ++ScopedLink)

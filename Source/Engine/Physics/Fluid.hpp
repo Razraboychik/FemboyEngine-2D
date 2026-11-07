@@ -205,6 +205,8 @@ private:
 };
 
 // Add to a falling object. FluidWaveSystem watches Transform2D + RigidBody2D
+// entry into the water and injects a splash; it does not apply buoyancy or drag
+// to the body. SplashStrength scales the visual splash only.
 struct FluidInteractorComponent
 {
     float RadiusCells = 2.2f;
@@ -224,6 +226,11 @@ public:
     void Initialize(const FluidDesc& InDesc = {}) noexcept;
     void Shutdown() noexcept;
 
+    // Interactors that did not fit the fixed tracking table this tick.
+    [[nodiscard]] std::uint32_t DroppedInteractors() const noexcept
+    {
+        return MDroppedInteractors;
+    }
     [[nodiscard]] GerstnerField& Gerstner() noexcept
     {
         return MGerstner;
@@ -258,6 +265,7 @@ private:
     ShallowWaterGrid MWater{};
     std::array<Tracked, kMaxTrackedInteractors> MTracked{};
     std::uint32_t MTrackedCount = 0;
+    std::uint32_t MDroppedInteractors = 0;
 };
 }
 

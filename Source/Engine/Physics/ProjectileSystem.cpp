@@ -56,7 +56,9 @@ void ProjectileSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics,
         const std::uint32_t ScopedMode = ResolveMode(ScopedProjectile, ScopedDisplacement);
         if (ScopedMode == kProjectileModeDynamic)
         {
-            ScopedBody->LinearVelocity = ScopedUnit * ScopedSpeed;
+            // Route velocity through the physics bridge: the DOD backend keeps
+            // its own velocity columns and ignores component writes.
+            InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, ScopedUnit * ScopedSpeed, true);
             InPhysics.SetBullet(InRegistry, ScopedEntity, true);
             continue;
         }
@@ -66,16 +68,20 @@ void ProjectileSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics,
         PhysicsRayHit ScopedHit;
         if (InPhysics.RayCast(InRegistry, ScopedFrom, ScopedTo, ScopedEntity, ScopedProjectile.CollisionMask, ScopedHit))
         {
-            ScopedTransform.Position = ScopedHit.point;
-            ScopedBody->Position = ScopedHit.point;
+            ScopedTransform.Position = ScopedHit.Point;
+            ScopedBody->Position = ScopedHit.Point;
+            // The teleport flag is the bridge's transform channel; writing the
+            // body directly would be ignored by the DOD backend.
+            ScopedBody->Flags |= RigidBodyTeleport;
             ScopedBody->LinearVelocity = Vector2D{};
             InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, Vector2D{}, false);
-            RecordHit(ScopedEntity, ScopedHit.entity, ScopedHit.point, ScopedHit.normal, ScopedSpeed);
+            RecordHit(ScopedEntity, ScopedHit.Entity, ScopedHit.Point, ScopedHit.Normal, ScopedSpeed);
             continue;
         }
 
         ScopedTransform.Position = ScopedTo;
         ScopedBody->Position = ScopedTo;
+        ScopedBody->Flags |= RigidBodyTeleport;
         ScopedBody->LinearVelocity = ScopedUnit * ScopedSpeed;
         InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, ScopedBody->LinearVelocity, true);
     }

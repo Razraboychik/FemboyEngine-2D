@@ -111,6 +111,8 @@ public:
     // Generic transient screen effect; duration <= 0 keeps it until replaced.
     void SetDistortion(const CameraDistortionSettings& InSettings, float InDuration = 0.0f) noexcept;
     [[nodiscard]] CameraDistortionSettings ActiveDistortion() const noexcept;
+    // Timed offset/zoom/roll: a non-positive duration applies the value at full
+    // weight until ClearEffects or another call.
     void SetOffset(Vector2D InOffset, float InDuration = 0.0f) noexcept;
     void SetZoom(float InZoom, float InDuration = 0.0f) noexcept;
     void SetRoll(float InRadians, float InDuration = 0.0f) noexcept;
@@ -147,6 +149,8 @@ private:
         Camera2D baseCamera{};
         // Resolved camera returned to gameplay
         Camera2D camera{};
+        // Resolved camera of the previous render frame, used for interpolation.
+        Camera2D previousCamera{};
         Mat4 previousProjection = Mat4::Identity();
         Mat4 currentProjection = Mat4::Identity();
         float trauma = 0.0f;

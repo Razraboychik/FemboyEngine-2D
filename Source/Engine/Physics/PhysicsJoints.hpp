@@ -643,9 +643,12 @@ private:
     {
         std::array<ConnectionRuntime, kMaxConnections> Connections{};
         std::array<std::uint32_t, kMaxConnections> FreeStack{};
+        // Compact list of live slots so Update does not scan the whole pool.
+        std::array<std::uint32_t, kMaxConnections> ActiveSlots{};
         std::array<ChainRuntime, kMaxChains> Chains{};
         std::array<ChainBreakEvent, kMaxBreakEvents> Breaks{};
         std::uint32_t FreeCount = 0;
+        std::uint32_t ActiveCount = 0;
     };
 
     [[nodiscard]] std::array<ChainRuntime, kMaxChains>& Chains() noexcept
@@ -686,6 +689,10 @@ private:
     void FillConnectionInfo(std::uint32_t InIndex, JointConnectionInfo* Out) const noexcept;
 
     PhysicsSystem* MPhysics = nullptr;
+    // Identity of the bound system/world: Update checks it before dereferencing
+    // MPhysics, so a destroyed or re-initialized PhysicsSystem is never used.
+    std::uint64_t MPhysicsInstanceId = 0;
+    std::uint32_t MPhysicsGeneration = 0;
     std::unique_ptr<Storage> MStorage;
     std::uint32_t MLiveChains = 0;
     StableIdAllocator<ChainId> MStableIds{};

@@ -37,14 +37,14 @@ integration. This document maps the code.
 ### Handle model
 
 ```
-AssetHandle { uint32 slot; uint32 generation; }   // stored in components
+AssetHandle { uint32 Index; uint32 Generation; }   // stored in components
 AssetMeta   { guid, asset_id, kind, source, cooked,
               source_hash, cooked_hash, import settings,
               content_generation, dependencies }
 ```
 
 Components using the authoring path: `SkeletonAssetRef`, `SpriteAnimationComponent`, `VideoStreamComponent`
-(`media` handle). `VideoSystem::OpenFromAsset` resolves the row's source path.
+(`Media` handle). `VideoSystem::OpenFromAsset` resolves the row's source path.
 
 ### Transactions
 
@@ -55,7 +55,7 @@ database.CommitTransaction();          // atomic swap + reload notice
 ```
 
 A commit bumps `AssetMeta::contentGeneration` but **not** the handle's
-generation: every component referencing the asset stays valid while the RHI
+`Generation`: every component referencing the asset stays valid while the RHI
 texture array / video texture / animation data is replaced.
 
 ### Watch + hot reload

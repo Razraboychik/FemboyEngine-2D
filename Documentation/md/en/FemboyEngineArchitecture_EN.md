@@ -184,7 +184,7 @@ NetEntityId is assigned by the authority (or by the local peer for locally owned
 
 ## 8. Asset pipeline and editor infrastructure
 
-A component never stores a path. It stores a small, generation-checked AssetHandle that names one row of the AssetDatabase metadata table. The row owns the stable AssetId/GUID, resource kind, source and cooked paths, dependency list and import settings. AssetHandle::generation detects a reused slot; AssetMeta::contentGeneration lets a renderer or cache compare content versions. Hot reload never exposes a half-updated asset: edits are staged and committed atomically.
+A component never stores a path. It stores a small, generation-checked AssetHandle that names one row of the AssetDatabase metadata table. The row owns the stable AssetId/GUID, resource kind, source and cooked paths, dependency list and import settings. AssetHandle::Generation detects a reused slot; AssetMeta::contentGeneration lets a renderer or cache compare content versions. Hot reload never exposes a half-updated asset: edits are staged and committed atomically.
 
 ```cpp
 [[asset]]

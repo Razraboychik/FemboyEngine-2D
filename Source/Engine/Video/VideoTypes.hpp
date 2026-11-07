@@ -25,6 +25,10 @@ enum VideoStreamFlags : std::uint32_t
     kVideoFlagError = 1u << 3,
 };
 
+// Bits owned by VideoSystem; SyncComponent preserves everything outside it.
+inline constexpr std::uint32_t kVideoFlagMask =
+    kVideoFlagValid | kVideoFlagFinished | kVideoFlagAlpha | kVideoFlagError;
+
 // One decode step result. The background thread treats PoolExhausted and
 enum class DecodeStatus : std::uint8_t
 {

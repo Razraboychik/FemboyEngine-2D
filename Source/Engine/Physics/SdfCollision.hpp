@@ -28,10 +28,14 @@ struct SdfField
     Vector2D cellSize{1.0f, 1.0f};
     // Distance reported outside the grid; keep it large and positive
     float outsideDistance = 1.0e6f;
+    // Bumped by the owner whenever the samples are edited in place; the GPU
+    // upload cache keys on it so an in-place change is not ignored.
+    std::uint32_t version = 0;
 
     [[nodiscard]] bool Valid() const noexcept
     {
-        return samples != nullptr && width > 1 && height > 1;
+        // A zero or negative cell size would divide by zero in Sample().
+        return samples != nullptr && width > 1 && height > 1 && cellSize.X > 0.0f && cellSize.Y > 0.0f;
     }
     [[nodiscard]] View View2D() const noexcept
     {
@@ -53,7 +57,7 @@ struct SdfCollisionDesc
     // Upper bound on the depenetration speed, pixels / second. The correction is
     // applied as a velocity, never as a transform teleport.
     float maxPushSpeed = 2000.0f;
-    // Extra probes along each collider axis, 0 = centre + corners
+    // Extra samples per axis; 0 and 1 both produce the 2x2 corner grid.
     std::uint32_t subSamples = 1;
     // Skip sensors and static/kinematic bodies
     bool dynamicOnly = true;
@@ -61,18 +65,18 @@ struct SdfCollisionDesc
 
 struct SdfContact
 {
-    Entity entity = entt::null;
-    Vector2D point{};
-    Vector2D normal{0.0f, -1.0f};
-    float penetration = 0.0f;
-    float impulse = 0.0f;
+    Entity Entity = entt::null;
+    Vector2D Point{};
+    Vector2D Normal{0.0f, -1.0f};
+    float Penetration = 0.0f;
+    float Impulse = 0.0f;
     // Pre-correction approach speed along the contact normal. Damage systems use
     // it instead of the post-correction push-out speed.
     float RelativeSpeed = 0.0f;
     // 0.5 * mass * RelativeSpeed^2, in the engine's pixel/kilogram units.
     float KineticEnergy = 0.0f;
     float Mass = 0.0f;
-    std::uint32_t sequence = 0;
+    std::uint32_t Sequence = 0;
 };
 
 static_assert(std::is_trivially_copyable_v<SdfContact>);
@@ -92,7 +96,7 @@ static_assert(std::is_trivially_copyable_v<SdfContactPoint>);
 // The per-body manifold a solver would consume. Fixed size, no allocation.
 struct SdfContactManifold
 {
-    Entity entity = entt::null;
+    Entity Entity = entt::null;
     std::uint32_t Count = 0;
     std::array<SdfContactPoint, 4> Points{};
 };
@@ -144,6 +148,10 @@ public:
     {
         return MLastCorrected;
     }
+    [[nodiscard]] std::uint32_t DroppedContacts() const noexcept
+    {
+        return MDroppedContacts;
+    }
     [[nodiscard]] bool Register(Ecs::SystemGraph& InGraph);
 
 private:
@@ -159,5 +167,6 @@ private:
     std::uint32_t MBroadphaseSkipped = 0;
     std::uint32_t MSequence = 0;
     std::uint32_t MLastCorrected = 0;
+    std::uint32_t MDroppedContacts = 0;
 };
 }

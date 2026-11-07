@@ -22,6 +22,8 @@ namespace
 bool WheelSystem::Initialize(PhysicsSystem& InPhysics) noexcept
 {
     MPhysics = &InPhysics;
+    MPhysicsInstanceId = InPhysics.InstanceId();
+    MPhysicsGeneration = InPhysics.Generation();
     MAvailable = InPhysics.WorldId() != 0;
     MWheelCount = 0;
     return MAvailable;
@@ -37,7 +39,8 @@ void WheelSystem::Shutdown() noexcept
 void WheelSystem::Update(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, float InFixedDt) noexcept
 {
     (void)InFixedDt;
-    if (!MAvailable || MPhysics != &InPhysics || InPhysics.WorldId() == 0)
+    if (!MAvailable || MPhysics != &InPhysics || !PhysicsSystem::IsLive(MPhysics, MPhysicsInstanceId) ||
+        MPhysics->Generation() != MPhysicsGeneration || InPhysics.WorldId() == 0)
     {
         return;
     }
@@ -131,8 +134,18 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
         return;
     }
 
-    b2WheelJoint_SetSpringHertz(ScopedJoint, std::max(ScopedWheel->SuspensionHertz, 0.0f));
-    b2WheelJoint_SetSpringDampingRatio(ScopedJoint, std::clamp(ScopedWheel->SuspensionDamping, 0.0f, 1.0f));
+    // Box2D keeps the previous joint state; re-setting unchanged values every
+    // tick woke the body and reset the spring each frame.
+    const float ScopedHertz = std::max(ScopedWheel->SuspensionHertz, 0.0f);
+    const float ScopedSpringDamping = std::clamp(ScopedWheel->SuspensionDamping, 0.0f, 1.0f);
+    if (std::fabs(b2WheelJoint_GetSpringHertz(ScopedJoint) - ScopedHertz) > 1.0e-4f)
+    {
+        b2WheelJoint_SetSpringHertz(ScopedJoint, ScopedHertz);
+    }
+    if (std::fabs(b2WheelJoint_GetSpringDampingRatio(ScopedJoint) - ScopedSpringDamping) > 1.0e-4f)
+    {
+        b2WheelJoint_SetSpringDampingRatio(ScopedJoint, ScopedSpringDamping);
+    }
     const float ScopedThrottle = std::clamp(ScopedVehicle->Throttle, -1.0f, 1.0f);
     const float ScopedBrake = std::clamp(ScopedVehicle->Brake, 0.0f, 1.0f);
     const bool ScopedDriven = (ScopedWheel->Flags & kWheelFlagDrive) != 0;
@@ -146,16 +159,32 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
     const float ScopedBrakeTorque = ScopedBrake * std::max(ScopedVehicle->MaxMotorTorque, 0.0f) *
                                     std::max(ScopedWheel->BrakeWeight, 0.0f);
 
-    b2WheelJoint_EnableMotor(ScopedJoint, true);
+    const auto ScopedSetMotor = [ScopedJoint](bool InEnable, float InSpeed, float InTorque) noexcept
+    {
+        if (b2WheelJoint_IsMotorEnabled(ScopedJoint) != InEnable)
+        {
+            b2WheelJoint_EnableMotor(ScopedJoint, InEnable);
+        }
+        if (!InEnable)
+        {
+            return;
+        }
+        if (std::fabs(b2WheelJoint_GetMotorSpeed(ScopedJoint) - InSpeed) > 1.0e-4f)
+        {
+            b2WheelJoint_SetMotorSpeed(ScopedJoint, InSpeed);
+        }
+        if (std::fabs(b2WheelJoint_GetMaxMotorTorque(ScopedJoint) - InTorque) > 1.0e-4f)
+        {
+            b2WheelJoint_SetMaxMotorTorque(ScopedJoint, InTorque);
+        }
+    };
     if (ScopedBrake > 0.0f || ScopedHandbrake)
     {
         const float ScopedTorque = ScopedHandbrake
                                        ? std::max(ScopedVehicle->MaxMotorTorque, 0.0f) *
                                              std::max(ScopedWheel->BrakeWeight, 0.0f)
                                        : ScopedBrakeTorque;
-        b2WheelJoint_EnableMotor(ScopedJoint, false);
-        b2WheelJoint_SetMotorSpeed(ScopedJoint, 0.0f);
-        b2WheelJoint_SetMaxMotorTorque(ScopedJoint, ScopedTorque);
+        ScopedSetMotor(false, 0.0f, ScopedTorque);
         if (RigidBody2D* ScopedWheelBody = InRegistry.try_get<RigidBody2D>(InWheel);
             ScopedWheelBody != nullptr && ScopedWheelBody->Body != 0)
         {
@@ -167,13 +196,11 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
     }
     else if (ScopedDriven)
     {
-        b2WheelJoint_SetMotorSpeed(ScopedJoint, ScopedThrottle * ScopedMaxAngular);
-        b2WheelJoint_SetMaxMotorTorque(ScopedJoint, ScopedDriveTorque);
+        ScopedSetMotor(true, ScopedThrottle * ScopedMaxAngular, ScopedDriveTorque);
     }
     else
     {
-        b2WheelJoint_SetMotorSpeed(ScopedJoint, 0.0f);
-        b2WheelJoint_SetMaxMotorTorque(ScopedJoint, 0.0f);
+        ScopedSetMotor(false, 0.0f, 0.0f);
     }
 
     if ((ScopedVehicle->Flags & VehicleFlagArcadeSteering) != 0 && (ScopedWheel->Flags & kWheelFlagSteer) != 0)

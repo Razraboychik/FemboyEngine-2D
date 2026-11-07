@@ -1,4 +1,5 @@
 // FemboyEngine2D - level gravity and local attractor/repulsor fields.
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Tilemap.hpp"
 #include "Engine/Physics/Gravity.hpp"
@@ -60,6 +61,26 @@ int main()
     // Repel flips the direction.
     ScopedRegistry.get<GravityBodyComponent>(ScopedField).Mode = static_cast<std::uint32_t>(GravityBodyMode::Repel);
     auto& ScopedBody = ScopedRegistry.get<RigidBody2D>(ScopedTarget);
+    ScopedBody.LinearVelocity = Vector2D{0.0f, 0.0f};
+    ScopedBody.Position = Vector2D{50.0f, 0.0f};
+    ScopedRegistry.get<Transform2D>(ScopedTarget).Position = Vector2D{50.0f, 0.0f};
+    ScopedGravity.Update(ScopedRegistry, ScopedPhysics, 1.0f / 60.0f);
+    ScopedPhysics.Step(ScopedRegistry, 1.0f / 60.0f);
+    FBY_CHECK(ScopedRegistry.get<RigidBody2D>(ScopedTarget).LinearVelocity.X > 0.0f);
+
+    // Directional pushes along its local axis instead of toward the centre.
+    auto& ScopedDirectional = ScopedRegistry.get<GravityBodyComponent>(ScopedField);
+    ScopedDirectional.Mode = static_cast<std::uint32_t>(GravityBodyMode::Directional);
+    ScopedDirectional.Direction = Vector2D{0.0f, -1.0f};
+    ScopedBody.LinearVelocity = Vector2D{0.0f, 0.0f};
+    ScopedBody.Position = Vector2D{50.0f, 0.0f};
+    ScopedRegistry.get<Transform2D>(ScopedTarget).Position = Vector2D{50.0f, 0.0f};
+    ScopedGravity.Update(ScopedRegistry, ScopedPhysics, 1.0f / 60.0f);
+    ScopedPhysics.Step(ScopedRegistry, 1.0f / 60.0f);
+    FBY_CHECK(ScopedRegistry.get<RigidBody2D>(ScopedTarget).LinearVelocity.Y < 0.0f);
+
+    // The same local direction rotates with the source transform.
+    ScopedRegistry.get<Transform2D>(ScopedField).Rotation = Sim::kHalfPi;
     ScopedBody.LinearVelocity = Vector2D{0.0f, 0.0f};
     ScopedBody.Position = Vector2D{50.0f, 0.0f};
     ScopedRegistry.get<Transform2D>(ScopedTarget).Position = Vector2D{50.0f, 0.0f};

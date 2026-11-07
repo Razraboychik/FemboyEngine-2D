@@ -1240,7 +1240,9 @@ void TestEcsUpdate(SystemContext& InContext)
     FBY_CHECK(ScopedBatches[0].firstItem == 0);
     FBY_CHECK(ScopedBatches[1].firstItem == ScopedBatches[0].itemCount);
     FBY_CHECK(ScopedBatches[0].itemCount + ScopedBatches[1].itemCount == 3);
-    FBY_CHECK(ScopedOutput.startCursor == 3);
+    // Update keeps the caller's write start and reports the next free slot.
+    FBY_CHECK(ScopedOutput.startCursor == 0);
+    FBY_CHECK(ScopedOutput.endCursor == 3);
 
     // Every item carries the component layer in the key's top 16 bits.
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedOutput.itemsWritten; ++ScopedIndex)
@@ -1821,7 +1823,7 @@ void TestSwitcher(SystemContext& InContext)
     FBY_CHECK(Fby::Ui::IsHandleSet(ScopedPage1));
     FBY_CHECK(ScopedCanvas.ResolveHandle(ScopedPage1));
     FBY_CHECK(ScopedCanvas.SetActiveWidget(ScopedSwitcher, ScopedPage1));
-    FBY_CHECK(ScopedCanvas.ActiveWidget(ScopedSwitcher).widget == ScopedPages[1]);
+    FBY_CHECK(ScopedCanvas.ActiveWidget(ScopedSwitcher).Widget == ScopedPages[1]);
     FBY_CHECK(ScopedCanvas.ActivePage(ScopedSwitcher) == 1);
     FBY_CHECK(Fby::Ui::HitTest(ScopedCanvas, V(50.0f, 50.0f)) == ScopedPages[1]);
 
@@ -1840,7 +1842,7 @@ void TestSwitcher(SystemContext& InContext)
     ScopedCanvas.Clear();
     FBY_CHECK(!ScopedCanvas.ResolveHandle(ScopedStale));
     const std::int32_t ScopedFresh = ScopedCanvas.AddWidget(StretchWidget(WidgetKind::Panel));
-    FBY_CHECK(ScopedCanvas.Handle(ScopedFresh).generation != ScopedStale.generation);
+    FBY_CHECK(ScopedCanvas.Handle(ScopedFresh).Generation != ScopedStale.Generation);
     FBY_CHECK(ScopedCanvas.ResolveHandle(ScopedCanvas.Handle(ScopedFresh)));
 
     // Hiding the Switcher hides every page.
@@ -2102,7 +2104,7 @@ void TestTooltip(SystemContext& InContext)
     ScopedTip.textTint = Color32::FromBytes(0xF0, 0xF0, 0xF0);
     const std::int32_t ScopedTooltip = ScopedCanvas.AddWidget(ScopedTip);
 
-    FBY_CHECK(ScopedCanvas.TooltipTarget(ScopedTooltip).widget == ScopedTarget);
+    FBY_CHECK(ScopedCanvas.TooltipTarget(ScopedTooltip).Widget == ScopedTarget);
     FBY_CHECK_NEAR(ScopedCanvas.TooltipDelay(ScopedTooltip), 0.5f, 0.0f);
     FBY_CHECK(FactoryFlag(ScopedCanvas.Flags(ScopedTooltip), WidgetFlags::IgnoreHitTest));
     FBY_CHECK(!ScopedCanvas.IsVisible(ScopedTooltip));

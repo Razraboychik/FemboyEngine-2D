@@ -258,7 +258,12 @@ void GameplaySkillSystem::Update(Registry& InRegistry, float InDt) noexcept
             if (ScopedSlot.CooldownRemaining > 0.0f)
             {
                 ScopedSlot.CooldownRemaining = std::max(ScopedSlot.CooldownRemaining - InDt, 0.0f);
-                ScopedChanged = true;
+                // A running cooldown is continuous telemetry; only becoming
+                // ready changes the observable skill state.
+                if (ScopedSlot.CooldownRemaining <= 0.0f)
+                {
+                    ScopedChanged = true;
+                }
             }
             if (ScopedSlot.State != GameplaySkillState::Casting)
             {
@@ -276,10 +281,10 @@ void GameplaySkillSystem::Update(Registry& InRegistry, float InDt) noexcept
                 continue;
             }
             ScopedSlot.CastRemaining -= InDt;
-            ScopedChanged = true;
             if (ScopedSlot.CastRemaining <= 0.0f)
             {
                 CompleteCast(InRegistry, ScopedCaster, ScopedSlot, *ScopedDef, static_cast<std::uint16_t>(ScopedI));
+                ScopedChanged = true;
             }
         }
         if (ScopedChanged)

@@ -1000,7 +1000,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AnimConditionFlags` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 28 |
 | `AnimGraphSystem` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 180 |
 | `AnimRestBone` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 104 |
-| `AnimStateComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 114 |
+| `AnimStateComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 130 |
+| `AnimGraphDefinitionComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 116 |
 | `AnimTransition` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 48 |
 | `AssetDatabase` | ECS | `Source/Engine/ECS/Scene.hpp` | 21 |
 | `AssetDatabase` | ECS | `Source/Engine/ECS/Schedule.hpp` | 33 |
@@ -1449,7 +1450,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `PhysicsDesc` | Physics | `Source/Engine/Physics/Physics.hpp` | 145 |
 | `PhysicsEventType` | Physics | `Source/Engine/Physics/Physics.hpp` | 102 |
 | `PhysicsJointSystem` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 444 |
-| `PhysicsRayHit` | Physics | `Source/Engine/Physics/Physics.hpp` | 120 |
+| `PhysicsRayHit` | Physics | `Source/Engine/Physics/Physics.hpp` | 125 |
 | `PhysicsSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 159 |
 | `PhysicsSystem` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 13 |
 | `Projectile2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 134 |
@@ -1707,7 +1708,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VirtualTextureRhiTarget` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 118 |
 | `VirtualTextureSample` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 58 |
 | `VirtualTextureStats` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 45 |
-| `VirtualTextureSystem` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 111 |
+| `VirtualTextureSystem` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 117 |
 | `VirtualTextureTableUpdate` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 101 |
 | `VirtualTextureTileId` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 92 |
 | `VirtualTextureTileUpload` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 77 |
@@ -1957,7 +1958,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `WidgetComponentFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 263 |
 | `WidgetDesc` | UI | `Source/Engine/UI/PinkUI.hpp` | 309 |
 | `WidgetFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 145 |
-| `WidgetHandle` | UI | `Source/Engine/UI/PinkUI.hpp` | 80 |
+| `WidgetHandle` | UI | `Source/Engine/UI/PinkUI.hpp` | 81 |
 | `WidgetHyperlink` | UI | `Source/Engine/UI/PinkUI.hpp` | 300 |
 | `WidgetKind` | UI | `Source/Engine/UI/PinkUI.hpp` | 99 |
 | `WidgetLayoutAsset` | UI | `Source/Engine/UI/WidgetLayoutAsset.hpp` | 15 |
@@ -1979,7 +1980,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `MappedFile` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 22 |
 | `RHI` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 27 |
 | `VideoPlayer` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 33 |
-| `VideoStreamComponent` | Video | `Source/Engine/Video/VideoStream.hpp` | 31 |
+| `VideoStreamComponent` | Video | `Source/Engine/Video/VideoStream.hpp` | 36 |
 | `VideoStreamFlags` | Video | `Source/Engine/Video/VideoTypes.hpp` | 20 |
 | `VideoSystem` | Video | `Source/Engine/Video/VideoStream.hpp` | 49 |
 | `VirtualFileSystem` | Video | `Source/Engine/Video/VideoStream.hpp` | 20 |

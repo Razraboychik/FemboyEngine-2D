@@ -4,6 +4,7 @@
 #include "Engine/Assets/AssetDatabase.hpp"
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/Core/Log.hpp"
+#include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/RHI/RHI.hpp"
 
 #include <string>
@@ -147,6 +148,8 @@ bool VideoSystem::OpenOnFreeSlot(VideoStreamComponent& InComponent, std::span<co
     }
     MSlotUsed[ScopedSlot] = true;
     InComponent.Player = ScopedSlot;
+    InComponent.StreamId = ++MNextStreamId;
+    MStreamIds[ScopedSlot] = InComponent.StreamId;
     if (MThreadingEnabled)
     {
         ScopedPlayer.StartDecoderThread();
@@ -165,6 +168,7 @@ bool VideoSystem::Close(VideoStreamComponent& InComponent)
     }
     MPlayers[ScopedSlot].Close();
     MSlotUsed[ScopedSlot] = false;
+    MStreamIds[ScopedSlot] = 0;
     const bool ScopedLoop = InComponent.Loop;
     const bool ScopedPaused = InComponent.Paused;
     const float ScopedSpeed = InComponent.Speed;
@@ -178,24 +182,46 @@ bool VideoSystem::Close(VideoStreamComponent& InComponent)
 
 void VideoSystem::Update(Ecs::SystemContext& InContext)
 {
+    Update(InContext.registry, InContext.dt);
+}
+
+void VideoSystem::Update(Ecs::Registry& InRegistry, float InDeltaSeconds)
+{
     if (!MInitialized)
     {
         return;
     }
-    auto ScopedView = InContext.registry.view<VideoStreamComponent>();
+    MSlotSeen.fill(false);
+    auto ScopedView = InRegistry.view<VideoStreamComponent>();
     for (const entt::entity ScopedEntity : ScopedView)
     {
         VideoStreamComponent& ScopedComponent = ScopedView.get<VideoStreamComponent>(ScopedEntity);
         const std::uint32_t ScopedSlot = ScopedComponent.Player;
-        if (ScopedSlot >= kMaxVideoPlayers || !MSlotUsed[ScopedSlot])
+        // A stale StreamId means the slot was reused by another component; the
+        // two streams must not share a decoder.
+        if (ScopedSlot >= kMaxVideoPlayers || !MSlotUsed[ScopedSlot] ||
+            MStreamIds[ScopedSlot] != ScopedComponent.StreamId)
         {
             ScopedComponent.Texture = kInvalidVideoTexture;
             ScopedComponent.Flags |= kVideoFlagError;
             continue;
         }
+        MSlotSeen[ScopedSlot] = true;
         VideoPlayer& ScopedPlayer = MPlayers[ScopedSlot];
-        ScopedPlayer.Advance(InContext.dt, ScopedComponent.Speed, ScopedComponent.Paused, ScopedComponent.Loop);
+        ScopedPlayer.Advance(InDeltaSeconds, ScopedComponent.Speed, ScopedComponent.Paused, ScopedComponent.Loop);
         SyncComponent(ScopedComponent, ScopedPlayer);
+    }
+    if (MPruneOrphans)
+    {
+        for (std::uint32_t ScopedSlot = 0; ScopedSlot < kMaxVideoPlayers; ++ScopedSlot)
+        {
+            if (MSlotUsed[ScopedSlot] && !MSlotSeen[ScopedSlot])
+            {
+                MPlayers[ScopedSlot].Close();
+                MSlotUsed[ScopedSlot] = false;
+                MStreamIds[ScopedSlot] = 0;
+            }
+        }
     }
 }
 
@@ -203,12 +229,30 @@ void VideoSystem::SyncComponent(VideoStreamComponent& InComponent, const VideoPl
 {
     InComponent.Texture = InPlayer.TextureId();
     InComponent.Layer = InPlayer.CurrentLayer();
-    InComponent.Flags = InPlayer.StateFlags();
+    // The player owns the video bits only; app-authored flags survive the sync.
+    InComponent.Flags = (InComponent.Flags & ~kVideoFlagMask) | (InPlayer.StateFlags() & kVideoFlagMask);
 }
 
 bool VideoSystem::Register(Ecs::Schedule& InSchedule, VideoSystem& InSystem)
 {
     return InSchedule.Add(Ecs::Phase::PostUpdate, "VideoSystem", &Tick, &InSystem);
+}
+
+namespace
+{
+void VideoCoreTick(const Ecs::CoreSystemView& InView, void* InUser)
+{
+    auto* ScopedVideo = static_cast<VideoSystem*>(InUser);
+    if (ScopedVideo != nullptr)
+    {
+        ScopedVideo->Update(InView.registry, InView.dt);
+    }
+}
+}
+
+bool VideoSystem::Register(Ecs::SystemGraph& InGraph, VideoSystem& InSystem)
+{
+    return InGraph.Add(Ecs::Phase::PostUpdate, "VideoSystem", Ecs::BindCoreSystem<&VideoCoreTick>(), &InSystem);
 }
 
 VideoPlayer* VideoSystem::Player(std::uint32_t InSlot) noexcept

@@ -34,6 +34,8 @@ enum class GravityBodyMode : std::uint8_t
 {
     Attract = 0,
     Repel,
+    // Pushes along Direction instead of toward or away from the zone centre.
+    Directional,
 };
 
 enum class GravityBodyShape : std::uint8_t
@@ -72,8 +74,8 @@ struct LevelGravityComponent
 static_assert(std::is_trivially_copyable_v<LevelGravityComponent>);
 static_assert(std::is_standard_layout_v<LevelGravityComponent>);
 
-// Local gravity field attached to any entity. Strength is an acceleration at
-// the centre; FalloffDepth is the band from the zone edge to the centre.
+// Local gravity field attached to any entity. Strength is an acceleration
+// inside the zone; FalloffDepth is the band from the zone edge to the centre.
 struct GravityBodyComponent
 {
     std::uint32_t Mode = static_cast<std::uint32_t>(GravityBodyMode::Attract);
@@ -83,6 +85,8 @@ struct GravityBodyComponent
     float Radius = 128.0f;
     Vector2D HalfExtents{128.0f, 128.0f};
     Vector2D Offset{};
+    // Local-space push axis for Directional; rotated by the source transform.
+    Vector2D Direction{0.0f, -1.0f};
     // 0 means "edge to centre" over the whole radius/half-extent.
     float FalloffDepth = 0.0f;
     float FalloffPower = 3.0f;
@@ -94,8 +98,8 @@ struct GravityBodyComponent
 
     [[nodiscard]] GravityBodyMode ModeValue() const noexcept
     {
-        return static_cast<GravityBodyMode>(Mode > static_cast<std::uint32_t>(GravityBodyMode::Repel)
-                                                ? static_cast<std::uint32_t>(GravityBodyMode::Repel)
+        return static_cast<GravityBodyMode>(Mode > static_cast<std::uint32_t>(GravityBodyMode::Directional)
+                                                ? static_cast<std::uint32_t>(GravityBodyMode::Directional)
                                                 : Mode);
     }
     [[nodiscard]] GravityBodyShape ShapeValue() const noexcept
@@ -153,6 +157,7 @@ FBY_REFLECT_COMPONENT(
     FBY_FIELD(Fby::GravityBodyComponent, Shape, UInt32), FBY_FIELD(Fby::GravityBodyComponent, Falloff, UInt32),
     FBY_FIELD(Fby::GravityBodyComponent, Strength, Float), FBY_FIELD(Fby::GravityBodyComponent, Radius, Float),
     FBY_FIELD(Fby::GravityBodyComponent, HalfExtents, Vector2D), FBY_FIELD(Fby::GravityBodyComponent, Offset, Vector2D),
+    FBY_FIELD(Fby::GravityBodyComponent, Direction, Vector2D),
     FBY_FIELD(Fby::GravityBodyComponent, FalloffDepth, Float),
     FBY_FIELD(Fby::GravityBodyComponent, FalloffPower, Float),
     FBY_FIELD(Fby::GravityBodyComponent, MaxAcceleration, Float),

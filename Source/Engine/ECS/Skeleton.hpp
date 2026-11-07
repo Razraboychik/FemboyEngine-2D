@@ -124,6 +124,11 @@ struct SkeletonComponent
     std::array<Vector2D, kMaxBones> LocalPositions{};
     std::array<float, kMaxBones> LocalRotations{};
     std::array<float, kMaxBones> LocalScales{};
+    // Rest local pose captured by AnimGraph before the first driven tick; it is
+    // skeleton-owned so the animation hot component stays small.
+    std::array<Vector2D, kMaxBones> RestPositions{};
+    std::array<float, kMaxBones> RestRotations{};
+    std::array<float, kMaxBones> RestScales{};
     std::array<std::int16_t, kMaxBones> ParentIndices{};
     std::array<std::uint64_t, kMaxBones> BoneNameHashes{};
     std::array<Mat3, kMaxBones> InverseBindMatrices{};
@@ -132,6 +137,7 @@ struct SkeletonComponent
     std::array<Mat4, kMaxBones> SkinningMatrices{};
     std::uint16_t BoneCount = 0;
     bool BindPoseValid = false;
+    bool RestPoseCaptured = false;
 };
 
 struct SkinComponent

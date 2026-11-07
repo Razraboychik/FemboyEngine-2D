@@ -710,6 +710,9 @@ bool ScriptRuntime::Initialize()
     }
     RegisterDefaultScriptNatives(*this);
     MRng = DeterministicRng::FromSeed(0x4642334C4F4C49ull);
+    MActiveScriptCount = 0;
+    MActiveStamp = 0;
+    MDroppedDestroyEvents = 0;
     MInitialized = true;
     return true;
 }
@@ -811,6 +814,84 @@ void ScriptRuntime::ReportFault(std::uint32_t InHandle, Entity InEntity, const S
              static_cast<std::uint32_t>(InEntity), InFault.pc, Script::VmFault::Name(InFault.code), InFault.detail);
 }
 
+void ScriptRuntime::ReportMissingAot(std::uint32_t InHandle, std::uint64_t InHash) noexcept
+{
+    if (InHandle < MFaultReported.size() && MFaultReported[InHandle])
+    {
+        return;
+    }
+    if (InHandle < MFaultReported.size())
+    {
+        MFaultReported[InHandle] = true;
+    }
+    LogError("script", "program {} ({:016x}) has no AOT module and the VM fallback is disabled", InHandle, InHash);
+}
+
+void ScriptRuntime::BeginScriptFrame() noexcept
+{
+    ++MActiveStamp;
+    if (MActiveStamp == 0)
+    {
+        MActiveStamp = 1;
+    }
+}
+
+void ScriptRuntime::TrackScript(Entity InEntity, std::uint32_t InProgram, bool InNativized) noexcept
+{
+    for (std::uint32_t ScopedI = 0; ScopedI < MActiveScriptCount; ++ScopedI)
+    {
+        ActiveScript& ScopedActive = MActiveScripts[ScopedI];
+        if (ScopedActive.Owner == InEntity)
+        {
+            ScopedActive.Program = InProgram;
+            ScopedActive.Nativized = InNativized;
+            ScopedActive.Stamp = MActiveStamp;
+            return;
+        }
+    }
+    if (MActiveScriptCount >= MActiveScripts.size())
+    {
+        ++MDroppedDestroyEvents;
+        return;
+    }
+    ActiveScript& ScopedActive = MActiveScripts[MActiveScriptCount++];
+    ScopedActive.Owner = InEntity;
+    ScopedActive.Program = InProgram;
+    ScopedActive.Nativized = InNativized;
+    ScopedActive.Stamp = MActiveStamp;
+}
+
+void ScriptRuntime::RunDestroyForInactive(Ecs::Registry& InRegistry, Script::VmContext& InContext,
+                                          bool InAllowVmFallback) noexcept
+{
+    std::uint32_t ScopedCursor = 0;
+    while (ScopedCursor < MActiveScriptCount)
+    {
+        ActiveScript& ScopedActive = MActiveScripts[ScopedCursor];
+        if (ScopedActive.Stamp == MActiveStamp)
+        {
+            ++ScopedCursor;
+            continue;
+        }
+        // Cooked builds run AOT modules, which have no Destroy entry point yet;
+        // the VM is the only backend that can dispatch the event.
+        if (InAllowVmFallback && !ScopedActive.Nativized && InRegistry.valid(ScopedActive.Owner))
+        {
+            if (const Script::BoundProgram* ScopedProgram = Program(ScopedActive.Program); ScopedProgram != nullptr)
+            {
+                ResetTransientNumbers();
+                InContext.self = ScopedActive.Owner;
+                Script::VmFault ScopedFault;
+                if (!MVm.Run(*ScopedProgram, Script::ScriptEvent::Destroy, ScopedActive.Owner, InContext, &ScopedFault))
+                {
+                    ReportFault(ScopedActive.Program, ScopedActive.Owner, ScopedFault);
+                }
+            }
+        }
+        ScopedActive = MActiveScripts[--MActiveScriptCount];
+    }
+}
+
 bool RunScriptOnce(ScriptRuntime& InRuntime, std::uint32_t InProgram, Entity InEntity, Script::ScriptEvent InEvent,
                    Script::VmContext& InContext, Script::VmFault* InFault)
 {
@@ -838,6 +919,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     {
         return;
     }
+    InRuntime.BeginScriptFrame();
 
     Script::VmContext ScopedVmContext{InContext.registry};
     ScopedVmContext.commands = InContext.commands;
@@ -850,6 +932,8 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     ScopedVmContext.physics = InRuntime.Physics();
     ScopedVmContext.camera = InRuntime.CameraStack();
 
+    // Reused across entities: one string construction per tick, not per script.
+    std::string ScopedAotError;
     auto ScopedView = InContext.registry.view<ScriptComponent>();
     for (const Entity ScopedEntity : ScopedView)
     {
@@ -870,14 +954,14 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
         {
             continue;
         }
+        InRuntime.TrackScript(ScopedEntity, ScopedComponent.Program, ScopedNativized);
         InRuntime.ResetTransientNumbers();
 
         if (!ScopedNativized && !InAllowVmFallback)
         {
             // Cooked-build contract: a program without a native module is a build
             // error, not a reason to start the interpreter.
-            LogError("script", "program {} ({:016x}) has no AOT module and the VM fallback is disabled",
-                     ScopedComponent.Program, ScopedHash);
+            InRuntime.ReportMissingAot(ScopedComponent.Program, ScopedHash);
             (void)InRuntime.ReportUnnativized();
             ScopedComponent.Flags |= kScriptFlagStarted;
             continue;
@@ -885,19 +969,20 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
 
         if (ScopedNativized)
         {
-            std::string ScopedError;
+            ScopedAotError.clear();
             if ((ScopedComponent.Flags & kScriptFlagStarted) == 0)
             {
-                if (!InAot->Run(ScopedHash, Script::ScriptEvent::Start, ScopedEntity, ScopedVmContext, &ScopedError))
+                if (!InAot->Run(ScopedHash, Script::ScriptEvent::Start, ScopedEntity, ScopedVmContext, &ScopedAotError))
                 {
-                    LogWarn("script", "AOT start failed for {:016x}: {}", ScopedHash, ScopedError);
+                    LogWarn("script", "AOT start failed for {:016x}: {}", ScopedHash, ScopedAotError);
                 }
                 ScopedComponent.Flags |= kScriptFlagStarted;
             }
             (void)InRuntime.AotRun(ScopedComponent.Program);
-            if (!InAot->Run(ScopedHash, Script::ScriptEvent::Update, ScopedEntity, ScopedVmContext, &ScopedError))
+            ScopedAotError.clear();
+            if (!InAot->Run(ScopedHash, Script::ScriptEvent::Update, ScopedEntity, ScopedVmContext, &ScopedAotError))
             {
-                LogWarn("script", "AOT update failed for {:016x}: {}", ScopedHash, ScopedError);
+                LogWarn("script", "AOT update failed for {:016x}: {}", ScopedHash, ScopedAotError);
             }
             continue;
         }
@@ -921,5 +1006,6 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
             InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
         }
     }
+    InRuntime.RunDestroyForInactive(InContext.registry, ScopedVmContext, InAllowVmFallback);
 }
 }

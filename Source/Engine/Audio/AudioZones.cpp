@@ -30,17 +30,22 @@ void AudioZoneSystem::Update(Ecs::Registry& InRegistry, AudioSystem* InAudio, fl
     const float ScopedDelta = InDeltaSeconds > 0.0f ? InDeltaSeconds : 0.0f;
 
     // One listener baseline. A context entity that owns its own AudioListener
+    // Match AudioSystem's rule: the lowest active listener entity is primary.
     Vector2D ScopedGlobalListener{};
     bool ScopedHasGlobalListener = false;
+    Entity ScopedListenerOwner = entt::null;
     auto ScopedListenerView = InRegistry.view<AudioListener>();
     for (auto [ScopedEntity, ScopedListener] : ScopedListenerView.each())
     {
-        (void)ScopedEntity;
-        if (ScopedListener.active)
+        if (!ScopedListener.active)
         {
+            continue;
+        }
+        if (!ScopedHasGlobalListener || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedListenerOwner))
+        {
+            ScopedListenerOwner = ScopedEntity;
             ScopedGlobalListener = ScopedListener.position;
             ScopedHasGlobalListener = true;
-            break;
         }
     }
 
@@ -112,7 +117,7 @@ void AudioZoneSystem::Update(Ecs::Registry& InRegistry, AudioSystem* InAudio, fl
             continue;
         }
         bool ScopedAllQueued = true;
-        for (std::uint32_t ScopedBus = 0; ScopedBus < 3; ++ScopedBus)
+        for (std::uint32_t ScopedBus = 0; ScopedBus < static_cast<std::uint32_t>(AudioBus::Count); ++ScopedBus)
         {
             if ((ScopedSendMask & (1u << ScopedBus)) == 0)
             {

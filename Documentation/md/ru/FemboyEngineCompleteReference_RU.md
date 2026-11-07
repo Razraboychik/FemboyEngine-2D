@@ -961,7 +961,7 @@ LogWarn("tts", "no installed voice matches '{}'; falling back to LCID 0x{:04X}",
 
 ## 31. Геймплей на состояниях: AnimGraph, ИИ StateTree и холст Animation Graph
 
-Высокоуровневый геймплейный слой следует тому же правилу, что и рендерер: поведение — это функция над простыми данными, а не граф объектов. AnimGraph — плоский автомат анимаций, StateTree — плоское дерево состояний ИИ. Ни у одного нет базового класса, виртуального Evaluate(), аллокации на узел или колбэка std::function. Сущность владеет POD-компонентом фиксированного размера; система владеет общими таблицами (клипами анимации и массивами узлов/переходов ИИ) и обходит только активный путь.
+Высокоуровневый геймплейный слой следует тому же правилу, что и рендерер: поведение — это функция над простыми данными, а не граф объектов. AnimGraph — плоский автомат анимаций, StateTree — плоское дерево состояний ИИ. Ни у одного нет базового класса, виртуального Evaluate(), аллокации на узел или колбэка std::function. Сущность владеет POD-компонентами фиксированного размера; система владеет общими таблицами (клипами анимации и массивами узлов/переходов ИИ) и обходит только активный путь.
 
 Почему не Behaviour Tree: BT переобходит иерархию с корня каждый тик, поэтому цена простаивающего NPC пропорциональна размеру дерева. State Tree хранит активный путь и переоценивает одну проверку; переходы — плоский массив, индексируемый триггерами. Та же логика у AnimGraph: условия переходов — это сравнения времени состояния, тегов и float на компоненте, а дорогая часть — поза костей — смешивается один раз за тик, а не на каждый узел графа.
 
@@ -974,12 +974,18 @@ LogWarn("tts", "no installed voice matches '{}'; falling back to LCID 0x{:04X}",
 | CurrentState | uint64_t | Непрозрачный логический id состояния. 0 = rest-поза; нумерация принадлежит геймплею. |
 | PreviousState | uint64_t | Исходная поза активного кросс-фейда. |
 | StateTime | float | Секунды в текущем состоянии; сбрасывается при каждом переходе. |
-| TransitionCount | uint32_t | Диагностика. Размещено по смещению 20, чтобы заполнить паддинг перед массивом переходов с выравниванием 8. |
-| Transitions[8] | AnimTransition | Авторские переходы, перебираются по порядку; побеждает первое совпадение. Инертны при Conditions == AnimConditionNone. |
-| Clips[8] / ClipCount | AnimClip | Таблица клипов сущности: ключи костей плюс диапазон кадров SpriteAnimation для того же состояния. |
+| TransitionCount | uint32_t | Диагностика: сколько переходов уже сработало. |
 | Floats[8] | float | Float-параметры (скорость, здоровье, прицел), читаемые условиями переходов. |
-| RestPose[128] | AnimRestBone | Снимается один раз со скелета; клип описывает только те кости, которые двигает. |
 | BlendDuration / BlendTime / BlendWeight | float | Тайминг кросс-фейда и сглаженный вес, который применяет мост SkeletalAnimation. |
+| LastTransition | uint16_t | Индекс последнего сработавшего перехода или kNoAnimTransition. |
+
+| Поле AnimGraphDefinitionComponent | Тип | Назначение |
+|---|---|---|
+| Transitions[8] | AnimTransition | Авторские переходы, перебираются по порядку; побеждает первое совпадение. Инертны при Conditions == AnimConditionNone. |
+| Clips[8] / ClipCount | AnimClip | Таблица клипов: ключи костей плюс диапазон кадров SpriteAnimation для того же состояния. |
+| TransitionCount | uint32_t | Число занятых слотов авторских переходов. |
+
+Rest-поза принадлежит скелету: `SkeletonComponent::RestPositions/RestRotations/RestScales` снимаются один раз, `RestPoseCaptured` отмечает захват. Сущность с AnimGraph несёт оба компонента — `AnimStateComponent` (горячее состояние) и `AnimGraphDefinitionComponent` (сам граф).
 
 | Флаг условия | Проверка |
 |---|---|
@@ -991,27 +997,33 @@ LogWarn("tts", "no installed voice matches '{}'; falling back to LCID 0x{:04X}",
 | AnimConditionFloatAtLeast / AtMost | Floats[FloatParam] сравнивается с FloatThreshold; не-конечное значение даёт false. |
 
 ```cpp
-// AnimGraph.hpp - the component prefix is stable and visible in an inspector.
+// AnimGraph.hpp - hot state and the compiled graph are separate components.
 struct AnimStateComponent
 {
-    std::uint64_t CurrentState = 0;   // 0  logical state, 0 = rest
-    std::uint64_t PreviousState = 0;  // 8  cross-fade source
-    float StateTime = 0.0f;           // 16 seconds in state
-    std::uint32_t TransitionCount = 0;// 20 diagnostics / pad
-    std::array<AnimTransition, 8> Transitions{};  // 24
-    std::array<AnimClip, 8> Clips{};
+    std::uint64_t CurrentState = 0;   // logical state, 0 = rest
+    std::uint64_t PreviousState = 0;  // cross-fade source
+    float StateTime = 0.0f;           // seconds in state
+    std::uint32_t TransitionCount = 0;// transitions fired (diagnostics)
     std::array<float, 8> Floats{};
-    std::array<AnimRestBone, kMaxBones> RestPose{};
     float BlendDuration = 0.0f, BlendTime = 0.0f, BlendWeight = 1.0f;
-    // ...
+    std::uint16_t LastTransition = kNoAnimTransition;
+};
+
+struct AnimGraphDefinitionComponent
+{
+    std::array<AnimTransition, 8> Transitions{};
+    std::array<AnimClip, 8> Clips{};
+    std::uint32_t TransitionCount = 0;
+    std::uint32_t ClipCount = 0;
 };
 
 // Once per fixed tick: conditions -> state -> two bridges.
-for (auto [entity, state] : registry.view<AnimStateComponent>().each())
+for (auto [entity, state, graph] :
+     registry.view<AnimStateComponent, AnimGraphDefinitionComponent>().each())
 {
     state.StateTime += dt;
     const std::uint64_t tags = gameplayBits(registry, entity);
-    for (auto& t : state.Transitions)
+    for (auto& t : graph.Transitions)
     {
         if (t.FromState != kAnimAnyState && t.FromState != state.CurrentState) continue;
         if (!AnimTransitionMatches(t, state, tags)) continue;
@@ -1023,9 +1035,9 @@ for (auto [entity, state] : registry.view<AnimStateComponent>().each())
     }
     // SkeletalAnimation: blend local TRS, then one hierarchy pass.
     if (auto* skeleton = registry.try_get<SkeletonComponent>(entity))
-        AnimGraphApplySkeletal(state, *skeleton);
+        AnimGraphApplySkeletal(state, graph, *skeleton);
     // SpriteAnimation: only on a state change, so the frame advance is not fought.
-    if (changed) AnimGraphApplySpriteClip(state, spriteAnimation, grid, spritePtr);
+    if (changed) AnimGraphApplySpriteClip(state, graph, spriteAnimation, grid, spritePtr);
 }
 ```
 
@@ -1108,8 +1120,9 @@ void StateTreeSystem::Run(ecs::SystemContext& ctx) const noexcept
 | LinkCount / Links[32] | uint16_t / AnimationGraphLink | Kind, концы, пины и payload прямого AnimTransition. Четыре вида связи: Transition, BlendSource, BlendParameter и BlendTarget. |
 
 ```cpp
-// CompileGraph(): fixed storage, one flat AnimStateComponent, no allocation.
-AnimStateComponent out;
+// CompileGraph(): fixed storage, hot state + graph definition, no allocation.
+AnimStateComponent state;
+AnimGraphDefinitionComponent graph;
 std::array<bool, kMaxAnimParams> paramUsed{};
 std::array<std::uint64_t, kMaxAnimClips> stateIds{};
 std::uint16_t clipCount = 0, transitionCount = 0;
@@ -1118,24 +1131,25 @@ for (node : document.Nodes)
     {
         if (node.Clip.State == 0 || duplicate(stateIds, node.Clip.State)) reject();
         stateIds[clipCount] = node.Clip.State;
-        out.Clips[clipCount++] = node.Clip;
+        graph.Clips[clipCount++] = node.Clip;
     }
     else if (node.Kind == FloatParameter)
-        out.Floats[node.ParameterIndex] = node.ParameterValue;
+        state.Floats[node.ParameterIndex] = node.ParameterValue;
 // Isolated-node check: every node needs at least one incident link.
 for (node : document.Nodes) if (degree[node] == 0) reject("isolated");
 // Direct links become transitions; each Blend needs one source, one target
 // and at most one parameter binding.
 for (link : document.Links)
     if (link.Kind == Transition && conditionsValid(link.Transition))
-        out.Transitions[transitionCount++] = link.Transition;
+        graph.Transitions[transitionCount++] = link.Transition;
 for (blend : document.Nodes)
     if (blend.Kind == Blend)
-        out.Transitions[transitionCount++] = makeTransition(blend, source, target);
+        graph.Transitions[transitionCount++] = makeTransition(blend, source, target);
 for (i = transitionCount; i < 8; ++i)
-    out.Transitions[i].Enabled = false;   // inert slots, not garbage
-out.ClipCount = clipCount;
-out.TransitionCount = 0;                  // runtime diagnostic, not an authored count
+    graph.Transitions[i].Enabled = false;   // inert slots, not garbage
+graph.ClipCount = clipCount;
+graph.TransitionCount = transitionCount;
+state.TransitionCount = 0;                  // runtime diagnostic, not an authored count
 ```
 
 Каждый жест — одна транзакция CommandStack. Документ является одним external buffer, поэтому перетаскивание узла записывает только изменившиеся байты позиции, а переключение условия — только изменившееся слово условий. Колбэки ImNodes никогда не вызывают Record() напрямую: DrawCanvas сообщает об изменении, ProcessCanvasEvents открывает BeginEdit(), метод правки меняет документ, RecordEdit() снимает новые байты, CommitEdit() фиксирует одну группу undo. Ctrl+Z/Ctrl+Y обрабатывает EditorSystem: сначала завершает открытую транзакцию холста, затем просит CommandStack применить обратную дельту. Правки инспектора используют Mirror-хелперы AnimationGraphTransitionFieldsEqual()/_ClipFieldsEqual(); оба сравнивают только диапазоны байтов FieldDesc через reflect::FieldBytesEqual(), поэтому паддинг не создаёт пустую undo-команду.
@@ -1205,7 +1219,7 @@ PIE-дебаг — это read-only проекция живого компоне
 constexpr std::uint64_t kPageBytes = 2048ull * 2048ull * 4ull;
 const std::uint64_t Budget = layerCount * kPageBytes;
 
-// Residency is a two-pass clock over a fixed page table.
+// Residency is a two-pass clock over a fixed page table; IO runs on a worker.
 void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept
 {
     ++MFrame;
@@ -1225,13 +1239,13 @@ void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept
                 MSlots[Layer * 1024u + MHash[Hash].slot].lastUsedFrame = MFrame;
                 continue;
             }
-            std::uint32_t Slot = 0;
-            if (LoadTile(Tx, Ty, Layer, &Slot))   // mmap chunk, upload one 64x64 tile
+            if (!IsPending(Tx, Ty))
             {
-                MSlots[Layer * 1024u + Slot].lastUsedFrame = MFrame;
-                ++MStats.uploads;               // one vkCmdCopyBufferToImage
+                EnqueueLoad(Tx, Ty, Layer);    // worker reads the chunk
             }
         }
+    // Main thread: commit finished chunks within the per-frame budget.
+    PollLoads();
 }
 ```
 
@@ -1704,7 +1718,7 @@ if ((Before & 1u) == 0) {
 8000 FPS — это 125 микросекунд на кадр. Это число имеет смысл только вместе со сценой, разрешением и железом: 2D-батч из нескольких тысяч спрайтов при 1080p — не та же задача, что 4K-кадр с постобработкой. Рассматривайте 8000 FPS как цель для собственной стоимости кадра движка (симуляция + extract + submission) на Zen 5 с прогретым кэшем и всегда сообщайте 99-й процентиль времени кадра, а не только средний FPS. Стабильные 8000+ — это p99 <= 125 мкс, а не один удачный кадр.
 
 - Шаг 1 — baseline. Записывайте CPU- и GPU-время кадра отдельно. На Windows — WPA/ETW или AMD uProf; на Linux — perf stat с cache-references, cache-misses, L1-dcache-load-misses, LLC-load-misses и stalled-cycles-frontend. Сохраняйте числа в репозитории, чтобы регрессия была видна.
-- Шаг 2 — найдите горячий массив. Тик анимации идёт по AnimStateComponent на сущность (шаг 4 КБ); extract идёт по RenderItem; пул задач трогает одну общую линию кэша. Шаг 4 КБ с 8 переходами и 8 клипами на компонент вымывает L1 и L2 ещё до вычислений.
+- Шаг 2 — найдите горячий массив. Тик анимации идёт по компактному AnimStateComponent на сущность; определение графа и поза скелета — отдельные компоненты, к которым обращаются только при выборе перехода или клипа. Extract идёт по RenderItem; пул задач трогает одну общую линию кэша.
 - Шаг 3 — разделите hot/cold. Держите 64-байтный AnimHot на сущность (состояния, StateTime, Blend*), а Transitions/Clips/RestPose вынесите в общий объект графа или холодную side-таблицу. Система начинает потоково идти по плотному массиву; общие таблицы остаются в L1.
 - Шаг 4 — векторизуйте презентационный blend, а не детерминированную симуляцию. Используйте __restrict, SoA-массивы float (X[], Y[], Rotation[], Scale[]) и проверяйте отчёт векторизатора. Не меняйте порядок FP-редукций, используемых rollback или физикой.
 - Шаг 5 — сократите RHI-bind'ы. Сортируйте draw'ы по (pipeline, material, texture array), используйте push constants для draw id, держите один bindless set и записывайте один indirect draw на батч. На 8k FPS churn дескрипторных сетов обычно дороже самого draw.
@@ -2316,7 +2330,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `AnimConditionFlags` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 28 |
 | `AnimGraphSystem` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 180 |
 | `AnimRestBone` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 104 |
-| `AnimStateComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 114 |
+| `AnimStateComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 130 |
+| `AnimGraphDefinitionComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 116 |
 | `AnimTransition` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 48 |
 | `AssetDatabase` | ECS | `Source/Engine/ECS/Scene.hpp` | 21 |
 | `AssetDatabase` | ECS | `Source/Engine/ECS/Schedule.hpp` | 33 |
@@ -2765,7 +2780,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `PhysicsDesc` | Physics | `Source/Engine/Physics/Physics.hpp` | 145 |
 | `PhysicsEventType` | Physics | `Source/Engine/Physics/Physics.hpp` | 102 |
 | `PhysicsJointSystem` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 444 |
-| `PhysicsRayHit` | Physics | `Source/Engine/Physics/Physics.hpp` | 120 |
+| `PhysicsRayHit` | Physics | `Source/Engine/Physics/Physics.hpp` | 125 |
 | `PhysicsSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 159 |
 | `PhysicsSystem` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 13 |
 | `Projectile2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 134 |
@@ -3023,7 +3038,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `VirtualTextureRhiTarget` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 118 |
 | `VirtualTextureSample` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 58 |
 | `VirtualTextureStats` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 45 |
-| `VirtualTextureSystem` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 111 |
+| `VirtualTextureSystem` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 117 |
 | `VirtualTextureTableUpdate` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 101 |
 | `VirtualTextureTileId` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 92 |
 | `VirtualTextureTileUpload` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 77 |
@@ -3273,7 +3288,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `WidgetComponentFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 263 |
 | `WidgetDesc` | UI | `Source/Engine/UI/PinkUI.hpp` | 309 |
 | `WidgetFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 145 |
-| `WidgetHandle` | UI | `Source/Engine/UI/PinkUI.hpp` | 80 |
+| `WidgetHandle` | UI | `Source/Engine/UI/PinkUI.hpp` | 81 |
 | `WidgetHyperlink` | UI | `Source/Engine/UI/PinkUI.hpp` | 300 |
 | `WidgetKind` | UI | `Source/Engine/UI/PinkUI.hpp` | 99 |
 | `WidgetLayoutAsset` | UI | `Source/Engine/UI/WidgetLayoutAsset.hpp` | 15 |
@@ -3295,7 +3310,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `MappedFile` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 22 |
 | `RHI` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 27 |
 | `VideoPlayer` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 33 |
-| `VideoStreamComponent` | Video | `Source/Engine/Video/VideoStream.hpp` | 31 |
+| `VideoStreamComponent` | Video | `Source/Engine/Video/VideoStream.hpp` | 36 |
 | `VideoStreamFlags` | Video | `Source/Engine/Video/VideoTypes.hpp` | 20 |
 | `VideoSystem` | Video | `Source/Engine/Video/VideoStream.hpp` | 49 |
 | `VirtualFileSystem` | Video | `Source/Engine/Video/VideoStream.hpp` | 20 |

@@ -15,6 +15,18 @@ namespace
 // 60 Hz default this is two seconds of rest.
 constexpr std::uint32_t kSleepFrameThreshold = 120;
 constexpr std::uint32_t kInvalidBody = std::numeric_limits<std::uint32_t>::max();
+
+// Box2D derives mass from the shape area and density; the DOD backend used to
+// treat density itself as the inverse mass, which made every body equally heavy.
+[[nodiscard]] float InverseMassFor(BodyType InType, float InDensity, float InHalfWidth, float InHalfHeight) noexcept
+{
+    if (InType != BodyType::Dynamic)
+    {
+        return 0.0f;
+    }
+    const float ScopedArea = 4.0f * std::max(InHalfWidth, 0.001f) * std::max(InHalfHeight, 0.001f);
+    return 1.0f / (std::max(InDensity, 0.001f) * ScopedArea);
+}
 }
 
 std::uint64_t DodPhysicsBackend::PairKey(Entity InA, Entity InB) noexcept
@@ -72,6 +84,8 @@ std::uint32_t DodPhysicsBackend::AcquireBodySlot() noexcept
     MColumns.AngularVelocities.push_back(0.0f);
     MColumns.InverseMasses.push_back(0.0f);
     MColumns.GravityScales.push_back(1.0f);
+    MColumns.LinearDampings.push_back(0.0f);
+    MColumns.AngularDampings.push_back(0.0f);
     MColumns.HalfWidths.push_back(0.5f);
     MColumns.HalfHeights.push_back(0.5f);
     MColumns.Categories.push_back(1u);
@@ -96,6 +110,8 @@ void DodPhysicsBackend::ResetBodySlot(std::uint32_t InIndex) noexcept
     MColumns.AngularVelocities[InIndex] = 0.0f;
     MColumns.InverseMasses[InIndex] = 0.0f;
     MColumns.GravityScales[InIndex] = 1.0f;
+    MColumns.LinearDampings[InIndex] = 0.0f;
+    MColumns.AngularDampings[InIndex] = 0.0f;
     MColumns.HalfWidths[InIndex] = 0.5f;
     MColumns.HalfHeights[InIndex] = 0.5f;
     MColumns.Categories[InIndex] = 1u;
@@ -135,25 +151,30 @@ bool DodPhysicsBackend::Initialize(const PhysicsDesc& InDesc)
     MEvents.clear();
     MEvents.reserve(std::max<std::uint32_t>(InDesc.maxContactEvents, 1u));
     ClearColumns();
-    MColumns.Entities.reserve(4096);
-    MColumns.Positions.reserve(4096);
-    MColumns.Velocities.reserve(4096);
-    MColumns.PreviousPositions.reserve(4096);
-    MColumns.Accelerations.reserve(4096);
-    MColumns.Rotations.reserve(4096);
-    MColumns.PreviousRotations.reserve(4096);
-    MColumns.AngularVelocities.reserve(4096);
-    MColumns.InverseMasses.reserve(4096);
-    MColumns.GravityScales.reserve(4096);
-    MColumns.HalfWidths.reserve(4096);
-    MColumns.HalfHeights.reserve(4096);
-    MColumns.Categories.reserve(4096);
-    MColumns.Masks.reserve(4096);
-    MColumns.Flags.reserve(4096);
-    MColumns.Types.reserve(4096);
-    MColumns.Sensors.reserve(4096);
-    MColumns.ContactEvents.reserve(4096);
-    MColumns.SleepFrames.reserve(4096);
+    // Reserve for the declared body budget once; the columns then grow together.
+    const std::size_t ScopedReserve =
+        std::min<std::size_t>(std::max<std::uint32_t>(InDesc.bodyBudget, 4096u), 65536u);
+    MColumns.Entities.reserve(ScopedReserve);
+    MColumns.Positions.reserve(ScopedReserve);
+    MColumns.Velocities.reserve(ScopedReserve);
+    MColumns.PreviousPositions.reserve(ScopedReserve);
+    MColumns.Accelerations.reserve(ScopedReserve);
+    MColumns.Rotations.reserve(ScopedReserve);
+    MColumns.PreviousRotations.reserve(ScopedReserve);
+    MColumns.AngularVelocities.reserve(ScopedReserve);
+    MColumns.InverseMasses.reserve(ScopedReserve);
+    MColumns.GravityScales.reserve(ScopedReserve);
+    MColumns.LinearDampings.reserve(ScopedReserve);
+    MColumns.AngularDampings.reserve(ScopedReserve);
+    MColumns.HalfWidths.reserve(ScopedReserve);
+    MColumns.HalfHeights.reserve(ScopedReserve);
+    MColumns.Categories.reserve(ScopedReserve);
+    MColumns.Masks.reserve(ScopedReserve);
+    MColumns.Flags.reserve(ScopedReserve);
+    MColumns.Types.reserve(ScopedReserve);
+    MColumns.Sensors.reserve(ScopedReserve);
+    MColumns.ContactEvents.reserve(ScopedReserve);
+    MColumns.SleepFrames.reserve(ScopedReserve);
     MBodyTimeScale.clear();
     MFreeIndices.clear();
     MEntityToIndex.clear();
@@ -245,8 +266,13 @@ void DodPhysicsBackend::EnsureBodies(Ecs::Registry& InRegistry)
             MColumns.Types[ScopedExisting] = ScopedBody.Type;
             MColumns.Flags[ScopedExisting] = ScopedBody.Flags;
             MColumns.GravityScales[ScopedExisting] = ScopedBody.GravityScale;
+            MColumns.LinearDampings[ScopedExisting] = std::max(ScopedBody.LinearDamping, 0.0f);
+            MColumns.AngularDampings[ScopedExisting] = std::max(ScopedBody.AngularDamping, 0.0f);
             MColumns.HalfWidths[ScopedExisting] = std::max(ScopedCollider.HalfExtents.X, 0.001f);
             MColumns.HalfHeights[ScopedExisting] = std::max(ScopedCollider.HalfExtents.Y, 0.001f);
+            MColumns.InverseMasses[ScopedExisting] =
+                InverseMassFor(ScopedBody.Type, ScopedCollider.Density, MColumns.HalfWidths[ScopedExisting],
+                               MColumns.HalfHeights[ScopedExisting]);
             MColumns.Categories[ScopedExisting] = ScopedCollider.CategoryBits;
             MColumns.Masks[ScopedExisting] = ScopedCollider.MaskBits;
             MColumns.Sensors[ScopedExisting] = ScopedCollider.Sensor ? 1u : 0u;
@@ -265,6 +291,8 @@ void DodPhysicsBackend::EnsureBodies(Ecs::Registry& InRegistry)
         MColumns.Types[ScopedIndex] = ScopedBody.Type;
         MColumns.Flags[ScopedIndex] = ScopedBody.Flags;
         MColumns.GravityScales[ScopedIndex] = ScopedBody.GravityScale;
+        MColumns.LinearDampings[ScopedIndex] = std::max(ScopedBody.LinearDamping, 0.0f);
+        MColumns.AngularDampings[ScopedIndex] = std::max(ScopedBody.AngularDamping, 0.0f);
         MColumns.HalfWidths[ScopedIndex] = std::max(ScopedCollider.HalfExtents.X, 0.001f);
         MColumns.HalfHeights[ScopedIndex] = std::max(ScopedCollider.HalfExtents.Y, 0.001f);
         MColumns.Categories[ScopedIndex] = ScopedCollider.CategoryBits;
@@ -272,7 +300,8 @@ void DodPhysicsBackend::EnsureBodies(Ecs::Registry& InRegistry)
         MColumns.Sensors[ScopedIndex] = ScopedCollider.Sensor ? 1u : 0u;
         MColumns.ContactEvents[ScopedIndex] = ScopedCollider.ContactEvents ? 1u : 0u;
         MColumns.InverseMasses[ScopedIndex] =
-            ScopedBody.Type == BodyType::Dynamic ? 1.0f / std::max(ScopedCollider.Density, 0.001f) : 0.0f;
+            InverseMassFor(ScopedBody.Type, ScopedCollider.Density, MColumns.HalfWidths[ScopedIndex],
+                           MColumns.HalfHeights[ScopedIndex]);
         MEntityToIndex[ScopedEntity] = ScopedIndex;
         ScopedBody.Body = static_cast<std::uint64_t>(ScopedIndex) + 1u;
         ScopedCollider.Shape = 0;
@@ -325,8 +354,22 @@ void DodPhysicsBackend::Step(Ecs::Registry& InRegistry, float InFixedDt)
             MColumns.SleepFrames[ScopedIndex] = 0;
             continue;
         }
-        if (MColumns.Types[ScopedIndex] != BodyType::Dynamic ||
-            (MColumns.Flags[ScopedIndex] & RigidBodyEnabled) == 0)
+        if ((MColumns.Flags[ScopedIndex] & RigidBodyEnabled) == 0)
+        {
+            MColumns.Accelerations[ScopedIndex] = Vector2D{};
+            continue;
+        }
+        if (MColumns.Types[ScopedIndex] == BodyType::Kinematic)
+        {
+            // Box2D moves kinematic bodies by their velocity and ignores gravity
+            // and forces; the DOD backend must do the same for transports.
+            const float ScopedStepDt = ScopedDt * ScopedScale;
+            MColumns.Positions[ScopedIndex] += MColumns.Velocities[ScopedIndex] * ScopedStepDt;
+            MColumns.Rotations[ScopedIndex] += MColumns.AngularVelocities[ScopedIndex] * ScopedStepDt;
+            MColumns.Accelerations[ScopedIndex] = Vector2D{};
+            continue;
+        }
+        if (MColumns.Types[ScopedIndex] != BodyType::Dynamic)
         {
             MColumns.Accelerations[ScopedIndex] = Vector2D{};
             continue;
@@ -344,9 +387,20 @@ void DodPhysicsBackend::Step(Ecs::Registry& InRegistry, float InFixedDt)
         MColumns.Velocities[ScopedIndex] +=
             (ScopedGravity * MColumns.GravityScales[ScopedIndex] + MColumns.Accelerations[ScopedIndex]) *
             ScopedStepDt;
+        const float ScopedLinearDamping = std::max(MColumns.LinearDampings[ScopedIndex], 0.0f);
+        MColumns.Velocities[ScopedIndex] *= 1.0f / (1.0f + ScopedLinearDamping * ScopedStepDt);
         MColumns.Accelerations[ScopedIndex] = Vector2D{};
         MColumns.Positions[ScopedIndex] += MColumns.Velocities[ScopedIndex] * ScopedStepDt;
-        MColumns.Rotations[ScopedIndex] += MColumns.AngularVelocities[ScopedIndex] * ScopedStepDt;
+        if ((MColumns.Flags[ScopedIndex] & RigidBodyFixedRotation) == 0)
+        {
+            const float ScopedAngularDamping = std::max(MColumns.AngularDampings[ScopedIndex], 0.0f);
+            MColumns.AngularVelocities[ScopedIndex] *= 1.0f / (1.0f + ScopedAngularDamping * ScopedStepDt);
+            MColumns.Rotations[ScopedIndex] += MColumns.AngularVelocities[ScopedIndex] * ScopedStepDt;
+        }
+        else
+        {
+            MColumns.AngularVelocities[ScopedIndex] = 0.0f;
+        }
     }
 
     constexpr float kCellSize = 64.0f;
@@ -551,43 +605,55 @@ void DodPhysicsBackend::Resolve(std::uint32_t InA, std::uint32_t InB) noexcept
         ScopedDepth = ScopedOverlapY;
     }
 
-    const float ScopedInvMassSum = MColumns.InverseMasses[InA] + MColumns.InverseMasses[InB];
+    constexpr float kWakeImpactSpeed = 32.0f;
+    const Vector2D ScopedRelative = MColumns.Velocities[InB] - MColumns.Velocities[InA];
+    const float ScopedNormalSpeed = ScopedRelative.Dot(ScopedNormal);
+    const auto ScopedSleeping = [this](std::uint32_t InIndex) noexcept
+    {
+        return MColumns.Types[InIndex] == BodyType::Dynamic &&
+               MColumns.SleepFrames[InIndex] >= kSleepFrameThreshold;
+    };
+    bool ScopedSleepingA = ScopedSleeping(InA);
+    bool ScopedSleepingB = ScopedSleeping(InB);
+    // Only a real impact wakes a resting body. The per-step gravity correction
+    // also produces a small negative normal speed, and waking on it would prevent
+    // a body that rests on the ground from ever sleeping.
+    if ((ScopedSleepingA || ScopedSleepingB) && ScopedNormalSpeed < -kWakeImpactSpeed)
+    {
+        if (ScopedSleepingA)
+        {
+            MColumns.SleepFrames[InA] = 0;
+            ScopedSleepingA = false;
+        }
+        if (ScopedSleepingB)
+        {
+            MColumns.SleepFrames[InB] = 0;
+            ScopedSleepingB = false;
+        }
+    }
+    // A resting body that stayed asleep acts as an anchor: positional correction
+    // and impulses must not move it without waking it first.
+    const float ScopedInvMassA = ScopedSleepingA ? 0.0f : MColumns.InverseMasses[InA];
+    const float ScopedInvMassB = ScopedSleepingB ? 0.0f : MColumns.InverseMasses[InB];
+    const float ScopedInvMassSum = ScopedInvMassA + ScopedInvMassB;
     if (ScopedInvMassSum <= 0.0f)
     {
         return;
     }
     const Vector2D ScopedCorrection = ScopedNormal * (ScopedDepth / ScopedInvMassSum);
-    MColumns.Positions[InA] -= ScopedCorrection * MColumns.InverseMasses[InA];
-    MColumns.Positions[InB] += ScopedCorrection * MColumns.InverseMasses[InB];
-
-    const Vector2D ScopedRelative = MColumns.Velocities[InB] - MColumns.Velocities[InA];
-    const float ScopedNormalSpeed = ScopedRelative.Dot(ScopedNormal);
+    MColumns.Positions[InA] -= ScopedCorrection * ScopedInvMassA;
+    MColumns.Positions[InB] += ScopedCorrection * ScopedInvMassB;
     if (ScopedNormalSpeed < 0.0f)
     {
         const float ScopedImpulse = -ScopedNormalSpeed / ScopedInvMassSum;
-        MColumns.Velocities[InA] -= ScopedNormal * (ScopedImpulse * MColumns.InverseMasses[InA]);
-        MColumns.Velocities[InB] += ScopedNormal * (ScopedImpulse * MColumns.InverseMasses[InB]);
+        MColumns.Velocities[InA] -= ScopedNormal * (ScopedImpulse * ScopedInvMassA);
+        MColumns.Velocities[InB] += ScopedNormal * (ScopedImpulse * ScopedInvMassB);
     }
     if (MColumns.ContactEvents[InA] != 0 || MColumns.ContactEvents[InB] != 0)
     {
         MCurrentContacts.push_back(ContactRecord{PairKey(MColumns.Entities[InA], MColumns.Entities[InB]),
                                                  (MColumns.Positions[InA] + MColumns.Positions[InB]) * 0.5f,
                                                  ScopedNormal, ScopedNormalSpeed});
-    }
-    // Only a real impact wakes a resting body. The per-step gravity correction
-    // also produces a small negative normal speed, and waking on it would prevent
-    // a body that rests on the ground from ever sleeping.
-    constexpr float kWakeImpactSpeed = 32.0f;
-    if (ScopedNormalSpeed < -kWakeImpactSpeed)
-    {
-        if (MColumns.Types[InA] == BodyType::Dynamic)
-        {
-            MColumns.SleepFrames[InA] = 0;
-        }
-        if (MColumns.Types[InB] == BodyType::Dynamic)
-        {
-            MColumns.SleepFrames[InB] = 0;
-        }
     }
 }
 
@@ -770,9 +836,9 @@ void DodPhysicsBackend::ApplyAcceleration(Ecs::Registry& InRegistry, Entity InEn
         return;
     }
     MColumns.Accelerations[ScopedIndex] += InAcceleration * ScopedScale;
-    MColumns.SleepFrames[ScopedIndex] = 0;
     if (InWake)
     {
+        MColumns.SleepFrames[ScopedIndex] = 0;
         MColumns.Flags[ScopedIndex] |= RigidBodyAwake;
     }
 }

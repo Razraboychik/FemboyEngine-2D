@@ -43,18 +43,36 @@ bool GameplayEffectSystem::AddDef(const GameplayEffectDef& InDef) noexcept
     {
         return false;
     }
-    MDefs[MDefCount++] = InDef;
+    const std::uint32_t ScopedSlot = MDefCount++;
+    MDefs[ScopedSlot] = InDef;
+    std::uint32_t ScopedCursor = (InDef.Id * 2654435761u) & (static_cast<std::uint32_t>(MDefIndex.size()) - 1u);
+    while (MDefIndex[ScopedCursor].Id != 0)
+    {
+        ScopedCursor = (ScopedCursor + 1u) & (static_cast<std::uint32_t>(MDefIndex.size()) - 1u);
+    }
+    MDefIndex[ScopedCursor] = DefIndexEntry{InDef.Id, ScopedSlot};
     return true;
 }
 
 const GameplayEffectDef* GameplayEffectSystem::FindDef(std::uint32_t InId) const noexcept
 {
-    for (std::uint32_t ScopedI = 0; ScopedI < MDefCount; ++ScopedI)
+    if (InId == 0)
     {
-        if (MDefs[ScopedI].Id == InId)
+        return nullptr;
+    }
+    std::uint32_t ScopedCursor = (InId * 2654435761u) & (static_cast<std::uint32_t>(MDefIndex.size()) - 1u);
+    for (std::uint32_t ScopedProbe = 0; ScopedProbe < MDefIndex.size(); ++ScopedProbe)
+    {
+        const DefIndexEntry& ScopedEntry = MDefIndex[ScopedCursor];
+        if (ScopedEntry.Id == InId)
         {
-            return &MDefs[ScopedI];
+            return &MDefs[ScopedEntry.Slot];
         }
+        if (ScopedEntry.Id == 0)
+        {
+            return nullptr;
+        }
+        ScopedCursor = (ScopedCursor + 1u) & (static_cast<std::uint32_t>(MDefIndex.size()) - 1u);
     }
     return nullptr;
 }
@@ -64,6 +82,7 @@ void GameplayEffectSystem::PushEvent(Entity InTarget, Entity InSource, std::uint
 {
     if (MEventCount >= kMaxGameplayEffectEvents)
     {
+        ++MDroppedEvents;
         return;
     }
     GameplayEffectEvent& ScopedEvent = MEvents[MEventCount++];
@@ -136,6 +155,7 @@ bool GameplayEffectSystem::Apply(Registry& InRegistry, Entity InTarget, std::uin
     {
         if (ScopedEffects->Count >= kMaxActiveGameplayEffects)
         {
+            ++MDroppedApplications;
             return false;
         }
         ActiveGameplayEffect& ScopedActive = ScopedEffects->Active[ScopedEffects->Count++];

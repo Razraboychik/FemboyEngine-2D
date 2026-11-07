@@ -56,6 +56,8 @@ struct AudioSourceComponent
     Vector2D Position{};
     float Volume = 1.0f;
     float Pitch = 1.0f;
+    // Distance where the spatial attenuation reaches zero.
+    float MaxDistance = 4096.0f;
     std::uint16_t BusID = kSfxBus;
     bool Loop = false;
     bool Playing = false;
@@ -248,8 +250,12 @@ private:
     std::uint32_t MOwnedPcmCount = 0;
 
     SourceRuntime MSources[kMaxAudioVoices]{};
+    // Legacy AudioSource keeps its handle in the component; this shadow table
+    // lets Update stop voices whose entity was destroyed.
+    SourceRuntime MLegacySources[kMaxAudioVoices]{};
     BusRuntime MBusRuntime[kMaxBuses]{};
     std::uint32_t MUpdateStamp = 0;
+    std::uint32_t MLegacyStamp = 0;
 };
 }
 
@@ -262,6 +268,7 @@ FBY_REFLECT_COMPONENT(Fby::AudioBusComponent, "AudioBusComponent", FBY_FIELD(Fby
 FBY_REFLECT_COMPONENT(
     Fby::AudioSourceComponent, "AudioSourceComponent", FBY_FIELD(Fby::AudioSourceComponent, Clip, UInt64),
     FBY_FIELD(Fby::AudioSourceComponent, Position, Vector2D), FBY_FIELD(Fby::AudioSourceComponent, Volume, Float),
-    FBY_FIELD(Fby::AudioSourceComponent, Pitch, Float), FBY_FIELD(Fby::AudioSourceComponent, BusID, UInt32),
+    FBY_FIELD(Fby::AudioSourceComponent, Pitch, Float), FBY_FIELD(Fby::AudioSourceComponent, MaxDistance, Float),
+    FBY_FIELD(Fby::AudioSourceComponent, BusID, UInt32),
     FBY_FIELD(Fby::AudioSourceComponent, Loop, Bool), FBY_FIELD(Fby::AudioSourceComponent, Playing, Bool),
     FBY_FIELD(Fby::AudioSourceComponent, Spatial, Bool))

@@ -91,6 +91,11 @@ public:
     {
         return MGroupCount;
     }
+    // Members whose detach request did not fit the fixed per-tick list.
+    [[nodiscard]] std::uint32_t DroppedDetaches() const noexcept
+    {
+        return MDroppedDetaches;
+    }
     [[nodiscard]] const TransportGroupState* Group(std::uint32_t InGroupId) const noexcept;
     [[nodiscard]] static TransportCapabilities CapabilitiesFor(const PhysicsSystem& InPhysics) noexcept;
 
@@ -119,7 +124,15 @@ protected:
                          Vector2D InVelocity) noexcept;
 
     std::array<TransportGroupState, kTransportMaxGroups> MGroups{};
+    struct GroupIndexEntry
+    {
+        std::uint32_t GroupId = 0;
+        std::uint16_t Slot = 0;
+    };
+    static constexpr std::uint32_t kGroupIndexSize = 2 * kTransportMaxGroups;
+    std::array<GroupIndexEntry, kGroupIndexSize> MGroupIndex{};
     std::uint32_t MGroupCount = 0;
+    std::uint32_t MDroppedDetaches = 0;
     PhysicsSystem* MPhysics = nullptr;
 };
 }

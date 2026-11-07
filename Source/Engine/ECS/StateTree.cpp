@@ -302,7 +302,7 @@ void RunTask(Ecs::Registry& InRegistry, Entity InEntity, StateTreeComponent& InS
         case StateTreeTaskKind::ActivateSkill:
         {
             AICommandComponent ScopedCommand = MakeCommand(AICommandKind::ActivateSkill, InState, ScopedTask, InNodeIndex);
-            ScopedCommand.Flags = ScopedTask.SkillSlot;
+            ScopedCommand.SkillSlot = ScopedTask.SkillSlot;
             ScopedCommand.Position = ResolveTargetPosition(InRegistry, InState);
             EmitCommand(InRegistry, InEntity, InCommands, ScopedCommand);
             return;

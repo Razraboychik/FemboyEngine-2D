@@ -207,7 +207,10 @@ enum class ScriptEvent : std::uint16_t
     Start = 0,
     Update = 1,
     FixedUpdate = 2,
-    Count = 3,
+    // Runs when the script component or its entity leaves the world; a program
+    // without a Destroy entry is a no-op.
+    Destroy = 3,
+    Count = 4,
 };
 
 [[nodiscard]] constexpr const char* ScriptEventName(ScriptEvent InEvent) noexcept
@@ -220,6 +223,8 @@ enum class ScriptEvent : std::uint16_t
             return "Update";
         case ScriptEvent::FixedUpdate:
             return "FixedUpdate";
+        case ScriptEvent::Destroy:
+            return "Destroy";
         case ScriptEvent::Count:
             break;
     }

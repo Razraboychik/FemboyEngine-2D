@@ -77,7 +77,8 @@ fixed SPSC ring; `VideoSystem` (PostUpdate) uploads the newest due frame with
 `RHI::UpdateTextureArrayLayer` into an RGBA8 texture array (one layer per pooled
 frame). YUV→RGBA is BT.709, alpha is composited from the separate VP9 alpha
 plane. `VideoStreamComponent` is a trivial component; decoder state lives in the
-system's fixed slots.
+system's fixed slots, and the component's stream id ties it to the player slot
+that opened it.
 
 `FrameExporter` renders a viewport offscreen with `RenderToTarget`, captures it
 with `RHI::CaptureRenderTarget` (host readback, top row first) and appends the

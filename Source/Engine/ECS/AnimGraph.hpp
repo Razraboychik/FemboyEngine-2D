@@ -110,7 +110,23 @@ struct AnimRestBone
 
 static_assert(sizeof(AnimRestBone) == 16);
 
-// The component the specification calls for, plus the data the two bridges need.
+// Cold authored data: the compiled graph. Many entities that play the same
+// graph can share the same definition, while the hot component below stays
+// small and cache-friendly.
+struct AnimGraphDefinitionComponent
+{
+    // Authored transitions, evaluated in array order, first match wins
+    std::array<AnimTransition, kMaxAnimTransitions> Transitions{};
+    std::array<AnimClip, kMaxAnimClips> Clips{};
+    std::uint32_t TransitionCount = 0;
+    std::uint32_t ClipCount = 0;
+};
+
+static_assert(std::is_trivially_copyable_v<AnimGraphDefinitionComponent>);
+static_assert(std::is_standard_layout_v<AnimGraphDefinitionComponent>);
+
+// Hot runtime state. The animation tick reads this component; the definition is
+// touched only when a transition or clip is resolved.
 struct AnimStateComponent
 {
     // Logical state. 0 = rest pose, no clip.
@@ -119,16 +135,10 @@ struct AnimStateComponent
     std::uint64_t PreviousState = 0;
     // Seconds spent in CurrentState; reset on every transition
     float StateTime = 0.0f;
-    // Diagnostics, never gameplay input
+    // Diagnostics: transitions fired so far
     std::uint32_t TransitionCount = 0;
-    // Authored transitions, evaluated in array order, first match wins
-    std::array<AnimTransition, kMaxAnimTransitions> Transitions{};
-
-    std::array<AnimClip, kMaxAnimClips> Clips{};
     // Float parameters the conditions read (speed, health, aim pitch, ...)
     std::array<float, kMaxAnimParams> Floats{};
-    // Rest pose captured from the skeleton on the first driven tick
-    std::array<AnimRestBone, kMaxBones> RestPose{};
 
     // Cross-fade timing
     float BlendDuration = 0.0f;
@@ -136,32 +146,25 @@ struct AnimStateComponent
     // 0 = previous pose, 1 = current pose
     float BlendWeight = 1.0f;
 
-    // Diagnostics, never gameplay input
-    std::uint32_t ClipCount = 0;
     std::uint16_t LastTransition = kNoAnimTransition;
-    bool RestPoseCaptured = false;
-
-    // Cache-line tail padding. The component is stored once per animated entity
-    std::array<std::byte, 48> CacheLinePadding{};
 };
 
 static_assert(std::is_trivially_copyable_v<AnimStateComponent>);
 static_assert(std::is_standard_layout_v<AnimStateComponent>);
+// The hot component must stay far below the old 4 KiB record; authored tables
+// live in AnimGraphDefinitionComponent.
+static_assert(sizeof(AnimStateComponent) <= 2048, "AnimStateComponent grew: move cold fields to the definition");
 static_assert(offsetof(AnimStateComponent, CurrentState) == 0);
 static_assert(offsetof(AnimStateComponent, PreviousState) == 8);
 static_assert(offsetof(AnimStateComponent, StateTime) == 16);
 static_assert(offsetof(AnimStateComponent, TransitionCount) == 20);
-static_assert(offsetof(AnimStateComponent, Transitions) == 24);
-static_assert(sizeof(AnimStateComponent) % 64 == 0,
-              "AnimStateComponent must end on a cache-line boundary");
-static_assert(sizeof(AnimStateComponent) == 4096,
-              "AnimStateComponent layout changed: update CacheLinePadding and the audit note");
 
 // Pure helpers (unit-testable without a registry)
-[[nodiscard]] const AnimClip* AnimGraphFindClip(const AnimStateComponent& InState, std::uint64_t InStateId) noexcept;
+[[nodiscard]] const AnimClip* AnimGraphFindClip(const AnimGraphDefinitionComponent& InDefinition,
+                                                std::uint64_t InStateId) noexcept;
 
-// Captures the skeleton's current local pose as the rest pose if it has not been
-void AnimGraphCaptureRestPose(AnimStateComponent& InState, const SkeletonComponent& InSkeleton) noexcept;
+// Captures the skeleton's current local pose as its rest pose on the first tick.
+void AnimGraphCaptureRestPose(SkeletonComponent& InSkeleton) noexcept;
 
 // True when every condition in the transition holds. Tag conditions read the
 // entity's GameplayTagsComponent and resolve hierarchy through the registry.
@@ -170,11 +173,13 @@ void AnimGraphCaptureRestPose(AnimStateComponent& InState, const SkeletonCompone
                                          const GameplayTagRegistry* InTagRegistry) noexcept;
 
 // Writes the blended local pose into the skeleton and runs one SkeletalAnimation evaluation,
-void AnimGraphApplySkeletal(AnimStateComponent& InState, SkeletonComponent& InSkeleton) noexcept;
+void AnimGraphApplySkeletal(AnimStateComponent& InState, const AnimGraphDefinitionComponent& InDefinition,
+                            SkeletonComponent& InSkeleton) noexcept;
 
 // Switches the SpriteAnimation clip to the current state's frame range. The UV rect is
-void AnimGraphApplySpriteClip(const AnimStateComponent& InState, SpriteAnimationComponent& InSpriteAnimation,
-                         const SpriteSheetComponent* InGrid, Sprite2D* InSprite) noexcept;
+void AnimGraphApplySpriteClip(const AnimStateComponent& InState, const AnimGraphDefinitionComponent& InDefinition,
+                              SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid,
+                              Sprite2D* InSprite) noexcept;
 
 // System
 class AnimGraphSystem
@@ -212,8 +217,7 @@ FBY_REFLECT_COMPONENT(Fby::AnimStateComponent, "AnimStateComponent",
                       FBY_FIELD(Fby::AnimStateComponent, BlendDuration, Float),
                       FBY_FIELD(Fby::AnimStateComponent, BlendTime, Float),
                       FBY_FIELD(Fby::AnimStateComponent, BlendWeight, Float),
-                      FBY_FIELD(Fby::AnimStateComponent, TransitionCount, UInt32),
-                      FBY_FIELD(Fby::AnimStateComponent, ClipCount, UInt32))
+                      FBY_FIELD(Fby::AnimStateComponent, TransitionCount, UInt32))
 
 // Authoring-side tables. These types are not components, but the animation
 FBY_REFLECT_COMPONENT(Fby::AnimTransition, "AnimTransition",

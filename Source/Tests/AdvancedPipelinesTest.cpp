@@ -93,6 +93,15 @@ bool SinkTile(void* InUser, const Fby::Rhi::VirtualTextureTileUpload& InUpload) 
     return true;
 }
 
+void SettleVirtualTexture(Fby::Rhi::VirtualTextureSystem& InSystem)
+{
+    InSystem.WaitForPendingLoads();
+    for (std::uint32_t ScopedI = 0; ScopedI < 128 && InSystem.PendingLoadCount() > 0; ++ScopedI)
+    {
+        InSystem.PollLoads();
+    }
+}
+
 void TestVirtualTexture()
 {
     namespace fs = std::filesystem;
@@ -123,6 +132,10 @@ void TestVirtualTexture()
 
             const Fby::Rhi::VirtualTextureCamera ScopedCamera{{128.0f, 128.0f}, {256.0f, 256.0f}, 1.0f, 0.0f};
             ScopedVirtual->Update(ScopedCamera);
+            SettleVirtualTexture(*ScopedVirtual);
+            std::fprintf(stderr, "DEBUG vt visible=%u uploads=%u resident=%u sink=%u\n",
+                         ScopedVirtual->Stats().visibleTiles, ScopedVirtual->Stats().uploads,
+                         ScopedVirtual->ResidentTileCount(), ScopedSink.uploads);
             FBY_CHECK(ScopedVirtual->Stats().visibleTiles == 16);
             FBY_CHECK(ScopedSink.uploads == 16);
             FBY_CHECK(ScopedVirtual->ResidentTileCount() == 16);
@@ -132,11 +145,13 @@ void TestVirtualTexture()
             FBY_CHECK(ScopedAddress.slotX < 4 && ScopedAddress.slotY < 4);
 
             ScopedVirtual->Update(ScopedCamera);
+            SettleVirtualTexture(*ScopedVirtual);
             FBY_CHECK(ScopedSink.uploads == 16);
             FBY_CHECK(ScopedVirtual->Stats().uploads == 0);
 
             const Fby::Rhi::VirtualTextureCamera ScopedMoved{{640.0f, 640.0f}, {256.0f, 256.0f}, 1.0f, 0.0f};
             ScopedVirtual->Update(ScopedMoved);
+            SettleVirtualTexture(*ScopedVirtual);
             FBY_CHECK(ScopedVirtual->Stats().visibleTiles == 16);
             FBY_CHECK(ScopedVirtual->Stats().uploads > 0);
             FBY_CHECK(ScopedVirtual->ResidentTileCount() <= 2 * 16);

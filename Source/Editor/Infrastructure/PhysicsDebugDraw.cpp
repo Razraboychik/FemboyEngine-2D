@@ -226,25 +226,25 @@ void PhysicsDebugVisualizer::BuildCloth(Ecs::SystemContext& InContext, std::uint
         }
         const ClothInfo ScopedInfo = InContext.cloth->Info(ScopedHandle);
         const std::span<const Vector2D> ScopedParticles = InContext.cloth->ParticlePositions(ScopedHandle);
-        if (ScopedInfo.columns < 2 || ScopedInfo.rows < 2 ||
-            ScopedParticles.size() < static_cast<std::size_t>(ScopedInfo.columns) * ScopedInfo.rows)
+        if (ScopedInfo.Columns < 2 || ScopedInfo.Rows < 2 ||
+            ScopedParticles.size() < static_cast<std::size_t>(ScopedInfo.Columns) * ScopedInfo.Rows)
         {
             continue;
         }
         const auto ScopedAt = [&](std::uint32_t InX, std::uint32_t InY) -> Vector2D
         {
-            return ScopedParticles[static_cast<std::size_t>(InY) * ScopedInfo.columns + InX];
+            return ScopedParticles[static_cast<std::size_t>(InY) * ScopedInfo.Columns + InX];
         };
-        for (std::uint32_t ScopedY = 0; ScopedY < ScopedInfo.rows; ++ScopedY)
+        for (std::uint32_t ScopedY = 0; ScopedY < ScopedInfo.Rows; ++ScopedY)
         {
-            for (std::uint32_t ScopedX = 0; ScopedX + 1 < ScopedInfo.columns; ++ScopedX)
+            for (std::uint32_t ScopedX = 0; ScopedX + 1 < ScopedInfo.Columns; ++ScopedX)
             {
                 AddLine(ScopedAt(ScopedX, ScopedY), ScopedAt(ScopedX + 1, ScopedY), kColorCloth, 1.0f);
             }
         }
-        for (std::uint32_t ScopedX = 0; ScopedX < ScopedInfo.columns; ++ScopedX)
+        for (std::uint32_t ScopedX = 0; ScopedX < ScopedInfo.Columns; ++ScopedX)
         {
-            for (std::uint32_t ScopedY = 0; ScopedY + 1 < ScopedInfo.rows; ++ScopedY)
+            for (std::uint32_t ScopedY = 0; ScopedY + 1 < ScopedInfo.Rows; ++ScopedY)
             {
                 AddLine(ScopedAt(ScopedX, ScopedY), ScopedAt(ScopedX, ScopedY + 1), kColorCloth, 1.0f);
             }
@@ -262,10 +262,10 @@ void PhysicsDebugVisualizer::BuildSdf(std::uint32_t InFlags, const SdfCollisionS
     for (const SdfContact& ScopedContact : InSdf->Contacts())
     {
         // The push-out vector is drawn from the contact point along the field
-        const float ScopedLength = std::max(6.0f, ScopedContact.penetration);
-        const Vector2D ScopedTip = ScopedContact.point + ScopedContact.normal * ScopedLength;
-        AddLine(ScopedContact.point, ScopedTip, kColorSdfNormal, 2.0f);
-        AddCircle(ScopedContact.point, 2.5f, kColorSdfNormal, 6);
+        const float ScopedLength = std::max(6.0f, ScopedContact.Penetration);
+        const Vector2D ScopedTip = ScopedContact.Point + ScopedContact.Normal * ScopedLength;
+        AddLine(ScopedContact.Point, ScopedTip, kColorSdfNormal, 2.0f);
+        AddCircle(ScopedContact.Point, 2.5f, kColorSdfNormal, 6);
         ++MFrame.sdfContacts;
     }
 }

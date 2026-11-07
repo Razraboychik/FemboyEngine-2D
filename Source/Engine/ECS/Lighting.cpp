@@ -1,5 +1,6 @@
 // FemboyEngine2D - 2D lighting resolution.
 #include "Engine/ECS/Lighting.hpp"
+#include "Engine/ECS/LightSource.hpp"
 
 #include "Engine/ECS/LightGrid.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
@@ -181,11 +182,22 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
                                   const SdfField* InField, const SdfBrickMap* InBricks,
                                   const SdfGiVolume* InGi) noexcept
 {
+    // Two solvers write the same result component. When the unified lights own
+    // the scene, the legacy pass must not stamp or sweep their results.
+    if (InRegistry.view<Light2DComponent>().empty() && !InRegistry.view<LightSourceComponent>().empty())
+    {
+        return 0;
+    }
     std::array<LightSample, kMaxLightSamples> ScopedLights{};
     std::uint32_t ScopedLightCount = 0;
-    // Result components are derived state: clear first so a sprite that loses its
-    // light target (or a removed light) cannot keep a stale tint.
-    InRegistry.clear<Light2DResultComponent>();
+    // Results are stamped instead of cleared: an unchanged target keeps its
+    // component, and a stale stamp is swept after the pass.
+    ++MFrame;
+    if (MFrame == 0)
+    {
+        MFrame = 1;
+    }
+    const SdfField* ScopedStatic = InField != nullptr ? InField : MSdfField;
     const SdfBrickMap* ScopedBricks = InBricks != nullptr ? InBricks : MSdfBrickMap;
     const SdfGiVolume* ScopedGi = InGi != nullptr ? InGi : MSdfGiVolume;
     if (MSdfGiVolume != nullptr && ScopedBricks != nullptr && ScopedBricks->BrickCount() > 0)
@@ -216,8 +228,8 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
         ScopedSample.Owner = ScopedEntity;
     }
     CombinedField ScopedField;
-    ScopedField.Static = InField;
-    ScopedField.Bricks = InBricks;
+    ScopedField.Static = ScopedStatic;
+    ScopedField.Bricks = ScopedBricks;
     ScopedField.Occluders = ScopedOccluders.data();
     ScopedField.OccluderCount = ScopedOccluderCount;
     const bool ScopedHasField = ScopedField.Active();
@@ -352,8 +364,27 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
     // and the system never touches Sprite2D::Color. The extract composes.
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedLit && ScopedI < kMaxLitSprites; ++ScopedI)
     {
-        InRegistry.emplace_or_replace<Light2DResultComponent>(ScopedResults[ScopedI].entity,
-                                                              Light2DResultComponent{ScopedResults[ScopedI].color});
+        Light2DResultComponent& ScopedResult =
+            InRegistry.get_or_emplace<Light2DResultComponent>(ScopedResults[ScopedI].entity);
+        ScopedResult.Color = ScopedResults[ScopedI].color;
+        ScopedResult.Frame = MFrame;
+    }
+    // Remove tints this pass did not touch (lost target, removed light, or a
+    // frame produced by the other solver).
+    std::array<Entity, kMaxLitSprites> ScopedStale{};
+    std::uint32_t ScopedStaleCount = 0;
+    auto ScopedResultView = InRegistry.view<Light2DResultComponent>();
+    for (const Entity ScopedEntity : ScopedResultView)
+    {
+        if (ScopedResultView.get<Light2DResultComponent>(ScopedEntity).Frame != MFrame &&
+            ScopedStaleCount < ScopedStale.size())
+        {
+            ScopedStale[ScopedStaleCount++] = ScopedEntity;
+        }
+    }
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedStaleCount; ++ScopedI)
+    {
+        InRegistry.remove<Light2DResultComponent>(ScopedStale[ScopedI]);
     }
     MLitCount = ScopedLit;
     MShadowSamples = ScopedShadowSamples;
@@ -385,15 +416,21 @@ bool BuildSdfLightingFrame(Ecs::Registry& InRegistry, const SdfField* InField, R
     {
         return false;
     }
+    // The sun is a scene singleton; a duplicate must still resolve the same way
+    // regardless of the EnTT view order.
     const SdfSunComponent* ScopedSun = nullptr;
+    Entity ScopedSunOwner = entt::null;
     auto ScopedSunView = InRegistry.view<SdfSunComponent>();
     for (auto [ScopedEntity, ScopedComponent] : ScopedSunView.each())
     {
-        (void)ScopedEntity;
-        if ((ScopedComponent.Flags & kSdfSunFlagDisabled) == 0)
+        if ((ScopedComponent.Flags & kSdfSunFlagDisabled) != 0)
         {
+            continue;
+        }
+        if (ScopedSun == nullptr || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedSunOwner))
+        {
+            ScopedSunOwner = ScopedEntity;
             ScopedSun = &ScopedComponent;
-            break;
         }
     }
     if (ScopedSun == nullptr)
@@ -418,7 +455,8 @@ bool BuildSdfLightingFrame(Ecs::Registry& InRegistry, const SdfField* InField, R
     // version by swapping the field (new pointer/dimensions).
     const std::uint64_t ScopedPointer = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(InField->samples));
     OutFrame->fieldVersion = ScopedPointer ^ (static_cast<std::uint64_t>(InField->width) << 32) ^
-                             static_cast<std::uint64_t>(InField->height);
+                             static_cast<std::uint64_t>(InField->height) ^
+                             (static_cast<std::uint64_t>(InField->version) << 48);
 
     std::uint32_t ScopedCount = 0;
     auto ScopedOccluderView = InRegistry.view<Transform2D, Light2DOccluderComponent>();
