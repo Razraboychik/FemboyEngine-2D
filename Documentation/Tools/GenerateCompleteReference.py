@@ -1238,38 +1238,42 @@ EXTRA_SECTIONS: list[dict] = [
                      B("Opaque logical state id. 0 = rest pose; gameplay owns the numbering.",
                        "Непрозрачный логический id состояния. 0 = rest-поза; нумерация принадлежит геймплею.")],
                     [B("PreviousState", "PreviousState"), B("uint64_t", "uint64_t"),
-                     B("Source pose of the active cross-fade.",
-                       "Исходная поза активного кросс-фейда.")],
+                     B("Source pose of the active cross-fade.", "Исходная поза активного кросс-фейда.")],
                     [B("StateTime", "StateTime"), B("float", "float"),
                      B("Seconds in the current state; reset on every fired transition.",
                        "Секунды в текущем состоянии; сбрасывается при каждом переходе.")],
                     [B("TransitionCount", "TransitionCount"), B("uint32_t", "uint32_t"),
-                     B("Diagnostics. Placed at offset 20 to fill the pad before the 8-byte-aligned "
-                       "transition array.",
-                       "Диагностика. Размещено по смещению 20, чтобы заполнить паддинг перед массивом "
-                       "переходов с выравниванием 8.")],
+                     B("Diagnostics: transitions fired so far.", "Диагностика: сколько переходов уже сработало.")],
+                    [B("Floats[8]", "Floats[8]"), B("float", "float"),
+                     B("Float parameters (speed, health, aim) read by the transition conditions.",
+                       "Float-параметры (скорость, здоровье, прицел), читаемые условиями переходов.")],
+                    [B("BlendDuration / BlendTime / BlendWeight", "BlendDuration / BlendTime / BlendWeight"),
+                     B("float", "float"),
+                     B("Cross-fade timing and the eased weight the SkeletalAnimation bridge applies.",
+                       "Тайминг кросс-фейда и сглаженный вес, который применяет мост SkeletalAnimation.")],
+                    [B("LastTransition", "LastTransition"), B("uint16_t", "uint16_t"),
+                     B("Index of the last fired transition, or kNoAnimTransition.",
+                       "Индекс последнего сработавшего перехода или kNoAnimTransition.")],
+                ],
+            },
+            {
+                "type": "table",
+                "headers": [B("AnimGraphDefinitionComponent field", "Поле AnimGraphDefinitionComponent"),
+                            B("Type", "Тип"), B("Role", "Назначение")],
+                "rows": [
                     [B("Transitions[8]", "Transitions[8]"), B("AnimTransition", "AnimTransition"),
                      B("Authored transitions, evaluated in array order; first match wins. Inert when "
                        "Conditions == AnimConditionNone.",
                        "Авторские переходы, перебираются по порядку; побеждает первое совпадение. Инертны "
                        "при Conditions == AnimConditionNone.")],
                     [B("Clips[8] / ClipCount", "Clips[8] / ClipCount"), B("AnimClip", "AnimClip"),
-                     B("Per-entity clip table: bone keys plus the SpriteAnimation frame range for the same state.",
-                       "Таблица клипов сущности: ключи костей плюс диапазон кадров SpriteAnimation для того же состояния.")],
-                    [B("Floats[8]", "Floats[8]"), B("float", "float"),
-                     B("Float parameters (speed, health, aim) read by the transition conditions.",
-                       "Float-параметры (скорость, здоровье, прицел), читаемые условиями переходов.")],
-                    [B("RestPose[128]", "RestPose[128]"), B("AnimRestBone", "AnimRestBone"),
-                     B("Captured once from the skeleton; a clip only authors the bones it moves.",
-                       "Снимается один раз со скелета; клип описывает только те кости, которые двигает.")],
-                    [B("BlendDuration / BlendTime / BlendWeight",
-                       "BlendDuration / BlendTime / BlendWeight"), B("float", "float"),
-                     B("Cross-fade timing and the eased weight the SkeletalAnimation bridge applies.",
-                       "Тайминг кросс-фейда и сглаженный вес, который применяет мост SkeletalAnimation.")],
+                     B("Clip table: bone keys plus the SpriteAnimation frame range for the same state.",
+                       "Таблица клипов: ключи костей плюс диапазон кадров SpriteAnimation для того же состояния.")],
+                    [B("TransitionCount", "TransitionCount"), B("uint32_t", "uint32_t"),
+                     B("Number of authored transition slots in use.", "Число занятых слотов авторских переходов.")],
                 ],
             },
             {
-                "type": "table",
                 "headers": [B("Condition flag", "Флаг условия"), B("Evaluator", "Проверка")],
                 "rows": [
                     [B("AnimConditionStateTimeAtLeast", "AnimConditionStateTimeAtLeast"),
@@ -1293,42 +1297,26 @@ EXTRA_SECTIONS: list[dict] = [
             {
                 "type": "code",
                 "lang": "cpp",
-                "text": "// AnimGraph.hpp - the component prefix is stable and visible in an inspector.\n"
-                        "struct AnimStateComponent\n"
-                        "{\n"
-                        "    std::uint64_t CurrentState = 0;   // 0  logical state, 0 = rest\n"
-                        "    std::uint64_t PreviousState = 0;  // 8  cross-fade source\n"
-                        "    float StateTime = 0.0f;           // 16 seconds in state\n"
-                        "    std::uint32_t TransitionCount = 0;// 20 diagnostics / pad\n"
-                        "    std::array<AnimTransition, 8> Transitions{};  // 24\n"
-                        "    std::array<AnimClip, 8> Clips{};\n"
-                        "    std::array<float, 8> Floats{};\n"
-                        "    std::array<AnimRestBone, kMaxBones> RestPose{};\n"
-                        "    float BlendDuration = 0.0f, BlendTime = 0.0f, BlendWeight = 1.0f;\n"
-                        "    // ...\n"
-                        "};\n"
+                "text": "\n"
+                        "The SkeletalAnimation bridge blends in local TRS space - shortest-arc rotation, linear position and scale - and then calls SkeletalAnimation::Evaluate() exactly once. That single hierarchy pass rebuilds globalMatrices and the Mat4 skinningMatrices palette that the GPU consumes. Lerping two composed Mat4 palettes would be cheaper by one pass but produces shear on a rotating parent/child chain and is not a rigid transform; the local blend keeps every bone rigid. The SpriteAnimation bridge is the opposite trade-off: it is instantaneous by design (startFrame, frameCount, duration, currentFrame = 0, UV applied in the same tick), because a flipbook has no interpolatable pose.\n"
                         "\n"
-                        "// Once per fixed tick: conditions -> state -> two bridges.\n"
-                        "for (auto [entity, state] : registry.view<AnimStateComponent>().each())\n"
-                        "{\n"
-                        "    state.StateTime += dt;\n"
-                        "    const std::uint64_t tags = gameplayBits(registry, entity);\n"
-                        "    for (auto& t : state.Transitions)\n"
-                        "    {\n"
-                        "        if (t.FromState != kAnimAnyState && t.FromState != state.CurrentState) continue;\n"
-                        "        if (!AnimTransitionMatches(t, state, tags)) continue;\n"
-                        "        state.PreviousState = state.CurrentState;\n"
-                        "        state.CurrentState = t.ToState;\n"
-                        "        state.StateTime = 0.0f;\n"
-                        "        state.BlendDuration = t.BlendDuration;\n"
-                        "        break;   // first match wins, at most 8 comparisons\n"
-                        "    }\n"
-                        "    // SkeletalAnimation: blend local TRS, then one hierarchy pass.\n"
-                        "    if (auto* skeleton = registry.try_get<SkeletonComponent>(entity))\n"
-                        "        AnimGraphApplySkeletal(state, *skeleton);\n"
-                        "    // SpriteAnimation: only on a state change, so the frame advance is not fought.\n"
-                        "    if (changed) AnimGraphApplySpriteClip(state, spriteAnimation, grid, spritePtr);\n"
-                        "}",
+                        "| StateTreeComponent field | Type | Role |\n"
+                        "|---|---|---|\n"
+                        "| ActiveStates[4] | uint16_t | Dense root-first path: [0] root, last = active leaf, unused = kStateTreeNone. A State Tree never stores the whole node list per entity. |\n"
+                        "| CurrentLeaf | uint32_t | Node index of the active leaf (also ActiveStates[ActiveDepth - 1]). |\n"
+                        "| ActiveDepth | uint32_t | 1..4; validated by StateTreeAddNode so BuildPath cannot overrun. |\n"
+                        "| Triggers | uint64_t | Pending change triggers. 0 -> the transition table is not touched at all this tick. Bit 63 is reserved for the internal leaf-guard-failed event. |\n"
+                        "| Target / TargetPosition | Entity / Vector2D | Blackboard: a live entity target, with a cached position fallback for patrol points. |\n"
+                        "| Floats[4] | float | Float blackboard read by FloatBelow / FloatAbove (health, threat, ...). |\n"
+                        "| StateTime / Ticks | float / uint32_t | Time in the current leaf and fixed ticks since entry; reset by BuildPath. |\n"
+                        "| TreeId | uint32_t | Selects a StateTreeDefinition owned by the system; many entities share one tree. |\n"
+                        "\n"
+                        "| Flat table | Contents | Cost per tick |\n"
+                        "|---|---|---|\n"
+                        "| StateTreeDefinition::Nodes[64] | Root/Selector/Leaf kind, parent, intrusive child list, depth, evaluator, task. | Not walked in steady state. |\n"
+                        "| StateTreeDefinition::Transitions[32] | FromLeaf, ToNode, TriggerMask, ConsumeMask, RequireTags, ForbidTags. | Scanned only when Triggers != 0. |\n"
+                        "| StateTreeEvaluator | Flat enum + uint64 tag mask + float threshold + float index, switched in one function. | One call for the active leaf. |\n"
+                        "| StateTreeTask | None / MoveToTarget / Stop / SetTag / ClearTag / ActivateSkill / Action. | Movement and skills are built in; Action routes ActionId to the developer registry. |\n",
             },
             {
                 "type": "p",
@@ -1546,34 +1534,14 @@ EXTRA_SECTIONS: list[dict] = [
             {
                 "type": "code",
                 "lang": "cpp",
-                "text": "// CompileGraph(): fixed storage, one flat AnimStateComponent, no allocation.\n"
-                        "AnimStateComponent out;\n"
-                        "std::array<bool, kMaxAnimParams> paramUsed{};\n"
-                        "std::array<std::uint64_t, kMaxAnimClips> stateIds{};\n"
-                        "std::uint16_t clipCount = 0, transitionCount = 0;\n"
-                        "for (node : document.Nodes)\n"
-                        "    if (node.Kind == Clip)\n"
-                        "    {\n"
-                        "        if (node.Clip.State == 0 || duplicate(stateIds, node.Clip.State)) reject();\n"
-                        "        stateIds[clipCount] = node.Clip.State;\n"
-                        "        out.Clips[clipCount++] = node.Clip;\n"
-                        "    }\n"
-                        "    else if (node.Kind == FloatParameter)\n"
-                        "        out.Floats[node.ParameterIndex] = node.ParameterValue;\n"
-                        "// Isolated-node check: every node needs at least one incident link.\n"
-                        "for (node : document.Nodes) if (degree[node] == 0) reject(\"isolated\");\n"
-                        "// Direct links become transitions; each Blend needs one source, one target\n"
-                        "// and at most one parameter binding.\n"
-                        "for (link : document.Links)\n"
-                        "    if (link.Kind == Transition && conditionsValid(link.Transition))\n"
-                        "        out.Transitions[transitionCount++] = link.Transition;\n"
-                        "for (blend : document.Nodes)\n"
-                        "    if (blend.Kind == Blend)\n"
-                        "        out.Transitions[transitionCount++] = makeTransition(blend, source, target);\n"
-                        "for (i = transitionCount; i < 8; ++i)\n"
-                        "    out.Transitions[i].Enabled = false;   // inert slots, not garbage\n"
-                        "out.ClipCount = clipCount;\n"
-                        "out.TransitionCount = 0;                  // runtime diagnostic, not an authored count",
+                "text": "\n"
+                        "Every gesture is one CommandStack transaction. The document is a single external buffer, so a node drag records only the changed position bytes and a condition toggle records only the changed condition word. The ImNodes callbacks never call Record() directly: DrawCanvas reports a state change, ProcessCanvasEvents opens BeginEdit(), the edit method mutates the document, RecordEdit() captures the new bytes, and CommitEdit() commits one undo group. Ctrl+Z/Ctrl+Y are handled by EditorSystem, which first commits any open canvas transaction and then asks CommandStack to apply the inverse delta. Inspector edits use the Mirror-backed AnimationGraphTransitionFieldsEqual()/_ClipFieldsEqual() helpers; both compare only the FieldDesc byte ranges through reflect::FieldBytesEqual(), so padding bytes cannot create an empty undo command.\n"
+                        "\n"
+                        "| Condition bit | Inspector control | Runtime evaluator |\n"
+                        "|---|---|---|\n"
+                        "| AnimConditionStateTimeAtLeast | StateTimeAtLeast checkbox + StateTimeThreshold | StateTime >= threshold |\n"
+                        "| AnimConditionTagsAll | TagsAll checkbox + TagsAll mask | (tags & TagsAll) == TagsAll; empty mask fails closed |\n"
+                        "| AnimConditionFloatAtMost | FloatAtMost checkbox + FloatParam + FloatThreshold | Floats[FloatParam] <= FloatThreshold |\n",
             },
             {
                 "type": "p",
@@ -1759,38 +1727,29 @@ EXTRA_SECTIONS: list[dict] = [
             {
                 "type": "code",
                 "lang": "cpp",
-                "text": "// Constant VRAM, independent of the camera path or the world size.\n"
-                        "constexpr std::uint64_t kPageBytes = 2048ull * 2048ull * 4ull;\n"
-                        "const std::uint64_t Budget = layerCount * kPageBytes;\n"
+                "text": "\n"
+                        "| Chunk header field | Offset | Value | Validation |\n"
+                        "|---|---|---|---|\n"
+                        "| magic | 0 | FBYVTC01 | Rejected before the mapping is indexed |\n"
+                        "| version | 8 | 1 | A future format fails closed |\n"
+                        "| tileSize | 12 | 64 | Must equal the descriptor |\n"
+                        "| chunkTiles | 16 | 4 | Must equal the descriptor |\n"
+                        "| format | 20 | 0 = RGBA8 | No runtime decode |\n"
+                        "| pixels | 32 | 256 x 256 x 4 | Exact size check before subspan |\n"
                         "\n"
-                        "// Residency is a two-pass clock over a fixed page table.\n"
-                        "void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept\n"
-                        "{\n"
-                        "    ++MFrame;\n"
-                        "    const float HalfX = InCamera.ViewSize.X * 0.5f / InCamera.Zoom;\n"
-                        "    const float HalfY = InCamera.ViewSize.Y * 0.5f / InCamera.Zoom;\n"
-                        "    const float X = std::fabs(std::cos(InCamera.Rotation));\n"
-                        "    const float Y = std::fabs(std::sin(InCamera.Rotation));\n"
-                        "    const float ExtentX = HalfX * X + HalfY * Y;   // rotated AABB\n"
-                        "    const float ExtentY = HalfX * Y + HalfY * X;\n"
-                        "    for (std::int64_t Ty = MinY; Ty <= MaxY; ++Ty)\n"
-                        "        for (std::int64_t Tx = MinX; Tx <= MaxX; ++Tx)\n"
-                        "        {\n"
-                        "            const std::uint32_t Layer = LayerForTile(Tx, Ty);\n"
-                        "            const std::uint32_t Hash = FindHash(Tx, Ty);\n"
-                        "            if (Hash != kHashCapacity)\n"
-                        "            {\n"
-                        "                MSlots[Layer * 1024u + MHash[Hash].slot].lastUsedFrame = MFrame;\n"
-                        "                continue;\n"
-                        "            }\n"
-                        "            std::uint32_t Slot = 0;\n"
-                        "            if (LoadTile(Tx, Ty, Layer, &Slot))   // mmap chunk, upload one 64x64 tile\n"
-                        "            {\n"
-                        "                MSlots[Layer * 1024u + Slot].lastUsedFrame = MFrame;\n"
-                        "                ++MStats.uploads;               // one vkCmdCopyBufferToImage\n"
-                        "            }\n"
-                        "        }\n"
-                        "}",
+                        "- Eviction is a per-layer clock. A page whose lastUsedFrame is the current frame is visible and is never a victim; if all 1024 pages of a pool are visible the request is counted as a spill instead of corrupting a tile that is on screen.\n"
+                        "- The resident lookup is open addressing with tombstones. A hit costs one hash probe and a store into lastUsedFrame; a chunk mapping is never re-read for a resident tile.\n"
+                        "- VirtualTextureSystem itself is about 2 MiB (page table plus the 65536-entry hash). It is a startup object, allocated once on the heap, not a stack local in a frame function.\n"
+                        "\n"
+                        "31.2 Component change masks. A render-visible entity carries ComponentChangeMask next to Transform2D/Sprite2D. A mutating system calls Fby::Change::MarkTransform(), MarkSprite() or MarkDrawOrder(); the mark is one atomic fetch_or on the 64-bit word. The extract peeks the word, consumes it with fetch_and(0), and recomputes a RenderItem only when one of the three render bits was present. An entity with a zero mask reaches one pointer lookup and one relaxed load - no Transform read, no Sprite copy, no RenderKey arithmetic.\n"
+                        "\n"
+                        "| Bit | Name | Consumer | Effect |\n"
+                        "|---|---|---|---|\n"
+                        "| 0 | Transform2D | ChangeMaskRenderExtract | Rebuild position/scale/rotation; key unchanged |\n"
+                        "| 1 | Sprite2D | ChangeMaskRenderExtract | Rebuild UV/size/colour/layer |\n"
+                        "| 2 | DrawOrder | ChangeMaskRenderExtract | RenderKey may move: structural rebuild |\n"
+                        "| 3-9 | Velocity/GameplayTags/Animation/Audio/Physics/Lifetime/Custom | Gameplay systems | Consumed by the owner; the GPU sees nothing |\n"
+                        "| 16-63 | GameBitBase + n | Game code | Reserved for project aliases |\n",
             },
             {
                 "type": "table",
@@ -2871,20 +2830,20 @@ EXTRA_SECTIONS: list[dict] = [
                       "AMD uProf; на Linux — perf stat с cache-references, cache-misses, L1-dcache-load-misses, "
                       "LLC-load-misses и stalled-cycles-frontend. Сохраняйте числа в репозитории, чтобы регрессия "
                       "была видна."),
-                    B("Step 2 — find the hot array. The animation tick walks AnimStateComponent per entity (4 KB "
-                      "stride); the extract walks RenderItem; the job pool touches one shared cache line. A 4 KB "
-                      "stride with 8 transitions and 8 clips per component thrashes L1 and L2 before any math "
-                      "runs.",
-                      "Шаг 2 — найдите горячий массив. Тик анимации идёт по AnimStateComponent на сущность "
-                      "(шаг 4 КБ); extract идёт по RenderItem; пул задач трогает одну общую линию кэша. Шаг 4 КБ "
-                      "с 8 переходами и 8 клипами на компонент вымывает L1 и L2 ещё до вычислений."),
-                    B("Step 3 — split hot/cold. Keep a 64-byte AnimHot per entity (states, StateTime, Blend*) "
-                      "and move Transitions/Clips/RestPose into a shared graph object or a cold side table. The "
-                      "system then streams a dense array; the shared tables stay L1-resident.",
-                      "Шаг 3 — разделите hot/cold. Держите 64-байтный AnimHot на сущность (состояния, StateTime, "
-                      "Blend*), а Transitions/Clips/RestPose вынесите в общий объект графа или холодную "
-                      "side-таблицу. Система начинает потоково идти по плотному массиву; общие таблицы остаются "
-                      "в L1."),
+                    B("Step 2 — find the hot array. The animation tick walks the small AnimStateComponent per "
+                      "entity; the graph definition and skeleton pose are separate components touched only when a "
+                      "transition or clip is resolved. The extract walks RenderItem; the job pool touches one shared "
+                      "cache line.",
+                      "Шаг 2 — найдите горячий массив. Тик анимации идёт по компактному AnimStateComponent на "
+                      "сущность; определение графа и поза скелета — отдельные компоненты, к которым обращаются "
+                      "только при выборе перехода или клипа. Extract идёт по RenderItem; пул задач трогает одну "
+                      "общую линию кэша."),
+                    B("Step 3 — keep the cold tables shared. AnimGraphDefinitionComponent can be shared by every "
+                      "entity that plays the same graph, and the skeleton owns its rest pose; the hot tick then "
+                      "walks a dense AnimStateComponent array while the graph and pose stay in L2.",
+                      "Шаг 3 — держите холодные таблицы общими. AnimGraphDefinitionComponent может разделяться "
+                      "всеми сущностями с одним графом, а rest-поза принадлежит скелету; горячий тик идёт по "
+                      "плотному массиву AnimStateComponent, а граф и поза остаются в L2."),
                     B("Step 4 — vectorise the presentation blend, not the deterministic simulation. Use "
                       "__restrict, SoA float arrays (X[], Y[], Rotation[], Scale[]) and check the vectoriser "
                       "report. Do not reorder floating-point reductions used by rollback or physics.",
