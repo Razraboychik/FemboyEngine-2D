@@ -14,6 +14,7 @@ struct GraphInvocation
 {
     GraphSystemFn run = nullptr;
     void* user = nullptr;
+    const char* name = nullptr;
     SystemContext* context = nullptr;
     std::counting_semaphore<kMaxGraphSystems>* completed = nullptr;
 };
@@ -21,7 +22,17 @@ struct GraphInvocation
 void InvokeGraphNode(void* InRaw, std::uint32_t, std::uint32_t) noexcept
 {
     auto* ScopedInvocation = static_cast<GraphInvocation*>(InRaw);
-    ScopedInvocation->run(*ScopedInvocation->context, ScopedInvocation->user);
+    // The calling Run blocks until this release, so a throwing node is contained
+    // here instead of escaping into the worker loop with the semaphore unreleased.
+    try
+    {
+        ScopedInvocation->run(*ScopedInvocation->context, ScopedInvocation->user);
+    }
+    catch (...)
+    {
+        ScopedInvocation->context->jobs.ReportFault(ScopedInvocation->name != nullptr ? ScopedInvocation->name
+                                                                                      : "system node");
+    }
     ScopedInvocation->completed->release();
 }
 }
@@ -79,6 +90,29 @@ bool SystemGraph::Build()
                     return false;
                 }
                 ScopedDependencies[ScopedJ] |= (1ull << ScopedI);
+            }
+        }
+    }
+
+    // Access conflicts: two same-phase systems that touch the same engine service
+    // are ordered by registration instead of running in parallel on it. A zero
+    // declaration keeps the previous behavior.
+    for (std::uint32_t ScopedFirst = 0; ScopedFirst < MCount; ++ScopedFirst)
+    {
+        for (std::uint32_t ScopedSecond = ScopedFirst + 1u; ScopedSecond < MCount; ++ScopedSecond)
+        {
+            if (MSystems[ScopedFirst].phase != MSystems[ScopedSecond].phase)
+            {
+                continue;
+            }
+            const SystemAccess& ScopedLeft = MSystems[ScopedFirst].access;
+            const SystemAccess& ScopedRight = MSystems[ScopedSecond].access;
+            const bool ScopedConflict =
+                (ScopedLeft.Writes & (ScopedRight.Reads | ScopedRight.Writes)) != 0u ||
+                (ScopedLeft.Reads & ScopedRight.Writes) != 0u;
+            if (ScopedConflict)
+            {
+                ScopedDependencies[ScopedSecond] |= (1ull << ScopedFirst);
             }
         }
     }
@@ -175,8 +209,12 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
         }
     };
 
-    // Render owns the RHI command stream and must stay on the render thread.
-    if (InPhase == Phase::Render || InContext.jobs.ThreadCount() == 0)
+    // Render owns the RHI command stream and must stay on the render thread. A
+    // worker can re-enter the graph from inside a node; submitting there would
+    // wait for workers that are themselves waiting, so those runs stay inline.
+    const bool ScopedInline = MDeterministicSimulation || InPhase == Phase::Render ||
+                              InContext.jobs.ThreadCount() == 0 || JobSystem::IsWorkerThread();
+    if (ScopedInline)
     {
         for (std::uint32_t ScopedI = 0; ScopedI < MOrderCount; ++ScopedI)
         {
@@ -202,7 +240,7 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
                 continue;
             }
             ScopedInvocations[ScopedWaveSize] =
-                GraphInvocation{ScopedSystem.run, ScopedSystem.user, &InContext, nullptr};
+                GraphInvocation{ScopedSystem.run, ScopedSystem.user, ScopedSystem.name, &InContext, nullptr};
             ++ScopedWaveSize;
         }
         if (ScopedWaveSize == 0)

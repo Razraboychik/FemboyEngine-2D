@@ -3,7 +3,7 @@
 [English](README.md) | [Русский перевод](README_RU.md)
 
 This directory is the entry point to the FemboyEngine2D documentation set. The
-current public line is **0.2.0-alpha.1**. The engine is a C++26, data-oriented 2D
+current public line is **0.3.0-alpha.1**. The engine is a C++26, data-oriented 2D
 runtime: fixed-capacity ECS storage, explicit systems, an SDL3 window, a Vulkan or
 null render hardware interface, Box2D v3 physics and deterministic rollback.
 
@@ -17,12 +17,19 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 - **Rendering** — Vulkan and null RHI, sprite and mesh paths, 2D lighting with SDF
   shadows, OIT, static layer baking, virtual texturing, draw-call batching,
   upscaling (FSR/DLSS classes) and frame generation.
-- **Physics** — Box2D v3 rigid bodies, chains, cloth and water, hybrid SDF
+- **Physics** — Box2D v3 and a data-oriented AABB backend under one policy, configurable projectiles, chains, cloth and water, hybrid SDF
   collision, SDF destruction with material profiles and connections, and
-  transport groups for elevators, trains and moving platforms. Transport groups
-  support nested carriers, welded rigid members, dynamic roots with fixed or
-  physics rotation, editor authoring, script control and automatic CCD at high
-  speed; see [Physics](md/en/Physics_EN.md).
+  transport groups for elevators, trains and moving platforms, plus a wheel-joint
+  vehicle base. Transport supports nested carriers, welded rigid members,
+  contact support and conveyors, path motion, dynamic roots with fixed or physics
+  rotation, editor authoring, script control and Box2D CCD at high speed. Wheeled
+  vehicles expose suspension, per-wheel drive and braking on Box2D; see
+  [Physics](md/en/Physics_EN.md), [transport physics](design/transport-physics.md)
+  and [vehicle wheels](design/vehicle-wheels.md).
+- **Text and documents** — Unicode line, word and grapheme boundaries, shaping,
+  the text layout stack, the TXT reader and the streaming `.fbdoc`/`.fbybook`
+  book format; see [text stack](design/text-stack.md),
+  [documents](design/documents.md) and [streaming books](design/books.md).
 - **Gameplay and scripting** — FemboyScript 2.0 bytecode, LogicGraph, StateTree,
   the textual `.fbs` subset, the VM debugger and the cook-time C++26 AOT backend.
 - **Networking** — reliable transport, protocol v2, replication, relevance grids,
@@ -44,9 +51,15 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Understand the architecture | [Architecture Specification](md/en/FemboyEngineArchitecture_EN.md) |
 | Read the complete manual | [Complete Reference](md/en/FemboyEngineCompleteReference_EN.md) |
 | Build physics, SDF collision and destruction | [Physics](md/en/Physics_EN.md) |
-| Author transport groups, elevators and trains | [Physics: transport groups](md/en/Physics_EN.md) |
+| Author transport groups, elevators and trains | [Physics: transport groups](md/en/Physics_EN.md), [transport physics](design/transport-physics.md) |
+| Add vehicle suspension, drive or brakes | [Vehicle wheels](design/vehicle-wheels.md) |
+| Tune camera motion and distortion | [Camera effects](design/camera-effects.md) |
+| Add actions, contexts, gamepads and rebinding | [Input system](design/input-system.md) |
+| Build authoritative input and replication | [Application Guide: replication](md/en/FemboyEngineApplicationGuide_EN.md#51-deterministic-input-and-replication-while-building-the-game) |
 | Use FemboyScript, LogicGraph or StateTree | [FemboyScript](md/en/FemboyScript_EN.md) |
 | Review FSR/DLSS upscaling and frame generation | [Frame Generation](md/en/FemboyEngineFrameGeneration_EN.md) |
+| Show formatted books and manuals | [Streaming books](design/books.md), [TXT documents](design/documents.md) |
+| Move a project between Windows, Linux and macOS | [Desktop portability](design/desktop-portability.md) |
 | Tune project or editor settings | [Project Settings](md/en/ProjectSettingsRecommendations_EN.md), [Editor Settings](md/en/EditorSettingsReference_EN.md) |
 | Choose a viewport diagnostic mode | [Viewport Modes](md/en/ViewportModes_EN.md) |
 | Follow the C++ style contract | [Code Style](style/CodeStyle.md) |
@@ -67,7 +80,10 @@ Every generated document is produced as two independent editions:
   `<Name>_RU.djvu`
 
 There is no combined bilingual output. The generators write only to `en/` and
-`ru/` below each format directory. `CheckDocs.py` rejects a stale `bilingual/`
+`ru/` below each format directory. The generated manuals are bilingual; the
+hand-written `design/` notes are mostly developer-facing English source documents
+and are not part of the four-format deliverable set; `build-workflow` has an
+English and a Russian edition. `CheckDocs.py` rejects a stale `bilingual/`
 directory, an unpaired Markdown file and any file outside this layout. The English
 and Russian documents are maintained as separate translations, not as one
 mixed-language file.
@@ -87,7 +103,7 @@ diverge.
 
 | Directory | Contents |
 |---|---|
-| `design/` | Security, protocol v2, voice, chat and voice effects, networking, lighting, text, PIE, accessibility, time, editor workflows, authoring toolset, multimedia modules, world systems and the widget catalogue |
+| `design/` | Security, protocol v2, voice, chat and voice effects, networking, lighting, text, physics backends, transport, vehicle wheels, camera effects, input, PIE, accessibility, time, editor workflows, authoring toolset, multimedia modules, desktop project portability, world systems and the widget catalogue |
 | `style/` | `CodeStyle.md` and the CMake/C++ naming contract in `NAMING.md` |
 | `adr/` | Architecture decision records `NNNN-<slug>.md` |
 | `Tools/` | Markdown, DOCX, PDF and DjVu generators, link checks and reference checks |

@@ -7,8 +7,8 @@
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android-lightgrey.svg)]()
-[![Status: 0.2.0-alpha.1](https://img.shields.io/badge/status-0.2.0--alpha.1-blue.svg)]()
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
+[![Status: 0.3.0-alpha.1](https://img.shields.io/badge/status-0.3.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D is a compact, deterministic, data-oriented engine for 2D games:
@@ -21,7 +21,7 @@ path, no JSON in the shipped runtime and no hidden object graph. Components are
 trivially copyable data; systems are free functions; the frame is a flat
 `RenderItem` array submitted through one RHI packet.
 
-**Status: 0.2.0-alpha.1.** This is the current public alpha line. The tree
+**Status: 0.3.0-alpha.1.** This is the current public alpha line. The tree
 includes a working FemboyScript debugger (source
 spans, breakpoints, stepping, locals, self fields), isometric and tile-based maps
 with a map editor, skeletal IK, retargeting and clip compression (`.fanim`), grid
@@ -48,12 +48,17 @@ A new project is deliberately empty. `CreateProject()` writes only:
 ├─ CMakeLists.txt          links FemboyEngine2D::Engine
 ├─ GameMain.cpp            window -> RHI -> registry -> fixed step -> extract
 ├─ project.femproj         project descriptor (paths, simulation, render, build)
+├─ Plan/                   plans and roadmaps (never cooked)
+├─ Disdocs/                design documents (never cooked)
 ├─ assets/
 │  └─ scenes/main.toml
 ├─ build/
 ├─ archives/
 └─ stores/
 ```
+
+`Plan/` and `Disdocs/` are authoring-only: they sit outside `assets/`, so
+nothing from them enters `.fempak`, `.femarc` or a player build.
 
 There are no player, enemy, camera or gameplay components in the template. The
 generated `GameMain.cpp` contains exactly the system boundary every project
@@ -90,26 +95,117 @@ and is used by the editor dashboard and `CreateProject()`.
 
 ## What is in the engine
 
-| Domain | Highlights |
-|---|---|
-| Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, `Vector2D`, `Vector3D`, `Vector4D`, Mirror reflection, jobs, SDL3 platform, plugin ABI |
-| RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts |
-| ECS | EnTT registry, trivially copyable components, four-phase schedule, parallel `SystemGraph` with per-call semaphores, Snapshot v4 |
-| Gameplay | Project tag database edited in Project Settings, manually authored hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown |
-| AI | `StateTree` → command buffer → `AIController` → perception, navigation and skills; `ActionId` is data for game-owned ECS systems, tag-driven targets, grid and convex navmesh, raw/LOS/Chaikin/Catmull-Rom paths, deterministic route randomization |
-| Physics | Box2D v3 bridge with packed ids, per-level gravity, attractor/repulsor fields, a joint graph of rope/chain/spring connections with tension/break limits, damage, cuts, repair and ties, Verlet cloth, shallow-water fields, SDF collision and destruction with material profiles, and transport groups for elevators, trains and moving platforms (nested carriers, welded rigid members, dynamic roots, editor panel, script control, automatic CCD) |
-| Network | `NetRollbackSession`, 256-tick snapshot ring, input prediction, late-input replay, stable `NetEntityId`, relevance filtering, UDP `NetTransport` with acks, retransmit and MTU fragmentation, and versioned `InputPacket`s that feed `SubmitRemoteInput` |
-| Assets | VFS with owning `Pin()`, `.femeta` transactions, BC7/ASTC texture cooker, audio/localization cookers, watcher, `.fanim` compressed clips |
-| Distribution | `FemArchiver` `.femarc`, optional LZMA, AES-256-GCM / ChaCha20-Poly1305, `fby_fempak secure` |
-| Platform | C-ABI `PlatformService`, Steam/EGS providers, deterministic achievements/cloud saves |
-| Animation | 2D skeleton SoA, LBS, blend cycles, `AnimGraph`, animation timeline, PIE seqlock hand-off, two-bone/FABRIK IK, retargeting, pose and clip quantization |
-| Isometry | `Grid::ProjectionMode` side/top-down/iso-rect/iso-hex, cell/world conversion, depth keys, `TilemapComponent` with a culled render bridge and a tilemap editor |
-| Navigation | Cost-grid A* on rect and hex layouts, tilemap-derived maps, authored `NavAgentSettings` separated from runtime paths, per-frame repath budget |
-| Lighting | `Light2DComponent` radial lights, ambient, emissive targets, optional Reinhard tonemap, screen-space SDF shadow mask (render-graph compute pass, static `SdfField` + dynamic `Light2DOccluderComponent` casters), sampled per pixel |
-| Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise and uplink/downlink effects with conditions |
-| UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, a widget kit (border, slider, checkbox, toggle, radio, scrollbar, switcher, overlay, tooltip, text input, text block, nine-slice, custom painters, text buttons), opt-in Tab/arrow focus with an optional ring, inherited visibility, CPU clip rects, a host `TextRuntime` with a HarfBuzz `TextFontStack` in the apps, shaped line-window viewports, accessibility kernel |
-| Editor | Transactional `CommandStack`, ImNodes canvases, project manager, PIE Play/Pause/Stop, Play (Multiplayer) with a second client-world viewport, script debugger, tilemap editor, texture thumbnails and the Transport Groups panel; starts borderless fullscreen (Windowed / Borderless / Exclusive in Editor Settings) |
-| Script | LogicGraph to bytecode VM and LogicGraph to C++26 AOT plugin, debug info (spans, locals), VM breakpoints and stepping; `Compile + Nativize` and an AOT manifest cook gate so a build runs native modules only (`FBY_WITH_SCRIPT_VM=OFF`) |
+FemboyEngine2D is built around three ideas: **ECS** for ownership, **DOD** for
+layout and **SDF** for geometry that must stay independent of resolution. The
+table maps the subsystems; the architecture section explains why they share one
+memory model.
+
+| Domain | Core pieces | Memory and execution contract |
+|---|---|---|
+| Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, vectors, Mirror reflection, jobs, SDL3 platform, plugin ABI | Value types, checked casts compile away, no RTTI in hot paths, worker pool with latched task-fault containment |
+| RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, engine-side `Rhi::FrameComposer`, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts | One flat packet per frame, explicit frame lifetime, no per-item allocations, bindless-style keys |
+| ECS | EnTT registry, trivially copyable components, four-phase schedule, parallel `SystemGraph` with per-call semaphores and declared service-access conflicts, Snapshot v4 | Archetype storage, systems borrow spans instead of owning objects, snapshots are explicit copies |
+| Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input | No heap in the input path; bounded events and mapping tables; deterministic per-tick sampling |
+| Gameplay | Project tag database edited in Project Settings, hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown | Data tables and fixed component layouts; effects run through command buffers, not hidden object graphs |
+| AI | `StateTree` to command buffer to `AIController` to perception, navigation and skills; `ActionId` is data for game-owned ECS systems, tag-driven targets, grid and convex navmesh, raw/LOS/Chaikin/Catmull-Rom paths, deterministic route randomization | Bounded state trees, per-frame repath budget, no background allocation from the AI tick |
+| Physics | Box2D v3 for joints, CCD and general bodies; data-oriented AABB solver for large joint-free worlds; per-level gravity, fields, joints, cloth, shallow water and configurable hitscan/swept/dynamic projectiles | DOD stores bodies in SoA columns and a uniform grid, with per-body time and gravity scale and begin/end touch events; joint/CCD paths route to Box2D; no solver allocation per body |
+| Network | `NetRollbackSession`, 256-tick snapshot ring, input prediction, late-input replay, stable `NetEntityId`, relevance filtering, UDP `NetTransport` with acks, retransmit and MTU fragmentation, versioned `InputPacket`s | Ring-allocated history, bounded queued inputs, explicit rollback copies and no hidden per-packet heap churn |
+| Assets | VFS with owning `Pin()`, `.femeta` transactions, BC7/ASTC texture cooker, audio/localization cookers, watcher, `.fanim` compressed clips | `mmap` or owning pin, explicit lifetimes, transactional metadata, a sorted path index mounted in one pass, cooker writes outside the frame path |
+| Distribution | `FemArchiver` `.femarc`, optional LZMA, AES-256-GCM / ChaCha20-Poly1305, `fby_fempak secure` | Streaming archive writer, bounded block buffers, deterministic layout |
+| Platform | C-ABI `PlatformService`, Steam/EGS providers, deterministic achievements/cloud saves | Plain C ABI, fixed provider table, no C++ ABI leak into plugins |
+| Animation | 2D skeleton SoA, LBS, blend cycles, `AnimGraph`, animation timeline, PIE seqlock hand-off, two-bone/FABRIK IK, retargeting, pose and clip quantization | Skeleton and pose data stay in flat arrays; the PIE snapshot uses a seqlock, not a locked scene copy |
+| Isometry | `Grid::ProjectionMode` side/top-down/iso-rect/iso-hex, cell/world conversion, depth keys, `TilemapComponent` with a culled render bridge and a tilemap editor | Integer grid math and packed depth keys; tile rendering uses a culled span, not per-tile objects |
+| Navigation | Cost-grid A* on rect and hex layouts, tilemap-derived maps, authored `NavAgentSettings` separated from runtime paths, per-frame repath budget | Cost grids are contiguous arrays; path storage is bounded and reused across frames |
+| Lighting | `Light2DComponent` radial lights, ambient, emissive targets, optional Reinhard tonemap, screen-space SDF shadow mask, static `SdfField` and dynamic `Light2DOccluderComponent` casters | Static SDF is uploaded once per version; dynamic casters live in a bounded UBO; the shadow pass samples textures, not scene objects |
+| Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise and uplink/downlink effects with conditions | Preallocated voices and buses, no per-frame graph construction, explicit capture buffers |
+| UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, widget kit, Unicode boundaries through libunibreak, opt-in Tab/arrow focus, CPU clip rects, HarfBuzz text stack, accessibility kernel | Retained data, per-frame command spans, clipped quads and SDF primitives instead of one allocation per widget |
+| Editor | Transactional `CommandStack`, ImNodes canvases, project manager, PIE Play/Pause/Stop, Play (Multiplayer), script debugger, tilemap editor, texture thumbnails, Transport Groups panel, borderless fullscreen | Authoring commands are explicit transactions; PIE owns an isolated world and releases it on Stop |
+| Script | LogicGraph to bytecode VM and to C++26 AOT plugin, physics/capability nodes and natives, debug info, VM breakpoints and stepping, `Compile + Nativize`, AOT manifest cook gate | Fixed VM stack and register file, native modules for cooked builds, no script allocation in the fixed step |
+
+---
+
+## Architecture: ECS, DOD and SDF
+
+### ECS: data owns behavior
+
+Entities are identifiers. Components are plain, trivially copyable values. Systems
+are free functions or small stateless classes that receive an `Ecs::SystemContext`
+and borrow spans from the registry. There is no `Update()` on a component, no
+virtual dispatch in the tick and no hidden owner for gameplay state. The context
+groups subsystem pointers into domain bundles (render, physics, audio, text,
+gameplay), and a system reads only the bundles it declares; the core components
+live in `CoreComponents.hpp`, so a module that only needs transforms does not pull
+in text or big-number headers. A scheduled system receives a narrow view built by
+`SystemContext`: `PhysicsSystemView`, `RenderSystemView`, `GameplaySystemView`,
+`AudioSystemView`, `UiSystemView`, `AccessibilitySystemView` or `CoreSystemView`.
+`Bind*System<&Function>()` adapts that view to the graph's function-pointer ABI.
+The editor coordinator, the script host and the plugin thunk keep the full context
+because they deliberately bind every domain.
+
+The schedule has four phases: `PreUpdate`, `FixedUpdate`, `PostUpdate` and
+`Render`. `SystemGraph` runs independent systems in parallel with per-call
+semaphores. A system may declare which engine services it reads and writes; two
+same-phase systems that conflict on a service are ordered by registration instead
+of running together. A system that mutates a component is registered by stable
+name, so determinism and replay do not depend on declaration order. Loading,
+reloading or unloading a plugin rebuilds the compiled order before the next frame.
+
+### DOD: memory is the frame budget
+
+DOD is not an extra layer on top of ECS; it is the rule that governs storage.
+Components and render items live in flat arrays. The DOD physics backend keeps
+positions, previous positions, velocities, accelerations, rotations, inverse
+masses, gravity scales, extents, flags and sleep counters in separate columns, so
+integration and the uniform-grid broadphase stream only the values they read. Hot
+systems iterate contiguous spans, use bounded pools and frame arenas, and do not
+allocate on the frame path. A 48-byte `RenderItem` and 64-bit sort keys are part
+of that contract: the renderer consumes one flat packet, not a tree of objects.
+
+There is no tracing garbage collector and no hidden ownership graph. Memory is
+released by scope, arena reset, mount unmount or an explicit `Shutdown()`. This
+is the main reason the engine can keep frame time predictable: cache locality is
+the default, and the cost of a system is visible in its data layout.
+
+### Determinism: one arithmetic contract
+
+Rollback compares state by value, so the simulation does not use the platform
+libm. `Engine/Core/SimMath.hpp` provides `Sin`/`Cos`/`SinCos`, `Atan2`, `Acos`,
+`Cbrt`, `Exp`, `Log`, `Pow` and `WrapPi` built from exact range reduction and
+fused multiply-add polynomials, with `ldexp` only for exponent scaling. The
+results are bit-identical across Clang and GCC on every supported target, and
+every simulation-side angle, falloff and damping curve uses that layer. Box2D
+still owns its own internal floating-point path, which is why joints and CCD are
+kept on the general-purpose solver rather than mixed into deterministic DOD
+worlds.
+
+
+### SDF: geometry without resolution
+
+Signed distance fields are the resolution-independent geometry layer. The same
+field drives collision, CSG carve/destruction, screen-space shadow masks and the
+procedural SDF primitives in PinkUI. Static fields are uploaded once per version;
+moving occluders are small bounded buffers; sparse brick atlases keep large
+fields practical. A field can be evaluated on the CPU for gameplay and sampled on
+the GPU for lighting without rebuilding the scene.
+
+### Why this matters for high resolution
+
+The render path is built to scale by memory bandwidth, not by object count. That
+is why **8K, 16K and even 32K are a realistic target on top-tier hardware**: the
+frame is a flat packet, the geometry is resolution-independent, and the SDF
+layers do not turn every pixel into a scene-graph traversal. This is a design
+ceiling, not a benchmark promise; actual frame time depends on the scene,
+overdraw, upscaling mode and VRAM. Measure on the target GPU before shipping a
+resolution tier.
+
+The same model keeps memory efficient without a garbage collector: frame pools
+and arenas reserve up front, authoring tables grow on demand, snapshots are
+explicit, and systems reuse buffers across frames instead of allocating per
+entity or per widget.
+
+Related design notes: [camera effects](Documentation/design/camera-effects.md),
+[transport physics](Documentation/design/transport-physics.md) and
+[vehicle wheels](Documentation/design/vehicle-wheels.md).
 
 ---
 
@@ -123,25 +219,26 @@ and is not an engine dependency - see
 [Documentation/README.md](Documentation/README.md).
 
 ```bat
-SetupScripts/Setup.bat
-SetupScripts/SetupCpp.bat
-SetupScripts/SetupArchiver.bat
-SetupScripts/SetupUpscalers.bat
+SetupScripts/Windows/Setup.bat
+SetupScripts/Windows/SetupCpp.bat
+SetupScripts/Windows/SetupArchiver.bat
+SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 ```
 
 ```bash
-./SetupScripts/Setup.sh          # Ubuntu/Debian, everything
-./SetupScripts/SetupCpp.sh       # compiler, CMake, source dependencies
-./SetupScripts/SetupArchiver.sh  # 7-Zip
-./SetupScripts/SetupUpscalers.sh # optional DLSS/FidelityFX/XeSS SDKs
-./SetupScripts/Setup.command     # macOS, also works from Finder
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
-./SetupScripts/SetupUpscalers.command
+./SetupScripts/Linux/Setup.sh          # Ubuntu/Debian, everything
+./SetupScripts/Linux/SetupCpp.sh       # compiler, CMake, source dependencies
+./SetupScripts/Linux/SetupArchiver.sh  # 7-Zip
+./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses # optional DLSS/FidelityFX/XeSS SDKs
+./SetupScripts/macOS/Setup.command     # macOS, also works from Finder
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
+./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
 ```
 
 Versions are fixed at SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang
-`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0` and LZMA SDK `25.01`. Vendor
+`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, libunibreak `6.1` and LZMA SDK
+`25.01`. Vendor
 upscaler SDKs are optional and are not part of the archive; see
 [Frame Generation](Documentation/md/en/FemboyEngineFrameGeneration_EN.md).
 
@@ -155,13 +252,13 @@ headers and libraries; the MSVC compiler itself is not a supported toolchain.
 The setup scripts install both compiler families: clang-cl / clang++ for the
 validated build and GCC 16+ (MinGW-w64 UCRT on Windows, Homebrew or the
 distribution package elsewhere) for the second-opinion toolchain. On Windows,
-`SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI and verifies the
+`SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI and verifies the
 `clang-cl` version. The Unix scripts install the distribution Clang (19+); CI
 pins LLVM 23.1.4 for the authoritative Windows gate.
 
 The validated build uses **clang-cl 23.1.4 on Windows and clang++ elsewhere**;
 that is what CI and the release gate run. GCC 16.2.0 (MinGW-W64 UCRT) is
-installed by `SetupCpp.bat` and recorded in the dependency lock; a `-std=c++2c`
+installed by `SetupScripts/Windows/SetupCpp.bat` and recorded in the dependency lock; a `-std=c++2c`
 smoke program and an engine header syntax check pass with it, but the full gate
 has not been run with GCC yet. The honest status for this release is therefore
 `GCC not run` for the full build, until a Linux GCC runner joins CI.
@@ -169,26 +266,35 @@ has not been run with GCC yet. The honest status for this release is therefore
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
 
-cmake -S . -B build -G Ninja ^
-      -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl ^
-      -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
-      -DFBY_BUILD_TESTS=ON
-cmake --build build --parallel 8
-ctest --test-dir build --output-on-failure
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release --output-on-failure
 ```
 
-On Linux/macOS use `-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`.
+Linux and macOS use the matching presets; they select Vulkan and Metal
+respectively and build the editor, tools and tests:
+
+```bash
+cmake --preset linux-release && cmake --build --preset linux-release
+cmake --preset macos-release && cmake --build --preset macos-release
+```
+
 The Metal backend is selected on Apple; Vulkan on Windows/Linux; the null
-backend keeps CI and servers headless.
+backend keeps CI and servers headless. Windows is the locally validated gate;
+the Linux and full Windows gates are green, and the focused macOS build/package
+gate is green. The macOS runner does not cover physical Metal GPU behavior.
+
+The per-platform status, seams and cook flow are tracked in
+[Platform support](Documentation/design/platform-support.md).
 
 Main executables:
 
 ```text
 build/bin/fby_sandbox
 build/bin/fby_editor
-build/bin/fby_fempak
-build/bin/fby_scene_tool
-build/bin/fby_aotc
+build/bin/tools/fby_fempak
+build/bin/tools/fby_scene_tool
+build/bin/tools/fby_aotc
 ```
 
 Optional vendor upscalers are opt-in: DLSS and FidelityFX SDKs are not committed.
@@ -252,7 +358,7 @@ The editor opens a project from three places:
   association once for the current user so a double-click opens the editor:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File SetupScripts/RegisterFemboyProjects.ps1
+  powershell -ExecutionPolicy Bypass -File SetupScripts/Windows/RegisterFemboyProjects.ps1
   ```
 
 - **Project dashboard**: it appears when no project is open. Open Project browses
@@ -360,6 +466,12 @@ is [README_RU.md](README_RU.md).
 - [Editor workflows and scene authoring](Documentation/design/editor-workflows.md)
 - [Play-In-Editor and the client viewport](Documentation/design/pie-multiplayer.md)
 - [Text stack](Documentation/design/text-stack.md)
+- [Camera motion and distortion](Documentation/design/camera-effects.md)
+- [Transport physics](Documentation/design/transport-physics.md)
+- [Vehicle wheels](Documentation/design/vehicle-wheels.md)
+- [Input system](Documentation/design/input-system.md)
+- [Physics backends design](Documentation/design/physics-backends.md)
+- [CodeQL audit](Documentation/design/codeql-audit.md)
 - [Time, timers and dates](Documentation/design/time.md)
 - [Accessibility contract](Documentation/design/accessibility.md)
 - [World systems: tilemaps, IK and navigation](Documentation/design/world-systems.md)
@@ -436,7 +548,7 @@ much lighter than the tools that produced it.
 | GPU | Vulkan 1.4-capable driver or Metal 2, 2 GB VRAM, e.g. GTX 1050, RX 560, Iris Xe | Vulkan 1.4 or Metal 3, 6-8 GB VRAM, e.g. RTX 3060, RX 6600, Apple M1 Pro |
 | Storage | 10 GB free on an SSD | 25 GB free on NVMe |
 | Display | 1920x1080 | 2560x1440 |
-| OS | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 13+ | Windows 11, Ubuntu 24.04, macOS 14+ on Apple Silicon |
+| OS | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 14+ | Windows 11, Ubuntu 24.04, macOS 14+ on Apple Silicon |
 
 The minimum column is for a small project: a few hundred sprites, one tilemap,
 modest audio and a single viewport. The recommended column is for a medium 2D

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Engine/Core/Mirror.hpp"
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Lighting.hpp"
@@ -135,7 +136,7 @@ static_assert(sizeof(LightSourceComponent) == 40);
     const float ScopedDistance = InDistance < 0.0f ? 0.0f : InDistance;
     const float ScopedBase = 1.0f - ScopedDistance / InRadius;
     const float ScopedExponent = InFalloff > 0.0f ? InFalloff : 1.0f;
-    return std::pow(ScopedBase, ScopedExponent);
+    return Sim::Pow(ScopedBase, ScopedExponent);
 }
 
 // Wakes a sleeping light: the static and sleeping bits are cleared so the next
@@ -168,6 +169,10 @@ struct LightSourceSettings
 class LightSourceSystem
 {
 public:
+    static constexpr std::uint32_t kMaxCachedTargets = 1024;
+    static constexpr std::uint32_t kTargetIndexSize = 2 * kMaxCachedTargets;
+    static constexpr std::uint32_t kInvalidTargetSlot = 0xFFFFFFFFu;
+
     [[nodiscard]] std::uint32_t Run(Ecs::Registry& InRegistry, const LightSourceSettings& InSettings,
                                     const SdfField* InField = nullptr) noexcept;
 
@@ -223,7 +228,7 @@ public:
     LightSourceSettings Settings{};
 
 private:
-    static void Tick(Ecs::SystemContext& InContext, void* InUser);
+    static void Tick(Ecs::RenderSystemView& InView, void* InUser);
 
     // One target's pre-tonemap static contribution, cached across frames.
     struct CachedTarget
@@ -234,7 +239,19 @@ private:
         float Blue = 0.0f;
     };
 
-    std::array<CachedTarget, 1024> MStaticTargets{};
+    // Open-addressing index from entity to cache slot; the table is rebuilt with
+    // the cache, so a hit does not scan every cached target.
+    struct TargetIndexEntry
+    {
+        Entity Owner = entt::null;
+        std::uint32_t Slot = 0;
+    };
+
+    [[nodiscard]] std::uint32_t FindStaticTarget(Entity InEntity) const noexcept;
+    void InsertStaticTarget(Entity InEntity, std::uint32_t InSlot) noexcept;
+
+    std::array<CachedTarget, kMaxCachedTargets> MStaticTargets{};
+    std::array<TargetIndexEntry, kTargetIndexSize> MTargetIndex{};
     std::uint32_t MStaticTargetCount = 0;
     std::uint64_t MStaticSignature = 0;
     bool MStaticValid = false;
@@ -245,6 +262,7 @@ private:
     std::uint32_t MShadowSamples = 0;
     std::uint32_t MStaticRebuilds = 0;
     std::uint32_t MStaticHits = 0;
+    std::uint32_t MFrame = 0;
     LightGrid2D MLightGrid;
     std::uint64_t MLightGridSignature = 0;
     bool MLightGridValid = false;

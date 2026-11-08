@@ -97,7 +97,9 @@ public:
     }
 
     // Aggregates over the samples still in the ring. The percentile uses the
-    // nearest-rank definition, so it is stable for a deterministic trace.
+    // nearest-rank definition, so it is stable for a deterministic trace. The
+    // scratch vector keeps its capacity across calls, so a panel that refreshes
+    // every frame does not allocate eight times per frame.
     [[nodiscard]] ProfileStats Stats(std::uint32_t InCategory) const noexcept
     {
         ProfileStats ScopedStats;
@@ -105,8 +107,8 @@ public:
         {
             return ScopedStats;
         }
-        std::vector<double> ScopedValues;
-        ScopedValues.reserve(MCount);
+        MScratch.clear();
+        MScratch.reserve(MCount);
         for (std::uint32_t ScopedIndex = 0; ScopedIndex < MCount; ++ScopedIndex)
         {
             const ProfileSample ScopedSample = SampleAt(ScopedIndex);
@@ -114,26 +116,26 @@ public:
             {
                 continue;
             }
-            ScopedValues.push_back(ScopedSample.Milliseconds());
+            MScratch.push_back(ScopedSample.Milliseconds());
         }
-        if (ScopedValues.empty())
+        if (MScratch.empty())
         {
             return ScopedStats;
         }
-        std::sort(ScopedValues.begin(), ScopedValues.end());
+        std::sort(MScratch.begin(), MScratch.end());
         double ScopedTotal = 0.0;
-        for (const double ScopedValue : ScopedValues)
+        for (const double ScopedValue : MScratch)
         {
             ScopedTotal += ScopedValue;
         }
-        ScopedStats.Count = ScopedValues.size();
+        ScopedStats.Count = MScratch.size();
         ScopedStats.TotalMs = ScopedTotal;
-        ScopedStats.MinMs = ScopedValues.front();
-        ScopedStats.MaxMs = ScopedValues.back();
-        ScopedStats.AverageMs = ScopedTotal / static_cast<double>(ScopedValues.size());
+        ScopedStats.MinMs = MScratch.front();
+        ScopedStats.MaxMs = MScratch.back();
+        ScopedStats.AverageMs = ScopedTotal / static_cast<double>(MScratch.size());
         const std::size_t ScopedRank =
-            static_cast<std::size_t>(0.95 * static_cast<double>(ScopedValues.size()) + 0.999999);
-        ScopedStats.P95Ms = ScopedValues[std::min(ScopedRank, ScopedValues.size()) - 1];
+            static_cast<std::size_t>(0.95 * static_cast<double>(MScratch.size()) + 0.999999);
+        ScopedStats.P95Ms = MScratch[std::min(ScopedRank, MScratch.size()) - 1];
         return ScopedStats;
     }
 
@@ -187,6 +189,8 @@ private:
     std::uint32_t MCapacity = kProfileDefaultSamples;
     std::uint64_t MBaseNanoseconds = 0;
     std::vector<ProfileSample> MSamples;
+    // Reused by Stats; mutable because Stats is a const query.
+    mutable std::vector<double> MScratch;
     std::uint32_t MCount = 0;
     std::uint32_t MWrite = 0;
     // Per-category lifetime counters, kept even after a sample leaves the ring.

@@ -45,9 +45,14 @@ fby_add_engine_test(fby_bignumber_store_test bignumber_store BigNumberStoreTest.
 # Fixed-width signed decimals: parsing, arithmetic, rounding and scientific text.
 fby_add_engine_test(fby_decimal_test decimal DecimalTest.cpp)
 
+fby_add_engine_test(fby_unicode_break_test unicode_break UnicodeBreakTest.cpp)
+fby_add_engine_test(fby_pinkui_editable_test pinkui_editable PinkUIEditableTest.cpp)
+
 # Long text: block storage, UTF-8 boundaries and greedy wrapping.
 # Clocks, timer pools, frame timing and calendar formatting.
 fby_add_engine_test(fby_time_test time TimeTest.cpp)
+# Deterministic simulation math: trig, atan2 and wrap accuracy.
+fby_add_engine_test(fby_sim_math_test sim_math SimMathTest.cpp)
 # Job pool: exception isolation and shutdown drain.
 fby_add_engine_test(fby_job_system_test job_system JobSystemTest.cpp)
 # System graph: dependency order, cycle rejection, mask validation, removal.
@@ -451,6 +456,28 @@ add_test(NAME texture_cook COMMAND fby_texture_cook_test)
 
 # P1 authoring: .femeta metadata/transactions, animation timeline model and
 fby_add_engine_test(fby_asset_meta_test asset_meta AssetMetaTest.cpp)
+fby_add_engine_test(fby_document_test document DocumentTest.cpp)
+fby_add_engine_test(fby_book_asset_test book_asset BookAssetTest.cpp)
+fby_add_engine_test(fby_book_cook_test book_cook BookCookTest.cpp)
+fby_add_engine_test(fby_book_session_test book_session BookSessionTest.cpp)
+fby_add_engine_test(fby_dav1d_backend_test dav1d_backend Dav1dBackendTest.cpp)
+fby_add_engine_test(fby_book_bench_test book_bench BookBenchTest.cpp)
+set_tests_properties(book_bench PROPERTIES LABELS "benchmark")
+fby_add_engine_test(fby_sprite_atlas_test sprite_atlas SpriteAtlasTest.cpp)
+fby_add_engine_test(fby_net_topology_test net_topology NetTopologyTest.cpp)
+fby_add_engine_test(fby_video_audio_test video_audio VideoAudioDecoderTest.cpp)
+fby_add_engine_test(fby_video_audio_stream_test video_audio_stream VideoAudioStreamTest.cpp)
+# Manual smoke test: pass an AV1 WebM path. Not registered in CTest because the
+# sample file is an external asset.
+add_executable(fby_av1_decode_test Av1DecodeTest.cpp)
+target_link_libraries(fby_av1_decode_test PRIVATE FemboyEngine2D::Engine)
+set_target_properties(fby_av1_decode_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+if(TARGET Opus::opus)
+    target_link_libraries(fby_video_audio_test PRIVATE Opus::opus)
+elseif(TARGET opus)
+    target_link_libraries(fby_video_audio_test PRIVATE opus)
+endif()
 fby_add_engine_test(fby_animation_timeline_test animation_timeline AnimationTimelineTest.cpp)
 
 # Isometric grid math, tilemaps, skeletal IK/retargeting and clip compression.
@@ -522,7 +549,6 @@ if(TARGET fby_editor)
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME voice_pie COMMAND fby_voice_pie_test)
 
-    # Step 1 infrastructure: project creation/config, .femeta auto-import,
     add_executable(fby_editor_infrastructure_test EditorInfrastructureTest.cpp)
     target_include_directories(fby_editor_infrastructure_test SYSTEM PRIVATE
         "${FBY_ENGINE_SOURCE_ROOT}/third_party/stb")
@@ -635,7 +661,6 @@ if(TARGET fby_editor)
     set_target_properties(fby_optimization_ab PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 
-# Step 2: MaterialGraph Tilt25D/Distortion + SPIR-V, LogicGraph field nodes
     add_executable(fby_graph_editor_test GraphEditorTest.cpp)
     target_link_libraries(fby_graph_editor_test PRIVATE FemboyEngine2D::Editor)
     target_compile_definitions(fby_graph_editor_test PRIVATE
@@ -679,6 +704,17 @@ endif()
 
 # Physics extensions: Box2D v3 rope/chain construction, Verlet cloth with
 fby_add_engine_test(fby_physics_fx_test physics_fx PhysicsFxTest.cpp)
+fby_add_engine_test(fby_transport_physics_test transport_physics TransportPhysicsTest.cpp)
+fby_add_engine_test(fby_wheel_system_test wheel_system WheelSystemTest.cpp)
+fby_add_engine_test(fby_input_system_test input_system InputSystemTest.cpp)
+fby_add_engine_test(fby_camera_effects_test camera_effects CameraEffectsTest.cpp)
+
+fby_add_engine_test(fby_physics_backend_test physics_backend PhysicsBackendTest.cpp)
+fby_add_engine_test(fby_script_camera_test script_camera ScriptCameraTest.cpp)
+
+fby_add_engine_test(fby_script_physics_test script_physics ScriptPhysicsTest.cpp)
+fby_add_engine_test(fby_physics_backend_benchmark_test physics_backend_benchmark PhysicsBackendBenchmark.cpp)
+set_tests_properties(physics_backend_benchmark PROPERTIES LABELS optimization)
 
 # Gameplay: manual tags, attributes, effects, skills, StateTree integration and
 fby_add_engine_test(fby_skills_test skills SkillsTest.cpp)
@@ -818,6 +854,9 @@ endforeach()
 if(ScopedPresentOptimizationTests)
     set_tests_properties(${ScopedPresentOptimizationTests} PROPERTIES LABELS "optimization")
 endif()
+
+# Portable project archive: source-only export/import across desktop OSes.
+fby_add_engine_test(fby_project_bundle_test project_bundle ProjectBundleTest.cpp)
 
 # Data-driven descriptors, transactional prefab spawn, Units DPI and theme palette.
 fby_add_engine_test(fby_data_driven_test data_driven DataDrivenTest.cpp)

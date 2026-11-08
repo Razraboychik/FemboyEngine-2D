@@ -1,6 +1,7 @@
 // FemboyEngine2D - impact, material and local damage infrastructure for SDF objects.
 #pragma once
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/Physics/SdfCollision.hpp"
 
@@ -128,7 +129,7 @@ using SdfDamagePolicy = float (*)(void* InUser, const SdfImpact& InImpact, const
     const float ScopedToughness = std::max(InMaterial.Toughness, 0.01f);
     const float ScopedHardness = std::max(InMaterial.Hardness, 0.01f);
     const float ScopedExponent = std::max(InMaterial.ThicknessExponent, 0.01f);
-    const float ScopedDenominator = ScopedToughness * std::pow(ScopedThickness, ScopedExponent);
+    const float ScopedDenominator = ScopedToughness * Sim::Pow(ScopedThickness, ScopedExponent);
     const float ScopedDamage = ScopedEnergy * InMaterial.EnergyToDamage * ScopedHardness / ScopedDenominator;
     return std::clamp(ScopedDamage, 0.0f, std::clamp(InMaterial.MaximumDamageFraction, 0.0f, 1.0f));
 }
@@ -166,11 +167,11 @@ using SdfDamagePolicy = float (*)(void* InUser, const SdfImpact& InImpact, const
 [[nodiscard]] inline SdfImpact MakeSdfImpact(const SdfContact& InContact, float InLocalThickness = 0.0f) noexcept
 {
     SdfImpact ScopedImpact{};
-    ScopedImpact.Target = InContact.entity;
-    ScopedImpact.Point = InContact.point;
-    ScopedImpact.Normal = InContact.normal;
+    ScopedImpact.Target = InContact.Entity;
+    ScopedImpact.Point = InContact.Point;
+    ScopedImpact.Normal = InContact.Normal;
     ScopedImpact.RelativeSpeed = InContact.RelativeSpeed;
-    ScopedImpact.Impulse = InContact.impulse;
+    ScopedImpact.Impulse = InContact.Impulse;
     ScopedImpact.KineticEnergy = InContact.KineticEnergy;
     ScopedImpact.Mass = InContact.Mass;
     ScopedImpact.LocalThickness = InLocalThickness;
@@ -180,7 +181,7 @@ using SdfDamagePolicy = float (*)(void* InUser, const SdfImpact& InImpact, const
 [[nodiscard]] inline SdfImpact MakeSdfImpact(const SdfContact& InContact, const SdfField& InField,
                                              float InMaxThickness = 32.0f) noexcept
 {
-    return MakeSdfImpact(InContact, SdfThicknessInward(InField, InContact.point, InContact.normal, InMaxThickness));
+    return MakeSdfImpact(InContact, SdfThicknessInward(InField, InContact.Point, InContact.Normal, InMaxThickness));
 }
 
 // Fixed-capacity damage and connection graph. The model is deterministic, has no

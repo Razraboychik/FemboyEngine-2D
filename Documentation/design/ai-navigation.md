@@ -26,8 +26,8 @@ intent:
 
 - `MoveTo` sets a navigation target;
 - `Stop` clears the active path;
-- `Attack` approaches a target and stops at the task range; it deliberately emits
-  no combat event, so a project without AI combat simply never uses it;
+- `Attack` approaches a target and stops at the task range; it emits no combat
+  event, so a project without AI combat never uses it;
 - `ActivateSkill` calls `GameplaySkillSystem::TryActivate` once per tree leaf,
   or at `AIAgentSettings::SkillRetryInterval` when that is non-zero.
 
@@ -57,7 +57,7 @@ for (Entity E : View) {
 }
 ```
 
-This is deliberately data, not a function pointer: actions survive snapshot,
+This is data, not a function pointer: actions survive snapshot,
 replay, PIE, network and hot reload the same way as any ECS component. A game
 can implement a table, a behavior graph, a script VM or a data asset on top of
 `ActionId`; the engine does not choose. The editor exposes only the numeric

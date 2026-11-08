@@ -14,7 +14,7 @@ namespace Fby::Editor
 namespace
 {
 const char* const kRotationPolicies[] = {"Fixed", "Authored", "Physics"};
-const char* const kMemberModes[] = {"Rigid", "Carried dynamic", "Support"};
+const char* const kMemberModes[] = {"Rigid", "Carried dynamic", "Support", "Conveyor"};
 }
 
 const char* TransportGroupPanel::EntityLabel(const Ecs::Registry& InRegistry, Entity InEntity)
@@ -79,6 +79,59 @@ void TransportGroupPanel::DrawGroupEditor(Ecs::Registry& InRegistry, Entity InRo
     }
     ImGui::DragFloat2("Bounds min", &InComponent.BoundsMin.X, 1.0f, -1.0e9f, 1.0e9f);
     ImGui::DragFloat2("Bounds max", &InComponent.BoundsMax.X, 1.0f, -1.0e9f, 1.0e9f);
+
+    if (ImGui::CollapsingHeader("Motion and surface"))
+    {
+        TransportMotion* ScopedMotion = InRegistry.try_get<TransportMotion>(InRoot);
+        if (ScopedMotion == nullptr)
+        {
+            if (ImGui::Button("Add motion profile"))
+            {
+                ScopedMotion = &InRegistry.emplace<TransportMotion>(InRoot);
+            }
+        }
+        if (ScopedMotion != nullptr)
+        {
+            ImGui::DragFloat("Speed", &ScopedMotion->Speed, 1.0f, 0.0f, 10000.0f);
+            ImGui::DragFloat("Acceleration", &ScopedMotion->Acceleration, 1.0f, 0.0f, 100000.0f);
+            ImGui::DragFloat("Dwell seconds", &ScopedMotion->DwellSeconds, 0.1f, 0.0f, 60.0f);
+            ImGui::DragFloat2("Axis", &ScopedMotion->Axis.X, 0.1f, -1.0f, 1.0f);
+            bool ScopedPath = (ScopedMotion->Flags & kTransportMotionPath) != 0;
+            if (ImGui::Checkbox("Follow path", &ScopedPath))
+            {
+                ScopedMotion->Flags = ScopedPath ? (ScopedMotion->Flags | kTransportMotionPath)
+                                                 : (ScopedMotion->Flags & ~kTransportMotionPath);
+            }
+            bool ScopedPingPong = (ScopedMotion->Flags & kTransportMotionPingPong) != 0;
+            if (ImGui::Checkbox("Ping-pong", &ScopedPingPong))
+            {
+                ScopedMotion->Flags = ScopedPingPong ? (ScopedMotion->Flags | kTransportMotionPingPong)
+                                                     : (ScopedMotion->Flags & ~kTransportMotionPingPong);
+            }
+            bool ScopedStop = (ScopedMotion->Flags & kTransportMotionStopAtEnds) != 0;
+            if (ImGui::Checkbox("Stop at ends", &ScopedStop))
+            {
+                ScopedMotion->Flags = ScopedStop ? (ScopedMotion->Flags | kTransportMotionStopAtEnds)
+                                                 : (ScopedMotion->Flags & ~kTransportMotionStopAtEnds);
+            }
+        }
+
+        TransportSurface* ScopedSurface = InRegistry.try_get<TransportSurface>(InRoot);
+        if (ScopedSurface == nullptr)
+        {
+            if (ImGui::Button("Add surface"))
+            {
+                ScopedSurface = &InRegistry.emplace<TransportSurface>(InRoot);
+            }
+        }
+        if (ScopedSurface != nullptr)
+        {
+            ImGui::DragFloat("Friction", &ScopedSurface->Friction, 0.05f, 0.0f, 4.0f);
+            ImGui::DragFloat("Conveyor speed", &ScopedSurface->TangentSpeed, 1.0f, -10000.0f, 10000.0f);
+            ImGui::Checkbox("One-way", &ScopedSurface->OneWay);
+            ImGui::Checkbox("Allow jump", &ScopedSurface->AllowJump);
+        }
+    }
 }
 
 void TransportGroupPanel::DrawMemberEditor(Ecs::Registry& InRegistry, Entity InSelected)
@@ -189,6 +242,64 @@ void TransportGroupPanel::Draw(bool* InOpen, Ecs::Registry& InRegistry, Entity I
     {
         TransportGroupSystem ScopedSystem;
         (void)ScopedSystem.DestroyGroup(InRegistry, ScopedRemoveGroupId);
+    }
+
+    if (InRegistry.valid(InSelected))
+    {
+        if (Wheel2D* ScopedWheel = InRegistry.try_get<Wheel2D>(InSelected); ScopedWheel != nullptr)
+        {
+            ImGui::Separator();
+            ImGui::TextDisabled("Vehicle wheel");
+            std::uint32_t ScopedChassis = ScopedWheel->Chassis == entt::null
+                                               ? 0u
+                                               : static_cast<std::uint32_t>(entt::to_integral(ScopedWheel->Chassis));
+            if (ImGui::InputScalar("Chassis entity", ImGuiDataType_U32, &ScopedChassis))
+            {
+                ScopedWheel->Chassis = static_cast<Entity>(ScopedChassis);
+            }
+            ImGui::DragFloat2("Local anchor", &ScopedWheel->LocalAnchor.X, 0.5f);
+            ImGui::DragFloat2("Suspension axis", &ScopedWheel->SuspensionAxis.X, 0.05f, -1.0f, 1.0f);
+            ImGui::DragFloat("Radius", &ScopedWheel->Radius, 0.25f, 0.01f, 1000.0f);
+            ImGui::DragFloat("Suspension Hz", &ScopedWheel->SuspensionHertz, 0.1f, 0.0f, 60.0f);
+            ImGui::DragFloat("Suspension damping", &ScopedWheel->SuspensionDamping, 0.01f, 0.0f, 1.0f);
+            ImGui::DragFloat("Drive weight", &ScopedWheel->DriveWeight, 0.05f, 0.0f, 10.0f);
+            ImGui::DragFloat("Brake weight", &ScopedWheel->BrakeWeight, 0.05f, 0.0f, 10.0f);
+            bool ScopedDrive = (ScopedWheel->Flags & kWheelFlagDrive) != 0;
+            if (ImGui::Checkbox("Driven", &ScopedDrive))
+            {
+                ScopedWheel->Flags = ScopedDrive ? (ScopedWheel->Flags | kWheelFlagDrive)
+                                                  : (ScopedWheel->Flags & ~kWheelFlagDrive);
+            }
+            bool ScopedSteer = (ScopedWheel->Flags & kWheelFlagSteer) != 0;
+            if (ImGui::Checkbox("Arcade steer wheel", &ScopedSteer))
+            {
+                ScopedWheel->Flags = ScopedSteer ? (ScopedWheel->Flags | kWheelFlagSteer)
+                                                  : (ScopedWheel->Flags & ~kWheelFlagSteer);
+            }
+        }
+        if (Vehicle2D* ScopedVehicle = InRegistry.try_get<Vehicle2D>(InSelected); ScopedVehicle != nullptr)
+        {
+            ImGui::Separator();
+            ImGui::TextDisabled("Vehicle input");
+            ImGui::SliderFloat("Throttle", &ScopedVehicle->Throttle, -1.0f, 1.0f);
+            ImGui::SliderFloat("Brake", &ScopedVehicle->Brake, 0.0f, 1.0f);
+            ImGui::SliderFloat("Steering", &ScopedVehicle->Steering, -1.0f, 1.0f);
+            ImGui::DragFloat("Max motor torque", &ScopedVehicle->MaxMotorTorque, 1.0f, 0.0f, 100000.0f);
+            ImGui::DragFloat("Max speed", &ScopedVehicle->MaxSpeed, 1.0f, 0.0f, 10000.0f);
+            ImGui::DragFloat("Steering torque", &ScopedVehicle->SteeringTorque, 1.0f, 0.0f, 100000.0f);
+            bool ScopedAssist = (ScopedVehicle->Flags & VehicleFlagArcadeSteering) != 0;
+            if (ImGui::Checkbox("Arcade steering", &ScopedAssist))
+            {
+                ScopedVehicle->Flags = ScopedAssist ? (ScopedVehicle->Flags | VehicleFlagArcadeSteering)
+                                                     : (ScopedVehicle->Flags & ~VehicleFlagArcadeSteering);
+            }
+            bool ScopedHandbrake = (ScopedVehicle->Flags & VehicleFlagHandbrake) != 0;
+            if (ImGui::Checkbox("Handbrake", &ScopedHandbrake))
+            {
+                ScopedVehicle->Flags = ScopedHandbrake ? (ScopedVehicle->Flags | VehicleFlagHandbrake)
+                                                        : (ScopedVehicle->Flags & ~VehicleFlagHandbrake);
+            }
+        }
     }
 
     ImGui::Separator();

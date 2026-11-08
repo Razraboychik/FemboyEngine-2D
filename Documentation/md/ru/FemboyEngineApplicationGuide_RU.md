@@ -1,12 +1,12 @@
 # FemboyEngine2D — Практическое руководство
 
-*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-04*
+*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-08*
 
 ## 1. Для чего это руководство
 
 FemboyEngine2D — двумерный движок, построенный вокруг data-oriented design. Это практическое дополнение к архитектурной спецификации: мы начинаем с играбельного 2D-шутера, показываем, как сущности собираются из независимых данных, а затем проводим тот же проект через кукинг текстур, GPU-батчинг, интеграцию магазинов, гибридную SDF-физику, погодный конвейер и шифрованный дистрибутивный архив.
 
-Проект намеренно небольшой. Игрок, три архетипа врагов, босс с фазами, пули, подбираемые предметы и карточная доска — этого достаточно, чтобы показать все архитектурные правила. Каждый фрагмент кода компилируется против заголовков из Source/Engine; пути и имена типов настоящие.
+Проект небольшой. Игрок, три архетипа врагов, босс с фазами, пули, подбираемые предметы и карточная доска — этого достаточно, чтобы показать все архитектурные правила. Каждый фрагмент кода компилируется против заголовков из Source/Engine; пути и имена типов настоящие.
 
 - Аудитория: геймплей-программисты, технические дизайнеры и tools-инженеры.
 - Требуемые знания: основы C++20, ECS на уровне EnTT и один графический API.
@@ -18,29 +18,30 @@ FemboyEngine2D — двумерный движок, построенный во�
 
 ## 2. Установка и воспроизводимый тулчейн
 
-Скрипты установки разделены по группам ПО. C++-скрипты ставят зафиксированный toolchain и раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в third_party/dependencies.lock.
+Скрипты установки разделены по ОС и группам ПО. C++-скрипты ставят зафиксированный toolchain и раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в third_party/dependencies.lock.
 
 ```cpp
 # Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts\SetupCpp.bat
-SetupScripts\SetupArchiver.bat
+SetupScripts\Windows\Setup.bat
+SetupScripts\Windows\SetupCpp.bat
+SetupScripts\Windows\SetupArchiver.bat
 # optional vendor SDKs
-SetupScripts\SetupUpscalers.bat
+SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 # Ubuntu / Debian
-./SetupScripts/SetupCpp.sh
-./SetupScripts/SetupArchiver.sh
+./SetupScripts/Linux/SetupCpp.sh
+./SetupScripts/Linux/SetupArchiver.sh
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.sh
+./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses
 
 # macOS (double-click in Finder also works)
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.command
+./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
 ```
 
-Общие скрипты Setup.bat, Setup.sh и Setup.command остаются доступны.
+Общие точки входа: SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh и SetupScripts/macOS/Setup.command.
 
 Зафиксированные версии: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.2.0 и LZMA SDK 25.01. Setup по возможности ставит системные пакеты; используйте --skip-system (или -SkipSystem в Windows) на CI-образе, где уже есть CMake, Ninja, Clang/GCC и Vulkan loader.
 
@@ -58,6 +59,31 @@ ctest --test-dir build --output-on-failure
 
 > **Примечание.** Setup никогда не изменяет исходники. Можно удалить third_party/<name>-src и повторить запуск с --force; lock-файл перегенерируется, а CMake-кэш не содержит машинно-зависимого пути.
 
+### 2.1 Редактор и собранная игра на Windows, Linux и macOS
+
+Одни и те же пресеты собирают редактор, sandbox, инструменты ассетов и упаковщик игры. Windows использует clang-cl и Vulkan; Linux — clang++ и Vulkan; macOS — clang++ и Metal. Каждый пресет экспортирует compile_commands.json и оставляет тесты включёнными.
+
+```cpp
+# Windows 10/11, from an LLVM + Visual Studio developer shell
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+
+# Linux, from a shell with Clang, Ninja and Vulkan headers
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release
+
+# macOS, from a shell with Xcode command-line tools and Homebrew
+cmake --preset macos-release
+cmake --build --preset macos-release
+ctest --preset macos-release
+```
+
+Редактор находится в build-<platform>/bin/fby_editor (в Windows добавляется .exe). Build & Pack Game использует один и тот же редактор на всех трёх системах: готовит ассеты через fby_fempak, пишет AOT-модуль при наличии LogicGraph и раскладывает архивы в stores/ проекта. POSIX-путь релиза использует posix_spawn и возвращает код выхода дочернего процесса; Windows-путь — CreateProcess.
+
+> **Примечание.** Windows — локально проверенный gate. Для Linux и macOS есть пресеты, платформенный код и CI-задания; считайте их первые запуски на runner’ах приёмочным gate, пока матрица не станет зелёной. RHI — Metal на macOS и Vulkan на Windows/Linux.
+
 ---
 
 ## 3. Как мыслить в ECS
@@ -74,7 +100,7 @@ ECS — это не другой синтаксис для иерархии кл
 
 ### 3.2 Словарь компонентов
 
-Начните с небольшого словаря и не добавляйте компонент, пока двум системам действительно не понадобится совместно использовать данные. Шутер использует следующие независимые компоненты.
+Начните с небольшого словаря и не добавляйте компонент, пока двум системам не понадобится совместно использовать данные. Шутер использует следующие независимые компоненты.
 
 ```cpp
 // Game/Components.hpp - trivially copyable, no behaviour.
@@ -126,7 +152,7 @@ struct ProjectileComponent
 
 ## 4. Сборка 2D-шутера через композицию
 
-Игрок — это четыре компонента и трансформ. Его спавн — функция, а не конструктор. Эта же функция является загрузчиком префаба: сценический файл создаёт тот же набор компонентов через тот же код.
+Игрок — это четыре компонента и трансформ. Его спавн — функция, а не конструктор. Эта же функция загружает префаб: сценический файл создаёт тот же набор компонентов через тот же код.
 
 ```cpp
 Entity SpawnPlayer(ecs::Registry& registry, Vector2D spawn)
@@ -171,7 +197,7 @@ Entity SpawnEnemy(ecs::Registry& registry, const EnemyArchetype& archetype, Vect
 }
 ```
 
-Мобы и боссы используют один путь спавна. «Босс» — это архетип с большим здоровьем, таблицей фаз и компонентом BossPhaseComponent, а не отдельный C++ тип. Новый враг — это строка данных и, если поведение действительно новое, одна ветка в AISystem.
+Мобы и боссы используют один путь спавна. «Босс» — это архетип с большим здоровьем, таблицей фаз и компонентом BossPhaseComponent, а не отдельный C++ тип. Новый враг — это строка данных и, если поведение новое, одна ветка в AISystem.
 
 ### 4.1 Системы по порядку
 
@@ -223,7 +249,7 @@ void AISystem(ecs::SystemContext& context)
 }
 ```
 
-Система намеренно скучная. Здесь нет объекта-автомата и аллокации на врага; строка архетипа задаёт числа, и те же девять строк покрывают преследователя, турель и дальнего моба. Босс с фазами добавляет вторую маленькую систему, которая меняет preferredRange и поведение при переходе здоровья через порог.
+Система небольшая. Здесь нет объекта-автомата и аллокации на врага; строка архетипа задаёт числа, и те же девять строк покрывают преследователя, турель и дальнего моба. Босс с фазами добавляет вторую маленькую систему, которая меняет preferredRange и поведение при переходе здоровья через порог.
 
 ### 4.2 Боссы без наследования
 
@@ -300,16 +326,68 @@ if (!graph.Build())
 - Один исполняемый тест на задачу; без фреймворка и динамической регистрации.
 - Запускайте весь набор через ctest; одно падение печатает файл и строку и возвращает ненулевой код.
 
+### 5.1 Детерминированный ввод и репликация при создании игры
+
+Ввод и репликацию проектируйте вместе, а не после готового геймплея. Маппер действий выдаёт одни и те же данные фиксированного тика на каждом пире; сетевой слой передаёт input frame, а не сырые SDL-события. Это контракт, который делает возможными предсказание и роллбэк.
+
+```cpp
+InputSystem input;
+const std::uint16_t Move = input.RegisterAction("Move", InputActionType::Axis2D);
+const std::uint16_t Jump = input.RegisterAction("Jump", InputActionType::Bool);
+const std::uint16_t Gameplay = input.RegisterContext("Gameplay", 0, false);
+
+InputUserComponent user;
+user.UserId = 0;
+user.GamepadSlot = 0;
+registry.emplace<InputUserComponent>(player, user);
+input.BindUser(player, 0, 0);
+input.PushContext(0, Gameplay);
+
+// Once per fixed tick, before gameplay reads actions.
+input.Update(window.Input(), tick, timestampNs, fixedDt);
+const InputActionState& move = *input.Action(0, Move);
+if (input.Action(0, Jump)->Triggered) { JumpPlayer(player); }
+```
+
+Локальный слой устройств может отличаться: клавиатура, мышь и геймпад идут в InputState разными путями. Симуляция видит только значения действий и события. Для сетевой игры упакуйте нужные значения в NetInputFrame (или собственную схему) и отправьте frame для владеющего игрока.
+
+```cpp
+NetRollbackSession::Config net;
+net.playerCount = 2;
+net.localPlayer = 0;
+net.rollbackTicks = 64;
+NetRollbackSession session;
+session.Initialize(registry, Ecs::SnapshotSchema::BuiltIns(), net);
+session.SetCommandLog(&commands);
+session.RegisterEntity(player, NetEntityId{1});
+
+NetInputFrame frame;
+frame.tick = tick;
+frame.player = 0;
+frame.moveX = static_cast<std::int16_t>(move.X * 32767.0f);
+frame.buttons = input.Action(0, Jump)->Triggered ? 1u : 0u;
+session.SubmitRemoteInput(0, frame);
+```
+
+- Авторитетная симуляция: сервер владеет тиком, сидом RNG и CommandLog. Клиенты предсказывают с тем же размером тика и теми же геймплейными системами.
+- Регистрируйте геймплейные компоненты в SnapshotSchema до первого захвата; компонент вне схемы молча не реплицируется.
+- Используйте стабильные NetEntityId для реплицируемых сущностей. Никогда не выводите их из EnTT id, порядка спавна или адреса аллокатора.
+- Реплицируйте input frames и структурные команды, а не сырые устройства или render-only значения.
+- При коррекции восстановите снапшот до первого плохого тика, повторите исправленный ввод и сравните итоговую контрольную сумму.
+- Проверяйте PIE на двух игроках, с искусственной задержкой, потерей пакетов и принудительным роллбэком до добавления контента.
+
+Полезный порядок проекта: один игрок + InputSystem; два локальных пользователя; round-trip снапшота; серверно-авторитетное движение; затем взаимодействия, оружие и ИИ. Добавляйте поля репликации вместе с фичей-владельцем, а не одним поздним «networking pass». Если система читает wall-clock, delta кадра или render handle, она не готова к роллбэку.
+
 ---
 
 ## 6. Сжатие памяти и вызовов отрисовки
 
 Вторая половина ECS-проекта — не геймплей, а то, что доходит до GPU. Основную работу делают два инструмента: запечённые блочно-сжатые текстуры и indirect-батчинг мешей. Оба настраиваются на проект и оба проверяемы через FrameStats.
 
-### 6.1 Кукинг текстур: BC7 на десктопе, ASTC на мобильных
+### 6.1 Кукинг текстур: BC7 и ASTC
 
-- BC7 сохраняет настоящий альфа-канал и является десктопным дефолтом. BC7 sRGB выбирается для цветных спрайтов; карта нормалей или маска использует линейный (UNORM) вариант.
-- ASTC 4x4 — мобильный таргет качества; 6x6 — таргет размера. Выбирается в Project Settings -> Cooker -> Texture format.
+- BC7 сохраняет настоящий альфа-канал и остаётся десктопным вариантом по умолчанию. BC7 sRGB выбирается для цветных спрайтов; карта нормалей или маска использует линейный (UNORM) вариант.
+- ASTC 4x4 — вариант качества для GPU с поддержкой ASTC; 6x6 — вариант размера. Выбирается в Project Settings -> Cooker -> Texture format.
 - Кукер один раз при импорте строит полную цепочку мипов. Рантайм загружает блоки как есть; нет CPU-декодирования и повторного сжатия в рантайме.
 - Единица батчинга — texture array. Держите спрайты одного материала в одном наборе слоёв; переключение слоя — это новый дескриптор, а не новый draw call.
 - Никогда не поставляйте JPEG: кукер отвергает его по расширению и по magic. Lossy-источник делает поставленную текстуру отличной от утверждённой художником.
@@ -330,7 +408,7 @@ native_arch = false
 
 ### 6.2 Multi-draw indirect батчинг
 
-Спрайтовый путь уже является одним instanced-вызовом на батч. Indirect-отрисовка важна на пути мешей: статическая геометрия один раз загружается в device-local арену и адресуется через MeshHandle; деформируемая геометрия стримится в transient ring; каждый draw — компактная запись MeshDrawData, а бэкенд проигрывает их одним drawIndexedIndirect на слой материала. CPU не биндит vertex buffer на каждый меш.
+Спрайтовый путь уже использует один instanced-вызов на батч. Indirect-отрисовка важна на пути мешей: статическая геометрия один раз загружается в device-local арену и адресуется через MeshHandle; деформируемая геометрия стримится в transient ring; каждый draw — компактная запись MeshDrawData, а бэкенд проигрывает их одним drawIndexedIndirect на слой материала. CPU не биндит vertex buffer на каждый меш.
 
 - Один материал на слой: новый слой — новый indirect-батч, но не переключение пайплайна.
 - Статические объекты используют CreateMesh и MeshHandle; кадровая загрузка — потерянная пропускная способность PCIe.
@@ -460,6 +538,36 @@ postFx.Build(graph, cameras);
 ```
 
 Для UI SDF-путь полностью убирает текстурную память. pink_sdf.frag аналитически вычисляет круги, скруглённые прямоугольники, капсулы и кольца; сглаживание берётся из fwidth. SlotComponent и CardBoardComponent раскладывают карточную доску без сцены, а BuildCardBoardPrimitives упаковывает каждый слот в два экземпляра (карта и тень).
+
+### 8.2 Движущиеся платформы, транспорт и колёса
+
+Носитель — это система отсчёта трансформа, а не второй мир твёрдых тел. TransportGroupSystem подходит для лифтов, поездов и платформ: он считает дельты носителя до шага физики и обновляет локальные позы после него. Колесо — обычное динамическое тело с коллайдером; WheelSystem лениво создаёт wheel-джойнт Box2D и применяет настройки пружины, привода и тормоза колеса до шага.
+
+```cpp
+TransportGroupSystem transport;
+transport.CreateGroup(registry, elevator, 1);
+transport.Attach(registry, player, 1, kCarrierModeSupport);
+
+TransportSurface surface;
+surface.Friction = 0.8f;
+registry.emplace<TransportSurface>(elevator, surface);
+
+Vehicle2D vehicle;
+vehicle.MaxMotorTorque = 600.0f;
+registry.emplace<Vehicle2D>(chassis, vehicle);
+
+Wheel2D wheel;
+wheel.Chassis = chassis;
+wheel.LocalAnchor = {-20.0f, 4.0f};
+wheel.Radius = 8.0f;
+wheel.DriveWeight = 1.0f;
+registry.emplace<Wheel2D>(wheelEntity, wheel);
+
+WheelSystem wheels;
+wheels.Initialize(physics);
+wheels.Update(registry, physics, fixedDt);
+physics.Step(registry, fixedDt);
+```
 
 ---
 
@@ -606,7 +714,7 @@ Materials.Shutdown(gpu);
 
 ## 13. Приложение: карта компонентов и API
 
-Используйте таблицу как стартовый чек-лист. Компонент, не помещающийся в одну строку, вероятно, является двумя компонентами, а поведение, требующее новой строки, — это новая система, а не новый класс.
+Используйте таблицу как стартовый чек-лист. Компонент, не помещающийся в одну строку, вероятно, это два компонента, а поведение, требующее новой строки, — это новая система, а не новый класс.
 
 | Компонент | Владелец | Пишет | Читает |
 | --- | --- | --- | --- |

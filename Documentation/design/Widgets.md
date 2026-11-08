@@ -1,10 +1,10 @@
 # Pink UI widget and HUD catalog
 
-FemboyEngine2D 0.1.0-alpha.1 has one retained-mode UI module: `Fby::Ui::WidgetCanvas` in
+FemboyEngine2D 0.3.0-alpha.1 has one retained-mode UI module: `Fby::Ui::WidgetCanvas` in
 [PinkUI.hpp](../../Source/Engine/UI/PinkUI.hpp). This page is the element catalog,
 the interaction and focus contracts, the visibility rules, the custom-widget
 extension point and the recommended next additions. The engine version stays
-0.1.0-alpha.1: everything listed as shipped is part of the existing 0.1 API.
+0.3.0-alpha.1: everything listed as shipped is part of the existing API.
 
 ## Drawing model
 
@@ -59,7 +59,7 @@ supply `InlineSprites` to map atom ids to atlas slices. Long shaped blocks
 expose `SetTextLineRange` for a viewport window, and `SetTextBlock` pages between
 `TextStore` blocks.
 
-## Elements shipped in 0.1.0-alpha.1
+## Elements shipped in 0.3.0-alpha.1
 
 | Kind | Draws | Quads | State and interaction | Main colours |
 | --- | --- | --- | --- | --- |
@@ -578,7 +578,7 @@ Resume.textTint = Hud.Theme().Resolve(Fby::Ui::UiPaletteSlot::Text);
 
 ## Recommended additions
 
-The engine layer is deliberately small. The items below are the gaps that
+The engine layer is small. The items below are the gaps that
 matter for a production HUD and menu stack, in the order they unblock the most
 work.
 
@@ -593,7 +593,7 @@ work.
 | P1 | `Tabs` and `Accordion` | Panels and settings pages | Composite of Button and Switcher, or a small state machine |
 | P2 | `RadialProgress`/cooldown ring | Ability HUD | A ring path in the quad shader or the existing `PinkSdf` ring |
 | P2 | Segmented progress bar | Ammo pips and shield cells | Segment count in the progress emit |
-| P2 | Safe-area insets | Notched and mobile HUDs | Window/platform safe-area query |
+| P2 | Safe-area insets | Notched displays and variable HUD insets | Window/platform safe-area query |
 | P2 | Ellipsis and full justification | Labels and buttons in tight layouts | Alignment and wrapping exist; needs measurement plus a trim pass |
 | P2 | Localization ids | Buttons carry raw text; a data-authored menu should reference locale keys | UI layout asset plus the `LocalizationTable` bridge |
 | P2 | UI layout asset and editor | Data-authored menus and localization ids | A serialisable widget record and an editor panel |

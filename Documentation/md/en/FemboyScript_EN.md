@@ -7,10 +7,10 @@ It has two authoring surfaces and two execution backends:
 - a compact register bytecode executed by the editor VM;
 - a cook-time C++26 AOT backend that produces a native plugin for builds.
 
-This document describes the 0.2.0-alpha.1 behavior. FemboyScript 2.0 is the bytecode and
-graph format; the engine version is 0.2.0-alpha.1.
+This document describes the 0.3.0-alpha.1 behavior. FemboyScript 2.0 is the bytecode and
+graph format; the engine version is 0.3.0-alpha.1.
 
-## What exists in 0.2.0-alpha.1
+## What exists in 0.3.0-alpha.1
 
 | Layer | Status |
 |---|---|
@@ -21,12 +21,13 @@ graph format; the engine version is 0.2.0-alpha.1.
 | AOT transpiler | Bytecode to C++26, then a native plugin |
 | Runtime AOT loader | `AotModule` validates ABI and component hashes |
 | Standalone textual `.fbs` parser | `CompileTextScript()` text subset |
-| Arrays, strings, maps, user functions, coroutines | Not present in 0.2.0-alpha.1 |
+| Arrays, strings, maps, user functions, coroutines | Not present in 0.3.0-alpha.1 |
 
-The textual front-end is part of the engine (`Engine/Script/TextScript.hpp`) and
-the editor's `VisualScriptPanel` text mode. It lowers the text subset to the same
-canonical bytecode as LogicGraph; the VM and AOT do not have a separate runtime
-path.
+The visual graph is the default authoring surface for designers. The textual
+front-end is an optional power surface for version control, CI, mods and dense
+logic; it is part of the engine (`Engine/Script/TextScript.hpp`) and the editor's
+`VisualScriptPanel` text mode. It lowers the text subset to the same canonical
+bytecode as LogicGraph; the VM and AOT do not have a separate runtime path.
 
 ```text
 event update {
@@ -229,10 +230,11 @@ Arithmetic parity is enforced: integer add/sub/mul/neg use defined unsigned
 wrap; `INT_MIN / -1` and `INT_MIN % -1` are guarded; non-finite float constants
 are emitted as `std::numeric_limits` expressions.
 
-AOT parity is closed in the current ABI (version 5): the host log callback is
-signed (`logI32`), `DespawnSelf` returns the same 1/0 result the VM writes, and
-generated code calls a `fault(code, pc)` hook, with fault telemetry kept in
-`AotModule` instead of failing silently.
+AOT parity is closed in the current ABI (version 7): the host log callback is
+signed (`logI32`), `DespawnSelf` returns the same 1/0 result the VM writes,
+physics and camera callbacks are shared with the VM, and generated code
+calls a `fault(code, pc)` hook, with fault telemetry kept in `AotModule` instead
+of failing silently.
 
 ## Editor workflow
 
@@ -240,12 +242,64 @@ generated code calls a `fault(code, pc)` hook, with fault telemetry kept in
    a state tree.
 2. Compile the graph and inspect the reported node/instruction/register counts.
 3. Save the StateTree block to the scene TOML; the LogicGraph is an editor asset
-   payload in 0.2.0-alpha.1.
+   payload in 0.3.0-alpha.1.
 4. Assign a `ScriptComponent` program handle to the entity.
 5. Run PIE; faults appear in the Console/LogBoy panel with program, entity and
    pc.
 6. For a build, enable AOT and run `fby_aotc` through the release pipeline. The
    resulting plugin is validated by `AotModule`.
+
+## Physics backend API
+
+The default backend is `Auto`. The three natives are available in every script
+and compile to the same behaviour in VM and AOT:
+
+```text
+backend = physics_get_backend()       // 1 Box2D, 2 DOD, -1 unavailable
+caps = physics_get_capabilities()     // bit 0 joints, 1 CCD, 2 soft, 3 deterministic, 4 large
+ok = physics_set_backend(backend)     // updates the project policy for the next world
+```
+
+`physics_set_backend` does not swap a live solver. It updates the policy copied
+into the next Play-In-Editor or game launch; the current world keeps running so a
+mid-frame change can never invalidate body handles. Query capabilities before
+authoring a graph that depends on joints or CCD.
+
+The LogicGraph palette exposes the same operations as `Physics Get Backend`,
+`Physics Set Backend` and `Physics Capabilities`. Their output pin is Float; the
+Set node takes Exec and a Float backend selector. Existing graphs without these
+nodes migrate as `Auto`.
+
+Projectiles are tuned through the reflected `Projectile2D` component rather than
+a separate native: `Mode` (0 Auto, 1 Hitscan, 2 Swept, 3 Dynamic), `Speed`,
+`Radius`, `MinWallThickness`, `Direction`, `MaxSubsteps` and `CollisionMask` can
+be set with the regular component field nodes.
+
+## Camera motion and distortion
+
+The camera API operates on the active `CameraStackSystem` and never exposes raw
+camera handles. Effects are cosmetic and are not part of rollback snapshots.
+
+```text
+camera_add_trauma(amount)
+camera_distort(flags, strength, paramX, paramY, duration)
+camera_offset(x, y, duration)
+camera_zoom(zoom, duration)
+camera_roll(radians, duration)
+camera_clear_effects()
+camera_set_motion_scale(scale)
+```
+
+`camera_distort` flags: `1` double vision, `2` anisotropic stretch (`paramX/Y`
+are the X/Y scale), `4` radial warp, `8` chromatic split, `16` wobble
+(`strength` is amplitude, `paramX` is frequency). A game defines an intoxicated
+or poisoned state itself and maps it to these generic primitives; the engine does
+not label the gameplay state.
+
+The visual palette exposes `Camera Add Trauma`, `Camera Distort`, `Camera
+Offset`, `Camera Zoom`, `Camera Roll`, `Camera Clear Effects` and `Camera Motion
+Scale`. They compile to the same natives, and AOT plugins call the
+versioned camera callbacks.
 
 ## Limits and failure behavior
 
@@ -289,6 +343,6 @@ The next language features, in dependency order:
 3. Debugger views for the StateTree canvas (the VM-side breakpoints, spans and
    the LogicGraph "Debug graph" view already exist).
 
-The flat VM contract is deliberately not extended by adding heap objects to the
+The flat VM contract is not extended by adding heap objects to the
 8-byte instruction. Any new object model needs a new bytecode version and a
 migration path.

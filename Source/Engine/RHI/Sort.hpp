@@ -23,6 +23,21 @@ public:
             return;
         }
 
+        // A radix pass touches 65536 counters; below the threshold an introsort
+        // over the same keys is much cheaper. The index is the tie-break so the
+        // order matches the stable radix passes below.
+        if (ScopedCount < kRadixSortThreshold)
+        {
+            std::sort(InOrder.begin(), InOrder.begin() + ScopedCount,
+                      [InKeys](std::uint32_t InLeft, std::uint32_t InRight)
+                      {
+                          const RenderKey ScopedLeft = InKeys[InLeft];
+                          const RenderKey ScopedRight = InKeys[InRight];
+                          return ScopedLeft != ScopedRight ? ScopedLeft < ScopedRight : InLeft < InRight;
+                      });
+            return;
+        }
+
         if (MCounts.size() < kBuckets)
         {
             MCounts.resize(kBuckets);
@@ -74,6 +89,8 @@ public:
 
 private:
     static constexpr std::uint32_t kBuckets = 65536;
+    // Below this item count the fixed cost of a radix pass dominates.
+    static constexpr std::uint32_t kRadixSortThreshold = 2048;
 
     std::vector<std::uint32_t> MCounts;
     std::vector<std::uint32_t> MScratch;

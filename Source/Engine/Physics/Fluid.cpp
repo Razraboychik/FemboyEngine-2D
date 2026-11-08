@@ -1,6 +1,7 @@
 // FemboyEngine2D - Gerstner background waves and the mdspan shallow-water grid.
 #include "Engine/Physics/Fluid.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Physics/Physics.hpp"
 
 #include <algorithm>
@@ -45,6 +46,22 @@ std::uint32_t GerstnerField::SetWaves(std::span<const GerstnerWave> InWaves) noe
         ScopedWave.speed = std::max(ScopedWave.speed, 0.01f);
         MWaves[ScopedI] = ScopedWave;
     }
+    // Keep the steepness sum below one: beyond that neighbouring crests
+    // self-intersect and the Jacobian can flip sign. Scaling the authored values
+    // keeps the wave set instead of rejecting it.
+    float ScopedSum = 0.0f;
+    for (std::uint32_t ScopedI = 0; ScopedI < MWaveCount; ++ScopedI)
+    {
+        ScopedSum += MWaves[ScopedI].steepness;
+    }
+    if (ScopedSum > 0.9f)
+    {
+        const float ScopedScale = 0.9f / ScopedSum;
+        for (std::uint32_t ScopedI = 0; ScopedI < MWaveCount; ++ScopedI)
+        {
+            MWaves[ScopedI].steepness *= ScopedScale;
+        }
+    }
     return MWaveCount;
 }
 
@@ -62,8 +79,8 @@ GerstnerSample GerstnerField::Sample(Vector2D InBase, float InTimeSeconds) const
         const float ScopedAngularSpeed = std::sqrt(kGravity * ScopedWaveNumber) * ScopedWave.speed;
         const float ScopedPhase =
             ScopedWaveNumber * ScopedWave.direction.Dot(InBase) - ScopedAngularSpeed * InTimeSeconds + ScopedWave.phase;
-        const float ScopedSine = std::sin(ScopedPhase);
-        const float ScopedCosine = std::cos(ScopedPhase);
+        const float ScopedSine = Sim::Sin(ScopedPhase);
+        const float ScopedCosine = Sim::Cos(ScopedPhase);
         // Q/k is the horizontal particle radius. Q is exposed as steepness so
         const float ScopedAmplitude = ScopedWave.steepness / ScopedWaveNumber;
 
@@ -92,7 +109,7 @@ float GerstnerField::Height(Vector2D InBase, float InTimeSeconds) const noexcept
         const float ScopedAngularSpeed = std::sqrt(kGravity * ScopedWaveNumber) * ScopedWave.speed;
         const float ScopedPhase =
             ScopedWaveNumber * ScopedWave.direction.Dot(InBase) - ScopedAngularSpeed * InTimeSeconds + ScopedWave.phase;
-        ScopedHeight += (ScopedWave.steepness / ScopedWaveNumber) * std::sin(ScopedPhase);
+        ScopedHeight += (ScopedWave.steepness / ScopedWaveNumber) * Sim::Sin(ScopedPhase);
     }
     return ScopedHeight;
 }
@@ -142,7 +159,7 @@ void ShallowWaterGrid::Step(float InDt) noexcept
     const float ScopedWaveSpeed = std::sqrt(MDesc.gravity * MDesc.baseDepth);
     const float ScopedMaxDt = 0.45f * std::min(ScopedDx, ScopedDy) / std::max(ScopedWaveSpeed, 0.001f);
     const float ScopedStep = std::min(InDt, ScopedMaxDt);
-    const float ScopedDamping = std::pow(MDesc.damping, ScopedStep * 60.0f);
+    const float ScopedDamping = Sim::Pow(MDesc.damping, ScopedStep * 60.0f);
     const float ScopedVelocityLimit = std::max(4.0f * ScopedWaveSpeed, 100.0f);
 
     for (std::uint32_t ScopedY = 1; ScopedY + 1 < MRows; ++ScopedY)
@@ -232,7 +249,7 @@ void ShallowWaterGrid::AddDrop(Vector2D InWorldPosition, float InRadiusCells, fl
         {
             const float ScopedDx = static_cast<float>(ScopedX) - ScopedCell.X;
             const float ScopedDy = static_cast<float>(ScopedY) - ScopedCell.Y;
-            const float ScopedWeight = std::exp(-(ScopedDx * ScopedDx + ScopedDy * ScopedDy) / ScopedTwoSigmaSquared);
+            const float ScopedWeight = Sim::Exp(-(ScopedDx * ScopedDx + ScopedDy * ScopedDy) / ScopedTwoSigmaSquared);
             const std::size_t ScopedIndex =
                 static_cast<std::size_t>(ScopedY) * MColumns + static_cast<std::size_t>(ScopedX);
             MHeight[ScopedIndex] =
@@ -272,11 +289,27 @@ float ShallowWaterGrid::SampleVelocityY(Vector2D InWorldPosition) const noexcept
         return 0.0f;
     }
     const Vector2D ScopedCell = WorldToCell(InWorldPosition);
-    const std::uint32_t ScopedX =
-        static_cast<std::uint32_t>(std::clamp(ScopedCell.X, 0.0f, static_cast<float>(MColumns - 1)));
-    const std::uint32_t ScopedY =
-        static_cast<std::uint32_t>(std::clamp(ScopedCell.Y, 0.0f, static_cast<float>(MRows - 1)));
-    return MVelocityY[static_cast<std::size_t>(ScopedY) * MColumns + ScopedX];
+    const float ScopedX = std::clamp(ScopedCell.X, 0.0f, static_cast<float>(MColumns - 1));
+    const float ScopedY = std::clamp(ScopedCell.Y, 0.0f, static_cast<float>(MRows - 1));
+    const std::uint32_t ScopedX0 = static_cast<std::uint32_t>(ScopedX);
+    const std::uint32_t ScopedY0 = static_cast<std::uint32_t>(ScopedY);
+    const std::uint32_t ScopedX1 = std::min(ScopedX0 + 1, MColumns - 1);
+    const std::uint32_t ScopedY1 = std::min(ScopedY0 + 1, MRows - 1);
+    const float ScopedTx = ScopedX - static_cast<float>(ScopedX0);
+    const float ScopedTy = ScopedY - static_cast<float>(ScopedY0);
+    const auto ScopedVelocityAt = [this](std::uint32_t InX, std::uint32_t InY) noexcept
+    {
+        return MVelocityY[static_cast<std::size_t>(InY) * MColumns + InX];
+    };
+    // Bilinear like SampleHeight: a smooth surface must not produce a stepped
+    // vertical velocity for buoys and swimmers.
+    const float ScopedTop =
+        ScopedVelocityAt(ScopedX0, ScopedY0) +
+        (ScopedVelocityAt(ScopedX1, ScopedY0) - ScopedVelocityAt(ScopedX0, ScopedY0)) * ScopedTx;
+    const float ScopedBottom =
+        ScopedVelocityAt(ScopedX0, ScopedY1) +
+        (ScopedVelocityAt(ScopedX1, ScopedY1) - ScopedVelocityAt(ScopedX0, ScopedY1)) * ScopedTx;
+    return ScopedTop + (ScopedBottom - ScopedTop) * ScopedTy;
 }
 
 std::uint32_t ShallowWaterGrid::CopyHeightField(std::span<float> InDestination) const noexcept
@@ -370,7 +403,9 @@ void FluidWaveSystem::Update(Ecs::Registry& InRegistry, float InDt) noexcept
             ScopedTracked = FindTracked(ScopedEntity);
             if (ScopedTracked == nullptr)
             {
-                // Tracking table full; skip rather than allocate
+                // Tracking table full; skip rather than allocate but make the
+                // loss visible to diagnostics.
+                ++MDroppedInteractors;
                 continue;
             }
         }

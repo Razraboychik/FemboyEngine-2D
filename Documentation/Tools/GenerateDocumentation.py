@@ -82,11 +82,11 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "The design rules are deliberately strict. Simulation state is plain, trivially copyable data; "
+                    "The design rules are strict. Simulation state is plain, trivially copyable data; "
                     "hot paths use fixed capacity, function pointers and arena storage; frame paths do not allocate; "
                     "and every subsystem exposes deterministic, checksummed state. Those rules are what make rollback, "
                     "hot reload, snapshot testing and GPU multi-draw practical rather than aspirational.",
-                    "Правила проектирования намеренно жёсткие. Состояние симуляции — это простые trivially copyable "
+                    "Правила проектирования строгие. Состояние симуляции — это простые trivially copyable "
                     "данные; горячие пути используют фиксированную ёмкость, указатели на функции и арены; кадровые "
                     "пути не выделяют память; каждая подсистема предоставляет детерминированное состояние с "
                     "контрольной суммой. Именно это делает роллбэк, горячую перезагрузку, snapshot-тесты и GPU "
@@ -149,7 +149,7 @@ SECTIONS: list[dict] = [
                     "domain explicitly. A header under Source/Engine/RHI is included as \"Engine/RHI/RHI.hpp\"; editor "
                     "code uses \"Editor/Panels/...\". This removes the old ambient fby/ prefix and makes ownership "
                     "visible in the first line of a file.",
-                    "Весь исходный код находится в Source/. Корнем include-путей является сам Source, поэтому каждый "
+                    "Весь исходный код находится в Source/. Корень include-путей — сам Source, поэтому каждый "
                     "include явно называет свой домен. Заголовок в Source/Engine/RHI подключается как "
                     "\"Engine/RHI/RHI.hpp\"; код редактора использует \"Editor/Panels/...\". Это убирает старый "
                     "неявный префикс fby/ и делает принадлежность файла видимой с первой строки.",
@@ -163,10 +163,13 @@ SECTIONS: list[dict] = [
                         B("Source/Engine/Core", "Source/Engine/Core"),
                         B("Source/Engine/RHI", "Source/Engine/RHI"),
                         B("Source/Engine/ECS", "Source/Engine/ECS"),
+                        B("Source/Engine/Input", "Source/Engine/Input"),
                         B("Source/Engine/Physics", "Source/Engine/Physics"),
                         B("Source/Engine/Audio", "Source/Engine/Audio"),
                         B("Source/Engine/Network", "Source/Engine/Network"),
                         B("Source/Engine/Assets", "Source/Engine/Assets"),
+                        B("Source/Engine/Documents", "Source/Engine/Documents"),
+                        B("Source/Engine/Text", "Source/Engine/Text"),
                         B("Source/Engine/Script", "Source/Engine/Script"),
                         B("Source/Engine/UI", "Source/Engine/UI"),
                         B("Source/Engine/Video", "Source/Engine/Video"),
@@ -178,13 +181,16 @@ SECTIONS: list[dict] = [
                         B("Definitions, value types, jobs, platform, plugins, Mirror", "Определения, типы значений, jobs, платформа, плагины, Mirror"),
                         B("Render hardware interface, shaders, materials, camera stack", "Интерфейс рендеринга, шейдеры, материалы, стек камер"),
                         B("Registry, components, scenes, snapshots, skeleton, animation", "Реестр, компоненты, сцены, снапшоты, скелет, анимация"),
-                        B("Box2D v3 bridge, joints, cloth, fluid, particles", "Мост Box2D v3, суставы, ткань, жидкость, частицы"),
+                        B("Action mapper, contexts, gamepad snapshots, fixed input state", "Маппер действий, контексты, снимки геймпада, фиксированное состояние ввода"),
+                        B("Box2D v3 and DOD backends, joints, transport, wheels, cloth, fluid, particles", "Бэкенды Box2D v3 и DOD, соединения, транспорт, колёса, ткань, жидкость, частицы"),
                         B("Mixer, DSP graph, limiter, Ogg/Opus", "Микшер, DSP-граф, лимитер, Ogg/Opus"),
                         B("NetRollbackSession, input rings, snapshot replication", "NetRollbackSession, кольца ввода, репликация снапшотов"),
                         B("VFS, .femeta, cooker, localization, texture/audio formats", "VFS, .femeta, кукер, локализация, форматы текстур/аудио"),
+                        B("TXT document slots and pagination", "Слоты TXT-документов и пагинация"),
+                        B("Unicode, shaping, layout, streaming books and page sessions", "Unicode, шейпинг, раскладка, потоковые книги и постраничные сессии"),
                         B("Bytecode VM, graph compiler, AOT backend", "Байткод-VM, компилятор графов, AOT-бэкенд"),
                         B("PinkUI, hypertext, font atlas, accessibility", "PinkUI, гипертекст, атлас шрифтов, доступность"),
-                        B("WebM/VP9 playback and streaming", "Воспроизведение и стриминг WebM/VP9"),
+                        B("WebM VP9/AV1 playback and streaming", "Воспроизведение и стриминг WebM VP9/AV1"),
                         B("Editor panels and ImNodes canvases", "Панели редактора и холсты ImNodes"),
                         B("Command stack, cooker watcher, project management", "Стек команд, watcher кукера, управление проектами"),
                         B("Applications, tests, offline tools, plugin fixtures", "Приложения, тесты, офлайн-инструменты, фикстуры плагинов"),
@@ -339,13 +345,13 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "The mesh path is parallel and deliberately different. Static geometry is uploaded once into a "
+                    "The mesh path is parallel and different. Static geometry is uploaded once into a "
                     "device-local arena and addressed through MeshHandle. Deformable SkeletalAnimation/SkinComponent vertices are "
                     "streamed into a host-visible ring; one compute dispatch runs linear-blend skinning for the whole "
                     "frame; the result lands in a device-local SkinnedVertex buffer. MeshVertex is 40 bytes, "
                     "SkinnedVertex is 32 bytes, and both sides use a full column-major Mat4 so a 2.5D camera can "
                     "produce real z and perspective divide.",
-                    "Путь мешей параллелен и намеренно устроен иначе. Статическая геометрия один раз загружается в "
+                    "Путь мешей параллелен и устроен иначе. Статическая геометрия один раз загружается в "
                     "device-local арену и адресуется через MeshHandle. Вершины деформируемых SkeletalAnimation/SkinComponent "
                     "потоково попадают в host-visible кольцо; один compute-диспатч выполняет linear-blend skinning "
                     "для всего кадра; результат пишется в device-local буфер SkinnedVertex. MeshVertex занимает 40 "
@@ -391,8 +397,8 @@ SECTIONS: list[dict] = [
                         B("Null", "Null"),
                     ],
                     "descriptions": [
-                        B("Windows/Linux/Android; indirect mesh path, compute LBS, runtime loader", "Windows/Linux/Android; indirect-путь мешей, compute LBS, загрузчик в рантайме"),
-                        B("macOS/iOS; same FramePacket contract, Metal argument buffers", "macOS/iOS; тот же контракт FramePacket, argument buffers Metal"),
+                        B("Windows/Linux; indirect mesh path, compute LBS, runtime loader", "Windows/Linux; indirect-путь мешей, compute LBS, загрузчик в рантайме"),
+                        B("macOS; same FramePacket contract, Metal argument buffers", "macOS; тот же контракт FramePacket, argument buffers Metal"),
                         B("Headless CI and servers; full packet/ring path, no device", "Headless CI и серверы; полный путь пакетов/колец без устройства"),
                     ],
                 },
@@ -524,21 +530,23 @@ SECTIONS: list[dict] = [
     },
     {
         "number": "6",
-        "title": B("Physics: Box2D v3, chains, cloth and water", "Физика: Box2D v3, цепочки, ткань и вода"),
+        "title": B("Physics: Box2D v3, DOD backend, chains, cloth and water", "Физика: Box2D v3, DOD-бэкенд, цепочки, ткань и вода"),
         "blocks": [
             (
                 "p",
                 B(
                     "The physics header does not include box2d.h. RigidBody2D and Collider2D store packed "
                     "b2BodyId/b2ShapeId values in uint64_t, so gameplay, scene IO and the network layer compile without "
-                    "the C API. PhysicsSystem is the only translation unit that knows Box2D exists. Units are explicit: "
-                    "Box2D works in metres, the renderer in pixels, and PhysicsDesc::pixelsPerMeter is the single "
-                    "conversion point.",
-                    "Заголовок физики не включает box2d.h. RigidBody2D и Collider2D хранят упакованные b2BodyId/b2ShapeId "
-                    "в uint64_t, поэтому геймплей, scene IO и сетевой слой компилируются без C API. PhysicsSystem — "
-                    "единственная единица трансляции, знающая о существовании Box2D. Единицы заданы явно: Box2D "
-                    "работает в метрах, рендерер в пикселях, а PhysicsDesc::pixelsPerMeter — единственная точка "
-                    "преобразования.",
+                    "the C API. PhysicsSystem owns the world; TransportGroups, VehicleWheels and the joint systems are "
+                    "explicitly Box2D-aware translation units that keep the C API behind the same packed handles. Units "
+                    "are explicit: Box2D works in metres, the renderer in pixels, and PhysicsDesc::pixelsPerMeter is the "
+                    "single conversion point.",
+                    "Публичные заголовки физики не включают box2d.h. RigidBody2D и Collider2D хранят упакованные "
+                    "b2BodyId/b2ShapeId в uint64_t, поэтому геймплей, scene IO и сетевой слой компилируются без C API. "
+                    "PhysicsSystem владеет миром; TransportGroups, VehicleWheels и системы соединений — явно знающие "
+                    "Box2D единицы трансляции, которые держат C API за теми же упакованными handles. Единицы заданы "
+                    "явно: Box2D работает в метрах, рендерер в пикселях, а PhysicsDesc::pixelsPerMeter — единственная "
+                    "точка преобразования.",
                 ),
             ),
             (
@@ -550,12 +558,18 @@ SECTIONS: list[dict] = [
                         B("Rope / chain / spring graph", "Верёвка / цепь / граф пружин"),
                         B("Cloth", "Ткань"),
                         B("Water", "Вода"),
+                        B("DOD backend", "DOD-бэкенд"),
+                        B("Transport", "Транспорт"),
+                        B("Wheels", "Колёса"),
                     ],
                     "descriptions": [
                         B("Box2D v3 world, fixed step, contact events, teleport flag", "Мир Box2D v3, фиксированный шаг, события контактов, флаг телепорта"),
                         B("A joint graph of capsule links: chain, rope and spring connections with break limits, ties and repair", "Граф соединений капсульных звеньев: цепь, верёвка и пружины с пределами прочности, связями и ремонтом"),
                         B("32x32 Verlet grid, Gauss-Seidel constraints, overlap query against Box2D shapes", "Verlet-сетка 32x32, ограничения Гаусса-Зейделя, overlap-запрос к формам Box2D"),
                         B("GerstnerField analytic waves plus ShallowWaterGrid on mdspan", "Аналитические волны GerstnerField и ShallowWaterGrid на mdspan"),
+                        B("SoA AABB solver with a sorted uniform grid; no joints, body CCD or rotational contact response", "SoA AABB-солвер с сортированной равномерной сеткой; без joints, body CCD и вращательного контактного отклика"),
+                        B("Path/motion carriers with contact support and conveyor surfaces; Box2D weld joints when available", "Носители с путём/motion, контактной опорой и конвейерами; weld-джойнты Box2D при наличии"),
+                        B("Box2D wheel-joint suspension, per-wheel motor torque and braking; no implicit powertrain", "Подвеска на wheel-джойнтах Box2D, момент и торможение по колёсам; без неявного powertrain"),
                     ],
                 },
             ),
@@ -592,12 +606,12 @@ SECTIONS: list[dict] = [
                     "pushed out of the existing Box2D shapes. It is not a second collision world and does not "
                     "duplicate level geometry. The CPU writes MeshVertex positions; the renderer streams them through "
                     "the same deformable path as a skinned mesh, so cloth adds no second draw path. A pinned vertex is "
-                    "simply invMass = 0.",
+                    "invMass = 0.",
                     "Ткань — Verlet mass-spring сетка, проецируемая фиксированным числом итераций Гаусса-Зейделя и "
                     "затем выталкиваемая из существующих форм Box2D. Это не второй мир коллизий и не дублирование "
                     "геометрии уровня. CPU пишет позиции MeshVertex; рендерер передаёт их тем же деформируемым путём, "
                     "что и скинированный меш, поэтому ткань не добавляет второй путь отрисовки. Закреплённая вершина — "
-                    "просто invMass = 0.",
+                    "invMass = 0.",
                 ),
             ),
             (
@@ -614,6 +628,21 @@ SECTIONS: list[dict] = [
                     "массивами и интегрирует линеаризованные уравнения мелкой воды с ограниченным числом CFL. Ни одна "
                     "модель не знает о RHI; рендерер сэмплирует поле или загружает его представление высоты как "
                     "R32F-текстуру.",
+                ),
+            ),
+            (
+                "p",
+                B(
+                    "The DOD backend is a second implementation of the same PhysicsSystem contract, selected by project "
+                    "policy or PhysicsDesc.backend. It owns SoA positions, velocities and collider extents and resolves "
+                    "pairs through a sorted uniform grid; PhysicsSystem::Capabilities() is the only supported feature "
+                    "query. Transport and wheels explicitly declare their backend boundary: transport support and "
+                    "conveyors work on both solvers, while weld joints and wheel joints require Box2D.",
+                    "DOD-бэкенд — вторая реализация того же контракта PhysicsSystem, выбираемая политикой проекта или "
+                    "PhysicsDesc.backend. Он хранит SoA-позиции, скорости и размеры коллайдеров и разрешает пары через "
+                    "сортированную равномерную сетку; PhysicsSystem::Capabilities() — единственный поддерживаемый запрос "
+                    "возможностей. Транспорт и колёса явно объявляют границу бэкенда: опора и конвейеры работают на "
+                    "обоих солверах, а weld- и wheel-джойнты требуют Box2D.",
                 ),
             ),
         ],
@@ -645,7 +674,7 @@ SECTIONS: list[dict] = [
                     "When a remote input arrives late, the session restores the snapshot immediately before the "
                     "earliest corrected tick, restores the RNG and CommandLog cursor from the same slot, reapplies "
                     "structural commands, resimulates the affected ticks with the corrected input and prediction for "
-                    "still-missing inputs, captures new snapshots, and reports which frames actually changed.",
+                    "still-missing inputs, captures new snapshots, and reports which frames changed.",
                     "Когда удалённый ввод приходит с опозданием, сессия восстанавливает снапшот непосредственно перед "
                     "самым ранним исправленным тиком, восстанавливает RNG и курсор CommandLog из того же слота, "
                     "повторно применяет структурные команды, ресимулирует затронутые тики с исправленным вводом и "
@@ -712,13 +741,13 @@ SECTIONS: list[dict] = [
                 B(
                     "A component never stores a path. It stores a small, generation-checked AssetHandle that names one "
                     "row of the AssetDatabase metadata table. The row owns the stable AssetId/GUID, resource kind, "
-                    "source and cooked paths, dependency list and import settings. AssetHandle::generation detects a "
+                    "source and cooked paths, dependency list and import settings. AssetHandle::Generation detects a "
                     "reused slot; AssetMeta::contentGeneration lets a renderer or cache compare content versions. "
                     "Hot reload never exposes a half-updated asset: edits are staged and committed atomically.",
                     "Компонент никогда не хранит путь. Он хранит небольшой AssetHandle с проверкой поколения, "
                     "указывающий на строку таблицы метаданных AssetDatabase. Строка владеет стабильными AssetId/GUID, "
                     "видом ресурса, исходным и приготовленным путями, списком зависимостей и настройками импорта. "
-                    "AssetHandle::generation обнаруживает переиспользованный слот; AssetMeta::contentGeneration "
+                    "AssetHandle::Generation обнаруживает переиспользованный слот; AssetMeta::contentGeneration "
                     "позволяет рендереру или кешу сравнивать версии содержимого. Горячая перезагрузка никогда не "
                     "показывает наполовину обновлённый ассет: правки готовятся и фиксируются атомарно.",
                 ),
@@ -941,7 +970,7 @@ SECTIONS: list[dict] = [
                     "name, a Vec2 alias, a trailing comment or a Cyrillic comment fails the build review before it can "
                     "reach main. The comments are English-only, one line, above the code and without a trailing period; "
                     "the only remaining trailing comments are two NOLINT suppressions required by clang-tidy.",
-                    "Style gate намеренно проверяет репозиторий, а не только diff. Новый файл с именем в нижнем "
+                    "Style gate проверяет репозиторий, а не только diff. Новый файл с именем в нижнем "
                     "регистре, алиасом Vec2, комментарием в конце строки или кириллицей падает на ревью до попадания "
                     "в main. Комментарии только на английском, одной строкой, над кодом и без точки в конце; "
                     "единственные оставшиеся комментарии в конце строки — два подавления NOLINT, требуемых clang-tidy.",
@@ -1053,9 +1082,9 @@ SECTIONS: list[dict] = [
                 "bullets",
                 B(
                     "Finish Metal parity: indirect mesh path, compute skinning and the same FramePacket contract as "
-                    "Vulkan, then enable macOS/iOS CI.",
+                    "Vulkan, then enable macOS CI.",
                     "Завершить паритет Metal: indirect-путь мешей, compute-скиннинг и тот же контракт FramePacket, что "
-                    "у Vulkan, затем включить CI macOS/iOS.",
+                    "у Vulkan, затем включить CI macOS.",
                 ),
             ),
             (
@@ -1231,7 +1260,7 @@ def render_markdown(section_list: list[dict], language: str, language_name: str,
                 lines += ["```cpp", block[language], "```", ""]
             elif kind == "table":
                 headers, rows = table_rows(block, language)
-                lines.append(f"| {markdown_escape(headers)} | Details |")
+                lines.append(f"| {markdown_escape(headers)} | {'Details' if language == 'en' else 'Детали'} |")
                 lines.append("|---|---|")
                 for row in rows:
                     lines.append(f"| {markdown_escape(row[0])} | {markdown_escape(row[1])} |")
@@ -1589,7 +1618,7 @@ def add_document_control(document: Document, language: str) -> None:
         ("Version", "Версия", DOC_VERSION),
         ("Status", "Статус", DOC_STATUS),
         ("Date", "Дата", TODAY),
-        ("Owner", "Владелец", "FemboyEngine Architecture Group"),
+        ("Owner", "Владелец", "Razraboychik"),
         ("Audience", "Аудитория", "Engine, editor, tools and network engineers"),
         ("Scope", "Область", "Runtime, RHI, ECS, physics, network, tooling, visual graphs"),
     ]
@@ -1686,7 +1715,7 @@ def build_docx(path: pathlib.Path, language: str) -> None:
         else "FemboyEngine2D — Архитектурная спецификация"
     )
     core.subject = "Data-oriented engine architecture, Release"
-    core.author = "FemboyEngine Architecture Group"
+    core.author = "Razraboychik"
     core.keywords = "FemboyEngine, DOD, Vulkan, RHI, ECS, Box2D, rollback, ImNodes, AOT"
     core.comments = "Generated by Documentation/Tools/GenerateDocumentation.py"
     core.language = "en-US" if language == "en" else "ru-RU"

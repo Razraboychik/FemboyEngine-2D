@@ -179,6 +179,9 @@ struct AICommandComponent
     Vector2D Position{};
     float Speed = 0.0f;
     std::uint32_t Flags = 0;
+    // Skill slot for ActivateSkill; kept out of Flags so command flags and the
+    // slot never share a field.
+    std::uint32_t SkillSlot = 0;
     std::uint32_t ActionId = 0;
     std::uint32_t TaskIndex = 0;
     // Fixed-step tick that produced the command; consumers can drop stale ones.
@@ -258,7 +261,7 @@ public:
     }
 
     // FixedUpdate pass. Allocation-free. Tasks write AICommandComponent through
-    void Run(Ecs::SystemContext& InContext) const noexcept;
+    void Run(const Ecs::GameplaySystemView& InView) const noexcept;
     void Run(Ecs::Registry& InRegistry, float InDt, Ecs::CommandBuffer* InCommands) const noexcept;
 
 private:
@@ -295,6 +298,7 @@ FBY_REFLECT_COMPONENT(Fby::AICommandComponent, "AICommandComponent",
                       FBY_FIELD(Fby::AICommandComponent, Position, Vector2D),
                       FBY_FIELD(Fby::AICommandComponent, Speed, Float),
                       FBY_FIELD(Fby::AICommandComponent, Flags, UInt32),
+                      FBY_FIELD(Fby::AICommandComponent, SkillSlot, UInt32),
                       FBY_FIELD(Fby::AICommandComponent, ActionId, UInt32),
                       FBY_FIELD(Fby::AICommandComponent, TaskIndex, UInt32),
                       FBY_FIELD(Fby::AICommandComponent, Sequence, UInt32))

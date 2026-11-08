@@ -292,8 +292,8 @@ void TestCommandRingConcurrency()
             for (std::uint32_t ScopedSequence = 0; ScopedSequence < ScopedKCommandCount; ++ScopedSequence)
             {
                 Fby::AudioCommand ScopedCommand{};
-                ScopedCommand.type = Fby::AudioCommandType::SetGain;
-                ScopedCommand.generation = ScopedSequence;
+                ScopedCommand.Type = Fby::AudioCommandType::SetGain;
+                ScopedCommand.Generation = ScopedSequence;
                 std::uint32_t ScopedSpins = 0;
                 while (!ScopedQueue.Push(ScopedCommand))
                 {
@@ -329,7 +329,7 @@ void TestCommandRingConcurrency()
                     }
                     continue;
                 }
-                if (ScopedCommand.generation != ScopedExpected || ScopedCommand.type != Fby::AudioCommandType::SetGain)
+                if (ScopedCommand.Generation != ScopedExpected || ScopedCommand.Type != Fby::AudioCommandType::SetGain)
                 {
                     ScopedErrors.fetch_add(1, std::memory_order_relaxed);
                     return;
@@ -355,7 +355,7 @@ void TestFullRingRejection()
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < Fby::kMaxCommands; ++ScopedIndex)
     {
         Fby::AudioCommand ScopedCommand{};
-        ScopedCommand.generation = ScopedIndex;
+        ScopedCommand.Generation = ScopedIndex;
         FBY_CHECK(ScopedQueue.Push(ScopedCommand));
     }
     Fby::AudioCommand ScopedOverflow{};
@@ -367,16 +367,16 @@ void TestFullRingRejection()
     // One pop frees a slot; the ring stays ordered.
     Fby::AudioCommand ScopedFirst{};
     FBY_CHECK(ScopedQueue.Pop(&ScopedFirst));
-    FBY_CHECK(ScopedFirst.generation == 0u);
+    FBY_CHECK(ScopedFirst.Generation == 0u);
     Fby::AudioCommand ScopedReplacement{};
-    ScopedReplacement.generation = Fby::kMaxCommands;
+    ScopedReplacement.Generation = Fby::kMaxCommands;
     FBY_CHECK(ScopedQueue.Push(ScopedReplacement));
 
     for (std::uint32_t ScopedExpected = 1; ScopedExpected <= Fby::kMaxCommands; ++ScopedExpected)
     {
         Fby::AudioCommand ScopedCommand{};
         FBY_CHECK(ScopedQueue.Pop(&ScopedCommand));
-        FBY_CHECK(ScopedCommand.generation == ScopedExpected);
+        FBY_CHECK(ScopedCommand.Generation == ScopedExpected);
     }
     FBY_CHECK(ScopedQueue.Size() == 0u);
     FBY_CHECK(!ScopedQueue.Pop(&ScopedOverflow));
@@ -387,7 +387,7 @@ void TestFullRingRejection()
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < Fby::kMaxCommands; ++ScopedIndex)
     {
         Fby::AudioCommand ScopedCommand{};
-        ScopedCommand.type = Fby::AudioCommandType::None;
+        ScopedCommand.Type = Fby::AudioCommandType::None;
         FBY_CHECK(ScopedGraph.PushCommand(ScopedCommand));
     }
     Fby::AudioCommand ScopedCommand{};

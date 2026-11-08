@@ -161,8 +161,7 @@ struct OptimizationAdvice
     std::uint8_t shippingScore = 3;
 };
 
-[[nodiscard]] constexpr OptimizationAdvice Recommend(OptimizationLevel InLevel, bool InShipping,
-                                                     bool InMobile) noexcept
+[[nodiscard]] constexpr OptimizationAdvice Recommend(OptimizationLevel InLevel, bool InShipping) noexcept
 {
     switch (InLevel)
     {
@@ -190,11 +189,11 @@ struct OptimizationAdvice
                     "hashes on O2.",
                     2, 2};
         case OptimizationLevel::Os:
-            return {InMobile ? "Size first, the mobile default" : "Size first, for a constrained installer",
+            return {"Size first, for a constrained installer",
                     "Favours compact code over loop unrolling; a 2D engine that fits the L2 cache often "
                     "runs this profile faster than O3.",
                     "Expect a slower cloth solver and slower software skinning; profile before shipping.",
-                    3, static_cast<std::uint8_t>(InShipping ? (InMobile ? 5 : 3) : 2)};
+                    3, static_cast<std::uint8_t>(InShipping ? 3 : 2)};
         case OptimizationLevel::Count:
             break;
     }

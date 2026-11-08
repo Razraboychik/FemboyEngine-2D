@@ -171,12 +171,13 @@ back. XeSS has been removed; MetalFX is reserved without an adapter.
 
 ## Optional vendor SDKs
 
-The DLSS and FidelityFX SDKs are intentionally not committed to the engine
+The DLSS and FidelityFX SDKs are not committed to the engine
 repository. They are large, vendor-licensed and optional; a checkout without
-them still builds the portable FSR1/FSR2/custom paths. The
-`SetupScripts/SetupUpscalers.*` helpers verify or download a local SDK after
-the license is accepted. A developer who needs a vendor backend installs the
-SDK locally and points CMake at it:
+them still builds the portable FSR1/FSR2/custom paths. Pass
+`-WithVendorSdks -AcceptVendorLicenses` to the Windows `Setup.bat`, or
+`--with-vendor-sdks --accept-vendor-licenses` to the Linux/macOS `Setup`, to
+clone the SDKs from GitHub into `third_party/`. A developer who needs a vendor
+backend can also install the SDK locally and point CMake at it:
 
 ```cmake
 # NVIDIA DLSS, Windows + Vulkan + NVIDIA only

@@ -3,6 +3,7 @@
 
 #include "Engine/Core/Types.hpp"
 #include "Engine/Core/Mirror.hpp"
+#include "Engine/ECS/SystemContext.hpp"
 #include "Engine/RHI/RenderItem.hpp"
 #include "Engine/Text/TextAsset.hpp"
 #include "Engine/UI/FontAtlas.hpp"
@@ -75,17 +76,17 @@ inline constexpr std::int32_t kNoCell = -1;
 inline constexpr std::uint16_t kNoCellTrack = 0xFFFFu;
 
 // A pointer-free widget reference. The slot index is stable for the lifetime of
-// a canvas (there is no removal API) and the generation invalidates handles
+// a canvas (there is no removal API) and the Generation invalidates handles
 // across Clear(), so a handle can cross an ECS boundary without a pointer.
 struct WidgetHandle
 {
-    std::int32_t widget = kNoWidget;
-    std::uint32_t generation = 0;
+    std::int32_t Widget = kNoWidget;
+    std::uint32_t Generation = 0;
 };
 
 [[nodiscard]] constexpr bool IsHandleSet(WidgetHandle InHandle) noexcept
 {
-    return InHandle.widget != kNoWidget && InHandle.generation != 0;
+    return InHandle.Widget != kNoWidget && InHandle.Generation != 0;
 }
 
 // Sorting range for per-widget z-order. The render key stores
@@ -630,7 +631,7 @@ struct WidgetCanvas
     std::uint32_t canvasFlags = 0;
     std::uint32_t widgetCount = 0;
     // Incremented by Clear(); WidgetHandle generations are stamped with it
-    std::uint32_t generation = 1;
+    std::uint32_t Generation = 1;
     std::uint32_t textUsed = 0;
     std::int32_t focusIndex = kNoWidget;
     // Widget that owns the pointer capture for a Slider/Scrollbar drag
@@ -653,6 +654,11 @@ struct WidgetCanvas
     OledShiftState oled{};
     // Seconds since the canvas started; drives the TextInput caret blink
     float uiTime = 0.0f;
+    // Runtime frame bookkeeping for WidgetCanvasSystem: one owner entity per
+    // canvas per frame, and the time/layout advance runs once per frame.
+    std::uint64_t ownerFrameStamp = 0;
+    std::uint64_t processedFrame = 0;
+    std::uint32_t ownerEntityRaw = 0xFFFFFFFFu;
 
     // Grid description
     static constexpr std::uint32_t kTrackCapacity = kMaxGridColumns > kMaxGridRows ? kMaxGridColumns : kMaxGridRows;
@@ -761,11 +767,11 @@ struct WidgetCanvas
     [[nodiscard]] Rect RectOf(WidgetHandle InHandle) const noexcept
     {
         EnsureLayout();
-        if (InHandle.widget < 0 || static_cast<std::uint32_t>(InHandle.widget) >= widgetCount)
+        if (InHandle.Widget < 0 || static_cast<std::uint32_t>(InHandle.Widget) >= widgetCount)
         {
             return {};
         }
-        const auto ScopedIndex = static_cast<std::uint32_t>(InHandle.widget);
+        const auto ScopedIndex = static_cast<std::uint32_t>(InHandle.Widget);
         return Rect{layout.localMins[ScopedIndex], layout.localMaxs[ScopedIndex]};
     }
     // Physical window extent / display scale. The canvas stays in Units, so the
@@ -1134,14 +1140,14 @@ struct WidgetCanvas
     // Stable, pointer-free reference to a widget.
     [[nodiscard]] WidgetHandle Handle(std::int32_t InWidget) const noexcept
     {
-        return ValidWidget(InWidget) ? WidgetHandle{InWidget, generation} : WidgetHandle{};
+        return ValidWidget(InWidget) ? WidgetHandle{InWidget, Generation} : WidgetHandle{};
     }
     [[nodiscard]] bool ResolveHandle(WidgetHandle InHandle) const noexcept
     {
-        return IsHandleSet(InHandle) && InHandle.generation == generation && ValidWidget(InHandle.widget);
+        return IsHandleSet(InHandle) && InHandle.Generation == Generation && ValidWidget(InHandle.Widget);
     }
 
-    // Switcher page by stable handle. A stale generation or a widget that is
+    // Switcher page by stable handle. A stale Generation or a widget that is
     // not a direct child is rejected; an empty handle resets to the first child.
     [[nodiscard]] bool SetActiveWidget(std::int32_t InSwitcher, WidgetHandle InWidget) noexcept;
     [[nodiscard]] WidgetHandle ActiveWidget(std::int32_t InSwitcher) const noexcept;
@@ -1420,7 +1426,10 @@ struct FrameOutput
     std::span<Rhi::RenderItem> items{};
     std::span<Rhi::RenderKey> keys{};
     std::span<Rhi::DrawBatch> batches{};
+    // Write position for this frame. BuildFrame does not move it; Update reports
+    // the position after the last canvas in endCursor.
     std::uint32_t startCursor = 0;
+    std::uint32_t endCursor = 0;
 
     // Results, written by BuildFrame/Update.
     std::uint32_t itemsWritten = 0;
@@ -1461,9 +1470,9 @@ public:
     // Cold path only: call from app init / scene load, never from BuildFrame or
     [[nodiscard]] bool MountFonts(Rhi::RHI& InRhi);
 
-    [[nodiscard]] static BuildStatus BuildFrame(Fby::Ecs::SystemContext& InContext, const WidgetCanvas& InCanvas,
+    [[nodiscard]] static BuildStatus BuildFrame(const Ecs::UiSystemView& InView, const WidgetCanvas& InCanvas,
                                                 FrameOutput& Output) noexcept;
-    static void Update(Fby::Ecs::SystemContext& InContext, std::span<WidgetCanvas> InCanvases,
+    static void Update(const Ecs::UiSystemView& InView, std::span<WidgetCanvas> InCanvases,
                        FrameOutput& Output) noexcept;
 
 private:

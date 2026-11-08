@@ -21,8 +21,15 @@
 #endif
 #include <windows.h>
 #else
+#include <chrono>
 #include <cstdlib>
+#include <fcntl.h>
+#include <signal.h>
+#include <spawn.h>
 #include <sys/wait.h>
+#include <thread>
+#include <unistd.h>
+extern char** environ;
 #endif
 
 namespace Fby::Editor
@@ -595,13 +602,55 @@ bool ReleaseCooker::RunChild(const char* InCommandLine, ReleaseCookStage InStage
     }
     return ScopedExitCode == 0;
 #else
-    std::string ScopedCommand(InCommandLine);
-    ScopedCommand += " >> ";
-    ScopedCommand += MConfig.logPath;
-    ScopedCommand += " 2>&1";
-    const int ScopedStatus = std::system(ScopedCommand.c_str());
+    int ScopedLog = -1;
+    if (MConfig.logPath[0] != '\0')
+    {
+        ScopedLog = ::open(MConfig.logPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    }
+    posix_spawn_file_actions_t ScopedActions;
+    (void)posix_spawn_file_actions_init(&ScopedActions);
+    if (ScopedLog >= 0)
+    {
+        (void)posix_spawn_file_actions_adddup2(&ScopedActions, ScopedLog, STDOUT_FILENO);
+        (void)posix_spawn_file_actions_adddup2(&ScopedActions, ScopedLog, STDERR_FILENO);
+    }
+    char* ScopedArgv[] = {const_cast<char*>("/bin/sh"), const_cast<char*>("-c"),
+                           const_cast<char*>(InCommandLine), nullptr};
+    pid_t ScopedPid = -1;
+    const int ScopedSpawn = posix_spawn(&ScopedPid, "/bin/sh", &ScopedActions, nullptr, ScopedArgv, environ);
+    (void)posix_spawn_file_actions_destroy(&ScopedActions);
+    if (ScopedLog >= 0)
+    {
+        (void)::close(ScopedLog);
+    }
+    if (ScopedSpawn != 0 || ScopedPid <= 0)
+    {
+        std::fprintf(stderr, "release: posix_spawn failed (%d) for %s\n", ScopedSpawn, InCommandLine);
+        return false;
+    }
+    int ScopedStatus = 0;
+    for (;;)
+    {
+        const pid_t ScopedWait = waitpid(ScopedPid, &ScopedStatus, WNOHANG);
+        PollProgressFile();
+        if (ScopedWait == ScopedPid)
+        {
+            break;
+        }
+        if (ScopedWait < 0)
+        {
+            return false;
+        }
+        if (MStopRequested.load(std::memory_order_acquire))
+        {
+            (void)kill(ScopedPid, SIGTERM);
+            (void)waitpid(ScopedPid, &ScopedStatus, 0);
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
     PollProgressFile();
-    if (ScopedStatus == -1)
+    if (!WIFEXITED(ScopedStatus))
     {
         return false;
     }

@@ -1,18 +1,17 @@
 # CMake Project and Engine Management
 
-Applies to FemboyEngine2D 0.2.0-alpha.1 and CMake 3.28 or newer.
+Applies to FemboyEngine2D 0.3.0-alpha.1 and CMake 3.28 or newer.
 
 ## Toolchain
 
 The engine requires C++26:
 
-- Windows: clang-cl 19+ with the MSVC STL, or MSVC 19.40+.
+- Windows: clang-cl 19+ with the MSVC STL.
 - Linux: Clang 19+ or GCC 16+.
-- macOS/iOS: Apple Clang with C++26 support.
-- Android: NDK r27+ with a C++26-capable Clang.
+- macOS: Apple Clang with C++26 support.
 
-Ninja is the recommended generator. Visual Studio generators are supported but
-slower for this tree.
+Ninja is the supported generator for the validated build. Visual Studio is used
+only as an IDE and as the source of the Windows SDK and headers.
 
 ## Configure a standalone build
 
@@ -173,8 +172,7 @@ cmake -S . -B build -DFBY_RHI_BACKEND=null
 
 `null` is a real backend with deterministic frame accounting, not a stub. It is
 used by CI and by the generated project when no GPU is present. `auto` chooses
-Metal on Apple and Vulkan on Windows, Linux and Android when headers are
-available.
+Metal on macOS and Vulkan on Windows and Linux when headers are available.
 
 ## Adding a target
 

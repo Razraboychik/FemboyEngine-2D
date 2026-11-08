@@ -507,6 +507,20 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         ScopedValues.maxFixedSteps = static_cast<std::uint32_t>(ScopedFixedSteps);
     }
 
+    ImGui::SeparatorText("Physics");
+    constexpr const char* kPhysicsBackendNames[] = {"Auto", "Box2D", "DOD"};
+    int ScopedPhysicsBackend = static_cast<int>(ScopedValues.physicsBackend);
+    if (ImGui::Combo("Backend", &ScopedPhysicsBackend, kPhysicsBackendNames, 3))
+    {
+        ScopedValues.physicsBackend = static_cast<std::uint8_t>(std::clamp(ScopedPhysicsBackend, 0, 2));
+    }
+    int ScopedBodyBudget = static_cast<int>(ScopedValues.physicsBodyBudget);
+    if (ImGui::InputInt("Body budget", &ScopedBodyBudget, 256, 4096))
+    {
+        ScopedValues.physicsBodyBudget = static_cast<std::uint32_t>(std::clamp(ScopedBodyBudget, 0, 65536));
+    }
+    ImGui::TextDisabled("Auto uses DOD when the budget is 4096 or more and the world has no joints.");
+
     ImGui::SeparatorText("Mixer");
     ImGui::SliderFloat("Master", &ScopedValues.masterVolume, 0.0f, 2.0f, "%.2f");
     ImGui::SliderFloat("SFX", &ScopedValues.sfxVolume, 0.0f, 2.0f, "%.2f");
@@ -567,7 +581,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     (void)DrawCookFormatCombo(&ScopedValues.textureFormat);
     if (ImGui::IsItemHovered())
     {
-        EditorTooltip("Art-driven: RGBA8 for pixel art, BC7 for painted desktop art, ASTC for mobile.\n"
+        EditorTooltip("Art-driven: RGBA8 for pixel art, BC7 for painted desktop art, ASTC for compatible GPUs.\n"
                       "Scale only changes max texture size and whether VT is needed.");
     }
     int ScopedMaxTextureSize = static_cast<int>(ScopedValues.maxTextureSize);
@@ -682,9 +696,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::Checkbox("Native CPU architecture", &ScopedValues.build.nativeArch);
 
     const Build::OptimizationAdvice ScopedAdvice =
-        Build::Recommend(ScopedValues.build.optimization, true,
-                         ScopedValues.textureFormat == Assets::TextureFormat::Astc4x4Srgb ||
-                             ScopedValues.textureFormat == Assets::TextureFormat::Astc6x6Srgb);
+        Build::Recommend(ScopedValues.build.optimization, true);
     ImGui::TextColored(ImVec4(0.91f, 0.36f, 0.62f, 1.0f), "%s", ScopedAdvice.headline.data());
     ImGui::TextWrapped("%.*s", static_cast<int>(ScopedAdvice.detail.size()), ScopedAdvice.detail.data());
     if (!ScopedAdvice.warning.empty())

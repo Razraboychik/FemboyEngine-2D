@@ -3,6 +3,7 @@
 #include "Engine/Video/VideoPlayer.hpp"
 
 #include "Engine/Core/Log.hpp"
+#include "Engine/Core/ThreadAffinity.hpp"
 #include "Engine/RHI/RHI.hpp"
 
 #include <algorithm>
@@ -70,22 +71,29 @@ VideoPlayer::~VideoPlayer()
 
 // Open / Close
 bool VideoPlayer::Open(std::span<const std::byte> InWebm, const Vp9Backend* InBackend, std::string* InError,
-                       std::shared_ptr<const Fby::MappedFile> InOwner)
+                       std::shared_ptr<const Fby::MappedFile> InOwner, const Av1Backend* InAv1Backend)
 {
     Close();
     // Pin the mapping before the demuxer records any span into it. The decoder
     MSourcePin = std::move(InOwner);
 
-    if (InBackend == nullptr || InBackend->createDecoder == nullptr || InBackend->decodeFrame == nullptr)
-    {
-        SetError(InError, "no VP9 decoder backend is available: install libvpx (vpx.dll / libvpx.so)");
-        return false;
-    }
     if (!MDemuxer.Open(InWebm, InError))
     {
         return false;
     }
     MTrack = MDemuxer.Track();
+    MAv1SequenceSent = false;
+    MAudioTrack = MDemuxer.AudioTrack();
+    if (MAudioTrack.trackNumber != 0)
+    {
+        std::string ScopedAudioError;
+        if (!MAudio.Open(InWebm, &ScopedAudioError))
+        {
+            // Video stays usable without audio; the component reports the error
+            // through its normal flags and the host can inspect AudioTrack().
+            MAudioTrack = {};
+        }
+    }
     if (MTrack.width == 0 || MTrack.height == 0 || MTrack.width > 16384 || MTrack.height > 16384)
     {
         SetError(InError, "video track dimensions are out of range");
@@ -93,18 +101,29 @@ bool VideoPlayer::Open(std::span<const std::byte> InWebm, const Vp9Backend* InBa
         return false;
     }
 
-    MBackend = *InBackend;
+    MAv1 = std::string_view(MTrack.codecId) == "V_AV1";
+    const Vp9Backend* ScopedSelected =
+        MAv1 ? (InAv1Backend != nullptr ? InAv1Backend : Libdav1dBackend()) : InBackend;
+    if (ScopedSelected == nullptr || ScopedSelected->createDecoder == nullptr ||
+        ScopedSelected->decodeFrame == nullptr)
+    {
+        SetError(InError, MAv1 ? "no AV1 decoder backend is available: supply an external dav1d plugin"
+                               : "no VP9 decoder backend is available: install libvpx");
+        Close();
+        return false;
+    }
+    MBackend = *ScopedSelected;
     MWidth = MTrack.width;
     MHeight = MTrack.height;
     MMainDecoder = MBackend.createDecoder(MBackend.user, MWidth, MHeight);
     if (MMainDecoder == nullptr)
     {
         const char* ScopedDetail = MBackend.lastError != nullptr ? MBackend.lastError(MBackend.user) : nullptr;
-        SetError(InError, ScopedDetail != nullptr ? ScopedDetail : "VP9 backend could not create a decoder");
+        SetError(InError, ScopedDetail != nullptr ? ScopedDetail : "video backend could not create a decoder");
         Close();
         return false;
     }
-    if (MTrack.alpha)
+    if (!MAv1 && MTrack.alpha)
     {
         MAlphaDecoder = MBackend.createDecoder(MBackend.user, MWidth, MHeight);
         if (MAlphaDecoder == nullptr)
@@ -123,7 +142,7 @@ bool VideoPlayer::Open(std::span<const std::byte> InWebm, const Vp9Backend* InBa
     MMainLuma.resize(ScopedLumaBytes);
     MMainChromaU.resize(ScopedChromaBytes);
     MMainChromaV.resize(ScopedChromaBytes);
-    if (MTrack.alpha)
+    if (!MAv1 && MTrack.alpha)
     {
         MAlphaLuma.resize(ScopedLumaBytes);
     }
@@ -177,8 +196,9 @@ bool VideoPlayer::Open(std::span<const std::byte> InWebm, const Vp9Backend* InBa
         return false;
     }
 
+    MSeekTargetNs.store(-1, std::memory_order_relaxed);
     MOpen = true;
-    LogInfo("video", "opened WebM VP9 {}x{} ({} alpha), {} ns/tick{}", MWidth, MHeight,
+    LogInfo("video", "opened WebM {} {}x{} ({} alpha), {} ns/tick{}", MTrack.codecId, MWidth, MHeight,
             MTrack.alpha ? "with" : "without", MTrack.timestampScaleNs, MTrack.hasCodecPrivate ? ", vpcC present" : "");
     return true;
 }
@@ -205,6 +225,11 @@ void VideoPlayer::Close()
     MSourcePin.reset();
     MBackend = {};
     MTrack = {};
+    MAudioTrack = {};
+    MAv1 = false;
+    MAv1SequenceSent = false;
+    MAv1Scratch.clear();
+    MAudio.Close();
 
     MMainLuma.clear();
     MMainChromaU.clear();
@@ -404,6 +429,20 @@ DecodeStatus VideoPlayer::PumpFrame()
         return DecodeStatus::Error;
     }
 
+    const std::int64_t ScopedSeekTarget = MSeekTargetNs.exchange(-1, std::memory_order_acq_rel);
+    if (ScopedSeekTarget != -1)
+    {
+        if (ScopedSeekTarget < 0)
+        {
+            MDemuxer.Rewind();
+        }
+        else
+        {
+            (void)MDemuxer.SeekToNs(static_cast<std::uint64_t>(ScopedSeekTarget));
+        }
+        MFinished.store(false, std::memory_order_release);
+    }
+
     // A looped stream that reached its end restarts here, on the pump thread.
     if (MFinished.load(std::memory_order_acquire))
     {
@@ -443,10 +482,19 @@ DecodeStatus VideoPlayer::PumpFrame()
     }
 
     MDecoded.fetch_add(1, std::memory_order_relaxed);
-    if (!MBackend.decodeFrame(MBackend.user, MMainDecoder, ScopedFrame.payload, MMainView))
+    std::span<const std::byte> ScopedPayload = ScopedFrame.payload;
+    if (MAv1 && !MAv1SequenceSent && MTrack.codecPrivate.size() > 4)
+    {
+        // AV1CodecConfigurationRecord: 4 header bytes, then configOBUs.
+        MAv1Scratch.assign(MTrack.codecPrivate.begin() + 4, MTrack.codecPrivate.end());
+        MAv1Scratch.insert(MAv1Scratch.end(), ScopedFrame.payload.begin(), ScopedFrame.payload.end());
+        ScopedPayload = std::span<const std::byte>(MAv1Scratch.data(), MAv1Scratch.size());
+    }
+    MAv1SequenceSent = true;
+    if (!MBackend.decodeFrame(MBackend.user, MMainDecoder, ScopedPayload, MMainView))
     {
         const char* ScopedDetail = MBackend.lastError != nullptr ? MBackend.lastError(MBackend.user) : nullptr;
-        PublishError(ScopedDetail != nullptr ? ScopedDetail : "VP9 decode failed");
+        PublishError(ScopedDetail != nullptr ? ScopedDetail : "video decode failed");
         ReleaseBuffer(ScopedBufferIndex);
         return DecodeStatus::Error;
     }
@@ -523,7 +571,12 @@ void VideoPlayer::StartDecoderThread()
     {
         return;
     }
-    MDecoderThread = std::jthread([this](std::stop_token InStopToken) { ThreadMain(InStopToken); });
+    MDecoderThread = std::jthread(
+        [this](std::stop_token InStopToken)
+        {
+            BindThreadRole(ThreadRole::Video);
+            ThreadMain(InStopToken);
+        });
     MThreadRunning = true;
 }
 
@@ -538,13 +591,62 @@ void VideoPlayer::StopDecoderThread()
 }
 
 // Presentation
+void VideoPlayer::SeekToStart() noexcept
+{
+    if (!MOpen)
+    {
+        return;
+    }
+    MSeekTargetNs.store(-2, std::memory_order_release);
+    MEpoch.fetch_add(1, std::memory_order_acq_rel);
+    MClockNs = 0;
+    MAudio.Rewind();
+}
+
+bool VideoPlayer::SeekToNs(std::uint64_t InTimestampNs) noexcept
+{
+    if (!MOpen || InTimestampNs > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+    {
+        return false;
+    }
+    MSeekTargetNs.store(static_cast<std::int64_t>(InTimestampNs), std::memory_order_release);
+    MEpoch.fetch_add(1, std::memory_order_acq_rel);
+    MClockNs = static_cast<std::int64_t>(InTimestampNs);
+    if (!MAudio.SeekToNs(InTimestampNs))
+    {
+        MAudio.Rewind();
+    }
+    return true;
+}
+
 void VideoPlayer::Advance(float InDtSeconds, float InSpeed, bool InPaused, bool InLoop)
 {
     if (!MOpen)
     {
         return;
     }
-    if (!InPaused && InSpeed > 0.0f && !MFailed.load(std::memory_order_relaxed))
+    if (MAudio.IsOpen())
+    {
+        MAudio.SetPlaybackRate(InPaused ? 1.0f : (InSpeed > 0.0f ? InSpeed : 1.0f));
+    }
+    if (MAudio.IsOpen() && !InPaused)
+    {
+        for (std::uint32_t ScopedPump = 0; ScopedPump < 2; ++ScopedPump)
+        {
+            const AudioPumpStatus ScopedStatus = MAudio.PumpOne();
+            if (ScopedStatus == AudioPumpStatus::End || ScopedStatus == AudioPumpStatus::Error ||
+                ScopedStatus == AudioPumpStatus::Buffered)
+            {
+                break;
+            }
+        }
+    }
+    const std::uint64_t ScopedAudioClock = MAudio.IsOpen() ? MAudio.AudioClockNs() : 0;
+    if (MAudioMaster && ScopedAudioClock > 0)
+    {
+        MClockNs = static_cast<std::int64_t>(ScopedAudioClock);
+    }
+    else if (!InPaused && InSpeed > 0.0f && !MFailed.load(std::memory_order_relaxed))
     {
         const double ScopedDelta = static_cast<double>(InDtSeconds) * static_cast<double>(InSpeed) * 1.0e9;
         if (ScopedDelta > 0.0)
@@ -618,6 +720,7 @@ void VideoPlayer::Advance(float InDtSeconds, float InSpeed, bool InPaused, bool 
             {
                 MEpoch.fetch_add(1, std::memory_order_acq_rel);
                 MClockNs = 0;
+                MAudio.Rewind();
             }
         }
     }

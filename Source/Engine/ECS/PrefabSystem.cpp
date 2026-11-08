@@ -360,7 +360,7 @@ bool PrefabSystem::LoadFlatBuffers(std::span<const std::byte> InBytes, PrefabAss
 }
 
 bool PrefabSystem::Spawn(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InCommands, const PrefabAsset& InAsset,
-                         Vector2D InOrigin, std::span<Entity> OutEntities, PrefabOverrides InOverrides) noexcept
+                         Vector2D InOrigin, std::span<Entity> OutEntities, PrefabOverrides InOverrides)
 {
     if (InAsset.count == 0 || InAsset.count > kPrefabMaxEntities)
     {

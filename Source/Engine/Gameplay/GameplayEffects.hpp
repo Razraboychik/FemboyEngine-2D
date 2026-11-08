@@ -142,6 +142,14 @@ public:
     {
         return {MEvents.data(), MEventCount};
     }
+    [[nodiscard]] std::uint32_t DroppedApplications() const noexcept
+    {
+        return MDroppedApplications;
+    }
+    [[nodiscard]] std::uint32_t DroppedEvents() const noexcept
+    {
+        return MDroppedEvents;
+    }
 
 private:
     void PushEvent(Entity InTarget, Entity InSource, std::uint32_t InDefId, std::uint16_t InStacks,
@@ -151,9 +159,18 @@ private:
     const GameplayTagRegistry* MTags = nullptr;
     const GameplayAttributeRegistry* MAttributes = nullptr;
     std::array<GameplayEffectDef, kMaxGameplayEffectDefs> MDefs{};
+    // Open-addressing index Id -> definition slot for the per-tick lookups.
+    struct DefIndexEntry
+    {
+        std::uint32_t Id = 0;
+        std::uint32_t Slot = 0;
+    };
+    std::array<DefIndexEntry, 2 * kMaxGameplayEffectDefs> MDefIndex{};
     std::uint32_t MDefCount = 0;
     std::array<GameplayEffectEvent, kMaxGameplayEffectEvents> MEvents{};
     std::uint32_t MEventCount = 0;
+    std::uint32_t MDroppedApplications = 0;
+    std::uint32_t MDroppedEvents = 0;
 };
 }
 

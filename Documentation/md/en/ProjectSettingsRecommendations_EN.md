@@ -1,6 +1,6 @@
 # Project Settings Recommendations
 
-*FemboyEngine2D 0.2.0-alpha.1 - by game scale: light, medium, large*
+*FemboyEngine2D 0.3.0-alpha.1 - by game scale: light, medium, large*
 
 Every project descriptor (project.femproj) mixes three kinds of settings: gameplay simulation, shipping quality and build policy. The same numbers do not fit a two-week jam and a streaming open world. This guide gives one recommendation column per scale, explains the cost behind each value, and lists the mistakes that show up in profiles and bug reports. Treat the values as starting points and measure before shipping.
 
@@ -23,7 +23,7 @@ Every project descriptor (project.femproj) mixes three kinds of settings: gamepl
 | flash_guard | true | true | true |
 | flash_threshold / flash_gain | 0.20 / 0.35 | 0.20 / 0.35 | 0.15 / 0.25 for strict safety |
 | oled_pixel_shift / interval | true / 60 s | true / 60 s | true / 30-60 s |
-| texture_format (art-driven) | rgba8 pixel art; bc7 painted | bc7-srgb; rgba8 for pixel art | bc7-srgb desktop; astc4x4-srgb mobile |
+| texture_format (art-driven) | rgba8 pixel art; bc7 painted | bc7-srgb; rgba8 for pixel art | bc7-srgb desktop; astc4x4-srgb on ASTC-capable GPUs |
 | max_texture_size | 1024 | 2048 | 4096 |
 | build.optimization | O2 | O2 | O3 (measure O2+LTO first) |
 | build.lto | false for iteration | true for release | true for release |
@@ -31,6 +31,8 @@ Every project descriptor (project.femproj) mixes three kinds of settings: gamepl
 | build.unity_build | true | true | true; disable only for build memory |
 | build.native_arch | false | false | false |
 | collision layers | 3-4 used | up to 6 used | named set, unused pairs off |
+| physics_backend | Auto | Auto | Auto or DOD for 4096+ simple bodies |
+| physics_body_budget | 0 | 0 | 50000 for strategy, 0 for general games |
 | virtual_texture.enabled | false | true for zoom-heavy maps | true |
 | VT page/tile/layers/table | - | 1024/64/2/128 | 2048/64/4/256 |
 | VT budget / prefetch | - | 6 / 1 | 8 / 2 |
@@ -47,6 +49,10 @@ The fixed step is the physics and gameplay tick. 60 Hz is enough for puzzles, vi
 ### max_fixed_steps
 
 The catch-up cap for a slow frame. 4 is fine for light scenes; 8 is the usual commercial value. Raising it beyond 8 turns a single hitch into a spiral of death: the simulation runs more steps, the frame gets slower and the next frame needs even more steps. Lower it, do not raise it, if you see that pattern in a profile.
+
+### physics_backend / physics_body_budget
+
+Auto keeps Box2D for joints, CCD and general rigid bodies and switches to the data-oriented backend only when the world is large and joint-free. Set the backend explicitly only after profiling. The body budget is a policy hint, not a hard limit: 4096 starts the Auto switch, 50000 is a strategy-world target. DOD bodies are simple AABB shapes without joints; use swept projectiles instead of CCD.
 
 ## Audio
 
@@ -78,12 +84,12 @@ Compression choice follows the art, not the production scale: a jam game with a 
 |---|---|---|---|---|
 | RGBA8 | 32 | Pixel art, crisp UI, masks, small atlases | Large painted 4K art (memory) | Everywhere |
 | BC7 sRGB/UNORM | 8 | Painted 2D art, gradients, alpha cutouts | 1-pixel pixel art (edge bleed) | Desktop (D3D11+/Vulkan) |
-| ASTC 4x4 | 8 | Mobile/Apple painted art, same quality class as BC7 | Desktops without ASTC | Mobile, Apple, many modern GPUs |
-| ASTC 6x6 | 3.56 | Mobile size-first assets | Fine detail, text, UI | Mobile, Apple |
+| ASTC 4x4 | 8 | Painted art on ASTC-capable GPUs, same quality class as BC7 | GPUs without ASTC | Apple and many modern GPUs |
+| ASTC 6x6 | 3.56 | Size-first assets on ASTC-capable GPUs | Fine detail, text, UI | Apple and many modern GPUs |
 
-The format set is deliberately closed: RGBA8, BC7 and ASTC 4x4/6x6 only. BC3, BC4, BC5, BC6H and Basis/KTX2 are not cooked today; add them only with a concrete asset class that needs them (BC4/BC5 for single/two-channel masks, BC6H for HDR, Basis for download size with transcoding).
+The format set is closed: RGBA8, BC7 and ASTC 4x4/6x6 only. BC3, BC4, BC5, BC6H and Basis/KTX2 are not cooked today; add them only with a concrete asset class that needs them (BC4/BC5 for single/two-channel masks, BC6H for HDR, Basis for download size with transcoding).
 
-What actually looks better is often not the codec: mip generation, atlas padding (gutters) and sRGB handling remove bleeding and edge artifacts that no codec fixes. The practical next step for a mixed project is a per-asset format override, so an atlas can stay RGBA8 while a painted background uses BC7; today the project setting is the default for all cooked textures.
+What looks better is often not the codec: mip generation, atlas padding (gutters) and sRGB handling remove bleeding and edge artifacts that no codec fixes. The practical next step for a mixed project is a per-asset format override, so an atlas can stay RGBA8 while a painted background uses BC7; today the project setting is the default for all cooked textures.
 
 ### max_texture_size
 

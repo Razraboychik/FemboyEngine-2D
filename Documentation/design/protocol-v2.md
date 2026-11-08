@@ -2,8 +2,8 @@
 
 Status: **opt-in v2 handshake, record layer and the official noise-c vector
 landed; wire default remains v1.** This document is the binding specification and
-the checklist for finishing the interoperable protocol. It is deliberately
-explicit about what is implemented.
+the checklist for finishing the interoperable protocol. It states explicitly
+what is implemented.
 
 ## 1. What v2 is
 

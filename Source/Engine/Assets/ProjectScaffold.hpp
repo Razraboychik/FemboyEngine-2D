@@ -191,14 +191,14 @@ private:
 };
 
 // Render-phase system: it only resets the extract with the current drawable
-void ExtractFrame(Fby::Ecs::SystemContext& InContext, void* InUser)
+void ExtractFrame(Fby::Ecs::RenderSystemView& InView, void* InUser)
 {
     auto* ScopedExtract = static_cast<CleanRenderExtract*>(InUser);
     std::uint32_t ScopedWidth = 1280;
     std::uint32_t ScopedHeight = 720;
-    if (InContext.window != nullptr)
+    if (InView.services.window != nullptr)
     {
-        const Fby::WindowExtent ScopedExtent = InContext.window->Size();
+        const Fby::WindowExtent ScopedExtent = InView.services.window->Size();
         ScopedWidth = ScopedExtent.width;
         ScopedHeight = ScopedExtent.height;
     }
@@ -270,8 +270,9 @@ int main(int, char**)
     // project.femproj to ship a project default, or keep the 1.0 defaults.
     Fby::AccessibilityKernel ScopedAccessibility;
     ScopedAccessibility.ApplyProfile(Fby::DefaultAccessibilityProfile());
-    if (!ScopedGraph.Add(Fby::Ecs::Phase::Render, "extract_frame", &ExtractFrame, &ScopedExtract) ||
-        !ScopedGraph.Build())
+    if (!ScopedGraph.Add(Fby::Ecs::Phase::Render, "extract_frame",
+                         Fby::Ecs::BindRenderSystem<&ExtractFrame>(), &ScopedExtract)
+        || !ScopedGraph.Build())
     {
         Fby::LogError("game", "SystemGraph rejected the clean-slate render node");
         ScopedGpu->Shutdown();

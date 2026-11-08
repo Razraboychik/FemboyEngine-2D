@@ -220,6 +220,11 @@ void AudioSystem::ResetRuntimeState()
     {
         ScopedRuntime = SourceRuntime{};
     }
+    for (SourceRuntime& ScopedRuntime : MLegacySources)
+    {
+        ScopedRuntime = SourceRuntime{};
+    }
+    MLegacyStamp = 0;
     for (BusRuntime& ScopedRuntime : MBusRuntime)
     {
         ScopedRuntime = BusRuntime{};
@@ -548,54 +553,109 @@ void AudioSystem::Mix(float* Output, std::uint32_t InFrameCount) noexcept
 
 void AudioSystem::Update(Ecs::Registry& InRegistry)
 {
+    // The listener is a scene singleton; a duplicate must resolve the same way
+    // regardless of the EnTT view order.
     const AudioListener* ScopedListener = nullptr;
+    Entity ScopedListenerOwner = entt::null;
     auto ScopedListenerView = InRegistry.view<AudioListener>();
     for (auto [ScopedEntity, ScopedCandidate] : ScopedListenerView.each())
     {
-        (void)ScopedEntity;
-        if (ScopedCandidate.active)
+        if (!ScopedCandidate.active)
         {
+            continue;
+        }
+        if (ScopedListener == nullptr || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedListenerOwner))
+        {
+            ScopedListenerOwner = ScopedEntity;
             ScopedListener = &ScopedCandidate;
-            break;
         }
     }
 
     // Legacy authoring path: AudioSource keeps its runtime handle in the
+    // component, so a shadow table is the only way to stop a voice whose entity
+    // was destroyed before the next Update.
+    ++MLegacyStamp;
+    if (MLegacyStamp == 0)
+    {
+        MLegacyStamp = 1;
+    }
+    const auto ScopedLegacySlot = [this](Entity InEntity) noexcept -> SourceRuntime*
+    {
+        const std::uint32_t ScopedRaw = static_cast<std::uint32_t>(entt::to_integral(InEntity));
+        SourceRuntime* ScopedFree = nullptr;
+        for (SourceRuntime& ScopedCandidate : MLegacySources)
+        {
+            if (ScopedCandidate.entity == ScopedRaw)
+            {
+                return &ScopedCandidate;
+            }
+            if (ScopedFree == nullptr && ScopedCandidate.entity == 0xFFFFFFFFu)
+            {
+                ScopedFree = &ScopedCandidate;
+            }
+        }
+        if (ScopedFree != nullptr)
+        {
+            ScopedFree->entity = ScopedRaw;
+            ScopedFree->voice = kInvalidAudioVoice;
+        }
+        return ScopedFree;
+    };
     auto ScopedLegacyView = InRegistry.view<AudioSource>();
     for (auto [ScopedEntity, ScopedSource] : ScopedLegacyView.each())
     {
-        (void)ScopedEntity;
-        if (ScopedSource.playing)
+        SourceRuntime* ScopedRuntime = ScopedLegacySlot(ScopedEntity);
+        if (ScopedRuntime == nullptr)
         {
-            if (ScopedSource.voice == kInvalidAudioVoice)
-            {
-                float ScopedVolume = ScopedSource.volume;
-                if (ScopedSource.spatial && ScopedListener != nullptr)
-                {
-                    ScopedVolume *=
-                        Attenuate(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
-                }
-                ScopedSource.voice =
-                    Play(ScopedSource.clip, ScopedSource.bus, ScopedVolume, ScopedSource.pitch, ScopedSource.loop);
-            }
-            if (ScopedSource.voice != kInvalidAudioVoice)
-            {
-                float ScopedVolume = ScopedSource.volume;
-                float ScopedPan = 0.0f;
-                if (ScopedSource.spatial && ScopedListener != nullptr)
-                {
-                    ScopedVolume *=
-                        Attenuate(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
-                    ScopedPan = PanPosition(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
-                }
-                (void)SetVoiceSpatial(ScopedSource.voice, ScopedVolume, ScopedPan);
-            }
+            continue;
         }
-        else if (ScopedSource.voice != kInvalidAudioVoice)
+        ScopedRuntime->stamp = MLegacyStamp;
+        if (!ScopedSource.playing)
         {
-            Stop(ScopedSource.voice);
+            if (ScopedRuntime->voice != kInvalidAudioVoice)
+            {
+                Stop(ScopedRuntime->voice);
+                ScopedRuntime->voice = kInvalidAudioVoice;
+            }
             ScopedSource.voice = kInvalidAudioVoice;
+            continue;
         }
+        if (ScopedRuntime->voice == kInvalidAudioVoice)
+        {
+            float ScopedVolume = ScopedSource.volume;
+            if (ScopedSource.spatial && ScopedListener != nullptr)
+            {
+                ScopedVolume *=
+                    Attenuate(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
+            }
+            ScopedRuntime->voice =
+                Play(ScopedSource.clip, ScopedSource.bus, ScopedVolume, ScopedSource.pitch, ScopedSource.loop);
+        }
+        if (ScopedRuntime->voice != kInvalidAudioVoice)
+        {
+            float ScopedVolume = ScopedSource.volume;
+            float ScopedPan = 0.0f;
+            if (ScopedSource.spatial && ScopedListener != nullptr)
+            {
+                ScopedVolume *=
+                    Attenuate(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
+                ScopedPan = PanPosition(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
+            }
+            (void)SetVoiceSpatial(ScopedRuntime->voice, ScopedVolume, ScopedPan);
+        }
+        ScopedSource.voice = ScopedRuntime->voice;
+    }
+    for (SourceRuntime& ScopedRuntime : MLegacySources)
+    {
+        if (ScopedRuntime.entity == 0xFFFFFFFFu || ScopedRuntime.stamp == MLegacyStamp)
+        {
+            continue;
+        }
+        if (ScopedRuntime.voice != kInvalidAudioVoice)
+        {
+            Stop(ScopedRuntime.voice);
+        }
+        ScopedRuntime = SourceRuntime{};
     }
 
     SyncBusComponents(InRegistry);
@@ -639,9 +699,9 @@ void AudioSystem::SyncBusComponents(Ecs::Registry& InRegistry)
         {
             // Component volume goes through the command ring (the ECS path is a
             AudioCommand ScopedCommand{};
-            ScopedCommand.type = AudioCommandType::SetGain;
-            ScopedCommand.bus = ScopedBus.BusID;
-            ScopedCommand.gain = ScopedVolume;
+            ScopedCommand.Type = AudioCommandType::SetGain;
+            ScopedCommand.Bus = ScopedBus.BusID;
+            ScopedCommand.Gain = ScopedVolume;
             (void)MMixer.PushCommand(ScopedCommand);
             ScopedRuntime.volume = ScopedVolume;
         }
@@ -656,6 +716,17 @@ void AudioSystem::SyncBusComponents(Ecs::Registry& InRegistry)
         (void)MMixer.SetBusMuted(ScopedBus.BusID, (ScopedBus.Flags & kAudioBusFlagMuted) != 0);
         ScopedRuntime.flags = ScopedBus.Flags;
         ScopedRuntime.applied = true;
+    }
+    // A bus component that disappeared must release its DSP bus; otherwise the
+    // fixed bus table fills with dead buses and new components go silent.
+    for (BusRuntime& ScopedRuntime : MBusRuntime)
+    {
+        if (ScopedRuntime.busId == kInvalidBus || ScopedRuntime.stamp == MUpdateStamp)
+        {
+            continue;
+        }
+        (void)MMixer.DestroyBus(ScopedRuntime.busId);
+        ScopedRuntime = BusRuntime{};
     }
 }
 
@@ -713,7 +784,7 @@ void AudioSystem::SyncSourceComponents(Ecs::Registry& InRegistry, const AudioLis
             float ScopedVolume = ScopedSource.Volume;
             if (ScopedSource.Spatial && InListener != nullptr)
             {
-                ScopedVolume *= Attenuate(ScopedSource.Position, InListener->position, 4096.0f);
+                ScopedVolume *= Attenuate(ScopedSource.Position, InListener->position, ScopedSource.MaxDistance);
             }
             const BusId ScopedBus = ScopedSource.BusID < kMaxBuses ? ScopedSource.BusID : kSfxBus;
             ScopedRuntime->voice =
@@ -725,8 +796,8 @@ void AudioSystem::SyncSourceComponents(Ecs::Registry& InRegistry, const AudioLis
             float ScopedPan = 0.0f;
             if (ScopedSource.Spatial && InListener != nullptr)
             {
-                ScopedVolume *= Attenuate(ScopedSource.Position, InListener->position, 4096.0f);
-                ScopedPan = PanPosition(ScopedSource.Position, InListener->position, 4096.0f);
+                ScopedVolume *= Attenuate(ScopedSource.Position, InListener->position, ScopedSource.MaxDistance);
+                ScopedPan = PanPosition(ScopedSource.Position, InListener->position, ScopedSource.MaxDistance);
             }
             (void)SetVoiceSpatial(ScopedRuntime->voice, ScopedVolume, ScopedPan);
         }

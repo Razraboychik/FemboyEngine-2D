@@ -70,43 +70,39 @@ constexpr float kBlendEpsilon = 1.0e-6f;
 }
 }
 
-const AnimClip* AnimGraphFindClip(const AnimStateComponent& InState, std::uint64_t InStateId) noexcept
+const AnimClip* AnimGraphFindClip(const AnimGraphDefinitionComponent& InDefinition, std::uint64_t InStateId) noexcept
 {
     if (InStateId == 0)
     {
         // State 0 is the rest pose: it never owns a clip.
         return nullptr;
     }
-    const std::uint32_t ScopedCount = std::min<std::uint32_t>(InState.ClipCount, kMaxAnimClips);
+    const std::uint32_t ScopedCount = std::min<std::uint32_t>(InDefinition.ClipCount, kMaxAnimClips);
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)
     {
-        if (InState.Clips[ScopedIndex].State == InStateId)
+        if (InDefinition.Clips[ScopedIndex].State == InStateId)
         {
-            return &InState.Clips[ScopedIndex];
+            return &InDefinition.Clips[ScopedIndex];
         }
     }
     return nullptr;
 }
 
-void AnimGraphCaptureRestPose(AnimStateComponent& InState, const SkeletonComponent& InSkeleton) noexcept
+void AnimGraphCaptureRestPose(SkeletonComponent& InSkeleton) noexcept
 {
-    if (InState.RestPoseCaptured)
+    if (InSkeleton.RestPoseCaptured)
     {
         return;
     }
     const std::uint16_t ScopedCount = ClampBoneCount(InSkeleton);
-    AnimRestBone* FBY_RESTRICT ScopedRestOut = InState.RestPose.data();
-    const Vector2D* FBY_RESTRICT ScopedPositions = InSkeleton.LocalPositions.data();
-    const float* FBY_RESTRICT ScopedRotations = InSkeleton.LocalRotations.data();
-    const float* FBY_RESTRICT ScopedScales = InSkeleton.LocalScales.data();
     for (std::uint16_t ScopedBone = 0; ScopedBone < ScopedCount; ++ScopedBone)
     {
-        ScopedRestOut[ScopedBone].Position = ScopedPositions[ScopedBone];
-        ScopedRestOut[ScopedBone].Rotation = ScopedRotations[ScopedBone];
-        ScopedRestOut[ScopedBone].Scale = ScopedScales[ScopedBone];
+        InSkeleton.RestPositions[ScopedBone] = InSkeleton.LocalPositions[ScopedBone];
+        InSkeleton.RestRotations[ScopedBone] = InSkeleton.LocalRotations[ScopedBone];
+        InSkeleton.RestScales[ScopedBone] = InSkeleton.LocalScales[ScopedBone];
     }
-    // Bones above the current count keep the identity rest pose the component was
-    InState.RestPoseCaptured = true;
+    // Bones above the current count keep the identity rest pose the skeleton was
+    InSkeleton.RestPoseCaptured = true;
 }
 
 bool AnimTransitionMatches(const AnimTransition& InTransition, const AnimStateComponent& InState,
@@ -195,16 +191,17 @@ bool AnimTransitionMatches(const AnimTransition& InTransition, const AnimStateCo
     return true;
 }
 
-void AnimGraphApplySkeletal(AnimStateComponent& InState, SkeletonComponent& InSkeleton) noexcept
+void AnimGraphApplySkeletal(AnimStateComponent& InState, const AnimGraphDefinitionComponent& InDefinition,
+                            SkeletonComponent& InSkeleton) noexcept
 {
-    AnimGraphCaptureRestPose(InState, InSkeleton);
+    AnimGraphCaptureRestPose(InSkeleton);
     const std::uint16_t ScopedCount = ClampBoneCount(InSkeleton);
     if (ScopedCount == 0)
     {
         return;
     }
-    const AnimClip* ScopedCurrent = AnimGraphFindClip(InState, InState.CurrentState);
-    const AnimClip* ScopedPrevious = AnimGraphFindClip(InState, InState.PreviousState);
+    const AnimClip* ScopedCurrent = AnimGraphFindClip(InDefinition, InState.CurrentState);
+    const AnimClip* ScopedPrevious = AnimGraphFindClip(InDefinition, InState.PreviousState);
     const float ScopedWeight = SmoothStep(InState.BlendWeight);
 
     // The three destination arrays live in the skeleton; RestPose and the
@@ -214,21 +211,23 @@ void AnimGraphApplySkeletal(AnimStateComponent& InState, SkeletonComponent& InSk
 
     for (std::uint16_t ScopedBone = 0; ScopedBone < ScopedCount; ++ScopedBone)
     {
-        const AnimRestBone& ScopedRest = InState.RestPose[ScopedBone];
+        const Vector2D ScopedRestPosition = InSkeleton.RestPositions[ScopedBone];
+        const float ScopedRestRotation = InSkeleton.RestRotations[ScopedBone];
+        const float ScopedRestScale = InSkeleton.RestScales[ScopedBone];
         const AnimBoneKey* ScopedCurrentKey = FindKey(ScopedCurrent, ScopedBone);
         const AnimBoneKey* ScopedPreviousKey = FindKey(ScopedPrevious, ScopedBone);
 
         const Vector2D ScopedCurrentPosition =
-            ScopedCurrentKey != nullptr ? ScopedCurrentKey->Position : ScopedRest.Position;
+            ScopedCurrentKey != nullptr ? ScopedCurrentKey->Position : ScopedRestPosition;
         const float ScopedCurrentRotation =
-            ScopedCurrentKey != nullptr ? ScopedCurrentKey->Rotation : ScopedRest.Rotation;
-        const float ScopedCurrentScale = ScopedCurrentKey != nullptr ? ScopedCurrentKey->Scale : ScopedRest.Scale;
+            ScopedCurrentKey != nullptr ? ScopedCurrentKey->Rotation : ScopedRestRotation;
+        const float ScopedCurrentScale = ScopedCurrentKey != nullptr ? ScopedCurrentKey->Scale : ScopedRestScale;
 
         const Vector2D ScopedPreviousPosition =
-            ScopedPreviousKey != nullptr ? ScopedPreviousKey->Position : ScopedRest.Position;
+            ScopedPreviousKey != nullptr ? ScopedPreviousKey->Position : ScopedRestPosition;
         const float ScopedPreviousRotation =
-            ScopedPreviousKey != nullptr ? ScopedPreviousKey->Rotation : ScopedRest.Rotation;
-        const float ScopedPreviousScale = ScopedPreviousKey != nullptr ? ScopedPreviousKey->Scale : ScopedRest.Scale;
+            ScopedPreviousKey != nullptr ? ScopedPreviousKey->Rotation : ScopedRestRotation;
+        const float ScopedPreviousScale = ScopedPreviousKey != nullptr ? ScopedPreviousKey->Scale : ScopedRestScale;
 
         // Local TRS blend, then one hierarchy pass. Composing two global matrices
         ScopedOutPositions[ScopedBone] = Lerp(ScopedPreviousPosition, ScopedCurrentPosition, ScopedWeight);
@@ -239,10 +238,11 @@ void AnimGraphApplySkeletal(AnimStateComponent& InState, SkeletonComponent& InSk
     SkeletalAnimation::Evaluate(InSkeleton);
 }
 
-void AnimGraphApplySpriteClip(const AnimStateComponent& InState, SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid,
-                         Sprite2D* InSprite) noexcept
+void AnimGraphApplySpriteClip(const AnimStateComponent& InState, const AnimGraphDefinitionComponent& InDefinition,
+                              SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid,
+                              Sprite2D* InSprite) noexcept
 {
-    const AnimClip* ScopedClip = AnimGraphFindClip(InState, InState.CurrentState);
+    const AnimClip* ScopedClip = AnimGraphFindClip(InDefinition, InState.CurrentState);
     if (ScopedClip == nullptr || ScopedClip->SpriteFrameCount == 0)
     {
         return;
@@ -270,8 +270,8 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
                                   const GameplayTagRegistry* InTags) const noexcept
 {
     const float ScopedDt = std::isfinite(InDt) && InDt > 0.0f ? InDt : 0.0f;
-    auto ScopedView = InRegistry.view<AnimStateComponent>();
-    for (auto [ScopedEntity, ScopedState] : ScopedView.each())
+    auto ScopedView = InRegistry.view<AnimStateComponent, AnimGraphDefinitionComponent>();
+    for (auto [ScopedEntity, ScopedState, ScopedDefinition] : ScopedView.each())
     {
         ScopedState.StateTime += ScopedDt;
 
@@ -282,7 +282,7 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
         std::uint16_t ScopedFiredIndex = kNoAnimTransition;
         for (std::uint16_t ScopedIndex = 0; ScopedIndex < kMaxAnimTransitions; ++ScopedIndex)
         {
-            const AnimTransition& ScopedTransition = ScopedState.Transitions[ScopedIndex];
+            const AnimTransition& ScopedTransition = ScopedDefinition.Transitions[ScopedIndex];
             if (ScopedTransition.FromState != kAnimAnyState && ScopedTransition.FromState != ScopedState.CurrentState)
             {
                 continue;
@@ -319,7 +319,7 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
         // Bridge 1: SkeletalAnimation. Always apply, not only on a transition, because the
         if (auto* ScopedSkeleton = InRegistry.try_get<SkeletonComponent>(ScopedEntity); ScopedSkeleton != nullptr)
         {
-            AnimGraphApplySkeletal(ScopedState, *ScopedSkeleton);
+            AnimGraphApplySkeletal(ScopedState, ScopedDefinition, *ScopedSkeleton);
         }
 
         // Bridge 2: SpriteAnimation. Only on a state change; SpriteAnimationSystem owns the frame
@@ -328,15 +328,25 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
             if (auto* ScopedSpriteAnimation = InRegistry.try_get<SpriteAnimationComponent>(ScopedEntity); ScopedSpriteAnimation != nullptr)
             {
                 const SpriteSheetComponent* ScopedGrid = InRegistry.try_get<SpriteSheetComponent>(ScopedEntity);
-                AnimGraphApplySpriteClip(ScopedState, *ScopedSpriteAnimation, ScopedGrid, InRegistry.try_get<Sprite2D>(ScopedEntity));
+                AnimGraphApplySpriteClip(ScopedState, ScopedDefinition, *ScopedSpriteAnimation, ScopedGrid,
+                                         InRegistry.try_get<Sprite2D>(ScopedEntity));
             }
         }
     }
 }
 
-void AnimGraphSystem::Run(Ecs::SystemContext& InContext) const noexcept
+void AnimGraphSystem::Run(const Ecs::GameplaySystemView& InView) const noexcept
 {
-    RunWithTags(InContext.registry, InContext.dt, InContext.gameplayTags != nullptr ? InContext.gameplayTags : MTags);
+    RunWithTags(InView.registry, InView.dt,
+                InView.gameplay.gameplayTags != nullptr ? InView.gameplay.gameplayTags : MTags);
+}
+
+namespace
+{
+void AnimGraphSystemThunk(const Ecs::GameplaySystemView& InView, void*)
+{
+    AnimGraphSystem{}.Run(InView);
+}
 }
 
 void RegisterAnimGraphSystem(Ecs::Schedule& InSchedule)
@@ -344,13 +354,15 @@ void RegisterAnimGraphSystem(Ecs::Schedule& InSchedule)
     // FixedUpdate keeps the cross-fade and the SpriteAnimation frame advance on the same
     (void)InSchedule.Add(
         Ecs::Phase::FixedUpdate, "anim_graph",
-        +[](Ecs::SystemContext& InContext, void*) { AnimGraphSystem{}.Run(InContext); });
+        +[](Ecs::SystemContext& InContext, void*)
+        {
+            Ecs::GameplaySystemView ScopedView = InContext.GameplayView();
+            AnimGraphSystem{}.Run(ScopedView);
+        });
 }
 
 void RegisterAnimGraphSystem(Ecs::SystemGraph& InGraph)
 {
-    (void)InGraph.Add(
-        Ecs::Phase::FixedUpdate, "anim_graph",
-        +[](Ecs::SystemContext& InContext, void*) { AnimGraphSystem{}.Run(InContext); });
+    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "anim_graph", Ecs::BindGameplaySystem<&AnimGraphSystemThunk>());
 }
 }

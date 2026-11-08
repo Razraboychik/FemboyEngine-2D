@@ -80,10 +80,10 @@ SECTIONS: list[dict] = [
                 "дистрибутивный архив.",
             )),
             ("p", B(
-                "The running project is deliberately small. A player, three enemy archetypes, a boss with phases, "
+                "The running project is small. A player, three enemy archetypes, a boss with phases, "
                 "bullets, pickups and a card board are enough to demonstrate every architectural rule. Every code "
                 "snippet compiles against the headers shipped in Source/Engine; paths and type names are real.",
-                "Проект намеренно небольшой. Игрок, три архетипа врагов, босс с фазами, пули, подбираемые предметы и "
+                "Проект небольшой. Игрок, три архетипа врагов, босс с фазами, пули, подбираемые предметы и "
                 "карточная доска — этого достаточно, чтобы показать все архитектурные правила. Каждый фрагмент кода "
                 "компилируется против заголовков из Source/Engine; пути и имена типов настоящие.",
             )),
@@ -114,35 +114,36 @@ SECTIONS: list[dict] = [
         "title": B("2. Setup and the reproducible toolchain", "2. Установка и воспроизводимый тулчейн"),
         "blocks": [
             ("p", B(
-                "The setup scripts are split by software group. The C++ scripts install the pinned toolchain and "
+                "The setup scripts are split by OS and software group. The C++ scripts install the pinned toolchain and "
                 "materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first "
                 "configure after setup does not need network access. Versions are fixed by the scripts and written "
                 "to third_party/dependencies.lock.",
-                "Скрипты установки разделены по группам ПО. C++-скрипты ставят зафиксированный toolchain и "
+                "Скрипты установки разделены по ОС и группам ПО. C++-скрипты ставят зафиксированный toolchain и "
                 "раскладывают точные исходники в third_party/. CMake предпочитает эти локальные копии, поэтому "
                 "первый configure после установки не требует сети. Версии фиксируются скриптами и записываются в "
                 "third_party/dependencies.lock.",
             )),
             ("code", code(r"""# Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts\SetupCpp.bat
-SetupScripts\SetupArchiver.bat
+SetupScripts\Windows\Setup.bat
+SetupScripts\Windows\SetupCpp.bat
+SetupScripts\Windows\SetupArchiver.bat
 # optional vendor SDKs
-SetupScripts\SetupUpscalers.bat
+SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 # Ubuntu / Debian
-./SetupScripts/SetupCpp.sh
-./SetupScripts/SetupArchiver.sh
+./SetupScripts/Linux/SetupCpp.sh
+./SetupScripts/Linux/SetupArchiver.sh
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.sh
+./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses
 
 # macOS (double-click in Finder also works)
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.command""")),
+./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses""")),
             ("p", B(
-                "The all-in-one Setup.bat, Setup.sh and Setup.command remain available.",
-                "Общие скрипты Setup.bat, Setup.sh и Setup.command остаются доступны.",
+                "The all-in-one entry points are SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh and SetupScripts/macOS/Setup.command.",
+                "Общие точки входа: SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh и SetupScripts/macOS/Setup.command.",
             )),
             ("p", B(
                 "Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, "
@@ -176,6 +177,49 @@ ctest --test-dir build --output-on-failure""")),
                 "--force; the lock file is regenerated and the CMake cache does not embed a machine-specific path.",
                 "Setup никогда не изменяет исходники. Можно удалить third_party/<name>-src и повторить запуск с "
                 "--force; lock-файл перегенерируется, а CMake-кэш не содержит машинно-зависимого пути.",
+            )),
+            ("h2", B("2.1 Editor and cooked game on Windows, Linux and macOS",
+                      "2.1 Редактор и собранная игра на Windows, Linux и macOS")),
+            ("p", B(
+                "The same presets build the editor, the sandbox, the asset tools and the game packer. Windows uses "
+                "clang-cl with Vulkan; Linux uses clang++ with Vulkan; macOS uses clang++ with Metal. Every preset "
+                "exports compile_commands.json and keeps the tests enabled.",
+                "Одни и те же пресеты собирают редактор, sandbox, инструменты ассетов и упаковщик игры. Windows "
+                "использует clang-cl и Vulkan; Linux — clang++ и Vulkan; macOS — clang++ и Metal. Каждый пресет "
+                "экспортирует compile_commands.json и оставляет тесты включёнными.",
+            )),
+            ("code", code(r"""# Windows 10/11, from an LLVM + Visual Studio developer shell
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+
+# Linux, from a shell with Clang, Ninja and Vulkan headers
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release
+
+# macOS, from a shell with Xcode command-line tools and Homebrew
+cmake --preset macos-release
+cmake --build --preset macos-release
+ctest --preset macos-release""")),
+            ("p", B(
+                "The editor is build-<platform>/bin/fby_editor (Windows adds .exe). Build & Pack Game uses the same "
+                "editor on all three systems: it cooks assets through fby_fempak, writes the AOT module when the "
+                "project has a LogicGraph, and stages archives under the project stores/. The POSIX release path "
+                "uses posix_spawn and reports the child exit code; the Windows path uses CreateProcess.",
+                "Редактор находится в build-<platform>/bin/fby_editor (в Windows добавляется .exe). Build & Pack "
+                "Game использует один и тот же редактор на всех трёх системах: готовит ассеты через fby_fempak, "
+                "пишет AOT-модуль при наличии LogicGraph и раскладывает архивы в stores/ проекта. POSIX-путь "
+                "релиза использует posix_spawn и возвращает код выхода дочернего процесса; Windows-путь — "
+                "CreateProcess.",
+            )),
+            ("note", B(
+                "Windows is the locally validated gate. Linux and macOS have presets, platform code and CI jobs; "
+                "treat their first hosted runs as the acceptance gate until the matrix is green. The RHI is Metal "
+                "on macOS and Vulkan on Windows/Linux.",
+                "Windows — локально проверенный gate. Для Linux и macOS есть пресеты, платформенный код и CI-задания; "
+                "считайте их первые запуски на runner’ах приёмочным gate, пока матрица не станет зелёной. RHI — "
+                "Metal на macOS и Vulkan на Windows/Linux.",
             )),
         ],
     },
@@ -221,9 +265,9 @@ ctest --test-dir build --output-on-failure""")),
             )),
             ("h2", B("3.2 The component vocabulary", "3.2 Словарь компонентов")),
             ("p", B(
-                "Start with a small vocabulary and resist adding a component until two systems genuinely need to "
+                "Start with a small vocabulary and do not add a component until two systems need to "
                 "share the data. The shooter uses the following independent components.",
-                "Начните с небольшого словаря и не добавляйте компонент, пока двум системам действительно не "
+                "Начните с небольшого словаря и не добавляйте компонент, пока двум системам не "
                 "понадобится совместно использовать данные. Шутер использует следующие независимые компоненты.",
             )),
             ("code", code(r"""// Game/Components.hpp - trivially copyable, no behaviour.
@@ -285,7 +329,7 @@ struct ProjectileComponent
                 "function is also the prefab loader: a scene file produces the same component set through the same "
                 "code path.",
                 "Игрок — это четыре компонента и трансформ. Его спавн — функция, а не конструктор. Эта же функция "
-                "является загрузчиком префаба: сценический файл создаёт тот же набор компонентов через тот же код.",
+                "загружает префаб: сценический файл создаёт тот же набор компонентов через тот же код.",
             )),
             ("code", code(r"""Entity SpawnPlayer(ecs::Registry& registry, Vector2D spawn)
 {
@@ -330,17 +374,17 @@ Entity SpawnEnemy(ecs::Registry& registry, const EnemyArchetype& archetype, Vect
             ("p", B(
                 "Mobs and bosses share one spawn path. A 'Boss' is an archetype with more health, a phase table and "
                 "a BossPhaseComponent; it is not a separate C++ type. Adding a new enemy is a data row and, when its "
-                "behaviour is genuinely new, one branch in AISystem.",
+                "behaviour is new, one branch in AISystem.",
                 "Мобы и боссы используют один путь спавна. «Босс» — это архетип с большим здоровьем, таблицей фаз и "
                 "компонентом BossPhaseComponent, а не отдельный C++ тип. Новый враг — это строка данных и, если "
-                "поведение действительно новое, одна ветка в AISystem.",
+                "поведение новое, одна ветка в AISystem.",
             )),
             ("h2", B("4.1 Systems, in order", "4.1 Системы по порядку")),
             ("bullets", B(
                 [
                     "InputSystem (PreUpdate): read devices into InputComponent. It never moves anything.",
                     "AISystem (FixedUpdate): write desired velocity and aim into the same InputComponent that a "
-                    "player would write. This is the key trick: one movement system handles players and enemies.",
+                    "player would write. One movement system therefore handles players and enemies.",
                     "MovementSystem (FixedUpdate): integrate Velocity into Transform2D; clamp to level bounds.",
                     "WeaponSystem (FixedUpdate): cooldown, spawn projectile intents through the CommandBuffer.",
                     "ProjectileSystem (FixedUpdate): integrate projectiles, TTL, broad-phase candidate query.",
@@ -398,11 +442,11 @@ Entity SpawnEnemy(ecs::Registry& registry, const EnemyArchetype& archetype, Vect
     }
 }""")),
             ("p", B(
-                "The system is deliberately boring. There is no state machine object and no per-enemy allocation; "
+                "The system stays small. There is no state machine object and no per-enemy allocation; "
                 "the archetype row supplies the numbers, and the same nine lines cover a chaser, a turret and a "
                 "ranged mob. A boss with phases adds a second small system that changes preferredRange and behavior "
                 "when its health crosses a threshold.",
-                "Система намеренно скучная. Здесь нет объекта-автомата и аллокации на врага; строка архетипа задаёт "
+                "Система небольшая. Здесь нет объекта-автомата и аллокации на врага; строка архетипа задаёт "
                 "числа, и те же девять строк покрывают преследователя, турель и дальнего моба. Босс с фазами "
                 "добавляет вторую маленькую систему, которая меняет preferredRange и поведение при переходе "
                 "здоровья через порог.",
@@ -436,7 +480,7 @@ void BossPhaseSystem(ecs::SystemContext& context)
     }
 }""")),
             ("p", B(
-                "This is the entire boss hierarchy. A 'fire boss' and a 'charge boss' differ by component values and, "
+                "The boss hierarchy is the same. A 'fire boss' and a 'charge boss' differ by component values and, "
                 "at most, by a spawn table. Behaviour that cannot be expressed as data belongs in a new small "
                 "system; it almost never justifies a class with a vtable.",
                 "Это вся иерархия боссов. «Огненный босс» и «босс-рывок» отличаются значениями компонентов и, в "
@@ -507,6 +551,79 @@ if (!graph.Build())
                     "Запускайте весь набор через ctest; одно падение печатает файл и строку и возвращает ненулевой код.",
                 ],
             )),
+            ("h2", B("5.1 Deterministic input and replication while building the game",
+                      "5.1 Детерминированный ввод и репликация при создании игры")),
+            ("p", B(
+                "Build input and replication together, not after the gameplay is finished. The action mapper produces "
+                "the same fixed-tick data on every peer; the network layer carries an input frame, never raw SDL "
+                "events. This is the contract that makes prediction and rollback possible.",
+                "Ввод и репликацию проектируйте вместе, а не после готового геймплея. Маппер действий выдаёт одни и "
+                "те же данные фиксированного тика на каждом пире; сетевой слой передаёт input frame, а не сырые "
+                "SDL-события. Это контракт, который делает возможными предсказание и роллбэк.")),
+            ("code", code(r"""InputSystem input;
+const std::uint16_t Move = input.RegisterAction("Move", InputActionType::Axis2D);
+const std::uint16_t Jump = input.RegisterAction("Jump", InputActionType::Bool);
+const std::uint16_t Gameplay = input.RegisterContext("Gameplay", 0, false);
+
+InputUserComponent user;
+user.UserId = 0;
+user.GamepadSlot = 0;
+registry.emplace<InputUserComponent>(player, user);
+input.BindUser(player, 0, 0);
+input.PushContext(0, Gameplay);
+
+// Once per fixed tick, before gameplay reads actions.
+input.Update(window.Input(), tick, timestampNs, fixedDt);
+const InputActionState& move = *input.Action(0, Move);
+if (input.Action(0, Jump)->Triggered) { JumpPlayer(player); }""")),
+            ("p", B(
+                "The local device layer is allowed to differ: keyboard, mouse and gamepad take different paths into "
+                "InputState. The simulation sees only action values and events. For a networked game, pack the values "
+                "you need into NetInputFrame (or your own schema) and submit the frame for the owning player.",
+                "Локальный слой устройств может отличаться: клавиатура, мышь и геймпад идут в InputState разными "
+                "путями. Симуляция видит только значения действий и события. Для сетевой игры упакуйте нужные "
+                "значения в NetInputFrame (или собственную схему) и отправьте frame для владеющего игрока.")),
+            ("code", code(r"""NetRollbackSession::Config net;
+net.playerCount = 2;
+net.localPlayer = 0;
+net.rollbackTicks = 64;
+NetRollbackSession session;
+session.Initialize(registry, Ecs::SnapshotSchema::BuiltIns(), net);
+session.SetCommandLog(&commands);
+session.RegisterEntity(player, NetEntityId{1});
+
+NetInputFrame frame;
+frame.tick = tick;
+frame.player = 0;
+frame.moveX = static_cast<std::int16_t>(move.X * 32767.0f);
+frame.buttons = input.Action(0, Jump)->Triggered ? 1u : 0u;
+session.SubmitRemoteInput(0, frame);""")),
+            ("bullets", B(
+                [
+                    "Authoritative simulation: the server owns the tick, the RNG seed and the CommandLog. Clients predict with the same tick size and the same gameplay systems.",
+                    "Register gameplay components in SnapshotSchema before the first capture; a component outside the schema silently does not replicate.",
+                    "Use stable NetEntityId values for replicated entities. Never derive one from an EnTT id, a spawn order or an allocator address.",
+                    "Replicate input frames and structural commands, not raw device state or render-only values.",
+                    "On a correction, restore the snapshot before the first bad tick, replay the corrected input and compare the final checksum.",
+                    "Test PIE with two players, artificial latency, packet loss and a forced rollback before adding content.",
+                ],
+                [
+                    "Авторитетная симуляция: сервер владеет тиком, сидом RNG и CommandLog. Клиенты предсказывают с тем же размером тика и теми же геймплейными системами.",
+                    "Регистрируйте геймплейные компоненты в SnapshotSchema до первого захвата; компонент вне схемы молча не реплицируется.",
+                    "Используйте стабильные NetEntityId для реплицируемых сущностей. Никогда не выводите их из EnTT id, порядка спавна или адреса аллокатора.",
+                    "Реплицируйте input frames и структурные команды, а не сырые устройства или render-only значения.",
+                    "При коррекции восстановите снапшот до первого плохого тика, повторите исправленный ввод и сравните итоговую контрольную сумму.",
+                    "Проверяйте PIE на двух игроках, с искусственной задержкой, потерей пакетов и принудительным роллбэком до добавления контента.",
+                ])),
+            ("p", B(
+                "A useful project order is: one player + InputSystem; two local users; snapshot round trip; server-authoritative "
+                "movement; then interaction, weapons and AI. Add replication fields with the feature that owns them, not in a "
+                "single late 'networking pass'. If a system reads wall-clock time, frame delta or a render handle, it is not "
+                "ready for rollback.",
+                "Полезный порядок проекта: один игрок + InputSystem; два локальных пользователя; round-trip снапшота; "
+                "серверно-авторитетное движение; затем взаимодействия, оружие и ИИ. Добавляйте поля репликации вместе с "
+                "фичей-владельцем, а не одним поздним «networking pass». Если система читает wall-clock, delta кадра или "
+                "render handle, она не готова к роллбэку.")),
         ],
     },
     {
@@ -520,13 +637,13 @@ if (!graph.Build())
                 "инструмента: запечённые блочно-сжатые текстуры и indirect-батчинг мешей. Оба настраиваются на "
                 "проект и оба проверяемы через FrameStats.",
             )),
-            ("h2", B("6.1 Texture cooking: BC7 on desktop, ASTC on mobile", "6.1 Кукинг текстур: BC7 на десктопе, ASTC на мобильных")),
+            ("h2", B("6.1 Texture cooking: BC7 and ASTC", "6.1 Кукинг текстур: BC7 и ASTC")),
             ("bullets", B(
                 [
                     "BC7 keeps a real alpha channel and is the desktop default. BC7 sRGB is selected for colour "
                     "sprites; a normal map or a mask uses the linear (UNORM) variant.",
-                    "ASTC 4x4 is the quality mobile target; 6x6 is the size target. Pick it in Project Settings -> "
-                    "Cooker -> Texture format.",
+                    "ASTC 4x4 is the quality option where the target GPU supports ASTC; 6x6 is the size option. "
+                    "Pick it in Project Settings -> Cooker -> Texture format.",
                     "The cooker generates the full mip chain once, at import. The runtime uploads the blocks "
                     "verbatim; there is no CPU decode and no runtime re-compression.",
                     "A texture array is the batching unit. Keep sprites of one material in one layer set; a layer "
@@ -535,10 +652,10 @@ if (!graph.Build())
                     "shipped texture differ from what the artist approved.",
                 ],
                 [
-                    "BC7 сохраняет настоящий альфа-канал и является десктопным дефолтом. BC7 sRGB выбирается для "
+                    "BC7 сохраняет настоящий альфа-канал и остаётся десктопным вариантом по умолчанию. BC7 sRGB выбирается для "
                     "цветных спрайтов; карта нормалей или маска использует линейный (UNORM) вариант.",
-                    "ASTC 4x4 — мобильный таргет качества; 6x6 — таргет размера. Выбирается в Project Settings -> "
-                    "Cooker -> Texture format.",
+                    "ASTC 4x4 — вариант качества для GPU с поддержкой ASTC; 6x6 — вариант размера. Выбирается "
+                    "в Project Settings -> Cooker -> Texture format.",
                     "Кукер один раз при импорте строит полную цепочку мипов. Рантайм загружает блоки как есть; нет "
                     "CPU-декодирования и повторного сжатия в рантайме.",
                     "Единица батчинга — texture array. Держите спрайты одного материала в одном наборе слоёв; "
@@ -565,7 +682,7 @@ native_arch = false""")),
                 "deformable geometry is streamed into the transient ring; every draw is a compact MeshDrawData "
                 "record, and the backend records them through one drawIndexedIndirect call per material layer. The "
                 "CPU never binds a vertex buffer per mesh.",
-                "Спрайтовый путь уже является одним instanced-вызовом на батч. Indirect-отрисовка важна на пути "
+                "Спрайтовый путь уже использует один instanced-вызов на батч. Indirect-отрисовка важна на пути "
                 "мешей: статическая геометрия один раз загружается в device-local арену и адресуется через "
                 "MeshHandle; деформируемая геометрия стримится в transient ring; каждый draw — компактная запись "
                 "MeshDrawData, а бэкенд проигрывает их одним drawIndexedIndirect на слой материала. CPU не биндит "
@@ -767,6 +884,40 @@ postFx.Build(graph, cameras);""")),
                 "CardBoardComponent раскладывают карточную доску без сцены, а BuildCardBoardPrimitives упаковывает "
                 "каждый слот в два экземпляра (карта и тень).",
             )),
+            ("h2", B("8.2 Moving platforms, transport and wheels", "8.2 Движущиеся платформы, транспорт и колёса")),
+            ("p", B(
+                "A carrier is a transform frame, not a second rigid-body world. TransportGroupSystem is for elevators, "
+                "trains and platforms: it computes carrier deltas before the physics step and refreshes local poses "
+                "after it. A wheel entity is a normal dynamic body with a collider; WheelSystem creates the Box2D wheel "
+                "joint lazily and applies the per-wheel spring, drive and brake settings before the step.",
+                "Носитель — это система отсчёта трансформа, а не второй мир твёрдых тел. TransportGroupSystem подходит "
+                "для лифтов, поездов и платформ: он считает дельты носителя до шага физики и обновляет локальные позы "
+                "после него. Колесо — обычное динамическое тело с коллайдером; WheelSystem лениво создаёт wheel-джойнт "
+                "Box2D и применяет настройки пружины, привода и тормоза колеса до шага.",
+            )),
+            ("code", code(r"""TransportGroupSystem transport;
+transport.CreateGroup(registry, elevator, 1);
+transport.Attach(registry, player, 1, kCarrierModeSupport);
+
+TransportSurface surface;
+surface.Friction = 0.8f;
+registry.emplace<TransportSurface>(elevator, surface);
+
+Vehicle2D vehicle;
+vehicle.MaxMotorTorque = 600.0f;
+registry.emplace<Vehicle2D>(chassis, vehicle);
+
+Wheel2D wheel;
+wheel.Chassis = chassis;
+wheel.LocalAnchor = {-20.0f, 4.0f};
+wheel.Radius = 8.0f;
+wheel.DriveWeight = 1.0f;
+registry.emplace<Wheel2D>(wheelEntity, wheel);
+
+WheelSystem wheels;
+wheels.Initialize(physics);
+wheels.Update(registry, physics, fixedDt);
+physics.Step(registry, fixedDt);""")),
         ],
     },
     {
@@ -1046,8 +1197,8 @@ Materials.Shutdown(gpu);""",
             ("p", B(
                 "Use this table as a starting checklist. A component that does not fit one row is probably two "
                 "components, and a behaviour that needs a new row is a new system, not a new class.",
-                "Используйте таблицу как стартовый чек-лист. Компонент, не помещающийся в одну строку, вероятно, "
-                "является двумя компонентами, а поведение, требующее новой строки, — это новая система, а не новый "
+                "Используйте таблицу как стартовый чек-лист. Компонент, не помещающийся в одну строку, вероятно, это "
+                "два компонента, а поведение, требующее новой строки, — это новая система, а не новый "
                 "класс.",
             )),
             ("table", B(
@@ -1230,7 +1381,7 @@ def build_docx(path: pathlib.Path, language: str, title: str, subtitle: str) -> 
     core = document.core_properties
     core.title = title
     core.subject = subtitle
-    core.author = "FemboyEngine Developer Documentation Group"
+    core.author = "Razraboychik"
     core.keywords = "FemboyEngine, ECS, DOD, texture cooking, BC7, ASTC, indirect draw, SDF, weather"
     core.language = "en-US" if language == "en" else "ru-RU"
 
@@ -1327,7 +1478,7 @@ def main() -> int:
     docpaths.EnsureLayout()
     en_title = "FemboyEngine2D Application Guide"
     ru_title = "FemboyEngine2D — Практическое руководство"
-    en_subtitle = "ECS in practice, production optimisation and the distribution SDK"
+    en_subtitle = "ECS in a production project, optimisation and the distribution SDK"
     ru_subtitle = "Практика ECS, оптимизация производства и SDK дистрибуции"
 
     en_md = render_markdown(en_title, "en", en_subtitle)

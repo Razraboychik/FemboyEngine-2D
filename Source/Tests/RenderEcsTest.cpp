@@ -112,7 +112,9 @@ int main()
     Check(ScopedEcs.Sprite(ScopedFirst)->PositionX == 30.0f, "the updated position is stored");
     Check(ScopedChunk->Header.DirtyBlockMask != 0u, "an update marks dirty blocks again");
 
+    ClearDirty(*ScopedChunk);
     ScopedEcs.RemoveSprite(ScopedFirst);
+    Check(ScopedChunk->Header.DirtyBlockMask != 0u, "a release marks the zeroed slot dirty");
     Check(ScopedEcs.ActiveCount() == 0u, "the sprite is released");
     Check(ScopedEcs.ChunkCount() == 0u, "an empty chunk returns to the free list");
     Check(ScopedEcs.FreeSlotCount() == ChunkCapacity, "all slots are free again");

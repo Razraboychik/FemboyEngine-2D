@@ -178,6 +178,19 @@ void PostFxPass::RefreshConstants(const RenderGraphContext& InContext) noexcept
     MConstants.colorRow2 = Vector4D{ScopedMatrix.m[6], ScopedMatrix.m[7], ScopedMatrix.m[8], 0.0f};
     MConstants.grainAndFlash = Vector4D{static_cast<float>(InContext.extent.width),
                                         static_cast<float>(InContext.extent.height), 0.0f, 0.0f};
+    CameraDistortionSettings ScopedDistortion{};
+    if (InContext.cameras != nullptr)
+    {
+        ScopedDistortion = InContext.cameras->ActiveDistortion();
+    }
+    else if (MCameras != nullptr)
+    {
+        ScopedDistortion = MCameras->ActiveDistortion();
+    }
+    MConstants.distortion0 = Vector4D{static_cast<float>(ScopedDistortion.flags), ScopedDistortion.doubleVision,
+                                      ScopedDistortion.stretchX, ScopedDistortion.stretchY};
+    MConstants.distortion1 = Vector4D{ScopedDistortion.radialWarp, ScopedDistortion.chromaticSplit,
+                                      ScopedDistortion.wobbleAmplitude, ScopedDistortion.wobbleFrequency};
 }
 
 void PostFxPass::ExecutePrefilter(RenderGraphContext& InContext, void* InUser)

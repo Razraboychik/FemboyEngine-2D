@@ -57,7 +57,6 @@ namespace Fby::Rhi
     // The enum stays for cross-platform project files, but no MetalFX adapter
     // exists yet. Do not advertise it until the adapter is implemented.
     ScopedCaps.MetalFx = false;
-    // XeSS was removed from the supported feature set.
     ScopedCaps.XeSs = false;
     ScopedCaps.CustomFrameGeneration =
         InInfo.upscalers.frameGeneration && InInfo.upscalers.motionVectors;

@@ -25,7 +25,7 @@ enum class TextureFormat : std::uint32_t
     // Desktop target. BC7 is the only high-quality BC format with a real alpha
     Bc7Unorm = 1,
     Bc7Srgb = 2,
-    // Mobile target. ASTC LDR 4x4 (quality) and 6x6 (size).
+    // ASTC LDR 4x4 (quality) and 6x6 (size) for compatible GPUs.
     Astc4x4Unorm = 3,
     Astc4x4Srgb = 4,
     Astc6x6Unorm = 5,

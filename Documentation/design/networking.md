@@ -26,6 +26,15 @@ simulation:
 - a frame's player id always comes from the packet header, so a forged per-frame
   id cannot impersonate another player.
 
+## Input bridge
+
+`InputSystem` maps keyboard, mouse and gamepad state into fixed-tick actions and
+events. For a networked game, quantize the values you need into `NetInputFrame`
+(`moveX`, `moveY`, `aimX`, `aimY`, `buttons`, `tick`) and submit it for the
+owning player. Raw SDL events and device handles never enter the protocol or a
+snapshot. The client predicts with the same action/fixed-step path; the server
+validates the frame and the rollback session replays corrected ticks.
+
 ## Replication ECS bridge
 
 `Source/Engine/Network/ReplicationEcs.hpp/.cpp` wires the transport channel to

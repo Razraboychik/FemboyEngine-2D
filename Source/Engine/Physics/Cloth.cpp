@@ -1,6 +1,8 @@
 // FemboyEngine2D - Verlet cloth implementation.
 #include "Engine/Physics/Cloth.hpp"
 
+#include "Engine/Core/SimMath.hpp"
+
 #include <box2d/box2d.h>
 
 #include <algorithm>
@@ -160,12 +162,12 @@ void ClothSystem::Shutdown(Ecs::Registry& InRegistry) noexcept
 
 ClothSystem::Runtime* ClothSystem::Get(ClothHandle InHandle) noexcept
 {
-    if (MStorage == nullptr || InHandle.index >= kMaxCloths)
+    if (MStorage == nullptr || InHandle.Index >= kMaxCloths)
     {
         return nullptr;
     }
-    Runtime& ScopedCloth = MStorage->cloths[InHandle.index];
-    if (!ScopedCloth.active || ScopedCloth.generation != InHandle.generation)
+    Runtime& ScopedCloth = MStorage->cloths[InHandle.Index];
+    if (!ScopedCloth.active || ScopedCloth.generation != InHandle.Generation)
     {
         return nullptr;
     }
@@ -174,12 +176,12 @@ ClothSystem::Runtime* ClothSystem::Get(ClothHandle InHandle) noexcept
 
 const ClothSystem::Runtime* ClothSystem::Get(ClothHandle InHandle) const noexcept
 {
-    if (MStorage == nullptr || InHandle.index >= kMaxCloths)
+    if (MStorage == nullptr || InHandle.Index >= kMaxCloths)
     {
         return nullptr;
     }
-    const Runtime& ScopedCloth = MStorage->cloths[InHandle.index];
-    if (!ScopedCloth.active || ScopedCloth.generation != InHandle.generation)
+    const Runtime& ScopedCloth = MStorage->cloths[InHandle.Index];
+    if (!ScopedCloth.active || ScopedCloth.generation != InHandle.Generation)
     {
         return nullptr;
     }
@@ -191,10 +193,10 @@ bool ClothSystem::IsValid(ClothHandle InHandle) const noexcept
     return Get(InHandle) != nullptr;
 }
 
-ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDesc) noexcept
+ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDesc)
 {
-    if (MStorage == nullptr || InDesc.columns < 2 || InDesc.columns > kMaxColumns || InDesc.rows < 2 ||
-        InDesc.rows > kMaxRows || InDesc.size.X <= 0.0f || InDesc.size.Y <= 0.0f)
+    if (MStorage == nullptr || InDesc.Columns < 2 || InDesc.Columns > kMaxColumns || InDesc.Rows < 2 ||
+        InDesc.Rows > kMaxRows || InDesc.Size.X <= 0.0f || InDesc.Size.Y <= 0.0f)
     {
         return {};
     }
@@ -224,25 +226,25 @@ ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDe
         ScopedCloth = Runtime{};
         return {};
     }
-    ScopedCloth.columns = InDesc.columns;
-    ScopedCloth.rows = InDesc.rows;
-    ScopedCloth.particleCount = InDesc.columns * InDesc.rows;
-    ScopedCloth.flags = InDesc.flags;
-    ScopedCloth.origin = InDesc.origin;
-    ScopedCloth.cellSize = Vector2D{InDesc.size.X / static_cast<float>(InDesc.columns - 1),
-                                    InDesc.size.Y / static_cast<float>(InDesc.rows - 1)};
-    ScopedCloth.gravity = InDesc.gravity;
-    ScopedCloth.wind = InDesc.wind;
-    ScopedCloth.damping = std::clamp(InDesc.damping, 0.0f, 1.0f);
-    ScopedCloth.particleRadius = std::max(InDesc.particleRadius, 0.1f);
-    ScopedCloth.collisionCategory = InDesc.collisionCategory;
-    ScopedCloth.collisionMask = InDesc.collisionMask;
-    ScopedCloth.solverIterations = std::clamp(InDesc.solverIterations, 1u, 32u);
-    ScopedCloth.textureArray = InDesc.textureArray;
-    ScopedCloth.layer = InDesc.layer;
-    ScopedCloth.sortLayer = InDesc.sortLayer;
-    ScopedCloth.depth = InDesc.depth;
-    ScopedCloth.color = InDesc.color;
+    ScopedCloth.columns = InDesc.Columns;
+    ScopedCloth.rows = InDesc.Rows;
+    ScopedCloth.particleCount = InDesc.Columns * InDesc.Rows;
+    ScopedCloth.flags = InDesc.Flags;
+    ScopedCloth.origin = InDesc.Origin;
+    ScopedCloth.cellSize = Vector2D{InDesc.Size.X / static_cast<float>(InDesc.Columns - 1),
+                                    InDesc.Size.Y / static_cast<float>(InDesc.Rows - 1)};
+    ScopedCloth.gravity = InDesc.Gravity;
+    ScopedCloth.wind = InDesc.Wind;
+    ScopedCloth.damping = std::clamp(InDesc.Damping, 0.0f, 1.0f);
+    ScopedCloth.particleRadius = std::max(InDesc.ParticleRadius, 0.1f);
+    ScopedCloth.collisionCategory = InDesc.CollisionCategory;
+    ScopedCloth.collisionMask = InDesc.CollisionMask;
+    ScopedCloth.solverIterations = std::clamp(InDesc.SolverIterations, 1u, 32u);
+    ScopedCloth.textureArray = InDesc.TextureArray;
+    ScopedCloth.layer = InDesc.Layer;
+    ScopedCloth.sortLayer = InDesc.SortLayer;
+    ScopedCloth.depth = InDesc.Depth;
+    ScopedCloth.color = InDesc.Color;
 
     const auto ScopedPin = [&ScopedCloth](std::uint32_t InX, std::uint32_t InY)
     {
@@ -252,13 +254,13 @@ ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDe
         ScopedCloth.pins[ScopedIndex] = ScopedCloth.positions[ScopedIndex];
     };
 
-    for (std::uint32_t ScopedY = 0; ScopedY < InDesc.rows; ++ScopedY)
+    for (std::uint32_t ScopedY = 0; ScopedY < InDesc.Rows; ++ScopedY)
     {
-        for (std::uint32_t ScopedX = 0; ScopedX < InDesc.columns; ++ScopedX)
+        for (std::uint32_t ScopedX = 0; ScopedX < InDesc.Columns; ++ScopedX)
         {
-            const std::uint32_t ScopedIndex = VertexIndex(ScopedX, ScopedY, InDesc.columns);
-            const Vector2D ScopedPosition{InDesc.origin.X + static_cast<float>(ScopedX) * ScopedCloth.cellSize.X,
-                                          InDesc.origin.Y + static_cast<float>(ScopedY) * ScopedCloth.cellSize.Y};
+            const std::uint32_t ScopedIndex = VertexIndex(ScopedX, ScopedY, InDesc.Columns);
+            const Vector2D ScopedPosition{InDesc.Origin.X + static_cast<float>(ScopedX) * ScopedCloth.cellSize.X,
+                                          InDesc.Origin.Y + static_cast<float>(ScopedY) * ScopedCloth.cellSize.Y};
             ScopedCloth.positions[ScopedIndex] = ScopedPosition;
             ScopedCloth.previous[ScopedIndex] = ScopedPosition;
             ScopedCloth.pins[ScopedIndex] = ScopedPosition;
@@ -267,9 +269,9 @@ ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDe
 
             Rhi::MeshVertex& ScopedVertex = ScopedCloth.vertices[ScopedIndex];
             ScopedVertex.position = ScopedPosition;
-            ScopedVertex.uv = Vector2D{static_cast<float>(ScopedX) / static_cast<float>(InDesc.columns - 1),
-                                       static_cast<float>(ScopedY) / static_cast<float>(InDesc.rows - 1)};
-            ScopedVertex.color = InDesc.color.rgba;
+            ScopedVertex.uv = Vector2D{static_cast<float>(ScopedX) / static_cast<float>(InDesc.Columns - 1),
+                                       static_cast<float>(ScopedY) / static_cast<float>(InDesc.Rows - 1)};
+            ScopedVertex.color = InDesc.Color.rgba;
             ScopedVertex.padding = 0;
             ScopedVertex.boneIndices[0] = 0;
             ScopedVertex.boneIndices[1] = 0;
@@ -278,26 +280,26 @@ ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDe
         }
     }
 
-    if ((InDesc.flags & ClothPinTopRow) != 0)
+    if ((InDesc.Flags & ClothPinTopRow) != 0)
     {
-        for (std::uint32_t ScopedX = 0; ScopedX < InDesc.columns; ++ScopedX)
+        for (std::uint32_t ScopedX = 0; ScopedX < InDesc.Columns; ++ScopedX)
         {
             ScopedPin(ScopedX, 0);
         }
     }
-    if ((InDesc.flags & ClothPinBottomRow) != 0)
+    if ((InDesc.Flags & ClothPinBottomRow) != 0)
     {
-        for (std::uint32_t ScopedX = 0; ScopedX < InDesc.columns; ++ScopedX)
+        for (std::uint32_t ScopedX = 0; ScopedX < InDesc.Columns; ++ScopedX)
         {
-            ScopedPin(ScopedX, InDesc.rows - 1);
+            ScopedPin(ScopedX, InDesc.Rows - 1);
         }
     }
-    if ((InDesc.flags & ClothPinCorners) != 0)
+    if ((InDesc.Flags & ClothPinCorners) != 0)
     {
         ScopedPin(0, 0);
-        ScopedPin(InDesc.columns - 1, 0);
-        ScopedPin(0, InDesc.rows - 1);
-        ScopedPin(InDesc.columns - 1, InDesc.rows - 1);
+        ScopedPin(InDesc.Columns - 1, 0);
+        ScopedPin(0, InDesc.Rows - 1);
+        ScopedPin(InDesc.Columns - 1, InDesc.Rows - 1);
     }
 
     const auto ScopedAddConstraint = [&ScopedCloth](std::uint32_t InA, std::uint32_t InB, float InStiffness)
@@ -317,42 +319,42 @@ ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDe
                        std::clamp(InStiffness, 0.0f, 1.0f)};
     };
 
-    for (std::uint32_t ScopedY = 0; ScopedY < InDesc.rows; ++ScopedY)
+    for (std::uint32_t ScopedY = 0; ScopedY < InDesc.Rows; ++ScopedY)
     {
-        for (std::uint32_t ScopedX = 0; ScopedX < InDesc.columns; ++ScopedX)
+        for (std::uint32_t ScopedX = 0; ScopedX < InDesc.Columns; ++ScopedX)
         {
-            const std::uint32_t ScopedIndex = VertexIndex(ScopedX, ScopedY, InDesc.columns);
-            if (ScopedX + 1 < InDesc.columns)
+            const std::uint32_t ScopedIndex = VertexIndex(ScopedX, ScopedY, InDesc.Columns);
+            if (ScopedX + 1 < InDesc.Columns)
             {
-                ScopedAddConstraint(ScopedIndex, ScopedIndex + 1, InDesc.structuralStiffness);
+                ScopedAddConstraint(ScopedIndex, ScopedIndex + 1, InDesc.StructuralStiffness);
             }
-            if (ScopedY + 1 < InDesc.rows)
+            if (ScopedY + 1 < InDesc.Rows)
             {
-                ScopedAddConstraint(ScopedIndex, ScopedIndex + InDesc.columns, InDesc.structuralStiffness);
+                ScopedAddConstraint(ScopedIndex, ScopedIndex + InDesc.Columns, InDesc.StructuralStiffness);
             }
-            if (ScopedX + 1 < InDesc.columns && ScopedY + 1 < InDesc.rows)
+            if (ScopedX + 1 < InDesc.Columns && ScopedY + 1 < InDesc.Rows)
             {
-                ScopedAddConstraint(ScopedIndex, ScopedIndex + InDesc.columns + 1, InDesc.shearStiffness);
-                ScopedAddConstraint(ScopedIndex + 1, ScopedIndex + InDesc.columns, InDesc.shearStiffness);
+                ScopedAddConstraint(ScopedIndex, ScopedIndex + InDesc.Columns + 1, InDesc.ShearStiffness);
+                ScopedAddConstraint(ScopedIndex + 1, ScopedIndex + InDesc.Columns, InDesc.ShearStiffness);
             }
-            if (ScopedX + 2 < InDesc.columns)
+            if (ScopedX + 2 < InDesc.Columns)
             {
-                ScopedAddConstraint(ScopedIndex, ScopedIndex + 2, InDesc.bendStiffness);
+                ScopedAddConstraint(ScopedIndex, ScopedIndex + 2, InDesc.BendStiffness);
             }
-            if (ScopedY + 2 < InDesc.rows)
+            if (ScopedY + 2 < InDesc.Rows)
             {
-                ScopedAddConstraint(ScopedIndex, ScopedIndex + 2 * InDesc.columns, InDesc.bendStiffness);
+                ScopedAddConstraint(ScopedIndex, ScopedIndex + 2 * InDesc.Columns, InDesc.BendStiffness);
             }
         }
     }
 
-    for (std::uint32_t ScopedY = 0; ScopedY + 1 < InDesc.rows; ++ScopedY)
+    for (std::uint32_t ScopedY = 0; ScopedY + 1 < InDesc.Rows; ++ScopedY)
     {
-        for (std::uint32_t ScopedX = 0; ScopedX + 1 < InDesc.columns; ++ScopedX)
+        for (std::uint32_t ScopedX = 0; ScopedX + 1 < InDesc.Columns; ++ScopedX)
         {
-            const std::uint32_t ScopedA = VertexIndex(ScopedX, ScopedY, InDesc.columns);
+            const std::uint32_t ScopedA = VertexIndex(ScopedX, ScopedY, InDesc.Columns);
             const std::uint32_t ScopedB = ScopedA + 1;
-            const std::uint32_t ScopedC = ScopedA + InDesc.columns;
+            const std::uint32_t ScopedC = ScopedA + InDesc.Columns;
             const std::uint32_t ScopedD = ScopedC + 1;
             if (ScopedCloth.indexCount + 6 > kMaxIndices)
             {
@@ -369,10 +371,10 @@ ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDe
 
     const Entity ScopedEntity = InRegistry.create();
     ScopedCloth.entity = ScopedEntity;
-    InRegistry.emplace<Transform2D>(ScopedEntity, Transform2D{InDesc.origin, Vector2D{1.0f, 1.0f}, 0.0f});
+    InRegistry.emplace<Transform2D>(ScopedEntity, Transform2D{InDesc.Origin, Vector2D{1.0f, 1.0f}, 0.0f});
     InRegistry.emplace<ClothComponent>(ScopedEntity, ClothComponent{ScopedCloth.stableId, ScopedSlot, ScopedGeneration,
-                                                                    InDesc.flags, InDesc.textureArray, InDesc.layer,
-                                                                    InDesc.sortLayer, InDesc.depth});
+                                                                    InDesc.Flags, InDesc.TextureArray, InDesc.Layer,
+                                                                    InDesc.SortLayer, InDesc.Depth});
 
     ScopedCloth.active = true;
     ++MLiveCloths;
@@ -454,7 +456,9 @@ void ClothSystem::Step(float InDt) noexcept
     {
         return;
     }
-    const float ScopedStep = std::clamp(InDt, 1.0f / 240.0f, 1.0f / 30.0f);
+    // The caller owns the fixed step; silently clamping it hides a host bug and
+    // changes the authored damping at the clamped rates.
+    const float ScopedStep = std::max(InDt, 0.0f);
     const float ScopedStepSquared = ScopedStep * ScopedStep;
 
     for (std::uint32_t ScopedClothIndex = 0; ScopedClothIndex < kMaxCloths; ++ScopedClothIndex)
@@ -467,7 +471,9 @@ void ClothSystem::Step(float InDt) noexcept
 
         const Vector2D ScopedAcceleration =
             ScopedCloth.gravity + ((ScopedCloth.flags & ClothAffectedByWind) != 0 ? ScopedCloth.wind : Vector2D{});
-        const float ScopedDamping = std::pow(std::clamp(ScopedCloth.damping, 0.0f, 1.0f), ScopedStep * 60.0f);
+        // Damping is authored per 60 Hz reference step; the exponent keeps its
+        // meaning at any fixed step.
+        const float ScopedDamping = Sim::Pow(std::clamp(ScopedCloth.damping, 0.0f, 1.0f), ScopedStep * 60.0f);
         const float ScopedMaxDisplacement = std::max(ScopedCloth.cellSize.X, ScopedCloth.cellSize.Y) * 0.5f;
 
         for (std::uint32_t ScopedI = 0; ScopedI < ScopedCloth.particleCount; ++ScopedI)
@@ -580,11 +586,35 @@ void ClothSystem::Step(float InDt) noexcept
     }
 }
 
-void ClothSystem::Update(Ecs::SystemContext& InContext) noexcept
+void ClothSystem::Update(Ecs::PhysicsSystemView& InView) noexcept
 {
-    if (InContext.dt > 0.0f)
+    if (MStorage != nullptr)
     {
-        Step(InContext.dt);
+        // A cloth whose marker entity was destroyed by the scene still owns a
+        // slot; release it here instead of waiting for Shutdown.
+        for (Runtime& ScopedCloth : MStorage->cloths)
+        {
+            if (!ScopedCloth.active || InView.registry.valid(ScopedCloth.entity))
+            {
+                continue;
+            }
+            const std::uint32_t ScopedNextGeneration =
+                ScopedCloth.generation + 1u == 0 ? 1u : ScopedCloth.generation + 1u;
+            if (ScopedCloth.stableId.IsValid())
+            {
+                MStableIds.Release(ScopedCloth.stableId);
+            }
+            *static_cast<ClothRuntime*>(&ScopedCloth) = ClothRuntime{};
+            ScopedCloth.generation = ScopedNextGeneration;
+            if (MLiveCloths > 0)
+            {
+                --MLiveCloths;
+            }
+        }
+    }
+    if (InView.dt > 0.0f)
+    {
+        Step(InView.dt);
     }
 }
 
@@ -596,12 +626,12 @@ ClothInfo ClothSystem::Info(ClothHandle InHandle) const noexcept
     {
         return ScopedInfo;
     }
-    ScopedInfo.clothId = ScopedCloth->stableId;
-    ScopedInfo.columns = ScopedCloth->columns;
-    ScopedInfo.rows = ScopedCloth->rows;
-    ScopedInfo.particles = ScopedCloth->particleCount;
-    ScopedInfo.constraints = ScopedCloth->constraintCount;
-    ScopedInfo.entity = ScopedCloth->entity;
+    ScopedInfo.Id = ScopedCloth->stableId;
+    ScopedInfo.Columns = ScopedCloth->columns;
+    ScopedInfo.Rows = ScopedCloth->rows;
+    ScopedInfo.Particles = ScopedCloth->particleCount;
+    ScopedInfo.Constraints = ScopedCloth->constraintCount;
+    ScopedInfo.Entity = ScopedCloth->entity;
     return ScopedInfo;
 }
 

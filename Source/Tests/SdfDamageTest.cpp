@@ -162,8 +162,8 @@ void TestContactAndThickness()
     FBY_CHECK(SdfThicknessInward(ScopedField, Vector2D{30.0f, 8.0f}, Vector2D{1.0f, 0.0f}, 8.0f) == 0.0f);
 
     SdfContact ScopedContact{};
-    ScopedContact.point = Vector2D{4.0f, 8.0f};
-    ScopedContact.normal = Vector2D{1.0f, 0.0f};
+    ScopedContact.Point = Vector2D{4.0f, 8.0f};
+    ScopedContact.Normal = Vector2D{1.0f, 0.0f};
     ScopedContact.RelativeSpeed = 20.0f;
     ScopedContact.KineticEnergy = 200.0f;
     ScopedContact.Mass = 1.0f;

@@ -180,7 +180,7 @@ void TestTgaToAstc()
     const Bytes ScopedTga = MakeTga(ScopedRgba, ScopedKSize, ScopedKSize, 32);
 
     Fby::Cook::TextureCookOptions ScopedOptions;
-    ScopedOptions.target = Fby::Cook::CookTarget::Mobile;
+    ScopedOptions.target = Fby::Cook::CookTarget::Astc;
     ScopedOptions.astcBlock = Fby::Cook::AstcBlock::Block4x4;
 
     Fby::Cook::CookedTexture ScopedCooked;
@@ -227,10 +227,10 @@ void TestTgaToAstc()
     }
 
     // 6x6 target: still structurally valid, different block count/format.
-    Fby::Cook::TextureCookOptions ScopedMobile66 = ScopedOptions;
-    ScopedMobile66.astcBlock = Fby::Cook::AstcBlock::Block6x6;
+    Fby::Cook::TextureCookOptions ScopedAstc66 = ScopedOptions;
+    ScopedAstc66.astcBlock = Fby::Cook::AstcBlock::Block6x6;
     Fby::Cook::CookedTexture ScopedCooked66;
-    FBY_CHECK(Fby::Cook::CookTextureBytes(ScopedTga, "gradient.tga", ScopedMobile66, &ScopedCooked66, &ScopedError));
+    FBY_CHECK(Fby::Cook::CookTextureBytes(ScopedTga, "gradient.tga", ScopedAstc66, &ScopedCooked66, &ScopedError));
     FBY_CHECK(ScopedCooked66.format == Fby::Assets::TextureFormat::Astc6x6Srgb);
     const auto ScopedView66 = Fby::Assets::ParseCookedTexture(ScopedCooked66.payload, &ScopedError);
     FBY_CHECK(ScopedView66.has_value());
@@ -451,11 +451,11 @@ void TestOddSizeMips()
     FBY_CHECK(ScopedView->texels.size() == ScopedExpectedBytes);
 
     // ASTC 6x6 with an odd, smaller-than-block dimension.
-    Fby::Cook::TextureCookOptions ScopedMobile;
-    ScopedMobile.target = Fby::Cook::CookTarget::Mobile;
-    ScopedMobile.astcBlock = Fby::Cook::AstcBlock::Block6x6;
+    Fby::Cook::TextureCookOptions ScopedAstc;
+    ScopedAstc.target = Fby::Cook::CookTarget::Astc;
+    ScopedAstc.astcBlock = Fby::Cook::AstcBlock::Block6x6;
     Fby::Cook::CookedTexture ScopedCookedAstc;
-    FBY_CHECK(Fby::Cook::CookTextureBytes(ScopedPng, "odd.png", ScopedMobile, &ScopedCookedAstc, &ScopedError));
+    FBY_CHECK(Fby::Cook::CookTextureBytes(ScopedPng, "odd.png", ScopedAstc, &ScopedCookedAstc, &ScopedError));
     FBY_CHECK(ScopedCookedAstc.format == Fby::Assets::TextureFormat::Astc6x6Srgb);
     FBY_CHECK(ScopedCookedAstc.mipLevels ==
               Fby::Assets::MaxMipLevels(ScopedKWidth, ScopedKHeight, ScopedCookedAstc.format));

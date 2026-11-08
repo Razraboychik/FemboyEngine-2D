@@ -169,8 +169,8 @@ int main(int argc, char** argv)
         }
         std::printf("fby_aotc: profile %.*s - %.*s\n", static_cast<int>(Build::OptimizationName(ScopedOptimization).size()),
                     Build::OptimizationName(ScopedOptimization).data(),
-                    static_cast<int>(Build::Recommend(ScopedOptimization, true, false).headline.size()),
-                    Build::Recommend(ScopedOptimization, true, false).headline.data());
+                    static_cast<int>(Build::Recommend(ScopedOptimization, true).headline.size()),
+                    Build::Recommend(ScopedOptimization, true).headline.data());
         std::string ScopedCommand = "\"";
         ScopedCommand += ScopedCompiler;
         ScopedCommand += "\"";

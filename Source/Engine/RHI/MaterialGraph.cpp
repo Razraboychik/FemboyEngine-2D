@@ -377,12 +377,12 @@ void MaterialGraph::Clear() noexcept
     ScopedOutput.uiPosition = Vector2D{};
     MNodeCount = 1;
 
-    for (std::uint8_t ScopedSlot = 0; ScopedSlot < ScopedOutput.inputCount; ++ScopedSlot)
+    for (std::uint16_t ScopedSlot = 0; ScopedSlot < ScopedOutput.inputCount; ++ScopedSlot)
     {
         MaterialPin& ScopedPin = MPins[MPinCount];
         ScopedPin = MaterialPin{};
         ScopedPin.node = 0;
-        ScopedPin.slot = ScopedSlot;
+        ScopedPin.slot = static_cast<std::uint8_t>(std::min<std::uint16_t>(ScopedSlot, 255u));
         ScopedPin.type = MaterialNodeSlotDefaultType(MaterialNodeKind::Output, ScopedSlot);
         ScopedPin.sourceNode = kInvalidMaterialNode;
         ScopedPin.sourceSlot = 0;
@@ -436,7 +436,7 @@ std::uint16_t MaterialGraph::AddNode(MaterialNodeKind InKind, Vector2D InUiPosit
         MaterialPin& ScopedPin = MPins[MPinCount];
         ScopedPin = MaterialPin{};
         ScopedPin.node = ScopedIndex;
-        ScopedPin.slot = ScopedSlot;
+        ScopedPin.slot = static_cast<std::uint8_t>(std::min<std::uint16_t>(ScopedSlot, 255u));
         ScopedPin.type = MaterialNodeSlotDefaultType(InKind, ScopedSlot);
         ScopedPin.sourceNode = kInvalidMaterialNode;
         ScopedPin.sourceSlot = 0;
@@ -689,9 +689,9 @@ bool MaterialGraph::Connect(std::uint16_t InNode, std::uint8_t InSlot, std::uint
 
     // Cross-slot rules: pretend the connection is already made, then check the
     MaterialValueType ScopedInputs[kMaxMaterialInputs] = {};
-    for (std::uint8_t ScopedInputSlot = 0; ScopedInputSlot < ScopedTarget.inputCount; ++ScopedInputSlot)
+    for (std::uint16_t ScopedInputSlot = 0; ScopedInputSlot < ScopedTarget.inputCount; ++ScopedInputSlot)
     {
-        const MaterialPin* ScopedPin = FindPin(*this, ScopedTarget, ScopedInputSlot);
+        const MaterialPin* ScopedPin = FindPin(*this, ScopedTarget, static_cast<std::uint8_t>(ScopedInputSlot));
         const bool ScopedConnected = ScopedPin != nullptr && IsGraphEdge(InNode, ScopedPin->sourceNode, MNodeCount);
         if (ScopedInputSlot == InSlot || !ScopedConnected)
         {

@@ -52,6 +52,16 @@ enum class NativeId : std::uint16_t
     TransportDetach,
     TransportSetParent,
     TransportCreate,
+    PhysicsGetBackend,
+    PhysicsSetBackend,
+    PhysicsGetCapabilities,
+    CameraAddTrauma,
+    CameraDistort,
+    CameraOffset,
+    CameraZoom,
+    CameraRoll,
+    CameraClearEffects,
+    CameraSetMotionScale,
     Count,
 };
 
@@ -83,7 +93,23 @@ inline constexpr std::uint32_t kNativeFunctionCount = static_cast<std::uint32_t>
         case NativeId::TransportCreate:
             return 4;
         case NativeId::TransportDetach:
+        case NativeId::PhysicsGetBackend:
+        case NativeId::PhysicsGetCapabilities:
             return 1;
+        case NativeId::CameraAddTrauma:
+        case NativeId::CameraSetMotionScale:
+            return 2;
+        case NativeId::CameraOffset:
+            return 3;
+        case NativeId::CameraZoom:
+        case NativeId::CameraRoll:
+            return 3;
+        case NativeId::CameraDistort:
+            return 6;
+        case NativeId::CameraClearEffects:
+            return 1;
+        case NativeId::PhysicsSetBackend:
+            return 2;
         case NativeId::LogFloat:
         case NativeId::LogInt:
         case NativeId::LogMessage:
@@ -181,7 +207,10 @@ enum class ScriptEvent : std::uint16_t
     Start = 0,
     Update = 1,
     FixedUpdate = 2,
-    Count = 3,
+    // Runs when the script component or its entity leaves the world; a program
+    // without a Destroy entry is a no-op.
+    Destroy = 3,
+    Count = 4,
 };
 
 [[nodiscard]] constexpr const char* ScriptEventName(ScriptEvent InEvent) noexcept
@@ -194,6 +223,8 @@ enum class ScriptEvent : std::uint16_t
             return "Update";
         case ScriptEvent::FixedUpdate:
             return "FixedUpdate";
+        case ScriptEvent::Destroy:
+            return "Destroy";
         case ScriptEvent::Count:
             break;
     }

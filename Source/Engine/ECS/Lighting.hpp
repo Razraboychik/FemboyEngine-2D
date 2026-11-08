@@ -69,10 +69,13 @@ static_assert(sizeof(Light2DTargetComponent) == 12);
 struct Light2DResultComponent
 {
     Color32 Color = Color32::White();
+    // Frame stamp of the solver that wrote the tint; a stale stamp is swept so
+    // a sprite that lost its light target does not keep an old result.
+    std::uint32_t Frame = 0;
 };
 
 static_assert(std::is_trivially_copyable_v<Light2DResultComponent>);
-static_assert(sizeof(Light2DResultComponent) == 4);
+static_assert(sizeof(Light2DResultComponent) == 8);
 
 inline constexpr std::uint32_t kSdfSunFlagDisabled = 1u << 0;
 
@@ -204,7 +207,7 @@ public:
     LightingSettings Settings{};
 
 private:
-    static void Tick(Ecs::SystemContext& InContext, void* InUser);
+    static void Tick(Ecs::RenderSystemView& InView, void* InUser);
 
     const SdfField* MSdfField = nullptr;
     const SdfBrickMap* MSdfBrickMap = nullptr;
@@ -214,6 +217,7 @@ private:
     std::uint64_t MLightGridSignature = 0;
     bool MLightGridValid = false;
     std::uint32_t MGridBuilds = 0;
+    std::uint32_t MFrame = 0;
     std::uint32_t MLightCount = 0;
     std::uint32_t MLitCount = 0;
     std::uint32_t MShadowSamples = 0;

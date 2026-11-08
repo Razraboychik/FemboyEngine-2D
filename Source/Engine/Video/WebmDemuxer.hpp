@@ -1,6 +1,7 @@
 // FemboyEngine2D - WebM/EBML demuxer for VP9 (with optional alpha).
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -25,12 +26,27 @@ struct WebmTrackInfo
     // True when the Video element's AlphaMode flag is 1: every frame may carry
     bool alpha = false;
     bool hasCodecPrivate = false;
+    // Raw AV1CodecConfigurationRecord bytes for V_AV1 (valid while the mapping
+    // outlives the demuxer); empty for VP9.
+    std::span<const std::byte> codecPrivate{};
     // VpcC videoFullRangeFlag
     bool fullRange = false;
     std::uint8_t profile = 0;
     std::uint8_t level = 0;
     std::uint8_t bitDepth = 8;
     // The accepted codec id; always "V_VP9" after a successful Open().
+    char codecId[32] = {};
+};
+
+// Optional A_OPUS audio track. VideoStream can expose it to the audio mixer;
+// the video path itself remains valid when the container has no audio.
+struct WebmAudioTrackInfo
+{
+    std::uint32_t trackNumber = 0;
+    std::uint32_t sampleRate = 0;
+    std::uint32_t channels = 0;
+    std::uint64_t defaultDurationNs = 0;
+    bool hasCodecPrivate = false;
     char codecId[32] = {};
 };
 
@@ -47,6 +63,12 @@ struct WebmFrame
     bool hasAlpha = false;
     // Matroska's "invisible" SimpleBlock flag: the frame must be decoded (it
     bool invisible = false;
+};
+
+struct WebmAudioPacket
+{
+    std::span<const std::byte> payload;
+    std::uint64_t timestampNs = 0;
 };
 
 enum class DemuxStatus : std::uint8_t
@@ -68,9 +90,21 @@ public:
 
     // Returns Frame and fills `frame`; returns End at the end of the stream;
     [[nodiscard]] DemuxStatus NextFrame(WebmFrame& InFrame, std::string* InError = nullptr);
+    // Independent audio cursor. Returns End immediately when the container has
+    // no A_OPUS track. Packets carry the raw Opus frame and its container time.
+    [[nodiscard]] DemuxStatus NextAudioPacket(WebmAudioPacket& InPacket, std::string* InError = nullptr);
 
     // Restarts at the first cluster. Used by the looping player; no allocation.
     void Rewind() noexcept;
+    // Seeks the video cursor to the last cluster whose timestamp is <= the
+    // target. Returns false when the target is outside the stream or the
+    // container has no usable cluster index. The caller must discard queued
+    // frames (the player bumps its epoch).
+    [[nodiscard]] bool SeekToNs(std::uint64_t InTimestampNs) noexcept;
+    [[nodiscard]] std::uint32_t ClusterCount() const noexcept
+    {
+        return MClusterIndexCount;
+    }
 
     [[nodiscard]] bool IsOpen() const noexcept
     {
@@ -79,6 +113,14 @@ public:
     [[nodiscard]] const WebmTrackInfo& Track() const noexcept
     {
         return MTrack;
+    }
+    [[nodiscard]] bool HasAudio() const noexcept
+    {
+        return MAudioTrack.trackNumber != 0;
+    }
+    [[nodiscard]] const WebmAudioTrackInfo& AudioTrack() const noexcept
+    {
+        return MAudioTrack;
     }
 
 private:
@@ -113,6 +155,8 @@ private:
         Error,
     };
     [[nodiscard]] ClusterScan ReadClusterChild(const Element& InElement, std::string* InError, WebmFrame& OutFrame);
+    [[nodiscard]] bool ReadAudioClusterChild(const Element& InElement, std::string* InError, WebmAudioPacket& OutPacket,
+                                             bool& OutHavePacket);
     [[nodiscard]] bool ParseBlockHeader(std::span<const std::byte> InData, std::uint32_t& InTrackNumber,
                                         std::int16_t& InRelativeTimestamp, std::uint8_t& InFlags,
                                         std::uint8_t& InLacing, std::span<const std::byte>& InPayload) const;
@@ -124,6 +168,8 @@ private:
 
     [[nodiscard]] bool RangeInside(std::uint64_t InOffset, std::uint64_t InSize) const noexcept;
     [[nodiscard]] std::uint64_t TimestampToNs(std::uint64_t InTicks) const noexcept;
+    void BuildClusterIndex() noexcept;
+    [[nodiscard]] std::uint64_t ReadClusterTimestampTicks(const Element& InCluster) const noexcept;
 
     std::span<const std::byte> MBytes{};
     // First byte of Segment payload
@@ -141,9 +187,24 @@ private:
     bool MInCluster = false;
     bool MClusterUnknownSize = false;
     bool MFinishedClusters = false;
+    // Audio has its own cursor so video and audio can be pumped independently.
+    std::size_t MAudioScanPosition = 0;
+    std::size_t MAudioClusterEnd = 0;
+    std::uint64_t MAudioClusterTimestampTicks = 0;
+    bool MAudioInCluster = false;
+    bool MAudioFinished = false;
+    struct ClusterIndexEntry
+    {
+        std::size_t Offset = 0;
+        std::uint64_t TimestampTicks = 0;
+    };
+    static constexpr std::uint32_t kMaxClusterIndex = 4096;
+    std::array<ClusterIndexEntry, kMaxClusterIndex> MClusterIndex{};
+    std::uint32_t MClusterIndexCount = 0;
     bool MOpen = false;
     bool MFatal = false;
     WebmTrackInfo MTrack{};
+    WebmAudioTrackInfo MAudioTrack{};
 };
 
 // Detects the container from the first bytes without parsing anything. Used by

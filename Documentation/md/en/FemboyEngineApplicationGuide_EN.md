@@ -1,12 +1,12 @@
 # FemboyEngine2D Application Guide
 
-*ECS in practice, production optimisation and the distribution SDK — 2026-11-04*
+*ECS in a production project, optimisation and the distribution SDK — 2026-11-08*
 
 ## 1. What this guide is for
 
 FemboyEngine2D is a data-oriented 2D engine. This guide is the practical companion to the architecture specification: it starts from a playable 2D shooter, shows how entities are composed from independent data, then follows the same project through texture cooking, GPU batching, storefront integration, hybrid SDF physics, the weather pipeline and the encrypted distribution archive.
 
-The running project is deliberately small. A player, three enemy archetypes, a boss with phases, bullets, pickups and a card board are enough to demonstrate every architectural rule. Every code snippet compiles against the headers shipped in Source/Engine; paths and type names are real.
+The running project is small. A player, three enemy archetypes, a boss with phases, bullets, pickups and a card board are enough to demonstrate every architectural rule. Every code snippet compiles against the headers shipped in Source/Engine; paths and type names are real.
 
 - Audience: gameplay programmers, technical designers and tools engineers.
 - Assumed knowledge: C++20 basics, an ECS at the level of EnTT, and one graphics API.
@@ -18,29 +18,30 @@ The running project is deliberately small. A player, three enemy archetypes, a b
 
 ## 2. Setup and the reproducible toolchain
 
-The setup scripts are split by software group. The C++ scripts install the pinned toolchain and materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first configure after setup does not need network access. Versions are fixed by the scripts and written to third_party/dependencies.lock.
+The setup scripts are split by OS and software group. The C++ scripts install the pinned toolchain and materialise the exact sources under third_party/. CMake prefers those local checkouts, so the first configure after setup does not need network access. Versions are fixed by the scripts and written to third_party/dependencies.lock.
 
 ```cpp
 # Windows 10/11 (run from a Visual Studio developer prompt)
-SetupScripts\SetupCpp.bat
-SetupScripts\SetupArchiver.bat
+SetupScripts\Windows\Setup.bat
+SetupScripts\Windows\SetupCpp.bat
+SetupScripts\Windows\SetupArchiver.bat
 # optional vendor SDKs
-SetupScripts\SetupUpscalers.bat
+SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 # Ubuntu / Debian
-./SetupScripts/SetupCpp.sh
-./SetupScripts/SetupArchiver.sh
+./SetupScripts/Linux/SetupCpp.sh
+./SetupScripts/Linux/SetupArchiver.sh
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.sh
+./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses
 
 # macOS (double-click in Finder also works)
-./SetupScripts/SetupCpp.command
-./SetupScripts/SetupArchiver.command
+./SetupScripts/macOS/SetupCpp.command
+./SetupScripts/macOS/SetupArchiver.command
 # optional vendor SDKs
-./SetupScripts/SetupUpscalers.command
+./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
 ```
 
-The all-in-one Setup.bat, Setup.sh and Setup.command remain available.
+The all-in-one entry points are SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh and SetupScripts/macOS/Setup.command.
 
 Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.2.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system (or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan loader.
 
@@ -58,6 +59,31 @@ The compiler is part of the contract: C++26 is required, Clang 19+ is the refere
 
 > **Note.** Setup never modifies a source file. It is safe to delete third_party/<name>-src and re-run with --force; the lock file is regenerated and the CMake cache does not embed a machine-specific path.
 
+### 2.1 Editor and cooked game on Windows, Linux and macOS
+
+The same presets build the editor, the sandbox, the asset tools and the game packer. Windows uses clang-cl with Vulkan; Linux uses clang++ with Vulkan; macOS uses clang++ with Metal. Every preset exports compile_commands.json and keeps the tests enabled.
+
+```cpp
+# Windows 10/11, from an LLVM + Visual Studio developer shell
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+
+# Linux, from a shell with Clang, Ninja and Vulkan headers
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release
+
+# macOS, from a shell with Xcode command-line tools and Homebrew
+cmake --preset macos-release
+cmake --build --preset macos-release
+ctest --preset macos-release
+```
+
+The editor is build-<platform>/bin/fby_editor (Windows adds .exe). Build & Pack Game uses the same editor on all three systems: it cooks assets through fby_fempak, writes the AOT module when the project has a LogicGraph, and stages archives under the project stores/. The POSIX release path uses posix_spawn and reports the child exit code; the Windows path uses CreateProcess.
+
+> **Note.** Windows is the locally validated gate. Linux and macOS have presets, platform code and CI jobs; treat their first hosted runs as the acceptance gate until the matrix is green. The RHI is Metal on macOS and Vulkan on Windows/Linux.
+
 ---
 
 ## 3. How to think in ECS
@@ -74,7 +100,7 @@ An ECS is not a different syntax for a class hierarchy. It is a change of the ce
 
 ### 3.2 The component vocabulary
 
-Start with a small vocabulary and resist adding a component until two systems genuinely need to share the data. The shooter uses the following independent components.
+Start with a small vocabulary and do not add a component until two systems need to share the data. The shooter uses the following independent components.
 
 ```cpp
 // Game/Components.hpp - trivially copyable, no behaviour.
@@ -171,12 +197,12 @@ Entity SpawnEnemy(ecs::Registry& registry, const EnemyArchetype& archetype, Vect
 }
 ```
 
-Mobs and bosses share one spawn path. A 'Boss' is an archetype with more health, a phase table and a BossPhaseComponent; it is not a separate C++ type. Adding a new enemy is a data row and, when its behaviour is genuinely new, one branch in AISystem.
+Mobs and bosses share one spawn path. A 'Boss' is an archetype with more health, a phase table and a BossPhaseComponent; it is not a separate C++ type. Adding a new enemy is a data row and, when its behaviour is new, one branch in AISystem.
 
 ### 4.1 Systems, in order
 
 - InputSystem (PreUpdate): read devices into InputComponent. It never moves anything.
-- AISystem (FixedUpdate): write desired velocity and aim into the same InputComponent that a player would write. This is the key trick: one movement system handles players and enemies.
+- AISystem (FixedUpdate): write desired velocity and aim into the same InputComponent that a player would write. One movement system therefore handles players and enemies.
 - MovementSystem (FixedUpdate): integrate Velocity into Transform2D; clamp to level bounds.
 - WeaponSystem (FixedUpdate): cooldown, spawn projectile intents through the CommandBuffer.
 - ProjectileSystem (FixedUpdate): integrate projectiles, TTL, broad-phase candidate query.
@@ -223,7 +249,7 @@ void AISystem(ecs::SystemContext& context)
 }
 ```
 
-The system is deliberately boring. There is no state machine object and no per-enemy allocation; the archetype row supplies the numbers, and the same nine lines cover a chaser, a turret and a ranged mob. A boss with phases adds a second small system that changes preferredRange and behavior when its health crosses a threshold.
+The system stays small. There is no state machine object and no per-enemy allocation; the archetype row supplies the numbers, and the same nine lines cover a chaser, a turret and a ranged mob. A boss with phases adds a second small system that changes preferredRange and behavior when its health crosses a threshold.
 
 ### 4.2 Bosses without inheritance
 
@@ -257,7 +283,7 @@ void BossPhaseSystem(ecs::SystemContext& context)
 }
 ```
 
-This is the entire boss hierarchy. A 'fire boss' and a 'charge boss' differ by component values and, at most, by a spawn table. Behaviour that cannot be expressed as data belongs in a new small system; it almost never justifies a class with a vtable.
+The boss hierarchy is the same. A 'fire boss' and a 'charge boss' differ by component values and, at most, by a spawn table. Behaviour that cannot be expressed as data belongs in a new small system; it almost never justifies a class with a vtable.
 
 ### 4.3 Spawning without a frame hitch
 
@@ -300,16 +326,68 @@ Determinism is a property of the data, not of a hope. FixedUpdate receives a con
 - One test executable per concern; no test framework and no dynamic registration.
 - Run the whole suite with ctest; a single failure prints file and line and returns non-zero.
 
+### 5.1 Deterministic input and replication while building the game
+
+Build input and replication together, not after the gameplay is finished. The action mapper produces the same fixed-tick data on every peer; the network layer carries an input frame, never raw SDL events. This is the contract that makes prediction and rollback possible.
+
+```cpp
+InputSystem input;
+const std::uint16_t Move = input.RegisterAction("Move", InputActionType::Axis2D);
+const std::uint16_t Jump = input.RegisterAction("Jump", InputActionType::Bool);
+const std::uint16_t Gameplay = input.RegisterContext("Gameplay", 0, false);
+
+InputUserComponent user;
+user.UserId = 0;
+user.GamepadSlot = 0;
+registry.emplace<InputUserComponent>(player, user);
+input.BindUser(player, 0, 0);
+input.PushContext(0, Gameplay);
+
+// Once per fixed tick, before gameplay reads actions.
+input.Update(window.Input(), tick, timestampNs, fixedDt);
+const InputActionState& move = *input.Action(0, Move);
+if (input.Action(0, Jump)->Triggered) { JumpPlayer(player); }
+```
+
+The local device layer is allowed to differ: keyboard, mouse and gamepad take different paths into InputState. The simulation sees only action values and events. For a networked game, pack the values you need into NetInputFrame (or your own schema) and submit the frame for the owning player.
+
+```cpp
+NetRollbackSession::Config net;
+net.playerCount = 2;
+net.localPlayer = 0;
+net.rollbackTicks = 64;
+NetRollbackSession session;
+session.Initialize(registry, Ecs::SnapshotSchema::BuiltIns(), net);
+session.SetCommandLog(&commands);
+session.RegisterEntity(player, NetEntityId{1});
+
+NetInputFrame frame;
+frame.tick = tick;
+frame.player = 0;
+frame.moveX = static_cast<std::int16_t>(move.X * 32767.0f);
+frame.buttons = input.Action(0, Jump)->Triggered ? 1u : 0u;
+session.SubmitRemoteInput(0, frame);
+```
+
+- Authoritative simulation: the server owns the tick, the RNG seed and the CommandLog. Clients predict with the same tick size and the same gameplay systems.
+- Register gameplay components in SnapshotSchema before the first capture; a component outside the schema silently does not replicate.
+- Use stable NetEntityId values for replicated entities. Never derive one from an EnTT id, a spawn order or an allocator address.
+- Replicate input frames and structural commands, not raw device state or render-only values.
+- On a correction, restore the snapshot before the first bad tick, replay the corrected input and compare the final checksum.
+- Test PIE with two players, artificial latency, packet loss and a forced rollback before adding content.
+
+A useful project order is: one player + InputSystem; two local users; snapshot round trip; server-authoritative movement; then interaction, weapons and AI. Add replication fields with the feature that owns them, not in a single late 'networking pass'. If a system reads wall-clock time, frame delta or a render handle, it is not ready for rollback.
+
 ---
 
 ## 6. Memory and draw-call compression
 
 The second half of an ECS project is not gameplay; it is what reaches the GPU. Two tools do most of the work: cooked block-compressed textures and indirect mesh batching. Both are configured per project and both are verifiable from FrameStats.
 
-### 6.1 Texture cooking: BC7 on desktop, ASTC on mobile
+### 6.1 Texture cooking: BC7 and ASTC
 
 - BC7 keeps a real alpha channel and is the desktop default. BC7 sRGB is selected for colour sprites; a normal map or a mask uses the linear (UNORM) variant.
-- ASTC 4x4 is the quality mobile target; 6x6 is the size target. Pick it in Project Settings -> Cooker -> Texture format.
+- ASTC 4x4 is the quality option where the target GPU supports ASTC; 6x6 is the size option. Pick it in Project Settings -> Cooker -> Texture format.
 - The cooker generates the full mip chain once, at import. The runtime uploads the blocks verbatim; there is no CPU decode and no runtime re-compression.
 - A texture array is the batching unit. Keep sprites of one material in one layer set; a layer switch is a new descriptor, not a new draw call.
 - Never ship a JPEG: the cooker rejects it by extension and by magic. A lossy source makes a shipped texture differ from what the artist approved.
@@ -460,6 +538,36 @@ postFx.Build(graph, cameras);
 ```
 
 For UI, the SDF path removes texture memory entirely. pink_sdf.frag evaluates circles, rounded boxes, capsules and rings analytically; anti-aliasing comes from fwidth. SlotComponent and CardBoardComponent lay out a card board without a scene, and BuildCardBoardPrimitives packs each slot into two instances (card and shadow).
+
+### 8.2 Moving platforms, transport and wheels
+
+A carrier is a transform frame, not a second rigid-body world. TransportGroupSystem is for elevators, trains and platforms: it computes carrier deltas before the physics step and refreshes local poses after it. A wheel entity is a normal dynamic body with a collider; WheelSystem creates the Box2D wheel joint lazily and applies the per-wheel spring, drive and brake settings before the step.
+
+```cpp
+TransportGroupSystem transport;
+transport.CreateGroup(registry, elevator, 1);
+transport.Attach(registry, player, 1, kCarrierModeSupport);
+
+TransportSurface surface;
+surface.Friction = 0.8f;
+registry.emplace<TransportSurface>(elevator, surface);
+
+Vehicle2D vehicle;
+vehicle.MaxMotorTorque = 600.0f;
+registry.emplace<Vehicle2D>(chassis, vehicle);
+
+Wheel2D wheel;
+wheel.Chassis = chassis;
+wheel.LocalAnchor = {-20.0f, 4.0f};
+wheel.Radius = 8.0f;
+wheel.DriveWeight = 1.0f;
+registry.emplace<Wheel2D>(wheelEntity, wheel);
+
+WheelSystem wheels;
+wheels.Initialize(physics);
+wheels.Update(registry, physics, fixedDt);
+physics.Step(registry, fixedDt);
+```
 
 ---
 

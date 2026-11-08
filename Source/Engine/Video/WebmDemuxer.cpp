@@ -33,6 +33,9 @@ constexpr std::uint32_t kTrackTypeId = 0x83u;
 constexpr std::uint32_t kCodecIdId = 0x86u;
 constexpr std::uint32_t kCodecPrivateId = 0x63A2u;
 constexpr std::uint32_t kDefaultDurationId = 0x23E383u;
+constexpr std::uint32_t kAudioId = 0xE1u;
+constexpr std::uint32_t kSamplingFrequencyId = 0xB5u;
+constexpr std::uint32_t kChannelsId = 0x9Fu;
 constexpr std::uint32_t kVideoId = 0xE0u;
 constexpr std::uint32_t kPixelWidthId = 0xB0u;
 constexpr std::uint32_t kPixelHeightId = 0xBAu;
@@ -449,6 +452,8 @@ bool WebmDemuxer::ParseTrackEntry(const Element& InEntry, std::string* InError)
     std::uint32_t ScopedHeight = 0;
     std::uint64_t ScopedDefaultDuration = 0;
     std::uint64_t ScopedAlphaMode = 0;
+    double ScopedSampleRate = 0.0;
+    std::uint64_t ScopedChannels = 0;
 
     const std::size_t ScopedEnd = InEntry.dataStart + static_cast<std::size_t>(InEntry.size);
     std::size_t ScopedPosition = InEntry.dataStart;
@@ -484,6 +489,29 @@ bool WebmDemuxer::ParseTrackEntry(const Element& InEntry, std::string* InError)
         {
             (void)ReadUnsigned(ScopedChild, ScopedDefaultDuration);
         }
+        else if (ScopedChild.id == kAudioId)
+        {
+            const std::size_t ScopedAudioEnd = ScopedChild.dataStart + static_cast<std::size_t>(ScopedChild.size);
+            std::size_t ScopedAudioPosition = ScopedChild.dataStart;
+            while (ScopedAudioPosition < ScopedAudioEnd)
+            {
+                Element ScopedAudioChild;
+                if (!ReadElement(ScopedAudioPosition, ScopedAudioChild) || ScopedAudioChild.unknownSize)
+                {
+                    SetError(InError, "malformed TrackEntry/Audio element");
+                    return false;
+                }
+                if (ScopedAudioChild.id == kSamplingFrequencyId)
+                {
+                    (void)ReadFloat(ScopedAudioChild, ScopedSampleRate);
+                }
+                else if (ScopedAudioChild.id == kChannelsId)
+                {
+                    (void)ReadUnsigned(ScopedAudioChild, ScopedChannels);
+                }
+                ScopedAudioPosition = ScopedAudioChild.dataStart + static_cast<std::size_t>(ScopedAudioChild.size);
+            }
+        }
         else if (ScopedChild.id == kVideoId)
         {
             const std::size_t ScopedVideoEnd = ScopedChild.dataStart + static_cast<std::size_t>(ScopedChild.size);
@@ -515,7 +543,45 @@ bool WebmDemuxer::ParseTrackEntry(const Element& InEntry, std::string* InError)
         ScopedPosition = ScopedChild.dataStart + static_cast<std::size_t>(ScopedChild.size);
     }
 
-    // TrackType 1 is video; audio (2), subtitles (17) and everything else are
+    if (ScopedTrackType == 2)
+    {
+        if (ScopedTrackNumber == 0 || ScopedTrackNumber > std::numeric_limits<std::uint32_t>::max())
+        {
+            SetError(InError, "audio TrackEntry has an invalid TrackNumber");
+            return false;
+        }
+        if (MAudioTrack.trackNumber != 0)
+        {
+            SetError(InError, "container has more than one audio track");
+            return false;
+        }
+        if (ScopedCodecId != "A_OPUS")
+        {
+            SetError(InError, std::format("audio CodecID '{}' is not A_OPUS", ScopedCodecId));
+            return false;
+        }
+        if (!(ScopedSampleRate > 0.0) || ScopedSampleRate > 192000.0)
+        {
+            SetError(InError, "audio track has an invalid SamplingFrequency");
+            return false;
+        }
+        if (ScopedChannels == 0 || ScopedChannels > 8)
+        {
+            SetError(InError, "audio track has an invalid Channels count");
+            return false;
+        }
+        MAudioTrack.trackNumber = static_cast<std::uint32_t>(ScopedTrackNumber);
+        MAudioTrack.sampleRate = static_cast<std::uint32_t>(ScopedSampleRate);
+        MAudioTrack.channels = static_cast<std::uint32_t>(ScopedChannels);
+        MAudioTrack.defaultDurationNs = ScopedDefaultDuration;
+        MAudioTrack.hasCodecPrivate = ScopedHasCodecPrivate;
+        const std::size_t ScopedCodecCopy = std::min(ScopedCodecId.size(), sizeof(MAudioTrack.codecId) - 1);
+        std::memcpy(MAudioTrack.codecId, ScopedCodecId.data(), ScopedCodecCopy);
+        MAudioTrack.codecId[ScopedCodecCopy] = '\0';
+        return true;
+    }
+
+    // TrackType 1 is video; subtitles (17) and everything else are ignored.
     if (ScopedTrackType != 1)
     {
         return true;
@@ -550,7 +616,7 @@ bool WebmDemuxer::ParseTrackEntry(const Element& InEntry, std::string* InError)
         SetError(InError, std::format("video track has invalid AlphaMode {}", ScopedAlphaMode));
         return false;
     }
-    if (ScopedHasCodecPrivate)
+    if (ScopedHasCodecPrivate && ScopedCodecId == "V_VP9")
     {
         if (ScopedCodecPrivate.empty())
         {
@@ -569,6 +635,7 @@ bool WebmDemuxer::ParseTrackEntry(const Element& InEntry, std::string* InError)
     MTrack.defaultDurationNs = ScopedDefaultDuration;
     MTrack.alpha = ScopedAlphaMode == 1;
     MTrack.hasCodecPrivate = ScopedHasCodecPrivate;
+    MTrack.codecPrivate = ScopedCodecId == "V_AV1" ? ScopedCodecPrivate : std::span<const std::byte>{};
     const std::size_t ScopedCodecCopy = std::min(ScopedCodecId.size(), sizeof(MTrack.codecId) - 1);
     std::memcpy(MTrack.codecId, ScopedCodecId.data(), ScopedCodecCopy);
     MTrack.codecId[ScopedCodecCopy] = '\0';
@@ -626,23 +693,18 @@ bool WebmDemuxer::ParseVp9CodecPrivate(std::span<const std::byte> InData, std::s
 
 bool WebmDemuxer::ValidateVideoCodec(std::string_view InCodecId, std::string* InError)
 {
-    if (InCodecId == "V_VP9")
+    if (InCodecId == "V_VP9" || InCodecId == "V_AV1")
     {
         return true;
     }
     if (InCodecId == "V_VP8")
     {
-        SetError(InError, "codec 'V_VP8' is not supported: VideoStream requires VP9 (V_VP9)");
-        return false;
-    }
-    if (InCodecId == "V_AV1")
-    {
-        SetError(InError, "codec 'V_AV1' (AV1) is not supported: VideoStream requires VP9 (V_VP9)");
+        SetError(InError, "codec 'V_VP8' is not supported: VideoStream requires VP9 or AV1");
         return false;
     }
     if (InCodecId == "V_MPEG4/ISO/AVC")
     {
-        SetError(InError, "codec 'V_MPEG4/ISO/AVC' (H.264) is not supported: VideoStream requires VP9 (V_VP9)");
+        SetError(InError, "codec 'V_MPEG4/ISO/AVC' (H.264) is not supported: VideoStream requires VP9 or AV1");
         return false;
     }
     if (InCodecId == "V_MPEGH/ISO/HEVC")
@@ -805,7 +867,7 @@ bool WebmDemuxer::Open(std::span<const std::byte> InBytes, std::string* InError)
     }
     if (MTrack.trackNumber == 0)
     {
-        SetError(InError, "WebM file has no video track; VideoStream requires a V_VP9 video track");
+        SetError(InError, "WebM file has no video track; VideoStream requires a V_VP9 or V_AV1 track");
         return false;
     }
     if (MTrack.timestampScaleNs == 0 || MTrack.timestampScaleNs > 1000000000ull)
@@ -814,8 +876,98 @@ bool WebmDemuxer::Open(std::span<const std::byte> InBytes, std::string* InError)
         return false;
     }
 
+    BuildClusterIndex();
     MOpen = true;
     Rewind();
+    return true;
+}
+
+std::uint64_t WebmDemuxer::ReadClusterTimestampTicks(const Element& InCluster) const noexcept
+{
+    const std::size_t ScopedEnd = InCluster.dataStart + static_cast<std::size_t>(InCluster.size);
+    std::size_t ScopedPosition = InCluster.dataStart;
+    while (ScopedPosition < ScopedEnd)
+    {
+        Element ScopedChild;
+        if (!ReadElement(ScopedPosition, ScopedChild) || ScopedChild.unknownSize)
+        {
+            return 0;
+        }
+        if (ScopedChild.id == kClusterTimestampId)
+        {
+            std::uint64_t ScopedTicks = 0;
+            (void)ReadUnsigned(ScopedChild, ScopedTicks);
+            return ScopedTicks;
+        }
+        ScopedPosition = ScopedChild.dataStart + static_cast<std::size_t>(ScopedChild.size);
+    }
+    return 0;
+}
+
+void WebmDemuxer::BuildClusterIndex() noexcept
+{
+    MClusterIndexCount = 0;
+    std::size_t ScopedPosition = MFirstClusterOffset;
+    while (ScopedPosition < MSegmentEnd && MClusterIndexCount < kMaxClusterIndex)
+    {
+        Element ScopedElement;
+        if (!ReadElement(ScopedPosition, ScopedElement))
+        {
+            break;
+        }
+        if (ScopedElement.id == kClusterId)
+        {
+            if (ScopedElement.unknownSize)
+            {
+                break;
+            }
+            ClusterIndexEntry& ScopedEntry = MClusterIndex[MClusterIndexCount++];
+            ScopedEntry.Offset = ScopedPosition;
+            ScopedEntry.TimestampTicks = ReadClusterTimestampTicks(ScopedElement);
+            ScopedPosition = ScopedElement.dataStart + static_cast<std::size_t>(ScopedElement.size);
+            continue;
+        }
+        if (!IsTopLevelId(ScopedElement.id) && !IsSkippableAnywhere(ScopedElement.id))
+        {
+            break;
+        }
+        if (ScopedElement.unknownSize)
+        {
+            break;
+        }
+        ScopedPosition = ScopedElement.dataStart + static_cast<std::size_t>(ScopedElement.size);
+    }
+}
+
+bool WebmDemuxer::SeekToNs(std::uint64_t InTimestampNs) noexcept
+{
+    if (!MOpen || MClusterIndexCount == 0 || MTrack.timestampScaleNs == 0)
+    {
+        return false;
+    }
+    const std::uint64_t ScopedTargetTicks = InTimestampNs / MTrack.timestampScaleNs;
+    std::uint32_t ScopedSelected = 0;
+    for (std::uint32_t ScopedI = 0; ScopedI < MClusterIndexCount; ++ScopedI)
+    {
+        if (MClusterIndex[ScopedI].TimestampTicks > ScopedTargetTicks)
+        {
+            break;
+        }
+        ScopedSelected = ScopedI;
+    }
+    MScanPosition = MClusterIndex[ScopedSelected].Offset;
+    MClusterEnd = MScanPosition;
+    MClusterStart = MScanPosition;
+    MClusterTimestampTicks = 0;
+    MInCluster = false;
+    MClusterUnknownSize = false;
+    MFinishedClusters = false;
+    MFatal = false;
+    MAudioScanPosition = MScanPosition;
+    MAudioClusterEnd = MAudioScanPosition;
+    MAudioClusterTimestampTicks = 0;
+    MAudioInCluster = false;
+    MAudioFinished = MAudioTrack.trackNumber == 0;
     return true;
 }
 
@@ -828,6 +980,11 @@ void WebmDemuxer::Rewind() noexcept
     MInCluster = false;
     MClusterUnknownSize = false;
     MFinishedClusters = MScanPosition >= MSegmentEnd;
+    MAudioScanPosition = MScanPosition;
+    MAudioClusterEnd = MAudioScanPosition;
+    MAudioClusterTimestampTicks = 0;
+    MAudioInCluster = false;
+    MAudioFinished = MAudioScanPosition >= MSegmentEnd || MAudioTrack.trackNumber == 0;
     MFatal = false;
 }
 
@@ -844,9 +1001,15 @@ void WebmDemuxer::Close() noexcept
     MInCluster = false;
     MClusterUnknownSize = false;
     MFinishedClusters = false;
+    MAudioScanPosition = 0;
+    MAudioClusterEnd = 0;
+    MAudioClusterTimestampTicks = 0;
+    MAudioInCluster = false;
+    MAudioFinished = false;
     MOpen = false;
     MFatal = false;
     MTrack = {};
+    MAudioTrack = {};
 }
 
 // Frame walking
@@ -1103,6 +1266,203 @@ WebmDemuxer::ClusterScan WebmDemuxer::ReadClusterChild(const Element& InElement,
     }
     MScanPosition = InElement.dataStart + static_cast<std::size_t>(InElement.size);
     return ClusterScan::Skip;
+}
+
+bool WebmDemuxer::ReadAudioClusterChild(const Element& InElement, std::string* InError, WebmAudioPacket& OutPacket,
+                                        bool& OutHavePacket)
+{
+    OutHavePacket = false;
+    switch (InElement.id)
+    {
+        case kClusterTimestampId:
+        {
+            std::uint64_t ScopedTicks = 0;
+            if (!ReadUnsigned(InElement, ScopedTicks))
+            {
+                SetError(InError, "malformed Cluster/Timestamp for audio");
+                return false;
+            }
+            MAudioClusterTimestampTicks = ScopedTicks;
+            MAudioScanPosition = InElement.dataStart + static_cast<std::size_t>(InElement.size);
+            return true;
+        }
+        case kSimpleBlockId:
+        {
+            std::span<const std::byte> ScopedPayload{};
+            std::uint32_t ScopedTrackNumber = 0;
+            std::int16_t ScopedRelativeTimestamp = 0;
+            std::uint8_t ScopedFlags = 0;
+            std::uint8_t ScopedLacing = 0;
+            if (!ParseBlockHeader(MBytes.subspan(InElement.dataStart, static_cast<std::size_t>(InElement.size)),
+                                  ScopedTrackNumber, ScopedRelativeTimestamp, ScopedFlags, ScopedLacing, ScopedPayload))
+            {
+                SetError(InError, "malformed audio SimpleBlock");
+                return false;
+            }
+            MAudioScanPosition = InElement.dataStart + static_cast<std::size_t>(InElement.size);
+            if (ScopedTrackNumber != MAudioTrack.trackNumber)
+            {
+                return true;
+            }
+            if (ScopedLacing != 0)
+            {
+                SetError(InError, "laced audio blocks are not supported");
+                return false;
+            }
+            const std::int64_t ScopedTicks =
+                static_cast<std::int64_t>(MAudioClusterTimestampTicks) + ScopedRelativeTimestamp;
+            OutPacket.payload = ScopedPayload;
+            OutPacket.timestampNs = TimestampToNs(ScopedTicks < 0 ? 0ull : static_cast<std::uint64_t>(ScopedTicks));
+            OutHavePacket = true;
+            return true;
+        }
+        case kBlockGroupId:
+        {
+            const std::size_t ScopedEnd = InElement.dataStart + static_cast<std::size_t>(InElement.size);
+            std::size_t ScopedPosition = InElement.dataStart;
+            while (ScopedPosition < ScopedEnd)
+            {
+                Element ScopedChild;
+                if (!ReadElement(ScopedPosition, ScopedChild) || ScopedChild.unknownSize)
+                {
+                    SetError(InError, "malformed audio BlockGroup");
+                    return false;
+                }
+                if (ScopedChild.id == kBlockId)
+                {
+                    std::span<const std::byte> ScopedPayload{};
+                    std::uint32_t ScopedTrackNumber = 0;
+                    std::int16_t ScopedRelativeTimestamp = 0;
+                    std::uint8_t ScopedFlags = 0;
+                    std::uint8_t ScopedLacing = 0;
+                    if (!ParseBlockHeader(
+                            MBytes.subspan(ScopedChild.dataStart, static_cast<std::size_t>(ScopedChild.size)),
+                            ScopedTrackNumber, ScopedRelativeTimestamp, ScopedFlags, ScopedLacing, ScopedPayload))
+                    {
+                        SetError(InError, "malformed Block inside an audio BlockGroup");
+                        return false;
+                    }
+                    if (ScopedTrackNumber == MAudioTrack.trackNumber)
+                    {
+                        if (ScopedLacing != 0)
+                        {
+                            SetError(InError, "laced audio blocks are not supported");
+                            return false;
+                        }
+                        const std::int64_t ScopedTicks =
+                            static_cast<std::int64_t>(MAudioClusterTimestampTicks) + ScopedRelativeTimestamp;
+                        OutPacket.payload = ScopedPayload;
+                        OutPacket.timestampNs =
+                            TimestampToNs(ScopedTicks < 0 ? 0ull : static_cast<std::uint64_t>(ScopedTicks));
+                        OutHavePacket = true;
+                    }
+                }
+                ScopedPosition = ScopedChild.dataStart + static_cast<std::size_t>(ScopedChild.size);
+            }
+            MAudioScanPosition = ScopedEnd;
+            return true;
+        }
+        case kVoidId:
+        case kCrc32Id:
+            MAudioScanPosition = InElement.dataStart + static_cast<std::size_t>(InElement.size);
+            return true;
+        default:
+            break;
+    }
+    if (IsTopLevelId(InElement.id))
+    {
+        MAudioInCluster = false;
+        MAudioFinished = true;
+        return true;
+    }
+    if (InElement.unknownSize)
+    {
+        SetError(InError, std::format("audio cluster child 0x{:X} has unknown size", InElement.id));
+        return false;
+    }
+    MAudioScanPosition = InElement.dataStart + static_cast<std::size_t>(InElement.size);
+    return true;
+}
+
+DemuxStatus WebmDemuxer::NextAudioPacket(WebmAudioPacket& InPacket, std::string* InError)
+{
+    if (!MOpen || MFatal || MAudioTrack.trackNumber == 0)
+    {
+        return DemuxStatus::End;
+    }
+    for (;;)
+    {
+        if (MAudioFinished)
+        {
+            return DemuxStatus::End;
+        }
+        if (!MAudioInCluster)
+        {
+            if (MAudioScanPosition >= MSegmentEnd)
+            {
+                MAudioFinished = true;
+                return DemuxStatus::End;
+            }
+            Element ScopedElement;
+            if (!ReadElement(MAudioScanPosition, ScopedElement))
+            {
+                MFatal = true;
+                SetError(InError, "truncated element after the audio clusters");
+                return DemuxStatus::Error;
+            }
+            if (ScopedElement.id == kClusterId)
+            {
+                MAudioInCluster = true;
+                MAudioClusterEnd = ScopedElement.unknownSize
+                                       ? MSegmentEnd
+                                       : ScopedElement.dataStart + static_cast<std::size_t>(ScopedElement.size);
+                MAudioClusterTimestampTicks = 0;
+                MAudioScanPosition = ScopedElement.dataStart;
+                continue;
+            }
+            if (ScopedElement.unknownSize)
+            {
+                MFatal = true;
+                SetError(InError, "level-1 element after audio clusters has unknown size");
+                return DemuxStatus::Error;
+            }
+            if (IsTopLevelId(ScopedElement.id) || IsSkippableAnywhere(ScopedElement.id))
+            {
+                MAudioScanPosition = ScopedElement.dataStart + static_cast<std::size_t>(ScopedElement.size);
+                continue;
+            }
+            MFatal = true;
+            SetError(InError, std::format("unexpected element 0x{:X} after audio clusters", ScopedElement.id));
+            return DemuxStatus::Error;
+        }
+        if (MAudioScanPosition >= MAudioClusterEnd)
+        {
+            MAudioInCluster = false;
+            continue;
+        }
+        Element ScopedElement;
+        if (!ReadElement(MAudioScanPosition, ScopedElement))
+        {
+            MFatal = true;
+            SetError(InError, "truncated element inside an audio Cluster");
+            return DemuxStatus::Error;
+        }
+        if (ScopedElement.id == kClusterId)
+        {
+            MAudioInCluster = false;
+            continue;
+        }
+        bool ScopedHavePacket = false;
+        if (!ReadAudioClusterChild(ScopedElement, InError, InPacket, ScopedHavePacket))
+        {
+            MFatal = true;
+            return DemuxStatus::Error;
+        }
+        if (ScopedHavePacket)
+        {
+            return DemuxStatus::Frame;
+        }
+    }
 }
 
 DemuxStatus WebmDemuxer::NextFrame(WebmFrame& InFrame, std::string* InError)

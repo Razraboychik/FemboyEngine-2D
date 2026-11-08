@@ -180,7 +180,7 @@ public:
             Pause();
         }
     }
-    // Negative scales run time backwards; the elapsed sum follows the scaled
+    // A non-positive scale pauses the clock; the elapsed sum follows the scaled
     // delta, so a hit-stop can be expressed as a short low scale.
     void SetTimeScale(double InScale) noexcept
     {
@@ -287,10 +287,12 @@ public:
         return TimerHandle{ScopedSlot, MGeneration[ScopedSlot]};
     }
 
+    // Cancels an active timer. The index bound is checked before the array read
+    // so a default or stale handle is rejected instead of indexing storage.
     [[nodiscard]] bool Cancel(TimerHandle InHandle) noexcept
     {
-        if (MGeneration[InHandle.Index] != InHandle.Generation || InHandle.Generation == 0 ||
-            InHandle.Index >= Capacity)
+        if (InHandle.Index >= Capacity || InHandle.Generation == 0 ||
+            MGeneration[InHandle.Index] != InHandle.Generation)
         {
             return false;
         }

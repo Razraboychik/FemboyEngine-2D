@@ -185,6 +185,36 @@ Content:
 - keep the comment close to the decision it explains;
 - use `TODO` only with an actionable condition, not as a permanent marker.
 
+### Task and progress comments are forbidden
+
+Code comments must describe the code, not the work that produced it. Do not
+write comments that:
+
+- describe a task, ticket, pull request, review comment or assignment;
+- number implementation steps, stages or phases (`// Step 2: ...`,
+  `// Phase 1: ...`);
+- narrate the implementation history (`// Added for ...`, `// Removed ...`,
+  `// This change ...`, `// The fix ...`);
+- record progress, remaining work or a hand-off note;
+- restate the commit message or a task plan in a large block above otherwise
+  self-explanatory code.
+
+Use the issue tracker, pull request description and commit message for that
+information. A future reader needs the invariant in the code, not a diary of how
+it was written.
+
+```cpp
+// Bad: implementation diary, no code invariant.
+// Step 2: added the input mapping after the camera work.
+
+// Bad: task reference.
+// Fixes the ticket about menu input.
+
+// Good: explains a non-obvious constraint.
+// Contexts are evaluated by priority; a consuming context suppresses lower
+// mappings without disabling the underlying gameplay systems.
+```
+
 ASCII-art banners, box drawing, long separator rules and decorative banners are
 forbidden. A short `//` line is the only comment form in new code.
 
@@ -219,6 +249,47 @@ forbidden. A short `//` line is the only comment form in new code.
 - Do not use exceptions to control normal flow.
 - Log a failure with the subsystem name and the operation, not a generic
   "failed" message.
+
+## Third-party code, systems and dependency updates
+
+A new engine system that uses a third-party library must start with the actual
+build graph, not with the file tree:
+
+- identify the translation units and headers that are really compiled for the
+  target (`compile_commands.json`, the CMake target and its include graph);
+- distinguish production code from tests, demos, generated data, alternative
+  backends and unused single-header/split variants;
+- run the static analysis or CodeQL pass over the compiled set before deciding
+  that a vendor warning is a real defect;
+- patch only a confirmed, reachable defect, or a clearly bounded hardening
+  case. Do not mass-edit a vendor library;
+- put every vendor fix in `third_party/patches/<library>/<name>.patch`, and
+  validate it with `git apply --check`, a build and the relevant tests.
+- inspect the read-only
+  `python Source/Tools/Dev/ReportVendorUsage.py --build <build>` report before
+  removing anything from `third_party/`; a file unused by one target may be a
+  platform backend, test, license or optional extension.
+
+When a dependency is updated:
+
+- re-check which files are compiled on every supported platform;
+- re-apply or retire each patch from `third_party/patches/` against the new
+  source, rather than copying an old hand edit;
+- re-run the vendor audit and the compiled-file review;
+- update `third_party/notices.toml`, `THIRD_PARTY_NOTICES.md` and the dependency
+  lock when the version, license or attribution changes;
+- remove a patch when upstream contains the fix, and record why in the patch
+  directory.
+
+Licensing is a release gate, not a comment:
+
+- the engine remains MPL-2.0; third-party files keep their own licenses and must
+  not be relicensed, stripped of notices or copied across incompatible licenses;
+- a patch is distributed under the license of the file it changes;
+- every shipped component must remain in `third_party/notices.toml` and pass
+  `GenerateThirdPartyNotices.py --check`;
+- do not add a dependency whose license cannot be satisfied by the project's
+  distribution model. Ask before introducing a new license family.
 
 ## Repository hygiene
 
@@ -262,11 +333,14 @@ Before a change is ready:
 
 - every new public name is PascalCase and underscore-free;
 - every new field in a reflected component has a matching `FBY_FIELD`;
+- a new third-party-backed system has a compiled-file and license review;
 - braces are Allman and every control body is braced;
-- comments are English, ASCII and above the code they describe;
+- comments are English, ASCII and above the code they describe, and describe
+  code rather than task history;
 - no comment sits to the right of code or below a closing brace;
 - no build artifact, log, editor cache or generated document is in the change
   unless it is a checked-in documentation edition;
 - `CheckStyle.py` passes;
 - the touched files are formatted with `.clang-format`;
-- the change updates or adds a test when it changes behaviour or a layout.
+- the change updates or adds a test when it changes behaviour or a layout;
+- dependency updates re-check every patch and every shipped notice.

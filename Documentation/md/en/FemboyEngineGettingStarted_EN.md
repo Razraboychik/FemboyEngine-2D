@@ -1,6 +1,6 @@
-# FemboyEngine 0.2.0-alpha.1 — getting started
+# FemboyEngine 0.3.0-alpha.1 — getting started
 
-This document lists what to install and which files must sit next to the engine to run the editor, the runtime and the development tools on Windows, Linux and macOS, plus the toolchain needed for Android and iOS builds.
+This document lists what to install and which files must sit next to the engine to run the editor, the runtime and the development tools on Windows, Linux and macOS.
 
 ## Supported platforms
 
@@ -9,10 +9,8 @@ This document lists what to install and which files must sit next to the engine 
 | Windows 10/11 x64 | yes | yes | clang-cl (primary), GCC 16+ (second opinion) |
 | Linux x64 | yes | yes | Clang 19+, GCC 16+ |
 | macOS 13+ (Apple Silicon and Intel) | yes | yes | Apple Clang from Xcode, Metal backend |
-| Android 5.0+ (API 21) | no | yes, through SDL3 | NDK r28c, Android Gradle Plugin 8.7.3, Gradle 8.12 |
-| iOS 11+ | no | yes, through SDL3 | Xcode 16+, iOS SDK 14.2+ |
 
-The editor is a desktop application. Games build for every platform listed above; mobile targets use the SDL3 platform layer.
+The editor and the game runtime target the three desktop platforms above. SDL3 supplies the window, input and application lifecycle.
 
 ## Required software
 
@@ -30,42 +28,42 @@ The editor is a desktop application. Games build for every platform listed above
 | Vulkan Loader | 1.4 | 1.4 | runtime on Windows and Linux |
 | MoltenVK | 1.2 | — | Vulkan over Metal on macOS (or the Metal backend directly) |
 | 7-Zip | 21 | 25.01 | unpack the LZMA SDK (otherwise the built-in FbyLZ is used) |
-| Android Studio | — | NDK r28c | Android SDK, NDK 28.2.13676358, compileSdk 35 |
-| OpenJDK | 17 | 17 | Gradle packaging of the Android build |
-| Xcode | 16 | — | iOS and macOS builds |
+| Xcode | 16 | — | macOS builds |
 
 The language standard is C++26, so an older compiler will not work even when its CMake version matches.
 
 ## Quick start with the setup scripts
 
-The scripts live in `SetupScripts/` and are split by software group. The
-one-click scripts install everything; the component scripts install one group.
+The scripts live under `SetupScripts/<OS>/` and are split by OS and software
+group. The one-click scripts install everything; the component scripts install
+one group.
 
 | Group | Windows | macOS | Linux |
 |---|---|---|---|
-| C++ toolchain, CMake and source dependencies | `SetupScripts\SetupCpp.bat` | `./SetupScripts/SetupCpp.command` | `./SetupScripts/SetupCpp.sh` |
-| 7-Zip archiver | `SetupScripts\SetupArchiver.bat` | `./SetupScripts/SetupArchiver.command` | `./SetupScripts/SetupArchiver.sh` |
-| Optional DLSS/FidelityFX/XeSS SDKs | `SetupScripts\SetupUpscalers.bat` | `./SetupScripts/SetupUpscalers.command` | `./SetupScripts/SetupUpscalers.sh` |
+| C++ toolchain, CMake and source dependencies | `SetupScripts\Windows\SetupCpp.bat` | `./SetupScripts/macOS/SetupCpp.command` | `./SetupScripts/Linux/SetupCpp.sh` |
+| 7-Zip archiver | `SetupScripts\Windows\SetupArchiver.bat` | `./SetupScripts/macOS/SetupArchiver.command` | `./SetupScripts/Linux/SetupArchiver.sh` |
+| Optional DLSS/FidelityFX/XeSS SDKs | `SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses` | `./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses` | `./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses` |
 
-The all-in-one entry points remain `Setup.bat`, `Setup.command` and `Setup.sh`.
+The all-in-one entry points are `SetupScripts/Windows/Setup.bat`,
+`SetupScripts/macOS/Setup.command` and `SetupScripts/Linux/Setup.sh`.
 The C++ scripts install the compiler, CMake, Ninja, the Vulkan headers and the
-pinned source dependencies. On Windows, `SetupCpp` installs the official LLVM
+pinned source dependencies. On Windows, `SetupScripts/Windows/SetupCpp.bat` installs the official LLVM
 23.1.4 MSI and verifies the `clang-cl` version; the Unix scripts install the
-distribution Clang (19+). The archiver scripts install 7-Zip. The upscaler
-scripts only verify or download vendor SDKs; they are optional and never part
-of the engine repository.
+distribution Clang (19+). The archiver scripts install 7-Zip. Vendor SDKs are
+downloaded by the all-in-one Setup only after the corresponding licence flags;
+nothing is part of the engine repository.
 
 Useful flags: `--skip-system` leaves system packages alone (a CI image already
 has the tools); `--force` re-downloads every C++ archive. The C++ script writes
 `third_party/dependencies.lock` with the pinned versions and archive hashes.
-At the end it prints the mobile toolchain report: NDK, JDK and Xcode.
+At the end it prints a summary of the installed toolchains.
 
 ### From a GitHub archive
 
 1. Open the repository page and choose **Code > Download ZIP**.
 2. Extract the archive to a directory without spaces or non-ASCII characters.
-3. Run `SetupCpp` and `SetupArchiver` for the host platform.
-4. Optionally run `SetupUpscalers` and enable a vendor backend.
+3. Run the host OS `SetupCpp` and `SetupArchiver` entry points from the table above.
+4. Optionally pass the vendor licence flags to the host `Setup` entry point.
 5. Configure and build:
 
 ```
@@ -120,7 +118,7 @@ cmake --build build-dev
 ctest --test-dir build-dev --output-on-failure
 ```
 
-On Windows the same commands run inside a `vcvars64` environment; `SetupScripts/SetupWindows.ps1` prepares the dependencies and the toolchain. Main CMake options: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
+On Windows the same commands run inside a `vcvars64` environment; `SetupScripts/Windows/SetupWindows.ps1` prepares the dependencies and the toolchain. Main CMake options: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
 
 The executables are grouped by purpose:
 
@@ -238,7 +236,7 @@ Use RenderDoc for GPU debugging: attach it to `fby_editor.exe` and capture a fra
 
 ## MSVC support
 
-**No.** The project is deliberately built around Clang:
+**No.** The project is built around Clang:
 
 - C++26 and the strict flag set are validated with Clang 23.1.4;
 - clang-cl already provides the Windows ABI, Windows SDK and an MSVC-compatible driver;
@@ -328,7 +326,7 @@ Besides the editor, `build-dev/bin` contains separate executables. All of them a
 
 The tools live in `build-dev/bin/tools`; the test executables in `build-dev/bin/tests`.
 
-Build and test through the CMake presets; dependency setup lives in `SetupScripts/*`.
+Build and test through the CMake presets; dependency setup lives in `SetupScripts/<OS>/*`.
 
 ## Shortcuts for fast launching
 
@@ -346,7 +344,7 @@ The working directory is the only thing that distinguishes "launching the engine
 1. Open the project folder in Finder.
 2. Drag `fby_editor` (or the `.app` bundle, if built) to the Dock while holding `Command`.
 3. For a specific project create a `.command` file with two lines: `cd /path/to/project` and `/path/to/fby_editor`; Finder runs it on double-click and the alias can live in the Dock.
-4. `SetupScripts/Setup.command` starts the same way — by double-click.
+4. `SetupScripts/macOS/Setup.command` starts the same way — by double-click.
 
 ### Linux
 
@@ -365,22 +363,16 @@ Categories=Development;
 
 Then pin it to the dock or the panel. A second `.desktop` file with a different `Path` gives a shortcut to another project.
 
-## Android and iOS
+## Verifying the toolchain
 
-Mobile builds use the SDL3 platform layer: window, input and the application lifecycle come from SDL; rendering is Vulkan on Android and Metal (or Vulkan through MoltenVK) on iOS. The editor does not build for mobile platforms.
-
-Android: Android Studio, NDK `28.2.13676358` (r28c), OpenJDK 17, Gradle 8.12, Android Gradle Plugin 8.7.3, `compileSdk 35`, minimum API level 21. CMake configures Android through the NDK toolchain file; packaging uses the SDL3 Gradle project.
-
-iOS: macOS with Xcode 16 or newer, iOS SDK 14.2+, minimum deployment target iOS 11.0. CMake configures with `-DCMAKE_SYSTEM_NAME=iOS`; signing and packaging use Xcode.
-
-The exact versions can always be checked with:
+The exact versions can be checked with:
 
 ```
 cmake --version
 ninja --version
 ```
 
-and, for mobile, `ls "$ANDROID_NDK_HOME/source.properties"` and `xcodebuild -version`.
+On macOS, `xcodebuild -version` reports the Xcode and SDK versions.
 
 ## Troubleshooting
 
@@ -393,5 +385,4 @@ and, for mobile, `ls "$ANDROID_NDK_HOME/source.properties"` and `xcodebuild -ver
 | `glslang` missing during the build | `third_party/glslang-src` is missing | run the setup script again |
 | No fonts in the editor | the TTFs or the family manifest are missing | restore `assets/fonts/` from the repository |
 | CMake reports a missing harfbuzz or SheenBidi | the `third_party/` directory was damaged or removed | restore `third_party/harfbuzz-download/` and `third_party/sheenbidi-download/` from the repository |
-| The Android build cannot find the NDK | `ANDROID_NDK_HOME` is unset | point it at NDK r28c and reconfigure |
 | The Windows build fails on headers | the Windows SDK is missing | install Build Tools with the C++ workload |

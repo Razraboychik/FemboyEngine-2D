@@ -1,6 +1,6 @@
 // FemboyEngine2D - GPU timestamp A/B harness for optimization flags.
 
-#include "Editor/Infrastructure/FrameComposer.hpp"
+#include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/WindowManager.hpp"
 #include "Engine/ECS/Components.hpp"
@@ -216,7 +216,7 @@ int main(int argc, char** argv)
             }
         }
 
-        Fby::Editor::FrameComposer ScopedComposer;
+        Fby::Rhi::FrameComposer ScopedComposer;
         ScopedComposer.SetGpuLighting(ScopedScenario.gpuLighting);
         ScopedComposer.SetOpaqueLayerModes(std::array<Fby::Assets::TextureAlphaMode, 4>{
             Fby::Assets::TextureAlphaMode::Opaque, Fby::Assets::TextureAlphaMode::Opaque,

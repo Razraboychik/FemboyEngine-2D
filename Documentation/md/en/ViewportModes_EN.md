@@ -1,6 +1,6 @@
 # Viewport Display Modes and Presentation Policy
 
-FemboyEngine2D 0.2.0-alpha.1 ships six viewport display modes, one collision-policy ladder, one render-mask component and one unified light source. Together they answer the questions a 2D scene raises during authoring: is the shipped image correct, is the art laid out correctly, does the collision setup match what the player feels, what costs the frame, which lights reach a sprite, and does the baked distance field agree with the drawing.
+FemboyEngine2D 0.3.0-alpha.1 ships six viewport display modes, one collision-policy ladder, one render-mask component and one unified light source. Together they answer the questions a 2D scene raises during authoring: is the shipped image correct, is the art laid out correctly, does the collision setup match what the player feels, what costs the frame, which lights reach a sprite, and does the baked distance field agree with the drawing.
 
 This manual is the authored reference for those systems. It describes the exact colour legend of every mode, when to use each one, how to read a bad result and what to change, plus the authoring data behind the diagnostics: the collision mode ladder, render masks, the three light types and their cone behaviour, the static and sleeping-static light lifecycle, time stop, and the SDF primitive palette.
 
@@ -17,7 +17,7 @@ The mode selector is a dropdown in the viewport toolbar, to the left of the Move
 | Viewport mode | Editor Settings panel, Display section | Same six modes as a labelled combo box with the one-line summary as its tooltip |
 | Complexity budget | Editor Settings panel, Display section | Slider from 1 to 64; the normalisation reference of the Shader Complexity heat ramp |
 
-The help card is deliberately hover only. It appears next to the cursor after a short delay, it is 480 pixels wide, and it is suppressed while the dropdown list itself is open, because the hover state then belongs to the list rows. Read it when you are unsure which mode to pick; it repeats the same text as this manual.
+The help card is shown only on hover. It appears next to the cursor after a short delay, it is 480 pixels wide, and it is suppressed while the dropdown list itself is open, because the hover state then belongs to the list rows. Read it when you are unsure which mode to pick; it repeats the same text as this manual.
 
 Three rules make the selector predictable:
 
@@ -108,7 +108,7 @@ The colour comes from the entity's `CollisionPolicyComponent`. An entity with a 
 When to use it:
 
 - Auditing a level: every green shape must be static geometry or a moving prop, every yellow shape must justify the field test, every magenta shape must be a trigger, and every grey shape must be intentional.
-- Debugging "the player walks through a wall" and "the player is pushed by a trigger": the overlay shows which rung the author actually assigned.
+- Debugging "the player walks through a wall" and "the player is pushed by a trigger": the overlay shows which rung the author assigned.
 - Reviewing a prefab or a spawned wave, where inherited policies are easy to forget.
 
 Optimisation recommendations:
@@ -445,7 +445,7 @@ The lifecycle:
 | Awake | A scene edit | `ResetSleepingStatic` restores the active and sleeping flags and clears the reason |
 | Dynamic light | `WakeLightSource` | Returns false: nothing to wake |
 
-Waking is deliberately one-way, because determinism depends on it: a contact on tick N wakes the entity on every replay of tick N. A simulation that put the entity back to sleep on its own would depend on frame timing and would diverge.
+Waking is one-way, because determinism depends on it: a contact on tick N wakes the entity on every replay of tick N. A simulation that put the entity back to sleep on its own would depend on frame timing and would diverge.
 
 The practical recipe for a lamp-lit room:
 

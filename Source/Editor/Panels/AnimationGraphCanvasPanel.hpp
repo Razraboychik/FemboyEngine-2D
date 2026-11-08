@@ -208,6 +208,10 @@ public:
     {
         return MCompiled;
     }
+    [[nodiscard]] const AnimGraphDefinitionComponent& CompiledGraph() const noexcept
+    {
+        return MCompiledGraph;
+    }
     [[nodiscard]] const char* Status() const noexcept
     {
         return MStatus;
@@ -280,7 +284,7 @@ private:
     void PurgeCanvasSelection() noexcept;
 
     // Iterative, fixed-stack validation of the compiled transition graph. Rejects
-    [[nodiscard]] bool ValidateCompiledCycles(const AnimStateComponent& InCompiled,
+    [[nodiscard]] bool ValidateCompiledCycles(const AnimGraphDefinitionComponent& InCompiled,
                                               std::uint16_t InTransitionCount) noexcept;
 
     // Seqlock reader used by RefreshPIEState(). False when no producer has
@@ -301,6 +305,7 @@ private:
     std::uint32_t MCodecSize = 0;
     AnimationGraphDocument MDocument{};
     AnimStateComponent MCompiled{};
+    AnimGraphDefinitionComponent MCompiledGraph{};
     std::array<std::uint16_t, kMaxAnimClips> MCompiledClipNode{};
     std::array<std::uint16_t, kMaxAnimTransitions> MCompiledTransitionLink{};
     std::uint16_t MAuthoredTransitionCount = 0;

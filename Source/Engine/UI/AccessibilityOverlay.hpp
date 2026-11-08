@@ -35,7 +35,7 @@ public:
 
     // Rasterises the captions for this viewport. Returns false when the kernel
     // has nothing to show, so the caller can skip the composition.
-    [[nodiscard]] bool Build(Ecs::SystemContext& InContext, const AccessibilityKernel& InKernel,
+    [[nodiscard]] bool Build(const Ecs::UiSystemView& InView, const AccessibilityKernel& InKernel,
                              Vector2D InCanvasSize) noexcept;
 
     // Appends the built captions to `InPacket`. `InItems`/`InKeys`/`InBatches`

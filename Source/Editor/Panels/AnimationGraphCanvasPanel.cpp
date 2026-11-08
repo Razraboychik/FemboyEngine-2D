@@ -621,6 +621,7 @@ void AnimationGraphCanvasPanel::ResetDocument() noexcept
     MDocument = AnimationGraphDocument{};
     MDocument.GraphId = ScopedGraphId;
     MCompiled = AnimStateComponent{};
+    MCompiledGraph = AnimGraphDefinitionComponent{};
     MCompiledClipNode.fill(0xFFFFu);
     MCompiledTransitionLink.fill(0xFFFFu);
     MAuthoredTransitionCount = 0;
@@ -1126,7 +1127,7 @@ void AnimationGraphCanvasPanel::PurgeCanvasSelection() noexcept
 }
 
 // CompileGraph: flat AnimStateComponent, fixed storage, no allocation
-bool AnimationGraphCanvasPanel::ValidateCompiledCycles(const AnimStateComponent& InCompiled,
+bool AnimationGraphCanvasPanel::ValidateCompiledCycles(const AnimGraphDefinitionComponent& InCompiled,
                                                        std::uint16_t InTransitionCount) noexcept
 {
     const std::uint16_t ScopedStateCount =
@@ -1333,6 +1334,7 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
         return false;
     }
     AnimStateComponent ScopedCompiled;
+    AnimGraphDefinitionComponent ScopedDefinition;
     std::array<std::uint16_t, kMaxAnimationGraphNodes> ScopedDegree{};
     std::array<bool, kMaxAnimParams> ScopedParamUsed{};
     std::array<std::uint64_t, kMaxAnimClips> ScopedStateIds{};
@@ -1384,7 +1386,7 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
             }
             ScopedStateIds[ScopedClipCount] = ScopedSource.Clip.State;
             MCompiledClipNode[ScopedClipCount] = ScopedNode;
-            ScopedCompiled.Clips[ScopedClipCount] = ScopedSource.Clip;
+            ScopedDefinition.Clips[ScopedClipCount] = ScopedSource.Clip;
             ++ScopedClipCount;
         }
         else if (ScopedSource.Kind == AnimationGraphNodeKind::FloatParameter)
@@ -1521,7 +1523,7 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
             SetStatus("Anim compile: more than %u compiled transitions", static_cast<unsigned>(kMaxAnimTransitions));
             return false;
         }
-        ScopedCompiled.Transitions[ScopedTransitionCount] = InTransition;
+        ScopedDefinition.Transitions[ScopedTransitionCount] = InTransition;
         MCompiledTransitionLink[ScopedTransitionCount] = InLink;
         ++ScopedTransitionCount;
         return true;
@@ -1610,20 +1612,21 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
         }
     }
 
-    ScopedCompiled.ClipCount = ScopedClipCount;
+    ScopedDefinition.ClipCount = ScopedClipCount;
     // Authored transitions are counted by MAuthoredTransitionCount. The
+    ScopedDefinition.TransitionCount = ScopedTransitionCount;
     ScopedCompiled.TransitionCount = 0;
     // Topology gate: iterative, fixed-stack, no recursion and no allocation. It
-    if (!ValidateCompiledCycles(ScopedCompiled, ScopedTransitionCount))
+    if (!ValidateCompiledCycles(ScopedDefinition, ScopedTransitionCount))
     {
         return false;
     }
 
     for (std::uint16_t ScopedI = ScopedTransitionCount; ScopedI < kMaxAnimTransitions; ++ScopedI)
     {
-        ScopedCompiled.Transitions[ScopedI] = AnimTransition{};
-        ScopedCompiled.Transitions[ScopedI].Enabled = false;
-        ScopedCompiled.Transitions[ScopedI].Conditions = AnimConditionNone;
+        ScopedDefinition.Transitions[ScopedI] = AnimTransition{};
+        ScopedDefinition.Transitions[ScopedI].Enabled = false;
+        ScopedDefinition.Transitions[ScopedI].Conditions = AnimConditionNone;
     }
     ScopedCompiled.CurrentState = 0;
     ScopedCompiled.PreviousState = 0;
@@ -1632,9 +1635,9 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
     ScopedCompiled.BlendTime = 0.0f;
     ScopedCompiled.BlendWeight = 1.0f;
     ScopedCompiled.LastTransition = kNoAnimTransition;
-    ScopedCompiled.RestPoseCaptured = false;
 
     MCompiled = ScopedCompiled;
+    MCompiledGraph = ScopedDefinition;
     MAuthoredTransitionCount = ScopedTransitionCount;
     MCompiledValid = true;
     MCompiledDirty = false;
@@ -3196,7 +3199,7 @@ bool AnimationGraphCanvasPanel::LoadFromSceneToml()
         SetStatus("Anim load rejected: %s", ScopedError);
         return false;
     }
-    SetStatus("Anim load: %u clips, %u transitions restored", static_cast<unsigned>(MCompiled.ClipCount),
+    SetStatus("Anim load: %u clips, %u transitions restored", static_cast<unsigned>(MCompiledGraph.ClipCount),
               static_cast<unsigned>(MAuthoredTransitionCount));
     return true;
 }

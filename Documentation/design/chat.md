@@ -35,7 +35,7 @@ The two chat kinds share three rules:
 | Voice effects | Per-stream DSP, conditions, state readout, spatial routing | `VoiceEffectRack`, `VoiceEffectChain` |
 | Presentation | Text layout, captions, indicators, particles | UI, accessibility and particle systems |
 
-Text chat is deliberately not coupled to voice chat. A game can ship text only,
+Text chat is not coupled to voice chat. A game can ship text only,
 voice only, or both. When both exist, the same player id and the same mute list
 should drive the two paths so a mute is one user action.
 

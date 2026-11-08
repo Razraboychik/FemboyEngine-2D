@@ -121,13 +121,14 @@ private:
     Stats MStats{};
 };
 
-// Schedule trampoline for SystemGraph/Schedule: register in Phase::PostUpdate.
-inline void AudioZoneSystemUpdate(Ecs::SystemContext& InContext, void* InUser) noexcept
+// Schedule trampoline for SystemGraph/Schedule: register in Phase::PostUpdate
+// with Ecs::BindAudioSystem<&AudioZoneSystemUpdate>().
+inline void AudioZoneSystemUpdate(const Ecs::AudioSystemView& InView, void* InUser) noexcept
 {
     auto* ScopedSystem = static_cast<AudioZoneSystem*>(InUser);
     if (ScopedSystem != nullptr)
     {
-        ScopedSystem->Update(InContext.registry, InContext.audio, InContext.dt);
+        ScopedSystem->Update(InView.registry, InView.audio.audio, InView.dt);
     }
 }
 }

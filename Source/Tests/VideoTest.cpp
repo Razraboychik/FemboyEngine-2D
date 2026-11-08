@@ -90,6 +90,9 @@ constexpr std::uint32_t kTrackNumberId = 0xD7u;
 constexpr std::uint32_t kTrackTypeId = 0x83u;
 constexpr std::uint32_t kCodecIdId = 0x86u;
 constexpr std::uint32_t kCodecPrivateId = 0x63A2u;
+constexpr std::uint32_t kAudioId = 0xE1u;
+constexpr std::uint32_t kSamplingFrequencyId = 0xB5u;
+constexpr std::uint32_t kChannelsId = 0x9Fu;
 constexpr std::uint32_t kVideoId = 0xE0u;
 constexpr std::uint32_t kPixelWidthId = 0xB0u;
 constexpr std::uint32_t kPixelHeightId = 0xBAu;
@@ -176,11 +179,34 @@ constexpr std::uint32_t kBlockAdditionalId = 0xA5u;
     return Element(InId, ScopedPayload);
 }
 
+[[nodiscard]] Bytes DoubleElement(std::uint32_t InId, double InValue)
+{
+    std::uint64_t ScopedBits = 0;
+    std::memcpy(&ScopedBits, &InValue, sizeof(ScopedBits));
+    Bytes ScopedPayload(8);
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 8; ++ScopedIndex)
+    {
+        ScopedPayload[7 - ScopedIndex] = static_cast<std::byte>(ScopedBits & 0xFFu);
+        ScopedBits >>= 8;
+    }
+    return Element(InId, ScopedPayload);
+}
+
 [[nodiscard]] Bytes StringElement(std::uint32_t InId, std::string_view InText)
 {
     Bytes ScopedPayload(InText.size());
     std::memcpy(ScopedPayload.data(), InText.data(), InText.size());
     return Element(InId, ScopedPayload);
+}
+
+[[nodiscard]] Bytes BlockPayloadForTrack(std::uint8_t InTrack, const Bytes& InFrame,
+                                         std::int16_t InRelativeTimestamp)
+{
+    Bytes ScopedPayload = BytesOf({static_cast<std::uint8_t>(0x80u | InTrack),
+                                   static_cast<std::uint8_t>((InRelativeTimestamp >> 8) & 0xFF),
+                                   static_cast<std::uint8_t>(InRelativeTimestamp & 0xFF), 0x80});
+    ScopedPayload.insert(ScopedPayload.end(), InFrame.begin(), InFrame.end());
+    return ScopedPayload;
 }
 
 [[nodiscard]] Bytes BlockPayload(const Bytes& InFrame, std::int16_t InRelativeTimestamp)
@@ -258,6 +284,11 @@ struct WebmBuilder
         ScopedAudioTrack.insert(ScopedAudioTrack.end(), ScopedAudioType.begin(), ScopedAudioType.end());
         const Bytes ScopedAudioCodec = StringElement(kCodecIdId, "A_OPUS");
         ScopedAudioTrack.insert(ScopedAudioTrack.end(), ScopedAudioCodec.begin(), ScopedAudioCodec.end());
+        Bytes ScopedAudio = DoubleElement(kSamplingFrequencyId, 48000.0);
+        const Bytes ScopedChannels = UintElement(kChannelsId, 1);
+        ScopedAudio.insert(ScopedAudio.end(), ScopedChannels.begin(), ScopedChannels.end());
+        const Bytes ScopedAudioElement = Element(kAudioId, ScopedAudio);
+        ScopedAudioTrack.insert(ScopedAudioTrack.end(), ScopedAudioElement.begin(), ScopedAudioElement.end());
         const Bytes ScopedAudioEntry = Element(kTrackEntryId, ScopedAudioTrack);
         ScopedTracks.insert(ScopedTracks.end(), ScopedAudioEntry.begin(), ScopedAudioEntry.end());
     }
@@ -298,6 +329,18 @@ struct WebmBuilder
                 Element(kSimpleBlockId, BlockPayload(ScopedMainFrame, ScopedRelativeTimestamp));
             ScopedClusterChildren.insert(ScopedClusterChildren.end(), ScopedSimpleBlock.begin(),
                                          ScopedSimpleBlock.end());
+        }
+    }
+    if (InBuilder.audioTrack)
+    {
+        for (std::uint32_t ScopedPacket = 0; ScopedPacket < InBuilder.frameCount; ++ScopedPacket)
+        {
+            const Bytes ScopedAudioFrame = BytesOf({0xF8, 0x00, 0x01});
+            const std::int16_t ScopedRelativeTimestamp =
+                static_cast<std::int16_t>(ScopedPacket * InBuilder.frameSpacingMs);
+            const Bytes ScopedBlock =
+                Element(kSimpleBlockId, BlockPayloadForTrack(2, ScopedAudioFrame, ScopedRelativeTimestamp));
+            ScopedClusterChildren.insert(ScopedClusterChildren.end(), ScopedBlock.begin(), ScopedBlock.end());
         }
     }
     const Bytes ScopedCluster = Element(kClusterId, ScopedClusterChildren);
@@ -529,6 +572,10 @@ void TestDemuxAccept()
         ++ScopedFrames;
     }
     FBY_CHECK(ScopedFrames == 3);
+    FBY_CHECK(ScopedDemuxer.ClusterCount() == 1);
+    FBY_CHECK(ScopedDemuxer.SeekToNs(0));
+    FBY_CHECK(ScopedDemuxer.NextFrame(ScopedFrame, &ScopedError) == Fby::Video::DemuxStatus::Frame);
+    FBY_CHECK(ScopedFrame.timestampNs == 0);
 
     // An audio track in the same Tracks element is legal and ignored.
     WebmBuilder ScopedWithAudio;
@@ -538,6 +585,19 @@ void TestDemuxAccept()
     ScopedError.clear();
     FBY_CHECK(ScopedDemuxer2.Open(ScopedWebmWithAudio, &ScopedError));
     FBY_CHECK(ScopedDemuxer2.Track().trackNumber == 1);
+    FBY_CHECK(ScopedDemuxer2.HasAudio());
+    FBY_CHECK(ScopedDemuxer2.AudioTrack().trackNumber == 2);
+    FBY_CHECK(ScopedDemuxer2.AudioTrack().sampleRate == 48000);
+    FBY_CHECK(ScopedDemuxer2.AudioTrack().channels == 1);
+    FBY_CHECK(std::string_view(ScopedDemuxer2.AudioTrack().codecId) == "A_OPUS");
+    Fby::Video::WebmAudioPacket ScopedPacket;
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedWithAudio.frameCount; ++ScopedI)
+    {
+        FBY_CHECK(ScopedDemuxer2.NextAudioPacket(ScopedPacket, &ScopedError) == Fby::Video::DemuxStatus::Frame);
+        FBY_CHECK(ScopedPacket.payload.size() == 3);
+        FBY_CHECK(ScopedPacket.timestampNs == static_cast<std::uint64_t>(ScopedI) * 20000000ull);
+    }
+    FBY_CHECK(ScopedDemuxer2.NextAudioPacket(ScopedPacket, &ScopedError) == Fby::Video::DemuxStatus::End);
     FBY_CHECK(ScopedDemuxer2.NextFrame(ScopedFrame, &ScopedError) == Fby::Video::DemuxStatus::Frame);
 }
 
@@ -594,7 +654,6 @@ void TestRejections()
     // Codec rejections, each with a precise message.
     const std::pair<const char*, const char*> ScopedCodecs[] = {
         {"V_VP8", "VP8"},
-        {"V_AV1", "AV1"},
         {"V_MPEG4/ISO/AVC", "H.264"},
         {"V_MPEGH/ISO/HEVC", "H.265"},
         {"V_THEORA", "not supported"},
@@ -642,6 +701,10 @@ void TestPlayerRingOrderingAndAlpha()
     ScopedPlayer.SetRenderer(&ScopedRhi);
     std::string ScopedError;
     FBY_CHECK(ScopedPlayer.Open(ScopedWebm, &ScopedBackend, &ScopedError));
+    FBY_CHECK(!ScopedPlayer.AudioMasterClock());
+    ScopedPlayer.SetAudioMasterClock(true);
+    FBY_CHECK(ScopedPlayer.AudioMasterClock());
+    ScopedPlayer.SetAudioMasterClock(false);
     FBY_CHECK(ScopedPlayer.TextureId() != Fby::Video::kInvalidVideoTexture);
     // Main + alpha decoder
     FBY_CHECK(ScopedFake.createdDecoders == 2);
@@ -818,6 +881,26 @@ void TestSteadyStateAllocations()
 }
 }
 
+void TestAv1Player()
+{
+    WebmBuilder ScopedBuilder;
+    ScopedBuilder.codecId = "V_AV1";
+    ScopedBuilder.includeVpcC = false;
+    const Bytes ScopedWebm = BuildWebm(ScopedBuilder);
+
+    FakeVp9 ScopedFake;
+    const Fby::Video::Av1Backend ScopedBackend = ScopedFake.Table();
+    FakeRhi ScopedRhi;
+    Fby::Video::VideoPlayer ScopedPlayer;
+    ScopedPlayer.SetRenderer(&ScopedRhi);
+    std::string ScopedError;
+    FBY_CHECK(ScopedPlayer.Open(ScopedWebm, nullptr, &ScopedError, nullptr, &ScopedBackend));
+    FBY_CHECK(std::string_view(ScopedPlayer.Track().codecId) == "V_AV1");
+    FBY_CHECK(ScopedPlayer.PumpFrame() == DecodeStatus::Decoded);
+    ScopedPlayer.Advance(0.0f, 1.0f, false, false);
+    FBY_CHECK(ScopedPlayer.PresentedFrames() == 1);
+}
+
 int main()
 {
     TestDemuxAccept();
@@ -826,6 +909,7 @@ int main()
     TestPlayerRingOrderingAndAlpha();
     TestSystemDropsAndLoops();
     TestSteadyStateAllocations();
+    TestAv1Player();
 
     if (GFailures != 0)
     {

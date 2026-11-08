@@ -335,6 +335,8 @@ bool ResolveProjectPaths(const std::filesystem::path& InRootOrProjectFile, Proje
     ProjectPaths ScopedPaths;
     ScopedPaths.root = ScopedRoot;
     ScopedPaths.projectFile = ScopedRoot / "project.femproj";
+    ScopedPaths.plans = ScopedRoot / "Plan";
+    ScopedPaths.disdocs = ScopedRoot / "Disdocs";
     ScopedPaths.assets = ScopedRoot / "assets";
     ScopedPaths.textures = ScopedPaths.assets / "textures";
     ScopedPaths.audio = ScopedPaths.assets / "audio";
@@ -381,11 +383,12 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
 
     // The layout is intentionally small and typed. Nothing is created lazily:
     const std::filesystem::path ScopedDirectories[] = {
-        ScopedPaths.root,      ScopedPaths.assets,  ScopedPaths.textures,
-        ScopedPaths.audio,     ScopedPaths.scenes,  ScopedPaths.configs,
-        ScopedPaths.build,     ScopedPaths.release, ScopedPaths.release / "aot",
-        ScopedPaths.archives,  ScopedPaths.stores,  ScopedPaths.steamStore,
-        ScopedPaths.epicStore, ScopedPaths.gogStore};
+        ScopedPaths.root,      ScopedPaths.plans,   ScopedPaths.disdocs,
+        ScopedPaths.assets,    ScopedPaths.textures, ScopedPaths.audio,
+        ScopedPaths.scenes,    ScopedPaths.configs, ScopedPaths.build,
+        ScopedPaths.release,   ScopedPaths.release / "aot", ScopedPaths.archives,
+        ScopedPaths.stores,    ScopedPaths.steamStore, ScopedPaths.epicStore,
+        ScopedPaths.gogStore};
     for (const std::filesystem::path& ScopedDirectory : ScopedDirectories)
     {
         std::filesystem::create_directories(ScopedDirectory, ScopedCode);
@@ -400,7 +403,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     CopyProjectString(ScopedConfig.project.name, sizeof(ScopedConfig.project.name), InProjectName);
     CopyProjectString(ScopedConfig.project.version, sizeof(ScopedConfig.project.version), "0.1.0");
     CopyProjectString(ScopedConfig.project.defaultScene, sizeof(ScopedConfig.project.defaultScene), "scenes/main.toml");
-    // BC7 on desktop, ASTC on mobile
+    // BC7 on desktop; ASTC for compatible GPUs
     ScopedConfig.project.textureFormat = DefaultTextureCookFormat();
     ScopedConfig.editor.theme[0] = '\0';
     CopyProjectString(ScopedConfig.editor.theme, sizeof(ScopedConfig.editor.theme), "graphite");
@@ -703,6 +706,11 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedSimulation.insert("max_fixed_steps", static_cast<std::int64_t>(ScopedProject.maxFixedSteps));
     ScopedRoot.insert("simulation", std::move(ScopedSimulation));
 
+    toml::table ScopedPhysics;
+    ScopedPhysics.insert("backend", static_cast<std::int64_t>(ScopedProject.physicsBackend));
+    ScopedPhysics.insert("body_budget", static_cast<std::int64_t>(ScopedProject.physicsBodyBudget));
+    ScopedRoot.insert("physics", std::move(ScopedPhysics));
+
     toml::table ScopedAudio;
     ScopedAudio.insert("master", static_cast<double>(ScopedProject.masterVolume));
     ScopedAudio.insert("sfx", static_cast<double>(ScopedProject.sfxVolume));
@@ -907,6 +915,13 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             static_cast<float>(std::clamp(FloatField(*ScopedSimulation, "fixed_update_hz", 120.0), 1.0, 1000.0));
         ScopedConfig.project.maxFixedSteps = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(IntField(*ScopedSimulation, "max_fixed_steps", 8), 1, 64));
+    }
+    if (const toml::table* ScopedPhysics = Section(ScopedRoot, "physics"); ScopedPhysics != nullptr)
+    {
+        ScopedConfig.project.physicsBackend = static_cast<std::uint8_t>(
+            std::clamp<std::int64_t>(IntField(*ScopedPhysics, "backend", 0), 0, 2));
+        ScopedConfig.project.physicsBodyBudget = static_cast<std::uint32_t>(
+            std::clamp<std::int64_t>(IntField(*ScopedPhysics, "body_budget", 0), 0, 65536));
     }
     if (const toml::table* ScopedAudio = Section(ScopedRoot, "audio"); ScopedAudio != nullptr)
     {

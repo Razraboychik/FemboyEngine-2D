@@ -18,3 +18,4 @@ endfunction()
 
 fby_add_test_plugin(fby_hello_mod fby_hello_mod FBY_PLUGIN_GOOD_LAYOUT)
 fby_add_test_plugin(fby_hello_mod_bad fby_hello_mod_bad FBY_PLUGIN_BAD_LAYOUT)
+

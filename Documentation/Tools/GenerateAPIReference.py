@@ -538,7 +538,7 @@ SECTIONS: list[dict] = [
                     "The RHI is a hand-written Vulkan/Metal layer. Frames are recorded into persistent ring "
                     "buffers; sprite items are 48-byte PODs; meshes are drawn through one indirect call per "
                     "material/layer; linear-blend skinning is one compute dispatch. FrameStats exposes what the "
-                    "pass actually submitted, which is what SceneDiagnosticsPanel plots.",
+                    "pass submitted, which is what SceneDiagnosticsPanel plots.",
                     "RHI — рукописный слой Vulkan/Metal. Кадры записываются в постоянные кольцевые буферы; "
                     "спрайты — это 48-байтные POD; меши рисуются одним indirect-вызовом на материал/слой; "
                     "linear-blend skinning — один compute-диспатч. FrameStats показывает, что реально отправил "
@@ -1138,7 +1138,7 @@ SECTIONS: list[dict] = [
                     "The editor UI is not localizable by design: menus, panel titles, errors and the inspector are "
                     "English-only. Localization applies to game content and documentation, where a .fbin table and "
                     "the EN/RU manual cover the shipped languages.",
-                    "Интерфейс редактора намеренно не локализуется: меню, заголовки панелей, ошибки и инспектор — "
+                    "Интерфейс редактора не локализуется: меню, заголовки панелей, ошибки и инспектор — "
                     "только на английском. Локализация относится к игровому контенту и документации, где таблица "
                     ".fbin и руководство EN/RU покрывают поставляемые языки.",
                 ),
@@ -1354,10 +1354,10 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "The suite is deliberately framework-free: every test is an executable with a main() that "
+                    "The suite uses no test framework: every test is an executable with a main() that "
                     "returns non-zero on failure, so it runs on a headless CI agent, a console devkit and a "
                     "developer workstation with the same command. The full suite passes at Release.",
-                    "Набор намеренно не использует фреймворк: каждый тест — исполняемый файл с main(), "
+                    "Набор не использует фреймворк: каждый тест — исполняемый файл с main(), "
                     "возвращающим ненулевой код при ошибке, поэтому одинаково работает на headless CI-агенте, "
                     "консольном devkit и рабочей станции разработчика. На релиз-кандидате проходит весь набор.",
                 ),

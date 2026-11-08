@@ -111,7 +111,7 @@ static_assert(std::is_standard_layout_v<IkGoalComponent>);
 [[nodiscard]] std::uint32_t SolveIkComponent(SkeletonComponent& InSkeleton, const IkComponent& InComponent) noexcept;
 
 // System entry point: solves every entity with SkeletonComponent + IkComponent.
-void IkSystem(Ecs::SystemContext& InContext) noexcept;
+void IkSystem(const Ecs::CoreSystemView& InView) noexcept;
 
 // Retargeting
 

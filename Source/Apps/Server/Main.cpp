@@ -3,6 +3,7 @@
 #include "Engine/Core/CrashHandler.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Network/NetLink.hpp"
+#include "Engine/Network/NetTopology.hpp"
 #include "Engine/Network/Session.hpp"
 #include "Engine/Network/Transport.hpp"
 
@@ -20,6 +21,7 @@ struct Options
     std::uint16_t Port = 27015;
     std::uint32_t TickRate = 120;
     std::uint32_t Frames = 0;
+    Fby::Net::NetSessionMode Mode = Fby::Net::NetSessionMode::Dedicated;
     char Name[Fby::Net::kSessionNameBytes] = "Dedicated";
 };
 
@@ -29,6 +31,7 @@ void PrintUsage()
                 "  --port <n>        UDP port (default 27015)\n"
                 "  --tick-rate <n>   fixed ticks per second (default 120)\n"
                 "  --name <text>     session name\n"
+                "  --topology <t>    dedicated (default) or hosted\n"
                 "  --frames <n>      exit after n frames (0 = run forever)\n");
 }
 
@@ -62,6 +65,21 @@ void PrintUsage()
         else if (std::strcmp(ScopedArg, "--name") == 0)
         {
             std::snprintf(OutOptions->Name, sizeof(OutOptions->Name), "%s", ScopedValue);
+        }
+        else if (std::strcmp(ScopedArg, "--topology") == 0)
+        {
+            if (std::strcmp(ScopedValue, "hosted") == 0)
+            {
+                OutOptions->Mode = Fby::Net::NetSessionMode::Hosted;
+            }
+            else if (std::strcmp(ScopedValue, "dedicated") == 0)
+            {
+                OutOptions->Mode = Fby::Net::NetSessionMode::Dedicated;
+            }
+            else
+            {
+                return false;
+            }
         }
         else
         {
@@ -125,10 +143,17 @@ int main(int InCount, char** InArgs)
     }
 
     NetSessionConfig ScopedConfig{};
-    ScopedConfig.Mode = NetSessionMode::Dedicated;
+    ScopedConfig.Mode = ScopedOptions.Mode;
     ScopedConfig.Headless = true;
     ScopedConfig.FixedDtSeconds = 1.0f / static_cast<float>(ScopedOptions.TickRate);
     std::snprintf(ScopedConfig.LocalName, sizeof(ScopedConfig.LocalName), "%s", ScopedOptions.Name);
+    const NetTopologyPlan ScopedPlan = PlanNetTopology(ScopedConfig);
+    if (!ScopedPlan.RunsServer)
+    {
+        std::fprintf(stderr, "[server] topology %s does not run a server\n",
+                     NetTopologyName(ScopedPlan.Topology));
+        return 1;
+    }
 
     NetSessionCallbacks ScopedCallbacks{};
     ScopedCallbacks.OnSlotChanged = &OnSlotChanged;
@@ -145,9 +170,9 @@ int main(int InCount, char** InArgs)
         return 1;
     }
 
-    std::printf("[server] listening on port %u, %u ticks/s, role %s\n",
+    std::printf("[server] listening on port %u, %u ticks/s, role %s, topology %s\n",
                 static_cast<unsigned>(ScopedTransport.LocalPort()), ScopedOptions.TickRate,
-                NetRoleName(ScopedSession.Role()));
+                NetRoleName(ScopedSession.Role()), NetTopologyName(ScopedPlan.Topology));
 
     Fby::Core::Clock ScopedClock;
     ScopedClock.SetMaxDelta(1.0);

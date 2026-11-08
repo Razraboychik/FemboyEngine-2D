@@ -143,11 +143,45 @@ bool VirtualTextureSystem::Initialize(const VirtualTextureDesc& InDesc, VirtualF
         ScopedEntry = HashEntry{};
     }
     MInitialized = true;
+    if (MAsync)
+    {
+        {
+            std::lock_guard<std::mutex> ScopedLock(MMutex);
+            MStop = false;
+            MRequests.clear();
+            MResults.clear();
+            MPending.clear();
+            MInFlight = 0;
+        }
+        MWorker = std::thread(&VirtualTextureSystem::WorkerMain, this);
+    }
     return true;
+}
+
+VirtualTextureSystem::~VirtualTextureSystem()
+{
+    Shutdown();
 }
 
 void VirtualTextureSystem::Shutdown() noexcept
 {
+    if (MWorker.joinable())
+    {
+        {
+            std::lock_guard<std::mutex> ScopedLock(MMutex);
+            MStop = true;
+        }
+        MWake.notify_all();
+        MWorker.join();
+    }
+    {
+        std::lock_guard<std::mutex> ScopedLock(MMutex);
+        MRequests.clear();
+        MResults.clear();
+        MPending.clear();
+        MInFlight = 0;
+        MStop = false;
+    }
     MInitialized = false;
     MVfs = nullptr;
     MUpload = nullptr;
@@ -315,13 +349,66 @@ bool VirtualTextureSystem::BuildChunkPath(std::int64_t InTileX, std::int64_t InT
     return true;
 }
 
-bool VirtualTextureSystem::LoadTile(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer,
-                                    std::uint32_t* OutSlot) noexcept
+bool VirtualTextureSystem::ReadChunk(std::int64_t InTileX, std::int64_t InTileY,
+                                     std::span<const std::byte>* OutBytes) const noexcept
 {
-    if (MVfs == nullptr)
+    if (MVfs == nullptr || OutBytes == nullptr)
     {
         return false;
     }
+    char ScopedPath[512]{};
+    std::size_t ScopedPathLength = 0;
+    if (!BuildChunkPath(InTileX, InTileY, ScopedPath, sizeof(ScopedPath), &ScopedPathLength))
+    {
+        return false;
+    }
+    const auto ScopedBytes = MVfs->Read(std::string_view(ScopedPath, ScopedPathLength));
+    if (!ScopedBytes || ScopedBytes->size() < sizeof(ChunkHeader))
+    {
+        return false;
+    }
+    ChunkHeader ScopedHeader{};
+    std::memcpy(&ScopedHeader, ScopedBytes->data(), sizeof(ScopedHeader));
+    const std::uint32_t ScopedChunkPixels = MDesc.chunkTiles * MDesc.tileSize;
+    const std::uint64_t ScopedExpected = static_cast<std::uint64_t>(sizeof(ChunkHeader)) +
+                                         static_cast<std::uint64_t>(ScopedChunkPixels) * ScopedChunkPixels * 4ull;
+    if (std::memcmp(ScopedHeader.magic, kVirtualTextureChunkMagic, sizeof(ScopedHeader.magic)) != 0 ||
+        ScopedHeader.version != 1 || ScopedHeader.tileSize != MDesc.tileSize ||
+        ScopedHeader.chunkTiles != MDesc.chunkTiles || ScopedHeader.format != 0 ||
+        ScopedBytes->size() != ScopedExpected)
+    {
+        return false;
+    }
+    *OutBytes = *ScopedBytes;
+    return true;
+}
+
+bool VirtualTextureSystem::CommitTile(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer,
+                                      std::span<const std::byte> InBytes, std::uint32_t* OutSlot) noexcept
+{
+    if (InBytes.size() < sizeof(ChunkHeader) + 1u)
+    {
+        return false;
+    }
+    const std::uint32_t ScopedChunkPixels = MDesc.chunkTiles * MDesc.tileSize;
+    const std::int64_t ScopedChunkX = FloorDiv(InTileX, static_cast<std::int64_t>(MDesc.chunkTiles));
+    const std::int64_t ScopedChunkY = FloorDiv(InTileY, static_cast<std::int64_t>(MDesc.chunkTiles));
+    const std::int64_t ScopedLocalX = InTileX - ScopedChunkX * static_cast<std::int64_t>(MDesc.chunkTiles);
+    const std::int64_t ScopedLocalY = InTileY - ScopedChunkY * static_cast<std::int64_t>(MDesc.chunkTiles);
+    const std::uint32_t ScopedRowPitch = ScopedChunkPixels * 4u;
+    const std::uint32_t ScopedPixelOffset =
+        static_cast<std::uint32_t>((static_cast<std::uint64_t>(ScopedLocalY) * MDesc.tileSize * ScopedRowPitch) +
+                                   static_cast<std::uint64_t>(ScopedLocalX) * MDesc.tileSize * 4ull);
+    const std::uint64_t ScopedTileBytes = static_cast<std::uint64_t>(MDesc.tileSize) * MDesc.tileSize * 4ull;
+    const std::uint64_t ScopedLastRow = static_cast<std::uint64_t>(MDesc.tileSize - 1u) * ScopedRowPitch;
+    if (static_cast<std::uint64_t>(ScopedPixelOffset) + ScopedLastRow + static_cast<std::uint64_t>(MDesc.tileSize) * 4ull >
+        InBytes.size() - sizeof(ChunkHeader))
+    {
+        return false;
+    }
+
+    // The file is valid: only now choose a victim. A failed read must not evict
+    // a resident tile or leave a hash entry behind.
     const std::uint32_t ScopedLocal = ChooseVictim(InLayer);
     if (ScopedLocal == std::numeric_limits<std::uint32_t>::max())
     {
@@ -334,64 +421,11 @@ bool VirtualTextureSystem::LoadTile(std::int64_t InTileX, std::int64_t InTileY, 
     ScopedSlot.lastUsedFrame = MFrame;
     ScopedSlot.occupied = 1;
     InsertHash(InTileX, InTileY, ScopedLocal, InLayer);
-
-    char ScopedPath[512]{};
-    std::size_t ScopedPathLength = 0;
-    if (!BuildChunkPath(InTileX, InTileY, ScopedPath, sizeof(ScopedPath), &ScopedPathLength))
-    {
-        RemoveHash(InTileX, InTileY);
-        ScopedSlot.occupied = 0;
-        return false;
-    }
-
-    const auto ScopedBytes = MVfs->Read(std::string_view(ScopedPath, ScopedPathLength));
-    if (!ScopedBytes || ScopedBytes->size() < sizeof(ChunkHeader))
-    {
-        ++MStats.vfsMisses;
-        RemoveHash(InTileX, InTileY);
-        ScopedSlot.occupied = 0;
-        return false;
-    }
-
-    ChunkHeader ScopedHeader{};
-    std::memcpy(&ScopedHeader, ScopedBytes->data(), sizeof(ScopedHeader));
-    const std::uint32_t ScopedChunkPixels = MDesc.chunkTiles * MDesc.tileSize;
-    const std::uint64_t ScopedExpected = static_cast<std::uint64_t>(sizeof(ChunkHeader)) +
-                                         static_cast<std::uint64_t>(ScopedChunkPixels) * ScopedChunkPixels * 4ull;
-    if (std::memcmp(ScopedHeader.magic, kVirtualTextureChunkMagic, sizeof(ScopedHeader.magic)) != 0 ||
-        ScopedHeader.version != 1 || ScopedHeader.tileSize != MDesc.tileSize ||
-        ScopedHeader.chunkTiles != MDesc.chunkTiles || ScopedHeader.format != 0 ||
-        ScopedBytes->size() != ScopedExpected)
-    {
-        ++MStats.vfsMisses;
-        RemoveHash(InTileX, InTileY);
-        ScopedSlot.occupied = 0;
-        return false;
-    }
-
-    const std::int64_t ScopedChunkX = FloorDiv(InTileX, static_cast<std::int64_t>(MDesc.chunkTiles));
-    const std::int64_t ScopedChunkY = FloorDiv(InTileY, static_cast<std::int64_t>(MDesc.chunkTiles));
-    const std::int64_t ScopedLocalX = InTileX - ScopedChunkX * static_cast<std::int64_t>(MDesc.chunkTiles);
-    const std::int64_t ScopedLocalY = InTileY - ScopedChunkY * static_cast<std::int64_t>(MDesc.chunkTiles);
     const std::uint32_t ScopedSlotX = ScopedLocal % MTilesPerAxis;
     const std::uint32_t ScopedSlotY = ScopedLocal / MTilesPerAxis;
-    const std::uint32_t ScopedRowPitch = ScopedChunkPixels * 4u;
-    const std::uint32_t ScopedPixelOffset =
-        static_cast<std::uint32_t>((static_cast<std::uint64_t>(ScopedLocalY) * MDesc.tileSize * ScopedRowPitch) +
-                                   static_cast<std::uint64_t>(ScopedLocalX) * MDesc.tileSize * 4ull);
-    const std::uint64_t ScopedTileBytes = static_cast<std::uint64_t>(MDesc.tileSize) * MDesc.tileSize * 4ull;
-    const std::uint64_t ScopedLastRow = static_cast<std::uint64_t>(MDesc.tileSize - 1u) * ScopedRowPitch;
-    if (static_cast<std::uint64_t>(ScopedPixelOffset) + ScopedLastRow + static_cast<std::uint64_t>(MDesc.tileSize) * 4ull >
-        ScopedBytes->size() - sizeof(ChunkHeader))
-    {
-        ++MStats.vfsMisses;
-        RemoveHash(InTileX, InTileY);
-        ScopedSlot.occupied = 0;
-        return false;
-    }
 
     // Pack the strided chunk rows into a contiguous tile for the GPU copy.
-    const std::byte* ScopedSource = ScopedBytes->data() + sizeof(ChunkHeader) + ScopedPixelOffset;
+    const std::byte* ScopedSource = InBytes.data() + sizeof(ChunkHeader) + ScopedPixelOffset;
     std::span<const std::byte> ScopedPixels(ScopedSource, static_cast<std::size_t>(ScopedTileBytes));
     std::uint32_t ScopedUploadRowPitch = ScopedRowPitch;
     if (ScopedRowPitch != MDesc.tileSize * 4u)
@@ -426,9 +460,183 @@ bool VirtualTextureSystem::LoadTile(std::int64_t InTileX, std::int64_t InTileY, 
     ++MLayerResident[InLayer];
     ++MStats.uploads;
     MStats.uploadedBytes += static_cast<std::uint64_t>(MDesc.tileSize) * MDesc.tileSize * 4ull;
-    *OutSlot = ScopedLocal;
+    if (OutSlot != nullptr)
+    {
+        *OutSlot = ScopedLocal;
+    }
     PushTableUpdate(InTileX, InTileY, PackVirtualTexturePageTable(InLayer, ScopedLocal));
     return true;
+}
+
+bool VirtualTextureSystem::LoadTile(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer,
+                                    std::uint32_t* OutSlot) noexcept
+{
+    std::span<const std::byte> ScopedBytes;
+    if (!ReadChunk(InTileX, InTileY, &ScopedBytes))
+    {
+        ++MStats.vfsMisses;
+        return false;
+    }
+    return CommitTile(InTileX, InTileY, InLayer, ScopedBytes, OutSlot);
+}
+
+std::uint64_t VirtualTextureSystem::PackTileKey(std::int64_t InTileX, std::int64_t InTileY) noexcept
+{
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(InTileX)) << 32) |
+           static_cast<std::uint64_t>(static_cast<std::uint32_t>(InTileY));
+}
+
+void VirtualTextureSystem::WorkerMain() noexcept
+{
+    for (;;)
+    {
+        LoadRequest ScopedRequest{};
+        {
+            std::unique_lock<std::mutex> ScopedLock(MMutex);
+            MWake.wait(ScopedLock, [this] { return MStop || !MRequests.empty(); });
+            if (MStop && MRequests.empty())
+            {
+                return;
+            }
+            ScopedRequest = MRequests.front();
+            MRequests.pop_front();
+            ++MInFlight;
+        }
+        std::span<const std::byte> ScopedBytes;
+        const bool ScopedFound = ReadChunk(ScopedRequest.TileX, ScopedRequest.TileY, &ScopedBytes);
+        {
+            std::lock_guard<std::mutex> ScopedLock(MMutex);
+            const std::uint64_t ScopedKey = PackTileKey(ScopedRequest.TileX, ScopedRequest.TileY);
+            if (!MStop && MResults.size() < kMaxAsyncResults)
+            {
+                MResults.push_back(LoadResult{ScopedRequest.TileX, ScopedRequest.TileY, ScopedRequest.Layer,
+                                              ScopedBytes, ScopedFound});
+            }
+            else
+            {
+                MPending.erase(ScopedKey);
+            }
+            --MInFlight;
+        }
+        MWake.notify_all();
+    }
+}
+
+void VirtualTextureSystem::EnqueueLoad(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer) noexcept
+{
+    std::lock_guard<std::mutex> ScopedLock(MMutex);
+    const std::uint64_t ScopedKey = PackTileKey(InTileX, InTileY);
+    if (MPending.find(ScopedKey) != MPending.end())
+    {
+        return;
+    }
+    if (MRequests.size() >= kMaxAsyncRequests)
+    {
+        ++MStats.spills;
+        return;
+    }
+    MPending.insert(ScopedKey);
+    MRequests.push_back(LoadRequest{InTileX, InTileY, InLayer});
+    MWake.notify_one();
+}
+
+bool VirtualTextureSystem::IsPending(std::int64_t InTileX, std::int64_t InTileY) const noexcept
+{
+    std::lock_guard<std::mutex> ScopedLock(MMutex);
+    return MPending.find(PackTileKey(InTileX, InTileY)) != MPending.end();
+}
+
+void VirtualTextureSystem::DrainReadyLoads(std::uint32_t InBudget) noexcept
+{
+    std::uint32_t ScopedCommitted = 0;
+    while (ScopedCommitted < InBudget)
+    {
+        LoadResult ScopedResult{};
+        {
+            std::lock_guard<std::mutex> ScopedLock(MMutex);
+            if (MResults.empty())
+            {
+                break;
+            }
+            ScopedResult = MResults.front();
+            MResults.pop_front();
+        }
+        if (ScopedResult.Found)
+        {
+            if (CommitTile(ScopedResult.TileX, ScopedResult.TileY, ScopedResult.Layer, ScopedResult.Bytes, nullptr))
+            {
+                ++ScopedCommitted;
+                ++MStats.visibleTiles;
+            }
+        }
+        else
+        {
+            ++MStats.vfsMisses;
+        }
+        {
+            std::lock_guard<std::mutex> ScopedLock(MMutex);
+            MPending.erase(PackTileKey(ScopedResult.TileX, ScopedResult.TileY));
+        }
+    }
+}
+
+void VirtualTextureSystem::PollLoads() noexcept
+{
+    if (MAsync)
+    {
+        DrainReadyLoads(MMaxLoadsPerUpdate);
+    }
+}
+
+void VirtualTextureSystem::WaitForPendingLoads() noexcept
+{
+    std::unique_lock<std::mutex> ScopedLock(MMutex);
+    MWake.wait(ScopedLock, [this] { return MRequests.empty() && MInFlight == 0; });
+}
+
+std::uint32_t VirtualTextureSystem::PendingLoadCount() const noexcept
+{
+    std::lock_guard<std::mutex> ScopedLock(MMutex);
+    return static_cast<std::uint32_t>(MRequests.size() + MResults.size() + MInFlight);
+}
+
+void VirtualTextureSystem::SetAsyncLoading(bool InEnabled) noexcept
+{
+    if (MAsync == InEnabled)
+    {
+        return;
+    }
+    MAsync = InEnabled;
+    if (!MInitialized)
+    {
+        return;
+    }
+    if (InEnabled)
+    {
+        {
+            std::lock_guard<std::mutex> ScopedLock(MMutex);
+            MStop = false;
+            MRequests.clear();
+            MResults.clear();
+            MPending.clear();
+            MInFlight = 0;
+        }
+        MWorker = std::thread(&VirtualTextureSystem::WorkerMain, this);
+    }
+    else if (MWorker.joinable())
+    {
+        {
+            std::lock_guard<std::mutex> ScopedLock(MMutex);
+            MStop = true;
+        }
+        MWake.notify_all();
+        MWorker.join();
+        std::lock_guard<std::mutex> ScopedLock(MMutex);
+        MRequests.clear();
+        MResults.clear();
+        MPending.clear();
+        MInFlight = 0;
+    }
 }
 
 void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept
@@ -504,6 +712,7 @@ void VirtualTextureSystem::RequestTiles(std::span<const VirtualTextureTileId> In
               });
 
     std::uint32_t ScopedLoads = 0;
+    std::uint32_t ScopedEnqueued = 0;
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
     {
         const VirtualTextureTileId& ScopedTile = MSortScratch[ScopedI];
@@ -524,13 +733,30 @@ void VirtualTextureSystem::RequestTiles(std::span<const VirtualTextureTileId> In
             ++MStats.visibleTiles;
             continue;
         }
+        const std::uint32_t ScopedLayer = LayerForTile(ScopedTile.X, ScopedTile.Y);
+        if (MAsync)
+        {
+            // Async: only enqueue. PollLoads() commits at most the per-frame
+            // upload budget, so a cold frame is bounded by IO wait, not by
+            // uploads. A queued or in-flight tile is still visible.
+            if (ScopedEnqueued >= MMaxLoadsPerUpdate * 4u)
+            {
+                ++MStats.spills;
+                continue;
+            }
+            if (!IsPending(ScopedTile.X, ScopedTile.Y))
+            {
+                EnqueueLoad(ScopedTile.X, ScopedTile.Y, ScopedLayer);
+                ++ScopedEnqueued;
+            }
+            continue;
+        }
         if (ScopedLoads >= MMaxLoadsPerUpdate)
         {
             // Budget exhausted: the tile stays unrequested until a later frame.
             ++MStats.spills;
             continue;
         }
-        const std::uint32_t ScopedLayer = LayerForTile(ScopedTile.X, ScopedTile.Y);
         std::uint32_t ScopedSlot = 0;
         if (!LoadTile(ScopedTile.X, ScopedTile.Y, ScopedLayer, &ScopedSlot))
         {
@@ -601,6 +827,14 @@ void VirtualTextureSystem::Update(Vector2D InCenter, Vector2D InViewSize, float 
             if (ScopedHash != kHashCapacity)
             {
                 ScopedLocal = MHash[ScopedHash].slot;
+            }
+            else if (MAsync)
+            {
+                if (!IsPending(ScopedTileX, ScopedTileY))
+                {
+                    EnqueueLoad(ScopedTileX, ScopedTileY, ScopedLayer);
+                }
+                continue;
             }
             else if (!LoadTile(ScopedTileX, ScopedTileY, ScopedLayer, &ScopedLocal))
             {

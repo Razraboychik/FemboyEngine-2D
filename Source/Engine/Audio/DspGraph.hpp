@@ -137,30 +137,30 @@ enum class AudioCommandType : std::uint8_t
 
 struct AudioCommand
 {
-    AudioCommandType type = AudioCommandType::None;
-    BusId bus = kInvalidBus;
-    BusId parent = kInvalidBus;
-    std::uint16_t voice = kInvalidVoice;
-    std::uint16_t reserved = 0;
+    AudioCommandType Type = AudioCommandType::None;
+    BusId Bus = kInvalidBus;
+    BusId Parent = kInvalidBus;
+    std::uint16_t Voice = kInvalidVoice;
+    std::uint16_t Reserved = 0;
     // Identifies one claimed voice slot
-    std::uint32_t generation = 0;
-    std::uint32_t flags = 0;
-    float gain = 1.0f;
-    float volume = 1.0f;
-    float pitch = 1.0f;
+    std::uint32_t Generation = 0;
+    std::uint32_t Flags = 0;
+    float Gain = 1.0f;
+    float Volume = 1.0f;
+    float Pitch = 1.0f;
     // Stereo position in [-1, 1]; 0 leaves the clip untouched.
-    float pan = 0.0f;
+    float Pan = 0.0f;
     // Interleaved PCM or a live stream ring, owned by the caller
-    const std::byte* samples = nullptr;
-    FloatRing* stream = nullptr;
-    std::uint32_t frameCount = 0;
-    std::uint32_t channels = 0;
-    std::uint32_t sampleRate = 0;
+    const std::byte* Samples = nullptr;
+    FloatRing* Stream = nullptr;
+    std::uint32_t FrameCount = 0;
+    std::uint32_t Channels = 0;
+    std::uint32_t SampleRate = 0;
     // Assets::PcmFormat
-    std::uint32_t format = 0;
-    DuckingParams ducking{};
-    ReverbParams reverb{};
-    BusFilterParams filter{};
+    std::uint32_t Format = 0;
+    DuckingParams Ducking{};
+    ReverbParams Reverb{};
+    BusFilterParams Filter{};
 };
 
 static_assert(std::is_trivially_copyable_v<AudioCommand>, "AudioCommand must be memcpy-able into the ring");

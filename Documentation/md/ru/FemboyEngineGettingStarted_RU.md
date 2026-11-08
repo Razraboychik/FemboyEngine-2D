@@ -1,6 +1,6 @@
-# FemboyEngine 0.2.0-alpha.1 — начало работы
+# FemboyEngine 0.3.0-alpha.1 — начало работы
 
-Этот документ описывает, что нужно установить и какие файлы должны лежать рядом с движком, чтобы запустить редактор, рантайм и инструменты разработки на Windows, Linux и macOS, а также какие инструменты нужны для сборки под Android и iOS.
+Этот документ описывает, что нужно установить и какие файлы должны лежать рядом с движком, чтобы запустить редактор, рантайм и инструменты разработки на Windows, Linux и macOS.
 
 ## Поддерживаемые платформы
 
@@ -9,10 +9,8 @@
 | Windows 10/11 x64 | да | да | clang-cl (основной), GCC 16+ (проверочный) |
 | Linux x64 | да | да | Clang 19+, GCC 16+ |
 | macOS 13+ (Apple Silicon и Intel) | да | да | Apple Clang из Xcode, Metal-бэкенд |
-| Android 5.0+ (API 21) | нет | да, через SDL3 | NDK r28c, Android Gradle Plugin 8.7.3, Gradle 8.12 |
-| iOS 11+ | нет | да, через SDL3 | Xcode 16+, iOS SDK 14.2+ |
 
-Редактор — настольное приложение. Игры собираются под все перечисленные платформы; мобильные сборки используют платформенный слой SDL3.
+Редактор и рантайм игр собираются для трёх настольных платформ выше. SDL3 предоставляет окно, ввод и жизненный цикл приложения.
 
 ## Требуемое программное обеспечение
 
@@ -30,42 +28,40 @@
 | Vulkan Loader | 1.4 | 1.4 | рантайм на Windows и Linux |
 | MoltenVK | 1.2 | — | Vulkan поверх Metal на macOS (либо Metal-бэкенд напрямую) |
 | 7-Zip | 21 | 25.01 | распаковка LZMA SDK (иначе используется встроенный FbyLZ) |
-| Android Studio | — | NDK r28c | Android SDK, NDK 28.2.13676358, compileSdk 35 |
-| OpenJDK | 17 | 17 | Gradle-упаковка Android-сборки |
-| Xcode | 16 | — | сборка под iOS и macOS |
+| Xcode | 16 | — | сборка под macOS |
 
-Стандарт языка — C++26, поэтому старые компиляторы не подойдут даже при «похожей» версии CMake.
+Стандарт языка — C++26, поэтому старые компиляторы не подойдут, даже если версия CMake совпадает.
 
 ## Быстрый старт: скрипты установки
 
-Скрипты лежат в каталоге `SetupScripts/` и разделены по группам ПО. Скрипты
+Скрипты лежат в `SetupScripts/<OS>/` и разделены по ОС и группам ПО. Скрипты
 «всё сразу» ставят всё; компонентные скрипты — только одну группу.
 
 | Группа | Windows | macOS | Linux |
 |---|---|---|---|
-| C++ toolchain, CMake и зависимости | `SetupScripts\SetupCpp.bat` | `./SetupScripts/SetupCpp.command` | `./SetupScripts/SetupCpp.sh` |
-| Архиватор 7-Zip | `SetupScripts\SetupArchiver.bat` | `./SetupScripts/SetupArchiver.command` | `./SetupScripts/SetupArchiver.sh` |
-| Опциональные SDK DLSS/FidelityFX/XeSS | `SetupScripts\SetupUpscalers.bat` | `./SetupScripts/SetupUpscalers.command` | `./SetupScripts/SetupUpscalers.sh` |
+| C++ toolchain, CMake и зависимости | `SetupScripts\Windows\SetupCpp.bat` | `./SetupScripts/macOS/SetupCpp.command` | `./SetupScripts/Linux/SetupCpp.sh` |
+| Архиватор 7-Zip | `SetupScripts\Windows\SetupArchiver.bat` | `./SetupScripts/macOS/SetupArchiver.command` | `./SetupScripts/Linux/SetupArchiver.sh` |
+| Опциональные SDK DLSS/FidelityFX/XeSS | `SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses` | `./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses` | `./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses` |
 
-Общие точки входа остаются `Setup.bat`, `Setup.command` и `Setup.sh`.
+Общие точки входа: `SetupScripts/Windows/Setup.bat`,
+`SetupScripts/macOS/Setup.command` и `SetupScripts/Linux/Setup.sh`.
 C++-скрипты ставят компилятор, CMake, Ninja, Vulkan-заголовки и закреплённые
-зависимости. На Windows `SetupCpp` ставит официальный MSI LLVM 23.1.4 и
+зависимости. На Windows `SetupScripts/Windows/SetupCpp.bat` ставит официальный MSI LLVM 23.1.4 и
 проверяет версию `clang-cl`; Unix-скрипты ставят Clang из пакетного менеджера
-(19+). Скрипты архиватора ставят 7-Zip. Скрипты апскейлеров только
-проверяют или скачивают vendor SDK; они опциональны и никогда не входят в
-репозиторий движка.
+(19+). Скрипты архиватора ставят 7-Zip. Vendor SDK скачиваются только общим
+Setup после явных licence-флагов; в репозиторий они не входят.
 
 Полезные флаги: `--skip-system` — не трогать системные пакеты (образ CI уже
 содержит инструменты); `--force` — заново скачать C++-архивы. C++-скрипт
 создаёт `third_party/dependencies.lock` с версиями и хешами архивов. В конце
-он печатает отчёт о найденных мобильных инструментах: NDK, JDK и Xcode.
+он печатает сводку установленных инструментов.
 
 ### Из архива GitHub
 
 1. Открыть страницу репозитория и выбрать **Code > Download ZIP**.
 2. Распаковать архив в каталог без пробелов и не-ASCII символов.
-3. Запустить `SetupCpp` и `SetupArchiver` для своей ОС.
-4. При необходимости запустить `SetupUpscalers` и включить vendor backend.
+3. Запустить `SetupCpp` и `SetupArchiver` для своей ОС из таблицы выше.
+4. При необходимости передать licence-флаги vendor SDK в общий `Setup` для своей ОС.
 5. Настроить и собрать:
 
 ```
@@ -119,7 +115,7 @@ cmake --build build-dev
 ctest --test-dir build-dev --output-on-failure
 ```
 
-На Windows те же команды выполняются в окружении `vcvars64`; зависимости и инструменты подготавливает `SetupScripts/SetupWindows.ps1`. Основные опции CMake: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
+На Windows те же команды выполняются в окружении `vcvars64`; зависимости и инструменты подготавливает `SetupScripts/Windows/SetupWindows.ps1`. Основные опции CMake: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
 
 Готовые исполняемые файлы раскладываются по назначению:
 
@@ -327,7 +323,7 @@ cd /path/to/project
 
 Инструменты лежат в `build-dev/bin/tools`, тестовые исполняемые файлы — в `build-dev/bin/tests`.
 
-Сборка и тесты запускаются через пресеты CMake; установка зависимостей — в `SetupScripts/*`.
+Сборка и тесты запускаются через пресеты CMake; установка зависимостей — в `SetupScripts/<OS>/*`.
 
 ## Ярлыки для быстрого запуска
 
@@ -345,7 +341,7 @@ cd /path/to/project
 1. Открыть папку проекта в Finder.
 2. Перетащить `fby_editor` (или `.app`, если собран бандл) в Dock, удерживая `Command`.
 3. Для конкретного проекта создать `.command`-файл с двумя строками: `cd /path/to/project` и `/path/to/fby_editor`; Finder запускает его двойным щелчком, а ярлык можно положить в Dock.
-4. `SetupScripts/Setup.command` запускается так же — двойным щелчком.
+4. `SetupScripts/macOS/Setup.command` запускается так же — двойным щелчком.
 
 ### Linux
 
@@ -364,22 +360,16 @@ Categories=Development;
 
 После сохранения — «Закрепить» в доке или на панели. Второй `.desktop` с другим `Path` даёт ярлык на другой проект.
 
-## Android и iOS
+## Проверка инструментов
 
-Мобильные сборки используют платформенный слой SDL3: окно, ввод и жизненный цикл приложения берутся из SDL, рендер — Vulkan (Android) и Metal/Vulkan через MoltenVK (iOS). Редактор на мобильные платформы не собирается.
-
-Android: Android Studio, NDK `28.2.13676358` (r28c), OpenJDK 17, Gradle 8.12, Android Gradle Plugin 8.7.3, `compileSdk 35`, минимальный уровень API 21. Конфигурация CMake для Android выполняется через toolchain-файл NDK, упаковка — Gradle-проектом SDL3.
-
-iOS: macOS с Xcode 16 или новее, iOS SDK 14.2+, минимальная целевая версия iOS 11.0. Конфигурация CMake выполняется с `-DCMAKE_SYSTEM_NAME=iOS`, подпись и упаковка — средствами Xcode.
-
-Точный список версий всегда можно получить двумя командами:
+Точный список версий можно получить командами:
 
 ```
 cmake --version
 ninja --version
 ```
 
-и, для мобильных, `ls "$ANDROID_NDK_HOME/source.properties"` и `xcodebuild -version`.
+На macOS версии Xcode и SDK показывает `xcodebuild -version`.
 
 ## Типичные проблемы
 
@@ -392,5 +382,4 @@ ninja --version
 | `glslang` не найден при сборке | не разложен `third_party/glslang-src` | запустить скрипт установки заново |
 | Нет шрифтов в редакторе | отсутствуют TTF или манифест семейства | вернуть `assets/fonts/` из репозитория |
 | Ошибка CMake про harfbuzz или SheenBidi | повреждён или удалён каталог `third_party/` | восстановить `third_party/harfbuzz-download/` и `third_party/sheenbidi-download/` из репозитория |
-| Android-сборка не находит NDK | не задан `ANDROID_NDK_HOME` | указать путь к NDK r28c и перезапустить конфигурацию |
 | Windows-сборка падает на заголовках | нет Windows SDK | установить Build Tools с рабочей нагрузкой C++ |

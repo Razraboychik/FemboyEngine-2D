@@ -13,6 +13,13 @@ namespace Fby::AI
 namespace
 {
 constexpr std::uint32_t kMaxDeferredControllers = 256;
+constexpr float kPerceptionCellSize = 64.0f;
+
+[[nodiscard]] std::uint64_t PerceptionCellKey(std::int32_t InX, std::int32_t InY) noexcept
+{
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(InX)) << 32) |
+           static_cast<std::uint32_t>(InY);
+}
 
 [[nodiscard]] Vector2D EntityPosition(const Ecs::Registry& InRegistry, Entity InEntity, Vector2D InFallback) noexcept
 {
@@ -102,6 +109,12 @@ void AIControllerSystem::Update(Registry& InRegistry, float InDeltaSeconds) noex
         {
             ScopedRuntime.SkillRetryTimer = 0.0f;
         }
+        // Tick the retry timer before evaluating it, not after, so the first
+        // retry is not one fixed step early.
+        if (ScopedSettings.SkillRetryInterval > 0.0f)
+        {
+            ScopedRuntime.SkillRetryTimer -= InDeltaSeconds;
+        }
 
         switch (ScopedKind)
         {
@@ -133,10 +146,10 @@ void AIControllerSystem::Update(Registry& InRegistry, float InDeltaSeconds) noex
                 {
                     if (MSkills != nullptr)
                     {
-                        const std::uint16_t ScopedSlot = static_cast<std::uint16_t>(ScopedCommand.Flags);
+                        const std::uint16_t ScopedSlot = static_cast<std::uint16_t>(ScopedCommand.SkillSlot);
                         (void)MSkills->TryActivate(InRegistry, ScopedEntity, ScopedSlot, ScopedCommand.Target);
                     }
-                    ScopedRuntime.LastSkillSlot = ScopedCommand.Flags;
+                    ScopedRuntime.LastSkillSlot = ScopedCommand.SkillSlot;
                     ScopedRuntime.SkillRetryTimer =
                         ScopedSettings.SkillRetryInterval > 0.0f ? ScopedSettings.SkillRetryInterval : 0.0f;
                 }
@@ -144,37 +157,36 @@ void AIControllerSystem::Update(Registry& InRegistry, float InDeltaSeconds) noex
             }
         }
 
-        if (ScopedSettings.SkillRetryInterval > 0.0f)
-        {
-            ScopedRuntime.SkillRetryTimer -= InDeltaSeconds;
-        }
         ScopedRuntime.LastSequence = ScopedCommand.Sequence;
         ScopedRuntime.LastTaskIndex = ScopedCommand.TaskIndex;
         ScopedRuntime.LastKind = ScopedCommand.Kind;
     }
 }
 
-void AIControllerSystem::Update(Ecs::SystemContext& InContext) noexcept
+void AIControllerSystem::Update(const Ecs::GameplaySystemView& InView) noexcept
 {
-    if (InContext.gameplaySkills != nullptr)
+    if (InView.gameplay.gameplaySkills != nullptr)
     {
-        MSkills = InContext.gameplaySkills;
+        MSkills = InView.gameplay.gameplaySkills;
     }
-    Update(InContext.registry, InContext.dt);
+    Update(InView.registry, InView.dt);
+}
+
+namespace
+{
+void AIControllerSystemThunk(const Ecs::GameplaySystemView& InView, void* InUser)
+{
+    static_cast<AIControllerSystem*>(InUser)->Update(InView);
+}
 }
 
 bool AIControllerSystem::Register(Ecs::SystemGraph& InGraph, AIControllerSystem& InSystem)
 {
-    return InGraph.Add(
-        Ecs::Phase::FixedUpdate, "AIControllerSystem",
-        +[](Ecs::SystemContext& InContext, void* InUser)
-        {
-            static_cast<AIControllerSystem*>(InUser)->Update(InContext);
-        },
-        &InSystem);
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "AIControllerSystem",
+                       Ecs::BindGameplaySystem<&AIControllerSystemThunk>(), &InSystem);
 }
 
-void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry* InTags, float InDeltaSeconds) noexcept
+void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry* InTags, float InDeltaSeconds)
 {
     // Structural pass: settings-only entities get their runtime target state.
     std::array<Entity, kMaxDeferredControllers> ScopedPending{};
@@ -195,6 +207,22 @@ void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry*
         }
     }
 
+    // Rebuild the perception broadphase once per pass. A cell holds its
+    // entities by key; agents then visit only the cells their radius covers.
+    MGrid.clear();
+    auto ScopedAll = InRegistry.view<Transform2D>();
+    for (auto [ScopedEntity, ScopedTransform] : ScopedAll.each())
+    {
+        const std::int32_t ScopedCellX =
+            static_cast<std::int32_t>(std::floor(ScopedTransform.Position.X / kPerceptionCellSize));
+        const std::int32_t ScopedCellY =
+            static_cast<std::int32_t>(std::floor(ScopedTransform.Position.Y / kPerceptionCellSize));
+        MGrid.push_back(GridEntry{PerceptionCellKey(ScopedCellX, ScopedCellY), ScopedEntity,
+                                  ScopedTransform.Position});
+    }
+    std::sort(MGrid.begin(), MGrid.end(),
+              [](const GridEntry& InLeft, const GridEntry& InRight) noexcept { return InLeft.Key < InRight.Key; });
+
     auto ScopedView = InRegistry.view<AIPerceptionSettings, AIPerceptionComponent, StateTreeComponent, Transform2D>();
     for (auto [ScopedEntity, ScopedSettings, ScopedPerception, ScopedTree, ScopedTransform] : ScopedView.each())
     {
@@ -204,32 +232,51 @@ void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry*
             continue;
         }
         ScopedPerception.Timer = std::max(ScopedSettings.Interval, 0.01f);
+        const float ScopedRadius = std::max(ScopedSettings.Radius, 0.0f);
         Entity ScopedBest = entt::null;
-        float ScopedBestDistance = ScopedSettings.Radius * ScopedSettings.Radius;
-        auto ScopedCandidates = InRegistry.view<Transform2D>();
-        for (const Entity ScopedCandidate : ScopedCandidates)
+        float ScopedBestDistance = ScopedRadius * ScopedRadius;
+        const std::int32_t ScopedCenterCellX =
+            static_cast<std::int32_t>(std::floor(ScopedTransform.Position.X / kPerceptionCellSize));
+        const std::int32_t ScopedCenterCellY =
+            static_cast<std::int32_t>(std::floor(ScopedTransform.Position.Y / kPerceptionCellSize));
+        const std::int32_t ScopedCellRadius = std::clamp(
+            static_cast<std::int32_t>(std::ceil(ScopedRadius / kPerceptionCellSize)), 0, 64);
+        for (std::int32_t ScopedCellY = ScopedCenterCellY - ScopedCellRadius;
+             ScopedCellY <= ScopedCenterCellY + ScopedCellRadius; ++ScopedCellY)
         {
-            if (ScopedCandidate == ScopedEntity)
+            for (std::int32_t ScopedCellX = ScopedCenterCellX - ScopedCellRadius;
+                 ScopedCellX <= ScopedCenterCellX + ScopedCellRadius; ++ScopedCellX)
             {
-                continue;
-            }
-            if (ScopedSettings.TargetTagId != 0)
-            {
-                const auto* ScopedCandidateTags = InRegistry.try_get<GameplayTagsComponent>(ScopedCandidate);
-                if (ScopedCandidateTags == nullptr || InTags == nullptr ||
-                    !GameplayTagContainerHas(ScopedCandidateTags->Tags, *InTags,
-                                             GameplayTag{ScopedSettings.TargetTagId}))
+                const std::uint64_t ScopedKey = PerceptionCellKey(ScopedCellX, ScopedCellY);
+                auto ScopedIt = std::lower_bound(
+                    MGrid.begin(), MGrid.end(), ScopedKey,
+                    [](const GridEntry& InEntry, std::uint64_t InKey) noexcept { return InEntry.Key < InKey; });
+                for (; ScopedIt != MGrid.end() && ScopedIt->Key == ScopedKey; ++ScopedIt)
                 {
-                    continue;
+                    const Entity ScopedCandidate = ScopedIt->Owner;
+                    if (ScopedCandidate == ScopedEntity)
+                    {
+                        continue;
+                    }
+                    if (ScopedSettings.TargetTagId != 0)
+                    {
+                        const auto* ScopedCandidateTags =
+                            InRegistry.try_get<GameplayTagsComponent>(ScopedCandidate);
+                        if (ScopedCandidateTags == nullptr || InTags == nullptr ||
+                            !GameplayTagContainerHas(ScopedCandidateTags->Tags, *InTags,
+                                                     GameplayTag{ScopedSettings.TargetTagId}))
+                        {
+                            continue;
+                        }
+                    }
+                    const Vector2D ScopedDelta = ScopedIt->Position - ScopedTransform.Position;
+                    const float ScopedDistance = ScopedDelta.X * ScopedDelta.X + ScopedDelta.Y * ScopedDelta.Y;
+                    if (ScopedDistance <= ScopedBestDistance)
+                    {
+                        ScopedBestDistance = ScopedDistance;
+                        ScopedBest = ScopedCandidate;
+                    }
                 }
-            }
-            const Vector2D ScopedDelta =
-                ScopedCandidates.get<Transform2D>(ScopedCandidate).Position - ScopedTransform.Position;
-            const float ScopedDistance = ScopedDelta.X * ScopedDelta.X + ScopedDelta.Y * ScopedDelta.Y;
-            if (ScopedDistance <= ScopedBestDistance)
-            {
-                ScopedBestDistance = ScopedDistance;
-                ScopedBest = ScopedCandidate;
             }
         }
         ScopedPerception.Target = ScopedBest;
@@ -237,19 +284,22 @@ void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry*
     }
 }
 
-void AIPerceptionSystem::Update(Ecs::SystemContext& InContext) noexcept
+void AIPerceptionSystem::Update(const Ecs::GameplaySystemView& InView)
 {
-    Update(InContext.registry, InContext.gameplayTags, InContext.dt);
+    Update(InView.registry, InView.gameplay.gameplayTags, InView.dt);
+}
+
+namespace
+{
+void AIPerceptionSystemThunk(const Ecs::GameplaySystemView& InView, void* InUser)
+{
+    static_cast<AIPerceptionSystem*>(InUser)->Update(InView);
+}
 }
 
 bool AIPerceptionSystem::Register(Ecs::SystemGraph& InGraph, AIPerceptionSystem& InSystem)
 {
-    return InGraph.Add(
-        Ecs::Phase::FixedUpdate, "AIPerceptionSystem",
-        +[](Ecs::SystemContext& InContext, void* InUser)
-        {
-            static_cast<AIPerceptionSystem*>(InUser)->Update(InContext);
-        },
-        &InSystem);
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "AIPerceptionSystem",
+                       Ecs::BindGameplaySystem<&AIPerceptionSystemThunk>(), &InSystem);
 }
 }

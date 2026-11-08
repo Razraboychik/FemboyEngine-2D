@@ -52,10 +52,12 @@ public:
     [[nodiscard]] static bool SaveBinary(const PrefabAsset& InAsset, std::span<std::byte> OutBytes,
                                          std::size_t* OutBytesUsed = nullptr) noexcept;
 
-    // Instantiates a prefab in the caller's registry. Returns false and leaves the
+    // Instantiates a prefab in the caller's registry. Entities are created
+    // immediately; their components are queued in InCommands and only exist
+    // after the caller plays the buffer in the same frame.
     [[nodiscard]] static bool Spawn(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InCommands,
                                     const PrefabAsset& InAsset, Vector2D InOrigin,
-                                    std::span<Entity> OutEntities = {}, PrefabOverrides InOverrides = {}) noexcept;
+                                    std::span<Entity> OutEntities = {}, PrefabOverrides InOverrides = {});
 
     // Convenience for a tool/editor path: parse then spawn.
     [[nodiscard]] static bool SpawnToml(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InCommands,

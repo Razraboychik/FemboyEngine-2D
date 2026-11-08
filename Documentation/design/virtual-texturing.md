@@ -86,11 +86,16 @@ to `VirtualTextureUploadFn`.
   it through `RHI::ReadVirtualTextureFeedback`.
 - `VirtualTextureSystem::BeginFrame`, `RequestTiles`, `SetFocus` and
   `SetMaxLoadsPerUpdate` form the streaming loop: requests are deduplicated
-  against residents, sorted nearest-first around the focus point, and at most
-  the per-frame budget is loaded; the rest are counted as deferred.
-- Loads and LRU evictions append batched `VirtualTextureTableUpdate` records
-  (packed layer/slot or the missing sentinel); the caller flushes them once per
-  frame.
+  against residents and in-flight loads, sorted nearest-first around the focus
+  point, and handed to the IO worker; the rest are counted as deferred.
+- `PollLoads()` commits finished chunks, at most the per-frame budget per call.
+  While a tile is queued or waiting in the result queue, `Resolve` reports it as
+  not resident, so the shader keeps the neutral fallback.
+- `WaitForPendingLoads()` and `PendingLoadCount()` expose the worker state for
+  tests and shutdown paths.
+- Committed loads and LRU evictions append batched
+  `VirtualTextureTableUpdate` records (packed layer/slot or the missing
+  sentinel); the caller flushes them once per frame.
 - Determinism: equal-distance ties break by tile `(Y, X)`, so two identical runs
   assign the same layer/slot addresses. `vt_streaming` runs the same request
   sequence twice and compares every `Resolve`.

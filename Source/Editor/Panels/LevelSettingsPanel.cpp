@@ -103,13 +103,21 @@ void LevelSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         ImGui::PushID(static_cast<int>(ScopedEntity));
         if (ImGui::TreeNodeEx("Field", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            const char* ScopedModes[] = {"Attract", "Repel"};
+            const char* ScopedModes[] = {"Attract", "Repel", "Directional"};
             const char* ScopedShapes[] = {"Circle", "Box"};
             const char* ScopedFalloffs[] = {"None", "Linear", "Quadratic", "Exponential"};
-            int ScopedMode = std::clamp(static_cast<int>(ScopedBody.Mode), 0, 1);
-            if (ImGui::Combo("Mode", &ScopedMode, ScopedModes, 2))
+            int ScopedMode = std::clamp(static_cast<int>(ScopedBody.Mode), 0, 2);
+            if (ImGui::Combo("Mode", &ScopedMode, ScopedModes, 3))
             {
                 ScopedBody.Mode = static_cast<std::uint32_t>(ScopedMode);
+            }
+            if (ScopedMode == 2)
+            {
+                ImGui::DragFloat2("Direction", &ScopedBody.Direction.X, 0.01f, -10.0f, 10.0f, "%.2f");
+                if (ImGui::IsItemHovered())
+                {
+                    EditorTooltip("Local space. Rotates with the entity transform.");
+                }
             }
             int ScopedShape = std::clamp(static_cast<int>(ScopedBody.Shape), 0, 1);
             if (ImGui::Combo("Shape", &ScopedShape, ScopedShapes, 2))

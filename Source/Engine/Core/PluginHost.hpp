@@ -115,6 +115,11 @@ public:
     }
 
 private:
+    // Rebuilds the bound graph after a plugin changed its node set. A graph that
+    // is left dirty by Add/RemoveUser would stop every phase at Run, so every
+    // mutation path calls this and rolls back when it fails.
+    [[nodiscard]] bool RebuildGraph(std::string* InError);
+
     static void* HostAlloc(void* InUser, std::size_t InSize, std::size_t InAlignment);
     static void HostFree(void* InUser, void* InPointer, std::size_t InSize, std::size_t InAlignment);
     static void HostLog(void* InUser, int InLevel, const char* InChannel, const char* InMessage);

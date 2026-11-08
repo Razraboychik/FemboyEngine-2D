@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <type_traits>
+#include <vector>
 
 namespace Fby::AI
 {
@@ -71,10 +72,21 @@ public:
 
     // FixedUpdate, before StateTree. Writes StateTreeComponent::Target only; a
     // tree decides what to do with the perceived entity.
-    void Update(Registry& InRegistry, const GameplayTagRegistry* InTags, float InDeltaSeconds) noexcept;
-    void Update(Ecs::SystemContext& InContext) noexcept;
+    void Update(Registry& InRegistry, const GameplayTagRegistry* InTags, float InDeltaSeconds);
+    void Update(const Ecs::GameplaySystemView& InView);
 
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, AIPerceptionSystem& InSystem);
+
+private:
+    // Uniform-grid broadphase for perception. The grid is rebuilt only when an
+    // agent's interval elapses, so the quadratic all-entities scan is gone.
+    struct GridEntry
+    {
+        std::uint64_t Key = 0;
+        Entity Owner = entt::null;
+        Vector2D Position{};
+    };
+    std::vector<GridEntry> MGrid;
 };
 
 // Consumes AICommandComponent and writes NavAgentSettings plus skill
@@ -97,7 +109,7 @@ public:
 
     // FixedUpdate, after StateTree and before NavigationSystem.
     void Update(Registry& InRegistry, float InDeltaSeconds) noexcept;
-    void Update(Ecs::SystemContext& InContext) noexcept;
+    void Update(const Ecs::GameplaySystemView& InView) noexcept;
 
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, AIControllerSystem& InSystem);
 

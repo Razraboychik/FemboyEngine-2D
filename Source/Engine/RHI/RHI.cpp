@@ -176,7 +176,7 @@ std::unique_ptr<RHI> RHI::Create(const DeviceDesc& InDesc)
 #if FBY_METAL_AVAILABLE
         {
             auto device = CreateMetalRHI();
-            if (!device || !device->Initialize(desc))
+            if (!device || !device->Initialize(InDesc))
             {
                 return nullptr;
             }

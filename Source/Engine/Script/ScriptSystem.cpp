@@ -3,6 +3,8 @@
 
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/Physics/Physics.hpp"
+#include "Engine/RHI/CameraStack.hpp"
 #include "Engine/Physics/TransportGroups.hpp"
 #include "Engine/Script/AotHost.hpp"
 
@@ -128,6 +130,149 @@ void NativeTransportSetParent(Script::ScriptVm& InVm, Script::VmContext& InConte
     const auto ScopedGroup = static_cast<std::uint32_t>(InVm.F(InBase + 1));
     const auto ScopedParent = static_cast<std::uint32_t>(InVm.F(InBase + 2));
     InVm.SetU(InBase, InContext.transport->SetParentGroup(InContext.registry, ScopedGroup, ScopedParent) ? 1u : 0u);
+}
+
+void NativePhysicsGetBackend(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    InVm.SetF(InBase, InContext.physics != nullptr ? static_cast<float>(InContext.physics->Backend()) : -1.0f);
+}
+
+void NativePhysicsSetBackend(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.physics == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    const std::int32_t ScopedRequested = static_cast<std::int32_t>(InVm.F(InBase + 1));
+    const PhysicsBackendKind ScopedKind =
+        ScopedRequested == 1 ? PhysicsBackendKind::Box2D
+                              : (ScopedRequested == 2 ? PhysicsBackendKind::Dod : PhysicsBackendKind::Auto);
+    InContext.physics->SetProjectPolicy(ScopedKind, InContext.physics->Description().bodyBudget);
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativePhysicsGetCapabilities(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.physics == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    const PhysicsCapabilities ScopedCaps = InContext.physics->Capabilities();
+    std::int32_t ScopedBits = 0;
+    ScopedBits |= ScopedCaps.Joints ? 1 : 0;
+    ScopedBits |= ScopedCaps.Ccd ? 2 : 0;
+    ScopedBits |= ScopedCaps.SoftBodies ? 4 : 0;
+    ScopedBits |= ScopedCaps.Deterministic ? 8 : 0;
+    ScopedBits |= ScopedCaps.LargeWorlds ? 16 : 0;
+    InVm.SetF(InBase, static_cast<float>(ScopedBits));
+}
+
+void NativeCameraAddTrauma(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->AddTrauma(InVm.F(InBase));
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraDistort(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    const auto ScopedFlags = static_cast<std::uint32_t>(InVm.F(InBase));
+    const float ScopedStrength = InVm.F(InBase + 1);
+    const float ScopedX = InVm.F(InBase + 2);
+    const float ScopedY = InVm.F(InBase + 3);
+    const float ScopedDuration = InVm.F(InBase + 4);
+    CameraDistortionSettings ScopedDistortion;
+    ScopedDistortion.flags = ScopedFlags & (CameraDistortionDoubleVision | CameraDistortionStretch |
+                                            CameraDistortionRadialWarp | CameraDistortionChromaticSplit |
+                                            CameraDistortionWobble);
+    if ((ScopedFlags & CameraDistortionDoubleVision) != 0)
+    {
+        ScopedDistortion.doubleVision = ScopedStrength;
+    }
+    if ((ScopedFlags & CameraDistortionStretch) != 0)
+    {
+        ScopedDistortion.stretchX = ScopedX;
+        ScopedDistortion.stretchY = ScopedY;
+    }
+    if ((ScopedFlags & CameraDistortionRadialWarp) != 0)
+    {
+        ScopedDistortion.radialWarp = ScopedStrength;
+    }
+    if ((ScopedFlags & CameraDistortionChromaticSplit) != 0)
+    {
+        ScopedDistortion.chromaticSplit = ScopedStrength;
+    }
+    if ((ScopedFlags & CameraDistortionWobble) != 0)
+    {
+        ScopedDistortion.wobbleAmplitude = ScopedStrength;
+        ScopedDistortion.wobbleFrequency = ScopedX;
+    }
+    InContext.camera->SetDistortion(ScopedDistortion, ScopedDuration);
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraOffset(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->SetOffset(Vector2D{InVm.F(InBase), InVm.F(InBase + 1)}, InVm.F(InBase + 2));
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraZoom(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->SetZoom(InVm.F(InBase), InVm.F(InBase + 1));
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraRoll(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->SetRoll(InVm.F(InBase), InVm.F(InBase + 1));
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraClearEffects(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera != nullptr)
+    {
+        InContext.camera->ClearEffects();
+    }
+    InVm.SetF(InBase, 1.0f);
+}
+
+void NativeCameraSetMotionScale(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.camera == nullptr)
+    {
+        InVm.SetF(InBase, 0.0f);
+        return;
+    }
+    InContext.camera->SetMotionScale(InVm.F(InBase));
+    InVm.SetF(InBase, 1.0f);
 }
 
 void NativePlaySound(Script::ScriptVm& InVm, Script::VmContext&, std::uint8_t InBase)
@@ -538,6 +683,16 @@ void RegisterDefaultScriptNatives(ScriptRuntime& InRuntime)
     InRuntime.SetNative(Script::NativeId::TransportDetach, &NativeTransportDetach);
     InRuntime.SetNative(Script::NativeId::TransportSetParent, &NativeTransportSetParent);
     InRuntime.SetNative(Script::NativeId::TransportCreate, &NativeTransportCreate);
+    InRuntime.SetNative(Script::NativeId::PhysicsGetBackend, &NativePhysicsGetBackend);
+    InRuntime.SetNative(Script::NativeId::PhysicsSetBackend, &NativePhysicsSetBackend);
+    InRuntime.SetNative(Script::NativeId::PhysicsGetCapabilities, &NativePhysicsGetCapabilities);
+    InRuntime.SetNative(Script::NativeId::CameraAddTrauma, &NativeCameraAddTrauma);
+    InRuntime.SetNative(Script::NativeId::CameraDistort, &NativeCameraDistort);
+    InRuntime.SetNative(Script::NativeId::CameraOffset, &NativeCameraOffset);
+    InRuntime.SetNative(Script::NativeId::CameraZoom, &NativeCameraZoom);
+    InRuntime.SetNative(Script::NativeId::CameraRoll, &NativeCameraRoll);
+    InRuntime.SetNative(Script::NativeId::CameraClearEffects, &NativeCameraClearEffects);
+    InRuntime.SetNative(Script::NativeId::CameraSetMotionScale, &NativeCameraSetMotionScale);
 }
 
 bool ScriptRuntime::Initialize()
@@ -555,6 +710,9 @@ bool ScriptRuntime::Initialize()
     }
     RegisterDefaultScriptNatives(*this);
     MRng = DeterministicRng::FromSeed(0x4642334C4F4C49ull);
+    MActiveScriptCount = 0;
+    MActiveStamp = 0;
+    MDroppedDestroyEvents = 0;
     MInitialized = true;
     return true;
 }
@@ -656,6 +814,84 @@ void ScriptRuntime::ReportFault(std::uint32_t InHandle, Entity InEntity, const S
              static_cast<std::uint32_t>(InEntity), InFault.pc, Script::VmFault::Name(InFault.code), InFault.detail);
 }
 
+void ScriptRuntime::ReportMissingAot(std::uint32_t InHandle, std::uint64_t InHash) noexcept
+{
+    if (InHandle < MFaultReported.size() && MFaultReported[InHandle])
+    {
+        return;
+    }
+    if (InHandle < MFaultReported.size())
+    {
+        MFaultReported[InHandle] = true;
+    }
+    LogError("script", "program {} ({:016x}) has no AOT module and the VM fallback is disabled", InHandle, InHash);
+}
+
+void ScriptRuntime::BeginScriptFrame() noexcept
+{
+    ++MActiveStamp;
+    if (MActiveStamp == 0)
+    {
+        MActiveStamp = 1;
+    }
+}
+
+void ScriptRuntime::TrackScript(Entity InEntity, std::uint32_t InProgram, bool InNativized) noexcept
+{
+    for (std::uint32_t ScopedI = 0; ScopedI < MActiveScriptCount; ++ScopedI)
+    {
+        ActiveScript& ScopedActive = MActiveScripts[ScopedI];
+        if (ScopedActive.Owner == InEntity)
+        {
+            ScopedActive.Program = InProgram;
+            ScopedActive.Nativized = InNativized;
+            ScopedActive.Stamp = MActiveStamp;
+            return;
+        }
+    }
+    if (MActiveScriptCount >= MActiveScripts.size())
+    {
+        ++MDroppedDestroyEvents;
+        return;
+    }
+    ActiveScript& ScopedActive = MActiveScripts[MActiveScriptCount++];
+    ScopedActive.Owner = InEntity;
+    ScopedActive.Program = InProgram;
+    ScopedActive.Nativized = InNativized;
+    ScopedActive.Stamp = MActiveStamp;
+}
+
+void ScriptRuntime::RunDestroyForInactive(Ecs::Registry& InRegistry, Script::VmContext& InContext,
+                                          bool InAllowVmFallback) noexcept
+{
+    std::uint32_t ScopedCursor = 0;
+    while (ScopedCursor < MActiveScriptCount)
+    {
+        ActiveScript& ScopedActive = MActiveScripts[ScopedCursor];
+        if (ScopedActive.Stamp == MActiveStamp)
+        {
+            ++ScopedCursor;
+            continue;
+        }
+        // Cooked builds run AOT modules, which have no Destroy entry point yet;
+        // the VM is the only backend that can dispatch the event.
+        if (InAllowVmFallback && !ScopedActive.Nativized && InRegistry.valid(ScopedActive.Owner))
+        {
+            if (const Script::BoundProgram* ScopedProgram = Program(ScopedActive.Program); ScopedProgram != nullptr)
+            {
+                ResetTransientNumbers();
+                InContext.self = ScopedActive.Owner;
+                Script::VmFault ScopedFault;
+                if (!MVm.Run(*ScopedProgram, Script::ScriptEvent::Destroy, ScopedActive.Owner, InContext, &ScopedFault))
+                {
+                    ReportFault(ScopedActive.Program, ScopedActive.Owner, ScopedFault);
+                }
+            }
+        }
+        ScopedActive = MActiveScripts[--MActiveScriptCount];
+    }
+}
+
 bool RunScriptOnce(ScriptRuntime& InRuntime, std::uint32_t InProgram, Entity InEntity, Script::ScriptEvent InEvent,
                    Script::VmContext& InContext, Script::VmFault* InFault)
 {
@@ -683,6 +919,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     {
         return;
     }
+    InRuntime.BeginScriptFrame();
 
     Script::VmContext ScopedVmContext{InContext.registry};
     ScopedVmContext.commands = InContext.commands;
@@ -692,7 +929,11 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     ScopedVmContext.dt = InContext.dt;
     ScopedVmContext.frameIndex = InContext.frameIndex;
     ScopedVmContext.transport = InRuntime.TransportGroups();
+    ScopedVmContext.physics = InRuntime.Physics();
+    ScopedVmContext.camera = InRuntime.CameraStack();
 
+    // Reused across entities: one string construction per tick, not per script.
+    std::string ScopedAotError;
     auto ScopedView = InContext.registry.view<ScriptComponent>();
     for (const Entity ScopedEntity : ScopedView)
     {
@@ -713,14 +954,14 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
         {
             continue;
         }
+        InRuntime.TrackScript(ScopedEntity, ScopedComponent.Program, ScopedNativized);
         InRuntime.ResetTransientNumbers();
 
         if (!ScopedNativized && !InAllowVmFallback)
         {
             // Cooked-build contract: a program without a native module is a build
             // error, not a reason to start the interpreter.
-            LogError("script", "program {} ({:016x}) has no AOT module and the VM fallback is disabled",
-                     ScopedComponent.Program, ScopedHash);
+            InRuntime.ReportMissingAot(ScopedComponent.Program, ScopedHash);
             (void)InRuntime.ReportUnnativized();
             ScopedComponent.Flags |= kScriptFlagStarted;
             continue;
@@ -728,19 +969,20 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
 
         if (ScopedNativized)
         {
-            std::string ScopedError;
+            ScopedAotError.clear();
             if ((ScopedComponent.Flags & kScriptFlagStarted) == 0)
             {
-                if (!InAot->Run(ScopedHash, Script::ScriptEvent::Start, ScopedEntity, ScopedVmContext, &ScopedError))
+                if (!InAot->Run(ScopedHash, Script::ScriptEvent::Start, ScopedEntity, ScopedVmContext, &ScopedAotError))
                 {
-                    LogWarn("script", "AOT start failed for {:016x}: {}", ScopedHash, ScopedError);
+                    LogWarn("script", "AOT start failed for {:016x}: {}", ScopedHash, ScopedAotError);
                 }
                 ScopedComponent.Flags |= kScriptFlagStarted;
             }
             (void)InRuntime.AotRun(ScopedComponent.Program);
-            if (!InAot->Run(ScopedHash, Script::ScriptEvent::Update, ScopedEntity, ScopedVmContext, &ScopedError))
+            ScopedAotError.clear();
+            if (!InAot->Run(ScopedHash, Script::ScriptEvent::Update, ScopedEntity, ScopedVmContext, &ScopedAotError))
             {
-                LogWarn("script", "AOT update failed for {:016x}: {}", ScopedHash, ScopedError);
+                LogWarn("script", "AOT update failed for {:016x}: {}", ScopedHash, ScopedAotError);
             }
             continue;
         }
@@ -764,5 +1006,6 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
             InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
         }
     }
+    InRuntime.RunDestroyForInactive(InContext.registry, ScopedVmContext, InAllowVmFallback);
 }
 }

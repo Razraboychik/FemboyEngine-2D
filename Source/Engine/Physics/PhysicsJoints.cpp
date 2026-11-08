@@ -1,6 +1,7 @@
 // FemboyEngine2D - Box2D v3 joint graph construction and break handling.
 #include "Engine/Physics/PhysicsJoints.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Schedule.hpp"
 
@@ -151,6 +152,8 @@ bool PhysicsJointSystem::Initialize(PhysicsSystem& InPhysics) noexcept
         return false;
     }
     MPhysics = &InPhysics;
+    MPhysicsInstanceId = InPhysics.InstanceId();
+    MPhysicsGeneration = InPhysics.Generation();
     if (MStorage == nullptr)
     {
         MStorage = std::make_unique<Storage>();
@@ -159,6 +162,7 @@ bool PhysicsJointSystem::Initialize(PhysicsSystem& InPhysics) noexcept
         {
             MStorage->FreeStack[MStorage->FreeCount++] = ScopedI - 1u;
         }
+        MStorage->ActiveCount = 0;
     }
     return true;
 }
@@ -278,6 +282,7 @@ std::uint32_t PhysicsJointSystem::AllocateConnection() noexcept
     ScopedConnection = ConnectionRuntime{};
     ScopedConnection.Active = true;
     ScopedConnection.Generation = ScopedGeneration;
+    MStorage->ActiveSlots[MStorage->ActiveCount++] = ScopedIndex;
     return ScopedIndex;
 }
 
@@ -297,6 +302,15 @@ void PhysicsJointSystem::FreeConnection(std::uint32_t InIndex) noexcept
     ScopedConnection.BodyB = 0;
     ScopedConnection.Active = false;
     ScopedConnection.Generation = ScopedConnection.Generation + 1u == 0 ? 1u : ScopedConnection.Generation + 1u;
+    // Remove from the compact active list (swap-pop; order has no meaning).
+    for (std::uint32_t ScopedCursor = 0; ScopedCursor < MStorage->ActiveCount; ++ScopedCursor)
+    {
+        if (MStorage->ActiveSlots[ScopedCursor] == InIndex)
+        {
+            MStorage->ActiveSlots[ScopedCursor] = MStorage->ActiveSlots[--MStorage->ActiveCount];
+            break;
+        }
+    }
     MStorage->FreeStack[MStorage->FreeCount++] = InIndex;
 }
 
@@ -710,28 +724,36 @@ bool PhysicsJointSystem::BreakConnection(Ecs::Registry& InRegistry, std::uint32_
 
 void PhysicsJointSystem::Update(Ecs::Registry& InRegistry, float InFixedDt) noexcept
 {
-    if (MStorage == nullptr || MPhysics == nullptr || !MPhysics->IsValid())
+    if (MStorage == nullptr || MPhysics == nullptr || !PhysicsSystem::IsLive(MPhysics, MPhysicsInstanceId) ||
+        MPhysics->Generation() != MPhysicsGeneration || !MPhysics->IsValid())
     {
         return;
     }
     // A body tie outlives neither endpoint. When gameplay destroys one of the
     // bodies, Box2D silently drops the joint, so the pool slot must follow.
-    for (std::uint32_t ScopedI = 0; ScopedI < kMaxConnections; ++ScopedI)
+    std::uint32_t ScopedCursor = 0;
+    while (ScopedCursor < MStorage->ActiveCount)
     {
+        const std::uint32_t ScopedI = MStorage->ActiveSlots[ScopedCursor];
         ConnectionRuntime* ScopedConnection = Connection(ScopedI);
         if (ScopedConnection == nullptr || (ScopedConnection->Flags & JointConnectionTie) == 0)
         {
+            ++ScopedCursor;
             continue;
         }
         if (ScopedConnection->ChainA != kNoChain || ScopedConnection->ChainB != kNoChain)
         {
+            ++ScopedCursor;
             continue;
         }
         if (!BodyIsLive(ScopedConnection->BodyA) || !BodyIsLive(ScopedConnection->BodyB))
         {
             ScopedConnection->Joint = 0;
+            // FreeConnection swap-pops the active list, so retry this cursor.
             FreeConnection(ScopedI);
+            continue;
         }
+        ++ScopedCursor;
     }
     const b2JointEvents ScopedEvents = b2World_GetJointEvents(b2LoadWorldId(MPhysics->WorldId()));
     for (int ScopedI = 0; ScopedI < ScopedEvents.count; ++ScopedI)
@@ -763,9 +785,28 @@ void PhysicsJointSystem::Update(Ecs::Registry& InRegistry, float InFixedDt) noex
         BreakConnection(InRegistry, ScopedIndex, ScopedReason);
     }
 
-    // Stress is opt-in telemetry; it never feeds back into the simulation.
-    for (std::uint32_t ScopedI = 0; ScopedI < kMaxConnections; ++ScopedI)
+    // A destroyed link body makes Box2D drop its joint silently. Mark the slot
+    // so the tension pass below never queries a dead body.
+    for (std::uint32_t ScopedCursor = 0; ScopedCursor < MStorage->ActiveCount; ++ScopedCursor)
     {
+        const std::uint32_t ScopedI = MStorage->ActiveSlots[ScopedCursor];
+        ConnectionRuntime* ScopedConnection = Connection(ScopedI);
+        if (ScopedConnection == nullptr || ScopedConnection->Joint == 0 ||
+            (ScopedConnection->Flags & JointConnectionTie) != 0)
+        {
+            continue;
+        }
+        if (!BodyIsLive(ScopedConnection->BodyA) || !BodyIsLive(ScopedConnection->BodyB))
+        {
+            ScopedConnection->Joint = 0;
+            ScopedConnection->Broken = true;
+        }
+    }
+
+    // Stress is opt-in telemetry; it never feeds back into the simulation.
+    for (std::uint32_t ScopedCursor = 0; ScopedCursor < MStorage->ActiveCount; ++ScopedCursor)
+    {
+        const std::uint32_t ScopedI = MStorage->ActiveSlots[ScopedCursor];
         ConnectionRuntime* ScopedConnection = Connection(ScopedI);
         if (ScopedConnection == nullptr || ScopedConnection->Broken || ScopedConnection->Joint == 0)
         {
@@ -793,11 +834,20 @@ void PhysicsJointSystem::Update(Ecs::Registry& InRegistry, float InFixedDt) noex
     // Rope tension model. It is telemetry plus an optional break cap; Box2D
     // still owns the constraint, so a locked tension never changes the solver.
     const float ScopedPixelsPerMeter = MPhysics->PixelsPerMeter();
-    for (std::uint32_t ScopedI = 0; ScopedI < kMaxConnections; ++ScopedI)
+    for (std::uint32_t ScopedCursor = 0; ScopedCursor < MStorage->ActiveCount; ++ScopedCursor)
     {
+        const std::uint32_t ScopedI = MStorage->ActiveSlots[ScopedCursor];
         ConnectionRuntime* ScopedConnection = Connection(ScopedI);
         if (ScopedConnection == nullptr || ScopedConnection->Broken || ScopedConnection->Joint == 0)
         {
+            continue;
+        }
+        // No authored tension model means CurrentTension is always zero; skip
+        // the two body queries for the common case.
+        if (ScopedConnection->Params.BaseTension <= 0.0f && ScopedConnection->Params.TensionPerDistance <= 0.0f)
+        {
+            ScopedConnection->CurrentTension = 0.0f;
+            ScopedConnection->TensionLocked = false;
             continue;
         }
         const b2Vec2 ScopedPositionA = b2Body_GetPosition(b2LoadBodyId(ScopedConnection->BodyA));
@@ -824,8 +874,9 @@ void PhysicsJointSystem::Update(Ecs::Registry& InRegistry, float InFixedDt) noex
     {
         return;
     }
-    for (std::uint32_t ScopedI = 0; ScopedI < kMaxConnections; ++ScopedI)
+    for (std::uint32_t ScopedCursor = 0; ScopedCursor < MStorage->ActiveCount; ++ScopedCursor)
     {
+        const std::uint32_t ScopedI = MStorage->ActiveSlots[ScopedCursor];
         ConnectionRuntime* ScopedConnection = Connection(ScopedI);
         if (ScopedConnection == nullptr || ScopedConnection->Broken || ScopedConnection->Joint == 0 ||
             ScopedConnection->Params.DamageRate <= 0.0f)
@@ -1691,7 +1742,7 @@ JointChainHandle PhysicsJointSystem::CreateChainInternal(Ecs::Registry& InRegist
         const float ScopedHalfLength = std::max(
             ScopedLengthMetres * 0.5f - ScopedRadiusMetres - 0.5f * ScopedJointGapMetres, 0.6f * B2_LINEAR_SLOP);
         const Vector2D ScopedCentre = (ScopedFrom + ScopedTo) * 0.5f;
-        const float ScopedAngle = std::atan2(ScopedDelta.Y, ScopedDelta.X);
+        const float ScopedAngle = Sim::Atan2(ScopedDelta.Y, ScopedDelta.X);
 
         const Entity ScopedEntity = InRegistry.create();
         ScopedStaged.Links[ScopedI] = ScopedEntity;

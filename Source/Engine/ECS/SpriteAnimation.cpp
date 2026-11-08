@@ -157,25 +157,37 @@ void SpriteAnimationSystem::Run(Ecs::Registry& InRegistry, float InDt) const
     Run(InRegistry, InDt, nullptr);
 }
 
-void SpriteAnimationSystem::Run(Ecs::SystemContext& InContext) const
+void SpriteAnimationSystem::Run(const Ecs::CoreSystemView& InView) const
 {
-    Run(InContext.registry, InContext.dt, nullptr);
+    Run(InView.registry, InView.dt, nullptr);
 }
 
-void SpriteAnimationSystem::Run(Ecs::SystemContext& InContext, SpriteAnimationEventQueue& InEvents) const
+void SpriteAnimationSystem::Run(const Ecs::CoreSystemView& InView, SpriteAnimationEventQueue& InEvents) const
 {
-    Run(InContext.registry, InContext.dt, &InEvents);
+    Run(InView.registry, InView.dt, &InEvents);
+}
+
+namespace
+{
+void SpriteAnimationSystemThunk(const Ecs::CoreSystemView& InView, void*)
+{
+    SpriteAnimationSystem{}.Run(InView);
+}
 }
 
 void RegisterSpriteAnimationSystem(Ecs::Schedule& InSchedule)
 {
-    (void)InSchedule.Add(
-        Ecs::Phase::FixedUpdate, "spriteAnimation", +[](Ecs::SystemContext& InContext, void*) { SpriteAnimationSystem{}.Run(InContext); });
+    (void)InSchedule.Add(Ecs::Phase::FixedUpdate, "spriteAnimation",
+                         +[](Ecs::SystemContext& InContext, void*)
+                         {
+                             Ecs::CoreSystemView ScopedView = InContext.CoreView();
+                             SpriteAnimationSystem{}.Run(ScopedView);
+                         });
 }
 
 void RegisterSpriteAnimationSystem(Ecs::SystemGraph& InGraph)
 {
-    (void)InGraph.Add(
-        Ecs::Phase::FixedUpdate, "spriteAnimation", +[](Ecs::SystemContext& InContext, void*) { SpriteAnimationSystem{}.Run(InContext); });
+    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "spriteAnimation",
+                      Ecs::BindCoreSystem<&SpriteAnimationSystemThunk>());
 }
 }

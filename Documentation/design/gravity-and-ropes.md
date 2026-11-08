@@ -29,11 +29,12 @@ It never needs its own collider and never applies to itself.
 
 | Field | Meaning |
 |---|---|
-| `Mode` | Attract or Repel |
+| `Mode` | Attract, Repel or Directional |
 | `Shape` | Circle or Box |
 | `Radius` / `HalfExtents` | Influence zone |
 | `Offset` | Local offset from the entity transform |
-| `Strength` | Acceleration at the centre |
+| `Direction` | Local-space push axis for Directional; rotated by the transform |
+| `Strength` | Acceleration inside the zone |
 | `Falloff` | None, Linear, Quadratic, Exponential |
 | `FalloffDepth` | Band from edge to centre; 0 means the whole zone |
 | `FalloffPower` | Exponential curve strength, 1..16 |
@@ -46,6 +47,14 @@ the centre it is 1. Exponential fields therefore do not create a hard ring at
 the edge. Attract points toward the centre, Repel points away from it. The
 system reads body mass from Box2D, so light and heavy bodies receive the same
 acceleration at the same point.
+
+Directional ignores the centre vector and pushes every body in the zone along
+`Direction`, normalized and rotated by the source transform. `Strength`,
+`Falloff`, `MaxAcceleration` and `AffectsCategoryBits` behave the same as in the
+radial modes, so a field can author wind, lift, conveyor or side-view
+anti-gravity without a centre point. A zero `Direction` disables that field.
+All modes are plain component data, so swapping Attract, Repel and Directional
+at runtime costs no allocation and takes effect on the next fixed step.
 
 ## Rope and chain tension
 

@@ -555,9 +555,28 @@ void TilemapRenderSystem::Collect(Ecs::Registry& InRegistry, Vector2D InViewMin,
                 }
                 Vector2D ScopedUvMin{};
                 Vector2D ScopedUvMax{};
-                if (!Tilemap::TileUv(ScopedMap, TileIndexOf(ScopedTile), &ScopedUvMin, &ScopedUvMax))
+                const std::uint16_t ScopedTileIndex = TileIndexOf(ScopedTile);
+                UvCacheEntry& ScopedCached = MUvCache[ScopedTileIndex % kUvCacheSize];
+                if (!ScopedCached.Valid || ScopedCached.TileIndex != ScopedTileIndex ||
+                    ScopedCached.AtlasColumns != ScopedMap.AtlasColumns ||
+                    ScopedCached.AtlasRows != ScopedMap.AtlasRows)
                 {
-                    continue;
+                    if (!Tilemap::TileUv(ScopedMap, ScopedTileIndex, &ScopedUvMin, &ScopedUvMax))
+                    {
+                        --MCellCount;
+                        continue;
+                    }
+                    ScopedCached.TileIndex = ScopedTileIndex;
+                    ScopedCached.AtlasColumns = ScopedMap.AtlasColumns;
+                    ScopedCached.AtlasRows = ScopedMap.AtlasRows;
+                    ScopedCached.UvMin = ScopedUvMin;
+                    ScopedCached.UvMax = ScopedUvMax;
+                    ScopedCached.Valid = true;
+                }
+                else
+                {
+                    ScopedUvMin = ScopedCached.UvMin;
+                    ScopedUvMax = ScopedCached.UvMax;
                 }
 
                 const Vector2D ScopedCenter = Tilemap::CellToWorld(ScopedMap, ScopedCell);

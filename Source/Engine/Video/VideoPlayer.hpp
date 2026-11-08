@@ -3,6 +3,8 @@
 
 #include "Engine/Video/Vp9Backend.hpp"
 #include "Engine/Video/VideoTypes.hpp"
+#include "Engine/Video/Av1Backend.hpp"
+#include "Engine/Video/VideoAudioStream.hpp"
 #include "Engine/Video/WebmDemuxer.hpp"
 
 #include "Engine/RHI/RHI.hpp"
@@ -49,7 +51,8 @@ public:
 
     // Opens a WebM/VP9 stream over a mapping that must outlive the player.
     [[nodiscard]] bool Open(std::span<const std::byte> InWebm, const Vp9Backend* InBackend,
-                            std::string* InError = nullptr, std::shared_ptr<const Fby::MappedFile> InOwner = nullptr);
+                            std::string* InError = nullptr, std::shared_ptr<const Fby::MappedFile> InOwner = nullptr,
+                            const Av1Backend* InAv1Backend = nullptr);
 
     // Stops the decoder thread (if any) and releases every resource.
     void Close();
@@ -68,6 +71,23 @@ public:
 
     // Render-side per-frame update: advance the clock, drop late frames, upload
     void Advance(float InDtSeconds, float InSpeed, bool InPaused, bool InLoop);
+    // Restarts video and audio at the first cluster. Frames already queued are
+    // retired by the epoch check in Advance().
+    void SeekToStart() noexcept;
+    // Seeks video to the last cluster at or before InTimestampNs. Audio restarts
+    // at that cluster; the caller should drop decoded PCM until the clocks align.
+    [[nodiscard]] bool SeekToNs(std::uint64_t InTimestampNs) noexcept;
+    // Opt-in: use the decoded audio clock as the video master clock. The host
+    // must call ReadAudio() each frame; when the audio clock has not advanced
+    // yet, the wall-clock delta is used as a fallback.
+    void SetAudioMasterClock(bool InEnabled) noexcept
+    {
+        MAudioMaster = InEnabled;
+    }
+    [[nodiscard]] bool AudioMasterClock() const noexcept
+    {
+        return MAudioMaster;
+    }
 
     [[nodiscard]] std::uint32_t TextureId() const noexcept
     {
@@ -80,6 +100,28 @@ public:
     [[nodiscard]] const WebmTrackInfo& Track() const noexcept
     {
         return MTrack;
+    }
+    [[nodiscard]] bool HasAudio() const noexcept
+    {
+        return MAudioTrack.trackNumber != 0;
+    }
+    [[nodiscard]] const WebmAudioTrackInfo& AudioTrack() const noexcept
+    {
+        return MAudioTrack;
+    }
+    // Decoded PCM is pumped from Advance() on the owner thread; the host reads
+    // it with ReadAudio() after Advance().
+    [[nodiscard]] std::uint32_t ReadAudio(std::span<float> OutInterleaved) noexcept
+    {
+        return MAudio.Read(OutInterleaved);
+    }
+    [[nodiscard]] std::uint64_t AudioClockNs() const noexcept
+    {
+        return MAudio.AudioClockNs();
+    }
+    [[nodiscard]] std::uint32_t QueuedAudioFrames() const noexcept
+    {
+        return MAudio.AvailableFrames();
     }
     [[nodiscard]] std::uint64_t PresentedFrames() const noexcept
     {
@@ -155,7 +197,14 @@ private:
 
     WebmDemuxer MDemuxer{};
     WebmTrackInfo MTrack{};
+    WebmAudioTrackInfo MAudioTrack{};
+    VideoAudioStream MAudio{};
+    std::atomic<std::int64_t> MSeekTargetNs{-1};
+    bool MAudioMaster = false;
     Vp9Backend MBackend{};
+    bool MAv1 = false;
+    bool MAv1SequenceSent = false;
+    std::vector<std::byte> MAv1Scratch;
     void* MMainDecoder = nullptr;
     void* MAlphaDecoder = nullptr;
 

@@ -652,9 +652,16 @@ void NavigationSystem::EnsureRuntimeState(Ecs::Registry& InRegistry) noexcept
     for (auto [ScopedEntity, ScopedSettings] : ScopedView.each())
     {
         (void)ScopedSettings;
-        if (InRegistry.try_get<NavAgentComponent>(ScopedEntity) == nullptr && ScopedMissingCount < ScopedMissing.size())
+        if (InRegistry.try_get<NavAgentComponent>(ScopedEntity) == nullptr)
         {
-            ScopedMissing[ScopedMissingCount++] = ScopedEntity;
+            if (ScopedMissingCount < ScopedMissing.size())
+            {
+                ScopedMissing[ScopedMissingCount++] = ScopedEntity;
+            }
+            else
+            {
+                ++MDroppedRuntimeStates;
+            }
         }
     }
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedMissingCount; ++ScopedI)

@@ -2,7 +2,7 @@
  *
  * This header is plain C: a plugin may be compiled by any compiler that matches
  * the host's C++ ABI (GCC/MinGW on Windows, GCC/Clang on Linux, Clang on
- * macOS/iOS/Android). The exported entry points are `extern "C"`, the tables
+ * macOS). The exported entry points are `extern "C"`, the tables
  * are POD, and the only C++ type crossing the boundary is the EnTT registry,
  * which the plugin receives as an opaque pointer and casts back after checking
  * the ABI version.

@@ -47,14 +47,14 @@ int main()
     ScopedContext.cloth = &ScopedCloth;
 
     ClothDesc ScopedDesc;
-    ScopedDesc.origin = Vector2D{0.0f, 0.0f};
-    ScopedDesc.size = Vector2D{64.0f, 64.0f};
-    ScopedDesc.columns = 4;
-    ScopedDesc.rows = 4;
-    ScopedDesc.flags = 0;
-    ScopedDesc.gravity = Vector2D{0.0f, 0.0f};
-    ScopedDesc.wind = Vector2D{0.0f, 0.0f};
-    ScopedDesc.solverIterations = 2;
+    ScopedDesc.Origin = Vector2D{0.0f, 0.0f};
+    ScopedDesc.Size = Vector2D{64.0f, 64.0f};
+    ScopedDesc.Columns = 4;
+    ScopedDesc.Rows = 4;
+    ScopedDesc.Flags = 0;
+    ScopedDesc.Gravity = Vector2D{0.0f, 0.0f};
+    ScopedDesc.Wind = Vector2D{0.0f, 0.0f};
+    ScopedDesc.SolverIterations = 2;
     const ClothHandle ScopedHandle = ScopedCloth.Create(ScopedRegistry, ScopedDesc);
     FBY_CHECK(ScopedHandle.IsValid());
     // ClothSystem::Create() owns the marker entity: it emplaces ClothComponent
@@ -64,7 +64,7 @@ int main()
 
     ClothRenderSystem ScopedBridge;
     ScopedBridge.Initialize(&ScopedCloth);
-    ScopedBridge.Collect(ScopedContext);
+    ScopedBridge.Collect(ScopedRegistry);
     FBY_CHECK(!ScopedBridge.Truncated());
     FBY_CHECK(ScopedBridge.DrawCount() == 1);
 
@@ -99,8 +99,7 @@ int main()
     // A missing cloth system is a clean no-op, not a crash.
     ClothRenderSystem ScopedDetached;
     ScopedDetached.Initialize(nullptr);
-    Ecs::SystemContext ScopedNoCloth{ScopedRegistry, ScopedJobs};
-    ScopedDetached.Collect(ScopedNoCloth);
+    ScopedDetached.Collect(ScopedRegistry);
     FBY_CHECK(ScopedDetached.DrawCount() == 0);
 
     ScopedCloth.Shutdown(ScopedRegistry);

@@ -1,6 +1,7 @@
 // FemboyEngine2D - world distance field owner implementation.
 #include "Engine/Physics/SdfWorld.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/ECS/Tilemap.hpp"
@@ -29,8 +30,8 @@ namespace
 
 [[nodiscard]] Vector2D RotatePoint(Vector2D InPoint, float InRadians) noexcept
 {
-    const float ScopedCos = std::cos(InRadians);
-    const float ScopedSin = std::sin(InRadians);
+    const float ScopedCos = Sim::Cos(InRadians);
+    const float ScopedSin = Sim::Sin(InRadians);
     return Vector2D{InPoint.X * ScopedCos - InPoint.Y * ScopedSin, InPoint.X * ScopedSin + InPoint.Y * ScopedCos};
 }
 

@@ -5,11 +5,17 @@
 #include "Engine/Core/Types.hpp"
 
 #include <array>
+#include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <mutex>
 #include <span>
 #include <string_view>
+#include <thread>
 #include <type_traits>
+#include <unordered_set>
 
 namespace Fby
 {
@@ -112,6 +118,7 @@ class VirtualTextureSystem
 {
 public:
     VirtualTextureSystem() = default;
+    ~VirtualTextureSystem();
 
     VirtualTextureSystem(const VirtualTextureSystem&) = delete;
     VirtualTextureSystem& operator=(const VirtualTextureSystem&) = delete;
@@ -142,6 +149,20 @@ public:
     {
         return MMaxLoadsPerUpdate;
     }
+    // Async is the default: RequestTiles/Update only enqueue requests; the
+    // worker reads chunks and PollLoads commits ready tiles within the budget.
+    // SetAsyncLoading(false) keeps the synchronous path for offline tools.
+    void SetAsyncLoading(bool InEnabled) noexcept;
+    [[nodiscard]] bool AsyncLoading() const noexcept
+    {
+        return MAsync;
+    }
+    // Commits ready tiles, at most MaxLoadsPerUpdate per call.
+    void PollLoads() noexcept;
+    // Blocks until the IO worker has finished every queued request. It does not
+    // commit the results; call PollLoads() afterwards (tests and shutdown paths).
+    void WaitForPendingLoads() noexcept;
+    [[nodiscard]] std::uint32_t PendingLoadCount() const noexcept;
     // Extra rings of tiles loaded around the camera by the camera-driven pass.
     void SetPrefetchTiles(std::uint32_t InTiles) noexcept
     {
@@ -217,6 +238,35 @@ private:
     void InsertHash(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InSlot, std::uint32_t InLayer) noexcept;
     void RemoveHash(std::int64_t InTileX, std::int64_t InTileY) noexcept;
 
+    struct LoadRequest
+    {
+        std::int64_t TileX = 0;
+        std::int64_t TileY = 0;
+        std::uint32_t Layer = 0;
+    };
+
+    struct LoadResult
+    {
+        std::int64_t TileX = 0;
+        std::int64_t TileY = 0;
+        std::uint32_t Layer = 0;
+        std::span<const std::byte> Bytes{};
+        bool Found = false;
+    };
+
+    static constexpr std::uint32_t kMaxAsyncRequests = 256;
+    static constexpr std::uint32_t kMaxAsyncResults = 256;
+
+    [[nodiscard]] static std::uint64_t PackTileKey(std::int64_t InTileX, std::int64_t InTileY) noexcept;
+    [[nodiscard]] bool ReadChunk(std::int64_t InTileX, std::int64_t InTileY,
+                                 std::span<const std::byte>* OutBytes) const noexcept;
+    [[nodiscard]] bool CommitTile(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer,
+                                  std::span<const std::byte> InBytes, std::uint32_t* OutSlot) noexcept;
+    void WorkerMain() noexcept;
+    void EnqueueLoad(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer) noexcept;
+    [[nodiscard]] bool IsPending(std::int64_t InTileX, std::int64_t InTileY) const noexcept;
+    void DrainReadyLoads(std::uint32_t InBudget) noexcept;
+
     [[nodiscard]] std::uint32_t ChooseVictim(std::uint32_t InLayer) noexcept;
     [[nodiscard]] bool LoadTile(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer,
                                 std::uint32_t* OutSlot) noexcept;
@@ -249,6 +299,18 @@ private:
     std::array<std::byte, 128u * 128u * 4u> MTileScratch{};
     std::array<VirtualTextureTableUpdate, 512> MTableUpdates{};
     std::uint32_t MTableUpdateCount = 0;
+
+    // Async IO worker. Requests hold tile ids; results hold chunk spans into the
+    // VFS mapping, which is immutable for the mount lifetime.
+    mutable std::mutex MMutex;
+    std::condition_variable MWake;
+    std::deque<LoadRequest> MRequests;
+    std::deque<LoadResult> MResults;
+    std::unordered_set<std::uint64_t> MPending;
+    std::thread MWorker;
+    std::uint32_t MInFlight = 0;
+    bool MStop = false;
+    bool MAsync = true;
 };
 }
 }

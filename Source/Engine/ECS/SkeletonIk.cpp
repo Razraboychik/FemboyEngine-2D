@@ -1,6 +1,8 @@
 // FemboyEngine2D - two-bone and FABRIK solvers, retargeting and pose quantization.
 #include "Engine/ECS/SkeletonIk.hpp"
 
+#include "Engine/Core/SimMath.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -10,7 +12,6 @@ namespace Fby::Skeletal
 namespace
 {
 constexpr float kEpsilon = 1.0e-5f;
-constexpr float kPi = 3.14159265358979323846f;
 
 [[nodiscard]] Vector2D Origin(const SkeletonComponent& InSkeleton, std::uint16_t InBone) noexcept
 {
@@ -21,7 +22,7 @@ constexpr float kPi = 3.14159265358979323846f;
 [[nodiscard]] float WorldRotation(const SkeletonComponent& InSkeleton, std::uint16_t InBone) noexcept
 {
     const Mat3& ScopedMatrix = InSkeleton.GlobalMatrices[InBone];
-    return std::atan2(ScopedMatrix.m[1], ScopedMatrix.m[0]);
+    return Sim::Atan2(ScopedMatrix.m[1], ScopedMatrix.m[0]);
 }
 
 [[nodiscard]] float WrapAngle(float InAngle) noexcept
@@ -30,20 +31,7 @@ constexpr float kPi = 3.14159265358979323846f;
     {
         return 0.0f;
     }
-    float ScopedAngle = InAngle;
-    if (ScopedAngle > 2.0f * kPi || ScopedAngle < -2.0f * kPi)
-    {
-        ScopedAngle = std::fmod(ScopedAngle, 2.0f * kPi);
-    }
-    while (ScopedAngle > kPi)
-    {
-        ScopedAngle -= 2.0f * kPi;
-    }
-    while (ScopedAngle < -kPi)
-    {
-        ScopedAngle += 2.0f * kPi;
-    }
-    return ScopedAngle;
+    return Sim::WrapPi(InAngle);
 }
 
 [[nodiscard]] float LerpAngle(float InFrom, float InTo, float InWeight) noexcept
@@ -101,8 +89,8 @@ constexpr float kPi = 3.14159265358979323846f;
 {
     const std::uint16_t ScopedTip = InChain.Bones[InChain.BoneCount - 1];
     const float ScopedRotation = WorldRotation(InSkeleton, ScopedTip);
-    const float ScopedCosine = std::cos(ScopedRotation);
-    const float ScopedSine = std::sin(ScopedRotation);
+    const float ScopedCosine = Sim::Cos(ScopedRotation);
+    const float ScopedSine = Sim::Sin(ScopedRotation);
     return Vector2D{InChain.Target.X + InChain.TipOffset.X * ScopedCosine - InChain.TipOffset.Y * ScopedSine,
                     InChain.Target.Y + InChain.TipOffset.X * ScopedSine + InChain.TipOffset.Y * ScopedCosine};
 }
@@ -136,7 +124,7 @@ bool SolveTwoBone(SkeletonComponent& InSkeleton, const IkChain& InChain) noexcep
     const float ScopedMinimum = std::fabs(ScopedLength1 - ScopedLength2) + kEpsilon;
     const float ScopedMaximum = ScopedLength1 + ScopedLength2 - kEpsilon;
     const float ScopedDistance = std::clamp(ScopedDistanceRaw, ScopedMinimum, std::max(ScopedMinimum, ScopedMaximum));
-    const float ScopedBaseAngle = std::atan2(ScopedToTarget.Y, ScopedToTarget.X);
+    const float ScopedBaseAngle = Sim::Atan2(ScopedToTarget.Y, ScopedToTarget.X);
 
     // Circle intersection: the elbow lies `Along` down the root->target line and
     // `Perpendicular` to it; the pole sign picks which of the two solutions.
@@ -146,15 +134,15 @@ bool SolveTwoBone(SkeletonComponent& InSkeleton, const IkChain& InChain) noexcep
     const float ScopedHeightSquared = ScopedLength1 * ScopedLength1 - ScopedAlong * ScopedAlong;
     const float ScopedPerpendicular = ScopedHeightSquared > 0.0f ? std::sqrt(ScopedHeightSquared) : 0.0f;
     const float ScopedSign = InChain.PoleAngle >= 0.0f ? 1.0f : -1.0f;
-    const float ScopedCosine = std::cos(ScopedBaseAngle);
-    const float ScopedSine = std::sin(ScopedBaseAngle);
+    const float ScopedCosine = Sim::Cos(ScopedBaseAngle);
+    const float ScopedSine = Sim::Sin(ScopedBaseAngle);
     const Vector2D ScopedDirection{ScopedCosine, ScopedSine};
     const Vector2D ScopedNormal{-ScopedSine, ScopedCosine};
     const Vector2D ScopedElbow = ScopedRootPosition + ScopedDirection * ScopedAlong +
                                  ScopedNormal * (ScopedPerpendicular * ScopedSign);
 
-    const float ScopedRootWorld = std::atan2(ScopedElbow.Y - ScopedRootPosition.Y, ScopedElbow.X - ScopedRootPosition.X);
-    const float ScopedMidWorld = std::atan2(ScopedTarget.Y - ScopedElbow.Y, ScopedTarget.X - ScopedElbow.X);
+    const float ScopedRootWorld = Sim::Atan2(ScopedElbow.Y - ScopedRootPosition.Y, ScopedElbow.X - ScopedRootPosition.X);
+    const float ScopedMidWorld = Sim::Atan2(ScopedTarget.Y - ScopedElbow.Y, ScopedTarget.X - ScopedElbow.X);
     const float ScopedRootParent = ParentWorldRotation(InSkeleton, ScopedRoot);
     const float ScopedWeight = std::clamp(InChain.Weight, 0.0f, 1.0f);
 
@@ -244,7 +232,7 @@ bool SolveFabrik(SkeletonComponent& InSkeleton, const IkChain& InChain) noexcept
             ScopedParentWorld += InSkeleton.LocalRotations[InChain.Bones[ScopedI]];
             continue;
         }
-        const float ScopedDesiredWorld = std::atan2(ScopedDelta.Y, ScopedDelta.X);
+        const float ScopedDesiredWorld = Sim::Atan2(ScopedDelta.Y, ScopedDelta.X);
         const std::uint16_t ScopedBone = InChain.Bones[ScopedI];
         const float ScopedLocal = WrapAngle(LerpAngle(InSkeleton.LocalRotations[ScopedBone],
                                                       ScopedDesiredWorld - ScopedParentWorld, ScopedWeight));
@@ -376,9 +364,9 @@ std::uint32_t SolveIkComponent(SkeletonComponent& InSkeleton, const IkComponent&
     return ScopedSolved;
 }
 
-void IkSystem(Ecs::SystemContext& InContext) noexcept
+void IkSystem(const Ecs::CoreSystemView& InView) noexcept
 {
-    auto ScopedView = InContext.registry.view<SkeletonComponent, IkComponent>();
+    auto ScopedView = InView.registry.view<SkeletonComponent, IkComponent>();
     for (auto [ScopedEntity, ScopedSkeleton, ScopedIk] : ScopedView.each())
     {
         (void)ScopedEntity;
@@ -386,7 +374,7 @@ void IkSystem(Ecs::SystemContext& InContext) noexcept
     }
     // Authored goals are the serializable path. They run after the runtime chain
     // list so an inspector-authored goal wins over a code-built component.
-    auto ScopedGoalView = InContext.registry.view<SkeletonComponent, IkGoalComponent>();
+    auto ScopedGoalView = InView.registry.view<SkeletonComponent, IkGoalComponent>();
     for (auto [ScopedEntity, ScopedSkeleton, ScopedGoal] : ScopedGoalView.each())
     {
         (void)ScopedEntity;

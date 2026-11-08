@@ -120,7 +120,7 @@ int main()
     std::array<Rhi::RenderKey, 16> ScopedKeys{};
     std::array<Rhi::DrawBatch, 2> ScopedBatches{};
     Ui::FrameOutput ScopedOutput{ScopedItems, ScopedKeys, ScopedBatches, 0};
-    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext, ScopedCanvas, ScopedOutput) == Ui::BuildStatus::Ok);
+    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext.UiView(), ScopedCanvas, ScopedOutput) == Ui::BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 2);
     FBY_CHECK(ScopedItems[0].size.X > 0.0f && ScopedItems[0].uvMax.X <= 1.0f);
 
@@ -300,6 +300,24 @@ int main()
         FBY_CHECK(!Ecs::RestoreSnapshot(ScopedOther, ScopedSchema, ScopedBad, &ScopedOtherRng));
     }
 
+    // A payload size that wraps the total-size arithmetic must be rejected
+    // without reading past the buffer.
+    {
+        std::array<std::byte, sizeof(Ecs::SnapshotHeader)> ScopedBad{};
+        Ecs::SnapshotHeader ScopedHeader{};
+        std::memcpy(ScopedHeader.magic, Ecs::kSnapshotMagic, sizeof(ScopedHeader.magic));
+        ScopedHeader.version = Ecs::kSnapshotVersion;
+        ScopedHeader.flags = Ecs::SnapshotFull;
+        ScopedHeader.entityCount = 0;
+        ScopedHeader.componentCount = 0;
+        // 8 + payloadBytes + extensionBytes wraps to the 104-byte header size.
+        ScopedHeader.payloadBytes = 0xFFFFFFFFFFFFFF38ull;
+        ScopedHeader.extensionBytes = 96;
+        ScopedHeader.extensionOffset = ScopedHeader.payloadBytes;
+        std::memcpy(ScopedBad.data(), &ScopedHeader, sizeof(ScopedHeader));
+        FBY_CHECK(!Ecs::ValidateSnapshot(ScopedBad, ScopedSchema));
+    }
+
     // A component count that cannot fit the payload is rejected by the parser,
     // not reserved inside a noexcept function.
     {
@@ -377,13 +395,13 @@ int main()
     ClothSystem ScopedCloth;
     FBY_CHECK(ScopedCloth.Initialize(nullptr));
     ClothDesc ScopedClothDesc;
-    ScopedClothDesc.origin = Vector2D{0.0f, 0.0f};
-    ScopedClothDesc.size = Vector2D{64.0f, 64.0f};
-    ScopedClothDesc.columns = 4;
-    ScopedClothDesc.rows = 4;
+    ScopedClothDesc.Origin = Vector2D{0.0f, 0.0f};
+    ScopedClothDesc.Size = Vector2D{64.0f, 64.0f};
+    ScopedClothDesc.Columns = 4;
+    ScopedClothDesc.Rows = 4;
     const ClothHandle ScopedClothHandle = ScopedCloth.Create(ScopedRegistry, ScopedClothDesc);
     FBY_CHECK(ScopedClothHandle.IsValid());
-    FBY_CHECK(ScopedCloth.Info(ScopedClothHandle).clothId.IsValid());
+    FBY_CHECK(ScopedCloth.Info(ScopedClothHandle).Id.IsValid());
     Rhi::MeshRenderItem ScopedMesh{};
     FBY_CHECK(ScopedCloth.WriteMesh(ScopedClothHandle, ScopedMesh));
     FBY_CHECK((ScopedMesh.flags & Rhi::MeshItemUnskinned) != 0);

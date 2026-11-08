@@ -80,7 +80,11 @@ struct ReleaseCookConfig
     char archivePath[kReleasePathBytes] = {};
     char packerPath[kReleasePathBytes] = {};
     char engineSourcePath[kReleasePathBytes] = {};
+#if defined(_WIN32)
     char compiler[kReleaseNameBytes] = "clang-cl";
+#else
+    char compiler[kReleaseNameBytes] = "clang++";
+#endif
     char moduleName[kReleaseNameBytes] = "logic_graph";
     char keySeedPath[kReleasePathBytes] = {};
     char keyHeaderPath[kReleasePathBytes] = {};

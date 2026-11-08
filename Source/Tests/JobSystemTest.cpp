@@ -40,6 +40,9 @@ int main()
         ScopedJobs.Submit(&IncrementThunk, &ScopedDone, 0, 0);
         ScopedJobs.WaitIdle();
         Check(ScopedDone.load() == 1, "a task after a throwing task still runs");
+        Check(ScopedJobs.HasFaulted(), "the throwing task is latched as a fault");
+        ScopedJobs.ClearFault();
+        Check(!ScopedJobs.HasFaulted(), "the fault latch can be cleared after handling");
     }
 
     // The destructor drains queued work instead of dropping it.

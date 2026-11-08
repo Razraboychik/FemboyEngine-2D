@@ -339,7 +339,7 @@ bool MaterialGraphPanel::RebuildWithoutNodes(Render::MaterialGraph& InGraph, std
             continue;
         }
         const Render::MaterialNode& ScopedRecord = InGraph.Node(ScopedNode);
-        for (std::uint8_t ScopedSlot = 0; ScopedSlot < ScopedRecord.inputCount; ++ScopedSlot)
+        for (std::uint16_t ScopedSlot = 0; ScopedSlot < ScopedRecord.inputCount; ++ScopedSlot)
         {
             const Render::MaterialPin& ScopedPin =
                 InGraph.Pin(static_cast<std::uint16_t>(ScopedRecord.firstInput + ScopedSlot));
@@ -421,7 +421,7 @@ std::uint32_t MaterialGraphPanel::ModelLinkCount(void* InUser) noexcept
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedGraph.NodeCount(); ++ScopedIndex)
     {
         const Render::MaterialNode& ScopedNode = ScopedGraph.Node(static_cast<std::uint16_t>(ScopedIndex));
-        for (std::uint8_t ScopedSlot = 0; ScopedSlot < ScopedNode.inputCount; ++ScopedSlot)
+        for (std::uint16_t ScopedSlot = 0; ScopedSlot < ScopedNode.inputCount; ++ScopedSlot)
         {
             if (ScopedGraph.Pin(static_cast<std::uint16_t>(ScopedNode.firstInput + ScopedSlot)).sourceNode !=
                 Render::kInvalidMaterialNode)
@@ -442,7 +442,7 @@ void MaterialGraphPanel::ModelLinkEndpoints(void* InUser, std::uint32_t InLink, 
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedGraph.NodeCount(); ++ScopedIndex)
     {
         const Render::MaterialNode& ScopedNode = ScopedGraph.Node(static_cast<std::uint16_t>(ScopedIndex));
-        for (std::uint8_t ScopedSlot = 0; ScopedSlot < ScopedNode.inputCount; ++ScopedSlot)
+        for (std::uint16_t ScopedSlot = 0; ScopedSlot < ScopedNode.inputCount; ++ScopedSlot)
         {
             const Render::MaterialPin& ScopedPin =
                 ScopedGraph.Pin(static_cast<std::uint16_t>(ScopedNode.firstInput + ScopedSlot));

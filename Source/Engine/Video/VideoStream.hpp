@@ -18,6 +18,11 @@
 namespace Fby
 {
 class VirtualFileSystem;
+
+namespace Ecs
+{
+class SystemGraph;
+}
 namespace Assets
 {
 class AssetDatabase;
@@ -39,11 +44,13 @@ struct VideoStreamComponent
     bool Loop = false;
     bool Paused = false;
     float Speed = 1.0f;
+    // Owner token assigned by Open(); a stale token means the slot was reused.
+    std::uint32_t StreamId = 0;
 };
 
 static_assert(std::is_trivially_copyable_v<VideoStreamComponent>, "a component must be trivially copyable");
 static_assert(std::is_standard_layout_v<VideoStreamComponent>, "a component must be standard layout");
-static_assert(sizeof(VideoStreamComponent) == 32, "VideoStreamComponent is ids/state only");
+static_assert(sizeof(VideoStreamComponent) == 36, "VideoStreamComponent is ids/state only");
 
 // Owns the fixed player-slot array. One instance per game session; the editor
 class VideoSystem
@@ -89,9 +96,19 @@ public:
 
     // PostUpdate entry point: no allocation, no blocking, no GPU wait.
     void Update(Ecs::SystemContext& InContext);
+    void Update(Ecs::Registry& InRegistry, float InDeltaSeconds);
 
     // Convenience for the Schedule-based sandbox/editor: registers Update in
     [[nodiscard]] static bool Register(Ecs::Schedule& InSchedule, VideoSystem& InSystem);
+    // SystemGraph overload for the current scheduler.
+    [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, VideoSystem& InSystem);
+    // Opt-in: close used slots whose component was not seen by the last Update
+    // (the component was destroyed without Close). Off by default because a
+    // preview component may live in a different registry.
+    void SetPruneOrphans(bool InEnabled) noexcept
+    {
+        MPruneOrphans = InEnabled;
+    }
 
     [[nodiscard]] VideoPlayer* Player(std::uint32_t InSlot) noexcept;
     [[nodiscard]] const VideoPlayer* Player(std::uint32_t InSlot) const noexcept;
@@ -114,6 +131,10 @@ private:
     bool MInitialized = false;
     std::array<VideoPlayer, kMaxVideoPlayers> MPlayers{};
     std::array<bool, kMaxVideoPlayers> MSlotUsed{};
+    std::array<std::uint32_t, kMaxVideoPlayers> MStreamIds{};
+    std::array<bool, kMaxVideoPlayers> MSlotSeen{};
+    std::uint32_t MNextStreamId = 0;
+    bool MPruneOrphans = false;
     // Reused by Open()/OpenMemory() error paths only. The steady-state path
     std::string MErrorText{};
 };
@@ -127,4 +148,5 @@ FBY_REFLECT_COMPONENT(Fby::Video::VideoStreamComponent, "VideoStreamComponent",
                       FBY_FIELD(Fby::Video::VideoStreamComponent, Flags, UInt32),
                       FBY_FIELD(Fby::Video::VideoStreamComponent, Loop, Bool),
                       FBY_FIELD(Fby::Video::VideoStreamComponent, Paused, Bool),
-                      FBY_FIELD(Fby::Video::VideoStreamComponent, Speed, Float))
+                      FBY_FIELD(Fby::Video::VideoStreamComponent, Speed, Float),
+                      FBY_FIELD(Fby::Video::VideoStreamComponent, StreamId, UInt32))

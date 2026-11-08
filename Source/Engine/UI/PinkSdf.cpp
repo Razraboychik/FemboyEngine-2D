@@ -52,7 +52,7 @@ std::uint32_t BuildCardBoardPrimitives(Ecs::Registry& InRegistry, std::uint32_t 
     for (const Entity ScopedEntity : ScopedBoards)
     {
         const CardBoardComponent& ScopedCandidate = ScopedBoards.get<CardBoardComponent>(ScopedEntity);
-        if (ScopedCandidate.boardId == InBoardId)
+        if (ScopedCandidate.BoardId == InBoardId)
         {
             ScopedBoard = &ScopedCandidate;
             break;
@@ -71,27 +71,27 @@ std::uint32_t BuildCardBoardPrimitives(Ecs::Registry& InRegistry, std::uint32_t 
             break;
         }
         const SlotComponent& ScopedSlot = ScopedSlots.get<SlotComponent>(ScopedEntity);
-        if (ScopedSlot.boardId != InBoardId)
+        if (ScopedSlot.BoardId != InBoardId)
         {
             continue;
         }
         const SlotLayout ScopedLayout = ComputeSlotLayout(*ScopedBoard, ScopedSlot);
-        const bool ScopedFaceUp = (ScopedSlot.flags & SlotFaceUp) != 0;
-        const bool ScopedSelected = (ScopedSlot.flags & SlotSelected) != 0;
-        const Color32 ScopedFill = ScopedFaceUp ? Color32::White() : ScopedBoard->backColor;
+        const bool ScopedFaceUp = (ScopedSlot.Flags & SlotFaceUp) != 0;
+        const bool ScopedSelected = (ScopedSlot.Flags & SlotSelected) != 0;
+        const Color32 ScopedFill = ScopedFaceUp ? Color32::White() : ScopedBoard->BackColor;
         PinkSdfPrimitive ScopedCard{};
-        ScopedCard.center = ScopedLayout.position;
-        ScopedCard.size = ScopedBoard->cardSize;
-        ScopedCard.radius = std::min(ScopedBoard->cardSize.X, ScopedBoard->cardSize.Y) * 0.085f;
+        ScopedCard.center = ScopedLayout.Position;
+        ScopedCard.size = ScopedBoard->CardSize;
+        ScopedCard.radius = std::min(ScopedBoard->CardSize.X, ScopedBoard->CardSize.Y) * 0.085f;
         ScopedCard.border = ScopedSelected ? 3.0f : 1.5f;
-        ScopedCard.rotation = ScopedLayout.rotation;
+        ScopedCard.rotation = ScopedLayout.Rotation;
         ScopedCard.shape = PinkSdfShape::Card;
         ScopedCard.flags = PinkSdfShadow | (ScopedSelected ? PinkSdfSelected : 0u);
         ScopedCard.fill = ScopedFill;
         ScopedCard.borderColor = ScopedSelected ? Color32::FromBytes(232, 93, 158) : Color32::FromBytes(40, 40, 48);
         OutPrimitives[ScopedWritten++] = ScopedCard;
         PinkSdfPrimitive ScopedShadow = ScopedCard;
-        ScopedShadow.center = ScopedLayout.position + Vector2D{4.0f, 7.0f};
+        ScopedShadow.center = ScopedLayout.Position + Vector2D{4.0f, 7.0f};
         ScopedShadow.radius = ScopedCard.radius + 2.0f;
         ScopedShadow.fill = Color32::FromBytes(0, 0, 0, 70);
         ScopedShadow.border = 0.0f;

@@ -172,6 +172,18 @@ public:
     }
 
 private:
+    // Direct-mapped UV cache: visible cells repeat the same few tile indices.
+    struct UvCacheEntry
+    {
+        std::uint16_t TileIndex = 0;
+        std::uint32_t AtlasColumns = 0;
+        std::uint32_t AtlasRows = 0;
+        Vector2D UvMin{};
+        Vector2D UvMax{};
+        bool Valid = false;
+    };
+    static constexpr std::uint32_t kUvCacheSize = 64;
+    std::array<UvCacheEntry, kUvCacheSize> MUvCache{};
     std::array<TileQuad, kMaxQuads> MQuads{};
     std::uint32_t MCount = 0;
     std::uint32_t MCellCount = 0;

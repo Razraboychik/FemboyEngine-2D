@@ -128,7 +128,7 @@ int main()
     ScopedContext.renderer = ScopedGpu.get();
     ScopedContext.fonts = &ScopedFonts;
 
-    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext, ScopedCanvas, ScopedOutput) == Ui::BuildStatus::Ok);
+    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext.UiView(), ScopedCanvas, ScopedOutput) == Ui::BuildStatus::Ok);
     FBY_CHECK(ScopedFonts.Mounted());
     FBY_CHECK(ScopedOutput.fontTextureArray == ScopedFonts.TextureArray().id);
     FBY_CHECK(ScopedOutput.batchesWritten == 1);
@@ -156,7 +156,7 @@ int main()
     ScopedImageOutput.items = ScopedItems;
     ScopedImageOutput.keys = ScopedKeys;
     ScopedImageOutput.batches = ScopedBatches;
-    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext, ScopedImageCanvas, ScopedImageOutput) ==
+    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext.UiView(), ScopedImageCanvas, ScopedImageOutput) ==
               Ui::BuildStatus::Ok);
     FBY_CHECK(ScopedImageOutput.fontTextureArray == 0xFFFFFFFFu);
     FBY_CHECK(ScopedBatches[0].textureArray == 3);
@@ -178,7 +178,7 @@ int main()
 #if defined(FBY_ENABLE_ASSERTS) && FBY_ENABLE_ASSERTS
     std::printf("pinkui_font_mount_test: assert build, unmounted-frame probe skipped by design\n");
 #else
-    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext, ScopedSimpleCanvas, ScopedUnmountedOutput) ==
+    FBY_CHECK(Ui::WidgetCanvasSystem::BuildFrame(ScopedContext.UiView(), ScopedSimpleCanvas, ScopedUnmountedOutput) ==
               Ui::BuildStatus::FontsNotMounted);
     FBY_CHECK(!ScopedUnmounted.Mounted());
     FBY_CHECK(ScopedUnmountedOutput.fontContractViolated);

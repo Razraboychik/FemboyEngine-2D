@@ -201,8 +201,8 @@ void SkeletonSystem::Run(entt::registry& InRegistry) const
     }
 }
 
-void SkeletonSystem::Run(Ecs::SystemContext& InContext) const
+void SkeletonSystem::Run(const Ecs::CoreSystemView& InView) const
 {
-    Run(InContext.registry);
+    Run(InView.registry);
 }
 }

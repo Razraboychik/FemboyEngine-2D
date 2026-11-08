@@ -202,7 +202,17 @@ std::vector<std::byte> FempakWriter::Build(std::string* InError) const
         ScopedEntry.pathSize = static_cast<std::uint32_t>(ScopedInput.path.size());
         ScopedEntry.offset = ScopedPayloadOffsets[ScopedI];
         ScopedEntry.size = ScopedInput.bytes.size();
-        std::memcpy(ScopedOut.data() + ScopedEntryTableOffset + ScopedI * sizeof(PakEntry), &ScopedEntry,
+        const std::size_t ScopedEntryOffset =
+            ScopedEntryTableOffset + static_cast<std::size_t>(ScopedI) * sizeof(PakEntry);
+        if (ScopedEntryOffset + sizeof(PakEntry) > ScopedOut.size())
+        {
+            if (InError != nullptr)
+            {
+                *InError = "fempak entry table overflow";
+            }
+            return {};
+        }
+        std::memcpy(std::span<std::byte>(ScopedOut).subspan(ScopedEntryOffset, sizeof(PakEntry)).data(), &ScopedEntry,
                     sizeof(ScopedEntry));
         std::memcpy(ScopedOut.data() + ScopedStringTableOffset + ScopedPathCursor, ScopedInput.path.data(),
                     ScopedInput.path.size());

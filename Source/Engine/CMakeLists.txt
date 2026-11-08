@@ -6,6 +6,7 @@ get_filename_component(FBY_ENGINE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." 
 set(FBY_ENGINE_SOURCES
     Assets/AnimationClipAsset.cpp
     Assets/AssetDatabase.cpp
+    Assets/ProjectBundle.cpp
     Assets/AssetMeta.cpp
     Assets/AudioClipFormat.cpp
     Assets/FemArchiver.cpp
@@ -14,7 +15,9 @@ set(FBY_ENGINE_SOURCES
     Assets/Localization.cpp
     Assets/LocalizationCompiler.cpp
     Assets/TextureArray.cpp
+    Assets/SpriteAtlas.cpp
     Assets/VFS.cpp
+    Documents/Document.cpp
     Audio/Audio.cpp
     Audio/AudioDevices.cpp
     Audio/AudioStream.cpp
@@ -45,6 +48,7 @@ set(FBY_ENGINE_SOURCES
     Core/ThreadAffinity.cpp
     Core/WindowManager.cpp
     Core/WindowHost.cpp
+    Input/InputSystem.cpp
     ECS/AnimationCompression.cpp
     ECS/AnimationTimeline.cpp
     ECS/AnimGraph.cpp
@@ -78,6 +82,7 @@ set(FBY_ENGINE_SOURCES
     Physics/Gravity.cpp
     Navigation/NavMesh.cpp
     Network/NetRollback.cpp
+    Network/NetTopology.cpp
     Network/NetProtocol.cpp
     Network/Identity.cpp
     Network/Lobby.cpp
@@ -97,8 +102,11 @@ set(FBY_ENGINE_SOURCES
     Navigation/Navigation.cpp
     Physics/Cloth.cpp
     Physics/ClothRenderSystem.cpp
+    Physics/DodPhysicsBackend.cpp
+    Physics/VehicleWheels.cpp
     Physics/Fluid.cpp
     Physics/Physics.cpp
+    Physics/ProjectileSystem.cpp
     Physics/PhysicsJoints.cpp
     Physics/PhysicsJointsScene.cpp
     Physics/SdfCollision.cpp
@@ -112,6 +120,7 @@ set(FBY_ENGINE_SOURCES
     Platform/PlatformSystems.cpp
     RHI/CameraStack.cpp
     RHI/DynamicResolution.cpp
+    RHI/FrameComposer.cpp
     RHI/FrameExporter.cpp
     RHI/MaterialAsset.cpp
     RHI/MaterialGraph.cpp
@@ -133,6 +142,9 @@ set(FBY_ENGINE_SOURCES
     RHI/ViewportModes.cpp
     RHI/ViewportPresenter.cpp
     RHI/Vulkan/VulkanRHI.cpp
+    RHI/Vulkan/VulkanDevice.cpp
+    RHI/Vulkan/VulkanResources.cpp
+    RHI/Vulkan/VulkanFrame.cpp
     Script/AotBuilder.cpp
     Script/AotGraphCompiler.cpp
     Script/AotHost.cpp
@@ -143,9 +155,13 @@ set(FBY_ENGINE_SOURCES
     Script/EcsBridge.cpp
     Script/GraphCompiler.cpp
     Script/TextScript.cpp
+    Text/BookAsset.cpp
+    Text/BookCook.cpp
+    Text/BookSession.cpp
     Text/TextBidi.cpp
     Text/TextShapeCache.cpp
     Text/TextShaper.cpp
+    Text/UnicodeBreak.cpp
     UI/Accessibility.cpp
     UI/AccessibilityOverlay.cpp
     UI/CardBoard.cpp
@@ -162,6 +178,9 @@ set(FBY_ENGINE_SOURCES
     UI/TtsNative.cpp
     Video/VideoPlayer.cpp
     Video/VideoSystem.cpp
+    Video/Dav1dBackend.cpp
+    Video/VideoAudioDecoder.cpp
+    Video/VideoAudioStream.cpp
     Video/Vp9Backend.cpp
     Video/WebmDemuxer.cpp
     Weather/Weather.cpp
@@ -371,6 +390,11 @@ if(FBY_WITH_HARFBUZZ)
     set(HB_HAVE_GRAPHITE2 OFF CACHE BOOL "" FORCE)
     add_subdirectory("${FBY_ENGINE_REPO_ROOT}/third_party/harfbuzz-download/harfbuzz-15.0.0"
                      "${CMAKE_BINARY_DIR}/harfbuzz" EXCLUDE_FROM_ALL)
+    if(APPLE AND TARGET harfbuzz)
+        # CoreFoundation headers use legacy casts that HarfBuzz promotes to
+        # errors globally; the SDK declaration is outside our control.
+        target_compile_definitions(harfbuzz PUBLIC HB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR=1)
+    endif()
 endif()
 
 add_library(fby_engine STATIC ${FBY_ENGINE_SOURCES} "${FBY_SHADER_BLOBS}" "${FBY_LOC_GENERATED}"
@@ -412,6 +436,7 @@ target_link_libraries(fby_engine
         fby::monocypher
         fby::box2d
         fby::flatbuffers
+        fby::unibreak
         FemboyEngine2D::AssetCook)
 
 if(FBY_WITH_HARFBUZZ AND TARGET harfbuzz)
@@ -430,6 +455,35 @@ if(TARGET Opus::opus)
 elseif(TARGET opus)
     target_link_libraries(fby_engine PRIVATE opus)
     target_compile_definitions(fby_engine PRIVATE FBY_HAS_OPUS=1)
+endif()
+
+# dav1d for AV1 video: vendored Windows MSVC build, system pkg-config elsewhere.
+set(FBY_DAV1D_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/dav1d" CACHE PATH
+    "Optional dav1d distribution (include/dav1d and lib/dav1d.lib)")
+if(WIN32 AND EXISTS "${FBY_DAV1D_ROOT}/lib/dav1d.lib" AND EXISTS "${FBY_DAV1D_ROOT}/include/dav1d/dav1d.h")
+    target_include_directories(fby_engine PRIVATE "${FBY_DAV1D_ROOT}/include")
+    target_link_libraries(fby_engine PRIVATE "${FBY_DAV1D_ROOT}/lib/dav1d.lib")
+    target_compile_definitions(fby_engine PRIVATE FBY_HAS_DAV1D=1)
+    add_custom_command(TARGET fby_engine POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${FBY_DAV1D_ROOT}/bin/dav1d.dll"
+                "${FBY_OUTPUT_DIR}/dav1d.dll"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${FBY_DAV1D_ROOT}/bin/dav1d.dll"
+                "${FBY_OUTPUT_DIR}/tests/dav1d.dll")
+elseif(NOT WIN32)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(FBY_DAV1D QUIET dav1d)
+    endif()
+    if(FBY_DAV1D_FOUND)
+        target_include_directories(fby_engine PRIVATE ${FBY_DAV1D_INCLUDE_DIRS})
+        target_link_libraries(fby_engine PRIVATE ${FBY_DAV1D_LINK_LIBRARIES})
+        target_compile_definitions(fby_engine PRIVATE FBY_HAS_DAV1D=1)
+    elseif(EXISTS "${FBY_DAV1D_ROOT}/include/dav1d/dav1d.h")
+        target_include_directories(fby_engine PRIVATE "${FBY_DAV1D_ROOT}/include")
+        find_library(FBY_DAV1D_LIBRARY NAMES dav1d REQUIRED)
+        target_link_libraries(fby_engine PRIVATE "${FBY_DAV1D_LIBRARY}")
+        target_compile_definitions(fby_engine PRIVATE FBY_HAS_DAV1D=1)
+    endif()
 endif()
 
 # RNNoise is an optional denoise tier; the spectral path stays the fallback.

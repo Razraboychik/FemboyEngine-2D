@@ -373,6 +373,18 @@ private:
                 MBuilder.Emit(OpCode::CallNative, InDst, 0, ScopedNative);
                 return true;
             }
+            case LogicNodeKind::PhysicsGetBackend:
+            {
+                const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::PhysicsGetBackend);
+                MBuilder.Emit(OpCode::CallNative, InDst, 0, ScopedNative);
+                return true;
+            }
+            case LogicNodeKind::PhysicsCapabilities:
+            {
+                const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::PhysicsGetCapabilities);
+                MBuilder.Emit(OpCode::CallNative, InDst, 0, ScopedNative);
+                return true;
+            }
             case LogicNodeKind::Random01:
             {
                 const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::RandomFloat);
@@ -807,6 +819,106 @@ private:
                     return false;
                 }
                 MBuilder.Emit(OpCode::StoreFieldVec2, 0, ScopedValue, MVelocityValue);
+                break;
+            }
+            case LogicNodeKind::PhysicsSetBackend:
+            {
+                const std::uint8_t ScopedBase = Alloc();
+                const std::uint8_t ScopedValue = Alloc();
+                if (ScopedBase == kNoRegister || ScopedValue == kNoRegister ||
+                    !CompileInput(InNodeIndex, 1, ScopedValue))
+                {
+                    return false;
+                }
+                const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::PhysicsSetBackend);
+                MBuilder.Emit(OpCode::CallNative, ScopedBase, 0, ScopedNative);
+                break;
+            }
+            case LogicNodeKind::CameraAddTrauma:
+            case LogicNodeKind::CameraSetMotionScale:
+            {
+                const std::uint8_t ScopedBase = Alloc();
+                (void)Alloc();
+                (void)Alloc();
+                if (ScopedBase == kNoRegister || !CompileInput(InNodeIndex, 1, ScopedBase))
+                {
+                    return false;
+                }
+                const NativeId ScopedNative = ScopedNode.kind == LogicNodeKind::CameraAddTrauma
+                                                  ? NativeId::CameraAddTrauma
+                                                  : NativeId::CameraSetMotionScale;
+                MBuilder.Emit(OpCode::MoveF, static_cast<std::uint8_t>(ScopedBase + 1u),
+                              static_cast<std::uint8_t>(ScopedBase + 1u));
+                MBuilder.Emit(OpCode::CallNative, ScopedBase, 0, MBuilder.AddNative(ScopedNative));
+                break;
+            }
+            case LogicNodeKind::CameraOffset:
+            {
+                const std::uint8_t ScopedBase = Alloc();
+                const std::uint8_t ScopedY = Alloc();
+                const std::uint8_t ScopedDuration = Alloc();
+                (void)Alloc();
+                (void)Alloc();
+                if (ScopedBase == kNoRegister || ScopedY == kNoRegister || ScopedDuration == kNoRegister ||
+                    !CompileInput(InNodeIndex, 1, ScopedBase) || !CompileInput(InNodeIndex, 2, ScopedY) ||
+                    !CompileInput(InNodeIndex, 3, ScopedDuration))
+                {
+                    return false;
+                }
+                MBuilder.Emit(OpCode::MoveF, static_cast<std::uint8_t>(ScopedBase + 3u),
+                              static_cast<std::uint8_t>(ScopedBase + 3u));
+                MBuilder.Emit(OpCode::CallNative, ScopedBase, 0, MBuilder.AddNative(NativeId::CameraOffset));
+                break;
+            }
+            case LogicNodeKind::CameraZoom:
+            case LogicNodeKind::CameraRoll:
+            {
+                const std::uint8_t ScopedBase = Alloc();
+                const std::uint8_t ScopedDuration = Alloc();
+                (void)Alloc();
+                (void)Alloc();
+                if (ScopedBase == kNoRegister || ScopedDuration == kNoRegister ||
+                    !CompileInput(InNodeIndex, 1, ScopedBase) || !CompileInput(InNodeIndex, 2, ScopedDuration))
+                {
+                    return false;
+                }
+                const NativeId ScopedNative =
+                    ScopedNode.kind == LogicNodeKind::CameraZoom ? NativeId::CameraZoom : NativeId::CameraRoll;
+                MBuilder.Emit(OpCode::MoveF, static_cast<std::uint8_t>(ScopedBase + 2u),
+                              static_cast<std::uint8_t>(ScopedBase + 2u));
+                MBuilder.Emit(OpCode::CallNative, ScopedBase, 0, MBuilder.AddNative(ScopedNative));
+                break;
+            }
+            case LogicNodeKind::CameraDistort:
+            {
+                const std::uint8_t ScopedBase = Alloc();
+                const std::uint8_t ScopedStrength = Alloc();
+                const std::uint8_t ScopedX = Alloc();
+                const std::uint8_t ScopedY = Alloc();
+                const std::uint8_t ScopedDuration = Alloc();
+                (void)Alloc();
+                (void)Alloc();
+                if (ScopedBase == kNoRegister || ScopedStrength == kNoRegister || ScopedX == kNoRegister ||
+                    ScopedY == kNoRegister || ScopedDuration == kNoRegister ||
+                    !CompileInput(InNodeIndex, 1, ScopedBase) || !CompileInput(InNodeIndex, 2, ScopedStrength) ||
+                    !CompileInput(InNodeIndex, 3, ScopedX) || !CompileInput(InNodeIndex, 4, ScopedY) ||
+                    !CompileInput(InNodeIndex, 5, ScopedDuration))
+                {
+                    return false;
+                }
+                MBuilder.Emit(OpCode::MoveF, static_cast<std::uint8_t>(ScopedBase + 5u),
+                              static_cast<std::uint8_t>(ScopedBase + 5u));
+                MBuilder.Emit(OpCode::CallNative, ScopedBase, 0, MBuilder.AddNative(NativeId::CameraDistort));
+                break;
+            }
+            case LogicNodeKind::CameraClearEffects:
+            {
+                const std::uint8_t ScopedBase = Alloc();
+                if (ScopedBase == kNoRegister)
+                {
+                    return false;
+                }
+                MBuilder.Emit(OpCode::CallNative, ScopedBase, 0, MBuilder.AddNative(NativeId::CameraClearEffects));
                 break;
             }
             case LogicNodeKind::SetField:

@@ -280,10 +280,10 @@ DspResult DspGraph::CreateBus(BusId InParent, float InGain, BusId* OutBus) noexc
     }
 
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::CreateBus;
-    ScopedCommand.bus = ScopedSlot;
-    ScopedCommand.parent = InParent;
-    ScopedCommand.gain = ClampGain(InGain);
+    ScopedCommand.Type = AudioCommandType::CreateBus;
+    ScopedCommand.Bus = ScopedSlot;
+    ScopedCommand.Parent = InParent;
+    ScopedCommand.Gain = ClampGain(InGain);
     if (!MCommands.Push(ScopedCommand))
     {
         return DspResult::CommandQueueFull;
@@ -309,8 +309,8 @@ DspResult DspGraph::DestroyBus(BusId InBus) noexcept
         return DspResult::InvalidArgument;
     }
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::DestroyBus;
-    ScopedCommand.bus = InBus;
+    ScopedCommand.Type = AudioCommandType::DestroyBus;
+    ScopedCommand.Bus = InBus;
     if (!MCommands.Push(ScopedCommand))
     {
         return DspResult::CommandQueueFull;
@@ -364,9 +364,9 @@ DspResult DspGraph::SetBusRouting(BusId InBus, BusId InParent) noexcept
     }
 
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::SetRouting;
-    ScopedCommand.bus = InBus;
-    ScopedCommand.parent = InParent;
+    ScopedCommand.Type = AudioCommandType::SetRouting;
+    ScopedCommand.Bus = InBus;
+    ScopedCommand.Parent = InParent;
     if (!MCommands.Push(ScopedCommand))
     {
         return DspResult::CommandQueueFull;
@@ -412,9 +412,9 @@ DspResult DspGraph::SetBusDucking(BusId InTargetBus, const DuckingParams& InPara
     }
 
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::SetDucking;
-    ScopedCommand.bus = InTargetBus;
-    ScopedCommand.ducking = InParams;
+    ScopedCommand.Type = AudioCommandType::SetDucking;
+    ScopedCommand.Bus = InTargetBus;
+    ScopedCommand.Ducking = InParams;
     if (!MCommands.Push(ScopedCommand))
     {
         return DspResult::CommandQueueFull;
@@ -433,9 +433,9 @@ DspResult DspGraph::SetBusReverb(BusId InBus, const ReverbParams& InParams) noex
         return DspResult::InvalidArgument;
     }
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::SetReverb;
-    ScopedCommand.bus = InBus;
-    ScopedCommand.reverb = InParams;
+    ScopedCommand.Type = AudioCommandType::SetReverb;
+    ScopedCommand.Bus = InBus;
+    ScopedCommand.Reverb = InParams;
     if (!MCommands.Push(ScopedCommand))
     {
         return DspResult::CommandQueueFull;
@@ -464,9 +464,9 @@ DspResult DspGraph::SetBusFilter(BusId InBus, const BusFilterParams& InParams) n
     MFilterSmoothing[InBus].store(ScopedParams.smoothingSeconds, std::memory_order_relaxed);
 
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::SetFilter;
-    ScopedCommand.bus = InBus;
-    ScopedCommand.filter = ScopedParams;
+    ScopedCommand.Type = AudioCommandType::SetFilter;
+    ScopedCommand.Bus = InBus;
+    ScopedCommand.Filter = ScopedParams;
     if (!MCommands.Push(ScopedCommand))
     {
         return DspResult::CommandQueueFull;
@@ -524,18 +524,18 @@ DspResult DspGraph::PlayOneShot(const DspClipView& InClip, BusId InBus, float In
     MVoiceGeneration[ScopedSlot] = ScopedGeneration;
 
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::PlayVoice;
-    ScopedCommand.voice = static_cast<std::uint16_t>(ScopedSlot);
-    ScopedCommand.generation = ScopedGeneration;
-    ScopedCommand.bus = InBus;
-    ScopedCommand.volume = InVolume < 0.0f ? 0.0f : InVolume;
-    ScopedCommand.pitch = InPitch < 0.01f ? 0.01f : (InPitch > 16.0f ? 16.0f : InPitch);
-    ScopedCommand.flags = (InLoop ? DspClipFlagLoop : 0u) | InClip.flags;
-    ScopedCommand.samples = InClip.samples;
-    ScopedCommand.frameCount = InClip.frameCount;
-    ScopedCommand.channels = InClip.channels;
-    ScopedCommand.sampleRate = InClip.sampleRate;
-    ScopedCommand.format = static_cast<std::uint32_t>(InClip.format);
+    ScopedCommand.Type = AudioCommandType::PlayVoice;
+    ScopedCommand.Voice = static_cast<std::uint16_t>(ScopedSlot);
+    ScopedCommand.Generation = ScopedGeneration;
+    ScopedCommand.Bus = InBus;
+    ScopedCommand.Volume = InVolume < 0.0f ? 0.0f : InVolume;
+    ScopedCommand.Pitch = InPitch < 0.01f ? 0.01f : (InPitch > 16.0f ? 16.0f : InPitch);
+    ScopedCommand.Flags = (InLoop ? DspClipFlagLoop : 0u) | InClip.flags;
+    ScopedCommand.Samples = InClip.samples;
+    ScopedCommand.FrameCount = InClip.frameCount;
+    ScopedCommand.Channels = InClip.channels;
+    ScopedCommand.SampleRate = InClip.sampleRate;
+    ScopedCommand.Format = static_cast<std::uint32_t>(InClip.format);
     if (!MCommands.Push(ScopedCommand))
     {
         MVoiceClaimed[ScopedSlot].store(false, std::memory_order_release);
@@ -596,16 +596,16 @@ DspResult DspGraph::PlayStream(FloatRing* InRing, BusId InBus, float InVolume, f
     MVoiceGeneration[ScopedSlot] = ScopedGeneration;
 
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::PlayStream;
-    ScopedCommand.voice = static_cast<std::uint16_t>(ScopedSlot);
-    ScopedCommand.generation = ScopedGeneration;
-    ScopedCommand.bus = InBus;
-    ScopedCommand.volume = InVolume < 0.0f ? 0.0f : InVolume;
-    ScopedCommand.pan = InPan < -1.0f ? -1.0f : (InPan > 1.0f ? 1.0f : InPan);
-    ScopedCommand.stream = InRing;
-    ScopedCommand.channels = 1;
-    ScopedCommand.sampleRate = MSampleRate;
-    ScopedCommand.format = static_cast<std::uint32_t>(Assets::PcmFormat::PcmF32);
+    ScopedCommand.Type = AudioCommandType::PlayStream;
+    ScopedCommand.Voice = static_cast<std::uint16_t>(ScopedSlot);
+    ScopedCommand.Generation = ScopedGeneration;
+    ScopedCommand.Bus = InBus;
+    ScopedCommand.Volume = InVolume < 0.0f ? 0.0f : InVolume;
+    ScopedCommand.Pan = InPan < -1.0f ? -1.0f : (InPan > 1.0f ? 1.0f : InPan);
+    ScopedCommand.Stream = InRing;
+    ScopedCommand.Channels = 1;
+    ScopedCommand.SampleRate = MSampleRate;
+    ScopedCommand.Format = static_cast<std::uint32_t>(Assets::PcmFormat::PcmF32);
     if (!MCommands.Push(ScopedCommand))
     {
         MVoiceClaimed[ScopedSlot].store(false, std::memory_order_release);
@@ -633,9 +633,9 @@ DspResult DspGraph::StopVoice(std::uint32_t InVoice) noexcept
         return DspResult::NotFound;
     }
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::StopVoice;
-    ScopedCommand.voice = static_cast<std::uint16_t>(InVoice);
-    ScopedCommand.generation = MVoiceGeneration[InVoice];
+    ScopedCommand.Type = AudioCommandType::StopVoice;
+    ScopedCommand.Voice = static_cast<std::uint16_t>(InVoice);
+    ScopedCommand.Generation = MVoiceGeneration[InVoice];
     if (!MCommands.Push(ScopedCommand))
     {
         return DspResult::CommandQueueFull;
@@ -658,11 +658,11 @@ DspResult DspGraph::SetVoiceSpatial(std::uint32_t InVoice, float InVolume, float
         return DspResult::NotFound;
     }
     AudioCommand ScopedCommand{};
-    ScopedCommand.type = AudioCommandType::SetVoice;
-    ScopedCommand.voice = static_cast<std::uint16_t>(InVoice);
-    ScopedCommand.generation = MVoiceGeneration[InVoice];
-    ScopedCommand.volume = InVolume < 0.0f ? 0.0f : InVolume;
-    ScopedCommand.pan = InPan < -1.0f ? -1.0f : (InPan > 1.0f ? 1.0f : InPan);
+    ScopedCommand.Type = AudioCommandType::SetVoice;
+    ScopedCommand.Voice = static_cast<std::uint16_t>(InVoice);
+    ScopedCommand.Generation = MVoiceGeneration[InVoice];
+    ScopedCommand.Volume = InVolume < 0.0f ? 0.0f : InVolume;
+    ScopedCommand.Pan = InPan < -1.0f ? -1.0f : (InPan > 1.0f ? 1.0f : InPan);
     if (!MCommands.Push(ScopedCommand))
     {
         return DspResult::CommandQueueFull;
@@ -679,9 +679,9 @@ void DspGraph::StopAllVoices() noexcept
             continue;
         }
         AudioCommand ScopedCommand{};
-        ScopedCommand.type = AudioCommandType::StopVoice;
-        ScopedCommand.voice = static_cast<std::uint16_t>(ScopedVoice);
-        ScopedCommand.generation = MVoiceGeneration[ScopedVoice];
+        ScopedCommand.Type = AudioCommandType::StopVoice;
+        ScopedCommand.Voice = static_cast<std::uint16_t>(ScopedVoice);
+        ScopedCommand.Generation = MVoiceGeneration[ScopedVoice];
         if (!MCommands.Push(ScopedCommand))
         {
             // A full ring is transient; remaining voices stop on the next call.
@@ -750,196 +750,196 @@ void DspGraph::DrainCommands() noexcept
 
 void DspGraph::ApplyCommand(const AudioCommand& InCommand) noexcept
 {
-    switch (InCommand.type)
+    switch (InCommand.Type)
     {
         case AudioCommandType::None:
             break;
         case AudioCommandType::CreateBus:
         {
-            if (InCommand.bus >= kMaxBuses)
+            if (InCommand.Bus >= kMaxBuses)
             {
                 break;
             }
-            ResetBusSlot(InCommand.bus);
-            MBuses[InCommand.bus].active = true;
-            MBuses[InCommand.bus].parent = InCommand.parent;
-            MBusAtomics[InCommand.bus].gain.store(ClampGain(InCommand.gain), std::memory_order_relaxed);
-            if (InCommand.parent != kInvalidBus && InCommand.parent < kMaxBuses && MBuses[InCommand.parent].active)
+            ResetBusSlot(InCommand.Bus);
+            MBuses[InCommand.Bus].active = true;
+            MBuses[InCommand.Bus].parent = InCommand.Parent;
+            MBusAtomics[InCommand.Bus].gain.store(ClampGain(InCommand.Gain), std::memory_order_relaxed);
+            if (InCommand.Parent != kInvalidBus && InCommand.Parent < kMaxBuses && MBuses[InCommand.Parent].active)
             {
-                AddChild(InCommand.parent, InCommand.bus);
+                AddChild(InCommand.Parent, InCommand.Bus);
             }
             MTopologyDirty = true;
             break;
         }
         case AudioCommandType::DestroyBus:
-            DestroyBusOnAudioThread(InCommand.bus);
+            DestroyBusOnAudioThread(InCommand.Bus);
             break;
         case AudioCommandType::SetGain:
-            if (InCommand.bus < kMaxBuses)
+            if (InCommand.Bus < kMaxBuses)
             {
-                MBusAtomics[InCommand.bus].gain.store(ClampGain(InCommand.gain), std::memory_order_relaxed);
+                MBusAtomics[InCommand.Bus].gain.store(ClampGain(InCommand.Gain), std::memory_order_relaxed);
             }
             break;
         case AudioCommandType::SetRouting:
         {
-            if (InCommand.bus >= kMaxBuses || InCommand.bus == kMasterBus || !MBuses[InCommand.bus].active)
+            if (InCommand.Bus >= kMaxBuses || InCommand.Bus == kMasterBus || !MBuses[InCommand.Bus].active)
             {
                 break;
             }
-            if (InCommand.parent != kInvalidBus && (InCommand.parent >= kMaxBuses || !MBuses[InCommand.parent].active))
+            if (InCommand.Parent != kInvalidBus && (InCommand.Parent >= kMaxBuses || !MBuses[InCommand.Parent].active))
             {
                 break;
             }
-            const BusId ScopedOldParent = MBuses[InCommand.bus].parent;
+            const BusId ScopedOldParent = MBuses[InCommand.Bus].parent;
             if (ScopedOldParent != kInvalidBus)
             {
-                RemoveChild(ScopedOldParent, InCommand.bus);
+                RemoveChild(ScopedOldParent, InCommand.Bus);
             }
-            MBuses[InCommand.bus].parent = InCommand.parent;
-            if (InCommand.parent != kInvalidBus)
+            MBuses[InCommand.Bus].parent = InCommand.Parent;
+            if (InCommand.Parent != kInvalidBus)
             {
-                AddChild(InCommand.parent, InCommand.bus);
+                AddChild(InCommand.Parent, InCommand.Bus);
             }
             MTopologyDirty = true;
             break;
         }
         case AudioCommandType::SetDucking:
         {
-            if (InCommand.bus >= kMaxBuses || !MBuses[InCommand.bus].active)
+            if (InCommand.Bus >= kMaxBuses || !MBuses[InCommand.Bus].active)
             {
                 break;
             }
-            DuckingState& ScopedDucking = MBuses[InCommand.bus].ducking;
-            ScopedDucking.sourceBus = InCommand.ducking.sourceBus;
-            ScopedDucking.threshold = InCommand.ducking.threshold < 0.0f ? 0.0f : InCommand.ducking.threshold;
-            ScopedDucking.ratio = InCommand.ducking.ratio < 0.0f ? 0.0f : InCommand.ducking.ratio;
-            ScopedDucking.depth = Clamp01(InCommand.ducking.depth);
-            ScopedDucking.attackCoeff = SmoothingCoefficient(InCommand.ducking.attackSeconds, MSampleRate);
-            ScopedDucking.releaseCoeff = SmoothingCoefficient(InCommand.ducking.releaseSeconds, MSampleRate);
+            DuckingState& ScopedDucking = MBuses[InCommand.Bus].ducking;
+            ScopedDucking.sourceBus = InCommand.Ducking.sourceBus;
+            ScopedDucking.threshold = InCommand.Ducking.threshold < 0.0f ? 0.0f : InCommand.Ducking.threshold;
+            ScopedDucking.ratio = InCommand.Ducking.ratio < 0.0f ? 0.0f : InCommand.Ducking.ratio;
+            ScopedDucking.depth = Clamp01(InCommand.Ducking.depth);
+            ScopedDucking.attackCoeff = SmoothingCoefficient(InCommand.Ducking.attackSeconds, MSampleRate);
+            ScopedDucking.releaseCoeff = SmoothingCoefficient(InCommand.Ducking.releaseSeconds, MSampleRate);
             if (ScopedDucking.sourceBus == kInvalidBus)
             {
-                MBuses[InCommand.bus].flags &= ~kBusFlagDucking;
+                MBuses[InCommand.Bus].flags &= ~kBusFlagDucking;
             }
             else
             {
-                MBuses[InCommand.bus].flags |= kBusFlagDucking;
+                MBuses[InCommand.Bus].flags |= kBusFlagDucking;
             }
             break;
         }
         case AudioCommandType::SetReverb:
         {
-            if (InCommand.bus >= kMaxBuses || !MBuses[InCommand.bus].active)
+            if (InCommand.Bus >= kMaxBuses || !MBuses[InCommand.Bus].active)
             {
                 break;
             }
-            ReverbState& ScopedReverb = MBuses[InCommand.bus].reverb;
-            ScopedReverb.roomSize = Clamp01(InCommand.reverb.roomSize) * 0.98f;
-            ScopedReverb.damping = Clamp01(InCommand.reverb.damping);
-            ScopedReverb.wet = Clamp01(InCommand.reverb.wet);
-            ScopedReverb.enabled = InCommand.reverb.enabled;
+            ReverbState& ScopedReverb = MBuses[InCommand.Bus].reverb;
+            ScopedReverb.roomSize = Clamp01(InCommand.Reverb.roomSize) * 0.98f;
+            ScopedReverb.damping = Clamp01(InCommand.Reverb.damping);
+            ScopedReverb.wet = Clamp01(InCommand.Reverb.wet);
+            ScopedReverb.enabled = InCommand.Reverb.enabled;
             if (ScopedReverb.enabled)
             {
-                MBuses[InCommand.bus].flags |= kBusFlagReverb;
+                MBuses[InCommand.Bus].flags |= kBusFlagReverb;
             }
             else
             {
-                MBuses[InCommand.bus].flags &= ~kBusFlagReverb;
+                MBuses[InCommand.Bus].flags &= ~kBusFlagReverb;
             }
             break;
         }
         case AudioCommandType::SetFilter:
         {
-            if (InCommand.bus >= kMaxBuses || !MBuses[InCommand.bus].active)
+            if (InCommand.Bus >= kMaxBuses || !MBuses[InCommand.Bus].active)
             {
                 break;
             }
-            FilterState& ScopedFilter = MBuses[InCommand.bus].filter;
-            ScopedFilter.targetReverbGain = InCommand.filter.reverbGain;
-            ScopedFilter.targetLowPassHz = InCommand.filter.lowPassHz;
-            ScopedFilter.smoothingSeconds = InCommand.filter.smoothingSeconds;
-            MBuses[InCommand.bus].flags |= kBusFlagFilter;
+            FilterState& ScopedFilter = MBuses[InCommand.Bus].filter;
+            ScopedFilter.targetReverbGain = InCommand.Filter.reverbGain;
+            ScopedFilter.targetLowPassHz = InCommand.Filter.lowPassHz;
+            ScopedFilter.smoothingSeconds = InCommand.Filter.smoothingSeconds;
+            MBuses[InCommand.Bus].flags |= kBusFlagFilter;
             break;
         }
         case AudioCommandType::PlayVoice:
         {
-            if (InCommand.voice >= kMaxVoices)
+            if (InCommand.Voice >= kMaxVoices)
             {
                 break;
             }
-            VoiceState& ScopedVoice = MVoiceStates[InCommand.voice];
-            ScopedVoice.samples = InCommand.samples;
+            VoiceState& ScopedVoice = MVoiceStates[InCommand.Voice];
+            ScopedVoice.samples = InCommand.Samples;
             ScopedVoice.stream = nullptr;
             ScopedVoice.cursor = 0.0;
-            ScopedVoice.volume = InCommand.volume < 0.0f ? 0.0f : InCommand.volume;
-            ScopedVoice.pan = InCommand.pan < -1.0f ? -1.0f : (InCommand.pan > 1.0f ? 1.0f : InCommand.pan);
+            ScopedVoice.volume = InCommand.Volume < 0.0f ? 0.0f : InCommand.Volume;
+            ScopedVoice.pan = InCommand.Pan < -1.0f ? -1.0f : (InCommand.Pan > 1.0f ? 1.0f : InCommand.Pan);
             ScopedVoice.targetVolume = ScopedVoice.volume;
             ScopedVoice.targetPan = ScopedVoice.pan;
-            ScopedVoice.bus = InCommand.bus;
-            ScopedVoice.generation = InCommand.generation;
-            ScopedVoice.frameCount = InCommand.frameCount;
-            ScopedVoice.channels = InCommand.channels == 0 ? 1u : InCommand.channels;
-            ScopedVoice.sampleRate = InCommand.sampleRate;
-            ScopedVoice.format = InCommand.format;
-            ScopedVoice.loop = (InCommand.flags & DspClipFlagLoop) != 0;
+            ScopedVoice.bus = InCommand.Bus;
+            ScopedVoice.generation = InCommand.Generation;
+            ScopedVoice.frameCount = InCommand.FrameCount;
+            ScopedVoice.channels = InCommand.Channels == 0 ? 1u : InCommand.Channels;
+            ScopedVoice.sampleRate = InCommand.SampleRate;
+            ScopedVoice.format = InCommand.Format;
+            ScopedVoice.loop = (InCommand.Flags & DspClipFlagLoop) != 0;
             ScopedVoice.increment = (static_cast<double>(ScopedVoice.sampleRate) / static_cast<double>(MSampleRate)) *
-                                    static_cast<double>(InCommand.pitch);
-            MVoicePlaybackActive[InCommand.voice].store(true, std::memory_order_release);
+                                    static_cast<double>(InCommand.Pitch);
+            MVoicePlaybackActive[InCommand.Voice].store(true, std::memory_order_release);
             break;
         }
         case AudioCommandType::PlayStream:
         {
-            if (InCommand.voice >= kMaxVoices)
+            if (InCommand.Voice >= kMaxVoices)
             {
                 break;
             }
-            VoiceState& ScopedVoice = MVoiceStates[InCommand.voice];
+            VoiceState& ScopedVoice = MVoiceStates[InCommand.Voice];
             ScopedVoice.samples = nullptr;
-            ScopedVoice.stream = InCommand.stream;
+            ScopedVoice.stream = InCommand.Stream;
             ScopedVoice.cursor = 0.0;
-            ScopedVoice.volume = InCommand.volume < 0.0f ? 0.0f : InCommand.volume;
-            ScopedVoice.pan = InCommand.pan < -1.0f ? -1.0f : (InCommand.pan > 1.0f ? 1.0f : InCommand.pan);
+            ScopedVoice.volume = InCommand.Volume < 0.0f ? 0.0f : InCommand.Volume;
+            ScopedVoice.pan = InCommand.Pan < -1.0f ? -1.0f : (InCommand.Pan > 1.0f ? 1.0f : InCommand.Pan);
             ScopedVoice.targetVolume = ScopedVoice.volume;
             ScopedVoice.targetPan = ScopedVoice.pan;
-            ScopedVoice.bus = InCommand.bus;
-            ScopedVoice.generation = InCommand.generation;
+            ScopedVoice.bus = InCommand.Bus;
+            ScopedVoice.generation = InCommand.Generation;
             ScopedVoice.frameCount = 0;
             ScopedVoice.channels = 1;
             ScopedVoice.sampleRate = MSampleRate;
             ScopedVoice.format = static_cast<std::uint32_t>(Assets::PcmFormat::PcmF32);
             ScopedVoice.loop = false;
             ScopedVoice.increment = 1.0;
-            MVoicePlaybackActive[InCommand.voice].store(true, std::memory_order_release);
+            MVoicePlaybackActive[InCommand.Voice].store(true, std::memory_order_release);
             break;
         }
         case AudioCommandType::SetVoice:
         {
-            if (InCommand.voice >= kMaxVoices)
+            if (InCommand.Voice >= kMaxVoices)
             {
                 break;
             }
-            VoiceState& ScopedVoice = MVoiceStates[InCommand.voice];
-            if (ScopedVoice.generation != InCommand.generation ||
-                !MVoicePlaybackActive[InCommand.voice].load(std::memory_order_acquire))
+            VoiceState& ScopedVoice = MVoiceStates[InCommand.Voice];
+            if (ScopedVoice.generation != InCommand.Generation ||
+                !MVoicePlaybackActive[InCommand.Voice].load(std::memory_order_acquire))
             {
                 break;
             }
-            ScopedVoice.targetVolume = InCommand.volume < 0.0f ? 0.0f : InCommand.volume;
-            ScopedVoice.targetPan = InCommand.pan < -1.0f ? -1.0f : (InCommand.pan > 1.0f ? 1.0f : InCommand.pan);
+            ScopedVoice.targetVolume = InCommand.Volume < 0.0f ? 0.0f : InCommand.Volume;
+            ScopedVoice.targetPan = InCommand.Pan < -1.0f ? -1.0f : (InCommand.Pan > 1.0f ? 1.0f : InCommand.Pan);
             break;
         }
         case AudioCommandType::StopVoice:
         {
-            if (InCommand.voice >= kMaxVoices)
+            if (InCommand.Voice >= kMaxVoices)
             {
                 break;
             }
-            if (MVoiceStates[InCommand.voice].generation != InCommand.generation)
+            if (MVoiceStates[InCommand.Voice].generation != InCommand.Generation)
             {
                 // A stale stop for an already-recycled slot
                 break;
             }
-            MVoicePlaybackActive[InCommand.voice].store(false, std::memory_order_release);
-            MVoiceClaimed[InCommand.voice].store(false, std::memory_order_release);
+            MVoicePlaybackActive[InCommand.Voice].store(false, std::memory_order_release);
+            MVoiceClaimed[InCommand.Voice].store(false, std::memory_order_release);
             break;
         }
     }

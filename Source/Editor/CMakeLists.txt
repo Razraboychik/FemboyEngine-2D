@@ -10,7 +10,6 @@ add_library(fby_editor STATIC
     Infrastructure/EditorTypography.cpp
     Infrastructure/EditorSystem.cpp
     Infrastructure/EditorWidgets.cpp
-    Infrastructure/FrameComposer.cpp
     Infrastructure/MaterialGraphRuntime.cpp
     Infrastructure/PhysicsDebugDraw.cpp
     Infrastructure/PlayInEditor.cpp

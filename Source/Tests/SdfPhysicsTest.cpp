@@ -78,8 +78,8 @@ int main()
     FBY_CHECK(ScopedSystem.Contacts().size() == 1);
     const RigidBody2D& ScopedAfter = ScopedRegistry.get<RigidBody2D>(ScopedBody);
     FBY_CHECK(ScopedAfter.LinearVelocity.X > 0.0f);
-    FBY_CHECK(ScopedSystem.Contacts()[0].normal.X > 0.9f);
-    FBY_CHECK(ScopedSystem.Contacts()[0].penetration > 0.0f);
+    FBY_CHECK(ScopedSystem.Contacts()[0].Normal.X > 0.9f);
+    FBY_CHECK(ScopedSystem.Contacts()[0].Penetration > 0.0f);
     FBY_CHECK(ScopedSystem.Contacts()[0].Mass > 0.0f);
     FBY_CHECK(ScopedSystem.Contacts()[0].RelativeSpeed > 1.0f);
     FBY_CHECK(ScopedSystem.Contacts()[0].KineticEnergy > 0.0f);
@@ -90,7 +90,7 @@ int main()
     if (!ScopedSystem.Manifolds().empty())
     {
         const SdfContactManifold& ScopedManifold = ScopedSystem.Manifolds()[0];
-        FBY_CHECK(ScopedManifold.entity == ScopedBody);
+        FBY_CHECK(ScopedManifold.Entity == ScopedBody);
         FBY_CHECK(ScopedManifold.Count >= 1 && ScopedManifold.Count <= 4);
         bool ScopedDepthsValid = true;
         bool ScopedNormalsValid = true;

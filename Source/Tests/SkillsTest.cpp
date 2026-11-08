@@ -262,14 +262,14 @@ int main()
     Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
     ScopedContext.commands = &ScopedCommands;
     ScopedContext.gameplayTags = &ScopedTags;
-    ScopedStateTree.Run(ScopedContext);
+    ScopedStateTree.Run(ScopedContext.GameplayView());
     ScopedCommands.Play(ScopedRegistry);
     const auto* ScopedCommand = ScopedRegistry.try_get<AICommandComponent>(ScopedCaster);
     FBY_CHECK(ScopedCommand != nullptr);
     if (ScopedCommand != nullptr)
     {
         FBY_CHECK(ScopedCommand->Kind == static_cast<std::uint32_t>(AICommandKind::ActivateSkill));
-        FBY_CHECK(ScopedCommand->Flags == 1);
+        FBY_CHECK(ScopedCommand->SkillSlot == 1);
     }
 
     if (GFailures == 0)

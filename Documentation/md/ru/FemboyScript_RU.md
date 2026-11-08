@@ -7,10 +7,10 @@ FemboyScript — детерминированный слой игровой ло
 - компактный регистровый байткод, который исполняет VM редактора;
 - cook-time C++26 AOT-backend, который собирает нативный плагин для билда.
 
-Документ описывает поведение 0.2.0-alpha.1. FemboyScript 2.0 — это версия байткода и
-графового формата; версия движка — 0.2.0-alpha.1.
+Документ описывает поведение 0.3.0-alpha.1. FemboyScript 2.0 — это версия байткода и
+графового формата; версия движка — 0.3.0-alpha.1.
 
-## Что есть в 0.2.0-alpha.1
+## Что есть в 0.3.0-alpha.1
 
 | Слой | Статус |
 |---|---|
@@ -21,11 +21,13 @@ FemboyScript — детерминированный слой игровой ло
 | AOT-транспайлер | Байткод в C++26, затем нативный плагин |
 | Загрузчик AOT | `AotModule` проверяет ABI и LayoutHash компонентов |
 | Отдельный текстовый парсер `.fbs` | `CompileTextScript()` — текстовое подмножество |
-| Массивы, строки, map, пользовательские функции, корутины | В 0.2.0-alpha.1 отсутствуют |
+| Массивы, строки, map, пользовательские функции, корутины | В 0.3.0-alpha.1 отсутствуют |
 
-Текстовый front-end находится в движке (`Engine/Script/TextScript.hpp`) и в
-текстовом режиме `VisualScriptPanel`. Он понижается в тот же канонический
-байткод, что и LogicGraph; у VM и AOT нет отдельного runtime-пути.
+Визуальный граф — основной authoring-путь для дизайнеров. Текстовый front-end —
+опциональная power-поверхность для version control, CI, модов и плотной логики;
+он находится в движке (`Engine/Script/TextScript.hpp`) и в текстовом режиме
+`VisualScriptPanel`. Он понижается в тот же канонический байткод, что и
+LogicGraph; у VM и AOT нет отдельного runtime-пути.
 
 ```text
 event update {
@@ -219,9 +221,10 @@ Start не заливал лог на 60 Hz.
 определённое unsigned-переполнение; `INT_MIN / -1` и `INT_MIN % -1` защищены;
 нефинитные float-константы генерируются как `std::numeric_limits`.
 
-Совместимость AOT закрыта в текущем ABI (версия 5): host-callback лога
+Совместимость AOT закрыта в текущем ABI (версия 7): host-callback лога
 знаковый (`logI32`), `DespawnSelf` возвращает тот же результат 1/0, который
-пишет VM, а сгенерированный код вызывает хук `fault(code, pc)`; телеметрия
+пишет VM, физические и камерные callback’и общие с VM, а сгенерированный
+код вызывает хук `fault(code, pc)`; телеметрия
 fault остаётся в `AotModule`, а не теряется молча.
 
 ## Рабочий процесс редактора
@@ -229,12 +232,64 @@ fault остаётся в `AotModule`, а не теряется молча.
 1. Откройте `VisualScript` и соберите LogicGraph либо `AI State Tree` и соберите
    дерево состояний.
 2. Скомпилируйте граф и проверьте число узлов/инструкций/регистров.
-3. Сохраните StateTree-блок в TOML сцены; LogicGraph в 0.2.0-alpha.1 — payload
+3. Сохраните StateTree-блок в TOML сцены; LogicGraph в 0.3.0-alpha.1 — payload
    редактора.
 4. Назначьте `ScriptComponent` handle программы на сущность.
 5. Запустите PIE; fault появится в Console/LogBoy с программой, сущностью и pc.
 6. Для билда включите AOT и запустите `fby_aotc` через release pipeline.
    Итоговый плагин проверит `AotModule`.
+
+## API физического бэкенда
+
+Бэкенд по умолчанию — `Auto`. Три native доступны в любом скрипте и одинаково
+работают в VM и AOT:
+
+```text
+backend = physics_get_backend()       // 1 Box2D, 2 DOD, -1 недоступно
+caps = physics_get_capabilities()     // бит 0 соединения, 1 CCD, 2 soft, 3 детерминизм, 4 большие миры
+ok = physics_set_backend(backend)     // обновляет политику для следующего мира
+```
+
+`physics_set_backend` не переключает живой солвер. Он обновляет политику,
+которая попадёт в следующий Play-In-Editor или запуск игры; текущий мир
+продолжает работу, поэтому смена в середине кадра не может испортить handles
+тел. Проверяйте возможности до создания графа, зависящего от соединений или
+CCD.
+
+В палитре LogicGraph те же операции — `Physics Get Backend`, `Physics Set
+Backend` и `Physics Capabilities`. Выходной пин — Float; Set принимает Exec и
+Float-селектор бэкенда. Старые графы без этих узлов мигрируют как `Auto`.
+
+Снаряды настраиваются через отражённый компонент `Projectile2D`, а не через
+отдельный native: `Mode` (0 Auto, 1 Hitscan, 2 Swept, 3 Dynamic), `Speed`,
+`Radius`, `MinWallThickness`, `Direction`, `MaxSubsteps` и `CollisionMask`
+задаются обычными узлами полей компонента.
+
+## Движение камеры и искажения
+
+API камеры работает с активной `CameraStackSystem` и не отдаёт сырые handles.
+Эффекты косметические и по умолчанию не входят в rollback-снапшоты.
+
+```text
+camera_add_trauma(amount)
+camera_distort(flags, strength, paramX, paramY, duration)
+camera_offset(x, y, duration)
+camera_zoom(zoom, duration)
+camera_roll(radians, duration)
+camera_clear_effects()
+camera_set_motion_scale(scale)
+```
+
+Флаги `camera_distort`: `1` двойное зрение, `2` непропорциональное растяжение
+(`paramX/Y` — масштабы X/Y), `4` радиальное искажение, `8` хроматическое
+расщепление, `16` низкочастотное покачивание (`strength` — амплитуда, `paramX`
+— частота). Состояние опьянения или отравления игра определяет сама и
+переводит в эти универсальные примитивы; движок не хранит игровое состояние.
+
+В визуальной палитре есть `Camera Add Trauma`, `Camera Distort`, `Camera
+Offset`, `Camera Zoom`, `Camera Roll`, `Camera Clear Effects` и `Camera Motion
+Scale`. Они компилируются в те же natives, а AOT-плагины вызывают
+версионированные camera-callback’и.
 
 ## Лимиты и поведение при ошибках
 

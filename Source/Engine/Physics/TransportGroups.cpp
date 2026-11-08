@@ -1,6 +1,7 @@
 // FemboyEngine2D - transport group implementation.
 #include "Engine/Physics/TransportGroups.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/Physics/Physics.hpp"
 
 #include <box2d/box2d.h>
@@ -22,8 +23,8 @@ constexpr float kTransportPi = 3.14159265358979323846f;
     {
         return InValue;
     }
-    const float ScopedCos = std::cos(InRadians);
-    const float ScopedSin = std::sin(InRadians);
+    const float ScopedCos = Sim::Cos(InRadians);
+    const float ScopedSin = Sim::Sin(InRadians);
     return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin, InValue.X * ScopedSin + InValue.Y * ScopedCos};
 }
 
@@ -142,6 +143,164 @@ void WriteEntityPose(Ecs::Registry& InRegistry, Entity InEntity, const Transform
 }
 }
 
+[[nodiscard]] float PathLength(const TransportPath& InPath) noexcept
+{
+    if (InPath.Count < 2)
+    {
+        return 0.0f;
+    }
+    float ScopedLength = 0.0f;
+    const std::uint32_t ScopedSegments = InPath.Closed ? InPath.Count : InPath.Count - 1;
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedSegments; ++ScopedIndex)
+    {
+        const Vector2D ScopedDelta = InPath.Points[(ScopedIndex + 1u) % InPath.Count] - InPath.Points[ScopedIndex];
+        ScopedLength += std::sqrt(ScopedDelta.Dot(ScopedDelta));
+    }
+    return ScopedLength;
+}
+
+[[nodiscard]] Vector2D SamplePath(const TransportPath& InPath, float InDistance, Vector2D* OutDirection) noexcept
+{
+    if (InPath.Count == 0)
+    {
+        return Vector2D{};
+    }
+    if (InPath.Count == 1)
+    {
+        *OutDirection = Vector2D{1.0f, 0.0f};
+        return InPath.Points[0];
+    }
+    const std::uint32_t ScopedSegments = InPath.Closed ? InPath.Count : InPath.Count - 1;
+    float ScopedRemaining = InDistance;
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedSegments; ++ScopedIndex)
+    {
+        const Vector2D ScopedA = InPath.Points[ScopedIndex];
+        const Vector2D ScopedB = InPath.Points[(ScopedIndex + 1u) % InPath.Count];
+        const Vector2D ScopedDelta = ScopedB - ScopedA;
+        const float ScopedSegment = std::sqrt(ScopedDelta.Dot(ScopedDelta));
+        if (ScopedRemaining <= ScopedSegment || ScopedIndex + 1u == ScopedSegments)
+        {
+            const float ScopedT = ScopedSegment > kTransportEpsilon ? std::clamp(ScopedRemaining / ScopedSegment, 0.0f, 1.0f) : 0.0f;
+            *OutDirection = ScopedSegment > kTransportEpsilon ? ScopedDelta / ScopedSegment : Vector2D{1.0f, 0.0f};
+            return ScopedA + ScopedDelta * ScopedT;
+        }
+        ScopedRemaining -= ScopedSegment;
+    }
+    return InPath.Points[InPath.Count - 1];
+}
+
+[[nodiscard]] const TransportSurface& SurfaceFor(Ecs::Registry& InRegistry, Entity InRoot) noexcept
+{
+    static const TransportSurface ScopedDefault{};
+    const TransportSurface* ScopedSurface = InRegistry.try_get<TransportSurface>(InRoot);
+    return ScopedSurface != nullptr ? *ScopedSurface : ScopedDefault;
+}
+
+void TransportGroupSystem::AdvanceMotion(Ecs::Registry& InRegistry, Entity InRoot, float InFixedDt) noexcept
+{
+    TransportMotion* ScopedMotion = InRegistry.try_get<TransportMotion>(InRoot);
+    if (ScopedMotion == nullptr || InFixedDt <= 0.0f)
+    {
+        return;
+    }
+    Transform2D ScopedPose{};
+    if (!ReadEntityPose(InRegistry, InRoot, &ScopedPose))
+    {
+        return;
+    }
+    if (ScopedMotion->DwellRemaining > 0.0f)
+    {
+        ScopedMotion->DwellRemaining = std::max(0.0f, ScopedMotion->DwellRemaining - InFixedDt);
+        return;
+    }
+
+    const float ScopedDirection = ScopedMotion->Direction < 0.0f ? -1.0f : 1.0f;
+    const float ScopedSpeed = std::max(ScopedMotion->Speed, 0.0f) * ScopedDirection;
+    const TransportPath* ScopedPath = InRegistry.try_get<TransportPath>(InRoot);
+    if ((ScopedMotion->Flags & kTransportMotionPath) != 0 && ScopedPath != nullptr && ScopedPath->Count >= 2)
+    {
+        const float ScopedLength = PathLength(*ScopedPath);
+        if (ScopedLength <= kTransportEpsilon)
+        {
+            return;
+        }
+        ScopedMotion->Distance += ScopedSpeed * InFixedDt;
+        if (ScopedPath->Closed)
+        {
+            ScopedMotion->Distance = std::fmod(ScopedMotion->Distance, ScopedLength);
+            if (ScopedMotion->Distance < 0.0f)
+            {
+                ScopedMotion->Distance += ScopedLength;
+            }
+        }
+        else if (ScopedMotion->Distance >= ScopedLength)
+        {
+            ScopedMotion->Distance = ScopedLength;
+            if ((ScopedMotion->Flags & kTransportMotionStopAtEnds) != 0)
+            {
+                ScopedMotion->Speed = 0.0f;
+                ScopedMotion->DwellRemaining = std::max(ScopedMotion->DwellSeconds, 0.0f);
+            }
+            else if ((ScopedMotion->Flags & kTransportMotionPingPong) != 0)
+            {
+                ScopedMotion->Direction = -1.0f;
+                ScopedMotion->Distance = std::max(ScopedLength - 0.001f, 0.0f);
+            }
+        }
+        else if (ScopedMotion->Distance < 0.0f)
+        {
+            ScopedMotion->Distance = 0.0f;
+            if ((ScopedMotion->Flags & kTransportMotionPingPong) != 0)
+            {
+                ScopedMotion->Direction = 1.0f;
+            }
+            else
+            {
+                ScopedMotion->Speed = 0.0f;
+            }
+        }
+        Vector2D ScopedDirectionVector{1.0f, 0.0f};
+        ScopedPose.Position = SamplePath(*ScopedPath, ScopedMotion->Distance, &ScopedDirectionVector);
+        if ((ScopedMotion->Flags & kTransportMotionFaceDirection) != 0)
+        {
+            ScopedPose.Rotation = Sim::Atan2(ScopedDirectionVector.Y, ScopedDirectionVector.X);
+        }
+    }
+    else
+    {
+        ScopedPose.Position += ScopedMotion->Axis * (ScopedSpeed * InFixedDt);
+    }
+    WriteEntityPose(InRegistry, InRoot, ScopedPose,
+                    InRegistry.try_get<RigidBody2D>(InRoot) != nullptr);
+}
+
+bool TransportGroupSystem::IsMemberSupported(Ecs::Registry& InRegistry, Entity InMember, Entity InRoot,
+                                             Vector2D InMemberPosition) const noexcept
+{
+    const Collider2D* ScopedMemberCollider = InRegistry.try_get<Collider2D>(InMember);
+    const Collider2D* ScopedRootCollider = InRegistry.try_get<Collider2D>(InRoot);
+    if (ScopedMemberCollider == nullptr || ScopedRootCollider == nullptr)
+    {
+        return false;
+    }
+    Transform2D ScopedRootPose{};
+    if (!ReadEntityPose(InRegistry, InRoot, &ScopedRootPose))
+    {
+        return false;
+    }
+    const TransportSurface& ScopedSurface = SurfaceFor(InRegistry, InRoot);
+    if (ScopedSurface.OneWay && InMemberPosition.Y < ScopedRootPose.Position.Y)
+    {
+        return false;
+    }
+    const float ScopedMemberBottom = InMemberPosition.Y - ScopedMemberCollider->HalfExtents.Y;
+    const float ScopedRootTop = ScopedRootPose.Position.Y + ScopedRootCollider->HalfExtents.Y;
+    const float ScopedTolerance = std::max(ScopedMemberCollider->HalfExtents.Y * 0.35f, 2.0f);
+    const float ScopedHorizontal = std::abs(InMemberPosition.X - ScopedRootPose.Position.X);
+    return ScopedHorizontal <= ScopedMemberCollider->HalfExtents.X + ScopedRootCollider->HalfExtents.X &&
+           std::abs(ScopedMemberBottom - ScopedRootTop) <= ScopedTolerance;
+}
+
 void TransportGroupSystem::DestroyJoint(std::uint64_t InJoint) noexcept
 {
     if (InJoint == 0)
@@ -155,10 +314,25 @@ void TransportGroupSystem::DestroyJoint(std::uint64_t InJoint) noexcept
     }
 }
 
+TransportCapabilities TransportGroupSystem::CapabilitiesFor(const PhysicsSystem& InPhysics) noexcept
+{
+    const PhysicsCapabilities ScopedCapabilities = InPhysics.Capabilities();
+    TransportCapabilities ScopedResult;
+    ScopedResult.Joints = ScopedCapabilities.Joints;
+    ScopedResult.Ccd = ScopedCapabilities.Ccd;
+    ScopedResult.Weld = ScopedCapabilities.Joints;
+    ScopedResult.ContactSupport = true;
+    return ScopedResult;
+}
+
 void TransportGroupSystem::EnsureRigidJoint(Ecs::Registry& InRegistry, Entity InMember,
                                             CarrierMemberComponent& InComponent,
                                             const TransportGroupState& InGroup) noexcept
 {
+    if (MPhysics != nullptr && !CapabilitiesFor(*MPhysics).Weld)
+    {
+        return;
+    }
     if (InComponent.Joint != 0 && !b2Joint_IsValid(b2LoadJointId(InComponent.Joint)))
     {
         InComponent.Joint = 0;
@@ -281,11 +455,12 @@ void TransportGroupSystem::ApplyRootPolicy(Ecs::Registry& InRegistry, PhysicsSys
 void TransportGroupSystem::EnableHighSpeed(PhysicsSystem& InPhysics, Ecs::Registry& InRegistry, Entity InEntity,
                                            Vector2D InVelocity) noexcept
 {
-    if (InVelocity.LengthSquared() < kTransportHighSpeedPixelsPerSecond * kTransportHighSpeedPixelsPerSecond)
-    {
-        return;
-    }
-    InPhysics.SetBullet(InRegistry, InEntity, true);
+    // CCD is switched with the current speed: leaving the bullet flag latched on
+    // after one fast frame changed contact behaviour for the rest of the body's
+    // life.
+    const bool ScopedHighSpeed =
+        InVelocity.LengthSquared() >= kTransportHighSpeedPixelsPerSecond * kTransportHighSpeedPixelsPerSecond;
+    InPhysics.SetBullet(InRegistry, InEntity, ScopedHighSpeed);
 }
 
 void TransportGroupSystem::Clear() noexcept
@@ -494,6 +669,11 @@ void TransportGroupSystem::PrePhysics(Ecs::Registry& InRegistry, PhysicsSystem& 
 {
     RefreshGroups(InRegistry);
     MPhysics = &InPhysics;
+    auto ScopedMotionView = InRegistry.view<TransportMotion>();
+    for (const Entity ScopedMotionEntity : ScopedMotionView)
+    {
+        AdvanceMotion(InRegistry, ScopedMotionEntity, InFixedDt);
+    }
     if (InFixedDt <= 0.0f)
     {
         return;
@@ -551,6 +731,46 @@ void TransportGroupSystem::PrePhysics(Ecs::Registry& InRegistry, PhysicsSystem& 
         }
         if (ScopedBody != nullptr)
         {
+            if (ScopedMember.Mode == kCarrierModeSupport || ScopedMember.Mode == kCarrierModeConveyor)
+            {
+                const bool ScopedSupported =
+                    IsMemberSupported(InRegistry, ScopedEntity, ScopedGroup->Root, ScopedMemberPose.Position);
+                if (ScopedSupported)
+                {
+                    ScopedMember.Flags |= kCarrierFlagGrounded;
+                    const TransportSurface& ScopedSurface = SurfaceFor(InRegistry, ScopedGroup->Root);
+                    Vector2D ScopedTarget = ScopedCarry;
+                    if (ScopedMember.Mode == kCarrierModeSupport)
+                    {
+                        ScopedTarget += ScopedMember.RelativeVelocity;
+                    }
+                    else
+                    {
+                        ScopedTarget.X += ScopedSurface.TangentSpeed;
+                    }
+                    // Exponential approach with the authored friction per 60 Hz
+                    // reference step: dt-correct and stable at any fixed rate.
+                    const float ScopedBlend =
+                        std::clamp(1.0f - std::exp(-ScopedSurface.Friction * 60.0f * InFixedDt), 0.0f, 1.0f);
+                    const float ScopedTargetX =
+                        ScopedBody->LinearVelocity.X +
+                        (ScopedTarget.X - ScopedBody->LinearVelocity.X) * ScopedBlend;
+                    const float ScopedTargetY =
+                        (!ScopedSurface.AllowJump && ScopedBody->LinearVelocity.Y > ScopedCarry.Y)
+                            ? ScopedCarry.Y
+                            : (ScopedCarry.Y > ScopedBody->LinearVelocity.Y ? ScopedCarry.Y
+                                                                             : ScopedBody->LinearVelocity.Y);
+                    EnableHighSpeed(InPhysics, InRegistry, ScopedEntity, ScopedTarget);
+                    InPhysics.SetLinearVelocity(InRegistry, ScopedEntity,
+                                                Vector2D{ScopedTargetX, ScopedTargetY}, true);
+                    const float ScopedAngular = (ScopedMember.Flags & kCarrierFlagInheritRotation) != 0
+                                                    ? ScopedGroup->AngularVelocity
+                                                    : ScopedMember.RelativeAngularVelocity;
+                    InPhysics.SetAngularVelocity(InRegistry, ScopedEntity, ScopedAngular, true);
+                    continue;
+                }
+                ScopedMember.Flags &= ~kCarrierFlagGrounded;
+            }
             const Vector2D ScopedVelocity = ScopedCarry + ScopedMember.RelativeVelocity;
             EnableHighSpeed(InPhysics, InRegistry, ScopedEntity, ScopedVelocity);
             InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, ScopedVelocity, true);
@@ -652,9 +872,16 @@ void TransportGroupSystem::PostPhysics(Ecs::Registry& InRegistry, PhysicsSystem&
         const bool ScopedRequested = (ScopedMember.Flags & kCarrierFlagDetachRequested) != 0;
         const bool ScopedOutside = (ScopedGroup->Flags & kTransportGroupAutoDetachOutside) != 0 &&
                                    OutsideBounds(*ScopedGroup, ScopedMember.LocalPosition);
-        if ((ScopedRequested || ScopedOutside) && ScopedDetachCount < ScopedToDetach.size())
+        if (ScopedRequested || ScopedOutside)
         {
-            ScopedToDetach[ScopedDetachCount++] = ScopedEntity;
+            if (ScopedDetachCount < ScopedToDetach.size())
+            {
+                ScopedToDetach[ScopedDetachCount++] = ScopedEntity;
+            }
+            else
+            {
+                ++MDroppedDetaches;
+            }
         }
     }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedDetachCount; ++ScopedIndex)
@@ -697,12 +924,24 @@ TransportGroupState* TransportGroupSystem::FindGroup(std::uint32_t InGroupId) no
 
 const TransportGroupState* TransportGroupSystem::FindGroup(std::uint32_t InGroupId) const noexcept
 {
-    for (std::uint32_t ScopedIndex = 0; ScopedIndex < MGroupCount; ++ScopedIndex)
+    if (InGroupId == 0)
     {
-        if (MGroups[ScopedIndex].Active && MGroups[ScopedIndex].GroupId == InGroupId)
+        return nullptr;
+    }
+    std::uint32_t ScopedCursor = (InGroupId * 2654435761u) & (kGroupIndexSize - 1u);
+    for (std::uint32_t ScopedProbe = 0; ScopedProbe < kGroupIndexSize; ++ScopedProbe)
+    {
+        const GroupIndexEntry& ScopedEntry = MGroupIndex[ScopedCursor];
+        if (ScopedEntry.GroupId == 0)
         {
-            return &MGroups[ScopedIndex];
+            return nullptr;
         }
+        if (ScopedEntry.GroupId == InGroupId && ScopedEntry.Slot < MGroupCount &&
+            MGroups[ScopedEntry.Slot].Active && MGroups[ScopedEntry.Slot].GroupId == InGroupId)
+        {
+            return &MGroups[ScopedEntry.Slot];
+        }
+        ScopedCursor = (ScopedCursor + 1u) & (kGroupIndexSize - 1u);
     }
     return nullptr;
 }
@@ -763,6 +1002,21 @@ void TransportGroupSystem::RefreshGroups(Ecs::Registry& InRegistry) noexcept
     }
     MGroups = ScopedNew;
     MGroupCount = ScopedCount;
+    // Rebuild the open-addressing index in the same pass as the group array.
+    MGroupIndex.fill(GroupIndexEntry{});
+    for (std::uint32_t ScopedI = 0; ScopedI < MGroupCount; ++ScopedI)
+    {
+        if (!MGroups[ScopedI].Active)
+        {
+            continue;
+        }
+        std::uint32_t ScopedCursor = (MGroups[ScopedI].GroupId * 2654435761u) & (kGroupIndexSize - 1u);
+        while (MGroupIndex[ScopedCursor].GroupId != 0)
+        {
+            ScopedCursor = (ScopedCursor + 1u) & (kGroupIndexSize - 1u);
+        }
+        MGroupIndex[ScopedCursor] = GroupIndexEntry{MGroups[ScopedI].GroupId, static_cast<std::uint16_t>(ScopedI)};
+    }
 }
 
 bool TransportGroupSystem::ProcessGroup(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, std::uint32_t InIndex,

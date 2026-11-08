@@ -113,8 +113,8 @@ AssetGuid ComputeAssetGuid(std::string_view InSourcePath, AssetKind InKind) noex
 AssetHandle MakeAssetHandle(std::uint32_t InIndex, std::uint32_t InGeneration) noexcept
 {
     AssetHandle ScopedHandle;
-    ScopedHandle.index = InIndex;
-    ScopedHandle.generation = InGeneration;
+    ScopedHandle.Index = InIndex;
+    ScopedHandle.Generation = InGeneration;
     return ScopedHandle;
 }
 

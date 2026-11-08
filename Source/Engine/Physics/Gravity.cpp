@@ -1,6 +1,7 @@
 // FemboyEngine2D - level gravity and local gravity fields.
 #include "Engine/Physics/Gravity.hpp"
 
+#include "Engine/Core/SimMath.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/ECS/Tilemap.hpp"
@@ -37,8 +38,8 @@ namespace
         case GravityFalloff::Exponential:
         {
             const float ScopedPower = std::clamp(InPower, 1.0f, 16.0f);
-            const float ScopedScale = std::exp(ScopedPower) - 1.0f;
-            return ScopedScale > 1.0e-6f ? (std::exp(ScopedPower * ScopedT) - 1.0f) / ScopedScale : ScopedT;
+            const float ScopedScale = Sim::Exp(ScopedPower) - 1.0f;
+            return ScopedScale > 1.0e-6f ? (Sim::Exp(ScopedPower * ScopedT) - 1.0f) / ScopedScale : ScopedT;
         }
     }
     return ScopedT;
@@ -113,12 +114,18 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
     // Local fields act on bodies that already exist. Creating missing bodies here
     // removes the one-tick delay on the first frame after a scene load.
     InPhysics.EnsureBodies(InRegistry);
+    // The scene setting is a singleton by contract, but a duplicated component
+    // must still resolve the same way every tick: pick the lowest entity id.
     const LevelGravityComponent* ScopedLevel = nullptr;
+    Entity ScopedLevelOwner = entt::null;
     auto ScopedLevelView = InRegistry.view<LevelGravityComponent>();
     for (const Entity ScopedEntity : ScopedLevelView)
     {
-        ScopedLevel = &ScopedLevelView.get<LevelGravityComponent>(ScopedEntity);
-        break;
+        if (ScopedLevel == nullptr || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedLevelOwner))
+        {
+            ScopedLevelOwner = ScopedEntity;
+            ScopedLevel = &ScopedLevelView.get<LevelGravityComponent>(ScopedEntity);
+        }
     }
 
     float ScopedMaxFallSpeed = 0.0f;
@@ -171,8 +178,11 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
                     ScopedBody.LinearVelocity.X * ScopedDown.X + ScopedBody.LinearVelocity.Y * ScopedDown.Y;
                 if (ScopedAlong > ScopedMaxFallSpeed)
                 {
-                    ScopedBody.LinearVelocity =
+                    // Write through the physics bridge: the DOD backend integrates
+                    // its own velocity columns, so a component write is lost there.
+                    const Vector2D ScopedClamped =
                         ScopedBody.LinearVelocity - ScopedDown * (ScopedAlong - ScopedMaxFallSpeed);
+                    InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, ScopedClamped, false);
                 }
             }
         }
@@ -180,63 +190,53 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
 
     // Local fields are independent of world gravity and stack additively. The
     // field source is any transform entity; every dynamic body is a target.
+    // Fields form the outer loop: the source pose, shape extents and rotation
+    // are resolved once per field instead of once per body-field pair.
     auto ScopedBodyView = InRegistry.view<RigidBody2D>();
     auto ScopedFieldView = InRegistry.view<GravityBodyComponent, Transform2D>();
-    for (const Entity ScopedTarget : ScopedBodyView)
+    for (auto [ScopedSource, ScopedField, ScopedTransform] : ScopedFieldView.each())
     {
-        RigidBody2D& ScopedBody = ScopedBodyView.get<RigidBody2D>(ScopedTarget);
-        if (ScopedBody.Type != BodyType::Dynamic)
+        if (!ScopedField.Enabled)
         {
             continue;
         }
-        if (const auto* ScopedCollider = InRegistry.try_get<Collider2D>(ScopedTarget); ScopedCollider != nullptr)
+        const float ScopedCos = Sim::Cos(ScopedTransform.Rotation);
+        const float ScopedSin = Sim::Sin(ScopedTransform.Rotation);
+        const Vector2D ScopedCenter{
+            ScopedTransform.Position.X + ScopedField.Offset.X * ScopedCos - ScopedField.Offset.Y * ScopedSin,
+            ScopedTransform.Position.Y + ScopedField.Offset.X * ScopedSin + ScopedField.Offset.Y * ScopedCos};
+        const GravityBodyShape ScopedShape = ScopedField.ShapeValue();
+        const GravityBodyMode ScopedMode = ScopedField.ModeValue();
+        const float ScopedRadius = std::max(ScopedField.Radius, 0.0f);
+        const float ScopedHalfX = std::max(ScopedField.HalfExtents.X, 0.0f);
+        const float ScopedHalfY = std::max(ScopedField.HalfExtents.Y, 0.0f);
+        const float ScopedEdgeDepth =
+            ScopedShape == GravityBodyShape::Circle
+                ? std::max(ScopedField.FalloffDepth, ScopedRadius)
+                : std::max(ScopedField.FalloffDepth, std::min(ScopedHalfX, ScopedHalfY));
+
+        for (auto [ScopedTarget, ScopedBody] : ScopedBodyView.each())
         {
-            if ((ScopedCollider->CategoryBits & 0xFFFFFFFFu) == 0)
+            if (ScopedTarget == ScopedSource || ScopedBody.Type != BodyType::Dynamic)
             {
                 continue;
             }
-        }
-        for (const Entity ScopedSource : ScopedFieldView)
-        {
-            if (ScopedSource == ScopedTarget)
+            const auto* ScopedCollider = InRegistry.try_get<Collider2D>(ScopedTarget);
+            if (ScopedCollider != nullptr && (ScopedCollider->CategoryBits & ScopedField.AffectsCategoryBits) == 0)
             {
                 continue;
             }
-            const GravityBodyComponent& ScopedField = ScopedFieldView.get<GravityBodyComponent>(ScopedSource);
-            if (!ScopedField.Enabled)
-            {
-                continue;
-            }
-            if (const auto* ScopedCollider = InRegistry.try_get<Collider2D>(ScopedTarget);
-                ScopedCollider != nullptr && (ScopedCollider->CategoryBits & ScopedField.AffectsCategoryBits) == 0)
-            {
-                continue;
-            }
-            const Transform2D& ScopedTransform = ScopedFieldView.get<Transform2D>(ScopedSource);
-            const float ScopedCos = std::cos(ScopedTransform.Rotation);
-            const float ScopedSin = std::sin(ScopedTransform.Rotation);
-            const Vector2D ScopedCenter{
-                ScopedTransform.Position.X + ScopedField.Offset.X * ScopedCos - ScopedField.Offset.Y * ScopedSin,
-                ScopedTransform.Position.Y + ScopedField.Offset.X * ScopedSin + ScopedField.Offset.Y * ScopedCos};
             const Vector2D ScopedDelta = ScopedBody.Position - ScopedCenter;
-            const GravityBodyShape ScopedShape = ScopedField.ShapeValue();
             float ScopedEdge = 0.0f;
-            float ScopedEdgeDepth = 0.0f;
             if (ScopedShape == GravityBodyShape::Circle)
             {
-                const float ScopedRadius = std::max(ScopedField.Radius, 0.0f);
-                const float ScopedDistance = std::sqrt(ScopedDelta.LengthSquared());
-                ScopedEdge = ScopedRadius - ScopedDistance;
-                ScopedEdgeDepth = std::max(ScopedField.FalloffDepth, ScopedRadius);
+                ScopedEdge = ScopedRadius - std::sqrt(ScopedDelta.LengthSquared());
             }
             else
             {
                 const float ScopedLocalX = ScopedDelta.X * ScopedCos + ScopedDelta.Y * ScopedSin;
                 const float ScopedLocalY = -ScopedDelta.X * ScopedSin + ScopedDelta.Y * ScopedCos;
-                const float ScopedHalfX = std::max(ScopedField.HalfExtents.X, 0.0f);
-                const float ScopedHalfY = std::max(ScopedField.HalfExtents.Y, 0.0f);
                 ScopedEdge = std::min(ScopedHalfX - std::fabs(ScopedLocalX), ScopedHalfY - std::fabs(ScopedLocalY));
-                ScopedEdgeDepth = std::max(ScopedField.FalloffDepth, std::min(ScopedHalfX, ScopedHalfY));
             }
             if (ScopedEdge <= 0.0f)
             {
@@ -249,35 +249,57 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
             {
                 ScopedAcceleration = std::min(ScopedAcceleration, ScopedField.MaxAcceleration);
             }
-            Vector2D ScopedDirection = ScopedField.ModeValue() == GravityBodyMode::Attract
-                                           ? ScopedCenter - ScopedBody.Position
-                                           : ScopedBody.Position - ScopedCenter;
-            ScopedDirection = NormalizedOrZero(ScopedDirection);
+            if (!(ScopedAcceleration > 0.0f))
+            {
+                continue;
+            }
+            // Directional fields push along an explicit local axis; the zone
+            // shape still bounds where the field acts.
+            Vector2D ScopedDirection{0.0f, 0.0f};
+            if (ScopedMode == GravityBodyMode::Directional)
+            {
+                const Vector2D ScopedLocal = ScopedField.Direction;
+                ScopedDirection = NormalizedOrZero(Vector2D{
+                    ScopedLocal.X * ScopedCos - ScopedLocal.Y * ScopedSin,
+                    ScopedLocal.X * ScopedSin + ScopedLocal.Y * ScopedCos});
+            }
+            else
+            {
+                ScopedDirection = ScopedMode == GravityBodyMode::Attract ? ScopedCenter - ScopedBody.Position
+                                                                        : ScopedBody.Position - ScopedCenter;
+                ScopedDirection = NormalizedOrZero(ScopedDirection);
+            }
             if (ScopedDirection.LengthSquared() <= 0.0f)
             {
                 continue;
             }
-            InPhysics.ApplyAcceleration(InRegistry, ScopedTarget, ScopedDirection * ScopedAcceleration);
+            // Constant fields do not wake sleeping bodies; a force that only
+            // exists while the body is already awake would otherwise keep every
+            // body inside a field out of the sleep schedule.
+            InPhysics.ApplyAcceleration(InRegistry, ScopedTarget, ScopedDirection * ScopedAcceleration, false);
         }
     }
 }
 
-void GravitySystem::Update(Ecs::SystemContext& InContext) noexcept
+void GravitySystem::Update(Ecs::PhysicsSystemView& InView) noexcept
 {
-    if (InContext.physics != nullptr)
+    if (InView.services.physics != nullptr)
     {
-        Update(InContext.registry, *InContext.physics, InContext.dt);
+        Update(InView.registry, *InView.services.physics, InView.dt);
     }
+}
+
+namespace
+{
+void GravitySystemThunk(Ecs::PhysicsSystemView& InView, void* InUser)
+{
+    static_cast<GravitySystem*>(InUser)->Update(InView);
+}
 }
 
 bool GravitySystem::Register(Ecs::SystemGraph& InGraph, GravitySystem& InSystem)
 {
-    return InGraph.Add(
-        Ecs::Phase::FixedUpdate, "GravitySystem",
-        +[](Ecs::SystemContext& InContext, void* InUser)
-        {
-            static_cast<GravitySystem*>(InUser)->Update(InContext);
-        },
-        &InSystem);
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "GravitySystem", Ecs::BindPhysicsSystem<&GravitySystemThunk>(),
+                       &InSystem);
 }
 }

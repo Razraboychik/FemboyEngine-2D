@@ -494,10 +494,10 @@ EXTRA_SECTIONS: list[dict] = [
                      B("One contiguous Mat4 block per frame; never per draw.",
                        "Один непрерывный блок Mat4 на кадр; никогда не на draw.")],
                     [B("Texture array", "Текстурный массив"),
-                     B("One sampler2DArray binding for the whole scene; cooking picks BC7 (desktop) "
-                       "or ASTC (mobile).",
-                       "Одна привязка sampler2DArray на всю сцену; кукер выбирает BC7 (десктоп) "
-                       "или ASTC (мобильные).")],
+                     B("One sampler2DArray binding for the whole scene; cooking picks BC7 on desktop "
+                       "or ASTC on ASTC-capable GPUs.",
+                       "Одна привязка sampler2DArray на всю сцену; кукер выбирает BC7 на десктопе "
+                       "или ASTC на GPU с поддержкой ASTC.")],
                     [B("SceneDiagnostics", "SceneDiagnostics"),
                      B("Watch MeshRenderItem, indirect calls, draw calls and the frame arena in one panel.",
                        "Следите за MeshRenderItem, indirect-вызовами, draw calls и кадровой ареной "
@@ -519,12 +519,12 @@ EXTRA_SECTIONS: list[dict] = [
                 "text": B(
                     "The editor's Project Settings panel edits the cook format and the collision "
                     "matrix transactionally; both persist into project.femproj and are applied to "
-                    "live b2Shape filters on commit. A project that changes its target from "
-                    "desktop to mobile keeps the same scene and re-cooks the atlas.",
+                    "live b2Shape filters on commit. A project that changes its cooked texture "
+                    "format keeps the same scene and re-cooks the atlas.",
                     "Панель Project Settings редактирует формат кукинга и матрицу коллизий "
                     "транзакционно; оба значения сохраняются в project.femproj и применяются к "
-                    "живым b2Shape-фильтрам при коммите. Проект, меняющий цель с десктопа на "
-                    "мобильные, сохраняет ту же сцену и перекукивает атлас.",
+                    "живым b2Shape-фильтрам при коммите. Проект, меняющий формат кукинга "
+                    "текстур, сохраняет ту же сцену и перекукивает атлас.",
                 ),
             },
         ],
@@ -1065,7 +1065,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "Выбор голоса — это поиск по локали, а не фильтр токенов. Старая реализация "
                     "сопоставляла только первую букву тега с Language=409/419 и молча возвращалась для "
                     "всего остального, поэтому русское повествование на английской ОС сохраняло "
-                    "английский голос (или после неудачного фильтра — вообще тот, что уже был). Теперь "
+                    "английский голос (или после неудачного фильтра — тот, что уже был). Теперь "
                     "SetVoice() разбирает основной язык BCP-47, разрешает полный тег через "
                     "LocaleNameToLCID, перебирает все установленные токены SAPI и оценивает их.",
                 ),
@@ -1133,7 +1133,7 @@ EXTRA_SECTIONS: list[dict] = [
                       "AVSpeech перебирает [AVSpeechSynthesisVoice speechVoices], оценивает префикс языка "
                       "и сохраняет лучший установленный язык; системный по умолчанию — фолбэк."),
                     B("Every decision is logged once with the requested tag, the selected LCID/language and "
-                      "whether it was a fallback, so a support ticket can say what the player actually "
+                      "whether it was a fallback, so a support ticket can say what the player "
                       "heard.",
                       "Каждое решение логируется один раз с запрошенным тегом, выбранным LCID/языком и "
                       "признаком фолбэка, поэтому в тикете поддержки видно, что игрок реально слышал."),
@@ -1238,34 +1238,39 @@ EXTRA_SECTIONS: list[dict] = [
                      B("Opaque logical state id. 0 = rest pose; gameplay owns the numbering.",
                        "Непрозрачный логический id состояния. 0 = rest-поза; нумерация принадлежит геймплею.")],
                     [B("PreviousState", "PreviousState"), B("uint64_t", "uint64_t"),
-                     B("Source pose of the active cross-fade.",
-                       "Исходная поза активного кросс-фейда.")],
+                     B("Source pose of the active cross-fade.", "Исходная поза активного кросс-фейда.")],
                     [B("StateTime", "StateTime"), B("float", "float"),
                      B("Seconds in the current state; reset on every fired transition.",
                        "Секунды в текущем состоянии; сбрасывается при каждом переходе.")],
                     [B("TransitionCount", "TransitionCount"), B("uint32_t", "uint32_t"),
-                     B("Diagnostics. Placed at offset 20 to fill the pad before the 8-byte-aligned "
-                       "transition array.",
-                       "Диагностика. Размещено по смещению 20, чтобы заполнить паддинг перед массивом "
-                       "переходов с выравниванием 8.")],
+                     B("Diagnostics: transitions fired so far.", "Диагностика: сколько переходов уже сработало.")],
+                    [B("Floats[8]", "Floats[8]"), B("float", "float"),
+                     B("Float parameters (speed, health, aim) read by the transition conditions.",
+                       "Float-параметры (скорость, здоровье, прицел), читаемые условиями переходов.")],
+                    [B("BlendDuration / BlendTime / BlendWeight", "BlendDuration / BlendTime / BlendWeight"),
+                     B("float", "float"),
+                     B("Cross-fade timing and the eased weight the SkeletalAnimation bridge applies.",
+                       "Тайминг кросс-фейда и сглаженный вес, который применяет мост SkeletalAnimation.")],
+                    [B("LastTransition", "LastTransition"), B("uint16_t", "uint16_t"),
+                     B("Index of the last fired transition, or kNoAnimTransition.",
+                       "Индекс последнего сработавшего перехода или kNoAnimTransition.")],
+                ],
+            },
+            {
+                "type": "table",
+                "headers": [B("AnimGraphDefinitionComponent field", "Поле AnimGraphDefinitionComponent"),
+                            B("Type", "Тип"), B("Role", "Назначение")],
+                "rows": [
                     [B("Transitions[8]", "Transitions[8]"), B("AnimTransition", "AnimTransition"),
                      B("Authored transitions, evaluated in array order; first match wins. Inert when "
                        "Conditions == AnimConditionNone.",
                        "Авторские переходы, перебираются по порядку; побеждает первое совпадение. Инертны "
                        "при Conditions == AnimConditionNone.")],
                     [B("Clips[8] / ClipCount", "Clips[8] / ClipCount"), B("AnimClip", "AnimClip"),
-                     B("Per-entity clip table: bone keys plus the SpriteAnimation frame range for the same state.",
-                       "Таблица клипов сущности: ключи костей плюс диапазон кадров SpriteAnimation для того же состояния.")],
-                    [B("Floats[8]", "Floats[8]"), B("float", "float"),
-                     B("Float parameters (speed, health, aim) read by the transition conditions.",
-                       "Float-параметры (скорость, здоровье, прицел), читаемые условиями переходов.")],
-                    [B("RestPose[128]", "RestPose[128]"), B("AnimRestBone", "AnimRestBone"),
-                     B("Captured once from the skeleton; a clip only authors the bones it moves.",
-                       "Снимается один раз со скелета; клип описывает только те кости, которые двигает.")],
-                    [B("BlendDuration / BlendTime / BlendWeight",
-                       "BlendDuration / BlendTime / BlendWeight"), B("float", "float"),
-                     B("Cross-fade timing and the eased weight the SkeletalAnimation bridge applies.",
-                       "Тайминг кросс-фейда и сглаженный вес, который применяет мост SkeletalAnimation.")],
+                     B("Clip table: bone keys plus the SpriteAnimation frame range for the same state.",
+                       "Таблица клипов: ключи костей плюс диапазон кадров SpriteAnimation для того же состояния.")],
+                    [B("TransitionCount", "TransitionCount"), B("uint32_t", "uint32_t"),
+                     B("Number of authored transition slots in use.", "Число занятых слотов авторских переходов.")],
                 ],
             },
             {
@@ -1289,46 +1294,6 @@ EXTRA_SECTIONS: list[dict] = [
                      B("Floats[FloatParam] compared with FloatThreshold; a non-finite value fails closed.",
                        "Floats[FloatParam] сравнивается с FloatThreshold; не-конечное значение даёт false.")],
                 ],
-            },
-            {
-                "type": "code",
-                "lang": "cpp",
-                "text": "// AnimGraph.hpp - the component prefix is stable and visible in an inspector.\n"
-                        "struct AnimStateComponent\n"
-                        "{\n"
-                        "    std::uint64_t CurrentState = 0;   // 0  logical state, 0 = rest\n"
-                        "    std::uint64_t PreviousState = 0;  // 8  cross-fade source\n"
-                        "    float StateTime = 0.0f;           // 16 seconds in state\n"
-                        "    std::uint32_t TransitionCount = 0;// 20 diagnostics / pad\n"
-                        "    std::array<AnimTransition, 8> Transitions{};  // 24\n"
-                        "    std::array<AnimClip, 8> Clips{};\n"
-                        "    std::array<float, 8> Floats{};\n"
-                        "    std::array<AnimRestBone, kMaxBones> RestPose{};\n"
-                        "    float BlendDuration = 0.0f, BlendTime = 0.0f, BlendWeight = 1.0f;\n"
-                        "    // ...\n"
-                        "};\n"
-                        "\n"
-                        "// Once per fixed tick: conditions -> state -> two bridges.\n"
-                        "for (auto [entity, state] : registry.view<AnimStateComponent>().each())\n"
-                        "{\n"
-                        "    state.StateTime += dt;\n"
-                        "    const std::uint64_t tags = gameplayBits(registry, entity);\n"
-                        "    for (auto& t : state.Transitions)\n"
-                        "    {\n"
-                        "        if (t.FromState != kAnimAnyState && t.FromState != state.CurrentState) continue;\n"
-                        "        if (!AnimTransitionMatches(t, state, tags)) continue;\n"
-                        "        state.PreviousState = state.CurrentState;\n"
-                        "        state.CurrentState = t.ToState;\n"
-                        "        state.StateTime = 0.0f;\n"
-                        "        state.BlendDuration = t.BlendDuration;\n"
-                        "        break;   // first match wins, at most 8 comparisons\n"
-                        "    }\n"
-                        "    // SkeletalAnimation: blend local TRS, then one hierarchy pass.\n"
-                        "    if (auto* skeleton = registry.try_get<SkeletonComponent>(entity))\n"
-                        "        AnimGraphApplySkeletal(state, *skeleton);\n"
-                        "    // SpriteAnimation: only on a state change, so the frame advance is not fought.\n"
-                        "    if (changed) AnimGraphApplySpriteClip(state, spriteAnimation, grid, spritePtr);\n"
-                        "}",
             },
             {
                 "type": "p",
@@ -1371,8 +1336,8 @@ EXTRA_SECTIONS: list[dict] = [
                     [B("Triggers", "Triggers"), B("uint64_t", "uint64_t"),
                      B("Pending change triggers. 0 -> the transition table is not touched at all this tick. "
                        "Bit 63 is reserved for the internal leaf-guard-failed event.",
-                       "Ожидающие триггеры изменений. 0 -> таблица переходов в этом тике не трогается "
-                       "вообще. Бит 63 зарезервирован под внутреннее событие «guard листа провален».")],
+                       "Ожидающие триггеры изменений. 0 -> таблица переходов в этом тике не трогается. "
+                       "Бит 63 зарезервирован под внутреннее событие «guard листа провален».")],
                     [B("Target / TargetPosition", "Target / TargetPosition"), B("Entity / Vector2D",
                                                                                "Entity / Vector2D"),
                      B("Blackboard: a live entity target, with a cached position fallback for patrol points.",
@@ -1493,7 +1458,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "node compiles to the AnimTransition of the Idle -> Attack style cross-fade. The runtime never "
                     "sees ImNodes, positions, names or the editor's blend topology.",
                     "Рантайм-таблицы выше создаются в AnimationGraphCanvasPanel — ImNodes-редакторе из "
-                    "Source/Editor/Panels. Панель намеренно не является второй рантайм-моделью: её документ — "
+                    "Source/Editor/Panels. Панель не вторая рантайм-модель: её документ — "
                     "trivially copyable AnimationGraphDocument, зарегистрированный как один external-buffer "
                     "CommandStack. Узел клипа компилируется в AnimClip, узел float-параметра — в "
                     "AnimStateComponent::Floats, прямая связь клип-клип — в AnimTransition, а blend-узел — в "
@@ -1546,34 +1511,14 @@ EXTRA_SECTIONS: list[dict] = [
             {
                 "type": "code",
                 "lang": "cpp",
-                "text": "// CompileGraph(): fixed storage, one flat AnimStateComponent, no allocation.\n"
-                        "AnimStateComponent out;\n"
-                        "std::array<bool, kMaxAnimParams> paramUsed{};\n"
-                        "std::array<std::uint64_t, kMaxAnimClips> stateIds{};\n"
-                        "std::uint16_t clipCount = 0, transitionCount = 0;\n"
-                        "for (node : document.Nodes)\n"
-                        "    if (node.Kind == Clip)\n"
-                        "    {\n"
-                        "        if (node.Clip.State == 0 || duplicate(stateIds, node.Clip.State)) reject();\n"
-                        "        stateIds[clipCount] = node.Clip.State;\n"
-                        "        out.Clips[clipCount++] = node.Clip;\n"
-                        "    }\n"
-                        "    else if (node.Kind == FloatParameter)\n"
-                        "        out.Floats[node.ParameterIndex] = node.ParameterValue;\n"
-                        "// Isolated-node check: every node needs at least one incident link.\n"
-                        "for (node : document.Nodes) if (degree[node] == 0) reject(\"isolated\");\n"
-                        "// Direct links become transitions; each Blend needs one source, one target\n"
-                        "// and at most one parameter binding.\n"
-                        "for (link : document.Links)\n"
-                        "    if (link.Kind == Transition && conditionsValid(link.Transition))\n"
-                        "        out.Transitions[transitionCount++] = link.Transition;\n"
-                        "for (blend : document.Nodes)\n"
-                        "    if (blend.Kind == Blend)\n"
-                        "        out.Transitions[transitionCount++] = makeTransition(blend, source, target);\n"
-                        "for (i = transitionCount; i < 8; ++i)\n"
-                        "    out.Transitions[i].Enabled = false;   // inert slots, not garbage\n"
-                        "out.ClipCount = clipCount;\n"
-                        "out.TransitionCount = 0;                  // runtime diagnostic, not an authored count",
+                "text": "\n"
+                        "Every gesture is one CommandStack transaction. The document is a single external buffer, so a node drag records only the changed position bytes and a condition toggle records only the changed condition word. The ImNodes callbacks never call Record() directly: DrawCanvas reports a state change, ProcessCanvasEvents opens BeginEdit(), the edit method mutates the document, RecordEdit() captures the new bytes, and CommitEdit() commits one undo group. Ctrl+Z/Ctrl+Y are handled by EditorSystem, which first commits any open canvas transaction and then asks CommandStack to apply the inverse delta. Inspector edits use the Mirror-backed AnimationGraphTransitionFieldsEqual()/_ClipFieldsEqual() helpers; both compare only the FieldDesc byte ranges through reflect::FieldBytesEqual(), so padding bytes cannot create an empty undo command.\n"
+                        "\n"
+                        "| Condition bit | Inspector control | Runtime evaluator |\n"
+                        "|---|---|---|\n"
+                        "| AnimConditionStateTimeAtLeast | StateTimeAtLeast checkbox + StateTimeThreshold | StateTime >= threshold |\n"
+                        "| AnimConditionTagsAll | TagsAll checkbox + TagsAll mask | (tags & TagsAll) == TagsAll; empty mask fails closed |\n"
+                        "| AnimConditionFloatAtMost | FloatAtMost checkbox + FloatParam + FloatThreshold | Floats[FloatParam] <= FloatThreshold |\n",
             },
             {
                 "type": "p",
@@ -1588,7 +1533,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "AnimationGraphTransitionFieldsEqual()/_ClipFieldsEqual() helpers; both compare only the "
                     "FieldDesc byte ranges through reflect::FieldBytesEqual(), so padding bytes cannot create an "
                     "empty undo command.",
-                    "Каждый жест — одна транзакция CommandStack. Документ является одним external buffer, поэтому "
+                    "Каждый жест — одна транзакция CommandStack. Документ — один external buffer, поэтому "
                     "перетаскивание узла записывает только изменившиеся байты позиции, а переключение условия — "
                     "только изменившееся слово условий. Колбэки ImNodes никогда не вызывают Record() напрямую: "
                     "DrawCanvas сообщает об изменении, ProcessCanvasEvents открывает BeginEdit(), метод правки "
@@ -1757,42 +1702,6 @@ EXTRA_SECTIONS: list[dict] = [
                 ),
             },
             {
-                "type": "code",
-                "lang": "cpp",
-                "text": "// Constant VRAM, independent of the camera path or the world size.\n"
-                        "constexpr std::uint64_t kPageBytes = 2048ull * 2048ull * 4ull;\n"
-                        "const std::uint64_t Budget = layerCount * kPageBytes;\n"
-                        "\n"
-                        "// Residency is a two-pass clock over a fixed page table.\n"
-                        "void VirtualTextureSystem::Update(const VirtualTextureCamera& InCamera) noexcept\n"
-                        "{\n"
-                        "    ++MFrame;\n"
-                        "    const float HalfX = InCamera.ViewSize.X * 0.5f / InCamera.Zoom;\n"
-                        "    const float HalfY = InCamera.ViewSize.Y * 0.5f / InCamera.Zoom;\n"
-                        "    const float X = std::fabs(std::cos(InCamera.Rotation));\n"
-                        "    const float Y = std::fabs(std::sin(InCamera.Rotation));\n"
-                        "    const float ExtentX = HalfX * X + HalfY * Y;   // rotated AABB\n"
-                        "    const float ExtentY = HalfX * Y + HalfY * X;\n"
-                        "    for (std::int64_t Ty = MinY; Ty <= MaxY; ++Ty)\n"
-                        "        for (std::int64_t Tx = MinX; Tx <= MaxX; ++Tx)\n"
-                        "        {\n"
-                        "            const std::uint32_t Layer = LayerForTile(Tx, Ty);\n"
-                        "            const std::uint32_t Hash = FindHash(Tx, Ty);\n"
-                        "            if (Hash != kHashCapacity)\n"
-                        "            {\n"
-                        "                MSlots[Layer * 1024u + MHash[Hash].slot].lastUsedFrame = MFrame;\n"
-                        "                continue;\n"
-                        "            }\n"
-                        "            std::uint32_t Slot = 0;\n"
-                        "            if (LoadTile(Tx, Ty, Layer, &Slot))   // mmap chunk, upload one 64x64 tile\n"
-                        "            {\n"
-                        "                MSlots[Layer * 1024u + Slot].lastUsedFrame = MFrame;\n"
-                        "                ++MStats.uploads;               // one vkCmdCopyBufferToImage\n"
-                        "            }\n"
-                        "        }\n"
-                        "}",
-            },
-            {
                 "type": "table",
                 "headers": [B("Chunk header field", "Поле заголовка чанка"), B("Offset", "Смещение"),
                            B("Value", "Значение"), B("Validation", "Проверка")],
@@ -1938,10 +1847,10 @@ EXTRA_SECTIONS: list[dict] = [
                       "Extract отдаёт оба представления: Items()/Keys()/Batches() заполняют существующий "
                       "FramePacket, а DirtyRanges() — план загрузки для бэкенда с постоянным instance SSBO. Кадр "
                       "без изменений и без структурных правок даёт пустой список диапазонов."),
-                    B("A layer change is deliberately treated as structural even when the float depth did not "
+                    B("A layer change is treated as structural even when the float depth did not "
                       "move: batching groups by the top 16 RenderKey bits, so a stable order is a correctness "
                       "condition, not an optimisation.",
-                      "Смена слоя намеренно считается структурной, даже если float-глубина не изменилась: "
+                      "Смена слоя считается структурной, даже если float-глубина не изменилась: "
                       "батчинг группирует по старшим 16 битам RenderKey, поэтому стабильный порядок — условие "
                       "корректности, а не оптимизация."),
                 ],
@@ -2524,13 +2433,13 @@ EXTRA_SECTIONS: list[dict] = [
                            B("Authoring action", "Действие автора")],
                 "rows": [
                     [B("Clip state is 0 or kAnimAnyState", "Состояние клипа равно 0 или kAnimAnyState"),
-                     B("Rejected: needs a non-zero state id", "Отказ: needs a non-zero state id"),
+                     B("Rejected: needs a non-zero state id", "Отказ: нужен ненулевой id состояния"),
                      B("Assign a unique 64-bit gameplay id", "Назначить уникальный 64-битный id")],
                     [B("Blend source state == target state", "Состояние source == состояние target"),
-                     B("Rejected: cross-fades a state into itself", "Отказ: cross-fades a state into itself"),
+                     B("Rejected: cross-fades a state into itself", "Отказ: кросс-фейд состояния в само себя"),
                      B("Pick two different clips", "Выбрать два разных клипа")],
                     [B("Blend has 0 or 2 source/target links", "У бленда 0 или 2 source/target линка"),
-                     B("Rejected: exactly one source, one target", "Отказ: exactly one source, one target"),
+                     B("Rejected: exactly one source, one target", "Отказ: ровно один источник и одна цель"),
                      B("Delete the extra link", "Удалить лишнюю связь")],
                     [B("Cycle of hot transitions with no exit", "Цикл горячих переходов без выхода"),
                      B("Rejected: dead blend cycle without an exit", "Отказ: dead blend cycle without an exit"),
@@ -2787,7 +2696,7 @@ EXTRA_SECTIONS: list[dict] = [
                 "type": "bullets",
                 "items": [
                     B("BindRuntimeWorld() only invalidates the buffer when the world pointers or the PIE flag "
-                      "actually change; EditorSystem calls it every frame, so an unconditional invalidate would "
+                      "change; EditorSystem calls it every frame, so an unconditional invalidate would "
                       "erase the sample before Draw().",
                       "BindRuntimeWorld() инвалидирует буфер только при реальной смене указателей мира или флага "
                       "PIE; EditorSystem вызывает его каждый кадр, поэтому безусловная инвалидация стирала бы "
@@ -2850,7 +2759,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "scene, resolution and hardware: a 2D batch of a few thousand sprites at 1080p is a different "
                     "problem from a 4K frame with post-processing. Treat 8000 FPS as a target for the engine's "
                     "own frame cost (simulation + extract + submission) on a Zen 5 machine with a warm cache, and "
-                    "always report the 99th percentile frame time, not just the average FPS. A stable 8000+ means "
+                    "always report the 99th percentile frame time as well as the average FPS. A stable 8000+ means "
                     "p99 <= 125 us, not one lucky frame.",
                     "8000 FPS — это 125 микросекунд на кадр. Это число имеет смысл только вместе со сценой, "
                     "разрешением и железом: 2D-батч из нескольких тысяч спрайтов при 1080p — не та же задача, "
@@ -2871,20 +2780,20 @@ EXTRA_SECTIONS: list[dict] = [
                       "AMD uProf; на Linux — perf stat с cache-references, cache-misses, L1-dcache-load-misses, "
                       "LLC-load-misses и stalled-cycles-frontend. Сохраняйте числа в репозитории, чтобы регрессия "
                       "была видна."),
-                    B("Step 2 — find the hot array. The animation tick walks AnimStateComponent per entity (4 KB "
-                      "stride); the extract walks RenderItem; the job pool touches one shared cache line. A 4 KB "
-                      "stride with 8 transitions and 8 clips per component thrashes L1 and L2 before any math "
-                      "runs.",
-                      "Шаг 2 — найдите горячий массив. Тик анимации идёт по AnimStateComponent на сущность "
-                      "(шаг 4 КБ); extract идёт по RenderItem; пул задач трогает одну общую линию кэша. Шаг 4 КБ "
-                      "с 8 переходами и 8 клипами на компонент вымывает L1 и L2 ещё до вычислений."),
-                    B("Step 3 — split hot/cold. Keep a 64-byte AnimHot per entity (states, StateTime, Blend*) "
-                      "and move Transitions/Clips/RestPose into a shared graph object or a cold side table. The "
-                      "system then streams a dense array; the shared tables stay L1-resident.",
-                      "Шаг 3 — разделите hot/cold. Держите 64-байтный AnimHot на сущность (состояния, StateTime, "
-                      "Blend*), а Transitions/Clips/RestPose вынесите в общий объект графа или холодную "
-                      "side-таблицу. Система начинает потоково идти по плотному массиву; общие таблицы остаются "
-                      "в L1."),
+                    B("Step 2 — find the hot array. The animation tick walks the small AnimStateComponent per "
+                      "entity; the graph definition and skeleton pose are separate components touched only when a "
+                      "transition or clip is resolved. The extract walks RenderItem; the job pool touches one shared "
+                      "cache line.",
+                      "Шаг 2 — найдите горячий массив. Тик анимации идёт по компактному AnimStateComponent на "
+                      "сущность; определение графа и поза скелета — отдельные компоненты, к которым обращаются "
+                      "только при выборе перехода или клипа. Extract идёт по RenderItem; пул задач трогает одну "
+                      "общую линию кэша."),
+                    B("Step 3 — keep the cold tables shared. AnimGraphDefinitionComponent can be shared by every "
+                      "entity that plays the same graph, and the skeleton owns its rest pose; the hot tick then "
+                      "walks a dense AnimStateComponent array while the graph and pose stay in L2.",
+                      "Шаг 3 — держите холодные таблицы общими. AnimGraphDefinitionComponent может разделяться "
+                      "всеми сущностями с одним графом, а rest-поза принадлежит скелету; горячий тик идёт по "
+                      "плотному массиву AnimStateComponent, а граф и поза остаются в L2."),
                     B("Step 4 — vectorise the presentation blend, not the deterministic simulation. Use "
                       "__restrict, SoA float arrays (X[], Y[], Rotation[], Scale[]) and check the vectoriser "
                       "report. Do not reorder floating-point reductions used by rollback or physics.",
@@ -2897,7 +2806,7 @@ EXTRA_SECTIONS: list[dict] = [
                       "Шаг 5 — сократите RHI-bind'ы. Сортируйте draw'ы по (pipeline, material, texture array), "
                       "используйте push constants для draw id, держите один bindless set и записывайте один "
                       "indirect draw на батч. На 8k FPS churn дескрипторных сетов обычно дороже самого draw."),
-                    B("Step 6 — parallelise phases, not just entities. SystemGraph::Build() computes dependency "
+                    B("Step 6 — parallelise phases as well as entities. SystemGraph::Build() computes dependency "
                       "levels once; Run() launches each level as one wave through JobSystem and joins it with a "
                       "per-call semaphore before Render. MPending and MRunning sit on separate 64-byte lines, so "
                       "submit/completion traffic does not bounce a shared line between 24 workers. Keep the main "
@@ -2928,7 +2837,7 @@ EXTRA_SECTIONS: list[dict] = [
                         "    }\n"
                         "}\n"
                         "\n"
-                        "// Verify the vectoriser actually fired:\n"
+                        "// Verify the vectoriser fired:\n"
                         "// clang-cl /O2 /Rpass=loop-vectorize /Rpass-missed=loop-vectorize\n"
                         "// clang++  -O2 -Rpass=loop-vectorize -Rpass-missed=loop-vectorize",
             },

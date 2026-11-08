@@ -92,6 +92,18 @@ public:
     // Human readable identity of the current thread: "main" or "worker-N".
     [[nodiscard]] static std::string_view CurrentThreadName() noexcept;
 
+    // Latches a task failure that a worker contained. The frame loop checks this
+    // and stops the session instead of simulating on a half-updated world.
+    void ReportFault(std::string_view InOperation) noexcept;
+    [[nodiscard]] bool HasFaulted() const noexcept
+    {
+        return MFaulted.load(std::memory_order_acquire);
+    }
+    void ClearFault() noexcept
+    {
+        MFaulted.store(false, std::memory_order_release);
+    }
+
 private:
     struct Task
     {
@@ -122,6 +134,7 @@ private:
     alignas(64) std::atomic<std::uint32_t> MRunning{0};
     std::condition_variable MIdle;
     bool MStopping = false;
+    std::atomic<bool> MFaulted{false};
     std::array<ThreadCounter, kMaxThreadSlots> MCounters{};
 };
 }

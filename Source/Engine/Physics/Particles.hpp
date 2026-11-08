@@ -65,21 +65,21 @@ static_assert(std::is_standard_layout_v<ParticleEmitterComponent>);
 struct ParticleEmitterGpu
 {
     // Xy = emitter position, z = spawn radius, w = time
-    float origin[4]{};
+    float Origin[4]{};
     // Xy = direction, z = spread, w = speedMin
-    float direction[4]{};
+    float Direction[4]{};
     // Xy = gravity, z = speedMax, w = lifetimeMin
-    float gravity[4]{};
+    float Gravity[4]{};
     // X = lifetimeMax, y = maxParticles, z = flags, w = seed
-    float lifetime[4]{};
+    float Lifetime[4]{};
     // Rgba
-    float colorStart[4]{};
+    float ColorStart[4]{};
     // Rgba
-    float colorEnd[4]{};
+    float ColorEnd[4]{};
     // X = start, y = end, z = rotation, w = rotationSpeed
-    float size[4]{};
+    float Size[4]{};
     // Reserved: emission rate, atlas frame, turbulence, padding
-    float misc[4]{};
+    float Misc[4]{};
 };
 
 static_assert(sizeof(ParticleEmitterGpu) == 16 * 8);

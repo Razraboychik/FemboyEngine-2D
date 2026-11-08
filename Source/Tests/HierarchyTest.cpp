@@ -69,6 +69,24 @@ int main()
     Check(!UpdateHierarchy(ScopedRegistry), "a cycle is reported");
     Check(!ScopedRegistry.all_of<Transform2D>(ScopedCycleA), "a cycle member keeps no new world transform");
 
+    // A deep chain resolves through the memoized pass without recomputing the
+    // whole ancestor path for every descendant.
+    {
+        Registry ScopedDeep;
+        Entity ScopedParent = ScopedDeep.create();
+        ScopedDeep.emplace<LocalTransform2D>(ScopedParent, LocalTransform2D{Vector2D{1.0f, 0.0f}});
+        for (int ScopedDepth = 0; ScopedDepth < 32; ++ScopedDepth)
+        {
+            const Entity ScopedChild = ScopedDeep.create();
+            ScopedDeep.emplace<LocalTransform2D>(ScopedChild, LocalTransform2D{Vector2D{1.0f, 0.0f}});
+            ScopedDeep.emplace<Parent2D>(ScopedChild, Parent2D{ScopedParent});
+            ScopedParent = ScopedChild;
+        }
+        Check(UpdateHierarchy(ScopedDeep), "a deep chain resolves");
+        Check(Near(ScopedDeep.get<Transform2D>(ScopedParent).Position.X, 33.0f),
+              "the deepest child accumulates every offset");
+    }
+
     if (GFailures == 0)
     {
         std::printf("hierarchy: OK\n");

@@ -155,7 +155,9 @@ inline void ClearAll(Ecs::Registry& InRegistry) noexcept
     for (auto [ScopedEntity, ScopedMask] : ScopedView.each())
     {
         (void)ScopedEntity;
-        ScopedMask.Bits = 0;
+        // Mark and Consume use atomic_ref, so the bulk clear must use one too:
+        // a plain store would be a data race against a parallel marker.
+        std::atomic_ref<ChangeMask>(ScopedMask.Bits).store(0, std::memory_order_release);
     }
 }
 }

@@ -782,7 +782,7 @@ void TestBuildFramePacking(SystemContext& InContext)
     // A caller that already packed three items
     ScopedOutput.startCursor = 3;
 
-    const BuildStatus ScopedStatus = WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput);
+    const BuildStatus ScopedStatus = WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput);
     FBY_CHECK(ScopedStatus == BuildStatus::Ok);
     FBY_CHECK(!ScopedOutput.overflow);
 
@@ -878,7 +878,7 @@ void TestBuildFramePacking(SystemContext& InContext)
     ScopedWorldOutput.items = std::span<RenderItem>(ScopedWorldItems);
     ScopedWorldOutput.keys = std::span<RenderKey>(ScopedWorldKeys);
     ScopedWorldOutput.batches = std::span<DrawBatch>(ScopedWorldBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedWorldCanvas, ScopedWorldOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedWorldCanvas, ScopedWorldOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedWorldOutput.itemsWritten == 1);
     FBY_CHECK_VEC(ScopedWorldItems[0].position, V(200.0f, 250.0f));
     FBY_CHECK_VEC(ScopedWorldItems[0].size, V(200.0f, 100.0f));
@@ -888,7 +888,7 @@ void TestBuildFramePacking(SystemContext& InContext)
     ScopedWorldOutput.items = std::span<RenderItem>(ScopedWorldItems);
     ScopedWorldOutput.keys = std::span<RenderKey>(ScopedWorldKeys);
     ScopedWorldOutput.batches = std::span<DrawBatch>(ScopedWorldBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedWorldCanvas, ScopedWorldOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedWorldCanvas, ScopedWorldOutput) == BuildStatus::Ok);
     // Centre rotated 90 degrees
     FBY_CHECK_VEC(ScopedWorldItems[0].position, V(-15.0f, 70.0f));
     FBY_CHECK_NEAR(ScopedWorldItems[0].rotation, kPi * 0.5f, 1.0e-5f);
@@ -907,7 +907,7 @@ void TestBuildFramePacking(SystemContext& InContext)
     ScopedImageOutput.items = std::span<RenderItem>(ScopedImageItems);
     ScopedImageOutput.keys = std::span<RenderKey>(ScopedImageKeys);
     ScopedImageOutput.batches = std::span<DrawBatch>(ScopedImageBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedImageCanvas, ScopedImageOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedImageCanvas, ScopedImageOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedImageOutput.itemsWritten == 1);
     FBY_CHECK(ScopedImageOutput.fontTextureArray == 0xFFFFFFFFu);
     FBY_CHECK(ScopedImageBatches[0].textureArray == 0x00010001u);
@@ -930,7 +930,7 @@ void TestCapacityOverflow(SystemContext& InContext)
         ScopedOutput.items = std::span<RenderItem>(ScopedItems);
         ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
         FBY_CHECK(ScopedOutput.overflow);
         FBY_CHECK(ScopedOutput.requiredItems == 12);
         FBY_CHECK(ScopedOutput.itemsWritten == 0);
@@ -947,7 +947,7 @@ void TestCapacityOverflow(SystemContext& InContext)
         ScopedOutput.items = std::span<RenderItem>(ScopedItems);
         ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
         FBY_CHECK(ScopedOutput.requiredItems == 12);
         FBY_CHECK(ScopedOutput.itemsWritten == 0);
     }
@@ -960,7 +960,7 @@ void TestCapacityOverflow(SystemContext& InContext)
         ScopedOutput.items = std::span<RenderItem>(ScopedItems);
         ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedOutput.batches = {};
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
         FBY_CHECK(ScopedOutput.requiredItems == 12);
         FBY_CHECK(ScopedOutput.itemsWritten == 0);
     }
@@ -975,7 +975,7 @@ void TestCapacityOverflow(SystemContext& InContext)
         ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
         ScopedOutput.startCursor = 100;
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
     }
 
     {
@@ -994,7 +994,7 @@ void TestCapacityOverflow(SystemContext& InContext)
         ScopedOutput.items = std::span<RenderItem>(ScopedItems);
         ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
         FBY_CHECK(ScopedOutput.overflow);
         FBY_CHECK(ScopedOutput.glyphQuads == Fby::Ui::kMaxGlyphs + 1);
         FBY_CHECK(ScopedOutput.requiredItems == Fby::Ui::kMaxGlyphs + 1);
@@ -1077,14 +1077,14 @@ void TestCapacityOverflow(SystemContext& InContext)
         ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
         // Only four slots left for a twelve-item canvas
         ScopedOutput.startCursor = 60;
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Overflow);
         FBY_CHECK(ScopedOutput.requiredItems == 12);
         ScopedOutput = FrameOutput{};
         ScopedOutput.items = std::span<RenderItem>(ScopedItems);
         ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
         ScopedOutput.startCursor = 0;
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
         FBY_CHECK(ScopedOutput.itemsWritten == 12);
     }
 }
@@ -1120,7 +1120,7 @@ void TestNoAllocation(SystemContext& InContext)
     // First call: layout cache is cold, so the layout pass and the draw-order
     {
         const AllocationScope ScopedScope;
-        const BuildStatus ScopedStatus = WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput);
+        const BuildStatus ScopedStatus = WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput);
         const std::size_t ScopedAllocations = ScopedScope.Count();
         FBY_CHECK(ScopedStatus == BuildStatus::Ok);
         FBY_CHECK(ScopedAllocations == 0);
@@ -1129,7 +1129,7 @@ void TestNoAllocation(SystemContext& InContext)
     // Second call: warm cache, pure packing.
     {
         const AllocationScope ScopedScope;
-        (void)WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput);
+        (void)WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput);
         const std::size_t ScopedAllocations = ScopedScope.Count();
         FBY_CHECK(ScopedAllocations == 0);
     }
@@ -1153,7 +1153,7 @@ void TestNoAllocation(SystemContext& InContext)
         ScopedElementOutput.items = std::span<RenderItem>(ScopedItems);
         ScopedElementOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedElementOutput.batches = std::span<DrawBatch>(ScopedBatches);
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedElements, ScopedElementOutput) == BuildStatus::Ok);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedElements, ScopedElementOutput) == BuildStatus::Ok);
         FBY_CHECK(ScopedScope.Count() == 0);
     }
 
@@ -1229,7 +1229,7 @@ void TestEcsUpdate(SystemContext& InContext)
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
 
-    WidgetCanvasSystem::Update(InContext, std::span<WidgetCanvas>(ScopedCanvases), ScopedOutput);
+    WidgetCanvasSystem::Update(InContext.UiView(), std::span<WidgetCanvas>(ScopedCanvases), ScopedOutput);
     FBY_CHECK(!ScopedOutput.overflow);
     // 1 from canvas 0 + 2 from canvas 1
     FBY_CHECK(ScopedOutput.itemsWritten == 3);
@@ -1240,7 +1240,9 @@ void TestEcsUpdate(SystemContext& InContext)
     FBY_CHECK(ScopedBatches[0].firstItem == 0);
     FBY_CHECK(ScopedBatches[1].firstItem == ScopedBatches[0].itemCount);
     FBY_CHECK(ScopedBatches[0].itemCount + ScopedBatches[1].itemCount == 3);
-    FBY_CHECK(ScopedOutput.startCursor == 3);
+    // Update keeps the caller's write start and reports the next free slot.
+    FBY_CHECK(ScopedOutput.startCursor == 0);
+    FBY_CHECK(ScopedOutput.endCursor == 3);
 
     // Every item carries the component layer in the key's top 16 bits.
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedOutput.itemsWritten; ++ScopedIndex)
@@ -1359,7 +1361,7 @@ void TestElementKinds(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
 
     // 4 border + 3 slider + 3 checked checkbox + 2 scrollbar + 1 button + 2 glyphs
     FBY_CHECK(ScopedOutput.requiredItems == 15);
@@ -1545,7 +1547,7 @@ void TestVerticalProgressBar(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.requiredItems == 2);
     FBY_CHECK(ScopedOutput.itemsWritten == 2);
     FBY_CHECK_VEC(ScopedItems[0].position, V(10.0f, 50.0f));
@@ -1570,7 +1572,7 @@ void TestBorderStrokeClamp(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.requiredItems == 2);
     FBY_CHECK(ScopedOutput.itemsWritten == 2);
     FBY_CHECK_VEC(ScopedItems[0].position, V(10.0f, 5.0f));
@@ -1731,7 +1733,7 @@ void TestVisibility(SystemContext& InContext)
         ScopedOutput.items = std::span<RenderItem>(ScopedItems);
         ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
         FBY_CHECK(ScopedOutput.widgetsDrawn == 1);
         FBY_CHECK(ScopedCanvas.IsVisible(ScopedId));
 
@@ -1741,7 +1743,7 @@ void TestVisibility(SystemContext& InContext)
         ScopedOutput.items = std::span<RenderItem>(ScopedItems);
         ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
         ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
         FBY_CHECK(ScopedOutput.widgetsDrawn == 0);
         FBY_CHECK(ScopedOutput.itemsWritten == 0);
         FBY_CHECK(Fby::Ui::HitTest(ScopedCanvas, V(50.0f, 50.0f)) == Fby::Ui::kNoWidget);
@@ -1796,7 +1798,7 @@ void TestSwitcher(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     // The Switcher itself draws nothing; only the active page emits a quad.
     FBY_CHECK(ScopedOutput.requiredItems == 1);
     FBY_CHECK(ScopedOutput.itemsWritten == 1);
@@ -1821,7 +1823,7 @@ void TestSwitcher(SystemContext& InContext)
     FBY_CHECK(Fby::Ui::IsHandleSet(ScopedPage1));
     FBY_CHECK(ScopedCanvas.ResolveHandle(ScopedPage1));
     FBY_CHECK(ScopedCanvas.SetActiveWidget(ScopedSwitcher, ScopedPage1));
-    FBY_CHECK(ScopedCanvas.ActiveWidget(ScopedSwitcher).widget == ScopedPages[1]);
+    FBY_CHECK(ScopedCanvas.ActiveWidget(ScopedSwitcher).Widget == ScopedPages[1]);
     FBY_CHECK(ScopedCanvas.ActivePage(ScopedSwitcher) == 1);
     FBY_CHECK(Fby::Ui::HitTest(ScopedCanvas, V(50.0f, 50.0f)) == ScopedPages[1]);
 
@@ -1840,7 +1842,7 @@ void TestSwitcher(SystemContext& InContext)
     ScopedCanvas.Clear();
     FBY_CHECK(!ScopedCanvas.ResolveHandle(ScopedStale));
     const std::int32_t ScopedFresh = ScopedCanvas.AddWidget(StretchWidget(WidgetKind::Panel));
-    FBY_CHECK(ScopedCanvas.Handle(ScopedFresh).generation != ScopedStale.generation);
+    FBY_CHECK(ScopedCanvas.Handle(ScopedFresh).Generation != ScopedStale.Generation);
     FBY_CHECK(ScopedCanvas.ResolveHandle(ScopedCanvas.Handle(ScopedFresh)));
 
     // Hiding the Switcher hides every page.
@@ -1854,7 +1856,7 @@ void TestSwitcher(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 0);
     FBY_CHECK(Fby::Ui::HitTest(ScopedCanvas, V(50.0f, 50.0f)) == Fby::Ui::kNoWidget);
 }
@@ -1905,7 +1907,7 @@ void TestCustomWidget(SystemContext& InContext)
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
     {
         const AllocationScope ScopedScope;
-        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+        FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
         FBY_CHECK(ScopedScope.Count() == 0);
     }
     // The painter runs twice: once for the budget and once for the emit.
@@ -1926,7 +1928,7 @@ void TestCustomWidget(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(GCustomPaintCalls == 0);
     FBY_CHECK(ScopedOutput.itemsWritten == 0);
     ScopedCanvas.SetVisible(ScopedCustom, true);
@@ -1937,7 +1939,7 @@ void TestCustomWidget(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 0);
 
     // A painter that overruns is capped by the quota in both passes.
@@ -1947,7 +1949,7 @@ void TestCustomWidget(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(GCustomPaintCalls == 2);
     FBY_CHECK(ScopedOutput.requiredItems == Fby::Ui::kMaxCustomQuadsPerWidget);
     FBY_CHECK(ScopedOutput.itemsWritten == Fby::Ui::kMaxCustomQuadsPerWidget);
@@ -2020,7 +2022,7 @@ void TestClipRect(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     // requiredItems stays the unclipped upper bound; the clipped output shrinks.
     FBY_CHECK(ScopedOutput.requiredItems == 2);
     FBY_CHECK(ScopedOutput.itemsWritten == 2);
@@ -2048,7 +2050,7 @@ void TestClipRect(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.requiredItems == 3);
     FBY_CHECK(ScopedOutput.itemsWritten == 2);
     FBY_CHECK(Fby::Ui::HitTest(ScopedCanvas, V(70.0f, 20.0f)) == Fby::Ui::kNoWidget);
@@ -2075,7 +2077,7 @@ void TestClipRect(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedNested, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedNested, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.requiredItems == 3);
     FBY_CHECK(ScopedOutput.itemsWritten == 3);
     FBY_CHECK_VEC(ScopedItems[2].position, V(75.0f, 75.0f));
@@ -2102,7 +2104,7 @@ void TestTooltip(SystemContext& InContext)
     ScopedTip.textTint = Color32::FromBytes(0xF0, 0xF0, 0xF0);
     const std::int32_t ScopedTooltip = ScopedCanvas.AddWidget(ScopedTip);
 
-    FBY_CHECK(ScopedCanvas.TooltipTarget(ScopedTooltip).widget == ScopedTarget);
+    FBY_CHECK(ScopedCanvas.TooltipTarget(ScopedTooltip).Widget == ScopedTarget);
     FBY_CHECK_NEAR(ScopedCanvas.TooltipDelay(ScopedTooltip), 0.5f, 0.0f);
     FBY_CHECK(FactoryFlag(ScopedCanvas.Flags(ScopedTooltip), WidgetFlags::IgnoreHitTest));
     FBY_CHECK(!ScopedCanvas.IsVisible(ScopedTooltip));
@@ -2114,7 +2116,7 @@ void TestTooltip(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.requiredItems == 1);
     FBY_CHECK(ScopedOutput.itemsWritten == 1);
     FBY_CHECK(ScopedOutput.widgetsDrawn == 1);
@@ -2134,7 +2136,7 @@ void TestTooltip(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.requiredItems == 5);
     FBY_CHECK(ScopedOutput.itemsWritten == 5);
     FBY_CHECK(ScopedOutput.glyphQuads == 3);
@@ -2190,7 +2192,7 @@ void TestTextInput(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     // Background, two glyphs and the visible caret.
     FBY_CHECK(ScopedOutput.requiredItems == 4);
     FBY_CHECK(ScopedOutput.itemsWritten == 4);
@@ -2207,14 +2209,14 @@ void TestTextInput(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 3);
     ScopedCanvas.AdvanceTime(0.5f);
     ScopedOutput = FrameOutput{};
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 4);
 
     // A selection adds one highlight quad between the glyphs.
@@ -2225,7 +2227,7 @@ void TestTextInput(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 5);
     FBY_CHECK_VEC(ScopedItems[1].position, V(6.0f, 4.0f));
     FBY_CHECK_VEC(ScopedItems[1].size, V(4.0f, 8.0f));
@@ -2305,7 +2307,7 @@ void TestElementExtended(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedNine, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedNine, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.requiredItems == 9);
     FBY_CHECK(ScopedOutput.itemsWritten == 9);
     FBY_CHECK_VEC(ScopedItems[0].position, V(5.0f, 5.0f));
@@ -2327,7 +2329,7 @@ void TestElementExtended(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedNine, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedNine, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 9);
     FBY_CHECK_VEC(ScopedItems[0].size, V(45.0f, 45.0f));
     FBY_CHECK_VEC(ScopedItems[4].size, V(10.0f, 10.0f));
@@ -2341,7 +2343,7 @@ void TestElementExtended(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedToggle, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedToggle, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 2);
     FBY_CHECK_VEC(ScopedItems[1].position, V(20.0f, 20.0f));
     FBY_CHECK_VEC(ScopedItems[1].size, V(36.0f, 36.0f));
@@ -2352,7 +2354,7 @@ void TestElementExtended(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedToggle, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedToggle, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK_VEC(ScopedItems[1].position, V(80.0f, 20.0f));
     FBY_CHECK(Fby::Ui::ActivateFocused(ScopedToggle) == Fby::Ui::kNoWidget);
     Fby::Ui::SetFocus(ScopedToggle, ScopedToggleId);
@@ -2409,7 +2411,7 @@ void TestFocusRing(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 1);
 
     ScopedCanvas.SetDrawFocusRing(true);
@@ -2419,7 +2421,7 @@ void TestFocusRing(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.requiredItems == 5);
     FBY_CHECK(ScopedOutput.itemsWritten == 5);
     FBY_CHECK_VEC(ScopedItems[1].position, V(35.0f, 9.0f));
@@ -2442,7 +2444,7 @@ void TestFocusRing(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 0);
     ScopedCanvas.SetVisible(ScopedId, true);
     ScopedCanvas.SetFocusRingWidth(0.0f);
@@ -2450,7 +2452,7 @@ void TestFocusRing(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 1);
 }
 
@@ -2478,7 +2480,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
     ScopedButtons.SetFlag(ScopedButtonId, WidgetFlags::Hovered, true);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedButtons, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedButtons, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedItems[0].color == Color32::FromBytes(0x10, 0x80, 0x10).rgba);
     ScopedButtons.SetFlag(ScopedButtonId, WidgetFlags::Hovered, false);
     ScopedButtons.SetFlag(ScopedButtonId, WidgetFlags::Pressed, true);
@@ -2486,7 +2488,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedButtons, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedButtons, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedItems[0].color == Color32::FromBytes(0x80, 0x10, 0x10).rgba);
     ScopedButtons.SetFlag(ScopedButtonId, WidgetFlags::Pressed, false);
     ScopedButtons.SetFlag(ScopedButtonId, WidgetFlags::Enabled, false);
@@ -2494,7 +2496,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedButtons, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedButtons, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedItems[0].color == Color32::FromBytes(0x40, 0x40, 0x40).rgba);
 
     // Fade and slide are presentation-only and inherit through the hierarchy.
@@ -2508,7 +2510,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 1);
     FBY_CHECK(((ScopedItems[0].color >> 24) & 0xFFu) == 128u);
     ScopedCanvas.AdvanceTransitions(0.2f);
@@ -2517,7 +2519,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 0);
 
     ScopedCanvas.SetOpacity(ScopedPanel, 1.0f);
@@ -2528,7 +2530,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK_NEAR(ScopedItems[0].position.X, 55.0f, kTolerance);
 
     WidgetCanvas ScopedTree;
@@ -2543,7 +2545,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedTree, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedTree, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 2);
     FBY_CHECK(((ScopedItems[1].color >> 24) & 0xFFu) == 128u);
     FBY_CHECK_NEAR(ScopedItems[1].position.X, 33.0f, kTolerance);
@@ -2561,7 +2563,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedText, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedText, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 2);
     FBY_CHECK_VEC(ScopedItems[0].position, V(92.0f, 36.0f));
     FBY_CHECK_VEC(ScopedItems[1].position, V(98.0f, 36.0f));
@@ -2577,7 +2579,7 @@ void TestStateAndTransitions(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedWrap, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedWrap, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 4);
     FBY_CHECK_VEC(ScopedItems[0].position, V(4.0f, 4.0f));
     FBY_CHECK_VEC(ScopedItems[1].position, V(10.0f, 4.0f));
@@ -2614,7 +2616,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten > 5);
     FBY_CHECK(ScopedOutput.itemsWritten == ScopedOutput.requiredItems);
     FBY_CHECK(ScopedOutput.glyphQuads == ScopedOutput.itemsWritten);
@@ -2630,7 +2632,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 0);
     ScopedCanvas.SetVisible(ScopedBlock, true);
     ScopedCanvas.SetTextRef(ScopedBlock, Fby::Text::TextAssetRef{});
@@ -2638,7 +2640,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 0);
 
     // A block far beyond the widget scratch is clipped by the viewport cap; the
@@ -2655,7 +2657,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten > 0);
     FBY_CHECK(ScopedOutput.itemsWritten <= 1024);
     FBY_CHECK(ScopedOutput.requiredItems == ScopedOutput.itemsWritten);
@@ -2667,7 +2669,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten > 0);
 
     // The shaped line window is the viewport hook for long documents.
@@ -2683,7 +2685,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     const std::uint32_t ScopedFullRows = ScopedOutput.itemsWritten;
     FBY_CHECK(ScopedFullRows > 1);
     ScopedCanvas.SetTextLineRange(ScopedBlock, 2, 1);
@@ -2693,7 +2695,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten > 0);
     FBY_CHECK(ScopedOutput.itemsWritten < ScopedFullRows);
 
@@ -2712,7 +2714,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten >= 3);
     FBY_CHECK(ScopedItems[1].layer == 3);
     FBY_CHECK_NEAR(ScopedItems[1].uvMin.X, 0.25f, 0.001f);
@@ -2729,7 +2731,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 3);
     FBY_CHECK(ScopedItems[1].position.Y > ScopedItems[0].position.Y);
     FBY_CHECK(ScopedItems[2].position.Y > ScopedItems[1].position.Y);
@@ -2745,7 +2747,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     const std::uint32_t ScopedFullFallback = ScopedOutput.itemsWritten;
     FBY_CHECK(ScopedFullFallback > 1);
     ScopedCanvas.SetTextLineRange(ScopedBlock, 2, 1);
@@ -2753,7 +2755,7 @@ void TestTextBlock(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten > 0);
     FBY_CHECK(ScopedOutput.itemsWritten < ScopedFullFallback);
     InContext.textShapes = ScopedSavedShapes;
@@ -2925,7 +2927,7 @@ void TestRtlTextInput(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     // Background, B (rightmost), A, caret at the logical end (left edge).
     FBY_CHECK(ScopedOutput.itemsWritten == 4);
     FBY_CHECK_VEC(ScopedItems[1].position, V(88.0f, 4.0f));
@@ -2938,7 +2940,7 @@ void TestRtlTextInput(SystemContext& InContext)
     ScopedOutput.items = std::span<RenderItem>(ScopedItems);
     ScopedOutput.keys = std::span<RenderKey>(ScopedKeys);
     ScopedOutput.batches = std::span<DrawBatch>(ScopedBatches);
-    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext, ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
+    FBY_CHECK(WidgetCanvasSystem::BuildFrame(InContext.UiView(), ScopedCanvas, ScopedOutput) == BuildStatus::Ok);
     FBY_CHECK(ScopedOutput.itemsWritten == 5);
     FBY_CHECK_VEC(ScopedItems[1].position, V(92.0f, 4.0f));
     FBY_CHECK_VEC(ScopedItems[1].size, V(16.0f, 8.0f));

@@ -900,11 +900,36 @@ struct EditorSystem::Impl
             return;
         }
         const std::filesystem::path ScopedEngineRoot = ResolveEngineRoot();
+        std::filesystem::path ScopedPacker;
+        for (const char* ScopedBuild : {"build", "build-dev", "build-linux-release", "build-macos-release",
+                                        "build-windows-release", "build-clangcl", "build-ci"})
+        {
+            for (const char* ScopedSubdir : {"tools", ""})
+            {
+                std::filesystem::path ScopedCandidate =
+                    ScopedEngineRoot / ScopedBuild / "bin" / ScopedSubdir / "fby_fempak";
 #if defined(_WIN32)
-        const std::filesystem::path ScopedPacker = ScopedEngineRoot / "build" / "bin" / "fby_fempak.exe";
-#else
-        const std::filesystem::path ScopedPacker = ScopedEngineRoot / "build" / "bin" / "fby_fempak";
+                ScopedCandidate += ".exe";
 #endif
+                if (std::filesystem::is_regular_file(ScopedCandidate))
+                {
+                    ScopedPacker = ScopedCandidate;
+                    break;
+                }
+            }
+            if (!ScopedPacker.empty())
+            {
+                break;
+            }
+        }
+        if (ScopedPacker.empty())
+        {
+#if defined(_WIN32)
+            ScopedPacker = ScopedEngineRoot / "build" / "bin" / "tools" / "fby_fempak.exe";
+#else
+            ScopedPacker = ScopedEngineRoot / "build" / "bin" / "tools" / "fby_fempak";
+#endif
+        }
         ReleaseCookConfig ScopedConfig =
             ReleaseCooker::FromProject(projectConfig.Paths(), projectConfig.Project(),
                                        ScopedEngineRoot.generic_string(), ScopedPacker.generic_string());
@@ -1070,6 +1095,14 @@ struct EditorSystem::Impl
         // sandbox second copy applies that baseline before any delta.
         ExternalClientDesc ScopedExternal;
         ScopedExternal.executable = desc.pieClientExecutable.string();
+        if (InContext.physics != nullptr)
+        {
+            const std::uint8_t ScopedBackend = projectConfig.Project().physicsBackend;
+            const Fby::PhysicsBackendKind ScopedKind =
+                ScopedBackend == 1 ? Fby::PhysicsBackendKind::Box2D
+                                    : (ScopedBackend == 2 ? Fby::PhysicsBackendKind::Dod : Fby::PhysicsBackendKind::Auto);
+            InContext.physics->SetProjectPolicy(ScopedKind, projectConfig.Project().physicsBodyBudget);
+        }
         const PlayInEditor::Result ScopedResult =
             InMultiplayer
                 ? pie.StartMultiplayer(InContext.registry, ScopedSchema, InContext, 1, 1, nullptr, &ScopedExternal)

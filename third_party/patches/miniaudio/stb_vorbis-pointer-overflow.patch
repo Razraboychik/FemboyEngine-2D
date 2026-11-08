@@ -1,0 +1,13 @@
+--- a/third_party/miniaudio-master/miniaudio-master/extras/stb_vorbis.c
++++ b/third_party/miniaudio-master/miniaudio-master/extras/stb_vorbis.c
+@@ -1400,9 +1400,9 @@
+    if (f->push_mode) return 0;
+    #endif
+    f->eof = 0;
+    if (USE_MEMORY(f)) {
+-      if (f->stream_start + loc >= f->stream_end || f->stream_start + loc < f->stream_start) {
++      if ((size_t) loc > (size_t) (f->stream_end - f->stream_start)) {
+          f->stream = f->stream_end;
+          f->eof = 1;
+          return 0;
+       } else {

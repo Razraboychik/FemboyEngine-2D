@@ -65,8 +65,8 @@ int main()
     FBY_CHECK(OptimizationFlagMsvc(OptimizationLevel::Os) == "/O1");
     FBY_CHECK(RelaxesFloatingPoint(OptimizationLevel::Ofast));
     FBY_CHECK(!RelaxesFloatingPoint(OptimizationLevel::O2));
-    FBY_CHECK(Recommend(OptimizationLevel::O2, true, false).shippingScore == 5);
-    FBY_CHECK(Recommend(OptimizationLevel::Ofast, true, false).shippingScore < 3);
+    FBY_CHECK(Recommend(OptimizationLevel::O2, true).shippingScore == 5);
+    FBY_CHECK(Recommend(OptimizationLevel::Ofast, true).shippingScore < 3);
     static_assert(sizeof(BuildProfile) <= 8);
 
     Crypto::AeadKey ScopedChaChaKey{};

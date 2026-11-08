@@ -23,12 +23,12 @@ struct AssetHandle
 {
     static constexpr std::uint32_t kInvalidIndex = 0xFFFFFFFFu;
 
-    std::uint32_t index = kInvalidIndex;
-    std::uint32_t generation = 0;
+    std::uint32_t Index = kInvalidIndex;
+    std::uint32_t Generation = 0;
 
     [[nodiscard]] constexpr bool IsValid() const noexcept
     {
-        return index != kInvalidIndex;
+        return Index != kInvalidIndex;
     }
     [[nodiscard]] constexpr explicit operator bool() const noexcept
     {

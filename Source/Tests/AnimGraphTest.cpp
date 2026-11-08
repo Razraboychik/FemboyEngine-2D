@@ -123,6 +123,7 @@ void TestStateMachine()
     auto& ScopedSkeleton = ScopedRegistry.emplace<Fby::SkeletonComponent>(ScopedEntity, MakeSkeleton());
     auto& ScopedEntityTags = ScopedRegistry.emplace<Fby::GameplayTagsComponent>(ScopedEntity);
     auto& ScopedState = ScopedRegistry.emplace<Fby::AnimStateComponent>(ScopedEntity);
+    auto& ScopedDefinition = ScopedRegistry.emplace<Fby::AnimGraphDefinitionComponent>(ScopedEntity);
     auto& ScopedSpriteAnimation = ScopedRegistry.emplace<Fby::SpriteAnimationComponent>(ScopedEntity);
     auto& ScopedGrid = ScopedRegistry.emplace<Fby::SpriteSheetComponent>(ScopedEntity);
     auto& ScopedSprite = ScopedRegistry.emplace<Fby::Sprite2D>(ScopedEntity);
@@ -130,42 +131,42 @@ void TestStateMachine()
     ScopedGrid.Rows = 1;
     ScopedGrid.Layer = 3;
 
-    ScopedState.Clips[0] = MakeClip(1, 0.5f, 4, 4);
-    ScopedState.Clips[1] = MakeClip(2, 1.25f, 8, 2);
-    ScopedState.ClipCount = 2;
+    ScopedDefinition.Clips[0] = MakeClip(1, 0.5f, 4, 4);
+    ScopedDefinition.Clips[1] = MakeClip(2, 1.25f, 8, 2);
+    ScopedDefinition.ClipCount = 2;
 
     // From rest to idle when the entity is grounded. FromState == 0 is
-    ScopedState.Transitions[0].FromState = 0;
-    ScopedState.Transitions[0].ToState = 1;
-    ScopedState.Transitions[0].Conditions = Fby::AnimConditionTagsAny;
-    ScopedState.Transitions[0].TagsAny[0] = ScopedGrounded;
-    ScopedState.Transitions[0].TagsAnyCount = 1;
-    ScopedState.Transitions[0].BlendDuration = 0.2f;
+    ScopedDefinition.Transitions[0].FromState = 0;
+    ScopedDefinition.Transitions[0].ToState = 1;
+    ScopedDefinition.Transitions[0].Conditions = Fby::AnimConditionTagsAny;
+    ScopedDefinition.Transitions[0].TagsAny[0] = ScopedGrounded;
+    ScopedDefinition.Transitions[0].TagsAnyCount = 1;
+    ScopedDefinition.Transitions[0].BlendDuration = 0.2f;
 
     // Idle to attack after 0.1 s, once the speed parameter reaches 1.0.
-    ScopedState.Transitions[1].FromState = 1;
-    ScopedState.Transitions[1].ToState = 2;
-    ScopedState.Transitions[1].Conditions =
+    ScopedDefinition.Transitions[1].FromState = 1;
+    ScopedDefinition.Transitions[1].ToState = 2;
+    ScopedDefinition.Transitions[1].Conditions =
         Fby::AnimConditionStateTimeAtLeast | Fby::AnimConditionFloatAtLeast;
-    ScopedState.Transitions[1].StateTimeThreshold = 0.1f;
-    ScopedState.Transitions[1].FloatParam = 0;
-    ScopedState.Transitions[1].FloatThreshold = 1.0f;
-    ScopedState.Transitions[1].BlendDuration = 0.0f;
+    ScopedDefinition.Transitions[1].StateTimeThreshold = 0.1f;
+    ScopedDefinition.Transitions[1].FloatParam = 0;
+    ScopedDefinition.Transitions[1].FloatThreshold = 1.0f;
+    ScopedDefinition.Transitions[1].BlendDuration = 0.0f;
 
     Fby::AnimGraphSystem ScopedGraph;
 
     // No tag yet: no transition, no clip, arm keeps the rest rotation.
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.CurrentState == 0);
     FBY_CHECK(ScopedState.TransitionCount == 0);
     FBY_CHECK(std::fabs(ScopedSkeleton.LocalRotations[1]) < 1.0e-6f);
-    FBY_CHECK(ScopedState.RestPoseCaptured);
+    FBY_CHECK(ScopedSkeleton.RestPoseCaptured);
 
     // Raise the tag: the first transition fires on the next tick.
     ScopedEntityTags.BaseTags.Add(ScopedGrounded);
     ScopedEntityTags.Tags.Add(ScopedGrounded);
     ScopedContext.dt = 0.1f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.CurrentState == 1);
     FBY_CHECK(ScopedState.PreviousState == 0);
     FBY_CHECK(ScopedState.TransitionCount == 1);
@@ -184,10 +185,10 @@ void TestStateMachine()
 
     // At weight 0 the pose is still the rest pose; one more tick completes the
     FBY_CHECK(std::fabs(ScopedSkeleton.LocalRotations[1]) < 1.0e-6f);
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.BlendWeight > 0.0f && ScopedState.BlendWeight < 1.0f);
     ScopedContext.dt = 0.1f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.BlendWeight == 1.0f);
     FBY_CHECK(std::fabs(ScopedSkeleton.LocalRotations[1] - 0.5f) < 1.0e-4f);
     // The palette the GPU consumes was rebuilt from the blended pose.
@@ -196,12 +197,12 @@ void TestStateMachine()
     // Float parameter below the threshold: no attack transition yet.
     ScopedState.StateTime = 1.0f;
     ScopedState.Floats[0] = 0.5f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.CurrentState == 1);
 
     // Both conditions now hold: transition to the attack clip, no blend.
     ScopedState.Floats[0] = 1.0f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.CurrentState == 2);
     FBY_CHECK(ScopedState.PreviousState == 1);
     FBY_CHECK(ScopedState.TransitionCount == 2);
@@ -212,7 +213,7 @@ void TestStateMachine()
 
     // FromState mismatch: the idle transition cannot fire from the attack state.
     ScopedState.StateTime = 100.0f;
-    ScopedGraph.Run(ScopedContext);
+    ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.TransitionCount == 2);
 }
 
@@ -226,6 +227,7 @@ void TestRegistration()
 
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::AnimStateComponent>(ScopedEntity);
+    ScopedRegistry.emplace<Fby::AnimGraphDefinitionComponent>(ScopedEntity);
     ScopedContext.dt = 0.016f;
     ScopedSchedule.Run(Fby::Ecs::Phase::FixedUpdate, ScopedContext);
     FBY_CHECK(ScopedRegistry.get<Fby::AnimStateComponent>(ScopedEntity).StateTime > 0.0f);

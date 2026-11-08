@@ -19,6 +19,10 @@ layout(push_constant) uniform PostFxBlock
     vec4 colorRow0;
     vec4 colorRow1;
     vec4 colorRow2;
+    // Generic camera distortion: flags, double-vision strength, stretch X/Y;
+    // radial warp, chromatic split, wobble amplitude and frequency.
+    vec4 distortion0;
+    vec4 distortion1;
 } fx;
 
 uint flagBit(uint bit)
@@ -95,6 +99,26 @@ void main()
 {
     vec2 uv = vUv;
     const uint flags = uint(fx.flagsAndCrt.x);
+    const uint distortionFlags = uint(fx.distortion0.x);
+    // Anisotropic stretch: a non-uniform UV scale is what makes a scene feel
+    // "melted"; 1.0 on both axes keeps the image proportional.
+    if ((distortionFlags & 2u) != 0u)
+    {
+        const vec2 scale = max(vec2(abs(fx.distortion0.z), abs(fx.distortion0.w)), vec2(0.05));
+        uv = (uv - 0.5) / scale + 0.5;
+    }
+    if ((distortionFlags & 4u) != 0u)
+    {
+        vec2 centred = uv * 2.0 - 1.0;
+        centred *= 1.0 + fx.distortion1.x * dot(centred, centred);
+        uv = centred * 0.5 + 0.5;
+    }
+    if ((distortionFlags & 16u) != 0u)
+    {
+        const float phase = fx.flagsAndCrt.w * max(fx.distortion1.w, 0.0) * 6.2831853;
+        uv.x += sin(uv.y * 18.0 + phase) * fx.distortion1.z;
+        uv.y += cos(uv.x * 15.0 + phase * 0.73) * fx.distortion1.z * 0.6;
+    }
     if ((flags & 1u) != 0u)
     {
         vec2 centred = uv * 2.0 - 1.0;
@@ -107,7 +131,9 @@ void main()
         return;
     }
     const vec2 centre = uv - 0.5;
-    const float aberration = (flags & 8u) != 0u ? fx.exposureAndChromatic.x * 0.0025 : 0.0;
+    const float dynamicChromatic = (distortionFlags & 8u) != 0u ? fx.distortion1.y * 0.0025 : 0.0;
+    const float aberration = (flags & 8u) != 0u ? fx.exposureAndChromatic.x * 0.0025 + dynamicChromatic
+                                                 : dynamicChromatic;
     vec3 color;
     if ((flags & 128u) != 0u)
     {
@@ -122,6 +148,12 @@ void main()
         color.r = texture(uScene, uv + centre * aberration).r;
         color.g = texture(uScene, uv).g;
         color.b = texture(uScene, uv - centre * aberration).b;
+    }
+    if ((distortionFlags & 1u) != 0u)
+    {
+        const vec2 ghostOffset = vec2(fx.distortion0.y * 0.012, 0.0);
+        const vec3 ghost = texture(uScene, clamp(uv + ghostOffset, vec2(0.0), vec2(1.0))).rgb;
+        color = mix(color, ghost, clamp(abs(fx.distortion0.y) * 0.35, 0.0, 0.5));
     }
     if ((flags & 4u) != 0u)
     {

@@ -1,9 +1,7 @@
 // FemboyEngine2D - frame phases and the legacy flat schedule.
 #pragma once
 
-#include "Engine/Core/JobSystem.hpp"
-
-#include <entt/entt.hpp>
+#include "Engine/ECS/SystemContext.hpp"
 
 #include <array>
 #include <cstddef>
@@ -11,50 +9,10 @@
 #include <span>
 #include <type_traits>
 
-namespace Fby
-{
-class AudioSystem;
-class FrameArena;
-class PhysicsSystem;
-class WindowManager;
-class VirtualFileSystem;
-class AccessibilityKernel;
-class LocalizationTable;
-class ClothSystem;
-class FluidWaveSystem;
-class PhysicsJointSystem;
-class CameraStackSystem;
-class GameplayTagRegistry;
-class GameplayAttributeRegistry;
-class GameplayEffectSystem;
-class GameplaySkillSystem;
-namespace Assets
-{
-class AssetDatabase;
-}
-namespace Rhi
-{
-class RHI;
-}
-namespace Ui
-{
-class FontAtlasSet;
-}
-namespace Text
-{
-class TextService;
-class TextShapeCache;
-class ITextShaper;
-}
-}
-
 namespace Fby::Ecs
 {
 
-class CommandBuffer;
 class SystemGraph;
-
-using Registry = entt::registry;
 
 enum class Phase : std::uint8_t
 {
@@ -82,45 +40,6 @@ enum class Phase : std::uint8_t
     }
     return "?";
 }
-
-// What a system is allowed to touch. No engine singleton, no global registry:
-struct SystemContext
-{
-    Registry& registry;
-    JobSystem& jobs;
-    float dt = 0.0f;
-    std::uint64_t frameIndex = 0;
-    Rhi::RHI* renderer = nullptr;
-    WindowManager* window = nullptr;
-    VirtualFileSystem* assets = nullptr;
-    Assets::AssetDatabase* assetDb = nullptr;
-    AudioSystem* audio = nullptr;
-    PhysicsSystem* physics = nullptr;
-    float interpolationAlpha = 1.0f;
-    CommandBuffer* commands = nullptr;
-    FrameArena* frameArena = nullptr;
-
-    // Extension module pointers. Appended so the original SystemContext layout
-    PhysicsJointSystem* joints = nullptr;
-    ClothSystem* cloth = nullptr;
-    FluidWaveSystem* fluid = nullptr;
-    CameraStackSystem* cameraStack = nullptr;
-    AccessibilityKernel* accessibility = nullptr;
-    Ui::FontAtlasSet* fonts = nullptr;
-    Text::TextService* text = nullptr;
-    // Optional shaped-text path for UI text blocks and cluster-aware input.
-    Text::TextShapeCache* textShapes = nullptr;
-    Text::ITextShaper* textShaper = nullptr;
-    LocalizationTable* localization = nullptr;
-    // Project-owned gameplay registries. Systems that read tags take them from
-    // the context; a world without gameplay leaves them null.
-    GameplayTagRegistry* gameplayTags = nullptr;
-    GameplayAttributeRegistry* gameplayAttributes = nullptr;
-    GameplayEffectSystem* gameplayEffects = nullptr;
-    GameplaySkillSystem* gameplaySkills = nullptr;
-};
-
-using SystemFunction = void (*)(SystemContext&, void*);
 
 class Schedule
 {

@@ -2,9 +2,9 @@
 
 **Language section:** English
 
-**Version:** 0.2.0-alpha.1
+**Version:** 0.3.0-alpha.1
 **Status:** Alpha
-**Date:** 2026-11-04
+**Date:** 2026-11-08
 **Document:** FBY-ARCH-0.1
 
 ---
@@ -13,7 +13,7 @@
 
 FemboyEngine2D is a C++26, data-oriented 2D engine at release-candidate status. The runtime is split into one static library per shipping role: a game links the engine, an editor links the engine plus the editor UI library, and the offline cooker links only the asset libraries. A shipped game never pulls in Dear ImGui, ImGuizmo, ImPlot or the TOML parser.
 
-The design rules are deliberately strict. Simulation state is plain, trivially copyable data; hot paths use fixed capacity, function pointers and arena storage; frame paths do not allocate; and every subsystem exposes deterministic, checksummed state. Those rules are what make rollback, hot reload, snapshot testing and GPU multi-draw practical rather than aspirational.
+The design rules are strict. Simulation state is plain, trivially copyable data; hot paths use fixed capacity, function pointers and arena storage; frame paths do not allocate; and every subsystem exposes deterministic, checksummed state. Those rules are what make rollback, hot reload, snapshot testing and GPU multi-draw practical rather than aspirational.
 
 - Core: Definitions.hpp, Vector2D/3D/4D, jobs, platform, plugin ABI, Mirror reflection.
 
@@ -34,13 +34,16 @@ All source lives under Source/. The include root is Source itself, so every incl
 | Source/Engine/Core | Definitions, value types, jobs, platform, plugins, Mirror |
 | Source/Engine/RHI | Render hardware interface, shaders, materials, camera stack |
 | Source/Engine/ECS | Registry, components, scenes, snapshots, skeleton, animation |
-| Source/Engine/Physics | Box2D v3 bridge, joints, cloth, fluid, particles |
+| Source/Engine/Input | Action mapper, contexts, gamepad snapshots, fixed input state |
+| Source/Engine/Physics | Box2D v3 and DOD backends, joints, transport, wheels, cloth, fluid, particles |
 | Source/Engine/Audio | Mixer, DSP graph, limiter, Ogg/Opus |
 | Source/Engine/Network | NetRollbackSession, input rings, snapshot replication |
 | Source/Engine/Assets | VFS, .femeta, cooker, localization, texture/audio formats |
+| Source/Engine/Documents | TXT document slots and pagination |
+| Source/Engine/Text | Unicode, shaping, layout, streaming books and page sessions |
 | Source/Engine/Script | Bytecode VM, graph compiler, AOT backend |
 | Source/Engine/UI | PinkUI, hypertext, font atlas, accessibility |
-| Source/Engine/Video | WebM/VP9 playback and streaming |
+| Source/Engine/Video | WebM VP9/AV1 playback and streaming |
 | Source/Editor/Panels | Editor panels and ImNodes canvases |
 | Source/Editor/Infrastructure | Command stack, cooker watcher, project management |
 | Source/Apps, Source/Tests, Source/Tools, Source/Plugins | Applications, tests, offline tools, plugin fixtures |
@@ -86,7 +89,7 @@ Core value types are trivially copyable and standard layout. The coordinate type
 
 The RHI accepts a FramePacket of plain data and never sees a component, an entity or a string. A sprite is one 48-byte RenderItem: position, size, uvMin, uvMax, layer, packed colour, rotation and flags. Items are sorted once per frame by a 64-bit key (16 bits layer, 40 bits depth, 8 bits sequence) and uploaded into a persistently mapped instance ring. The GPU reads one item per instance; there is no per-sprite vertex buffer, descriptor set or texture bind.
 
-The mesh path is parallel and deliberately different. Static geometry is uploaded once into a device-local arena and addressed through MeshHandle. Deformable SkeletalAnimation/SkinComponent vertices are streamed into a host-visible ring; one compute dispatch runs linear-blend skinning for the whole frame; the result lands in a device-local SkinnedVertex buffer. MeshVertex is 40 bytes, SkinnedVertex is 32 bytes, and both sides use a full column-major Mat4 so a 2.5D camera can produce real z and perspective divide.
+The mesh path is parallel and different. Static geometry is uploaded once into a device-local arena and addressed through MeshHandle. Deformable SkeletalAnimation/SkinComponent vertices are streamed into a host-visible ring; one compute dispatch runs linear-blend skinning for the whole frame; the result lands in a device-local SkinnedVertex buffer. MeshVertex is 40 bytes, SkinnedVertex is 32 bytes, and both sides use a full column-major Mat4 so a 2.5D camera can produce real z and perspective divide.
 
 ```cpp
 MeshVertex     40 B  position, uv, color, skin range, bone indices, weights
@@ -98,8 +101,8 @@ Draws are emitted as one vkCmdDrawIndexedIndirect per (texture array, layer, geo
 
 | Backend | Details |
 |---|---|
-| Vulkan | Windows/Linux/Android; indirect mesh path, compute LBS, runtime loader |
-| Metal | macOS/iOS; same FramePacket contract, Metal argument buffers |
+| Vulkan | Windows/Linux; indirect mesh path, compute LBS, runtime loader |
+| Metal | macOS; same FramePacket contract, Metal argument buffers |
 | Null | Headless CI and servers; full packet/ring path, no device |
 
 Three frames in flight are the default. Each slice owns an instance ring, a mesh vertex ring and a mesh index ring allocated once at device creation. Capacity is a startup decision, not a per-frame allocation: the defaults cover 1,048,576 sprite items, 65,536 mesh vertices and 131,072 mesh indices per slice.
@@ -136,9 +139,9 @@ struct SnapshotHeader {
 
 Every registered component contributes a name, a stable type id, a Mirror layout hash, a canonical size and four function pointers (has, capture, restore, remove). The layout hash rejects a same-size field change; the schema hash rejects a different component set. Restore does not allocate: the snapshot arena and entity tables are fixed at Initialize().
 
-## 6. Physics: Box2D v3, chains, cloth and water
+## 6. Physics: Box2D v3, DOD backend, chains, cloth and water
 
-The physics header does not include box2d.h. RigidBody2D and Collider2D store packed b2BodyId/b2ShapeId values in uint64_t, so gameplay, scene IO and the network layer compile without the C API. PhysicsSystem is the only translation unit that knows Box2D exists. Units are explicit: Box2D works in metres, the renderer in pixels, and PhysicsDesc::pixelsPerMeter is the single conversion point.
+The physics header does not include box2d.h. RigidBody2D and Collider2D store packed b2BodyId/b2ShapeId values in uint64_t, so gameplay, scene IO and the network layer compile without the C API. PhysicsSystem owns the world; TransportGroups, VehicleWheels and the joint systems are explicitly Box2D-aware translation units that keep the C API behind the same packed handles. Units are explicit: Box2D works in metres, the renderer in pixels, and PhysicsDesc::pixelsPerMeter is the single conversion point.
 
 | Model | Details |
 |---|---|
@@ -146,18 +149,23 @@ The physics header does not include box2d.h. RigidBody2D and Collider2D store pa
 | Rope / chain / spring graph | A joint graph of capsule links: chain, rope and spring connections with break limits, ties and repair |
 | Cloth | 32x32 Verlet grid, Gauss-Seidel constraints, overlap query against Box2D shapes |
 | Water | GerstnerField analytic waves plus ShallowWaterGrid on mdspan |
+| DOD backend | SoA AABB solver with a sorted uniform grid; no joints, body CCD or rotational contact response |
+| Transport | Path/motion carriers with contact support and conveyor surfaces; Box2D weld joints when available |
+| Wheels | Box2D wheel-joint suspension, per-wheel motor torque and braking; no implicit powertrain |
 
 A rope is not a special body. It is a chain of small rigid links joined by connections; every connection carries its own material (rigid distance, spring distance, revolute with limits, spring revolute), its own break limits in newtons and newton metres, optional damage accumulation and its own repair state. A chain is therefore a builder over a fixed joint graph: sections splice chain and rope runs, ties connect two links across chains or two plain bodies, gameplay cuts enter the deterministic command log, and a broken connection leaves the link entities alive. The system hard-caps chains, links and connections, allocates the pool once and never allocates on the frame path. It owns the link entities it creates and never the anchor entities; Shutdown order matters because destroying the Box2D world invalidates every stored id, and Update must run directly after the physics step to consume Box2D joint events.
 
-Cloth is a Verlet mass-spring grid projected with a fixed number of Gauss-Seidel iterations, then pushed out of the existing Box2D shapes. It is not a second collision world and does not duplicate level geometry. The CPU writes MeshVertex positions; the renderer streams them through the same deformable path as a skinned mesh, so cloth adds no second draw path. A pinned vertex is simply invMass = 0.
+Cloth is a Verlet mass-spring grid projected with a fixed number of Gauss-Seidel iterations, then pushed out of the existing Box2D shapes. It is not a second collision world and does not duplicate level geometry. The CPU writes MeshVertex positions; the renderer streams them through the same deformable path as a skinned mesh, so cloth adds no second draw path. A pinned vertex is invMass = 0.
 
 Two water models share one system. GerstnerField is a small sum of trochoidal waves: deterministic, analytic, allocation-free, with a Jacobian that fades foam in at crests. ShallowWaterGrid stores a height/velocity field in mdspan views over fixed arrays and integrates the linearised shallow-water equations with a clamped CFL number. Neither model knows about the RHI; a renderer samples the field or uploads its height view as an R32F texture.
+
+The DOD backend is a second implementation of the same PhysicsSystem contract, selected by project policy or PhysicsDesc.backend. It owns SoA positions, velocities and collider extents and resolves pairs through a sorted uniform grid; PhysicsSystem::Capabilities() is the only supported feature query. Transport and wheels explicitly declare their backend boundary: transport support and conveyors work on both solvers, while weld joints and wheel joints require Box2D.
 
 ## 7. Network rollback and Snapshot v4
 
 NetRollbackSession is the glue between Snapshot v4, CommandLog, Pcg32 and the gameplay components (tags, attributes, effects and skills). A session owns a fixed ring of full snapshots (one per simulated tick), one input ring per player, a stable NetEntityId to local EnTT id map and the replay loop. Everything after Initialize() is allocation-free: the snapshot arena, entity tables, input rings and frame metadata are fixed capacity. The simulation callback is a function pointer plus void*, never std::function.
 
-When a remote input arrives late, the session restores the snapshot immediately before the earliest corrected tick, restores the RNG and CommandLog cursor from the same slot, reapplies structural commands, resimulates the affected ticks with the corrected input and prediction for still-missing inputs, captures new snapshots, and reports which frames actually changed.
+When a remote input arrives late, the session restores the snapshot immediately before the earliest corrected tick, restores the RNG and CommandLog cursor from the same slot, reapplies structural commands, resimulates the affected ticks with the corrected input and prediction for still-missing inputs, captures new snapshots, and reports which frames changed.
 
 | Constant | Details |
 |---|---|
@@ -172,7 +180,7 @@ NetEntityId is assigned by the authority (or by the local peer for locally owned
 
 ## 8. Asset pipeline and editor infrastructure
 
-A component never stores a path. It stores a small, generation-checked AssetHandle that names one row of the AssetDatabase metadata table. The row owns the stable AssetId/GUID, resource kind, source and cooked paths, dependency list and import settings. AssetHandle::generation detects a reused slot; AssetMeta::contentGeneration lets a renderer or cache compare content versions. Hot reload never exposes a half-updated asset: edits are staged and committed atomically.
+A component never stores a path. It stores a small, generation-checked AssetHandle that names one row of the AssetDatabase metadata table. The row owns the stable AssetId/GUID, resource kind, source and cooked paths, dependency list and import settings. AssetHandle::Generation detects a reused slot; AssetMeta::contentGeneration lets a renderer or cache compare content versions. Hot reload never exposes a half-updated asset: edits are staged and committed atomically.
 
 ```cpp
 [[asset]]
@@ -271,7 +279,7 @@ python Documentation/Tools/GenerateDocumentation.py --node <node> --lo-cli <libr
 
 - Add a public C++ API stability policy: frozen component layouts, Snapshot v4 compatibility tests and an ABI-version matrix for plugins.
 
-- Finish Metal parity: indirect mesh path, compute skinning and the same FramePacket contract as Vulkan, then enable macOS/iOS CI.
+- Finish Metal parity: indirect mesh path, compute skinning and the same FramePacket contract as Vulkan, then enable macOS CI.
 
 - Add snapshot delta compression and a bandwidth budget, with a replay viewer that steps the snapshot ring and overlays corrected frames.
 

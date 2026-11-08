@@ -41,15 +41,21 @@ void WeatherPreconciliatedSystem::SetResources(const WeatherGpuResources& InReso
 bool WeatherPreconciliatedSystem::Update(Ecs::SystemContext& InContext) noexcept
 {
     auto ScopedView = InContext.registry.view<WeatherContextComponent>();
+    // Must match WeatherSystem's primary-context rule (lowest entity id).
     const WeatherContextComponent* ScopedWeather = nullptr;
+    Entity ScopedOwner = entt::null;
     for (const Entity ScopedEntity : ScopedView)
     {
-        ScopedWeather = &ScopedView.get<WeatherContextComponent>(ScopedEntity);
-        break;
+        if (ScopedWeather == nullptr || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedOwner))
+        {
+            ScopedOwner = ScopedEntity;
+            ScopedWeather = &ScopedView.get<WeatherContextComponent>(ScopedEntity);
+        }
     }
     if (ScopedWeather == nullptr)
     {
-        MStats.particleCount = 0;
+        MStats = WeatherGpuStats{};
+        MStats.splashCapacity = MDesc.splashCapacity;
         return false;
     }
     const float ScopedRain = std::clamp(ScopedWeather->rainIntensity, 0.0f, 1.0f);
@@ -299,6 +305,10 @@ void WeatherAtmospherePass::ExecuteCloudShadow(RenderGraphContext& InContext, vo
 {
     auto* ScopedSelf = static_cast<WeatherAtmospherePass*>(InUser);
     ScopedSelf->Refresh(InContext);
+    if (ScopedSelf->MConstants.clouds.X <= 0.01f)
+    {
+        return;
+    }
     const RenderCommandRecord ScopedRecord =
         MakeComputeRecord("weather_cloud_shadow.comp", ScopedSelf->MConstants, (InContext.extent.width + 7u) / 8u,
                           (InContext.extent.height + 7u) / 8u);

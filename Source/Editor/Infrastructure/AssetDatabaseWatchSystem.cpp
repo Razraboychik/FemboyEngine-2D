@@ -11,8 +11,11 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 #include <iterator>
 #include <string>
+#include <unordered_map>
+#include <utility>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -115,12 +118,7 @@ bool AssetDatabaseWatchSystem::Initialize(Assets::AssetDatabase& InDatabase, con
     MWatchedCount = 0;
     MStats = {};
     MActive = true;
-#ifndef _WIN32
-    MOsWatcherActive = false;
-    return true;
-#else
     return StartOsWatcher(InError);
-#endif
 }
 
 void AssetDatabaseWatchSystem::Shutdown()
@@ -552,10 +550,100 @@ bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
     return true;
 }
 #else
-bool AssetDatabaseWatchSystem::StartOsWatcher(std::string*)
+bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
 {
-    MOsWatcherActive = false;
-    LogWarn("watch", "OS directory watches are not implemented on this platform; use InjectChange or Poll");
+    std::error_code ScopedError;
+    if (!std::filesystem::is_directory(MConfig.projectRoot, ScopedError))
+    {
+        SetError(InError, "asset watch root is not a directory");
+        return false;
+    }
+    MOsWatcherActive = true;
+    MStopRequested.store(false, std::memory_order_relaxed);
+    const auto ScopedDelay =
+        std::chrono::milliseconds(std::max<std::uint32_t>(MConfig.debounceMs, 100u));
+    MThread = std::jthread(
+        [this, ScopedDelay](std::stop_token)
+        {
+            using FileStamp = std::pair<std::filesystem::file_time_type, std::uintmax_t>;
+            std::unordered_map<std::string, FileStamp> ScopedKnown;
+            bool ScopedPrimed = false;
+            while (!MStopRequested.load(std::memory_order_relaxed))
+            {
+                std::unordered_map<std::string, FileStamp> ScopedCurrent;
+                std::error_code ScopedScanError;
+                auto ScopedVisit = [&](const std::filesystem::directory_entry& InEntry)
+                {
+                    if (ScopedScanError || !InEntry.is_regular_file(ScopedScanError))
+                    {
+                        return;
+                    }
+                    const std::string ScopedRelative = Normalize(
+                        InEntry.path().lexically_relative(MConfig.projectRoot).generic_string());
+                    if (!IsRelevantFile(ScopedRelative))
+                    {
+                        return;
+                    }
+                    const auto ScopedWriteTime = InEntry.last_write_time(ScopedScanError);
+                    if (ScopedScanError)
+                    {
+                        return;
+                    }
+                    ScopedCurrent.emplace(ScopedRelative, FileStamp{ScopedWriteTime, InEntry.file_size(ScopedScanError)});
+                };
+                if (MConfig.recursive)
+                {
+                    for (const auto& ScopedEntry : std::filesystem::recursive_directory_iterator(
+                             MConfig.projectRoot, std::filesystem::directory_options::skip_permission_denied,
+                             ScopedScanError))
+                    {
+                        if (MStopRequested.load(std::memory_order_relaxed))
+                        {
+                            break;
+                        }
+                        ScopedVisit(ScopedEntry);
+                    }
+                }
+                else
+                {
+                    for (const auto& ScopedEntry : std::filesystem::directory_iterator(
+                             MConfig.projectRoot, std::filesystem::directory_options::skip_permission_denied,
+                             ScopedScanError))
+                    {
+                        if (MStopRequested.load(std::memory_order_relaxed))
+                        {
+                            break;
+                        }
+                        ScopedVisit(ScopedEntry);
+                    }
+                }
+                if (ScopedPrimed)
+                {
+                    for (const auto& [ScopedPath, ScopedStamp] : ScopedCurrent)
+                    {
+                        const auto ScopedPrevious = ScopedKnown.find(ScopedPath);
+                        if (ScopedPrevious == ScopedKnown.end() ||
+                            ScopedPrevious->second.first != ScopedStamp.first ||
+                            ScopedPrevious->second.second != ScopedStamp.second)
+                        {
+                            (void)PushChange(ScopedPath);
+                        }
+                    }
+                    for (const auto& [ScopedPath, ScopedStamp] : ScopedKnown)
+                    {
+                        (void)ScopedStamp;
+                        if (ScopedCurrent.find(ScopedPath) == ScopedCurrent.end())
+                        {
+                            (void)PushChange(ScopedPath);
+                        }
+                    }
+                }
+                ScopedKnown = std::move(ScopedCurrent);
+                ScopedPrimed = true;
+                std::this_thread::sleep_for(ScopedDelay);
+            }
+        });
+    LogInfo("watch", "polling OS watcher active for '{}'", MConfig.projectRoot.string());
     return true;
 }
 #endif

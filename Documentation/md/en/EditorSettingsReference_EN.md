@@ -1,6 +1,6 @@
 # Editor Settings Reference
 
-This document is the complete reference for the editor's own settings in FemboyEngine2D 0.2.0-alpha.1: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
+This document is the complete reference for the editor's own settings in FemboyEngine2D 0.3.0-alpha.1: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
 
 The settings are environment preferences, not gameplay. They are stored next to the project so a team reproduces the same authoring environment, they are mirrored to the editor INI for humans and legacy readers, and they never change how a shipped game behaves. No shipped runtime reads them.
 
@@ -97,7 +97,7 @@ The typography block is a readability contract: 18 px body text is the floor on 
 | `font_script_pin_output` | 18 | 16 through 28 | Same as input pins |
 | `font_scene_text` | 18 | 16 through 40 | Scene text is read against art, so it needs more headroom |
 
-The panel ranges are deliberately narrower than the file clamps: the panel keeps a safe band, the file accepts an extreme for a specific display.
+The panel ranges are narrower than the file clamps: the panel keeps a safe band, the file accepts an extreme for a specific display.
 
 A legacy migration is part of the decoder. A project that still carries exactly the old combination (20 px title, 16 px body, 16 px tooltip, 18 px node title, 16 px pins, 16 px scene text) is upgraded once to the 24/18/18/21/18/18/18 defaults and the migration is logged. A project that changed any single value keeps its authored sizes, so the migration can never overwrite a deliberate choice.
 
@@ -189,7 +189,7 @@ The clamp exists twice on purpose. `ClampViewportViewMode` in `EditorSettings.cp
 | Clamp | 1 through 64 |
 | Panel widget | Slider 1 through 64 |
 
-The budget is the denominator of the Shader Complexity heat ramp: a sprite whose overlap count times its light count reaches the budget is drawn fully red. It is a diagnostic reference, not a quality setting. Lower it to expose heavy sprites earlier, raise it on a deliberately dense scene, and keep one value per project so two screenshots are comparable.
+The budget is the denominator of the Shader Complexity heat ramp: a sprite whose overlap count times its light count reaches the budget is drawn fully red. It is a diagnostic reference, not a quality setting. Lower it to expose heavy sprites earlier, raise it on a dense scene, and keep one value per project so two screenshots are comparable.
 
 A zero budget would divide by zero, which is why the clamp starts at one, and the presenter additionally treats a zero as one before dividing.
 
