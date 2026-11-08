@@ -18,6 +18,7 @@ std::atomic<std::thread::id> GMainThreadId{std::this_thread::get_id()};
 void MarkMainThread() noexcept
 {
     GMainThreadId.store(std::this_thread::get_id(), std::memory_order_release);
+    BindThreadRole(ThreadRole::Main);
 }
 
 bool IsMainThread() noexcept
@@ -36,9 +37,26 @@ bool RequireMainThread(const char* InWho) noexcept
     {
         return true;
     }
-    LogError("thread", "{} must be called on the OS main thread; the call was made from a worker and is dropped",
-             InWho != nullptr ? InWho : "operation");
+    LogError("thread", "{} must be called on the OS main thread; the call was made on role {} and is dropped",
+             InWho != nullptr ? InWho : "operation", ThreadRoleName(CurrentThreadRole()));
     FBY_ASSERT_MSG(IsMainThread(), "operation requires the OS main thread (see Engine/Core/ThreadAffinity.hpp)");
+    return false;
+}
+
+bool RequireThreadRole(ThreadRole InRole, const char* InWho) noexcept
+{
+    if (InRole == ThreadRole::Main)
+    {
+        return RequireMainThread(InWho);
+    }
+    if (CurrentThreadRole() == InRole)
+    {
+        return true;
+    }
+    LogError("thread", "{} requires role {} but the caller is {}; the call is dropped",
+             InWho != nullptr ? InWho : "operation", ThreadRoleName(InRole),
+             ThreadRoleName(CurrentThreadRole()));
+    FBY_ASSERT_MSG(CurrentThreadRole() == InRole, "operation requires a specific thread role");
     return false;
 }
 }

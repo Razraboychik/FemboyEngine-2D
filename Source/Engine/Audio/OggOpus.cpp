@@ -3,6 +3,7 @@
 #include "Engine/Audio/OggOpus.hpp"
 
 #include "Engine/Assets/AudioClipFormat.hpp"
+#include "Engine/Core/ThreadAffinity.hpp"
 
 #include <opus.h>
 
@@ -461,7 +462,12 @@ bool OggOpusStream::Start()
     MStop.store(false, std::memory_order_relaxed);
     try
     {
-        MDecodeThread = std::thread([this] { DecodeLoop(); });
+        MDecodeThread = std::thread(
+            [this]
+            {
+                BindThreadRole(ThreadRole::Audio);
+                DecodeLoop();
+            });
     }
     catch (...)
     {

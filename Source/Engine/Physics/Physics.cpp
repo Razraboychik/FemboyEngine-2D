@@ -7,6 +7,7 @@
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/SimMath.hpp"
+#include "Engine/Core/ThreadAffinity.hpp"
 
 #include <box2d/box2d.h>
 
@@ -899,6 +900,10 @@ void PhysicsSystem::ApplyEntityTimeScale(Ecs::Registry& InRegistry) noexcept
 
 void PhysicsSystem::Step(Ecs::Registry& InRegistry, float InFixedDt)
 {
+    if (!RequireMainThread("PhysicsSystem::Step"))
+    {
+        return;
+    }
     if (MBackendKind == PhysicsBackendKind::Dod && MDod != nullptr)
     {
         if (InFixedDt > 0.0f && MTimeScale > 0.0f)

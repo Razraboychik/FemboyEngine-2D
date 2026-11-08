@@ -104,6 +104,21 @@ int main()
         Check(GSecond == 1 && GFirst == 2, "a write/read conflict keeps registration order");
     }
 
+    {
+        Fby::Ecs::SystemGraph Graph;
+        Check(!Graph.DeterministicSimulation(), "deterministic simulation is off by default");
+        Graph.SetDeterministicSimulation(true);
+        Check(Graph.DeterministicSimulation(), "deterministic simulation toggles");
+        Check(Graph.Add(Fby::Ecs::Phase::FixedUpdate, "first", &RunFirst), "add deterministic first");
+        Check(Graph.Add(Fby::Ecs::Phase::FixedUpdate, "second", &RunSecond), "add deterministic second");
+        Check(Graph.Build(), "deterministic graph builds");
+        GOrder = 0;
+        GFirst = 0;
+        GSecond = 0;
+        Graph.Run(Fby::Ecs::Phase::FixedUpdate, Context);
+        Check(GFirst == 1 && GSecond == 2, "deterministic graph keeps registration order");
+    }
+
     if (GFailures == 0)
     {
         std::printf("system_graph: OK (order, cycle, mask validation, remove, access conflict)\n");

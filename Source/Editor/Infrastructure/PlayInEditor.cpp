@@ -737,6 +737,9 @@ bool PlayInEditor::Step(Ecs::SystemGraph& InGraph, float InDeltaSeconds, float I
     {
         return false;
     }
+    // PIE is the authoritative simulation: never fan fixed phases across worker
+    // threads, so DOD physics/SDF stay on the deterministic main-thread path.
+    InGraph.SetDeterministicSimulation(true);
     Ecs::SystemContext ScopedContext = MakeContext(MWorld);
     ScopedContext.dt = InDeltaSeconds;
     ScopedContext.frameIndex = MTick + 1;

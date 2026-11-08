@@ -2,6 +2,7 @@
 #include "Engine/Physics/SdfCollision.hpp"
 
 #include "Engine/Core/SimMath.hpp"
+#include "Engine/Core/ThreadAffinity.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/Physics/SdfBrickMap.hpp"
 
@@ -104,6 +105,10 @@ void SdfCollisionSystem::SetField(const SdfField& InField) noexcept
 
 std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, float InFixedDt) noexcept
 {
+    if (!RequireMainThread("SdfCollisionSystem::Step"))
+    {
+        return 0;
+    }
     MContactCount = 0;
     MManifoldCount = 0;
     MBroadphaseSkipped = 0;

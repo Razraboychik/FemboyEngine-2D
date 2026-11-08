@@ -69,16 +69,32 @@ engine contract: set 1 SSBOs, `mat4 viewProjection` push constant, full 4x4
 ## 4. Video
 
 `WebmDemuxer` parses EBML/Segment/Tracks/Clusters/BlockGroups, validates
-`TimestampScale`, pixel size, alpha mode and `CodecID`, and rejects every
-non-VP9 codec. `Vp9Backend` is a runtime-loaded libvpx function table (no link
-dependency; tests inject a deterministic fake). Frames are decoded on a
-`std::jthread` into a preallocated pool and cross to the render thread through a
-fixed SPSC ring; `VideoSystem` (PostUpdate) uploads the newest due frame with
+`TimestampScale`, pixel size, alpha mode and `CodecID`. VP9 is decoded through
+the runtime-loaded libvpx table (`Vp9Backend`). AV1 uses an `Av1Backend` table:
+the Windows build links the vendored dav1d 1.4.3 (BSD-2-Clause); Linux/macOS use
+the system dav1d via pkg-config (`FBY_HAS_DAV1D`), and a platform without dav1d
+can supply its own `Av1Backend`. The backend converts 10/12-bit I420 output down
+to the engine's 8-bit path. H.264/H.265 are deliberately unsupported for licensing
+reasons. Frames are decoded on a `std::jthread` into a
+preallocated pool and cross to the render thread through a fixed SPSC ring;
+`VideoSystem` (PostUpdate) uploads the newest due frame with
 `RHI::UpdateTextureArrayLayer` into an RGBA8 texture array (one layer per pooled
 frame). YUV→RGBA is BT.709, alpha is composited from the separate VP9 alpha
 plane. `VideoStreamComponent` is a trivial component; decoder state lives in the
 system's fixed slots, and the component's stream id ties it to the player slot
 that opened it.
+
+An optional `A_OPUS` audio track is parsed by `WebmDemuxer` (`HasAudio()`,
+`AudioTrack()`). `VideoAudioDecoder` decodes packets through libopus;
+`VideoAudioStream` owns a fixed interleaved PCM ring and the audio clock.
+`VideoPlayer::Advance()` pumps up to two audio packets per frame and exposes
+`ReadAudio()`, `AudioClockNs()` and `QueuedAudioFrames()`. `SeekToNs()` builds a
+cluster index at `Open()`, seeks video to the last cluster at or before the
+target and skips audio packets before it; `SeekToStart()` uses the same path.
+`SetAudioMasterClock(true)` makes the video clock follow the decoded audio
+clock (wall-clock fallback before the first PCM frame). `Advance()` passes its
+speed to the audio stream, where `Read()` applies nearest-neighbour resampling
+for 0.25x–4x playback; the media clock counts consumed source frames.
 
 `FrameExporter` renders a viewport offscreen with `RenderToTarget`, captures it
 with `RHI::CaptureRenderTarget` (host readback, top row first) and appends the

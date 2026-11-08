@@ -456,6 +456,28 @@ add_test(NAME texture_cook COMMAND fby_texture_cook_test)
 
 # P1 authoring: .femeta metadata/transactions, animation timeline model and
 fby_add_engine_test(fby_asset_meta_test asset_meta AssetMetaTest.cpp)
+fby_add_engine_test(fby_document_test document DocumentTest.cpp)
+fby_add_engine_test(fby_book_asset_test book_asset BookAssetTest.cpp)
+fby_add_engine_test(fby_book_cook_test book_cook BookCookTest.cpp)
+fby_add_engine_test(fby_book_session_test book_session BookSessionTest.cpp)
+fby_add_engine_test(fby_dav1d_backend_test dav1d_backend Dav1dBackendTest.cpp)
+fby_add_engine_test(fby_book_bench_test book_bench BookBenchTest.cpp)
+set_tests_properties(book_bench PROPERTIES LABELS "benchmark")
+fby_add_engine_test(fby_sprite_atlas_test sprite_atlas SpriteAtlasTest.cpp)
+fby_add_engine_test(fby_net_topology_test net_topology NetTopologyTest.cpp)
+fby_add_engine_test(fby_video_audio_test video_audio VideoAudioDecoderTest.cpp)
+fby_add_engine_test(fby_video_audio_stream_test video_audio_stream VideoAudioStreamTest.cpp)
+# Manual smoke test: pass an AV1 WebM path. Not registered in CTest because the
+# sample file is an external asset.
+add_executable(fby_av1_decode_test Av1DecodeTest.cpp)
+target_link_libraries(fby_av1_decode_test PRIVATE FemboyEngine2D::Engine)
+set_target_properties(fby_av1_decode_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+if(TARGET Opus::opus)
+    target_link_libraries(fby_video_audio_test PRIVATE Opus::opus)
+elseif(TARGET opus)
+    target_link_libraries(fby_video_audio_test PRIVATE opus)
+endif()
 fby_add_engine_test(fby_animation_timeline_test animation_timeline AnimationTimelineTest.cpp)
 
 # Isometric grid math, tilemaps, skeletal IK/retargeting and clip compression.

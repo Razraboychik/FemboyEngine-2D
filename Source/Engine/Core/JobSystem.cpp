@@ -3,6 +3,7 @@
 
 #include "Engine/Core/Assert.hpp"
 #include "Engine/Core/Log.hpp"
+#include "Engine/Core/ThreadAffinity.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -145,6 +146,7 @@ std::string_view JobSystem::CurrentThreadName() noexcept
 void JobSystem::WorkerMain(std::stop_token InToken, std::uint32_t InIndex)
 {
     tls_worker = true;
+    BindThreadRole(ThreadRole::Worker);
     tls_threadNameStorage = "worker-" + std::to_string(InIndex);
     tls_threadName = tls_threadNameStorage;
 

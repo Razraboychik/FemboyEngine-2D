@@ -212,8 +212,8 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
     // Render owns the RHI command stream and must stay on the render thread. A
     // worker can re-enter the graph from inside a node; submitting there would
     // wait for workers that are themselves waiting, so those runs stay inline.
-    const bool ScopedInline =
-        InPhase == Phase::Render || InContext.jobs.ThreadCount() == 0 || JobSystem::IsWorkerThread();
+    const bool ScopedInline = MDeterministicSimulation || InPhase == Phase::Render ||
+                              InContext.jobs.ThreadCount() == 0 || JobSystem::IsWorkerThread();
     if (ScopedInline)
     {
         for (std::uint32_t ScopedI = 0; ScopedI < MOrderCount; ++ScopedI)

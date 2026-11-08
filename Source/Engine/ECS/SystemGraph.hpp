@@ -94,6 +94,17 @@ public:
         return MBuilt;
     }
 
+    // Variant A: deterministic simulation uses one caller thread for every
+    // non-render phase; presentation jobs outside the graph stay parallel.
+    void SetDeterministicSimulation(bool InEnabled) noexcept
+    {
+        MDeterministicSimulation = InEnabled;
+    }
+    [[nodiscard]] bool DeterministicSimulation() const noexcept
+    {
+        return MDeterministicSimulation;
+    }
+
     // Runs one phase through the JobSystem. Nodes with no dependency edge
     void Run(Phase InPhase, SystemContext& InContext) const;
 
@@ -116,5 +127,6 @@ private:
     std::uint32_t MOrderCount = 0;
     std::uint32_t MLevelCount = 0;
     bool MBuilt = false;
+    bool MDeterministicSimulation = false;
 };
 }
