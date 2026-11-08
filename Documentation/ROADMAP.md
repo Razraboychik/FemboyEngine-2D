@@ -19,6 +19,26 @@ the tree. 3D rendering, 3D physics and 3D scene formats are out of scope.
 5. Reach 1.0 only after the public API, file formats and platform policy are
    stable enough to promise compatibility.
 
+## Desktop project portability
+
+FemboyEngine2D targets Windows, Linux and macOS. The editor, player and asset
+tools are native desktop applications.
+
+The portability sequence is:
+
+1. Project contract: relative paths, case rules, line endings and asset ids.
+2. Portable `.fbyproj` archive with checksums and traversal protection.
+3. Native build presets and CI jobs for all three OSes.
+4. Editor open/save and local-settings separation on each OS.
+5. Per-target cook and shader outputs; cooked data stays out of the project.
+6. Native packages and store artifacts.
+
+The detailed contract and acceptance criteria live in
+[desktop-portability.md](design/desktop-portability.md). The `ProjectBundle`
+archive is the first shared piece: it exports source files, excludes build and
+cooked output, verifies checksums and rejects paths that escape the project.
+A project must open on all three desktop OSes without conversion.
+
 ## Version policy
 
 - `0.1.0-alpha.N` for feedback-driven alpha updates;

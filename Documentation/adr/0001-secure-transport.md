@@ -11,12 +11,12 @@ record layer) and its binding specification are in
 [protocol-v2.md](../design/protocol-v2.md). Official noise-c vectors, the reproducible
 differential job and the v1/v2 parser fuzzers are green. Ed25519 v2 tickets stay
 open because the tree only vendors classic Monocypher (BLAKE2b EdDSA); IK/PSK is
-deliberately **not** part of 1.0 (see the decision in `protocol-v2.md` §6).
+**not** part of 1.0 (see the decision in `protocol-v2.md` §6).
 
 ## Context
 
 The current tree ships a Noise-XX-shaped handshake named
-`Fby_XX_25519_ChaChaPoly_SHA256`. It is deliberately **not** wire compatible
+`Fby_XX_25519_ChaChaPoly_SHA256`. It is **not** wire compatible
 with standard Noise; the KAT package and `Documentation/design/security.md` record the
 deviations. Two of them reach below the framing:
 

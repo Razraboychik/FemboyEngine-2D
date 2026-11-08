@@ -6,13 +6,12 @@
 
 Движку нужен C++26:
 
-- Windows: clang-cl 19+ с MSVC STL или MSVC 19.40+.
+- Windows: clang-cl 19+ с MSVC STL.
 - Linux: Clang 19+ или GCC 16+.
-- macOS/iOS: Apple Clang с поддержкой C++26.
-- Android: NDK r27+ с C++26-совместимым Clang.
+- macOS: Apple Clang с поддержкой C++26.
 
-Рекомендуемый генератор — Ninja. Генераторы Visual Studio поддерживаются, но
-сборка этого дерева с ними медленнее.
+Поддерживаемый генератор проверенной сборки — Ninja. Visual Studio используется
+только как IDE и источник Windows SDK и заголовков.
 
 ## Настройка отдельной сборки
 
@@ -176,7 +175,7 @@ cmake -S . -B build -DFBY_RHI_BACKEND=null
 
 `null` — настоящий backend с детерминированным учётом кадров, а не заглушка.
 Его используют CI и сгенерированный проект без GPU. `auto` выбирает Metal на
-Apple и Vulkan на Windows, Linux и Android при наличии заголовков.
+macOS и Vulkan на Windows и Linux при наличии заголовков.
 
 ## Добавление цели
 

@@ -343,6 +343,6 @@ The next language features, in dependency order:
 3. Debugger views for the StateTree canvas (the VM-side breakpoints, spans and
    the LogicGraph "Debug graph" view already exist).
 
-The flat VM contract is deliberately not extended by adding heap objects to the
+The flat VM contract is not extended by adding heap objects to the
 8-byte instruction. Any new object model needs a new bytecode version and a
 migration path.

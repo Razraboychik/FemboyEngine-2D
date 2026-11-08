@@ -10,6 +10,7 @@
 #   ./Setup.sh --component cpp  # C++ toolchain and pinned sources
 #   ./Setup.sh --component archiver   # 7-Zip only
 #   ./Setup.sh --component upscalers  # optional vendor SDKs
+#   ./Setup.sh --with-vendor-sdks --accept-vendor-licenses  # DLSS/FidelityFX/XeSS
 #   ./Setup.sh --skip-system    # sources only (CI image already has tools)
 #   ./Setup.sh --force          # re-download every archive
 #
@@ -27,11 +28,16 @@ DOWNLOADS="${ROOT}/build/_deps-download"
 SKIP_SYSTEM=0
 FORCE=0
 COMPONENT=all
+WITH_VENDOR=0
+ACCEPT_VENDOR=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-system) SKIP_SYSTEM=1 ;;
         --force) FORCE=1 ;;
         --component) COMPONENT="${2:-}"; shift ;;
+        --with-vendor-sdks) WITH_VENDOR=1 ;;
+        --accept-vendor-licenses) ACCEPT_VENDOR=1; WITH_VENDOR=1 ;;
+        --accept-licenses) WITH_VENDOR=1; ACCEPT_VENDOR=1 ;;
         --help|-h)
             sed -n '2,26p' "${BASH_SOURCE[0]}"
             exit 0
@@ -296,29 +302,74 @@ if [[ "${RUN_ARCHIVER}" -eq 1 ]]; then
     fi
 fi
 
+setup_vendor_sdks() {
+    local third="${ROOT}/third_party"
+    local dlss="${FBY_DLSS_ROOT:-${third}/dlss}"
+    local ffx_repo="${FBY_FIDELITYFX_REPO:-${third}/fidelityfx}"
+    local ffx="${FBY_FIDELITYFX_ROOT:-${ffx_repo}/Kits/FidelityFX}"
+    local xess="${FBY_XESS_ROOT:-${third}/xess}"
+    local missing=0
+
+    if [[ "${WITH_VENDOR}" -eq 1 ]]; then
+        if [[ "${ACCEPT_VENDOR}" -ne 1 ]]; then
+            warn "vendor SDKs requested without --accept-vendor-licenses; review the license and re-run"
+            return 0
+        fi
+        if ! command -v git >/dev/null 2>&1; then
+            warn "git is required to download vendor SDKs"
+            return 0
+        fi
+        log "Vendor SDK license notice"
+        cat <<'NOTICE'
+NVIDIA DLSS SDK: NVIDIA RTX SDKs License.
+AMD FidelityFX SDK: AMD FidelityFX license.
+Intel XeSS SDK: Intel Simplified Software License.
+These SDKs are not part of FemboyEngine2D and must not be committed.
+NOTICE
+        clone_sdk() {
+            local url="$1" destination="$2"
+            if [[ -d "${destination}/.git" || -f "${destination}/README.md" || -f "${destination}/readme.md" ]]; then
+                echo "  present ${destination}"
+                return
+            fi
+            echo "  cloning ${url}"
+            git clone --depth 1 "${url}" "${destination}"
+        }
+        log "Downloading vendor SDKs"
+        clone_sdk "https://github.com/NVIDIA/DLSS.git" "${dlss}"
+        clone_sdk "https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK.git" "${ffx_repo}"
+        clone_sdk "https://github.com/intel/xess.git" "${xess}"
+    fi
+
+    log "SDK layout"
+    if [[ -f "${dlss}/include/nvsdk_ngx.h" ]]; then
+        echo "  DLSS       : ${dlss}"
+    else
+        warn "DLSS not found at ${dlss} (expected include/nvsdk_ngx.h)"
+        missing=$((missing + 1))
+    fi
+    if [[ -f "${ffx}/api/include/ffx_api.h" ]]; then
+        echo "  FidelityFX : ${ffx}"
+    else
+        warn "FidelityFX not found at ${ffx} (expected api/include/ffx_api.h)"
+        missing=$((missing + 1))
+    fi
+    if [[ -f "${xess}/inc/xess/xess.h" ]]; then
+        echo "  XeSS       : ${xess} (SDK retained; the engine does not compile XeSS)"
+    else
+        warn "XeSS not found at ${xess} (expected inc/xess/xess.h)"
+    fi
+    if [[ "${missing}" -eq 0 ]]; then
+        echo "  CMake: -DFBY_WITH_DLSS=ON -DFBY_DLSS_ROOT=\"${dlss}\""
+        echo "  CMake: -DFBY_WITH_FIDELITYFX=ON -DFBY_FIDELITYFX_ROOT=\"${ffx}\""
+    fi
+}
+
 if [[ "${RUN_UPSCALERS}" -eq 1 ]]; then
-    "${ROOT}/SetupScripts/Linux/SetupUpscalers.sh" || warn "upscaler SDK setup skipped or incomplete"
+    setup_vendor_sdks
 fi
 
-if [[ "${RUN_CPP}" -eq 1 ]]; then
-log "Mobile toolchains"
-MOBILE_MISSING=0
-if [[ -z "${ANDROID_NDK_HOME:-}" && -z "${ANDROID_NDK_ROOT:-}" ]]; then
-    echo "  Android: no NDK. Install Android Studio or set ANDROID_NDK_HOME to NDK r28c (28.2.13676358)"
-    MOBILE_MISSING=1
-else
-    echo "  Android: NDK at ${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT}}"
-fi
-if command -v java >/dev/null 2>&1; then
-    echo "  Android: JDK $(java -version 2>&1 | head -n 1)"
-else
-    echo "  Android: no JDK. Install OpenJDK 17 for the Gradle packaging step"
-    MOBILE_MISSING=1
-fi
-echo "  iOS: needs macOS with Xcode 16 or newer; a Linux host cannot build the iOS target"
-fi
-
-log "Done"
+og "Done"
 echo "  configure   : cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON"
 echo "  build       : cmake --build build-dev"
 echo "  test        : ctest --test-dir build-dev --output-on-failure"

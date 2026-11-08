@@ -1,12 +1,12 @@
 # FemboyEngine2D Application Guide
 
-*ECS in practice, production optimisation and the distribution SDK — 2026-11-06*
+*ECS in a production project, optimisation and the distribution SDK — 2026-11-08*
 
 ## 1. What this guide is for
 
 FemboyEngine2D is a data-oriented 2D engine. This guide is the practical companion to the architecture specification: it starts from a playable 2D shooter, shows how entities are composed from independent data, then follows the same project through texture cooking, GPU batching, storefront integration, hybrid SDF physics, the weather pipeline and the encrypted distribution archive.
 
-The running project is deliberately small. A player, three enemy archetypes, a boss with phases, bullets, pickups and a card board are enough to demonstrate every architectural rule. Every code snippet compiles against the headers shipped in Source/Engine; paths and type names are real.
+The running project is small. A player, three enemy archetypes, a boss with phases, bullets, pickups and a card board are enough to demonstrate every architectural rule. Every code snippet compiles against the headers shipped in Source/Engine; paths and type names are real.
 
 - Audience: gameplay programmers, technical designers and tools engineers.
 - Assumed knowledge: C++20 basics, an ECS at the level of EnTT, and one graphics API.
@@ -26,19 +26,19 @@ SetupScripts\Windows\Setup.bat
 SetupScripts\Windows\SetupCpp.bat
 SetupScripts\Windows\SetupArchiver.bat
 # optional vendor SDKs
-SetupScripts\Windows\SetupUpscalers.bat
+SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 # Ubuntu / Debian
 ./SetupScripts/Linux/SetupCpp.sh
 ./SetupScripts/Linux/SetupArchiver.sh
 # optional vendor SDKs
-./SetupScripts/Linux/SetupUpscalers.sh
+./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses
 
 # macOS (double-click in Finder also works)
 ./SetupScripts/macOS/SetupCpp.command
 ./SetupScripts/macOS/SetupArchiver.command
 # optional vendor SDKs
-./SetupScripts/macOS/SetupUpscalers.command
+./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
 ```
 
 The all-in-one entry points are SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh and SetupScripts/macOS/Setup.command.
@@ -100,7 +100,7 @@ An ECS is not a different syntax for a class hierarchy. It is a change of the ce
 
 ### 3.2 The component vocabulary
 
-Start with a small vocabulary and resist adding a component until two systems genuinely need to share the data. The shooter uses the following independent components.
+Start with a small vocabulary and do not add a component until two systems need to share the data. The shooter uses the following independent components.
 
 ```cpp
 // Game/Components.hpp - trivially copyable, no behaviour.
@@ -197,12 +197,12 @@ Entity SpawnEnemy(ecs::Registry& registry, const EnemyArchetype& archetype, Vect
 }
 ```
 
-Mobs and bosses share one spawn path. A 'Boss' is an archetype with more health, a phase table and a BossPhaseComponent; it is not a separate C++ type. Adding a new enemy is a data row and, when its behaviour is genuinely new, one branch in AISystem.
+Mobs and bosses share one spawn path. A 'Boss' is an archetype with more health, a phase table and a BossPhaseComponent; it is not a separate C++ type. Adding a new enemy is a data row and, when its behaviour is new, one branch in AISystem.
 
 ### 4.1 Systems, in order
 
 - InputSystem (PreUpdate): read devices into InputComponent. It never moves anything.
-- AISystem (FixedUpdate): write desired velocity and aim into the same InputComponent that a player would write. This is the key trick: one movement system handles players and enemies.
+- AISystem (FixedUpdate): write desired velocity and aim into the same InputComponent that a player would write. One movement system therefore handles players and enemies.
 - MovementSystem (FixedUpdate): integrate Velocity into Transform2D; clamp to level bounds.
 - WeaponSystem (FixedUpdate): cooldown, spawn projectile intents through the CommandBuffer.
 - ProjectileSystem (FixedUpdate): integrate projectiles, TTL, broad-phase candidate query.
@@ -249,7 +249,7 @@ void AISystem(ecs::SystemContext& context)
 }
 ```
 
-The system is deliberately boring. There is no state machine object and no per-enemy allocation; the archetype row supplies the numbers, and the same nine lines cover a chaser, a turret and a ranged mob. A boss with phases adds a second small system that changes preferredRange and behavior when its health crosses a threshold.
+The system stays small. There is no state machine object and no per-enemy allocation; the archetype row supplies the numbers, and the same nine lines cover a chaser, a turret and a ranged mob. A boss with phases adds a second small system that changes preferredRange and behavior when its health crosses a threshold.
 
 ### 4.2 Bosses without inheritance
 
@@ -283,7 +283,7 @@ void BossPhaseSystem(ecs::SystemContext& context)
 }
 ```
 
-This is the entire boss hierarchy. A 'fire boss' and a 'charge boss' differ by component values and, at most, by a spawn table. Behaviour that cannot be expressed as data belongs in a new small system; it almost never justifies a class with a vtable.
+The boss hierarchy is the same. A 'fire boss' and a 'charge boss' differ by component values and, at most, by a spawn table. Behaviour that cannot be expressed as data belongs in a new small system; it almost never justifies a class with a vtable.
 
 ### 4.3 Spawning without a frame hitch
 
@@ -384,10 +384,10 @@ A useful project order is: one player + InputSystem; two local users; snapshot r
 
 The second half of an ECS project is not gameplay; it is what reaches the GPU. Two tools do most of the work: cooked block-compressed textures and indirect mesh batching. Both are configured per project and both are verifiable from FrameStats.
 
-### 6.1 Texture cooking: BC7 on desktop, ASTC on mobile
+### 6.1 Texture cooking: BC7 and ASTC
 
 - BC7 keeps a real alpha channel and is the desktop default. BC7 sRGB is selected for colour sprites; a normal map or a mask uses the linear (UNORM) variant.
-- ASTC 4x4 is the quality mobile target; 6x6 is the size target. Pick it in Project Settings -> Cooker -> Texture format.
+- ASTC 4x4 is the quality option where the target GPU supports ASTC; 6x6 is the size option. Pick it in Project Settings -> Cooker -> Texture format.
 - The cooker generates the full mip chain once, at import. The runtime uploads the blocks verbatim; there is no CPU decode and no runtime re-compression.
 - A texture array is the batching unit. Keep sprites of one material in one layer set; a layer switch is a new descriptor, not a new draw call.
 - Never ship a JPEG: the cooker rejects it by extension and by magic. A lossy source makes a shipped texture differ from what the artist approved.

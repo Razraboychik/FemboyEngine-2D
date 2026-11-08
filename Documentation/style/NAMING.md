@@ -147,7 +147,7 @@ namespace-scope aliases, enums, functions and methods, registered component
 fields and reflected `FBY_FIELD` names. The gate also enforces the comment and
 script rules above.
 
-Two categories are deliberately outside a blind rename:
+Two categories are outside a blind rename:
 
 - The C ABI symbols `fby_*` in `PluginAPI.h` are the frozen plugin contract.
 - Non-reflected implementation PODs (audio graph commands, scene helper

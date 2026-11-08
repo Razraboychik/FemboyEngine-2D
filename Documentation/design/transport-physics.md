@@ -79,7 +79,7 @@ Motion is evaluated from a fixed-step distance and a path, not from wall-clock
 time. `TransportMotion.Distance`, path points and the carrier pose are authoring
 state. The transport authoring components are registered in the component
 registry and visible in the editor, but `TransportPath`, `TransportMotion` and
-`TransportSurface` are deliberately not in `SnapshotSchema::BuiltIns` (the
+`TransportSurface` are not in `SnapshotSchema::BuiltIns` (the
 snapshot schema has a fixed capacity and runtime group/joint handles are
 transient). A rollback or networked game must replicate or recreate them.
 `TransportPath` exposes only `Count` and `Closed` to reflection; its points are

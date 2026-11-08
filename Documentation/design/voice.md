@@ -1,6 +1,6 @@
 # Voice: capture, DSP, AEC and networking
 
-Status: 0.1.0-alpha.1 tree. This is the per-subsystem voice document; the forward work
+Status: 0.3.0-alpha.1 tree. This is the per-subsystem voice document; the forward work
 lives in [ROADMAP.md](../ROADMAP.md), and the security status of the underlying
 transport lives in [security.md](security.md).
 

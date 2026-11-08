@@ -8,6 +8,8 @@
 # pinned sources (Monocypher 4.0.2 among them) into third_party/. Xcode Command
 # Line Tools are required for clang++ and the Metal framework headers.
 #
+# Vendor SDKs:     ./Setup.command --with-vendor-sdks --accept-vendor-licenses
+#
 # HarfBuzz 15.0.0 and SheenBidi 3.0.0 ship inside third_party/ and are not
 # downloaded here.
 set -euo pipefail
@@ -16,11 +18,16 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 THIRD="${ROOT}/third_party"
 CACHE="${ROOT}/build/_deps-download"
 FORCE=0
+WITH_VENDOR=0
+ACCEPT_VENDOR=0
 for arg in "$@"; do
     case "$arg" in
         --force) FORCE=1 ;;
         --skip-system) SKIP_SYSTEM=1 ;;
-        --help|-h) sed -n '2,10p' "$0"; exit 0 ;;
+        --with-vendor-sdks) WITH_VENDOR=1 ;;
+        --accept-vendor-licenses) ACCEPT_VENDOR=1 ;;
+        --accept-licenses) WITH_VENDOR=1; ACCEPT_VENDOR=1 ;;
+        --help|-h) sed -n '2,16p' "$0"; exit 0 ;;
     esac
 done
 mkdir -p "${THIRD}" "${CACHE}"
@@ -135,23 +142,46 @@ else
     echo "WARN: 7z is missing; FemArchiver will use the FbyLZ fallback."
 fi
 
-echo
-echo "==> Mobile toolchains"
-if [[ -n "${ANDROID_NDK_HOME:-}" || -n "${ANDROID_NDK_ROOT:-}" ]]; then
-    echo "  Android: NDK at ${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT}}"
-else
-    echo "  Android: no NDK. Install Android Studio or set ANDROID_NDK_HOME to NDK r28c (28.2.13676358)"
-fi
-if command -v java >/dev/null 2>&1; then
-    echo "  Android: JDK $(java -version 2>&1 | head -n 1)"
-else
-    echo "  Android: no JDK. Install OpenJDK 17 for the Gradle packaging step"
-fi
-if xcodebuild -version >/dev/null 2>&1; then
-    echo "  iOS: $(xcodebuild -version | head -n 1)"
-else
-    echo "  iOS: Xcode 16 or newer is required for the iOS target"
-fi
+setup_vendor_sdks() {
+    local third="${ROOT}/third_party"
+    local dlss="${FBY_DLSS_ROOT:-${third}/dlss}"
+    local ffx_repo="${FBY_FIDELITYFX_REPO:-${third}/fidelityfx}"
+    local ffx="${FBY_FIDELITYFX_ROOT:-${ffx_repo}/Kits/FidelityFX}"
+    local xess="${FBY_XESS_ROOT:-${third}/xess}"
+    local missing=0
+    if [[ "${WITH_VENDOR}" -eq 1 ]]; then
+        if [[ "${ACCEPT_VENDOR}" -ne 1 ]]; then
+            echo "WARN: vendor SDKs requested without --accept-vendor-licenses" >&2
+            return
+        fi
+        if ! command -v git >/dev/null 2>&1; then
+            echo "WARN: git is required to download vendor SDKs" >&2
+            return
+        fi
+        echo "==> Vendor SDK license notice"
+        echo "NVIDIA DLSS SDK: NVIDIA RTX SDKs License."
+        clone_sdk() {
+            local url="$1" destination="$2"
+            if [[ -d "${destination}/.git" || -f "${destination}/README.md" ]]; then
+                echo "  present ${destination}"
+                return
+            fi
+            echo "  cloning ${url}"
+            git clone --depth 1 "${url}" "${destination}"
+        }
+        clone_sdk "https://github.com/NVIDIA/DLSS.git" "${dlss}"
+        clone_sdk "https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK.git" "${ffx_repo}"
+        clone_sdk "https://github.com/intel/xess.git" "${xess}"
+    fi
+    echo "==> SDK layout"
+    [[ -f "${dlss}/include/nvsdk_ngx.h" ]] || { echo "WARN: DLSS missing at ${dlss}" >&2; missing=$((missing + 1)); }
+    [[ -f "${ffx}/api/include/ffx_api.h" ]] || { echo "WARN: FidelityFX missing at ${ffx}" >&2; missing=$((missing + 1)); }
+    [[ -f "${xess}/inc/xess/xess.h" ]] || echo "WARN: XeSS missing at ${xess}" >&2
+    if [[ "${missing}" -eq 0 ]]; then
+        echo "  CMake: -DFBY_WITH_DLSS=ON -DFBY_DLSS_ROOT=\"${dlss}\""
+    fi
+}
+setup_vendor_sdks
 
 echo
 echo "==> Done"

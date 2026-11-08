@@ -260,7 +260,7 @@ struct ProjectConfig
 static_assert(std::is_trivially_copyable_v<ProjectSettings>);
 static_assert(std::is_standard_layout_v<ProjectSettings>);
 
-// BC7 on desktop, ASTC 4x4 sRGB on the mobile targets. The project file stores
+// BC7 on desktop; ASTC 4x4 sRGB for compatible GPUs. The project file stores
 [[nodiscard]] Assets::TextureFormat DefaultTextureCookFormat() noexcept;
 
 // Default project location

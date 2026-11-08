@@ -35,7 +35,7 @@ The engine does **not** own a gameplay state such as "drunk". It provides the
 building blocks a game can compose:
 
 - `CameraDistortionDoubleVision` — a ghost sample at a small UV separation.
-- `CameraDistortionStretch` — independent X/Y UV scale, including a deliberately
+- `CameraDistortionStretch` — independent X/Y UV scale, including a
   non-proportional stretch such as X 1.4 / Y 0.7.
 - `CameraDistortionRadialWarp` — barrel/pincushion lens warp.
 - `CameraDistortionChromaticSplit` — extra RGB separation independent of the

@@ -224,4 +224,4 @@ jobs:
         # Hosted macOS CPU timing and loopback UDP are noisy; the full suite is
         # the Windows/Linux gate. This run covers the editor, input, text,
         # frame-composer and release-cooker seams on macOS.
-        run: ctest --preset macos-release --output-on-failure --timeout 120 --repeat until-pass:2 -R "^(editor_infrastructure|frame_composer|input_system|release_cooker|text_shaper)$"
+        run: ctest --preset macos-release --output-on-failure --timeout 120 --repeat until-pass:2 -R "^(project_bundle|editor_infrastructure|frame_composer|input_system|release_cooker|text_shaper)$"

@@ -581,7 +581,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     (void)DrawCookFormatCombo(&ScopedValues.textureFormat);
     if (ImGui::IsItemHovered())
     {
-        EditorTooltip("Art-driven: RGBA8 for pixel art, BC7 for painted desktop art, ASTC for mobile.\n"
+        EditorTooltip("Art-driven: RGBA8 for pixel art, BC7 for painted desktop art, ASTC for compatible GPUs.\n"
                       "Scale only changes max texture size and whether VT is needed.");
     }
     int ScopedMaxTextureSize = static_cast<int>(ScopedValues.maxTextureSize);
@@ -696,9 +696,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::Checkbox("Native CPU architecture", &ScopedValues.build.nativeArch);
 
     const Build::OptimizationAdvice ScopedAdvice =
-        Build::Recommend(ScopedValues.build.optimization, true,
-                         ScopedValues.textureFormat == Assets::TextureFormat::Astc4x4Srgb ||
-                             ScopedValues.textureFormat == Assets::TextureFormat::Astc6x6Srgb);
+        Build::Recommend(ScopedValues.build.optimization, true);
     ImGui::TextColored(ImVec4(0.91f, 0.36f, 0.62f, 1.0f), "%s", ScopedAdvice.headline.data());
     ImGui::TextWrapped("%.*s", static_cast<int>(ScopedAdvice.detail.size()), ScopedAdvice.detail.data());
     if (!ScopedAdvice.warning.empty())

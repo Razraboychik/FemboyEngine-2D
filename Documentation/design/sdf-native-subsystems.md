@@ -1,15 +1,14 @@
 # SDF-native subsystems: architecture review
 
-This document classifies ten proposed subsystems against the architecture that
-actually exists in this tree, and specifies the ones worth building. Each entry
-answers two questions: what follows logically from the current design (and is
-therefore already half present), and what is genuinely new and how it should be
-shaped as ECS components and systems without breaking the frame budget.
+This document classifies ten proposed subsystems against the architecture in
+this tree and identifies which ones fit the existing design. Each entry answers
+two questions: what follows from the current design, and what is new and how it
+should be shaped as ECS components and systems without exceeding the frame
+budget.
 
-The review is deliberately conservative about the premises. Several items in the
-proposal assume an SDF-raymarched renderer with no sprites, no Box2D and no
-upscalers. That is not this engine, and the differences are load-bearing, not
-cosmetic.
+Several proposals assume an SDF-raymarched renderer with no sprites, no Box2D and
+no upscalers. FemboyEngine2D has all three, so those assumptions must be handled
+in the design rather than left implicit.
 
 ## Baseline: what the tree already has
 
@@ -161,7 +160,7 @@ index before the pass; never accumulate contacts with atomics if replay matters.
 **Author boxes first.** An SDF collider costs five fetches and a bake; an
 authored box collider costs a few flops. SDF is the representation for irregular
 and procedural surfaces, not the default one. Tilemap solids convert to plain
-Box2D boxes at bake time, and only art that genuinely needs a distance field
+Box2D boxes at bake time, and only art that needs a distance field
 becomes one. A universal engine has to keep the cheap path the default path, or
 every game pays for the most demanding one.
 
@@ -255,7 +254,7 @@ first level; the second level is for looks and for editor carving.
 **Verdict: soft shadows are shipped; GI is a CPU reference that needs a GPU
 implementation.** `SdfGiVolume` already bakes 4-lobe probes from
 `SdfBrickMap` and updates one slice at a time. That design is the right one. It
-is simply not on the GPU and not wired to the frame path.
+is not on the GPU and is not wired to the frame path.
 
 Design:
 
@@ -351,7 +350,7 @@ Design:
 - **Hierarchical for long paths.** A page graph over 64x64 pages answers
   long-range queries; the per-page flow field handles the last hundred cells.
 - **Steering** blends `-gradient(potential)` with `gradient(clearance)` for local
-  avoidance. This is where the wall SDF actually belongs, and it is also exactly
+  avoidance. The wall SDF belongs here, and it is also exactly
   the repulsion term from 1.1.
 - **Determinism**: integer Dijkstra, ties broken by cell index; floats only in
   steering.

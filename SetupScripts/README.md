@@ -16,12 +16,12 @@ Windows and Linux keep the component wrappers next to the all-in-one script:
 ```text
 Windows/SetupCpp.bat       Linux/SetupCpp.sh
 Windows/SetupArchiver.bat  Linux/SetupArchiver.sh
-Windows/SetupUpscalers.bat Linux/SetupUpscalers.sh
 ```
 
-macOS has the same filenames with the `.command` extension; the C++/archiver
-wrappers run the all-in-one macOS setup, while `SetupUpscalers.command` uses the
-shared upscaler checker.
+macOS has the same filenames with the `.command` extension; the wrappers run the
+all-in-one macOS setup. Vendor SDK download is no longer a separate script: use
+`-WithVendorSdks -AcceptVendorLicenses` on Windows or
+`--with-vendor-sdks --accept-vendor-licenses` on Linux/macOS.
 
 ## What each script does
 
@@ -29,11 +29,14 @@ shared upscaler checker.
   third-party sources into `third_party/`, and writes
   `third_party/dependencies.lock`.
 - The archiver setup installs 7-Zip/p7zip for `.fempak` compression.
-- Upscaler setup verifies local DLSS, FidelityFX and XeSS SDKs and can download
-  them only with an explicit licence acceptance flag. It never redistributes a
-  vendor SDK.
+- Vendor SDK setup is part of the all-in-one Setup: it verifies local DLSS,
+  FidelityFX and XeSS SDKs and can download them from GitHub only with an
+  explicit licence acceptance flag. It never redistributes a vendor SDK. DLSS
+  goes to `third_party/dlss`.
 - `SetupWindows.ps1` is the implementation behind the Windows `.bat` wrappers.
-  It supports `-Component Cpp|Archiver|Upscalers|All`, `-SkipSystem` and `-Force`.
+  It supports `-Component Cpp|Archiver|Upscalers|All`, `-SkipSystem`, `-Force`,
+  `-WithVendorSdks` and `-AcceptVendorLicenses`.
+- Linux and macOS accept `--with-vendor-sdks` and `--accept-vendor-licenses`.
 - `RegisterFemboyProjects.ps1` is Windows-only and registers the `.femproj`
   association with the built editor.
 

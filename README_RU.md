@@ -7,7 +7,7 @@
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android-lightgrey.svg)]()
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![Status: 0.3.0-alpha.1](https://img.shields.io/badge/status-0.3.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
@@ -223,18 +223,18 @@ DjVu-просмотрщике). Инструменты документации 
 SetupScripts/Windows/Setup.bat
 SetupScripts/Windows/SetupCpp.bat
 SetupScripts/Windows/SetupArchiver.bat
-SetupScripts/Windows/SetupUpscalers.bat
+SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 ```
 
 ```bash
 ./SetupScripts/Linux/Setup.sh          # Ubuntu/Debian, всё сразу
 ./SetupScripts/Linux/SetupCpp.sh       # компилятор, CMake, зависимости
 ./SetupScripts/Linux/SetupArchiver.sh  # 7-Zip
-./SetupScripts/Linux/SetupUpscalers.sh # опциональные SDK DLSS/FidelityFX/XeSS
+./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses # опциональные SDK DLSS/FidelityFX/XeSS
 ./SetupScripts/macOS/Setup.command     # macOS, работает и из Finder
 ./SetupScripts/macOS/SetupCpp.command
 ./SetupScripts/macOS/SetupArchiver.command
-./SetupScripts/macOS/SetupUpscalers.command
+./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
 ```
 
 Версии закреплены: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang

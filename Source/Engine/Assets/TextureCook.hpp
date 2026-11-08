@@ -1,4 +1,4 @@
-// FemboyEngine2D - texture cooking (PNG/TGA -> BC7 desktop / ASTC mobile).
+// FemboyEngine2D - texture cooking (PNG/TGA -> BC7 or ASTC).
 #pragma once
 
 #include "Engine/Assets/TextureFormat.hpp"
@@ -18,8 +18,8 @@ enum class CookTarget : std::uint8_t
 {
     // BC7 (sRGB or UNORM)
     Desktop = 0,
-    // ASTC 4x4 / 6x6
-    Mobile,
+    // ASTC 4x4 / 6x6 for GPUs that expose the format.
+    Astc,
 };
 
 enum class AstcBlock : std::uint8_t

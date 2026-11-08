@@ -21,10 +21,10 @@ below names the file that owns it.
 
 | Asset | Accepted | Rejected on purpose |
 | --- | --- | --- |
-| Video | WebM / EBML, `V_VP9`, optional alpha via WebM `BlockAdditions` (`BlockAddID=1`) | MP4 (`ftyp`), H.264, H.265, AV1, VP8 — the demuxer rejects the CodecID, not the extension |
+| Video | WebM / EBML with `V_VP9` or `V_AV1`; VP9 optional alpha via WebM `BlockAdditions` (`BlockAddID=1`) | MP4 (`ftyp`), H.264, H.265, VP8 — the demuxer rejects the CodecID, not the extension |
 | Texture source | PNG, TGA | JPEG (artifacts + no alpha): rejected by extension **and** by magic (`FF D8 FF`), even if renamed |
-| Cooked texture | `.ftex` v2: BC7 (desktop), ASTC 4x4 / 6x6 (mobile), Rgba8 (legacy atlas/video), full mip chain | runtime PNG/JPEG decode: the RHI uploads blocks verbatim |
-| Audio source | WAV PCM 16/24-bit, Ogg Opus / Ogg Vorbis | MP3 (extension **and** ID3 / `0xFFEx` sync magic) — gaps at seamless loops |
+| Cooked texture | `.ftex` v2: BC7 (desktop), ASTC 4x4 / 6x6 on ASTC-capable GPUs, Rgba8 (legacy atlas/video), full mip chain | runtime PNG/JPEG decode: the RHI uploads blocks verbatim |
+| Audio source | WAV PCM 16/24-bit, Ogg Opus / Ogg Vorbis | MP3 (extension **and** ID3 / `0xFFEx` sync magic) — gaps at loop boundaries |
 | Cooked audio | `.fpcm` v1: PcmS16 / PcmS24 / PcmF32, or Ogg clip metadata | float conversion for short SFX (PCM is copied verbatim into the mixer) |
 | Logic | `.fbsc` bytecode v1 (canonical, hashable) | runtime graph objects: the VM only sees flat instructions |
 
@@ -74,7 +74,7 @@ the runtime-loaded libvpx table (`Vp9Backend`). AV1 uses an `Av1Backend` table:
 the Windows build links the vendored dav1d 1.4.3 (BSD-2-Clause); Linux/macOS use
 the system dav1d via pkg-config (`FBY_HAS_DAV1D`), and a platform without dav1d
 can supply its own `Av1Backend`. The backend converts 10/12-bit I420 output down
-to the engine's 8-bit path. H.264/H.265 are deliberately unsupported for licensing
+to the engine's 8-bit path. H.264/H.265 are unsupported for licensing
 reasons. Frames are decoded on a `std::jthread` into a
 preallocated pool and cross to the render thread through a fixed SPSC ring;
 `VideoSystem` (PostUpdate) uploads the newest due frame with
@@ -180,9 +180,9 @@ Tests are plain executables (no framework):
 | `dsp_mixer_test` | routing sums, ducking, reverb, SPSC ring under threads, no allocation in Process |
 | `audio_cook_test` | WAV 16/24-bit, `.fpcm` validation, Ogg pages, MP3 rejection |
 | `pink_ui_test` | mdspan grid, anchors, hit order, border/slider/checkbox/scrollbar quad counts, drag and toggle interaction, one-batch invariant, overflow, 0 allocations, ECS Update |
-| `video_test`, `texture_cook_test` | WebM/VP9-alpha demux + codec rejection; PNG/TGA→BC7/ASTC + BC7 round-trip |
+| `video_test`, `video_audio`, `dav1d_backend`, `texture_cook_test` | WebM VP9/AV1 demux, VP9 alpha, Opus decode, malformed AV1 rejection; PNG/TGA→BC7/ASTC + BC7 round-trip |
 
-End-to-end checks performed on this machine (clang-cl 23, Ninja, Windows):
+End-to-end checks performed on this machine (clang-cl, Ninja, Windows):
 
 * full `ninja` build: `fby_engine`, `fby_editor`, `fby_fempak`, `fby_sandbox`,
   `fby_aotc`, plugin samples and every test binary link;
@@ -190,7 +190,7 @@ End-to-end checks performed on this machine (clang-cl 23, Ninja, Windows):
   mixer, audio cook, material graph, video, texture cook);
 * `fby_fempak cook --target desktop` on a 1024x1024 PNG produces a `.ftex`
   v2 with format `bc7-srgb`, 9 mips and BC7 mode-6 blocks (verified at the bit
-  level: block byte 0 has bit 6 set); `--target mobile --astc 6x6` produces
+  level: block byte 0 has bit 6 set); `--astc 6x6` produces
   `astc-6x6-srgb` (626,296 bytes vs 1,398,136 for BC7); a `.jpg` is rejected by
   both extension and magic;
 * AOT path: `script_aot_test` dumps a half-velocity program and its generated

@@ -149,7 +149,7 @@ struct TextureArrayDesc
     std::uint32_t layers = 1;
     std::uint32_t mipLevels = 1;
     bool srgb = true;
-    // Cooked texel format. The cooker writes BC7 (desktop) or ASTC (mobile);
+    // Cooked texel format. The cooker writes BC7 or ASTC for compatible GPUs;
     Assets::TextureFormat format = Assets::TextureFormat::Rgba8;
 };
 

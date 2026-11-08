@@ -26,8 +26,10 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
   vehicles expose suspension, per-wheel drive and braking on Box2D; see
   [Physics](md/en/Physics_EN.md), [transport physics](design/transport-physics.md)
   and [vehicle wheels](design/vehicle-wheels.md).
-- **Text** — Unicode line, word and grapheme boundaries, shaping and the text
-  layout stack; see [text stack](design/text-stack.md).
+- **Text and documents** — Unicode line, word and grapheme boundaries, shaping,
+  the text layout stack, the TXT reader and the streaming `.fbdoc`/`.fbybook`
+  book format; see [text stack](design/text-stack.md),
+  [documents](design/documents.md) and [streaming books](design/books.md).
 - **Gameplay and scripting** — FemboyScript 2.0 bytecode, LogicGraph, StateTree,
   the textual `.fbs` subset, the VM debugger and the cook-time C++26 AOT backend.
 - **Networking** — reliable transport, protocol v2, replication, relevance grids,
@@ -56,6 +58,8 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Build authoritative input and replication | [Application Guide: replication](md/en/FemboyEngineApplicationGuide_EN.md#51-deterministic-input-and-replication-while-building-the-game) |
 | Use FemboyScript, LogicGraph or StateTree | [FemboyScript](md/en/FemboyScript_EN.md) |
 | Review FSR/DLSS upscaling and frame generation | [Frame Generation](md/en/FemboyEngineFrameGeneration_EN.md) |
+| Show formatted books and manuals | [Streaming books](design/books.md), [TXT documents](design/documents.md) |
+| Move a project between Windows, Linux and macOS | [Desktop portability](design/desktop-portability.md) |
 | Tune project or editor settings | [Project Settings](md/en/ProjectSettingsRecommendations_EN.md), [Editor Settings](md/en/EditorSettingsReference_EN.md) |
 | Choose a viewport diagnostic mode | [Viewport Modes](md/en/ViewportModes_EN.md) |
 | Follow the C++ style contract | [Code Style](style/CodeStyle.md) |
@@ -99,7 +103,7 @@ diverge.
 
 | Directory | Contents |
 |---|---|
-| `design/` | Security, protocol v2, voice, chat and voice effects, networking, lighting, text, physics backends, transport, vehicle wheels, camera effects, input, PIE, accessibility, time, editor workflows, authoring toolset, multimedia modules, world systems and the widget catalogue |
+| `design/` | Security, protocol v2, voice, chat and voice effects, networking, lighting, text, physics backends, transport, vehicle wheels, camera effects, input, PIE, accessibility, time, editor workflows, authoring toolset, multimedia modules, desktop project portability, world systems and the widget catalogue |
 | `style/` | `CodeStyle.md` and the CMake/C++ naming contract in `NAMING.md` |
 | `adr/` | Architecture decision records `NNNN-<slug>.md` |
 | `Tools/` | Markdown, DOCX, PDF and DjVu generators, link checks and reference checks |

@@ -45,8 +45,8 @@ DOD inserts body AABBs into a 64-unit uniform grid, sorts the cell entries by
 key and resolves the unique pairs in each cell. AABB overlap
 is resolved with inverse-mass positional correction and a normal impulse. Sensors
 emit a begin-touch event once when a pair starts to overlap and an end-touch
-event once when it separates; they do not resolve. Joints and CCD are
-deliberately absent.
+event once when it separates; they do not resolve. Joints and CCD are absent
+from this backend.
 
 Box2D continues to own joints, CCD, sensors, contact hit events and the editor
 debug draw. Its ray query uses the Box2D broadphase, so it sees rotated and

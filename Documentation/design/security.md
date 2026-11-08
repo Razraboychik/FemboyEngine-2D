@@ -1,9 +1,8 @@
 # Security notes
 
-This document records the security-relevant design of the 0.1.0-alpha.1 tree and, where
-the implementation deliberately differs from a published standard, the exact
-deviations. It is the companion to `docs/security.md` in the remaining-work plan;
-the tree keeps documentation under `Documentation/`.
+This document records the security-relevant design of the 0.3.0-alpha.1 tree
+and, where the implementation differs from a published standard, the exact
+deviations. It is the security design note under `Documentation/design/`.
 
 ## Handshake: standard XX by default (v2), FBY XX opt-out
 
@@ -170,7 +169,7 @@ carries each player's address, which is what lets the voice mesh route to a peer
 Relay voice is encrypted on the wire by the secure session transport, but the
 relay endpoint decrypts it and sees Opus packets. Participants therefore trust
 the host/relay with their voice. End-to-end sender keys (X25519 + AEAD, server
-relays ciphertext it cannot read) are a design item, not part of 0.1.0-alpha.1; enabling
+relays ciphertext it cannot read) are a design item, not part of the current tree; enabling
 them would change `VoiceNetworkBridge` and the relay's forwarding contract.
 
 ## Identity storage

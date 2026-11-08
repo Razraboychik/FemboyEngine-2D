@@ -82,11 +82,11 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "The design rules are deliberately strict. Simulation state is plain, trivially copyable data; "
+                    "The design rules are strict. Simulation state is plain, trivially copyable data; "
                     "hot paths use fixed capacity, function pointers and arena storage; frame paths do not allocate; "
                     "and every subsystem exposes deterministic, checksummed state. Those rules are what make rollback, "
                     "hot reload, snapshot testing and GPU multi-draw practical rather than aspirational.",
-                    "Правила проектирования намеренно жёсткие. Состояние симуляции — это простые trivially copyable "
+                    "Правила проектирования строгие. Состояние симуляции — это простые trivially copyable "
                     "данные; горячие пути используют фиксированную ёмкость, указатели на функции и арены; кадровые "
                     "пути не выделяют память; каждая подсистема предоставляет детерминированное состояние с "
                     "контрольной суммой. Именно это делает роллбэк, горячую перезагрузку, snapshot-тесты и GPU "
@@ -149,7 +149,7 @@ SECTIONS: list[dict] = [
                     "domain explicitly. A header under Source/Engine/RHI is included as \"Engine/RHI/RHI.hpp\"; editor "
                     "code uses \"Editor/Panels/...\". This removes the old ambient fby/ prefix and makes ownership "
                     "visible in the first line of a file.",
-                    "Весь исходный код находится в Source/. Корнем include-путей является сам Source, поэтому каждый "
+                    "Весь исходный код находится в Source/. Корень include-путей — сам Source, поэтому каждый "
                     "include явно называет свой домен. Заголовок в Source/Engine/RHI подключается как "
                     "\"Engine/RHI/RHI.hpp\"; код редактора использует \"Editor/Panels/...\". Это убирает старый "
                     "неявный префикс fby/ и делает принадлежность файла видимой с первой строки.",
@@ -168,6 +168,8 @@ SECTIONS: list[dict] = [
                         B("Source/Engine/Audio", "Source/Engine/Audio"),
                         B("Source/Engine/Network", "Source/Engine/Network"),
                         B("Source/Engine/Assets", "Source/Engine/Assets"),
+                        B("Source/Engine/Documents", "Source/Engine/Documents"),
+                        B("Source/Engine/Text", "Source/Engine/Text"),
                         B("Source/Engine/Script", "Source/Engine/Script"),
                         B("Source/Engine/UI", "Source/Engine/UI"),
                         B("Source/Engine/Video", "Source/Engine/Video"),
@@ -184,9 +186,11 @@ SECTIONS: list[dict] = [
                         B("Mixer, DSP graph, limiter, Ogg/Opus", "Микшер, DSP-граф, лимитер, Ogg/Opus"),
                         B("NetRollbackSession, input rings, snapshot replication", "NetRollbackSession, кольца ввода, репликация снапшотов"),
                         B("VFS, .femeta, cooker, localization, texture/audio formats", "VFS, .femeta, кукер, локализация, форматы текстур/аудио"),
+                        B("TXT document slots and pagination", "Слоты TXT-документов и пагинация"),
+                        B("Unicode, shaping, layout, streaming books and page sessions", "Unicode, шейпинг, раскладка, потоковые книги и постраничные сессии"),
                         B("Bytecode VM, graph compiler, AOT backend", "Байткод-VM, компилятор графов, AOT-бэкенд"),
                         B("PinkUI, hypertext, font atlas, accessibility", "PinkUI, гипертекст, атлас шрифтов, доступность"),
-                        B("WebM/VP9 playback and streaming", "Воспроизведение и стриминг WebM/VP9"),
+                        B("WebM VP9/AV1 playback and streaming", "Воспроизведение и стриминг WebM VP9/AV1"),
                         B("Editor panels and ImNodes canvases", "Панели редактора и холсты ImNodes"),
                         B("Command stack, cooker watcher, project management", "Стек команд, watcher кукера, управление проектами"),
                         B("Applications, tests, offline tools, plugin fixtures", "Приложения, тесты, офлайн-инструменты, фикстуры плагинов"),
@@ -341,13 +345,13 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "The mesh path is parallel and deliberately different. Static geometry is uploaded once into a "
+                    "The mesh path is parallel and different. Static geometry is uploaded once into a "
                     "device-local arena and addressed through MeshHandle. Deformable SkeletalAnimation/SkinComponent vertices are "
                     "streamed into a host-visible ring; one compute dispatch runs linear-blend skinning for the whole "
                     "frame; the result lands in a device-local SkinnedVertex buffer. MeshVertex is 40 bytes, "
                     "SkinnedVertex is 32 bytes, and both sides use a full column-major Mat4 so a 2.5D camera can "
                     "produce real z and perspective divide.",
-                    "Путь мешей параллелен и намеренно устроен иначе. Статическая геометрия один раз загружается в "
+                    "Путь мешей параллелен и устроен иначе. Статическая геометрия один раз загружается в "
                     "device-local арену и адресуется через MeshHandle. Вершины деформируемых SkeletalAnimation/SkinComponent "
                     "потоково попадают в host-visible кольцо; один compute-диспатч выполняет linear-blend skinning "
                     "для всего кадра; результат пишется в device-local буфер SkinnedVertex. MeshVertex занимает 40 "
@@ -393,8 +397,8 @@ SECTIONS: list[dict] = [
                         B("Null", "Null"),
                     ],
                     "descriptions": [
-                        B("Windows/Linux/Android; indirect mesh path, compute LBS, runtime loader", "Windows/Linux/Android; indirect-путь мешей, compute LBS, загрузчик в рантайме"),
-                        B("macOS/iOS; same FramePacket contract, Metal argument buffers", "macOS/iOS; тот же контракт FramePacket, argument buffers Metal"),
+                        B("Windows/Linux; indirect mesh path, compute LBS, runtime loader", "Windows/Linux; indirect-путь мешей, compute LBS, загрузчик в рантайме"),
+                        B("macOS; same FramePacket contract, Metal argument buffers", "macOS; тот же контракт FramePacket, argument buffers Metal"),
                         B("Headless CI and servers; full packet/ring path, no device", "Headless CI и серверы; полный путь пакетов/колец без устройства"),
                     ],
                 },
@@ -602,12 +606,12 @@ SECTIONS: list[dict] = [
                     "pushed out of the existing Box2D shapes. It is not a second collision world and does not "
                     "duplicate level geometry. The CPU writes MeshVertex positions; the renderer streams them through "
                     "the same deformable path as a skinned mesh, so cloth adds no second draw path. A pinned vertex is "
-                    "simply invMass = 0.",
+                    "invMass = 0.",
                     "Ткань — Verlet mass-spring сетка, проецируемая фиксированным числом итераций Гаусса-Зейделя и "
                     "затем выталкиваемая из существующих форм Box2D. Это не второй мир коллизий и не дублирование "
                     "геометрии уровня. CPU пишет позиции MeshVertex; рендерер передаёт их тем же деформируемым путём, "
                     "что и скинированный меш, поэтому ткань не добавляет второй путь отрисовки. Закреплённая вершина — "
-                    "просто invMass = 0.",
+                    "invMass = 0.",
                 ),
             ),
             (
@@ -670,7 +674,7 @@ SECTIONS: list[dict] = [
                     "When a remote input arrives late, the session restores the snapshot immediately before the "
                     "earliest corrected tick, restores the RNG and CommandLog cursor from the same slot, reapplies "
                     "structural commands, resimulates the affected ticks with the corrected input and prediction for "
-                    "still-missing inputs, captures new snapshots, and reports which frames actually changed.",
+                    "still-missing inputs, captures new snapshots, and reports which frames changed.",
                     "Когда удалённый ввод приходит с опозданием, сессия восстанавливает снапшот непосредственно перед "
                     "самым ранним исправленным тиком, восстанавливает RNG и курсор CommandLog из того же слота, "
                     "повторно применяет структурные команды, ресимулирует затронутые тики с исправленным вводом и "
@@ -966,7 +970,7 @@ SECTIONS: list[dict] = [
                     "name, a Vec2 alias, a trailing comment or a Cyrillic comment fails the build review before it can "
                     "reach main. The comments are English-only, one line, above the code and without a trailing period; "
                     "the only remaining trailing comments are two NOLINT suppressions required by clang-tidy.",
-                    "Style gate намеренно проверяет репозиторий, а не только diff. Новый файл с именем в нижнем "
+                    "Style gate проверяет репозиторий, а не только diff. Новый файл с именем в нижнем "
                     "регистре, алиасом Vec2, комментарием в конце строки или кириллицей падает на ревью до попадания "
                     "в main. Комментарии только на английском, одной строкой, над кодом и без точки в конце; "
                     "единственные оставшиеся комментарии в конце строки — два подавления NOLINT, требуемых clang-tidy.",
@@ -1078,9 +1082,9 @@ SECTIONS: list[dict] = [
                 "bullets",
                 B(
                     "Finish Metal parity: indirect mesh path, compute skinning and the same FramePacket contract as "
-                    "Vulkan, then enable macOS/iOS CI.",
+                    "Vulkan, then enable macOS CI.",
                     "Завершить паритет Metal: indirect-путь мешей, compute-скиннинг и тот же контракт FramePacket, что "
-                    "у Vulkan, затем включить CI macOS/iOS.",
+                    "у Vulkan, затем включить CI macOS.",
                 ),
             ),
             (

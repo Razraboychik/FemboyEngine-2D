@@ -6,6 +6,7 @@ get_filename_component(FBY_ENGINE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." 
 set(FBY_ENGINE_SOURCES
     Assets/AnimationClipAsset.cpp
     Assets/AssetDatabase.cpp
+    Assets/ProjectBundle.cpp
     Assets/AssetMeta.cpp
     Assets/AudioClipFormat.cpp
     Assets/FemArchiver.cpp

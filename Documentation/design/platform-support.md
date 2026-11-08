@@ -5,6 +5,11 @@ desktop matrix is Windows, Linux and macOS. The renderer is selected at
 configure time: Vulkan on Windows and Linux, Metal on macOS, null for headless
 servers and tests.
 
+Only the desktop matrix above is supported. The project and source format are
+portable between Windows, Linux and macOS; the build for each target is produced
+natively on that OS. The project contract is in
+[desktop-portability.md](desktop-portability.md).
+
 ## Build matrix
 
 | Platform | Toolchain | RHI | Editor | Game cook | CI |

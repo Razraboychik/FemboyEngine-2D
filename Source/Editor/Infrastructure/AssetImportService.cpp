@@ -343,7 +343,7 @@ void AssetImportService::WorkerLoop(std::stop_token InStopToken)
         {
             Fby::Cook::TextureCookOptions ScopedOptions;
             ScopedOptions.target =
-                IsAstc(ScopedRequest.format) ? Fby::Cook::CookTarget::Mobile : Fby::Cook::CookTarget::Desktop;
+                IsAstc(ScopedRequest.format) ? Fby::Cook::CookTarget::Astc : Fby::Cook::CookTarget::Desktop;
             ScopedOptions.astcBlock = (ScopedRequest.format == Assets::TextureFormat::Astc6x6Srgb ||
                                        ScopedRequest.format == Assets::TextureFormat::Astc6x6Unorm)
                                           ? Fby::Cook::AstcBlock::Block6x6

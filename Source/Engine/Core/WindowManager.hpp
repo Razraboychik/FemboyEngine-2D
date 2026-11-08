@@ -262,7 +262,7 @@ public:
     [[nodiscard]] std::span<const char* const> VulkanInstanceExtensions() const;
     // Creates the platform surface for `instance` (VkInstance). The result is
     [[nodiscard]] bool CreateVulkanSurface(const void* InInstance, std::uint64_t* InSurface) const;
-    // macOS/iOS: returns the CAMetalLayer* the Metal backend must draw into.
+    // macOS: returns the CAMetalLayer* the Metal backend must draw into.
     [[nodiscard]] void* MetalLayer() const noexcept;
 
     void SetTitle(std::string_view InTitle);

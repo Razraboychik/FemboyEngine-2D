@@ -207,7 +207,7 @@ and for future solver work.
 
 `SdfFracture.hpp` splits a destructible into a grid of pieces for prototyping.
 `SdfDebris.hpp` spawns deterministic box fragments from the material a carve
-removes. Both are deliberately simple; production destruction should use
+removes. Both are simple prototypes; production destruction should use
 authored fragments with their own sprites, convex shapes, masses and materials.
 
 `SdfDestructionCommands.hpp` records a carve operation in the command log. A
@@ -231,7 +231,7 @@ deterministic, allocation-free and does not depend on the renderer.
 | `ThicknessExponent` | 1.0 | How strongly local thickness reduces damage |
 | `MaximumDamageFraction` | 1.0 | Upper bound removed by one impact |
 
-`Clamp()` keeps every value in a usable range. The profile is deliberately small:
+`Clamp()` keeps every value in a usable range. The profile is small:
 armour layers, hit zones, elemental resistances and scripted invulnerability are
 game rules and belong in a custom policy or in the game's own material table.
 
@@ -390,7 +390,7 @@ the production path.
 - New serialized fields need a format version bump and a migration test. The
   current `SdfDamage` structs are runtime-only; no `.fsdf` layout changed.
 
-## 7. What the engine deliberately does not do
+## 7. What the engine does not do
 
 - No universal continuum/FEM deformation. It is expensive, hard to tune and
   usually not what a 2D sprite game needs.
@@ -641,8 +641,8 @@ The components are also registered in the ECS bridge, so a graph can set
 ## 12. Vehicle wheels
 
 `WheelSystem` is a small, explicit vehicle base built on Box2D wheel joints. It
-owns suspension, per-wheel drive and braking. It deliberately does not own engine
-RPM, gears, clutch, differential, tire slip, tire wear, or steering geometry.
+owns suspension, per-wheel drive and braking. It does not own engine RPM, gears,
+clutch, differential, tire slip, tire wear, or steering geometry.
 
 ### Components
 
@@ -673,7 +673,7 @@ before the solver step. It does not overwrite linear velocity.
 - `DriveWeight = 0` makes a free wheel; front/rear/all-wheel drive is authored
   per wheel, not assumed by the engine.
 - `Brake` disables the wheel motor and applies the brake torque plus explicit
-  angular damping, so a free-spinning wheel actually stops.
+  angular damping, so a free-spinning wheel stops.
 - `VehicleFlagHandbrake` brakes every wheel with a nonzero `BrakeWeight`.
 - `VehicleFlagArcadeSteering` is opt-in. Only wheels with `kWheelFlagSteer`
   apply the speed-scaled chassis yaw torque. Physical steering geometry is a

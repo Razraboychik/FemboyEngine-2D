@@ -276,8 +276,7 @@ The public API is in pixels and normalised mass units, as the rest of the engine
 `PhysicsSystem::PixelsPerMeter` converts to Box2D metres. Break limits are the
 exception: they are physical newtons and newton metres because that is what
 Box2D compares. A link's mass follows from its capsule area and `Density`
-(kg/m^2), so a break limit must be chosen against the load the chain actually
-carries. As a rule of thumb, the weight of one link in newtons is
+(kg/m^2), so a break limit must be chosen against the load the chain carries. As a rule of thumb, the weight of one link in newtons is
 `mass * 9.8`; a hanging rope of N links carries about `N * linkWeight` at the
 pin.
 

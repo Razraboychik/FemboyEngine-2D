@@ -625,9 +625,9 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
             {
                 InOptions->target = Fby::Cook::CookTarget::Desktop;
             }
-            else if (ScopedTarget == "mobile")
+            else if (ScopedTarget == "astc")
             {
-                InOptions->target = Fby::Cook::CookTarget::Mobile;
+                InOptions->target = Fby::Cook::CookTarget::Astc;
             }
             else
             {
@@ -707,7 +707,7 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
         }
     }
 
-    const char* ScopedTargetName = ScopedOptions.target == Fby::Cook::CookTarget::Mobile ? "mobile" : "desktop";
+    const char* ScopedTargetName = ScopedOptions.target == Fby::Cook::CookTarget::Astc ? "astc" : "desktop";
     std::printf("fempak: cooking %zu files (target %s%s)\n", ScopedPlan.files.size(), ScopedTargetName,
                 ScopedOptions.srgb ? "" : ", linear");
 

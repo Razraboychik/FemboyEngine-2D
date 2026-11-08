@@ -1,6 +1,6 @@
 # Vehicle wheels
 
-`WheelSystem` is a deliberately small vehicle base built on Box2D wheel joints.
+`WheelSystem` is a small vehicle base built on Box2D wheel joints.
 It gives a game suspension, per-wheel drive and braking without pretending to be
 a full powertrain, tire or steering solver.
 

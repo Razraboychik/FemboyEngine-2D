@@ -80,10 +80,10 @@ SECTIONS: list[dict] = [
                 "дистрибутивный архив.",
             )),
             ("p", B(
-                "The running project is deliberately small. A player, three enemy archetypes, a boss with phases, "
+                "The running project is small. A player, three enemy archetypes, a boss with phases, "
                 "bullets, pickups and a card board are enough to demonstrate every architectural rule. Every code "
                 "snippet compiles against the headers shipped in Source/Engine; paths and type names are real.",
-                "Проект намеренно небольшой. Игрок, три архетипа врагов, босс с фазами, пули, подбираемые предметы и "
+                "Проект небольшой. Игрок, три архетипа врагов, босс с фазами, пули, подбираемые предметы и "
                 "карточная доска — этого достаточно, чтобы показать все архитектурные правила. Каждый фрагмент кода "
                 "компилируется против заголовков из Source/Engine; пути и имена типов настоящие.",
             )),
@@ -128,19 +128,19 @@ SetupScripts\Windows\Setup.bat
 SetupScripts\Windows\SetupCpp.bat
 SetupScripts\Windows\SetupArchiver.bat
 # optional vendor SDKs
-SetupScripts\Windows\SetupUpscalers.bat
+SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 # Ubuntu / Debian
 ./SetupScripts/Linux/SetupCpp.sh
 ./SetupScripts/Linux/SetupArchiver.sh
 # optional vendor SDKs
-./SetupScripts/Linux/SetupUpscalers.sh
+./SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses
 
 # macOS (double-click in Finder also works)
 ./SetupScripts/macOS/SetupCpp.command
 ./SetupScripts/macOS/SetupArchiver.command
 # optional vendor SDKs
-./SetupScripts/macOS/SetupUpscalers.command""")),
+./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses""")),
             ("p", B(
                 "The all-in-one entry points are SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh and SetupScripts/macOS/Setup.command.",
                 "Общие точки входа: SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh и SetupScripts/macOS/Setup.command.",
@@ -265,9 +265,9 @@ ctest --preset macos-release""")),
             )),
             ("h2", B("3.2 The component vocabulary", "3.2 Словарь компонентов")),
             ("p", B(
-                "Start with a small vocabulary and resist adding a component until two systems genuinely need to "
+                "Start with a small vocabulary and do not add a component until two systems need to "
                 "share the data. The shooter uses the following independent components.",
-                "Начните с небольшого словаря и не добавляйте компонент, пока двум системам действительно не "
+                "Начните с небольшого словаря и не добавляйте компонент, пока двум системам не "
                 "понадобится совместно использовать данные. Шутер использует следующие независимые компоненты.",
             )),
             ("code", code(r"""// Game/Components.hpp - trivially copyable, no behaviour.
@@ -329,7 +329,7 @@ struct ProjectileComponent
                 "function is also the prefab loader: a scene file produces the same component set through the same "
                 "code path.",
                 "Игрок — это четыре компонента и трансформ. Его спавн — функция, а не конструктор. Эта же функция "
-                "является загрузчиком префаба: сценический файл создаёт тот же набор компонентов через тот же код.",
+                "загружает префаб: сценический файл создаёт тот же набор компонентов через тот же код.",
             )),
             ("code", code(r"""Entity SpawnPlayer(ecs::Registry& registry, Vector2D spawn)
 {
@@ -374,17 +374,17 @@ Entity SpawnEnemy(ecs::Registry& registry, const EnemyArchetype& archetype, Vect
             ("p", B(
                 "Mobs and bosses share one spawn path. A 'Boss' is an archetype with more health, a phase table and "
                 "a BossPhaseComponent; it is not a separate C++ type. Adding a new enemy is a data row and, when its "
-                "behaviour is genuinely new, one branch in AISystem.",
+                "behaviour is new, one branch in AISystem.",
                 "Мобы и боссы используют один путь спавна. «Босс» — это архетип с большим здоровьем, таблицей фаз и "
                 "компонентом BossPhaseComponent, а не отдельный C++ тип. Новый враг — это строка данных и, если "
-                "поведение действительно новое, одна ветка в AISystem.",
+                "поведение новое, одна ветка в AISystem.",
             )),
             ("h2", B("4.1 Systems, in order", "4.1 Системы по порядку")),
             ("bullets", B(
                 [
                     "InputSystem (PreUpdate): read devices into InputComponent. It never moves anything.",
                     "AISystem (FixedUpdate): write desired velocity and aim into the same InputComponent that a "
-                    "player would write. This is the key trick: one movement system handles players and enemies.",
+                    "player would write. One movement system therefore handles players and enemies.",
                     "MovementSystem (FixedUpdate): integrate Velocity into Transform2D; clamp to level bounds.",
                     "WeaponSystem (FixedUpdate): cooldown, spawn projectile intents through the CommandBuffer.",
                     "ProjectileSystem (FixedUpdate): integrate projectiles, TTL, broad-phase candidate query.",
@@ -442,11 +442,11 @@ Entity SpawnEnemy(ecs::Registry& registry, const EnemyArchetype& archetype, Vect
     }
 }""")),
             ("p", B(
-                "The system is deliberately boring. There is no state machine object and no per-enemy allocation; "
+                "The system stays small. There is no state machine object and no per-enemy allocation; "
                 "the archetype row supplies the numbers, and the same nine lines cover a chaser, a turret and a "
                 "ranged mob. A boss with phases adds a second small system that changes preferredRange and behavior "
                 "when its health crosses a threshold.",
-                "Система намеренно скучная. Здесь нет объекта-автомата и аллокации на врага; строка архетипа задаёт "
+                "Система небольшая. Здесь нет объекта-автомата и аллокации на врага; строка архетипа задаёт "
                 "числа, и те же девять строк покрывают преследователя, турель и дальнего моба. Босс с фазами "
                 "добавляет вторую маленькую систему, которая меняет preferredRange и поведение при переходе "
                 "здоровья через порог.",
@@ -480,7 +480,7 @@ void BossPhaseSystem(ecs::SystemContext& context)
     }
 }""")),
             ("p", B(
-                "This is the entire boss hierarchy. A 'fire boss' and a 'charge boss' differ by component values and, "
+                "The boss hierarchy is the same. A 'fire boss' and a 'charge boss' differ by component values and, "
                 "at most, by a spawn table. Behaviour that cannot be expressed as data belongs in a new small "
                 "system; it almost never justifies a class with a vtable.",
                 "Это вся иерархия боссов. «Огненный босс» и «босс-рывок» отличаются значениями компонентов и, в "
@@ -637,13 +637,13 @@ session.SubmitRemoteInput(0, frame);""")),
                 "инструмента: запечённые блочно-сжатые текстуры и indirect-батчинг мешей. Оба настраиваются на "
                 "проект и оба проверяемы через FrameStats.",
             )),
-            ("h2", B("6.1 Texture cooking: BC7 on desktop, ASTC on mobile", "6.1 Кукинг текстур: BC7 на десктопе, ASTC на мобильных")),
+            ("h2", B("6.1 Texture cooking: BC7 and ASTC", "6.1 Кукинг текстур: BC7 и ASTC")),
             ("bullets", B(
                 [
                     "BC7 keeps a real alpha channel and is the desktop default. BC7 sRGB is selected for colour "
                     "sprites; a normal map or a mask uses the linear (UNORM) variant.",
-                    "ASTC 4x4 is the quality mobile target; 6x6 is the size target. Pick it in Project Settings -> "
-                    "Cooker -> Texture format.",
+                    "ASTC 4x4 is the quality option where the target GPU supports ASTC; 6x6 is the size option. "
+                    "Pick it in Project Settings -> Cooker -> Texture format.",
                     "The cooker generates the full mip chain once, at import. The runtime uploads the blocks "
                     "verbatim; there is no CPU decode and no runtime re-compression.",
                     "A texture array is the batching unit. Keep sprites of one material in one layer set; a layer "
@@ -652,10 +652,10 @@ session.SubmitRemoteInput(0, frame);""")),
                     "shipped texture differ from what the artist approved.",
                 ],
                 [
-                    "BC7 сохраняет настоящий альфа-канал и является десктопным дефолтом. BC7 sRGB выбирается для "
+                    "BC7 сохраняет настоящий альфа-канал и остаётся десктопным вариантом по умолчанию. BC7 sRGB выбирается для "
                     "цветных спрайтов; карта нормалей или маска использует линейный (UNORM) вариант.",
-                    "ASTC 4x4 — мобильный таргет качества; 6x6 — таргет размера. Выбирается в Project Settings -> "
-                    "Cooker -> Texture format.",
+                    "ASTC 4x4 — вариант качества для GPU с поддержкой ASTC; 6x6 — вариант размера. Выбирается "
+                    "в Project Settings -> Cooker -> Texture format.",
                     "Кукер один раз при импорте строит полную цепочку мипов. Рантайм загружает блоки как есть; нет "
                     "CPU-декодирования и повторного сжатия в рантайме.",
                     "Единица батчинга — texture array. Держите спрайты одного материала в одном наборе слоёв; "
@@ -682,7 +682,7 @@ native_arch = false""")),
                 "deformable geometry is streamed into the transient ring; every draw is a compact MeshDrawData "
                 "record, and the backend records them through one drawIndexedIndirect call per material layer. The "
                 "CPU never binds a vertex buffer per mesh.",
-                "Спрайтовый путь уже является одним instanced-вызовом на батч. Indirect-отрисовка важна на пути "
+                "Спрайтовый путь уже использует один instanced-вызов на батч. Indirect-отрисовка важна на пути "
                 "мешей: статическая геометрия один раз загружается в device-local арену и адресуется через "
                 "MeshHandle; деформируемая геометрия стримится в transient ring; каждый draw — компактная запись "
                 "MeshDrawData, а бэкенд проигрывает их одним drawIndexedIndirect на слой материала. CPU не биндит "
@@ -1197,8 +1197,8 @@ Materials.Shutdown(gpu);""",
             ("p", B(
                 "Use this table as a starting checklist. A component that does not fit one row is probably two "
                 "components, and a behaviour that needs a new row is a new system, not a new class.",
-                "Используйте таблицу как стартовый чек-лист. Компонент, не помещающийся в одну строку, вероятно, "
-                "является двумя компонентами, а поведение, требующее новой строки, — это новая система, а не новый "
+                "Используйте таблицу как стартовый чек-лист. Компонент, не помещающийся в одну строку, вероятно, это "
+                "два компонента, а поведение, требующее новой строки, — это новая система, а не новый "
                 "класс.",
             )),
             ("table", B(
@@ -1478,7 +1478,7 @@ def main() -> int:
     docpaths.EnsureLayout()
     en_title = "FemboyEngine2D Application Guide"
     ru_title = "FemboyEngine2D — Практическое руководство"
-    en_subtitle = "ECS in practice, production optimisation and the distribution SDK"
+    en_subtitle = "ECS in a production project, optimisation and the distribution SDK"
     ru_subtitle = "Практика ECS, оптимизация производства и SDK дистрибуции"
 
     en_md = render_markdown(en_title, "en", en_subtitle)

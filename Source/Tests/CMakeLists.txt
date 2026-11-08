@@ -855,6 +855,9 @@ if(ScopedPresentOptimizationTests)
     set_tests_properties(${ScopedPresentOptimizationTests} PROPERTIES LABELS "optimization")
 endif()
 
+# Portable project archive: source-only export/import across desktop OSes.
+fby_add_engine_test(fby_project_bundle_test project_bundle ProjectBundleTest.cpp)
+
 # Data-driven descriptors, transactional prefab spawn, Units DPI and theme palette.
 fby_add_engine_test(fby_data_driven_test data_driven DataDrivenTest.cpp)
 

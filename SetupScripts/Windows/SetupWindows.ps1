@@ -9,6 +9,7 @@
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -Component Cpp
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -Component Archiver
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -Component Upscalers
+#   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -WithVendorSdks -AcceptVendorLicenses
 #
 # Versions are the ones the CI slate validates:
 #   LLVM             23.1.4 (clang-cl, the validated Windows toolchain)
@@ -23,12 +24,14 @@
 param(
     [switch]$SkipSystem,
     [switch]$Force,
+    [switch]$WithVendorSdks,
+    [switch]$AcceptVendorLicenses,
     [ValidateSet("All", "Cpp", "Archiver", "Upscalers")]
     [string]$Component = "All"
 )
 
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$Root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $ThirdParty = Join-Path $Root "third_party"
 $Downloads = Join-Path $Root "build\_deps-download"
 New-Item -ItemType Directory -Force -Path $ThirdParty, $Downloads | Out-Null
@@ -53,6 +56,53 @@ $Lock.Add("date = $(Get-Date -Format o)")
 function Write-Step([string]$Text) {
     Write-Host ""
     Write-Host "==> $Text" -ForegroundColor Magenta
+}
+
+function Invoke-VendorSetup {
+    $DlssRoot = if ($env:FBY_DLSS_ROOT) { $env:FBY_DLSS_ROOT } else { Join-Path $ThirdParty "dlss" }
+    $FidelityFxRepo = if ($env:FBY_FIDELITYFX_REPO) { $env:FBY_FIDELITYFX_REPO } else { Join-Path $ThirdParty "fidelityfx" }
+    $FidelityFxRoot = if ($env:FBY_FIDELITYFX_ROOT) { $env:FBY_FIDELITYFX_ROOT } else { Join-Path $FidelityFxRepo "Kits\FidelityFX" }
+    $XessRoot = if ($env:FBY_XESS_ROOT) { $env:FBY_XESS_ROOT } else { Join-Path $ThirdParty "xess" }
+
+    function Clone-Sdk([string]$Url, [string]$Destination) {
+        if (Test-Path (Join-Path $Destination ".git")) {
+            Write-Host "  present $Destination"
+            return
+        }
+        Write-Host "  cloning $Url"
+        git clone --depth 1 $Url $Destination
+    }
+
+    if ($WithVendorSdks) {
+        if (-not $AcceptVendorLicenses) {
+            Write-Warning "Vendor SDKs requested without -AcceptVendorLicenses; review the license and re-run"
+            return
+        }
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            Write-Warning "git is required to download vendor SDKs"
+            return
+        }
+        Write-Step "Vendor SDK license notice"
+        Write-Host "NVIDIA DLSS SDK: NVIDIA RTX SDKs License."
+        Write-Host "AMD FidelityFX SDK: AMD FidelityFX license."
+        Write-Host "Intel XeSS SDK: Intel Simplified Software License."
+        Clone-Sdk "https://github.com/NVIDIA/DLSS.git" $DlssRoot
+        Clone-Sdk "https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK.git" $FidelityFxRepo
+        Clone-Sdk "https://github.com/intel/xess.git" $XessRoot
+    }
+
+    Write-Step "SDK layout"
+    $Missing = 0
+    if (Test-Path (Join-Path $DlssRoot "include\nvsdk_ngx.h")) { Write-Host "  DLSS       : $DlssRoot" }
+    else { Write-Warning "DLSS not found at $DlssRoot"; $Missing++ }
+    if (Test-Path (Join-Path $FidelityFxRoot "api\include\ffx_api.h")) { Write-Host "  FidelityFX : $FidelityFxRoot" }
+    else { Write-Warning "FidelityFX not found at $FidelityFxRoot"; $Missing++ }
+    if (Test-Path (Join-Path $XessRoot "inc\xess\xess.h")) { Write-Host "  XeSS       : $XessRoot" }
+    else { Write-Warning "XeSS not found at $XessRoot" }
+    if ($Missing -eq 0) {
+        Write-Host "  CMake: -DFBY_WITH_DLSS=ON -DFBY_DLSS_ROOT=`"$DlssRoot`""
+        Write-Host "  CMake: -DFBY_WITH_FIDELITYFX=ON -DFBY_FIDELITYFX_ROOT=`"$FidelityFxRoot`""
+    }
 }
 
 function Ensure-Tool([string]$Name, [string]$WingetId) {
@@ -130,8 +180,8 @@ function Report-Compiler([string]$Name, [string]$VersionText, [int]$MinimumMajor
 }
 
 if ($Component -eq "Upscalers") {
-    & (Join-Path $PSScriptRoot "SetupUpscalers.ps1")
-    exit $LASTEXITCODE
+    Invoke-VendorSetup
+    exit 0
 }
 if ($Component -eq "Archiver") {
     Write-Step "7-Zip"
@@ -292,21 +342,9 @@ if ($Missing.Count -gt 0) {
 $LockPath = Join-Path $ThirdParty "dependencies.lock"
 $Lock | Set-Content -Encoding UTF8 $LockPath
 
-Write-Step "Mobile toolchains"
-$NdkHome = $env:ANDROID_NDK_HOME
-if (-not $NdkHome) { $NdkHome = $env:ANDROID_NDK_ROOT }
-if ($NdkHome) {
-    Write-Host "  Android: NDK at $NdkHome"
-} else {
-    Write-Warning "  Android: no NDK. Install Android Studio and set ANDROID_NDK_HOME to NDK r28c (28.2.13676358)."
+if ($Component -eq "All") {
+    Invoke-VendorSetup
 }
-$Java = Get-Command java -ErrorAction SilentlyContinue
-if ($Java) {
-    Write-Host "  Android: JDK $((& java -version 2>&1 | Select-Object -First 1))"
-} else {
-    Write-Warning "  Android: no JDK. Install OpenJDK 17 for the Gradle packaging step."
-}
-Write-Host "  iOS: needs macOS with Xcode 16 or newer; a Windows host cannot build the iOS target."
 
 Write-Step "Done"
 Write-Host "  pinned lock : $LockPath"

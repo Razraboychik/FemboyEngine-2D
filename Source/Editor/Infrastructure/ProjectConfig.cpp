@@ -403,7 +403,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     CopyProjectString(ScopedConfig.project.name, sizeof(ScopedConfig.project.name), InProjectName);
     CopyProjectString(ScopedConfig.project.version, sizeof(ScopedConfig.project.version), "0.1.0");
     CopyProjectString(ScopedConfig.project.defaultScene, sizeof(ScopedConfig.project.defaultScene), "scenes/main.toml");
-    // BC7 on desktop, ASTC on mobile
+    // BC7 on desktop; ASTC for compatible GPUs
     ScopedConfig.project.textureFormat = DefaultTextureCookFormat();
     ScopedConfig.editor.theme[0] = '\0';
     CopyProjectString(ScopedConfig.editor.theme, sizeof(ScopedConfig.editor.theme), "graphite");

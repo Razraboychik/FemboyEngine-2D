@@ -494,10 +494,10 @@ EXTRA_SECTIONS: list[dict] = [
                      B("One contiguous Mat4 block per frame; never per draw.",
                        "Один непрерывный блок Mat4 на кадр; никогда не на draw.")],
                     [B("Texture array", "Текстурный массив"),
-                     B("One sampler2DArray binding for the whole scene; cooking picks BC7 (desktop) "
-                       "or ASTC (mobile).",
-                       "Одна привязка sampler2DArray на всю сцену; кукер выбирает BC7 (десктоп) "
-                       "или ASTC (мобильные).")],
+                     B("One sampler2DArray binding for the whole scene; cooking picks BC7 on desktop "
+                       "or ASTC on ASTC-capable GPUs.",
+                       "Одна привязка sampler2DArray на всю сцену; кукер выбирает BC7 на десктопе "
+                       "или ASTC на GPU с поддержкой ASTC.")],
                     [B("SceneDiagnostics", "SceneDiagnostics"),
                      B("Watch MeshRenderItem, indirect calls, draw calls and the frame arena in one panel.",
                        "Следите за MeshRenderItem, indirect-вызовами, draw calls и кадровой ареной "
@@ -519,12 +519,12 @@ EXTRA_SECTIONS: list[dict] = [
                 "text": B(
                     "The editor's Project Settings panel edits the cook format and the collision "
                     "matrix transactionally; both persist into project.femproj and are applied to "
-                    "live b2Shape filters on commit. A project that changes its target from "
-                    "desktop to mobile keeps the same scene and re-cooks the atlas.",
+                    "live b2Shape filters on commit. A project that changes its cooked texture "
+                    "format keeps the same scene and re-cooks the atlas.",
                     "Панель Project Settings редактирует формат кукинга и матрицу коллизий "
                     "транзакционно; оба значения сохраняются в project.femproj и применяются к "
-                    "живым b2Shape-фильтрам при коммите. Проект, меняющий цель с десктопа на "
-                    "мобильные, сохраняет ту же сцену и перекукивает атлас.",
+                    "живым b2Shape-фильтрам при коммите. Проект, меняющий формат кукинга "
+                    "текстур, сохраняет ту же сцену и перекукивает атлас.",
                 ),
             },
         ],
@@ -1065,7 +1065,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "Выбор голоса — это поиск по локали, а не фильтр токенов. Старая реализация "
                     "сопоставляла только первую букву тега с Language=409/419 и молча возвращалась для "
                     "всего остального, поэтому русское повествование на английской ОС сохраняло "
-                    "английский голос (или после неудачного фильтра — вообще тот, что уже был). Теперь "
+                    "английский голос (или после неудачного фильтра — тот, что уже был). Теперь "
                     "SetVoice() разбирает основной язык BCP-47, разрешает полный тег через "
                     "LocaleNameToLCID, перебирает все установленные токены SAPI и оценивает их.",
                 ),
@@ -1133,7 +1133,7 @@ EXTRA_SECTIONS: list[dict] = [
                       "AVSpeech перебирает [AVSpeechSynthesisVoice speechVoices], оценивает префикс языка "
                       "и сохраняет лучший установленный язык; системный по умолчанию — фолбэк."),
                     B("Every decision is logged once with the requested tag, the selected LCID/language and "
-                      "whether it was a fallback, so a support ticket can say what the player actually "
+                      "whether it was a fallback, so a support ticket can say what the player "
                       "heard.",
                       "Каждое решение логируется один раз с запрошенным тегом, выбранным LCID/языком и "
                       "признаком фолбэка, поэтому в тикете поддержки видно, что игрок реально слышал."),
@@ -1274,6 +1274,7 @@ EXTRA_SECTIONS: list[dict] = [
                 ],
             },
             {
+                "type": "table",
                 "headers": [B("Condition flag", "Флаг условия"), B("Evaluator", "Проверка")],
                 "rows": [
                     [B("AnimConditionStateTimeAtLeast", "AnimConditionStateTimeAtLeast"),
@@ -1293,30 +1294,6 @@ EXTRA_SECTIONS: list[dict] = [
                      B("Floats[FloatParam] compared with FloatThreshold; a non-finite value fails closed.",
                        "Floats[FloatParam] сравнивается с FloatThreshold; не-конечное значение даёт false.")],
                 ],
-            },
-            {
-                "type": "code",
-                "lang": "cpp",
-                "text": "\n"
-                        "The SkeletalAnimation bridge blends in local TRS space - shortest-arc rotation, linear position and scale - and then calls SkeletalAnimation::Evaluate() exactly once. That single hierarchy pass rebuilds globalMatrices and the Mat4 skinningMatrices palette that the GPU consumes. Lerping two composed Mat4 palettes would be cheaper by one pass but produces shear on a rotating parent/child chain and is not a rigid transform; the local blend keeps every bone rigid. The SpriteAnimation bridge is the opposite trade-off: it is instantaneous by design (startFrame, frameCount, duration, currentFrame = 0, UV applied in the same tick), because a flipbook has no interpolatable pose.\n"
-                        "\n"
-                        "| StateTreeComponent field | Type | Role |\n"
-                        "|---|---|---|\n"
-                        "| ActiveStates[4] | uint16_t | Dense root-first path: [0] root, last = active leaf, unused = kStateTreeNone. A State Tree never stores the whole node list per entity. |\n"
-                        "| CurrentLeaf | uint32_t | Node index of the active leaf (also ActiveStates[ActiveDepth - 1]). |\n"
-                        "| ActiveDepth | uint32_t | 1..4; validated by StateTreeAddNode so BuildPath cannot overrun. |\n"
-                        "| Triggers | uint64_t | Pending change triggers. 0 -> the transition table is not touched at all this tick. Bit 63 is reserved for the internal leaf-guard-failed event. |\n"
-                        "| Target / TargetPosition | Entity / Vector2D | Blackboard: a live entity target, with a cached position fallback for patrol points. |\n"
-                        "| Floats[4] | float | Float blackboard read by FloatBelow / FloatAbove (health, threat, ...). |\n"
-                        "| StateTime / Ticks | float / uint32_t | Time in the current leaf and fixed ticks since entry; reset by BuildPath. |\n"
-                        "| TreeId | uint32_t | Selects a StateTreeDefinition owned by the system; many entities share one tree. |\n"
-                        "\n"
-                        "| Flat table | Contents | Cost per tick |\n"
-                        "|---|---|---|\n"
-                        "| StateTreeDefinition::Nodes[64] | Root/Selector/Leaf kind, parent, intrusive child list, depth, evaluator, task. | Not walked in steady state. |\n"
-                        "| StateTreeDefinition::Transitions[32] | FromLeaf, ToNode, TriggerMask, ConsumeMask, RequireTags, ForbidTags. | Scanned only when Triggers != 0. |\n"
-                        "| StateTreeEvaluator | Flat enum + uint64 tag mask + float threshold + float index, switched in one function. | One call for the active leaf. |\n"
-                        "| StateTreeTask | None / MoveToTarget / Stop / SetTag / ClearTag / ActivateSkill / Action. | Movement and skills are built in; Action routes ActionId to the developer registry. |\n",
             },
             {
                 "type": "p",
@@ -1359,8 +1336,8 @@ EXTRA_SECTIONS: list[dict] = [
                     [B("Triggers", "Triggers"), B("uint64_t", "uint64_t"),
                      B("Pending change triggers. 0 -> the transition table is not touched at all this tick. "
                        "Bit 63 is reserved for the internal leaf-guard-failed event.",
-                       "Ожидающие триггеры изменений. 0 -> таблица переходов в этом тике не трогается "
-                       "вообще. Бит 63 зарезервирован под внутреннее событие «guard листа провален».")],
+                       "Ожидающие триггеры изменений. 0 -> таблица переходов в этом тике не трогается. "
+                       "Бит 63 зарезервирован под внутреннее событие «guard листа провален».")],
                     [B("Target / TargetPosition", "Target / TargetPosition"), B("Entity / Vector2D",
                                                                                "Entity / Vector2D"),
                      B("Blackboard: a live entity target, with a cached position fallback for patrol points.",
@@ -1481,7 +1458,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "node compiles to the AnimTransition of the Idle -> Attack style cross-fade. The runtime never "
                     "sees ImNodes, positions, names or the editor's blend topology.",
                     "Рантайм-таблицы выше создаются в AnimationGraphCanvasPanel — ImNodes-редакторе из "
-                    "Source/Editor/Panels. Панель намеренно не является второй рантайм-моделью: её документ — "
+                    "Source/Editor/Panels. Панель не вторая рантайм-модель: её документ — "
                     "trivially copyable AnimationGraphDocument, зарегистрированный как один external-buffer "
                     "CommandStack. Узел клипа компилируется в AnimClip, узел float-параметра — в "
                     "AnimStateComponent::Floats, прямая связь клип-клип — в AnimTransition, а blend-узел — в "
@@ -1556,7 +1533,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "AnimationGraphTransitionFieldsEqual()/_ClipFieldsEqual() helpers; both compare only the "
                     "FieldDesc byte ranges through reflect::FieldBytesEqual(), so padding bytes cannot create an "
                     "empty undo command.",
-                    "Каждый жест — одна транзакция CommandStack. Документ является одним external buffer, поэтому "
+                    "Каждый жест — одна транзакция CommandStack. Документ — один external buffer, поэтому "
                     "перетаскивание узла записывает только изменившиеся байты позиции, а переключение условия — "
                     "только изменившееся слово условий. Колбэки ImNodes никогда не вызывают Record() напрямую: "
                     "DrawCanvas сообщает об изменении, ProcessCanvasEvents открывает BeginEdit(), метод правки "
@@ -1725,33 +1702,6 @@ EXTRA_SECTIONS: list[dict] = [
                 ),
             },
             {
-                "type": "code",
-                "lang": "cpp",
-                "text": "\n"
-                        "| Chunk header field | Offset | Value | Validation |\n"
-                        "|---|---|---|---|\n"
-                        "| magic | 0 | FBYVTC01 | Rejected before the mapping is indexed |\n"
-                        "| version | 8 | 1 | A future format fails closed |\n"
-                        "| tileSize | 12 | 64 | Must equal the descriptor |\n"
-                        "| chunkTiles | 16 | 4 | Must equal the descriptor |\n"
-                        "| format | 20 | 0 = RGBA8 | No runtime decode |\n"
-                        "| pixels | 32 | 256 x 256 x 4 | Exact size check before subspan |\n"
-                        "\n"
-                        "- Eviction is a per-layer clock. A page whose lastUsedFrame is the current frame is visible and is never a victim; if all 1024 pages of a pool are visible the request is counted as a spill instead of corrupting a tile that is on screen.\n"
-                        "- The resident lookup is open addressing with tombstones. A hit costs one hash probe and a store into lastUsedFrame; a chunk mapping is never re-read for a resident tile.\n"
-                        "- VirtualTextureSystem itself is about 2 MiB (page table plus the 65536-entry hash). It is a startup object, allocated once on the heap, not a stack local in a frame function.\n"
-                        "\n"
-                        "31.2 Component change masks. A render-visible entity carries ComponentChangeMask next to Transform2D/Sprite2D. A mutating system calls Fby::Change::MarkTransform(), MarkSprite() or MarkDrawOrder(); the mark is one atomic fetch_or on the 64-bit word. The extract peeks the word, consumes it with fetch_and(0), and recomputes a RenderItem only when one of the three render bits was present. An entity with a zero mask reaches one pointer lookup and one relaxed load - no Transform read, no Sprite copy, no RenderKey arithmetic.\n"
-                        "\n"
-                        "| Bit | Name | Consumer | Effect |\n"
-                        "|---|---|---|---|\n"
-                        "| 0 | Transform2D | ChangeMaskRenderExtract | Rebuild position/scale/rotation; key unchanged |\n"
-                        "| 1 | Sprite2D | ChangeMaskRenderExtract | Rebuild UV/size/colour/layer |\n"
-                        "| 2 | DrawOrder | ChangeMaskRenderExtract | RenderKey may move: structural rebuild |\n"
-                        "| 3-9 | Velocity/GameplayTags/Animation/Audio/Physics/Lifetime/Custom | Gameplay systems | Consumed by the owner; the GPU sees nothing |\n"
-                        "| 16-63 | GameBitBase + n | Game code | Reserved for project aliases |\n",
-            },
-            {
                 "type": "table",
                 "headers": [B("Chunk header field", "Поле заголовка чанка"), B("Offset", "Смещение"),
                            B("Value", "Значение"), B("Validation", "Проверка")],
@@ -1897,10 +1847,10 @@ EXTRA_SECTIONS: list[dict] = [
                       "Extract отдаёт оба представления: Items()/Keys()/Batches() заполняют существующий "
                       "FramePacket, а DirtyRanges() — план загрузки для бэкенда с постоянным instance SSBO. Кадр "
                       "без изменений и без структурных правок даёт пустой список диапазонов."),
-                    B("A layer change is deliberately treated as structural even when the float depth did not "
+                    B("A layer change is treated as structural even when the float depth did not "
                       "move: batching groups by the top 16 RenderKey bits, so a stable order is a correctness "
                       "condition, not an optimisation.",
-                      "Смена слоя намеренно считается структурной, даже если float-глубина не изменилась: "
+                      "Смена слоя считается структурной, даже если float-глубина не изменилась: "
                       "батчинг группирует по старшим 16 битам RenderKey, поэтому стабильный порядок — условие "
                       "корректности, а не оптимизация."),
                 ],
@@ -2483,13 +2433,13 @@ EXTRA_SECTIONS: list[dict] = [
                            B("Authoring action", "Действие автора")],
                 "rows": [
                     [B("Clip state is 0 or kAnimAnyState", "Состояние клипа равно 0 или kAnimAnyState"),
-                     B("Rejected: needs a non-zero state id", "Отказ: needs a non-zero state id"),
+                     B("Rejected: needs a non-zero state id", "Отказ: нужен ненулевой id состояния"),
                      B("Assign a unique 64-bit gameplay id", "Назначить уникальный 64-битный id")],
                     [B("Blend source state == target state", "Состояние source == состояние target"),
-                     B("Rejected: cross-fades a state into itself", "Отказ: cross-fades a state into itself"),
+                     B("Rejected: cross-fades a state into itself", "Отказ: кросс-фейд состояния в само себя"),
                      B("Pick two different clips", "Выбрать два разных клипа")],
                     [B("Blend has 0 or 2 source/target links", "У бленда 0 или 2 source/target линка"),
-                     B("Rejected: exactly one source, one target", "Отказ: exactly one source, one target"),
+                     B("Rejected: exactly one source, one target", "Отказ: ровно один источник и одна цель"),
                      B("Delete the extra link", "Удалить лишнюю связь")],
                     [B("Cycle of hot transitions with no exit", "Цикл горячих переходов без выхода"),
                      B("Rejected: dead blend cycle without an exit", "Отказ: dead blend cycle without an exit"),
@@ -2746,7 +2696,7 @@ EXTRA_SECTIONS: list[dict] = [
                 "type": "bullets",
                 "items": [
                     B("BindRuntimeWorld() only invalidates the buffer when the world pointers or the PIE flag "
-                      "actually change; EditorSystem calls it every frame, so an unconditional invalidate would "
+                      "change; EditorSystem calls it every frame, so an unconditional invalidate would "
                       "erase the sample before Draw().",
                       "BindRuntimeWorld() инвалидирует буфер только при реальной смене указателей мира или флага "
                       "PIE; EditorSystem вызывает его каждый кадр, поэтому безусловная инвалидация стирала бы "
@@ -2809,7 +2759,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "scene, resolution and hardware: a 2D batch of a few thousand sprites at 1080p is a different "
                     "problem from a 4K frame with post-processing. Treat 8000 FPS as a target for the engine's "
                     "own frame cost (simulation + extract + submission) on a Zen 5 machine with a warm cache, and "
-                    "always report the 99th percentile frame time, not just the average FPS. A stable 8000+ means "
+                    "always report the 99th percentile frame time as well as the average FPS. A stable 8000+ means "
                     "p99 <= 125 us, not one lucky frame.",
                     "8000 FPS — это 125 микросекунд на кадр. Это число имеет смысл только вместе со сценой, "
                     "разрешением и железом: 2D-батч из нескольких тысяч спрайтов при 1080p — не та же задача, "
@@ -2856,7 +2806,7 @@ EXTRA_SECTIONS: list[dict] = [
                       "Шаг 5 — сократите RHI-bind'ы. Сортируйте draw'ы по (pipeline, material, texture array), "
                       "используйте push constants для draw id, держите один bindless set и записывайте один "
                       "indirect draw на батч. На 8k FPS churn дескрипторных сетов обычно дороже самого draw."),
-                    B("Step 6 — parallelise phases, not just entities. SystemGraph::Build() computes dependency "
+                    B("Step 6 — parallelise phases as well as entities. SystemGraph::Build() computes dependency "
                       "levels once; Run() launches each level as one wave through JobSystem and joins it with a "
                       "per-call semaphore before Render. MPending and MRunning sit on separate 64-byte lines, so "
                       "submit/completion traffic does not bounce a shared line between 24 workers. Keep the main "
@@ -2887,7 +2837,7 @@ EXTRA_SECTIONS: list[dict] = [
                         "    }\n"
                         "}\n"
                         "\n"
-                        "// Verify the vectoriser actually fired:\n"
+                        "// Verify the vectoriser fired:\n"
                         "// clang-cl /O2 /Rpass=loop-vectorize /Rpass-missed=loop-vectorize\n"
                         "// clang++  -O2 -Rpass=loop-vectorize -Rpass-missed=loop-vectorize",
             },
