@@ -14,3 +14,6 @@ paths-ignore:
   - third_party/opus-master/opus-main/dnn/parse_lpcnet_weights.c
   - third_party/opus-master/opus-main/dnn/dump_data.c
   - third_party/flatbuffers-master/flatbuffers-master/tests/**
+  # HarfBuzz's upstream test executables are not built or linked by the engine.
+  - third_party/harfbuzz-download/**/src/test-*.cc
+  - third_party/harfbuzz-download/**/src/graph/test-*.cc
