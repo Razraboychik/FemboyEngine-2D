@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <random>
 #include <span>
 
 namespace
@@ -465,6 +466,98 @@ int main()
         ScopedRecycleComposer.BuildFramePacket(ScopedRecycleRegistry, ScopedRecycleCamera, Fby::Color32::Black(), 0u);
         Check(ScopedRecycleComposer.Packet().motionItems.empty(),
               "recycled entity generation does not inherit old motion history");
+    }
+
+    // Deterministic property test: mixed optional components, tiles and
+    // temporal motion must produce the same packet on the parallel and serial
+    // paths. This is the regression gate for future extractor changes.
+    {
+        std::mt19937 ScopedRng(0x5EED1234u);
+        for (std::uint32_t ScopedIteration = 0; ScopedIteration < 6; ++ScopedIteration)
+        {
+            Fby::Ecs::Registry ScopedStressRegistry;
+            const std::uint32_t ScopedStressCount = 4096u + ScopedIteration * 64u;
+            for (std::uint32_t ScopedI = 0; ScopedI < ScopedStressCount; ++ScopedI)
+            {
+                const Fby::Entity ScopedEntity = ScopedStressRegistry.create();
+                ScopedStressRegistry.emplace<Fby::Transform2D>(
+                    ScopedEntity, Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedI % 64u) * 2.0f,
+                                                                 static_cast<float>(ScopedI / 64u) * 2.0f},
+                                                   Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+                ScopedStressRegistry.emplace<Fby::Sprite2D>(ScopedEntity, Fby::Sprite2D{});
+                ScopedStressRegistry.emplace<Fby::DrawOrder>(
+                    ScopedEntity, Fby::DrawOrder{static_cast<std::uint16_t>(ScopedI % 4u), 0.0f});
+                if (ScopedRng() % 5u == 0u)
+                {
+                    ScopedStressRegistry.emplace<Fby::Hidden>(ScopedEntity, Fby::Hidden{});
+                }
+                if (ScopedRng() % 7u == 0u)
+                {
+                    Fby::RenderMaskComponent ScopedMask;
+                    ScopedMask.ExcludePass(Fby::RenderPassSprites);
+                    ScopedStressRegistry.emplace<Fby::RenderMaskComponent>(ScopedEntity, ScopedMask);
+                }
+                if (ScopedRng() % 6u == 0u)
+                {
+                    Fby::SpriteOverlay2D ScopedOverlay;
+                    ScopedOverlay.Layer = 1u;
+                    ScopedOverlay.Weight = 0.5f;
+                    ScopedStressRegistry.emplace<Fby::SpriteOverlay2D>(ScopedEntity, ScopedOverlay);
+                }
+            }
+
+            std::array<Fby::TileQuad, 3> ScopedTiles{};
+            for (std::uint32_t ScopedI = 0; ScopedI < ScopedTiles.size(); ++ScopedI)
+            {
+                ScopedTiles[ScopedI].Item.position = Fby::Vector2D{static_cast<float>(ScopedI) * 3.0f, 1.0f};
+                ScopedTiles[ScopedI].Item.size = Fby::Vector2D{3.0f, 3.0f};
+                ScopedTiles[ScopedI].Key = ScopedI;
+            }
+            const std::span<const Fby::TileQuad> ScopedTileSpan(ScopedTiles.data(), ScopedTiles.size());
+            const Fby::Rhi::CameraData ScopedStressCamera{Fby::Vector2D{64.0f, 64.0f},
+                                                          Fby::Vector2D{100000.0f, 100000.0f}, 1.0f};
+            Fby::JobSystem ScopedStressJobs(8);
+            Fby::Rhi::FrameComposer ScopedStressParallel;
+            Fby::Rhi::FrameComposer ScopedStressSerial;
+            ScopedStressParallel.SetJobSystem(&ScopedStressJobs);
+            const bool ScopedTemporal = ScopedIteration % 2u == 0u;
+            ScopedStressParallel.SetTemporalState(ScopedTemporal);
+            ScopedStressSerial.SetTemporalState(ScopedTemporal);
+
+            ScopedStressParallel.BuildFramePacket(ScopedStressRegistry, ScopedStressCamera, Fby::Color32::Black(), 0u,
+                                                  {}, ScopedTileSpan);
+            ScopedStressSerial.BuildFramePacket(ScopedStressRegistry, ScopedStressCamera, Fby::Color32::Black(), 0u, {},
+                                                ScopedTileSpan);
+            ScopedStressParallel.BuildFramePacket(ScopedStressRegistry, ScopedStressCamera, Fby::Color32::Black(), 0u,
+                                                  {}, ScopedTileSpan);
+            ScopedStressSerial.BuildFramePacket(ScopedStressRegistry, ScopedStressCamera, Fby::Color32::Black(), 0u, {},
+                                                ScopedTileSpan);
+
+            const Fby::Rhi::FramePacket& ScopedParallelPacket = ScopedStressParallel.Packet();
+            const Fby::Rhi::FramePacket& ScopedSerialPacket = ScopedStressSerial.Packet();
+            Check(ScopedParallelPacket.items.size() == ScopedSerialPacket.items.size(),
+                  "stress: parallel item count matches serial");
+            Check(ScopedParallelPacket.keys.size() == ScopedSerialPacket.keys.size(),
+                  "stress: parallel key count matches serial");
+            Check(ScopedParallelPacket.items.size() == ScopedSerialPacket.items.size() &&
+                      std::memcmp(ScopedParallelPacket.items.data(), ScopedSerialPacket.items.data(),
+                                  ScopedParallelPacket.items.size() * sizeof(Fby::Rhi::RenderItem)) == 0,
+                  "stress: parallel items match serial byte-for-byte");
+            Check(ScopedParallelPacket.keys.size() == ScopedSerialPacket.keys.size() &&
+                      std::memcmp(ScopedParallelPacket.keys.data(), ScopedSerialPacket.keys.data(),
+                                  ScopedParallelPacket.keys.size() * sizeof(Fby::Rhi::RenderKey)) == 0,
+                  "stress: parallel keys match serial byte-for-byte");
+            if (ScopedTemporal)
+            {
+                Check(ScopedParallelPacket.motionItems.size() == ScopedSerialPacket.motionItems.size(),
+                      "stress: parallel motion count matches serial");
+                Check(ScopedParallelPacket.motionItems.size() == ScopedSerialPacket.motionItems.size() &&
+                          std::memcmp(ScopedParallelPacket.motionItems.data(), ScopedSerialPacket.motionItems.data(),
+                                      ScopedParallelPacket.motionItems.size() * sizeof(Fby::Rhi::MotionVectorItem)) ==
+                              0,
+                      "stress: parallel motion matches serial byte-for-byte");
+            }
+        }
     }
 
     if (GFailures == 0)

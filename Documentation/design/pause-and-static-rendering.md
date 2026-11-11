@@ -116,7 +116,9 @@ debug builds that one instance is built from one thread; the job pool must
 outlive the composer. A debug assertion checks every chunk's write count against
 its prefix offset. The serial fallback remains the reference and is used for
 non-Standard viewport modes and any path that fails the parallel eligibility
-checks.
+checks. A deterministic randomized stress test mixes `Hidden`,
+`RenderMaskComponent`, `SpriteOverlay2D`, tile quads and temporal motion, then
+compares items, keys and motion vectors byte-for-byte against the serial path.
 
 ## Build-level optimisation
 
