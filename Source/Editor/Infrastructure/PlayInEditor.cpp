@@ -287,51 +287,60 @@ PlayInEditor::Result PlayInEditor::StartMultiplayer(Ecs::Registry& InEditorWorld
     std::memcpy(ScopedClientConfig.LocalName, "pie-client", 11);
     const Net::NetLink ScopedHostLink = MPieHostEndpoint.Link();
     const Net::NetLink ScopedClientLink = MPieClientEndpoint.Link();
-    if (MPieHostSession.Start(ScopedHostLink, ScopedHostConfig) &&
-        MPieClientSession.Start(ScopedClientLink, ScopedClientConfig))
+    if (!MPieHostSession.Start(ScopedHostLink, ScopedHostConfig) ||
+        !MPieClientSession.Start(ScopedClientLink, ScopedClientConfig))
     {
-        for (std::uint32_t ScopedStep = 0; ScopedStep < 240; ++ScopedStep)
+        Stop();
+        return Result::NetworkFailed;
+    }
+    for (std::uint32_t ScopedStep = 0; ScopedStep < 240; ++ScopedStep)
+    {
+        MPieNetwork.AdvanceTick();
+        MPieHostSession.Pump();
+        MPieClientSession.Pump();
+        MPieHostSession.Advance(0.01f);
+        MPieClientSession.Advance(0.01f);
+        if (MPieClientSession.PlayerCount() > 0)
+        {
+            break;
+        }
+    }
+    Net::SnapshotSenderConfig ScopedSenderConfig{};
+    Net::SnapshotReceiverConfig ScopedReceiverConfig{};
+    MPieNetworkUp = MPieSender.Start(MPieReplicationHostEndpoint.Link(), MPieReplicationClientEndpoint.Address(),
+                                     ScopedSenderConfig) &&
+                    MPieReceiver.Start(MPieReplicationClientEndpoint.Link(), MPieReplicationHostEndpoint.Address(),
+                                       ScopedReceiverConfig, &PlayInEditor::ApplyPieState, this);
+    if (MPieNetworkUp)
+    {
+        MPieSender.Tick(0);
+        if (!MPieSender.PublishBaseline(MPieBaselineTick, MSnapshot, 0))
+        {
+            LogError("pie", "replication baseline publish failed; the client cannot start from tick {}",
+                     MPieBaselineTick);
+            MPieNetworkUp = false;
+        }
+        for (std::uint32_t ScopedStep = 0; ScopedStep < 128 && !MPieReceiver.HasState(); ++ScopedStep)
         {
             MPieNetwork.AdvanceTick();
             MPieHostSession.Pump();
             MPieClientSession.Pump();
-            MPieHostSession.Advance(0.01f);
-            MPieClientSession.Advance(0.01f);
-            if (MPieClientSession.PlayerCount() > 0)
-            {
-                break;
-            }
-        }
-        Net::SnapshotSenderConfig ScopedSenderConfig{};
-        Net::SnapshotReceiverConfig ScopedReceiverConfig{};
-        MPieNetworkUp = MPieSender.Start(MPieReplicationHostEndpoint.Link(), MPieReplicationClientEndpoint.Address(),
-                                         ScopedSenderConfig) &&
-                        MPieReceiver.Start(MPieReplicationClientEndpoint.Link(), MPieReplicationHostEndpoint.Address(),
-                                           ScopedReceiverConfig, &PlayInEditor::ApplyPieState, this);
-        if (MPieNetworkUp)
-        {
-            MPieSender.Tick(0);
-            if (!MPieSender.PublishBaseline(MPieBaselineTick, MSnapshot, 0))
-            {
-                LogError("pie", "replication baseline publish failed; the client cannot start from tick {}",
-                         MPieBaselineTick);
-                MPieNetworkUp = false;
-            }
-            for (std::uint32_t ScopedStep = 0; ScopedStep < 128 && !MPieReceiver.HasState(); ++ScopedStep)
-            {
-                MPieNetwork.AdvanceTick();
-                MPieHostSession.Pump();
-                MPieClientSession.Pump();
-                MPieHostSession.Advance(0.005f);
-                MPieClientSession.Advance(0.005f);
-                MPieSender.Tick(ScopedStep);
-                MPieReceiver.Tick(ScopedStep);
-            }
+            MPieHostSession.Advance(0.005f);
+            MPieClientSession.Advance(0.005f);
+            MPieSender.Tick(ScopedStep);
+            MPieReceiver.Tick(ScopedStep);
         }
     }
     MMultiplayer = true;
     // Voice is best-effort: a failure must not reject a working PIE session.
-    (void)StartVoice();
+    try
+    {
+        (void)StartVoice();
+    }
+    catch (...)
+    {
+        LogWarn("pie", "PIE voice initialization failed");
+    }
     if (InExternal != nullptr && !InExternal->executable.empty())
     {
         // A failed launch is a fallback, not a session failure: the local client
@@ -494,7 +503,7 @@ void PlayInEditor::StopExternalClient() noexcept
     MExternalLastDeltaBytes = 0;
 }
 
-bool PlayInEditor::StartVoice() noexcept
+bool PlayInEditor::StartVoice()
 {
     if (MPieVoiceUp)
     {

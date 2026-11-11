@@ -79,6 +79,7 @@ namespace Fby::Rhi::Vk
     X(vkCmdDrawIndexedIndirectCount)                                                                                   \
     X(vkCmdDispatch)                                                                                                   \
     X(vkCmdPushConstants)                                                                                              \
+    X(vkCmdUpdateBuffer)                                                                                               \
     X(vkCmdSetViewport)                                                                                                \
     X(vkCmdSetScissor)                                                                                                 \
     X(vkCreateSemaphore)                                                                                               \

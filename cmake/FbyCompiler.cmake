@@ -16,12 +16,10 @@ set(FBY_MIN_APPLECLANG "21.0")
 set(FBY_IS_MSVC FALSE)
 set(FBY_IS_CLANG_CL FALSE)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    set(FBY_IS_MSVC TRUE)
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${FBY_MIN_MSVC}")
-        message(FATAL_ERROR
-            "FemboyEngine2D requires MSVC ${FBY_MIN_MSVC} or newer; "
-            "found MSVC ${CMAKE_CXX_COMPILER_VERSION}.")
-    endif()
+    # The project contract is Clang (clang-cl/clang++) and GCC only. clang-cl is
+    # reported as Clang with the MSVC frontend variant and keeps working.
+    message(FATAL_ERROR
+        "FemboyEngine2D does not support the Microsoft compiler; use Clang ${FBY_MIN_CLANG}+ or GCC ${FBY_MIN_GCC}+.")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${FBY_MIN_APPLECLANG}")
         message(FATAL_ERROR

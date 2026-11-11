@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -43,6 +44,9 @@ private:
 
     void* MData = nullptr;
     std::size_t MSize = 0;
+    // Empty files have no mapping but are still valid: Bytes() returns a
+    // one-byte sentinel with size zero so span users never see a null pointer.
+    bool MEmpty = false;
 #if defined(_WIN32)
     void* MFile = nullptr;
     void* MMapping = nullptr;
@@ -89,6 +93,8 @@ public:
     void Unmount(std::uint32_t InMount);
 
     // Zero-copy read. The span stays valid until the owning mount is unmounted
+    // or the file is invalidated, reloaded or rewritten; use Pin() when the
+    // bytes must outlive the current frame.
     [[nodiscard]] std::optional<std::span<const std::byte>> Read(std::string_view InPath) const;
 
     // Owning read. The returned PinnedFile keeps the exact mapping alive even
@@ -135,12 +141,26 @@ private:
         std::shared_ptr<MappedFile> pak;
     };
 
+    static constexpr std::uint32_t kInvalidMountId = 0xFFFFFFFFu;
+
     bool AddEntry(std::string InPath, VfsEntry InEntry, std::string* InError);
+    // Keeps an entry that lost to a higher-priority mount. Unmounting or
+    // refreshing the winner promotes the best remaining shadow again.
+    void RememberShadow(const std::string& InPath, const VfsEntry& InEntry);
+    void RestoreShadow(const std::string& InPath, std::uint32_t InExcludedMount = kInvalidMountId);
+    [[nodiscard]] bool MountExists(std::uint32_t InMount) const noexcept;
     [[nodiscard]] const MountRecord* FindWritableMount() const noexcept;
     [[nodiscard]] std::optional<VfsEntry> Materialize(std::string_view InPath) const;
 
+    // Materialize() mutates the lazy index from const read methods. The lock
+    // serializes index access; returned spans still follow the Read()/Pin()
+    // lifetime contract.
+    mutable std::recursive_mutex MMutex;
     std::vector<std::unique_ptr<MountRecord>> MMounts;
     mutable Fby::FlatMap<std::string, VfsEntry> MEntries;
+    // Entries shadowed by a winner. Without this a refresh/unmount of a mod
+    // would hide the base file until the whole project is remounted.
+    Fby::FlatMap<std::string, std::vector<VfsEntry>> MShadowed;
     // Directory mounts map on demand. The mapping is shared so a Pin() can keep
     mutable Fby::FlatMap<std::string, std::shared_ptr<MappedFile>> MLazyMappings;
     std::uint32_t MNextMountId = 1;

@@ -65,8 +65,10 @@ void TestEncode()
 void TestFile()
 {
     std::vector<std::uint8_t> ScopedPixels(1u * 1u * 4u, 0x80u);
+    // Keep the test inside the build tree: the system temp directory is not
+    // writable in every sandboxed CI/audit environment.
     const std::filesystem::path ScopedPath =
-        std::filesystem::temp_directory_path() / "fby_png_writer_test.png";
+        std::filesystem::current_path() / "fby_png_writer_test.png";
     Check(Fby::Assets::WritePng(ScopedPath, 1, 1, std::span<const std::uint8_t>(ScopedPixels.data(), ScopedPixels.size())), "write stores a PNG file");
 
     std::ifstream ScopedInput(ScopedPath, std::ios::binary);

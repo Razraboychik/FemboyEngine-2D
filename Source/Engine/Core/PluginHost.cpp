@@ -1,5 +1,6 @@
 #include "Engine/Core/PluginHost.hpp"
 
+#include "Engine/Core/Error.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/Mirror.hpp"
 
@@ -58,6 +59,43 @@ void* FindSymbol(LibraryHandle handle, const char* name)
     return ::dlsym(handle, name);
 }
 #endif
+
+[[nodiscard]] Core::Result<const FbyPluginInfo*> ReadPluginInfo(FbyPluginInfoFn InEntry) noexcept
+{
+    if (InEntry == nullptr)
+    {
+        return std::unexpected(Core::MakeError(Core::ErrorCode::AbiViolation));
+    }
+    try
+    {
+        const FbyPluginInfo* ScopedInfo = InEntry();
+        if (ScopedInfo == nullptr || ScopedInfo->struct_size < sizeof(FbyPluginInfo))
+        {
+            return std::unexpected(Core::MakeError(Core::ErrorCode::InvalidState));
+        }
+        return ScopedInfo;
+    }
+    catch (...)
+    {
+        return std::unexpected(Core::MakeError(Core::ErrorCode::AbiViolation));
+    }
+}
+
+void InvokePluginUnload(FbyPluginUnloadFn InUnload) noexcept
+{
+    if (InUnload == nullptr)
+    {
+        return;
+    }
+    try
+    {
+        InUnload();
+    }
+    catch (...)
+    {
+        LogWarn("plugin", "fby_plugin_unload threw");
+    }
+}
 }
 
 const ComponentType* ComponentRegistry::Find(std::string_view InName) const
@@ -140,12 +178,13 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
         return ScopedFail(std::format("'{}' does not export the fby_plugin_* entry points", InPath));
     }
 
-    const FbyPluginInfo* ScopedInfo = ScopedInfoEntry();
-    if (ScopedInfo == nullptr || ScopedInfo->struct_size < sizeof(FbyPluginInfo))
+    const Core::Result<const FbyPluginInfo*> ScopedInfoResult = ReadPluginInfo(ScopedInfoEntry);
+    if (!ScopedInfoResult)
     {
         CloseLibrary(ScopedLibrary);
         return ScopedFail(std::format("'{}' returned an invalid plugin descriptor", InPath));
     }
+    const FbyPluginInfo* ScopedInfo = *ScopedInfoResult;
     if (ScopedInfo->abi_version != FBY_PLUGIN_ABI_VERSION)
     {
         const std::uint32_t ScopedPluginAbi = ScopedInfo->abi_version;
@@ -189,11 +228,24 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
     }
 
     MLoading = ScopedPlugin.get();
-    const int ScopedResult = ScopedLoadEntry(&MApi);
+    int ScopedResult = 1;
+    bool ScopedLoadThrew = false;
+    try
+    {
+        ScopedResult = ScopedLoadEntry(&MApi);
+    }
+    catch (...)
+    {
+        ScopedLoadThrew = true;
+    }
     MLoading = nullptr;
 
-    if (ScopedResult != 0)
+    if (ScopedLoadThrew || ScopedResult != 0)
     {
+        if (ScopedLoadThrew)
+        {
+            InvokePluginUnload(ScopedUnloadEntry);
+        }
         if (MThemes != nullptr)
         {
             MThemes->RemoveOwner(ScopedPlugin.get());
@@ -207,8 +259,36 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
             MEffects->RemoveOwner(ScopedPlugin.get());
         }
         CloseLibrary(ScopedLibrary);
-        return ScopedFail(std::format("'{}' refused to load (fby_plugin_load returned {})", InPath, ScopedResult));
+        return ScopedFail(ScopedLoadThrew ? std::format("'{}' threw from fby_plugin_load", InPath)
+                                          : std::format("'{}' refused to load (fby_plugin_load returned {})", InPath,
+                                                        ScopedResult));
     }
+
+    const auto ScopedAbortLoaded = [&]()
+    {
+        if (MSystemGraph != nullptr)
+        {
+            for (PluginSystem& ScopedSystem : ScopedPlugin->systems)
+            {
+                MSystemGraph->RemoveUser(&ScopedSystem);
+            }
+            (void)RebuildGraph(nullptr);
+        }
+        InvokePluginUnload(ScopedUnloadEntry);
+        if (MThemes != nullptr)
+        {
+            MThemes->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MExtensions != nullptr)
+        {
+            MExtensions->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MEffects != nullptr)
+        {
+            MEffects->RemoveOwner(ScopedPlugin.get());
+        }
+        CloseLibrary(ScopedLibrary);
+    };
 
     // Plugins register through the C ABI during load(); now that the plugin's
     if (MSystemGraph != nullptr && !ScopedPlugin->systems.empty())
@@ -220,32 +300,14 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
             if (!MSystemGraph->Add(static_cast<Ecs::Phase>(ScopedPhaseIndex), ScopedSystem.name.c_str(),
                                    &PluginHost::PluginSystemThunk, &ScopedSystem))
             {
-                for (PluginSystem& ScopedRegistered : ScopedPlugin->systems)
-                {
-                    MSystemGraph->RemoveUser(&ScopedRegistered);
-                }
-                (void)RebuildGraph(nullptr);
-                if (MThemes != nullptr)
-                {
-                    MThemes->RemoveOwner(ScopedPlugin.get());
-                }
-                CloseLibrary(ScopedLibrary);
+                ScopedAbortLoaded();
                 return ScopedFail(std::format("'{}': SystemGraph rejected system '{}'", InPath, ScopedSystem.name));
             }
         }
         std::string ScopedGraphError;
         if (!RebuildGraph(&ScopedGraphError))
         {
-            for (PluginSystem& ScopedRegistered : ScopedPlugin->systems)
-            {
-                MSystemGraph->RemoveUser(&ScopedRegistered);
-            }
-            (void)RebuildGraph(nullptr);
-            if (MThemes != nullptr)
-            {
-                MThemes->RemoveOwner(ScopedPlugin.get());
-            }
-            CloseLibrary(ScopedLibrary);
+            ScopedAbortLoaded();
             return ScopedFail(std::format("'{}': {}", InPath, ScopedGraphError));
         }
     }
@@ -274,10 +336,7 @@ bool PluginHost::Unload(const std::string& InPath, std::string* InError)
         }
         const auto ScopedUnloadEntry = reinterpret_cast<FbyPluginUnloadFn>(
             FindSymbol(static_cast<LibraryHandle>(ScopedPlugin.handle), FBY_PLUGIN_UNLOAD_SYMBOL));
-        if (ScopedUnloadEntry != nullptr)
-        {
-            ScopedUnloadEntry();
-        }
+        InvokePluginUnload(ScopedUnloadEntry);
         if (MThemes != nullptr)
         {
             MThemes->RemoveOwner(&ScopedPlugin);
@@ -322,10 +381,7 @@ bool PluginHost::Reload(const std::string& InPath, std::string* InError)
         }
         const auto ScopedUnloadEntry = reinterpret_cast<FbyPluginUnloadFn>(
             FindSymbol(static_cast<LibraryHandle>(ScopedPlugin.handle), FBY_PLUGIN_UNLOAD_SYMBOL));
-        if (ScopedUnloadEntry != nullptr)
-        {
-            ScopedUnloadEntry();
-        }
+        InvokePluginUnload(ScopedUnloadEntry);
         if (MThemes != nullptr)
         {
             MThemes->RemoveOwner(&ScopedPlugin);
@@ -367,10 +423,7 @@ void PluginHost::UnloadAll()
         }
         const auto ScopedUnloadEntry = reinterpret_cast<FbyPluginUnloadFn>(
             FindSymbol(static_cast<LibraryHandle>(ScopedPlugin->handle), FBY_PLUGIN_UNLOAD_SYMBOL));
-        if (ScopedUnloadEntry != nullptr)
-        {
-            ScopedUnloadEntry();
-        }
+        InvokePluginUnload(ScopedUnloadEntry);
         if (MThemes != nullptr)
         {
             MThemes->RemoveOwner(ScopedPlugin.get());
@@ -569,7 +622,14 @@ void PluginHost::PluginSystemThunk(Ecs::SystemContext& InContext, void* InUser)
     auto* ScopedSystem = static_cast<PluginSystem*>(InUser);
     if (ScopedSystem != nullptr && ScopedSystem->tick != nullptr)
     {
-        ScopedSystem->tick(ScopedSystem->hostUser, InContext.dt);
+        try
+        {
+            ScopedSystem->tick(ScopedSystem->hostUser, InContext.dt);
+        }
+        catch (...)
+        {
+            InContext.jobs.ReportFault("plugin tick");
+        }
     }
 }
 }

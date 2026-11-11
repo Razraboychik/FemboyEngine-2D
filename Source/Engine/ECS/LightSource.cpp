@@ -514,6 +514,12 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
 
     std::uint32_t ScopedLit = 0;
     std::uint32_t ScopedShadowSamples = ScopedStaticSamples;
+    // Component writes stay outside the view: emplacing a result while the
+    // target cursor is alive moves the entity between archetypes and invalidates
+    // the iteration. Collect the computed colors in a fixed buffer first.
+    std::array<Entity, kMaxCachedTargets> ScopedResultEntities{};
+    std::array<Color32, kMaxCachedTargets> ScopedResultColors{};
+    std::uint32_t ScopedResultCount = 0;
     auto ScopedTargetView = InRegistry.view<Transform2D, Sprite2D, Light2DTargetComponent>();
     for (auto [ScopedEntity, ScopedTransform, ScopedSprite, ScopedTarget] : ScopedTargetView.each())
     {
@@ -570,10 +576,20 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
             ScopedGreen += (1.0f - ScopedGreen) * ScopedEmissive;
             ScopedBlue += (1.0f - ScopedBlue) * ScopedEmissive;
         }
-        Light2DResultComponent& ScopedResult = InRegistry.get_or_emplace<Light2DResultComponent>(ScopedEntity);
-        ScopedResult.Color = Color32{PackRgb(ScopedRed, ScopedGreen, ScopedBlue, 0xFF000000u)};
-        ScopedResult.Frame = MFrame;
+        if (ScopedResultCount < ScopedResultEntities.size())
+        {
+            ScopedResultEntities[ScopedResultCount] = ScopedEntity;
+            ScopedResultColors[ScopedResultCount] = Color32{PackRgb(ScopedRed, ScopedGreen, ScopedBlue, 0xFF000000u)};
+            ++ScopedResultCount;
+        }
         ++ScopedLit;
+    }
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedResultCount; ++ScopedI)
+    {
+        Light2DResultComponent& ScopedResult =
+            InRegistry.get_or_emplace<Light2DResultComponent>(ScopedResultEntities[ScopedI]);
+        ScopedResult.Color = ScopedResultColors[ScopedI];
+        ScopedResult.Frame = MFrame;
     }
     // Remove tints this pass did not touch (lost target, removed light, or a
     // frame produced by the other solver).

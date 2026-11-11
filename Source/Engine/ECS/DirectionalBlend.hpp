@@ -55,6 +55,9 @@ struct DirectionalBlendAnchor
     std::uint32_t ClipId = 0;
     float WeightScale = 1.0f;
     bool Enabled = true;
+
+    [[nodiscard]] friend constexpr bool operator==(const DirectionalBlendAnchor&,
+                                                   const DirectionalBlendAnchor&) = default;
 };
 
 static_assert(std::is_trivially_copyable_v<DirectionalBlendAnchor>);
@@ -67,6 +70,9 @@ struct DirectionalBlendSpaceDocument
     // Off keeps the authored WeightScale product, so a caller can inspect the
     // raw influence. On guarantees the emitted weights sum to one.
     bool NormalizeWeights = true;
+
+    [[nodiscard]] friend constexpr bool operator==(const DirectionalBlendSpaceDocument&,
+                                                   const DirectionalBlendSpaceDocument&) = default;
 };
 
 static_assert(std::is_trivially_copyable_v<DirectionalBlendSpaceDocument>);

@@ -140,21 +140,11 @@ struct MeshComputePush
 
 static_assert(sizeof(MeshComputePush) == 16);
 
-// Matches postfx_composite.frag (std430, 112 bytes).
-struct PostFxBlock
-{
-    Vector4D flagsAndCrt{};
-    Vector4D vignetteAndBloom{};
-    Vector4D exposureAndChromatic{};
-    Vector4D grainAndFlash{};
-    Vector4D colorRow0{};
-    Vector4D colorRow1{};
-    Vector4D colorRow2{};
-    Vector4D distortion0{};
-    Vector4D distortion1{};
-};
+// The composite push block and the shared post-process constants are the same
+// shader layout; keeping one type prevents the Vulkan range from drifting.
+using PostFxBlock = Fby::Rhi::PostFxConstants;
 
-static_assert(sizeof(PostFxBlock) == 144);
+static_assert(sizeof(PostFxBlock) == 304);
 
 // One frame's streaming mesh rings.
 struct MeshFrameBuffers
@@ -1148,6 +1138,8 @@ private:
     VkPipelineLayout MPostFxLayout = VK_NULL_HANDLE;
     VkPipeline MPostFxPipeline = VK_NULL_HANDLE;
     VkDescriptorSet MPostFxSet = VK_NULL_HANDLE;
+    VkBuffer MPostFxUniformBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory MPostFxUniformMemory = VK_NULL_HANDLE;
     bool MPostFxReady = false;
     bool MPostFxThisFrame = false;
     PostFxSettings MPostFxSettings{};

@@ -188,7 +188,7 @@ void CopyText(char* InDestination, std::size_t InCapacity, std::string_view InTe
         {
             continue;
         }
-        if (std::memcmp(&ScopedFirst, &ScopedSecond, sizeof(ScopedFirst)) == 0)
+        if (ScopedFirst == ScopedSecond)
         {
             *OutRecord = ScopedFirst;
             return true;
@@ -364,6 +364,11 @@ bool ReleaseCooker::Start(const ReleaseCookConfig& InConfig, const Script::Logic
     if ((InConfig.Encrypts() || InConfig.compileAot) && InConfig.keySeedPath[0] == '\0')
     {
         ScopedSetError("the release pipeline needs a project-local key seed path");
+        return false;
+    }
+    if (InConfig.profile.optimization == Fby::Build::OptimizationLevel::Ofast)
+    {
+        ScopedSetError("Ofast is disabled for deterministic release builds; use O2 or O3");
         return false;
     }
 
@@ -939,10 +944,6 @@ void ReleaseCooker::Run(std::stop_token InStop) noexcept
             if (MConfig.profile.nativeArch)
             {
                 ScopedExtraFlags += ScopedMsvcStyle ? " /arch:AVX2" : " -march=native";
-            }
-            if (Fby::Build::RelaxesFloatingPoint(MConfig.profile.optimization))
-            {
-                ScopedExtraFlags += ScopedMsvcStyle ? " /fp:fast" : " -ffast-math";
             }
             ScopedOptions.extraFlags = ScopedExtraFlags;
             std::string ScopedError;

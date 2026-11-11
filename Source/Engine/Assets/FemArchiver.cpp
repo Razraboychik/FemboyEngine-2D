@@ -567,6 +567,7 @@ ArchiveStatus FemArchiver::Build(std::span<const ArchiveInput> InEntries, std::s
             ScopedProgress.path = ScopedEntry.path;
             ScopedProgress.rawBytes = ScopedEntry.bytes.size();
             ScopedProgress.storedBytes = ScopedStoredSize;
+            ScopedProgress.storedCodec = ScopedStoredCodec;
             InOptions.progress(InOptions.progressUser, ScopedProgress);
         }
         ScopedPayloadCrc = Crypto::Crc64Ecma(ScopedEntry.bytes, ScopedPayloadCrc);
@@ -725,11 +726,36 @@ ArchiveStatus FemArchiver::Open(std::span<const std::byte> InArchive, const Cryp
         return ArchiveStatus::Corrupt;
     }
 
+    const std::uint32_t ScopedTableBytes = ScopedEntryCount * kFemArcEntryBytes;
+    std::uint32_t ScopedStringEnd = ScopedTableBytes;
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedEntryCount; ++ScopedI)
+    {
+        const std::byte* ScopedRecord =
+            ScopedBody.data() + static_cast<std::size_t>(ScopedI) * kFemArcEntryBytes;
+        std::uint32_t ScopedPathOffset = 0;
+        std::uint32_t ScopedPathSize = 0;
+        std::memcpy(&ScopedPathOffset, ScopedRecord, sizeof(ScopedPathOffset));
+        std::memcpy(&ScopedPathSize, ScopedRecord + sizeof(ScopedPathOffset), sizeof(ScopedPathSize));
+        if (ScopedPathOffset < ScopedTableBytes || ScopedPathOffset > ScopedBody.size() ||
+            ScopedPathSize > ScopedBody.size() - ScopedPathOffset)
+        {
+            return ArchiveStatus::Corrupt;
+        }
+        const std::uint64_t ScopedPathEnd =
+            static_cast<std::uint64_t>(ScopedPathOffset) + static_cast<std::uint64_t>(ScopedPathSize);
+        if (ScopedPathEnd > std::numeric_limits<std::uint32_t>::max())
+        {
+            return ArchiveStatus::Corrupt;
+        }
+        ScopedStringEnd = std::max(ScopedStringEnd, static_cast<std::uint32_t>(ScopedPathEnd));
+    }
+
     OutReader.MArchive = InArchive;
     OutReader.MBody = ScopedBody;
     OutReader.MEntryCount = ScopedEntryCount;
     OutReader.MTableOffset = 0;
-    OutReader.MStringOffset = ScopedEntryCount * kFemArcEntryBytes;
+    OutReader.MStringOffset = ScopedTableBytes;
+    OutReader.MStringEnd = ScopedStringEnd;
     OutReader.MDataOffset = 0;
     OutReader.MRawBytes = Load64(InArchive.data() + kHeaderOffsetRawSize);
     OutReader.MCodec = ScopedCodec;
@@ -753,9 +779,9 @@ ArchiveStatus ArchiveReader::Entry(std::uint32_t InIndex, ArchiveEntryView& OutE
     const ArchiveCodec ScopedCodec = static_cast<ArchiveCodec>(static_cast<std::uint8_t>(ScopedRecord[32]));
     const std::uint8_t ScopedPropertyBytes = static_cast<std::uint8_t>(ScopedRecord[33]);
     if (ScopedCodec > ArchiveCodec::FbyLz || ScopedPropertyBytes > 5 || ScopedPathSize > kFemArcMaxPathBytes ||
-        ScopedPathOffset < MStringOffset || ScopedPathSize > MBody.size() ||
-        ScopedPathOffset > MBody.size() - ScopedPathSize || ScopedDataOffset > MBody.size() ||
-        ScopedStoredSize > MBody.size() - ScopedDataOffset)
+        ScopedPathOffset < MStringOffset || ScopedPathOffset > MBody.size() ||
+        ScopedPathSize > MBody.size() - ScopedPathOffset || ScopedDataOffset < MStringEnd ||
+        ScopedDataOffset > MBody.size() || ScopedStoredSize > MBody.size() - ScopedDataOffset)
     {
         return ArchiveStatus::Corrupt;
     }

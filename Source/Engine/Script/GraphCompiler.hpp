@@ -301,6 +301,14 @@ enum class LogicNodeKind : std::uint8_t
             return "Camera Clear Effects";
         case LogicNodeKind::CameraSetMotionScale:
             return "Camera Motion Scale";
+        case LogicNodeKind::GetFrameIndex:
+            return "Get Frame Index";
+        case LogicNodeKind::RandomRange:
+            return "Random Range";
+        case LogicNodeKind::LogVec2:
+            return "Log Vec2";
+        case LogicNodeKind::PlaySound:
+            return "Play Sound";
         case LogicNodeKind::Count:
             break;
     }

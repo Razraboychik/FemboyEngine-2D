@@ -10,8 +10,10 @@
 #include "Engine/Core/Time.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <string_view>
 
@@ -142,7 +144,13 @@ struct DateTime
 [[nodiscard]] inline DateTime DateTimeFromUnixSeconds(std::int64_t InUnixSeconds,
                                                       std::int32_t InTimezoneOffsetMinutes = 0) noexcept
 {
-    const std::int64_t ScopedLocal = InUnixSeconds + static_cast<std::int64_t>(InTimezoneOffsetMinutes) * 60;
+    const std::int64_t ScopedOffsetSeconds = static_cast<std::int64_t>(InTimezoneOffsetMinutes) * 60;
+    if ((ScopedOffsetSeconds > 0 && InUnixSeconds > std::numeric_limits<std::int64_t>::max() - ScopedOffsetSeconds) ||
+        (ScopedOffsetSeconds < 0 && InUnixSeconds < std::numeric_limits<std::int64_t>::min() - ScopedOffsetSeconds))
+    {
+        return {};
+    }
+    const std::int64_t ScopedLocal = InUnixSeconds + ScopedOffsetSeconds;
     std::int64_t ScopedDays = ScopedLocal / 86400;
     std::int64_t ScopedRemainder = ScopedLocal % 86400;
     if (ScopedRemainder < 0)
@@ -166,6 +174,13 @@ struct DateTime
 [[nodiscard]] inline DateTime DateTimeFromUnixSeconds(double InUnixSeconds,
                                                       std::int32_t InTimezoneOffsetMinutes = 0) noexcept
 {
+    constexpr double kInt64MinAsDouble = -9223372036854775808.0;
+    constexpr double kInt64MaxExclusiveAsDouble = 9223372036854775808.0;
+    if (!std::isfinite(InUnixSeconds) || InUnixSeconds < kInt64MinAsDouble ||
+        InUnixSeconds >= kInt64MaxExclusiveAsDouble)
+    {
+        return {};
+    }
     const double ScopedWhole = InUnixSeconds >= 0.0 ? static_cast<double>(static_cast<std::int64_t>(InUnixSeconds))
                                                     : static_cast<double>(static_cast<std::int64_t>(InUnixSeconds) - 1);
     const std::int64_t ScopedSeconds = static_cast<std::int64_t>(ScopedWhole);
@@ -345,8 +360,8 @@ struct TextWriter
     TextWriter ScopedWriter{OutBuffer};
     ScopedWriter.Text("UTC");
     ScopedWriter.Push(InOffsetMinutes < 0 ? '-' : '+');
-    const std::uint32_t ScopedMinutes =
-        static_cast<std::uint32_t>(InOffsetMinutes < 0 ? -InOffsetMinutes : InOffsetMinutes);
+    const std::int64_t ScopedOffset = static_cast<std::int64_t>(InOffsetMinutes);
+    const std::uint32_t ScopedMinutes = static_cast<std::uint32_t>(ScopedOffset < 0 ? -ScopedOffset : ScopedOffset);
     ScopedWriter.Number(ScopedMinutes / 60u, 2);
     ScopedWriter.Push(':');
     ScopedWriter.Number(ScopedMinutes % 60u, 2);
@@ -359,6 +374,10 @@ struct TextWriter
                                                   std::span<char> OutBuffer) noexcept
 {
     TextWriter ScopedWriter{OutBuffer};
+    if (!std::isfinite(InSeconds))
+    {
+        InSeconds = 0.0;
+    }
     if (InSeconds < 0.0)
     {
         ScopedWriter.Push('-');
@@ -366,8 +385,12 @@ struct TextWriter
     }
     // One integer millisecond total keeps the carry rules trivial and exact for
     // any span up to a day.
-    const auto ScopedTotalMilliseconds =
-        static_cast<std::uint64_t>(InSeconds * 1000.0 + 0.5);
+    constexpr double kMaxMillisecondsExclusive = 18446744073709551616.0;
+    const double ScopedMillisecondsValue = InSeconds * 1000.0 + 0.5;
+    const std::uint64_t ScopedTotalMilliseconds =
+        ScopedMillisecondsValue >= kMaxMillisecondsExclusive
+            ? std::numeric_limits<std::uint64_t>::max()
+            : static_cast<std::uint64_t>(ScopedMillisecondsValue);
     const std::uint32_t ScopedHours = static_cast<std::uint32_t>(ScopedTotalMilliseconds / 3600000ull);
     const std::uint32_t ScopedMinutes = static_cast<std::uint32_t>((ScopedTotalMilliseconds / 60000ull) % 60ull);
     const std::uint32_t ScopedSeconds = static_cast<std::uint32_t>((ScopedTotalMilliseconds / 1000ull) % 60ull);

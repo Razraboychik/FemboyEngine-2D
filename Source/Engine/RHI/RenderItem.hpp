@@ -173,9 +173,14 @@ using RenderKey = std::uint64_t;
 // with the same material lands in one contiguous run and therefore in one batch.
 inline constexpr std::uint32_t kLayerBits = 16;
 inline constexpr std::uint32_t kMaterialBits = 8;
-inline constexpr std::uint32_t kDepthBits = 32;
 inline constexpr std::uint32_t kSequenceBits = 8;
+// The depth value itself is 24 bits; the low 8 bits of the 32-bit field carry
+// the stable sequence so equal-depth items keep their submission order.
+inline constexpr std::uint32_t kDepthValueBits = 24;
+inline constexpr std::uint32_t kDepthBits = kDepthValueBits + kSequenceBits;
 inline constexpr std::uint64_t kDepthScale = (1ull << kDepthBits) - 1ull;
+static_assert(kDepthBits == 32);
+static_assert((std::uint64_t{65535} << kSequenceBits) <= kDepthScale);
 inline constexpr std::uint32_t kMaxMaterialBuckets = 1u << kMaterialBits;
 inline constexpr std::uint32_t kMaterialKeyShift = kDepthBits + kSequenceBits;
 inline constexpr std::uint32_t kLayerKeyShift = kMaterialKeyShift + kMaterialBits;

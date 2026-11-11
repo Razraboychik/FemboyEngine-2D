@@ -662,6 +662,12 @@ if(TARGET fby_editor)
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME frame_composer_benchmark COMMAND fby_frame_composer_benchmark)
 
+    # Text/UI hot path: shaped cache hits without allocation.
+    add_executable(fby_text_ui_benchmark TextUiBenchmark.cpp)
+    target_link_libraries(fby_text_ui_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_text_ui_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+
     add_executable(fby_sdf_bake_benchmark SdfBakeBenchmark.cpp)
     target_link_libraries(fby_sdf_bake_benchmark PRIVATE FemboyEngine2D::Engine)
     set_target_properties(fby_sdf_bake_benchmark PROPERTIES
@@ -912,6 +918,9 @@ fby_add_engine_test(fby_sdf_composer_test sdf_composer SdfComposerTest.cpp)
 fby_add_engine_test(fby_sdf_composer_session_test sdf_composer_session SdfComposerSessionTest.cpp)
 # ECS replay: snapshot keyframes, command payloads and divergence detection.
 fby_add_engine_test(fby_replay_ecs_test replay_ecs ReplayEcsTest.cpp)
+# Snapshot round-trip: capture, mutate, restore and compare byte-for-byte.
+fby_add_engine_test(fby_snapshot_property_test snapshot_property SnapshotPropertyTest.cpp)
+fby_add_engine_test(fby_skeleton_alignment_test skeleton_alignment SkeletonAssetAlignmentTest.cpp)
 
 # Render graph, SDF shadow, camera post FX, GPU weather dispatch and card boards.
 fby_add_engine_test(fby_render_weather_test render_weather RenderWeatherTest.cpp)

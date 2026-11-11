@@ -4,6 +4,7 @@
 #include "Engine/Core/Log.hpp"
 #include "Engine/RHI/RingBuffer.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <optional>
 #include <utility>
@@ -36,23 +37,27 @@ public:
         MDesc = InDesc;
         MInfo.backend = Backend::Null;
         std::strncpy(MInfo.name, "Null RHI", sizeof(MInfo.name) - 1);
+        // A zero frame count would divide by zero in TransientRing::BeginFrame.
+        const std::uint32_t ScopedFramesInFlight = std::clamp(InDesc.framesInFlight, 1u, 8u);
         MInfo.apiVersion = 0;
-        MInfo.framesInFlight = InDesc.framesInFlight;
+        MInfo.framesInFlight = ScopedFramesInFlight;
         MInfo.maxItemsPerFrame = InDesc.maxItemsPerFrame;
         MInfo.maxTextureLayers = InDesc.maxTextureLayers;
         MInfo.discrete = false;
 
         MTransientBytes = static_cast<std::size_t>(InDesc.maxItemsPerFrame) * sizeof(RenderItem) +
                           static_cast<std::size_t>(InDesc.maxItemsPerFrame) * sizeof(RenderKey);
-        MTransientStorage.resize(MTransientBytes * InDesc.framesInFlight);
+        MTransientStorage.resize(MTransientBytes * ScopedFramesInFlight);
         // TransientRing is not assignable (it owns a mapping), so it is built in
-        MRing.emplace(MTransientStorage.data(), MTransientBytes, InDesc.framesInFlight);
+        MRing.emplace(MTransientStorage.data(), MTransientBytes, ScopedFramesInFlight);
         LogInfo("RHI", "null backend initialised ({} frames in flight)", InDesc.framesInFlight);
         return true;
     }
 
     void Shutdown() override
     {
+        MRing.reset();
+        MInFrame = false;
         MTransientStorage.clear();
         MTransientStorage.shrink_to_fit();
     }
@@ -68,6 +73,10 @@ public:
 
     bool BeginFrame() override
     {
+        if (!MRing.has_value())
+        {
+            return false;
+        }
         ++MFrameIndex;
         MRing->BeginFrame(MFrameIndex);
         MStats = {};
@@ -79,6 +88,10 @@ public:
     void Submit(const FramePacket& InPacket) override
     {
         FBY_ASSERT(MInFrame);
+        if (!MRing.has_value())
+        {
+            return;
+        }
         const auto ScopedItems = MRing->Upload(InPacket.items);
         const auto ScopedKeys = MRing->Upload(InPacket.keys);
         if (ScopedItems == TransientRing::kInvalidOffset || ScopedKeys == TransientRing::kInvalidOffset)
@@ -164,7 +177,8 @@ std::unique_ptr<RHI> RHI::Create(const DeviceDesc& InDesc)
             auto ScopedDevice = CreateVulkanRHI();
             if (!ScopedDevice || !ScopedDevice->Initialize(InDesc))
             {
-                return nullptr;
+                LogError("RHI", "Vulkan initialization failed; falling back to the null backend");
+                break;
             }
             return ScopedDevice;
         }
@@ -178,7 +192,8 @@ std::unique_ptr<RHI> RHI::Create(const DeviceDesc& InDesc)
             auto device = CreateMetalRHI();
             if (!device || !device->Initialize(InDesc))
             {
-                return nullptr;
+                LogError("RHI", "Metal initialization failed; falling back to the null backend");
+                break;
             }
             return device;
         }

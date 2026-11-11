@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -53,16 +54,25 @@ void AddLights(Fby::Ecs::Registry& InRegistry, std::uint32_t InCount)
     }
 }
 
-void AddSprites(Fby::Ecs::Registry& InRegistry, std::uint32_t InCount)
+void AddSprites(Fby::Ecs::Registry& InRegistry, std::uint32_t InCount, std::uint32_t InWidth, std::uint32_t InHeight,
+                bool InDense)
 {
+    const std::uint32_t ScopedColumns =
+        InDense ? std::max(1u, static_cast<std::uint32_t>(
+                                   std::sqrt(static_cast<double>(InCount) * InWidth / std::max(InHeight, 1u))))
+                : 160u;
+    const std::uint32_t ScopedRows = std::max(1u, (InCount + ScopedColumns - 1u) / ScopedColumns);
+    const float ScopedStepX = InDense ? static_cast<float>(InWidth) / static_cast<float>(ScopedColumns) : 4.0f;
+    const float ScopedStepY = InDense ? static_cast<float>(InHeight) / static_cast<float>(ScopedRows) : 4.0f;
+    const float ScopedSize = InDense ? std::max(ScopedStepX, ScopedStepY) * 1.5f : 24.0f;
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < InCount; ++ScopedIndex)
     {
         const Fby::Entity ScopedEntity = InRegistry.create();
-        const float ScopedX = static_cast<float>(ScopedIndex % 160u) * 4.0f;
-        const float ScopedY = static_cast<float>(ScopedIndex / 160u) * 4.0f;
+        const float ScopedX = static_cast<float>(ScopedIndex % ScopedColumns) * ScopedStepX;
+        const float ScopedY = static_cast<float>(ScopedIndex / ScopedColumns) * ScopedStepY;
         InRegistry.emplace<Fby::Transform2D>(ScopedEntity, Fby::Transform2D{Fby::Vector2D{ScopedX, ScopedY}});
         Fby::Sprite2D ScopedSprite;
-        ScopedSprite.Size = Fby::Vector2D{24.0f, 24.0f};
+        ScopedSprite.Size = Fby::Vector2D{ScopedSize, ScopedSize};
         ScopedSprite.Layer = ScopedIndex % 4u;
         InRegistry.emplace<Fby::Sprite2D>(ScopedEntity, ScopedSprite);
         InRegistry.emplace<Fby::DrawOrder>(ScopedEntity,
@@ -81,7 +91,9 @@ int main(int argc, char** argv)
     std::uint32_t ScopedFramesInFlight = 3;
     bool ScopedFullView = false;
     bool ScopedStatic = false;
+    bool ScopedDense = false;
     bool ScopedRenderOnly = false;
+    bool ScopedPostFx = false;
     bool ScopedUseTarget = true;
     float ScopedRenderScale = 1.0f;
     std::string ScopedOnly;
@@ -106,6 +118,16 @@ int main(int argc, char** argv)
         if (ScopedOption == "--render-only")
         {
             ScopedRenderOnly = true;
+            continue;
+        }
+        if (ScopedOption == "--dense")
+        {
+            ScopedDense = true;
+            continue;
+        }
+        if (ScopedOption == "--postfx")
+        {
+            ScopedPostFx = true;
             continue;
         }
         if (ScopedArg + 1 >= argc)
@@ -179,7 +201,7 @@ int main(int argc, char** argv)
     }
 
     Fby::Ecs::Registry ScopedRegistry;
-    AddSprites(ScopedRegistry, ScopedSprites);
+    AddSprites(ScopedRegistry, ScopedSprites, ScopedWidth, ScopedHeight, ScopedDense);
     AddLights(ScopedRegistry, ScopedLights);
     Fby::JobSystem ScopedJobs(8);
 
@@ -200,6 +222,8 @@ int main(int argc, char** argv)
     ScopedTextureDesc.layers = 1;
     ScopedTextureDesc.mipLevels = 1;
     ScopedTextureDesc.srgb = false;
+    const Fby::Rhi::PostFxSettings ScopedPostFxSettings =
+        ScopedPostFx ? Fby::Rhi::PostFxSettings{} : Fby::Rhi::PostFxDisabled();
 
     const auto ScopedActualWindow = ScopedWindow.Size();
     const std::uint64_t ScopedColorBytes = static_cast<std::uint64_t>(ScopedRenderWidth) * ScopedRenderHeight * 4ull;
@@ -262,6 +286,9 @@ int main(int argc, char** argv)
         Fby::Rhi::FrameComposer ScopedComposer;
         ScopedComposer.SetJobSystem(&ScopedJobs);
         ScopedComposer.SetInstanceDeltasEnabled(ScopedDesc.framesInFlight == 1);
+        ScopedComposer.SetWorldBounds(Fby::Vector2D{-10.0f, -10.0f},
+                                      Fby::Vector2D{static_cast<float>(std::max(ScopedWidth, 700u)),
+                                                    static_cast<float>(std::max(ScopedHeight, 4000u))});
         ScopedComposer.SetGpuLighting(ScopedScenario.gpuLighting);
         ScopedComposer.SetOpaqueLayerModes(std::array<Fby::Assets::TextureAlphaMode, 4>{
             Fby::Assets::TextureAlphaMode::Opaque, Fby::Assets::TextureAlphaMode::Opaque,
@@ -286,7 +313,7 @@ int main(int argc, char** argv)
                 continue;
             }
             ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Fby::Color32::FromBytes(12, 14, 22),
-                                            ScopedTexture.id);
+                                            ScopedTexture.id, {}, {}, ScopedPostFxSettings);
             const bool ScopedRecorded =
                 ScopedBake.Bake(*ScopedGpu, ScopedComposer.Packet(), {ScopedWidth, ScopedHeight});
             ScopedGpu->EndFrame();
@@ -369,7 +396,7 @@ int main(int argc, char** argv)
             }
             const auto ScopedStart = std::chrono::steady_clock::now();
             ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Fby::Color32::FromBytes(12, 14, 22),
-                                            ScopedTexture.id);
+                                            ScopedTexture.id, {}, {}, ScopedPostFxSettings);
             if (ScopedUseTarget)
             {
                 if (!ScopedGpu->RenderToTarget(ScopedTarget, ScopedComposer.Packet()))

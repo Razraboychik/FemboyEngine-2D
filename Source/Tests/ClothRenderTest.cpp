@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 namespace
 {
@@ -101,6 +102,10 @@ int main()
     ScopedDetached.Initialize(nullptr);
     ScopedDetached.Collect(ScopedRegistry);
     FBY_CHECK(ScopedDetached.DrawCount() == 0);
+
+    ClothDesc ScopedInvalid = ScopedDesc;
+    ScopedInvalid.Size.X = std::numeric_limits<float>::quiet_NaN();
+    FBY_CHECK(!ScopedCloth.Create(ScopedRegistry, ScopedInvalid).IsValid());
 
     ScopedCloth.Shutdown(ScopedRegistry);
 

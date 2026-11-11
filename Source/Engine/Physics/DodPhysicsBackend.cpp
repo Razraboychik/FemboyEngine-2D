@@ -15,6 +15,8 @@ namespace
 // 60 Hz default this is two seconds of rest.
 constexpr std::uint32_t kSleepFrameThreshold = 120;
 constexpr std::uint32_t kInvalidBody = std::numeric_limits<std::uint32_t>::max();
+// Wire entity handles use 20 index bits and 12 generation bits (see FCS World).
+constexpr std::uint32_t kEntityIndexMask = 0x000FFFFFu;
 
 // Box2D derives mass from the shape area and density; the DOD backend used to
 // treat density itself as the inverse mass, which made every body equally heavy.
@@ -64,7 +66,7 @@ void DodPhysicsBackend::ClearColumns() noexcept
     MColumns.SleepFrames.clear();
 }
 
-std::uint32_t DodPhysicsBackend::AcquireBodySlot() noexcept
+std::uint32_t DodPhysicsBackend::AcquireBodySlot()
 {
     if (!MFreeIndices.empty())
     {
@@ -216,7 +218,7 @@ void DodPhysicsBackend::PruneDeadBodies(Ecs::Registry& InRegistry)
         }
         if (!InRegistry.valid(ScopedEntity))
         {
-            MEntityToIndex.erase(ScopedEntity);
+            ClearBodyIndex(ScopedEntity);
             ResetBodySlot(ScopedIndex);
             MFreeIndices.push_back(ScopedIndex);
             if (MAliveCount != 0)
@@ -244,17 +246,14 @@ void DodPhysicsBackend::EnsureBodies(Ecs::Registry& InRegistry)
         }
         if (ScopedExisting == kInvalidBody)
         {
-            const auto ScopedFound = MEntityToIndex.find(ScopedEntity);
-            if (ScopedFound != MEntityToIndex.end())
-            {
-                ScopedExisting = ScopedFound->second;
-            }
+            ScopedExisting = FindBody(ScopedEntity);
         }
         if (ScopedExisting != kInvalidBody)
         {
-            // A record found through the map may not carry the packed handle yet;
-            // repairing it avoids a map lookup on every later step.
+            // A record found through the component or the map may not carry the
+            // packed handle yet; repair both so later lookups stay O(1).
             ScopedBody.Body = static_cast<std::uint64_t>(ScopedExisting) + 1u;
+            StoreBodyIndex(ScopedEntity, ScopedExisting);
             if ((ScopedBody.Flags & RigidBodyTeleport) != 0)
             {
                 MColumns.Positions[ScopedExisting] = ScopedTransform.Position;
@@ -302,7 +301,7 @@ void DodPhysicsBackend::EnsureBodies(Ecs::Registry& InRegistry)
         MColumns.InverseMasses[ScopedIndex] =
             InverseMassFor(ScopedBody.Type, ScopedCollider.Density, MColumns.HalfWidths[ScopedIndex],
                            MColumns.HalfHeights[ScopedIndex]);
-        MEntityToIndex[ScopedEntity] = ScopedIndex;
+        StoreBodyIndex(ScopedEntity, ScopedIndex);
         ScopedBody.Body = static_cast<std::uint64_t>(ScopedIndex) + 1u;
         ScopedCollider.Shape = 0;
         ++MAliveCount;
@@ -697,7 +696,7 @@ void DodPhysicsBackend::EmitContactEvents() noexcept
 }
 
 void DodPhysicsBackend::EmitContact(Entity InA, Entity InB, Vector2D InPoint, Vector2D InNormal, float InSpeed,
-                                    PhysicsEventType InType) noexcept
+                                    PhysicsEventType InType)
 {
     if (MEvents.size() >= std::max<std::uint32_t>(MDesc.maxContactEvents, 1u))
     {
@@ -717,8 +716,45 @@ void DodPhysicsBackend::EmitContact(Entity InA, Entity InB, Vector2D InPoint, Ve
 
 std::uint32_t DodPhysicsBackend::FindBody(Entity InEntity) const noexcept
 {
-    const auto ScopedFound = MEntityToIndex.find(InEntity);
-    return ScopedFound == MEntityToIndex.end() ? kInvalidBody : ScopedFound->second;
+    if (InEntity == Fby::kNullEntity)
+    {
+        return kInvalidBody;
+    }
+    const std::uint32_t ScopedIndex = static_cast<std::uint32_t>(InEntity) & kEntityIndexMask;
+    if (ScopedIndex >= MEntityToIndex.size() || MEntityToIndex[ScopedIndex] == 0)
+    {
+        return kInvalidBody;
+    }
+    const std::uint32_t ScopedBody = MEntityToIndex[ScopedIndex] - 1u;
+    return ScopedBody < MColumns.Entities.size() && MColumns.Entities[ScopedBody] == InEntity ? ScopedBody
+                                                                                             : kInvalidBody;
+}
+
+void DodPhysicsBackend::StoreBodyIndex(Entity InEntity, std::uint32_t InIndex)
+{
+    if (InEntity == Fby::kNullEntity)
+    {
+        return;
+    }
+    const std::uint32_t ScopedEntityIndex = static_cast<std::uint32_t>(InEntity) & kEntityIndexMask;
+    if (ScopedEntityIndex >= MEntityToIndex.size())
+    {
+        MEntityToIndex.resize(static_cast<std::size_t>(ScopedEntityIndex) + 1u, 0u);
+    }
+    MEntityToIndex[ScopedEntityIndex] = InIndex + 1u;
+}
+
+void DodPhysicsBackend::ClearBodyIndex(Entity InEntity) noexcept
+{
+    if (InEntity == Fby::kNullEntity)
+    {
+        return;
+    }
+    const std::uint32_t ScopedEntityIndex = static_cast<std::uint32_t>(InEntity) & kEntityIndexMask;
+    if (ScopedEntityIndex < MEntityToIndex.size())
+    {
+        MEntityToIndex[ScopedEntityIndex] = 0;
+    }
 }
 
 std::uint32_t DodPhysicsBackend::EnsureBodyIndex(Ecs::Registry& InRegistry, Entity InEntity)
@@ -729,7 +765,15 @@ std::uint32_t DodPhysicsBackend::EnsureBodyIndex(Ecs::Registry& InRegistry, Enti
         return ScopedIndex;
     }
     // The entity has no record yet, which happens when a game applies an impulse
-    // before the first Step. Only this path pays for a full synchronization.
+    // before the first Step. Only this path pays for a full synchronization, and
+    // it is forbidden while a view is alive because it creates archetype rows.
+    if (InRegistry.Data().IterationDepth() != 0)
+    {
+        // A setter called from inside a view must not create an archetype row.
+        // The caller falls back to writing the RigidBody2D component, which the
+        // next EnsureBodies() copies into the SoA columns.
+        return kInvalidBody;
+    }
     EnsureBodies(InRegistry);
     return FindBody(InEntity);
 }
@@ -739,6 +783,18 @@ void DodPhysicsBackend::ApplyImpulse(Ecs::Registry& InRegistry, Entity InEntity,
     const std::uint32_t ScopedIndex = EnsureBodyIndex(InRegistry, InEntity);
     if (ScopedIndex == kInvalidBody)
     {
+        // The body is not synchronized yet (caller is iterating). Translate the
+        // impulse into the component velocity; EnsureBodies() copies it later.
+        auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity);
+        auto* ScopedCollider = InRegistry.try_get<Collider2D>(InEntity);
+        if (ScopedBody != nullptr && ScopedCollider != nullptr)
+        {
+            const float ScopedInverseMass =
+                1.0f / (std::max(ScopedCollider->Density, 0.001f) *
+                        4.0f * std::max(ScopedCollider->HalfExtents.X, 0.001f) *
+                        std::max(ScopedCollider->HalfExtents.Y, 0.001f));
+            ScopedBody->LinearVelocity += InImpulse * (ScopedInverseMass * EntityTimeScale(InRegistry, InEntity));
+        }
         return;
     }
     // A frozen entity ignores impulses, matching the Box2D path that disables the
@@ -761,6 +817,10 @@ void DodPhysicsBackend::SetLinearVelocity(Ecs::Registry& InRegistry, Entity InEn
     const std::uint32_t ScopedIndex = EnsureBodyIndex(InRegistry, InEntity);
     if (ScopedIndex == kInvalidBody)
     {
+        if (auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity); ScopedBody != nullptr)
+        {
+            ScopedBody->LinearVelocity = InVelocity;
+        }
         return;
     }
     MColumns.Velocities[ScopedIndex] = InVelocity;
@@ -776,6 +836,10 @@ void DodPhysicsBackend::SetAngularVelocity(Ecs::Registry& InRegistry, Entity InE
     const std::uint32_t ScopedIndex = EnsureBodyIndex(InRegistry, InEntity);
     if (ScopedIndex == kInvalidBody)
     {
+        if (auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity); ScopedBody != nullptr)
+        {
+            ScopedBody->AngularVelocity = InAngularVelocity;
+        }
         return;
     }
     MColumns.AngularVelocities[ScopedIndex] = InAngularVelocity;
@@ -791,6 +855,18 @@ void DodPhysicsBackend::SetFixedRotation(Ecs::Registry& InRegistry, Entity InEnt
     const std::uint32_t ScopedIndex = EnsureBodyIndex(InRegistry, InEntity);
     if (ScopedIndex == kInvalidBody)
     {
+        if (auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity); ScopedBody != nullptr)
+        {
+            if (InFixed)
+            {
+                ScopedBody->Flags |= RigidBodyFixedRotation;
+                ScopedBody->AngularVelocity = 0.0f;
+            }
+            else
+            {
+                ScopedBody->Flags &= ~RigidBodyFixedRotation;
+            }
+        }
         return;
     }
     if (InFixed)
@@ -809,6 +885,17 @@ void DodPhysicsBackend::SetBullet(Ecs::Registry& InRegistry, Entity InEntity, bo
     const std::uint32_t ScopedIndex = EnsureBodyIndex(InRegistry, InEntity);
     if (ScopedIndex == kInvalidBody)
     {
+        if (auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity); ScopedBody != nullptr)
+        {
+            if (InBullet)
+            {
+                ScopedBody->Flags |= RigidBodyBullet;
+            }
+            else
+            {
+                ScopedBody->Flags &= ~RigidBodyBullet;
+            }
+        }
         return;
     }
     if (InBullet)

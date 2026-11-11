@@ -388,6 +388,9 @@ void LogLine(LogLevel InLevel, std::string_view InChannel, std::string_view InMe
                      InMessage.data());
         std::fflush(stderr);
     }
+    // The sink opens files and builds paths; a bad_alloc or filesystem error
+    // must not escape a noexcept logger and terminate the process.
+    try
     {
         const std::scoped_lock ScopedLock(GFileMutex);
         EnsureLogFileLocked();
@@ -407,11 +410,23 @@ void LogLine(LogLevel InLevel, std::string_view InChannel, std::string_view InMe
             }
         }
     }
+    catch (...)
+    {
+        // Keep the console path alive; the file sink is best effort.
+    }
 
     // The observer runs outside the sink lock so a console/LogBoy consumer can
     if (const LogObserver ScopedObserver = GObserver.load(std::memory_order_acquire); ScopedObserver != nullptr)
     {
-        ScopedObserver(InLevel, InChannel, InMessage);
+        try
+        {
+            ScopedObserver(InLevel, InChannel, InMessage);
+        }
+        catch (...)
+        {
+            // An observer (editor console, crash tool) must not take the logger
+            // down with it.
+        }
     }
 
     if (InLevel == LogLevel::Fatal)
@@ -424,8 +439,15 @@ void FailAssert(const char* InExpression, const char* InFile, int InLine, const 
 {
     // The assertion must also land in the log file: a shipped editor or game has
     // no console, so stderr alone would lose the only explanation of the crash.
-    LogError("assert", "{}:{}: {} {}", InFile, InLine, InExpression != nullptr ? InExpression : "<none>",
-             InMessage != nullptr ? InMessage : "");
+    try
+    {
+        LogError("assert", "{}:{}: {} {}", InFile, InLine, InExpression != nullptr ? InExpression : "<none>",
+                 InMessage != nullptr ? InMessage : "");
+    }
+    catch (...)
+    {
+        // The stderr report below is the fallback when formatting fails.
+    }
     std::fprintf(stderr, "\n*** FemboyEngine assertion failed ***\n  %s:%d\n  expression: %s\n", InFile, InLine,
                  InExpression != nullptr ? InExpression : "<none>");
     if (InMessage != nullptr)

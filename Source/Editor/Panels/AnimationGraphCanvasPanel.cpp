@@ -2976,6 +2976,13 @@ void AnimationGraphCanvasPanel::DrawTransitionFields(AnimTransition& InTransitio
                                 static_cast<unsigned long long>(ScopedValue));
                     break;
                 }
+                case Reflect::FieldKind::Vector2DArray:
+                {
+                    ImGui::Text("%.*s: %u point(s)", static_cast<int>(ScopedField.name.size()),
+                                ScopedField.name.data(),
+                                static_cast<unsigned>(ScopedField.size / sizeof(Vector2D)));
+                    break;
+                }
                 default:
                 {
                     std::uint32_t ScopedValue = 0;

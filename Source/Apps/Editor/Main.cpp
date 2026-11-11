@@ -77,6 +77,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -1271,7 +1272,15 @@ int main(int argc, char** argv)
                                      Fby::Rhi::kVirtualTexturePageTableMissing);
                 if (const char* ScopedDebug = std::getenv("FBY_VT_DEBUG"); ScopedDebug != nullptr)
                 {
-                    ScopedVtDebugMode = static_cast<std::uint32_t>(std::clamp(std::atoi(ScopedDebug), 0, 2));
+                    const std::string_view ScopedDebugText(ScopedDebug);
+                    int ScopedParsed = 0;
+                    const auto ScopedParse =
+                        std::from_chars(ScopedDebugText.data(), ScopedDebugText.data() + ScopedDebugText.size(),
+                                        ScopedParsed);
+                    if (ScopedParse.ec == std::errc{} && ScopedParse.ptr == ScopedDebugText.data() + ScopedDebugText.size())
+                    {
+                        ScopedVtDebugMode = static_cast<std::uint32_t>(std::clamp(ScopedParsed, 0, 2));
+                    }
                 }
                 else
                 {

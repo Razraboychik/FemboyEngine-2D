@@ -1,11 +1,13 @@
 name: Build gate (compiler bring-up)
 
-# The authoritative Windows gate is the ci-clangcl preset: RelWithDebInfo,
-# clang-cl 23.1.4, the full test suite, and a red run blocks the change. The
-# Linux jobs are the second opinion and stay advisory until both runners are
-# green on a hosted runner.
+# Push and pull-request runs are mandatory. Windows clang-cl, Linux clang,
+# Linux GCC and the full ASan/LSan suite must stay green; the remaining
+# platform jobs are advisory while their hosted runners are being stabilized.
 
 on:
+  push:
+    branches: [ main, master ]
+  pull_request:
   workflow_dispatch:
   schedule:
     - cron: "0 4 * * 1"
@@ -63,34 +65,15 @@ jobs:
       - name: Test
         run: ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings"
 
-  windows-msvc:
-    # MSVC is a supported compiler with the same minimum (19.44, VS 2022 17.14+).
-    # Advisory until the first hosted run, then flip continue-on-error off.
-    runs-on: windows-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ilammy/msvc-dev-cmd@v1
-      - name: Verify MSVC
-        shell: pwsh
-        run: cl 2>&1 | Select-Object -First 3
-      - name: Configure
-        run: cmake -S . -B build-msvc -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=ON -DFBY_BUILD_TESTS=ON -DFBY_BUILD_TOOLS=OFF -DFBY_BUILD_SANDBOX=OFF -DFBY_BUILD_SERVER=OFF -DFBY_BUILD_LOBBY=OFF -DFBY_BUILD_PLATFORM_PROVIDERS=OFF -DFBY_WITH_RNNOISE=OFF
-      - name: Build
-        run: cmake --build build-msvc --parallel 8 -- -k 0
-      - name: Test
-        run: ctest --test-dir build-msvc --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings"
-
   linux-clang:
     env:
       SDL_VIDEODRIVER: x11
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-llvm
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev xvfb mesa-vulkan-drivers libvulkan1 vulkan-tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev xvfb mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-validationlayers
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=ON -DFBY_BUILD_TESTS=ON
       - name: Build
@@ -103,13 +86,23 @@ jobs:
         run: python Source/Tools/Dev/PackageDesktop.py --platform linux --build-dir build --output build/package --skip-build
       - name: Test
         run: xvfb-run -a ctest --test-dir build --output-on-failure
+      - name: Vulkan validation
+        env:
+          VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
+          VK_LAYER_DUPLICATE_MESSAGE_LIMIT: "100"
+        run: |
+          set -o pipefail
+          xvfb-run -a ctest --test-dir build --output-on-failure -R "mesh_indirect_smoke|accessibility_composite|static_bake" 2>&1 | tee /tmp/vulkan-validation.log
+          if grep -E "VUID-|Validation Error" /tmp/vulkan-validation.log; then
+            echo "Vulkan validation reported an error"
+            exit 1
+          fi
 
   linux-gcc:
     env:
       SDL_VIDEODRIVER: x11
     runs-on: ubuntu-latest
     container: gcc:16.2
-    continue-on-error: true
     steps:
       - name: Prepare container
         run: |
@@ -174,7 +167,6 @@ jobs:
           LSAN_OPTIONS: detect_leaks=1:report_objects=1
         run: xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$"
       - name: Full suite under ASan and LSan
-        continue-on-error: true
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
           LSAN_OPTIONS: detect_leaks=1:report_objects=1

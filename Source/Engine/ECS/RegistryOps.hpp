@@ -23,10 +23,9 @@ inline void SetNativeCleanupHook(Registry& InRegistry, void (*InCleanup)(void*, 
 
 // Destroys every entity in the registry.
 //
-// Registry::clear() clears the component pools and invalidates the
-// entities in this version, but it leaves their slots in the entity storage, so
-// the hierarchy keeps counting the previous world after a scene reload. The
-// entity pool has to be cleared explicitly to drop those dead slots.
+// Registry::clear() clears the FCS records and invalidates the entities; the
+// cleanup hook releases native resources (physics bodies, navigation agents)
+// before the components disappear.
 inline void DestroyAllEntities(Registry& InRegistry)
 {
     if (auto* ScopedHook = InRegistry.ctx().find<NativeCleanupHook>();
@@ -35,6 +34,5 @@ inline void DestroyAllEntities(Registry& InRegistry)
         ScopedHook->cleanup(ScopedHook->user, InRegistry);
     }
     InRegistry.clear();
-    GetEntityStorage(InRegistry).clear();
 }
 }

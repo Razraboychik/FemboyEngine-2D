@@ -311,7 +311,8 @@ bool AIPerceptionSystem::Register(Ecs::SystemGraph& InGraph, AIPerceptionSystem&
     Ecs::SystemAccess ScopedAccess;
     ScopedAccess.ComponentReads =
         Ecs::MakeComponentAccessMask<AIPerceptionComponent, AIPerceptionSettings, StateTreeComponent, Transform2D>();
-    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<AIPerceptionComponent, AIPerceptionSettings>();
+    ScopedAccess.ComponentWrites =
+        Ecs::MakeComponentAccessMask<AIPerceptionComponent, AIPerceptionSettings, StateTreeComponent>();
     return InGraph.Add(Ecs::Phase::FixedUpdate, "AIPerceptionSystem",
                        Ecs::BindGameplaySystem<&AIPerceptionSystemThunk>(), &InSystem, 0, 0, ScopedAccess);
 }

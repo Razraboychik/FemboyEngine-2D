@@ -44,6 +44,8 @@ namespace
             return InField.size == sizeof(BigNum::Int128);
         case Reflect::FieldKind::Decimal:
             return InField.size == sizeof(BigNum::Decimal128);
+        case Reflect::FieldKind::Vector2DArray:
+            return InField.size > 0 && InField.size % sizeof(Vector2D) == 0;
     }
     return false;
 }

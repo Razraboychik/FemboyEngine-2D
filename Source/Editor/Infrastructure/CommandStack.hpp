@@ -157,6 +157,8 @@ public:
         ScopedOps.get = &Scene::Detail::ComponentOpsFor<T>::Get;
         ScopedOps.getMutable = &Scene::Detail::ComponentOpsFor<T>::GetMutable;
         ScopedOps.has = &Scene::Detail::ComponentOpsFor<T>::Has;
+        ScopedOps.emplaceBytes = &Scene::Detail::ComponentOpsFor<T>::EmplaceBytes;
+        ScopedOps.remove = &Scene::Detail::ComponentOpsFor<T>::Remove;
         return RegisterComponentOps(ScopedOps);
     }
 
@@ -246,11 +248,15 @@ private:
         char label[kMaxCommandLabel]{};
     };
 
+    // Component codecs may be up to 128 KiB, so a range offset or length does not
+    // fit in 16 bits. The table stays 4-byte aligned and 8 bytes per entry.
     struct Range
     {
-        std::uint16_t offset = 0;
-        std::uint16_t length = 0;
+        std::uint32_t offset = 0;
+        std::uint32_t length = 0;
     };
+
+    static_assert(sizeof(Range) == 8);
 
     struct PendingEdit
     {

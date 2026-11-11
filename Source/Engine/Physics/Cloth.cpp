@@ -200,6 +200,14 @@ ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDe
     {
         return {};
     }
+    if (!std::isfinite(InDesc.Size.X) || !std::isfinite(InDesc.Size.Y) ||
+        !std::isfinite(InDesc.Origin.X) || !std::isfinite(InDesc.Origin.Y) ||
+        !std::isfinite(InDesc.Gravity.X) || !std::isfinite(InDesc.Gravity.Y) ||
+        !std::isfinite(InDesc.Wind.X) || !std::isfinite(InDesc.Wind.Y) ||
+        !std::isfinite(InDesc.Damping) || !std::isfinite(InDesc.ParticleRadius))
+    {
+        return {};
+    }
 
     std::uint32_t ScopedSlot = kMaxCloths;
     for (std::uint32_t ScopedI = 0; ScopedI < kMaxCloths; ++ScopedI)

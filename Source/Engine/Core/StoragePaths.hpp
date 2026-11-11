@@ -20,6 +20,7 @@
 #include <format>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Fby::Core
@@ -78,7 +79,8 @@ inline void PruneOldFiles(const std::filesystem::path& InDirectory, std::string_
                           std::uint32_t InKeep)
 {
     std::error_code ScopedError;
-    std::vector<std::filesystem::directory_entry> ScopedEntries;
+    using PruneEntry = std::pair<std::filesystem::file_time_type, std::filesystem::path>;
+    std::vector<PruneEntry> ScopedEntries;
     for (const std::filesystem::directory_entry& ScopedEntry :
          std::filesystem::directory_iterator(InDirectory, ScopedError))
     {
@@ -91,32 +93,32 @@ inline void PruneOldFiles(const std::filesystem::path& InDirectory, std::string_
             continue;
         }
         const std::string ScopedName = ScopedEntry.path().filename().string();
-        if (ScopedName.rfind(InPrefix, 0) == 0)
+        if (ScopedName.rfind(InPrefix, 0) != 0)
         {
-            ScopedEntries.push_back(ScopedEntry);
+            continue;
         }
+        std::error_code ScopedTimeError;
+        const auto ScopedTime = ScopedEntry.last_write_time(ScopedTimeError);
+        ScopedEntries.emplace_back(ScopedTimeError ? std::filesystem::file_time_type::min() : ScopedTime,
+                                   ScopedEntry.path());
     }
     if (ScopedEntries.size() <= InKeep)
     {
         return;
     }
     std::sort(ScopedEntries.begin(), ScopedEntries.end(),
-              [](const std::filesystem::directory_entry& InLeft, const std::filesystem::directory_entry& InRight)
+              [](const PruneEntry& InLeft, const PruneEntry& InRight)
               {
-                  std::error_code ScopedLeftError;
-                  std::error_code ScopedRightError;
-                  const auto ScopedLeft = InLeft.last_write_time(ScopedLeftError);
-                  const auto ScopedRight = InRight.last_write_time(ScopedRightError);
-                  if (ScopedLeftError || ScopedRightError)
+                  if (InLeft.first != InRight.first)
                   {
-                      return InLeft.path().filename().string() < InRight.path().filename().string();
+                      return InLeft.first < InRight.first;
                   }
-                  return ScopedLeft < ScopedRight;
+                  return InLeft.second.filename().string() < InRight.second.filename().string();
               });
     const std::size_t ScopedRemove = ScopedEntries.size() - InKeep;
     for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedRemove; ++ScopedIndex)
     {
-        std::filesystem::remove(ScopedEntries[ScopedIndex].path(), ScopedError);
+        std::filesystem::remove(ScopedEntries[ScopedIndex].second, ScopedError);
     }
 }
 }

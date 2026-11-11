@@ -492,7 +492,10 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 {
                     return FaultStop(InFault, VmFault::Code::BadEntity, ScopedPc, MRegisters[ScopedInstruction.src].u);
                 }
-                (void)InContext.commands->Destroy(ScopedEntity);
+                if (!InContext.commands->Destroy(ScopedEntity))
+                {
+                    return FaultStop(InFault, VmFault::Code::CommandBufferFull, ScopedPc);
+                }
                 break;
             }
 

@@ -91,7 +91,12 @@ int main(int argc, char** argv)
             ScopedOptimization = Build::ParseOptimizationLevel(argv[++ScopedI], Build::OptimizationLevel::O2);
             if (Build::OptimizationName(ScopedOptimization) != std::string_view(argv[ScopedI]))
             {
-                std::fprintf(stderr, "fby_aotc: unknown optimisation '%s' (O1, O2, O3, Ofast, Os)\n", argv[ScopedI]);
+                std::fprintf(stderr, "fby_aotc: unknown optimisation '%s' (O1, O2, O3, Os)\n", argv[ScopedI]);
+                return 1;
+            }
+            if (Build::RelaxesFloatingPoint(ScopedOptimization))
+            {
+                std::fprintf(stderr, "fby_aotc: Ofast is disabled for deterministic AOT modules; use O2 or O3\n");
                 return 1;
             }
         }
@@ -178,10 +183,6 @@ int main(int argc, char** argv)
         {
             ScopedCommand += " /nologo /std:c++latest ";
             ScopedCommand += std::string(Build::OptimizationFlagMsvc(ScopedOptimization));
-            if (Build::RelaxesFloatingPoint(ScopedOptimization))
-            {
-                ScopedCommand += " /fp:fast";
-            }
             if (ScopedLto)
             {
                 ScopedCommand += " /GL";
@@ -203,10 +204,6 @@ int main(int argc, char** argv)
         {
             ScopedCommand += " -std=c++26 ";
             ScopedCommand += std::string(Build::OptimizationFlag(ScopedOptimization));
-            if (Build::RelaxesFloatingPoint(ScopedOptimization))
-            {
-                ScopedCommand += " -ffast-math";
-            }
             if (ScopedLto)
             {
                 ScopedCommand += " -flto";

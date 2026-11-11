@@ -4333,6 +4333,7 @@ void VulkanRHI::Shutdown()
         DestroyClusterFallback();
         DestroyClusterResources();
         DestroyCullResources();
+        DestroyVtFallbackResources();
         if (MInstanceStagingBuffer != VK_NULL_HANDLE)
         {
             ScopedApi.vkDestroyBuffer(MDevice, MInstanceStagingBuffer, nullptr);
@@ -4616,7 +4617,33 @@ void VulkanRHI::Shutdown()
                 ScopedApi.vkDestroySemaphore(MDevice, ScopedSemaphore, nullptr);
             }
         }
+        for (const auto& [ScopedPass, ScopedPipeline] : MTemporalPipelines)
+        {
+            (void)ScopedPass;
+            if (ScopedPipeline != VK_NULL_HANDLE)
+            {
+                ScopedApi.vkDestroyPipeline(MDevice, ScopedPipeline, nullptr);
+            }
+        }
+        MTemporalPipelines.clear();
+        if (MTemporalLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipelineLayout(MDevice, MTemporalLayout, nullptr);
+            MTemporalLayout = VK_NULL_HANDLE;
+        }
+        if (MTemporalPool != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorPool(MDevice, MTemporalPool, nullptr);
+            MTemporalPool = VK_NULL_HANDLE;
+        }
+        if (MTemporalSetLayout != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyDescriptorSetLayout(MDevice, MTemporalSetLayout, nullptr);
+            MTemporalSetLayout = VK_NULL_HANDLE;
+        }
+        MTemporalSets.fill(VK_NULL_HANDLE);
         DestroySwapchain();
+        DestroyAccessibilityCompositeResources();
 
         if (MCommandPool != VK_NULL_HANDLE)
         {

@@ -1,6 +1,7 @@
 // FemboyEngine2D - background asset import/cook/reload implementation.
 #include "Editor/Infrastructure/AssetImportService.hpp"
 
+#include "Engine/Core/PathUtil.hpp"
 #include "Engine/Assets/PakFormat.hpp"
 #include "Engine/Assets/TextureArray.hpp"
 #include "Engine/Assets/TextureFormat.hpp"
@@ -231,7 +232,7 @@ bool AssetImportService::EnsureMeta(std::string_view InSourcePath, std::string* 
 }
 
 bool AssetImportService::ScheduleCook(std::string_view InSourcePath, Assets::AssetHandle InHandle,
-                                      std::string* InError) noexcept
+                                      std::string* InError)
 {
     if (!MInitialized || MDatabase == nullptr)
     {
@@ -283,7 +284,7 @@ bool AssetImportService::ScheduleCook(std::string_view InSourcePath, Assets::Ass
         return false;
     }
     CookRequest& ScopedRequest = MRequests[MRequestHead];
-    std::memset(&ScopedRequest, 0, sizeof(ScopedRequest));
+    ScopedRequest = CookRequest{};
     CopyFixed(ScopedRequest.sourcePath, sizeof(ScopedRequest.sourcePath), ScopedNormalized);
     ScopedRequest.handle = InHandle;
     ScopedRequest.kind = ScopedMeta->kind;
@@ -301,7 +302,18 @@ bool AssetImportService::ScheduleCookThunk(void* InUser, std::string_view InSour
                                            std::string* InError) noexcept
 {
     auto* ScopedSelf = static_cast<AssetImportService*>(InUser);
-    return ScopedSelf != nullptr && ScopedSelf->ScheduleCook(InSourcePath, InHandle, InError);
+    if (ScopedSelf == nullptr)
+    {
+        return false;
+    }
+    try
+    {
+        return ScopedSelf->ScheduleCook(InSourcePath, InHandle, InError);
+    }
+    catch (...)
+    {
+        return false;
+    }
 }
 
 void AssetImportService::WorkerLoop(std::stop_token InStopToken)
@@ -331,7 +343,7 @@ void AssetImportService::WorkerLoop(std::stop_token InStopToken)
         CopyFixed(ScopedResult.sourcePath, sizeof(ScopedResult.sourcePath), ScopedRequest.sourcePath);
 
         const std::filesystem::path ScopedSource =
-            MConfig.assetsRoot / std::filesystem::path(std::string(ScopedRequest.sourcePath));
+            MConfig.assetsRoot / Fby::Core::PathFromUtf8(ScopedRequest.sourcePath);
         ScopedResult.sourceHash = HashSourceFile(ScopedSource);
         const std::string ScopedCookedRelative = CookedPathForSource(ScopedRequest.sourcePath, ScopedRequest.kind);
         if (ScopedCookedRelative.empty())

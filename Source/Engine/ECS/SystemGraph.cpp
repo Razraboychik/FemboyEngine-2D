@@ -2,6 +2,7 @@
 
 #include "Engine/ECS/FCS/AccessValidation.hpp"
 
+#include <atomic>
 #include <chrono>
 
 #include <algorithm>
@@ -43,7 +44,8 @@ void RunTimed(const GraphInvocation& InInvocation, SystemContext& InContext)
     InInvocation.run(InContext, InInvocation.user);
     if (InInvocation.system != nullptr)
     {
-        InInvocation.system->LastNs = ElapsedNs(ScopedStart);
+        std::atomic_ref<std::uint64_t>(InInvocation.system->LastNs).store(ElapsedNs(ScopedStart),
+                                                                          std::memory_order_relaxed);
     }
 }
 
@@ -70,6 +72,10 @@ void InvokeGraphNode(void* InRaw, std::uint32_t, std::uint32_t) noexcept
     }
     catch (...)
     {
+        if (ScopedInvocation->system != nullptr)
+        {
+            ScopedInvocation->system->Faulted = true;
+        }
         ScopedInvocation->context->jobs.ReportFault(ScopedInvocation->name != nullptr ? ScopedInvocation->name
                                                                                       : "system node");
     }
@@ -252,7 +258,7 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
 
     const auto ScopedRunNode = [&InContext, this](const GraphSystem& InSystem)
     {
-        if (InSystem.enabled && InSystem.run != nullptr)
+        if (InSystem.enabled && !InSystem.Faulted && InSystem.run != nullptr)
         {
             const Fcs::Detail::ScopedAccess ScopedAccessCheck(AccessReads(&InSystem.access),
                                                               AccessWrites(&InSystem.access));
@@ -260,7 +266,8 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
             {
                 const auto ScopedStart = std::chrono::steady_clock::now();
                 InSystem.run(InContext, InSystem.user);
-                InSystem.LastNs = ElapsedNs(ScopedStart);
+                std::atomic_ref<std::uint64_t>(InSystem.LastNs).store(ElapsedNs(ScopedStart),
+                                                                      std::memory_order_relaxed);
                 return;
             }
             InSystem.run(InContext, InSystem.user);
@@ -293,7 +300,8 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
         {
             const std::uint32_t ScopedNode = MOrder[ScopedI];
             const GraphSystem& ScopedSystem = MSystems[ScopedNode];
-            if (!ScopedSystem.enabled || ScopedSystem.phase != InPhase || MLevels[ScopedNode] != ScopedLevel)
+            if (!ScopedSystem.enabled || ScopedSystem.Faulted || ScopedSystem.phase != InPhase ||
+                MLevels[ScopedNode] != ScopedLevel)
             {
                 continue;
             }

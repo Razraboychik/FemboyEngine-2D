@@ -309,6 +309,7 @@ FBY_REFLECT_COMPONENT(Fby::CarrierMemberComponent, "CarrierMemberComponent",
                       FBY_FIELD(Fby::CarrierMemberComponent, RelativeAngularVelocity, Float))
 
 FBY_REFLECT_COMPONENT(Fby::TransportPath, "TransportPath",
+                      FBY_FIELD(Fby::TransportPath, Points, Vector2DArray),
                       FBY_FIELD(Fby::TransportPath, Count, UInt32),
                       FBY_FIELD(Fby::TransportPath, Closed, Bool))
 

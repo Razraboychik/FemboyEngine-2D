@@ -1,6 +1,7 @@
 // FemboyEngine2D - deferred structural ECS changes.
 #pragma once
 
+#include "Engine/Core/Assert.hpp"
 #include "Engine/Core/FrameArena.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Schedule.hpp"
@@ -104,7 +105,14 @@ private:
     template <typename T>
     [[nodiscard]] bool Push(CommandKind InKind, Entity InEntity, CommandApply InApply, const T& InValue)
     {
-        if (MArena == nullptr || MCount >= kCommandBufferCapacity || InEntity == Fby::kNullEntity)
+        if (MCount >= kCommandBufferCapacity)
+        {
+            // Dropping a structural command silently desynchronizes the world;
+            // a full per-frame command budget is a caller bug.
+            Fby::FailAssert("Fby::Ecs::CommandBuffer::Push", __FILE__, __LINE__,
+                            "command buffer capacity exceeded (kCommandBufferCapacity)");
+        }
+        if (MArena == nullptr || InEntity == Fby::kNullEntity)
         {
             return false;
         }

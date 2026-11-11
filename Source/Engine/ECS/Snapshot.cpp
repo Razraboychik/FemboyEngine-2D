@@ -1,5 +1,7 @@
 #include "Engine/ECS/Snapshot.hpp"
 
+#include "Engine/Core/Assert.hpp"
+#include "Engine/Core/Log.hpp"
 #include "Engine/ECS/SkeletonAssetRef.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
@@ -769,8 +771,15 @@ void AddPhysicsCodecs(SnapshotSchema& InSchema)
 // Schema
 bool SnapshotSchema::AddCodec(const SnapshotComponent& InCodec)
 {
+    // Running out of codec slots would silently stop capturing a component and
+    // desynchronize rollback, so it is a hard failure rather than a false return.
+    if (MCount >= MComponents.size())
+    {
+        Fby::FailAssert("Fby::Ecs::SnapshotSchema::AddCodec", __FILE__, __LINE__,
+                        "snapshot component limit exceeded (kMaxSnapshotComponents)");
+    }
     if (InCodec.name.empty() || InCodec.has == nullptr || InCodec.capture == nullptr || InCodec.restore == nullptr ||
-        InCodec.remove == nullptr || InCodec.size > kMaxSnapshotComponentBytes || MCount >= MComponents.size())
+        InCodec.remove == nullptr || InCodec.size > kMaxSnapshotComponentBytes)
     {
         return false;
     }
@@ -983,6 +992,8 @@ bool CaptureSnapshot(const Registry& InRegistry, const SnapshotSchema& InSchema,
     {
         // More entities than the snapshot table can hold: fail instead of
         // silently capturing a subset.
+        LogError("snapshot", "entity count exceeds the snapshot limit ({}); capture refused",
+                 static_cast<std::uint32_t>(kMaxSnapshotEntities));
         return false;
     }
 
@@ -1101,6 +1112,8 @@ bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema, st
     const std::uint32_t ScopedEntityCount = CollectEntities(InRegistry, ScopedEntities, &ScopedOverflow);
     if (ScopedOverflow)
     {
+        LogError("snapshot", "entity count exceeds the delta snapshot limit ({}); capture refused",
+                 static_cast<std::uint32_t>(kMaxSnapshotEntities));
         return false;
     }
     std::array<const SnapshotComponent*, kMaxSnapshotComponents> ScopedComponents{};

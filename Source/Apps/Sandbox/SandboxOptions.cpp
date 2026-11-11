@@ -55,6 +55,7 @@ void PrintSandboxUsage()
                 "  --headless                  no window; run the client until the host stops\n"
                 "  --no-vsync                  disable presentation vsync for benchmarks\n"
                 "  --static                     freeze gameplay/extract after frame 0\n"
+                "  --frames <count>             exit after N frames (PGO/CI); 0 is interactive\n"
                 "  --help                      this text\n");
 }
 
@@ -102,6 +103,14 @@ bool ParseSandboxOptions(int InCount, char** InArgs, SandboxOptions* OutOptions,
         if (ScopedArg == "--static")
         {
             ScopedOptions.Static = true;
+            continue;
+        }
+        if (ScopedArg == "--frames")
+        {
+            if (ScopedIndex + 1 >= InCount || !ParseCount(InArgs[++ScopedIndex], &ScopedOptions.Frames))
+            {
+                return Fail("--frames expects a non-negative integer");
+            }
             continue;
         }
         if (ScopedArg == "--connect" || ScopedArg == "--listen")

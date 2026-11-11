@@ -833,23 +833,40 @@ bool BuildMipChain(const std::uint8_t* InRgba8, std::uint32_t InWidth, std::uint
     {
         return false;
     }
+    const std::uint64_t ScopedLimit = std::numeric_limits<std::size_t>::max();
     std::uint64_t ScopedTotalBytes = 0;
+    std::uint64_t ScopedBaseBytes = 0;
     for (std::uint32_t ScopedLevel = 0; ScopedLevel < InMipLevels; ++ScopedLevel)
     {
-        ScopedTotalBytes += static_cast<std::uint64_t>(Assets::MipExtent(InWidth, ScopedLevel)) *
-                            Assets::MipExtent(InHeight, ScopedLevel) * 4;
-    }
-    if (ScopedTotalBytes > std::numeric_limits<std::size_t>::max())
-    {
-        return false;
+        const std::uint64_t ScopedWidth = Assets::MipExtent(InWidth, ScopedLevel);
+        const std::uint64_t ScopedHeight = Assets::MipExtent(InHeight, ScopedLevel);
+        if (ScopedWidth == 0 || ScopedHeight == 0 || ScopedWidth > ScopedLimit / 4)
+        {
+            return false;
+        }
+        const std::uint64_t ScopedRowBytes = ScopedWidth * 4;
+        if (ScopedHeight > ScopedLimit / ScopedRowBytes)
+        {
+            return false;
+        }
+        const std::uint64_t ScopedLevelBytes = ScopedRowBytes * ScopedHeight;
+        if (ScopedLevelBytes > ScopedLimit - ScopedTotalBytes)
+        {
+            return false;
+        }
+        if (ScopedLevel == 0)
+        {
+            ScopedBaseBytes = ScopedLevelBytes;
+        }
+        ScopedTotalBytes += ScopedLevelBytes;
     }
     OutRgba8.assign(static_cast<std::size_t>(ScopedTotalBytes), 0);
-    std::memcpy(OutRgba8.data(), InRgba8, static_cast<std::size_t>(InWidth) * InHeight * 4);
+    std::memcpy(OutRgba8.data(), InRgba8, static_cast<std::size_t>(ScopedBaseBytes));
 
     std::uint32_t ScopedPreviousWidth = InWidth;
     std::uint32_t ScopedPreviousHeight = InHeight;
     const std::uint8_t* ScopedPrevious = OutRgba8.data();
-    std::uint8_t* ScopedDestination = OutRgba8.data() + static_cast<std::size_t>(InWidth) * InHeight * 4;
+    std::uint8_t* ScopedDestination = OutRgba8.data() + static_cast<std::size_t>(ScopedBaseBytes);
     for (std::uint32_t ScopedLevel = 1; ScopedLevel < InMipLevels; ++ScopedLevel)
     {
         const std::uint32_t ScopedLevelWidth = Assets::MipExtent(InWidth, ScopedLevel);

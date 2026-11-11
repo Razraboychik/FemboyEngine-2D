@@ -43,6 +43,7 @@ struct VmFault
         DivisionByZero,
         NoRandomSource,
         NoCommandBuffer,
+        CommandBufferFull,
         SpawnUnavailable,
         UnknownOpcode,
     };
@@ -82,6 +83,8 @@ struct VmFault
                 return "no-random-source";
             case Code::NoCommandBuffer:
                 return "no-command-buffer";
+            case Code::CommandBufferFull:
+                return "command-buffer-full";
             case Code::SpawnUnavailable:
                 return "spawn-unavailable";
             case Code::UnknownOpcode:
@@ -266,29 +269,41 @@ public:
     void RequestPauseAtEntry(VmDebugState& InDebug) noexcept;
 
     // Register access for native functions. Bounds are the program's declared
+    // Register access for native functions. The interpreter validates its own
+    // instructions, but a native may still pass an arbitrary index, so these
+    // accessors clamp to the fixed register file instead of indexing past it.
     [[nodiscard]] float F(std::uint8_t InIndex) const noexcept
     {
-        return MRegisters[InIndex].f;
+        return InIndex < kMaxVmRegisters ? MRegisters[InIndex].f : 0.0f;
     }
     [[nodiscard]] std::int32_t I(std::uint8_t InIndex) const noexcept
     {
-        return MRegisters[InIndex].i;
+        return InIndex < kMaxVmRegisters ? MRegisters[InIndex].i : 0;
     }
     [[nodiscard]] std::uint32_t U(std::uint8_t InIndex) const noexcept
     {
-        return MRegisters[InIndex].u;
+        return InIndex < kMaxVmRegisters ? MRegisters[InIndex].u : 0u;
     }
     void SetF(std::uint8_t InIndex, float InValue) noexcept
     {
-        MRegisters[InIndex].f = InValue;
+        if (InIndex < kMaxVmRegisters)
+        {
+            MRegisters[InIndex].f = InValue;
+        }
     }
     void SetI(std::uint8_t InIndex, std::int32_t InValue) noexcept
     {
-        MRegisters[InIndex].i = InValue;
+        if (InIndex < kMaxVmRegisters)
+        {
+            MRegisters[InIndex].i = InValue;
+        }
     }
     void SetU(std::uint8_t InIndex, std::uint32_t InValue) noexcept
     {
-        MRegisters[InIndex].u = InValue;
+        if (InIndex < kMaxVmRegisters)
+        {
+            MRegisters[InIndex].u = InValue;
+        }
     }
 
     [[nodiscard]] std::uint64_t InstructionsExecuted() const noexcept

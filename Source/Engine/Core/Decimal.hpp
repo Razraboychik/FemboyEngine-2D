@@ -104,7 +104,9 @@ template <std::uint32_t Expansion = 1> struct DecimalT
             return Status::InvalidArgument;
         }
 
-        std::string ScopedDigits;
+        constexpr std::size_t kMaxDecimalDigits = 256;
+        std::array<char, kMaxDecimalDigits> ScopedDigits{};
+        std::size_t ScopedDigitCount = 0;
         std::uint32_t ScopedFractionDigits = 0;
         bool ScopedFraction = false;
         bool ScopedAnyDigit = false;
@@ -113,7 +115,11 @@ template <std::uint32_t Expansion = 1> struct DecimalT
             const char ScopedCharacter = InText[ScopedCursor];
             if (ScopedCharacter >= '0' && ScopedCharacter <= '9')
             {
-                ScopedDigits.push_back(ScopedCharacter);
+                if (ScopedDigitCount >= ScopedDigits.size())
+                {
+                    return Status::TooLarge;
+                }
+                ScopedDigits[ScopedDigitCount++] = ScopedCharacter;
                 ScopedAnyDigit = true;
                 if (ScopedFraction)
                 {
@@ -186,7 +192,8 @@ template <std::uint32_t Expansion = 1> struct DecimalT
         }
 
         BigIntT<Expansion> ScopedCoefficient;
-        const Status ScopedStatus = BigIntT<Expansion>::FromString(ScopedDigits, &ScopedCoefficient);
+        const Status ScopedStatus =
+            BigIntT<Expansion>::FromString(std::string_view(ScopedDigits.data(), ScopedDigitCount), &ScopedCoefficient);
         if (ScopedStatus != Status::Ok)
         {
             return ScopedStatus;

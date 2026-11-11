@@ -339,20 +339,24 @@ struct TextInlineHit
     }
     std::uint32_t ScopedCodepoint = 0xFFFDu;
     std::uint32_t ScopedLength = 1;
+    std::uint32_t ScopedMinimum = 0;
     if ((ScopedByte & 0xE0u) == 0xC0u)
     {
         ScopedCodepoint = ScopedByte & 0x1Fu;
         ScopedLength = 2;
+        ScopedMinimum = 0x80u;
     }
     else if ((ScopedByte & 0xF0u) == 0xE0u)
     {
         ScopedCodepoint = ScopedByte & 0x0Fu;
         ScopedLength = 3;
+        ScopedMinimum = 0x800u;
     }
     else if ((ScopedByte & 0xF8u) == 0xF0u)
     {
         ScopedCodepoint = ScopedByte & 0x07u;
         ScopedLength = 4;
+        ScopedMinimum = 0x10000u;
     }
     if (ScopedLength == 1 || InCursor + ScopedLength > InText.size())
     {
@@ -368,6 +372,14 @@ struct TextInlineHit
             return 0xFFFDu;
         }
         ScopedCodepoint = (ScopedCodepoint << 6) | (ScopedContinuation & 0x3Fu);
+    }
+    // Reject overlong forms, UTF-16 surrogates and values above U+10FFFF. The
+    // cursor advances by one byte so the caller makes progress.
+    if (ScopedCodepoint < ScopedMinimum || ScopedCodepoint > 0x10FFFFu ||
+        (ScopedCodepoint >= 0xD800u && ScopedCodepoint <= 0xDFFFu))
+    {
+        ++InCursor;
+        return 0xFFFDu;
     }
     InCursor += ScopedLength;
     return ScopedCodepoint;
@@ -508,7 +520,9 @@ struct TextInlineHit
 
         if (ScopedWordGlyphs != 0)
         {
-            if (ScopedLineWidth > 0.0f && ScopedLineWidth + ScopedAdvance + ScopedWordWidth > ScopedWidth)
+            // The separator's advance was already added to ScopedLineWidth; adding
+            // it again here wrapped one glyph too early.
+            if (ScopedLineWidth > 0.0f && ScopedLineWidth + ScopedWordWidth > ScopedWidth)
             {
                 ScopedEmit(ScopedLineBegin, ScopedWordBegin, ScopedLineGlyphs, ScopedLineWidth, ScopedLineHeight);
                 ScopedLineBegin = ScopedWordBegin;

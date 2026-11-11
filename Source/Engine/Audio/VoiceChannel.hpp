@@ -122,7 +122,9 @@ protected:
         std::uint16_t Sequence = 0;
         std::uint16_t Samples = 0;
         std::uint8_t Flags = 0;
-        std::uint8_t Bytes = 0;
+        // The packet may be up to kVoiceMaxPacketBytes (512), so a byte-sized
+        // length would truncate every payload above 255 bytes.
+        std::uint16_t Bytes = 0;
         std::array<std::uint8_t, kVoiceMaxPacketBytes> Data{};
     };
 

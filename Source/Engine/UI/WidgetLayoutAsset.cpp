@@ -48,13 +48,23 @@ namespace
             return "Tooltip";
         case WidgetKind::TextInput:
             return "TextInput";
+        case WidgetKind::NineSlice:
+            return "NineSlice";
+        case WidgetKind::ToggleSwitch:
+            return "ToggleSwitch";
+        case WidgetKind::RadioButton:
+            return "RadioButton";
+        case WidgetKind::TextBlock:
+            return "TextBlock";
+        case WidgetKind::Count:
+            break;
     }
     return "Panel";
 }
 
 [[nodiscard]] bool ParseKind(std::string_view InName, WidgetKind* OutKind) noexcept
 {
-    constexpr std::array<std::pair<std::string_view, WidgetKind>, 16> kKinds{{
+    constexpr std::array<std::pair<std::string_view, WidgetKind>, 20> kKinds{{
         {"Panel", WidgetKind::Panel},
         {"Button", WidgetKind::Button},
         {"Label", WidgetKind::Label},
@@ -71,6 +81,10 @@ namespace
         {"Custom", WidgetKind::Custom},
         {"Tooltip", WidgetKind::Tooltip},
         {"TextInput", WidgetKind::TextInput},
+        {"NineSlice", WidgetKind::NineSlice},
+        {"ToggleSwitch", WidgetKind::ToggleSwitch},
+        {"RadioButton", WidgetKind::RadioButton},
+        {"TextBlock", WidgetKind::TextBlock},
     }};
     for (const auto& [ScopedName, ScopedKind] : kKinds)
     {

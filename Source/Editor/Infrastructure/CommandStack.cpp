@@ -654,8 +654,7 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
         ForEachChangedRange(ScopedOldBytes, ScopedNewBytes,
                             [&](std::uint32_t InStart, std::uint32_t InLength)
                             {
-                                ScopedRanges[ScopedRangeIndex++] =
-                                    Range{static_cast<std::uint16_t>(InStart), static_cast<std::uint16_t>(InLength)};
+                                ScopedRanges[ScopedRangeIndex++] = Range{InStart, InLength};
                                 std::memcpy(ScopedOldRegion + ScopedCursor, ScopedOldBytes.data() + InStart, InLength);
                                 std::memcpy(ScopedNewRegion + ScopedCursor, ScopedNewBytes.data() + InStart, InLength);
                                 ScopedCursor += InLength;

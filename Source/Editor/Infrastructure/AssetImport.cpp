@@ -148,6 +148,10 @@ bool InferAssetKindFromPath(std::string_view InSourcePath, AssetKind* OutKind) n
 std::string CookedPathForSource(std::string_view InSourcePath, AssetKind InKind)
 {
     const std::string ScopedNormalized = Assets::NormalizePakPath(InSourcePath);
+    if (ScopedNormalized.empty())
+    {
+        return {};
+    }
     switch (InKind)
     {
         case AssetKind::Texture:
@@ -232,6 +236,10 @@ bool BuildDefaultAssetMeta(std::string_view InSourcePath, AssetKind InKind, Asse
 std::string MetaFilePathForSource(std::string_view InSourcePath)
 {
     std::string ScopedResult(Assets::NormalizePakPath(InSourcePath));
+    if (ScopedResult.empty())
+    {
+        return {};
+    }
     ScopedResult += ".femeta";
     return ScopedResult;
 }
@@ -240,6 +248,11 @@ bool WriteMetaBesideSource(const std::filesystem::path& InAssetsRoot, std::strin
                            const Assets::AssetMeta& InMeta, std::string* InError)
 {
     const std::string ScopedRelative = MetaFilePathForSource(InSourcePath);
+    if (ScopedRelative.empty() || InAssetsRoot.empty())
+    {
+        SetError(InError, "asset source path is empty or escapes the project root");
+        return false;
+    }
     const std::filesystem::path ScopedPhysical = InAssetsRoot / std::filesystem::path(ScopedRelative);
 
     std::string ScopedText;

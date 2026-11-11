@@ -225,7 +225,7 @@ bool VoiceChannel::InsertJitter(Peer& InPeer, std::uint16_t InSequence, std::uin
     ScopedTarget->Sequence = InSequence;
     ScopedTarget->Samples = InSamples == 0 ? static_cast<std::uint16_t>(kVoiceFrameSamples) : InSamples;
     ScopedTarget->Flags = InFlags;
-    ScopedTarget->Bytes = static_cast<std::uint8_t>(InPayload.size());
+    ScopedTarget->Bytes = static_cast<std::uint16_t>(InPayload.size());
     if (!InPayload.empty())
     {
         std::memcpy(ScopedTarget->Data.data(), InPayload.data(), InPayload.size());

@@ -89,6 +89,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     const bool ScopedFastMode = MViewportPresenter.Mode() == MLastViewportMode;
     const Ecs::Registry& ScopedRegistry = InRegistry;
     const bool ScopedFastScene = MHasLastFrame && ScopedRegistry.Data().Revision() == MLastSceneRevision &&
+                                 ScopedRegistry.Data().ModificationRevision() == MLastModificationRevision &&
                                  InTextureArray == MLastTextureArray && ScopedFastCamera && ScopedFastMode &&
                                  InExtraMeshItems.empty() && InTileQuads.empty() && InSdfCharacterMeshes.empty() &&
                                  !MTemporalEnabled && MSdfField == nullptr && MSdfGiVolume == nullptr;
@@ -125,10 +126,13 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     }
     const bool ScopedUnlit = Rhi::ViewportModeNeedsUnlit(MViewportPresenter.Mode());
     const float ScopedZoom = std::max(InCamera.zoom, 0.0001f);
-    const bool ScopedCull = InCamera.viewport.X > 0.0f && InCamera.viewport.Y > 0.0f;
     const Vector2D ScopedViewHalf{InCamera.viewport.X * 0.5f / ScopedZoom, InCamera.viewport.Y * 0.5f / ScopedZoom};
     const Vector2D ScopedViewMin = InCamera.center - ScopedViewHalf;
     const Vector2D ScopedViewMax = InCamera.center + ScopedViewHalf;
+    const bool ScopedViewCoversWorld = MHasWorldBounds && ScopedViewMin.X <= MWorldMin.X &&
+                                       ScopedViewMin.Y <= MWorldMin.Y && ScopedViewMax.X >= MWorldMax.X &&
+                                       ScopedViewMax.Y >= MWorldMax.Y;
+    const bool ScopedCull = !ScopedViewCoversWorld && InCamera.viewport.X > 0.0f && InCamera.viewport.Y > 0.0f;
     auto ScopedView = ScopedRegistry.view<Transform2D, Sprite2D, DrawOrder>();
     auto ScopedSkinView = ScopedRegistry.view<SkeletonComponent, SkinComponent, SkinnedSprite>();
     // Most scenes have none of these optional filters. Checking the archetype
@@ -180,6 +184,8 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         ScopedRenderMaskMask.set(Fcs::Detail::ComponentIdOf<RenderMaskComponent>());
         Fcs::Signature ScopedLightResultMask;
         ScopedLightResultMask.set(Fcs::Detail::ComponentIdOf<Light2DResultComponent>());
+        Fcs::Signature ScopedOverlayMask;
+        ScopedOverlayMask.set(Fcs::Detail::ComponentIdOf<SpriteOverlay2D>());
         const Fcs::World& ScopedWorld = ScopedRegistry.Data();
         MParallelChunks.clear();
         MParallelChunks.reserve(ScopedWorld.ArchetypeCount());
@@ -212,6 +218,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                 continue;
             }
             const bool ScopedChunkHasRenderMask = (ScopedType.Type & ScopedRenderMaskMask) == ScopedRenderMaskMask;
+            const bool ScopedChunkHasOverlay = (ScopedType.Type & ScopedOverlayMask) == ScopedOverlayMask;
             for (std::uint32_t ScopedRow = 0; ScopedRow < ScopedChunk.Count; ++ScopedRow)
             {
                 const Transform2D* ScopedTransform =
@@ -234,7 +241,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                     ++ScopedOit;
                 }
                 ++MParallelOffsets[ScopedChunkIndex + 1];
-                if (ScopedHasOverlay)
+                if (ScopedHasOverlay && ScopedChunkHasOverlay)
                 {
                     if (const auto* ScopedOverlay = ScopedRegistry.try_get<SpriteOverlay2D>(ScopedEntity);
                         ScopedOverlay != nullptr && ScopedOverlay->Weight > 0.0f)
@@ -285,6 +292,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                         (ScopedType.Type & ScopedRenderMaskMask) == ScopedRenderMaskMask;
                     const bool ScopedChunkHasLightResult =
                         (ScopedType.Type & ScopedLightResultMask) == ScopedLightResultMask;
+                    const bool ScopedChunkHasOverlay = (ScopedType.Type & ScopedOverlayMask) == ScopedOverlayMask;
                     std::size_t ScopedWrite = MParallelOffsets[ScopedChunkIndex];
                     for (std::uint32_t ScopedRow = 0; ScopedRow < ScopedChunk.Count; ++ScopedRow)
                     {
@@ -369,8 +377,9 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                                 MMotionHistory.Generation[ScopedHistoryIndex] = ScopedGeneration;
                             }
                         }
-                        const auto* ScopedOverlay =
-                            ScopedHasOverlay ? ScopedRegistry.try_get<SpriteOverlay2D>(ScopedEntity) : nullptr;
+                        const auto* ScopedOverlay = ScopedHasOverlay && ScopedChunkHasOverlay
+                                                        ? ScopedRegistry.try_get<SpriteOverlay2D>(ScopedEntity)
+                                                        : nullptr;
                         if (ScopedOverlay != nullptr && ScopedOverlay->Weight > 0.0f)
                         {
                             const float ScopedWeight = std::clamp(ScopedOverlay->Weight, 0.0f, 1.0f);
@@ -1134,6 +1143,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     MHasLastCamera = true;
     MLastCamera = InCamera;
     MLastSceneRevision = ScopedRegistry.Data().Revision();
+    MLastModificationRevision = ScopedRegistry.Data().ModificationRevision();
     MLastTextureArray = InTextureArray;
     MLastViewportMode = MViewportPresenter.Mode();
     MPreviousJitterX = MPacket.jitterX;

@@ -700,6 +700,10 @@ int main(int argc, char** argv)
 
     while (ScopedWindow.PumpEvents() && !ScopedWindow.ShouldClose())
     {
+        if (ScopedOptions.Frames > 0 && ScopedFrameIndex >= ScopedOptions.Frames)
+        {
+            break;
+        }
         ScopedClock.Tick();
         float ScopedDt = static_cast<float>(ScopedClock.Delta());
         ScopedDt = std::min(ScopedDt, kMaxFrameTime);

@@ -110,6 +110,12 @@ int main()
     const std::string_view ScopedOutside =
         "FBYATLAS 1\npage 128 128 p.png\nsprite 1 120 120 16 16 0.5 0.5\n";
     FBY_CHECK(!Fby::Assets::LoadSpriteAtlasAsset(ScopedOutside, &ScopedAsset, &ScopedParseError));
+    const std::string_view ScopedOverflow =
+        "FBYATLAS 1\npage 128 128 p.png\nsprite 1 4294967295 0 1 8 0.5 0.5\n";
+    FBY_CHECK(!Fby::Assets::LoadSpriteAtlasAsset(ScopedOverflow, &ScopedAsset, &ScopedParseError));
+    const std::string_view ScopedNaN =
+        "FBYATLAS 1\npage 128 128 p.png\nsprite 1 0 0 8 8 nan 0.5\n";
+    FBY_CHECK(!Fby::Assets::LoadSpriteAtlasAsset(ScopedNaN, &ScopedAsset, &ScopedParseError));
     FBY_CHECK(!Fby::Assets::LoadSpriteAtlasAsset("sprite 1 0 0 8 8 0.5 0.5\n", &ScopedAsset, &ScopedParseError));
 
     if (GFailures == 0)

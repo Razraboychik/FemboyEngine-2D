@@ -378,6 +378,17 @@ bool ParseProgram(std::span<const std::byte> InStorage, CompiledProgram* Out, st
             SetError(InError, "program field binding uses a kind the VM cannot touch (string/uint64)");
             return false;
         }
+        // The VM loads and stores Float/Vector2D fields through a typed pointer;
+        // a crafted binding must not create a misaligned access on strict targets.
+        const std::uint32_t ScopedAlignment =
+            ScopedField.kind == static_cast<std::uint8_t>(Reflect::FieldKind::Vector2D)
+                ? static_cast<std::uint32_t>(alignof(Vector2D))
+                : std::min<std::uint32_t>(ScopedField.size, sizeof(std::uint32_t));
+        if (ScopedAlignment != 0 && (ScopedField.offset % ScopedAlignment) != 0)
+        {
+            SetError(InError, "program field binding is not naturally aligned");
+            return false;
+        }
     }
 
     for (const FunctionEntry& ScopedFunction : ScopedProgram.functions)

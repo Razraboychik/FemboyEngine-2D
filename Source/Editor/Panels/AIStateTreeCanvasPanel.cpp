@@ -2683,6 +2683,13 @@ void AIStateTreeCanvasPanel::DrawPIEInspector()
                             ScopedValue);
                 break;
             }
+            case Reflect::FieldKind::Vector2DArray:
+            {
+                ImGui::TextDisabled("%.*s: %u point(s)", static_cast<int>(ScopedField.name.size()),
+                                    ScopedField.name.data(),
+                                    static_cast<unsigned>(ScopedField.size / sizeof(Vector2D)));
+                break;
+            }
         }
     }
 

@@ -261,6 +261,13 @@ BookAssetError OpenBookAsset(std::span<const std::byte> InBytes, BookAssetView* 
             SetError(InError, "book: anchor range is out of range");
             return BookAssetError::BadBlock;
         }
+        const std::span<const char> ScopedBlockText(ScopedView.Text.data() + ScopedBlock.TextOffset,
+                                                     ScopedBlock.TextLength);
+        if (!IsUtf8Boundary(ScopedBlockText, ScopedAnchor.ByteOffset))
+        {
+            SetError(InError, "book: anchor splits a UTF-8 sequence");
+            return BookAssetError::BadBlock;
+        }
     }
 
     *OutView = ScopedView;

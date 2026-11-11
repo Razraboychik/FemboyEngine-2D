@@ -252,7 +252,7 @@ std::uint32_t NetEntityMap::FindLocalSlot(std::uint32_t InLocal) const noexcept
 
 bool NetEntityMap::Register(NetEntityId InNet, Entity InLocal) noexcept
 {
-    if (!InNet.IsValid() || InLocal == Fby::kNullEntity)
+    if (!InNet.IsValid() || InNet.value == kTombstone || InLocal == Fby::kNullEntity)
     {
         return false;
     }

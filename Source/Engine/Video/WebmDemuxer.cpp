@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <format>
@@ -122,6 +123,41 @@ void SetError(std::string* InError, std::string InMessage)
     {
         InValue = (InValue << 8) | static_cast<std::uint8_t>(InData[InPosition + ScopedI]);
     }
+    InPosition += ScopedLength;
+    return true;
+}
+
+[[nodiscard]] bool ReadLaceVint(std::span<const std::byte> InData, std::size_t& InPosition, std::uint64_t& OutValue,
+                                std::size_t& OutBytes) noexcept
+{
+    if (InPosition >= InData.size())
+    {
+        return false;
+    }
+    const auto ScopedFirst = static_cast<std::uint8_t>(InData[InPosition]);
+    if (ScopedFirst == 0)
+    {
+        return false;
+    }
+    std::size_t ScopedLength = 0;
+    std::uint8_t ScopedMask = 0x80;
+    while ((ScopedFirst & ScopedMask) == 0)
+    {
+        ScopedMask >>= 1;
+        ++ScopedLength;
+    }
+    ++ScopedLength;
+    if (ScopedLength > 8 || InPosition + ScopedLength > InData.size())
+    {
+        return false;
+    }
+    std::uint64_t ScopedValue = static_cast<std::uint64_t>(ScopedFirst & (ScopedMask - 1));
+    for (std::size_t ScopedI = 1; ScopedI < ScopedLength; ++ScopedI)
+    {
+        ScopedValue = (ScopedValue << 8) | static_cast<std::uint8_t>(InData[InPosition + ScopedI]);
+    }
+    OutValue = ScopedValue;
+    OutBytes = ScopedLength;
     InPosition += ScopedLength;
     return true;
 }
@@ -402,9 +438,9 @@ bool WebmDemuxer::ParseSegmentInfo(const Element& InSegment, std::string* InErro
         else if (ScopedChild.id == kDurationId)
         {
             double ScopedValue = 0.0;
-            if (!ReadFloat(ScopedChild, ScopedValue) || !(ScopedValue >= 0.0))
+            if (!ReadFloat(ScopedChild, ScopedValue) || !std::isfinite(ScopedValue) || !(ScopedValue >= 0.0))
             {
-                SetError(InError, "Info/Duration is malformed");
+                SetError(InError, "Info/Duration is malformed or not finite");
                 return false;
             }
             ScopedDurationTicks = ScopedValue;
@@ -415,7 +451,14 @@ bool WebmDemuxer::ParseSegmentInfo(const Element& InSegment, std::string* InErro
     MTrack.timestampScaleNs = ScopedTimestampScale;
     if (ScopedDurationTicks >= 0.0)
     {
-        MTrack.durationNs = static_cast<std::uint64_t>(ScopedDurationTicks * static_cast<double>(ScopedTimestampScale));
+        const double ScopedDurationNs = ScopedDurationTicks * static_cast<double>(ScopedTimestampScale);
+        if (!std::isfinite(ScopedDurationNs) ||
+            ScopedDurationNs > static_cast<double>(std::numeric_limits<std::uint64_t>::max()))
+        {
+            SetError(InError, "Info/Duration is out of range");
+            return false;
+        }
+        MTrack.durationNs = static_cast<std::uint64_t>(ScopedDurationNs);
     }
     return true;
 }
@@ -527,10 +570,20 @@ bool WebmDemuxer::ParseTrackEntry(const Element& InEntry, std::string* InError)
                 std::uint64_t ScopedValue = 0;
                 if (ScopedVideoChild.id == kPixelWidthId && ReadUnsigned(ScopedVideoChild, ScopedValue))
                 {
+                    if (ScopedValue == 0 || ScopedValue > 16384)
+                    {
+                        SetError(InError, "video track PixelWidth is out of range");
+                        return false;
+                    }
                     ScopedWidth = static_cast<std::uint32_t>(ScopedValue);
                 }
                 else if (ScopedVideoChild.id == kPixelHeightId && ReadUnsigned(ScopedVideoChild, ScopedValue))
                 {
+                    if (ScopedValue == 0 || ScopedValue > 16384)
+                    {
+                        SetError(InError, "video track PixelHeight is out of range");
+                        return false;
+                    }
                     ScopedHeight = static_cast<std::uint32_t>(ScopedValue);
                 }
                 else if (ScopedVideoChild.id == kAlphaModeId && ReadUnsigned(ScopedVideoChild, ScopedValue))
@@ -882,7 +935,7 @@ bool WebmDemuxer::Open(std::span<const std::byte> InBytes, std::string* InError)
     return true;
 }
 
-std::uint64_t WebmDemuxer::ReadClusterTimestampTicks(const Element& InCluster) const noexcept
+bool WebmDemuxer::ReadClusterTimestampTicks(const Element& InCluster, std::uint64_t& OutTicks) const noexcept
 {
     const std::size_t ScopedEnd = InCluster.dataStart + static_cast<std::size_t>(InCluster.size);
     std::size_t ScopedPosition = InCluster.dataStart;
@@ -891,17 +944,21 @@ std::uint64_t WebmDemuxer::ReadClusterTimestampTicks(const Element& InCluster) c
         Element ScopedChild;
         if (!ReadElement(ScopedPosition, ScopedChild) || ScopedChild.unknownSize)
         {
-            return 0;
+            return false;
         }
         if (ScopedChild.id == kClusterTimestampId)
         {
             std::uint64_t ScopedTicks = 0;
-            (void)ReadUnsigned(ScopedChild, ScopedTicks);
-            return ScopedTicks;
+            if (!ReadUnsigned(ScopedChild, ScopedTicks))
+            {
+                return false;
+            }
+            OutTicks = ScopedTicks;
+            return true;
         }
         ScopedPosition = ScopedChild.dataStart + static_cast<std::size_t>(ScopedChild.size);
     }
-    return 0;
+    return false;
 }
 
 void WebmDemuxer::BuildClusterIndex() noexcept
@@ -921,9 +978,14 @@ void WebmDemuxer::BuildClusterIndex() noexcept
             {
                 break;
             }
+            std::uint64_t ScopedTimestampTicks = 0;
+            if (!ReadClusterTimestampTicks(ScopedElement, ScopedTimestampTicks))
+            {
+                break;
+            }
             ClusterIndexEntry& ScopedEntry = MClusterIndex[MClusterIndexCount++];
             ScopedEntry.Offset = ScopedPosition;
-            ScopedEntry.TimestampTicks = ReadClusterTimestampTicks(ScopedElement);
+            ScopedEntry.TimestampTicks = ScopedTimestampTicks;
             ScopedPosition = ScopedElement.dataStart + static_cast<std::size_t>(ScopedElement.size);
             continue;
         }
@@ -968,6 +1030,7 @@ bool WebmDemuxer::SeekToNs(std::uint64_t InTimestampNs) noexcept
     MAudioClusterTimestampTicks = 0;
     MAudioInCluster = false;
     MAudioFinished = MAudioTrack.trackNumber == 0;
+    ClearLacedAudio();
     return true;
 }
 
@@ -985,6 +1048,7 @@ void WebmDemuxer::Rewind() noexcept
     MAudioClusterTimestampTicks = 0;
     MAudioInCluster = false;
     MAudioFinished = MAudioScanPosition >= MSegmentEnd || MAudioTrack.trackNumber == 0;
+    ClearLacedAudio();
     MFatal = false;
 }
 
@@ -1006,6 +1070,7 @@ void WebmDemuxer::Close() noexcept
     MAudioClusterTimestampTicks = 0;
     MAudioInCluster = false;
     MAudioFinished = false;
+    ClearLacedAudio();
     MOpen = false;
     MFatal = false;
     MTrack = {};
@@ -1268,6 +1333,129 @@ WebmDemuxer::ClusterScan WebmDemuxer::ReadClusterChild(const Element& InElement,
     return ClusterScan::Skip;
 }
 
+void WebmDemuxer::ClearLacedAudio() noexcept
+{
+    MAudioLacedRead = 0;
+    MAudioLacedCount = 0;
+}
+
+bool WebmDemuxer::SplitLacedAudio(std::span<const std::byte> InData, std::uint8_t InLacing,
+                                  std::uint64_t InTimestampNs, std::string* InError)
+{
+    MAudioLacedRead = 0;
+    MAudioLacedCount = 0;
+    if (InData.empty() || InLacing == 0 || InLacing > 3)
+    {
+        SetError(InError, "audio block has invalid lacing");
+        return false;
+    }
+    const std::uint32_t ScopedFrameCount = static_cast<std::uint32_t>(InData[0]) + 1u;
+    if (ScopedFrameCount > kMaxLacedAudioPackets)
+    {
+        SetError(InError, "audio block has too many laced frames");
+        return false;
+    }
+    std::size_t ScopedCursor = 1;
+    std::array<std::uint32_t, kMaxLacedAudioPackets> ScopedSizes{};
+    std::uint32_t ScopedSizedFrames = 0;
+    if (InLacing == 2)
+    {
+        if (InData.size() <= 1)
+        {
+            SetError(InError, "fixed lacing has no payload");
+            return false;
+        }
+        const std::size_t ScopedRemaining = InData.size() - 1;
+        if (ScopedRemaining % ScopedFrameCount != 0)
+        {
+            SetError(InError, "fixed lacing payload is not divisible by its frame count");
+            return false;
+        }
+        const std::size_t ScopedFrameBytes = ScopedRemaining / ScopedFrameCount;
+        // The final frame is emitted from the remainder below, so size only the
+        // first count-1 frames here.
+        for (std::uint32_t ScopedI = 0; ScopedI + 1u < ScopedFrameCount; ++ScopedI)
+        {
+            ScopedSizes[ScopedSizedFrames++] = static_cast<std::uint32_t>(ScopedFrameBytes);
+        }
+    }
+    else if (InLacing == 1)
+    {
+        // Xiph lacing: N-1 lengths as 255-chains plus a final byte.
+        for (std::uint32_t ScopedI = 0; ScopedI + 1u < ScopedFrameCount; ++ScopedI)
+        {
+            std::uint32_t ScopedSize = 0;
+            for (;;)
+            {
+                if (ScopedCursor >= InData.size())
+                {
+                    SetError(InError, "truncated Xiph lacing");
+                    return false;
+                }
+                const std::uint8_t ScopedByte = static_cast<std::uint8_t>(InData[ScopedCursor++]);
+                ScopedSize += ScopedByte;
+                if (ScopedByte != 255)
+                {
+                    break;
+                }
+            }
+            ScopedSizes[ScopedSizedFrames++] = ScopedSize;
+        }
+    }
+    else
+    {
+        // EBML lacing: an unsigned first size and signed deltas for the rest.
+        std::uint64_t ScopedValue = 0;
+        std::size_t ScopedBytes = 0;
+        if (!ReadLaceVint(InData, ScopedCursor, ScopedValue, ScopedBytes) ||
+            ScopedValue > InData.size() - ScopedCursor)
+        {
+            SetError(InError, "malformed EBML lacing header");
+            return false;
+        }
+        ScopedSizes[ScopedSizedFrames++] = static_cast<std::uint32_t>(ScopedValue);
+        std::uint64_t ScopedPrevious = ScopedValue;
+        for (std::uint32_t ScopedI = 1; ScopedI + 1u < ScopedFrameCount; ++ScopedI)
+        {
+            if (!ReadLaceVint(InData, ScopedCursor, ScopedValue, ScopedBytes))
+            {
+                SetError(InError, "truncated EBML lacing");
+                return false;
+            }
+            const std::int64_t ScopedBias = static_cast<std::int64_t>((1ull << (7u * ScopedBytes - 1u)) - 1ull);
+            const std::int64_t ScopedSigned = static_cast<std::int64_t>(ScopedValue) - ScopedBias;
+            const std::int64_t ScopedSize = static_cast<std::int64_t>(ScopedPrevious) + ScopedSigned;
+            if (ScopedSize < 0 || static_cast<std::uint64_t>(ScopedSize) > InData.size() - ScopedCursor)
+            {
+                SetError(InError, "EBML lacing frame size is out of range");
+                return false;
+            }
+            ScopedPrevious = static_cast<std::uint64_t>(ScopedSize);
+            ScopedSizes[ScopedSizedFrames++] = static_cast<std::uint32_t>(ScopedSize);
+        }
+    }
+
+    std::size_t ScopedRemaining = InData.size() - ScopedCursor;
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedSizedFrames; ++ScopedI)
+    {
+        if (ScopedSizes[ScopedI] > ScopedRemaining)
+        {
+            SetError(InError, "laced audio frame exceeds its block");
+            return false;
+        }
+        ScopedRemaining -= ScopedSizes[ScopedI];
+    }
+    // ScopedRemaining is now the exact size of the final frame.
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedSizedFrames; ++ScopedI)
+    {
+        MAudioLaced[MAudioLacedCount++] =
+            LacedAudioPacket{InData.subspan(ScopedCursor, ScopedSizes[ScopedI]), InTimestampNs};
+        ScopedCursor += ScopedSizes[ScopedI];
+    }
+    MAudioLaced[MAudioLacedCount++] = LacedAudioPacket{InData.subspan(ScopedCursor, ScopedRemaining), InTimestampNs};
+    return true;
+}
+
 bool WebmDemuxer::ReadAudioClusterChild(const Element& InElement, std::string* InError, WebmAudioPacket& OutPacket,
                                         bool& OutHavePacket)
 {
@@ -1304,15 +1492,16 @@ bool WebmDemuxer::ReadAudioClusterChild(const Element& InElement, std::string* I
             {
                 return true;
             }
-            if (ScopedLacing != 0)
-            {
-                SetError(InError, "laced audio blocks are not supported");
-                return false;
-            }
             const std::int64_t ScopedTicks =
                 static_cast<std::int64_t>(MAudioClusterTimestampTicks) + ScopedRelativeTimestamp;
+            const std::uint64_t ScopedTimestampNs =
+                TimestampToNs(ScopedTicks < 0 ? 0ull : static_cast<std::uint64_t>(ScopedTicks));
+            if (ScopedLacing != 0)
+            {
+                return SplitLacedAudio(ScopedPayload, ScopedLacing, ScopedTimestampNs, InError);
+            }
             OutPacket.payload = ScopedPayload;
-            OutPacket.timestampNs = TimestampToNs(ScopedTicks < 0 ? 0ull : static_cast<std::uint64_t>(ScopedTicks));
+            OutPacket.timestampNs = ScopedTimestampNs;
             OutHavePacket = true;
             return true;
         }
@@ -1344,17 +1533,23 @@ bool WebmDemuxer::ReadAudioClusterChild(const Element& InElement, std::string* I
                     }
                     if (ScopedTrackNumber == MAudioTrack.trackNumber)
                     {
-                        if (ScopedLacing != 0)
-                        {
-                            SetError(InError, "laced audio blocks are not supported");
-                            return false;
-                        }
                         const std::int64_t ScopedTicks =
                             static_cast<std::int64_t>(MAudioClusterTimestampTicks) + ScopedRelativeTimestamp;
-                        OutPacket.payload = ScopedPayload;
-                        OutPacket.timestampNs =
+                        const std::uint64_t ScopedTimestampNs =
                             TimestampToNs(ScopedTicks < 0 ? 0ull : static_cast<std::uint64_t>(ScopedTicks));
-                        OutHavePacket = true;
+                        if (ScopedLacing != 0)
+                        {
+                            if (!SplitLacedAudio(ScopedPayload, ScopedLacing, ScopedTimestampNs, InError))
+                            {
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            OutPacket.payload = ScopedPayload;
+                            OutPacket.timestampNs = ScopedTimestampNs;
+                            OutHavePacket = true;
+                        }
                     }
                 }
                 ScopedPosition = ScopedChild.dataStart + static_cast<std::size_t>(ScopedChild.size);
@@ -1392,6 +1587,18 @@ DemuxStatus WebmDemuxer::NextAudioPacket(WebmAudioPacket& InPacket, std::string*
     }
     for (;;)
     {
+        if (MAudioLacedCount != 0)
+        {
+            InPacket.payload = MAudioLaced[MAudioLacedRead].Payload;
+            InPacket.timestampNs = MAudioLaced[MAudioLacedRead].TimestampNs;
+            ++MAudioLacedRead;
+            --MAudioLacedCount;
+            if (MAudioLacedCount == 0)
+            {
+                MAudioLacedRead = 0;
+            }
+            return DemuxStatus::Frame;
+        }
         if (MAudioFinished)
         {
             return DemuxStatus::End;

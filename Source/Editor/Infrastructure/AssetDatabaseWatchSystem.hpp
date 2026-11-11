@@ -87,11 +87,35 @@ public:
 
     struct Stats
     {
-        std::uint32_t changesSeen = 0;
-        std::uint32_t cookRequests = 0;
-        std::uint32_t reloads = 0;
-        std::uint32_t failures = 0;
-        std::uint32_t ignored = 0;
+        // The watcher thread increments changesSeen while the editor thread
+        // updates the other counters; atomic fields keep both paths race-free.
+        std::atomic<std::uint32_t> changesSeen{0};
+        std::atomic<std::uint32_t> cookRequests{0};
+        std::atomic<std::uint32_t> reloads{0};
+        std::atomic<std::uint32_t> failures{0};
+        std::atomic<std::uint32_t> ignored{0};
+        std::atomic<std::uint32_t> droppedChanges{0};
+
+        Stats() = default;
+        Stats(const Stats& InOther)
+            : changesSeen(InOther.changesSeen.load(std::memory_order_relaxed)),
+              cookRequests(InOther.cookRequests.load(std::memory_order_relaxed)),
+              reloads(InOther.reloads.load(std::memory_order_relaxed)),
+              failures(InOther.failures.load(std::memory_order_relaxed)),
+              ignored(InOther.ignored.load(std::memory_order_relaxed)),
+              droppedChanges(InOther.droppedChanges.load(std::memory_order_relaxed))
+        {
+        }
+        Stats& operator=(const Stats& InOther)
+        {
+            changesSeen.store(InOther.changesSeen.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            cookRequests.store(InOther.cookRequests.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            reloads.store(InOther.reloads.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            failures.store(InOther.failures.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            ignored.store(InOther.ignored.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            droppedChanges.store(InOther.droppedChanges.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            return *this;
+        }
     };
     [[nodiscard]] const Stats& GetStats() const noexcept
     {

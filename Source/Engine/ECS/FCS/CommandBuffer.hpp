@@ -102,10 +102,9 @@ private:
         {
             MPayload.resize(ScopedAligned + InBytes);
         }
-        void* ScopedDestination = MPayload.data() + ScopedAligned;
         if (InBytes > 0)
         {
-            std::memcpy(ScopedDestination, InValue, InBytes);
+            std::memcpy(MPayload.data() + ScopedAligned, InValue, InBytes);
         }
         Command ScopedCommand;
         ScopedCommand.Kind = InKind;

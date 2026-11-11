@@ -55,6 +55,7 @@ option(FBY_WITH_FSR2 "Compatibility flag; FSR2 is core and runtime-gated" OFF)
 option(FBY_WITH_DLSS "Build the NVIDIA DLSS temporal upscaler backend" OFF)
 option(FBY_REQUIRE_VENDOR_SDKS "Fail configure when a requested vendor SDK is missing" OFF)
 option(FBY_WITH_FRAME_GENERATION "Compatibility flag; custom FG is core and runtime-gated" OFF)
+option(FBY_CRYPTO_ENABLE_AESNI "Build the AES-NI block path (x86 only, runtime gated)" OFF)
 # Vendor SDK roots are deliberately not committed. A developer points a build
 # at a local NVIDIA DLSS or AMD FidelityFX SDK, or leaves the feature off.
 set(FBY_DLSS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/dlss" CACHE PATH
@@ -152,9 +153,13 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
             target_link_options(${target} PRIVATE -fsanitize=undefined)
         endif()
         if(WIN32 AND FBY_WITH_ASAN)
-            target_link_options(${target} PRIVATE /STACK:16777216)
-            if(FBY_ASAN_RUNTIME_LIBS)
-                target_link_libraries(${target} PRIVATE ${FBY_ASAN_RUNTIME_LIBS})
+            if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+                target_link_options(${target} PRIVATE /STACK:16777216)
+                if(FBY_ASAN_RUNTIME_LIBS)
+                    target_link_libraries(${target} PRIVATE ${FBY_ASAN_RUNTIME_LIBS})
+                endif()
+            else()
+                target_link_options(${target} PRIVATE "LINKER:/STACK:16777216")
             endif()
             # The runtime DLL is copied once into the shared output directory;
             # a POST_BUILD hook cannot be added from a parent directory.

@@ -46,7 +46,7 @@ public:
 
     // Appends one tick. The keyframe (tick + state hash) is stored every interval.
     [[nodiscard]] bool RecordFrame(std::uint32_t InTick, std::span<const std::byte> InPayload,
-                                   std::uint64_t InStateHash) noexcept
+                                   std::uint64_t InStateHash)
     {
         if (!MRecording)
         {
@@ -195,6 +195,13 @@ public:
             std::memcpy(ScopedKeyframes.data(), ScopedData + ScopedOffset, ScopedKeyBytes);
         }
         ScopedOffset += ScopedKeyBytes;
+        // Every frame needs at least an 8-byte header. Reject a header count that
+        // cannot fit before reserve() allocates on its behalf.
+        const std::size_t ScopedMaxFrames = (InBytes.size() - ScopedOffset) / 8u;
+        if (ScopedFrameCount > ScopedMaxFrames)
+        {
+            return ScopedFail("replay: frame count exceeds its payload");
+        }
         std::vector<ReplayFrame> ScopedFrames;
         ScopedFrames.reserve(ScopedFrameCount);
         for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedFrameCount; ++ScopedIndex)

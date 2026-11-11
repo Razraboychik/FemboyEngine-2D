@@ -55,6 +55,7 @@ Vector2D DefaultGravityVector(Grid::ProjectionMode InMode) noexcept
         case Grid::ProjectionMode::TopDown:
         case Grid::ProjectionMode::IsoRect:
         case Grid::ProjectionMode::IsoHex:
+        case Grid::ProjectionMode::Count:
             return Vector2D{0.0f, 0.0f};
     }
     return Vector2D{0.0f, 0.0f};

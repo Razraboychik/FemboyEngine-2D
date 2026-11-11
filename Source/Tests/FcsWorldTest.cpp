@@ -355,7 +355,7 @@ int main()
             });
         Check(ScopedSawConstEach, "const World::ForEach yields const components");
 
-        const std::uint64_t ScopedReadRevision = ScopedRegistry.Data().Revision();
+        const std::uint64_t ScopedReadRevision = ScopedRegistry.Data().ModificationRevision();
         bool ScopedSawReadView = false;
         for (const auto& [ScopedViewed, ScopedPosition] : ScopedConstRegistry.view<Position>().each())
         {
@@ -364,7 +364,8 @@ int main()
             ScopedSawReadView = true;
         }
         Check(ScopedSawReadView, "const view iteration runs");
-        Check(ScopedRegistry.Data().Revision() == ScopedReadRevision, "const iteration does not dirty the world");
+        Check(ScopedRegistry.Data().ModificationRevision() == ScopedReadRevision,
+              "const iteration does not dirty the world");
 
         auto ScopedHintView = ScopedRegistry.view<Position>();
         Check(ScopedHintView.size_hint() == ScopedHintView.size(), "size_hint matches exact view size");
@@ -377,7 +378,8 @@ int main()
             (void)ScopedViewed;
             (void)ScopedPosition;
         }
-        Check(ScopedRegistry.Data().Revision() > ScopedReadRevision, "mutable iteration bumps the revision");
+        Check(ScopedRegistry.Data().ModificationRevision() > ScopedReadRevision,
+              "mutable iteration bumps the modification revision");
     }
 
     // Clear keeps chunk storage, so the next Create must rebuild the entity-id

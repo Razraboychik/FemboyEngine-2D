@@ -760,6 +760,10 @@ public:
 
     void clear() noexcept
     {
+        if (MWorld != nullptr)
+        {
+            MWorld->Clear();
+        }
     }
 
 private:
@@ -813,7 +817,7 @@ public:
         return ToEngineEntity(MWorld.CreateAt(FromEngineEntity(InEntity)));
     }
 
-    void destroy(entity_type InEntity) noexcept
+    void destroy(entity_type InEntity)
     {
         MWorld.Destroy(FromEngineEntity(InEntity));
     }
@@ -831,6 +835,14 @@ public:
     // The engine spells "remove this component from every entity" as clear<T>().
     template <typename Component> void clear()
     {
+        // Removing components moves entities between archetypes, so it cannot
+        // run while a view cursor is alive.
+        FBY_ASSERT_MSG(MWorld.IterationDepth() == 0,
+                       "Registry::clear<T>() must run outside ECS iteration; use CommandBuffer");
+        if (MWorld.IterationDepth() != 0)
+        {
+            return;
+        }
         for (std::size_t ScopedIndex = 0; ScopedIndex < MWorld.RecordCount(); ++ScopedIndex)
         {
             const Entity ScopedEntity = MWorld.EntityAt(ScopedIndex);
@@ -879,7 +891,7 @@ public:
         return ScopedComponent;
     }
 
-    template <typename Component> bool remove(entity_type InEntity) noexcept
+    template <typename Component> bool remove(entity_type InEntity)
     {
         return MWorld.Remove<Component>(FromEngineEntity(InEntity));
     }

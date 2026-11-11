@@ -1835,6 +1835,13 @@ struct EditorSystem::Impl
                 }
                 break;
             }
+            case Reflect::FieldKind::Vector2DArray:
+            {
+                const std::size_t ScopedPointCount = InField.size / sizeof(Vector2D);
+                BeginPropertyRow(ScopedLabel.c_str());
+                ImGui::TextDisabled("%zu control point(s)", ScopedPointCount);
+                break;
+            }
         }
         ImGui::PopID();
         if (ScopedTrackable)
@@ -2756,8 +2763,11 @@ struct EditorSystem::Impl
             {
                 const float ScopedStep = std::max(ScopedGrid.CellSize.X, 4.0f);
                 const float ScopedFirstX = std::floor(ScopedWorldLeft / ScopedStep) * ScopedStep;
-                for (float ScopedX = ScopedFirstX; ScopedX <= ScopedWorldRight; ScopedX += ScopedStep)
+                const int ScopedLineCountX =
+                    std::max(0, static_cast<int>(std::floor((ScopedWorldRight - ScopedFirstX) / ScopedStep)) + 1);
+                for (int ScopedIndex = 0; ScopedIndex < ScopedLineCountX; ++ScopedIndex)
                 {
+                    const float ScopedX = ScopedFirstX + static_cast<float>(ScopedIndex) * ScopedStep;
                     const float ScopedScreenX = ScopedCenterScreen.x + (ScopedX - camera.center.X) * ScopedZoom;
                     const ImU32 ScopedColor = std::fabs(ScopedX) < 0.001f ? ScopedAxisYColor : ScopedGridColor;
                     ScopedDraw->AddLine(ImVec2(ScopedScreenX, ScopedImageMin.y),
@@ -2765,8 +2775,11 @@ struct EditorSystem::Impl
                 }
                 const float ScopedStepY = std::max(ScopedGrid.CellSize.Y, 4.0f);
                 const float ScopedFirstY = std::floor(ScopedWorldTop / ScopedStepY) * ScopedStepY;
-                for (float ScopedY = ScopedFirstY; ScopedY <= ScopedWorldBottom; ScopedY += ScopedStepY)
+                const int ScopedLineCountY =
+                    std::max(0, static_cast<int>(std::floor((ScopedWorldBottom - ScopedFirstY) / ScopedStepY)) + 1);
+                for (int ScopedIndex = 0; ScopedIndex < ScopedLineCountY; ++ScopedIndex)
                 {
+                    const float ScopedY = ScopedFirstY + static_cast<float>(ScopedIndex) * ScopedStepY;
                     const float ScopedScreenY = ScopedCenterScreen.y + (ScopedY - camera.center.Y) * ScopedZoom;
                     const ImU32 ScopedColor = std::fabs(ScopedY) < 0.001f ? ScopedAxisColor : ScopedGridColor;
                     ScopedDraw->AddLine(ImVec2(ScopedImageMin.x, ScopedScreenY),
@@ -4541,7 +4554,16 @@ EditorSystem::EditorSystem() : MImpl(std::make_unique<Impl>())
 
 EditorSystem::~EditorSystem()
 {
-    Shutdown();
+    // A destructor is implicitly noexcept; Shutdown performs filesystem and
+    // ImGui teardown that may allocate. Contain any failure so the process logs
+    // and exits instead of terminating during unwinding.
+    try
+    {
+        Shutdown();
+    }
+    catch (...)
+    {
+    }
 }
 
 bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& InDesc)
@@ -5697,7 +5719,7 @@ void EditorSystem::SetEffectRegistry(Ui::AccessibilityEffectRegistry* InEffects)
     if (InEffects != nullptr && MImpl->projectConfig.Loaded())
     {
         const char* ScopedActive = MImpl->projectConfig.Project().activeEffect;
-        if (ScopedActive[0] != ' ')
+        if (ScopedActive[0] != '\0')
         {
             (void)InEffects->SetActive(ScopedActive);
         }
@@ -5709,7 +5731,14 @@ void EditorSystem::SetPluginHost(Plugin::PluginHost* InHost) noexcept
     MImpl->pluginHost = InHost;
     if (MImpl->initialized && MImpl->projectConfig.Loaded())
     {
-        SyncProjectPlugins();
+        try
+        {
+            SyncProjectPlugins();
+        }
+        catch (...)
+        {
+            LogError("editor", "project plugin synchronization failed");
+        }
     }
 }
 
@@ -5725,7 +5754,7 @@ void EditorSystem::SyncProjectPlugins()
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedPluginProject.pluginCount; ++ScopedI)
     {
         const Fby::Editor::ProjectPluginEntry& ScopedEntry = ScopedPluginProject.plugins[ScopedI];
-        if (!ScopedEntry.Enabled || ScopedEntry.Path[0] == ' ')
+        if (!ScopedEntry.Enabled || ScopedEntry.Path[0] == '\0')
         {
             continue;
         }
@@ -5739,7 +5768,7 @@ void EditorSystem::SyncProjectPlugins()
     if (MImpl->effectRegistry != nullptr)
     {
         const char* ScopedActive = ScopedPluginProject.activeEffect;
-        if (ScopedActive[0] != ' ')
+        if (ScopedActive[0] != '\0')
         {
             (void)MImpl->effectRegistry->SetActive(ScopedActive);
         }
@@ -6089,27 +6118,25 @@ void EditorSystem::PrintLine(std::string_view InLine)
     }
 }
 
-void EditorSystem::ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSystem* InVfs) noexcept
+void EditorSystem::ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSystem* InVfs)
 {
     if (InVfs == nullptr)
     {
         return;
     }
     // Structural changes are batched: collect first, then add the runtime grids.
-    std::array<Entity, 256> ScopedEntities{};
-    std::uint32_t ScopedCount = 0;
-    auto ScopedView = InRegistry.view<TilemapAssetRefComponent>();
-    for (auto [ScopedEntity, ScopedRef] : ScopedView.each())
+    std::vector<Entity> ScopedEntities;
     {
-        (void)ScopedRef;
-        if (ScopedCount < ScopedEntities.size())
+        auto ScopedView = InRegistry.view<TilemapAssetRefComponent>();
+        for (auto [ScopedEntity, ScopedRef] : ScopedView.each())
         {
-            ScopedEntities[ScopedCount++] = ScopedEntity;
+            (void)ScopedRef;
+            ScopedEntities.push_back(ScopedEntity);
         }
     }
-    for (std::uint32_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
+    for (const Entity ScopedEntity : ScopedEntities)
     {
-        const auto* ScopedRef = InRegistry.try_get<TilemapAssetRefComponent>(ScopedEntities[ScopedI]);
+        const auto* ScopedRef = InRegistry.try_get<TilemapAssetRefComponent>(ScopedEntity);
         if (ScopedRef == nullptr || ScopedRef->Path[0] == '\0')
         {
             continue;
@@ -6122,7 +6149,7 @@ void EditorSystem::ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSyst
             continue;
         }
         ScopedMap.SortLayer = static_cast<std::uint16_t>(std::min(ScopedRef->SortLayer, 65535u));
-        InRegistry.emplace_or_replace<TilemapComponent>(ScopedEntities[ScopedI], ScopedMap);
+        InRegistry.emplace_or_replace<TilemapComponent>(ScopedEntity, ScopedMap);
     }
 }
 
@@ -6171,6 +6198,11 @@ bool EditorSystem::LoadScene(Ecs::SystemContext& InContext, const std::filesyste
         }
         return false;
     }
+    // Loading replaces every entity in the world. Commands recorded against the
+    // previous scene would target reused ids or stale entities, so the history
+    // must not survive the load.
+    MImpl->commands.CancelTransaction();
+    MImpl->commands.ClearHistory();
     MImpl->currentScene = InPath;
     MImpl->aiStateTree.SetScenePath(InPath);
     (void)MImpl->aiStateTree.LoadCompiledFromSceneToml();

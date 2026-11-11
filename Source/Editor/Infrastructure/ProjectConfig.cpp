@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <sstream>
 #include <system_error>
 
@@ -85,7 +86,7 @@ void SetError(std::string* InError, std::string InText)
 {
     if (const auto ScopedValue = InTable[InKey].value<double>(); ScopedValue)
     {
-        return *ScopedValue;
+        return std::isfinite(*ScopedValue) ? *ScopedValue : InFallback;
     }
     if (const auto ScopedValue = InTable[InKey].value<std::int64_t>(); ScopedValue)
     {
@@ -102,6 +103,13 @@ void SetError(std::string* InError, std::string InText)
     }
     if (const auto ScopedValue = InTable[InKey].value<double>(); ScopedValue)
     {
+        constexpr double kInt64MinAsDouble = -9223372036854775808.0;
+        constexpr double kInt64MaxExclusiveAsDouble = 9223372036854775808.0;
+        if (!std::isfinite(*ScopedValue) || *ScopedValue < kInt64MinAsDouble ||
+            *ScopedValue >= kInt64MaxExclusiveAsDouble)
+        {
+            return InFallback;
+        }
         return static_cast<std::int64_t>(*ScopedValue);
     }
     return InFallback;
@@ -974,7 +982,7 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             ProjectPluginEntry& ScopedEntry = ScopedConfig.project.plugins[ScopedConfig.project.pluginCount];
             CopyProjectString(ScopedEntry.Path, sizeof(ScopedEntry.Path), StringField(*ScopedPlugin, "path"));
             ScopedEntry.Enabled = BoolField(*ScopedPlugin, "enabled", true);
-            if (ScopedEntry.Path[0] != ' ')
+            if (ScopedEntry.Path[0] != '\0')
             {
                 ++ScopedConfig.project.pluginCount;
             }
@@ -1101,7 +1109,7 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
     {
         for (std::uint32_t ScopedLayer = 0; ScopedLayer < kNamedCollisionLayers; ++ScopedLayer)
         {
-            const std::string_view ScopedHex = StringField(*ScopedCollision, kCollisionKeys[ScopedLayer]);
+            const std::string ScopedHex = StringField(*ScopedCollision, kCollisionKeys[ScopedLayer]);
             if (!ScopedHex.empty())
             {
                 ScopedConfig.project.collision.masks[ScopedLayer] = ParseHexMask(ScopedHex);

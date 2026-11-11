@@ -96,6 +96,9 @@ struct TransportPeer
     std::uint32_t RxBits = 0;
     bool RxStarted = false;
     float Rtt = 0.1f;
+    // Last time a datagram from this address was seen. Used to evict idle
+    // spoofed peers when the fixed table is full.
+    float LastActivity = 0.0f;
 
     struct Outstanding
     {

@@ -133,6 +133,11 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         delete ScopedOldContext;
         MContext = nullptr;
     }
+    const auto ScopedFailed = [this]()
+    {
+        MInitialized = false;
+        return false;
+    };
 
     auto* ScopedContext = new (std::nothrow) ma_context{};
     auto* ScopedDevice = new (std::nothrow) ma_device{};
@@ -140,13 +145,13 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
     {
         delete ScopedContext;
         delete ScopedDevice;
-        return false;
+        return ScopedFailed();
     }
     if (ma_context_init(nullptr, 0, nullptr, ScopedContext) != MA_SUCCESS)
     {
         delete ScopedContext;
         delete ScopedDevice;
-        return false;
+        return ScopedFailed();
     }
 
     ma_device_info* ScopedPlayback = nullptr;
@@ -156,13 +161,14 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         ma_context_uninit(ScopedContext);
         delete ScopedContext;
         delete ScopedDevice;
-        return false;
+        return ScopedFailed();
     }
 
     const ma_device_id* ScopedChosen = nullptr;
     for (ma_uint32 ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)
     {
-        if (std::memcmp(&ScopedPlayback[ScopedIndex].id, ScopedRaw, sizeof(ma_device_id)) == 0)
+        if (ma_device_id_equal(&ScopedPlayback[ScopedIndex].id,
+                               reinterpret_cast<const ma_device_id*>(ScopedRaw)) != 0)
         {
             ScopedChosen = &ScopedPlayback[ScopedIndex].id;
             break;
@@ -173,7 +179,7 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         ma_context_uninit(ScopedContext);
         delete ScopedContext;
         delete ScopedDevice;
-        return false;
+        return ScopedFailed();
     }
 
     ma_device_config ScopedConfig = ma_device_config_init(ma_device_type_playback);
@@ -190,7 +196,7 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         ma_context_uninit(ScopedContext);
         delete ScopedContext;
         delete ScopedDevice;
-        return false;
+        return ScopedFailed();
     }
     if (ma_device_start(ScopedDevice) != MA_SUCCESS)
     {
@@ -198,7 +204,7 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         ma_context_uninit(ScopedContext);
         delete ScopedContext;
         delete ScopedDevice;
-        return false;
+        return ScopedFailed();
     }
     MContext = ScopedContext;
     MDevice = ScopedDevice;
@@ -214,6 +220,13 @@ void AudioSystem::Shutdown()
         ma_device_uninit(ScopedDevice);
         delete ScopedDevice;
         MDevice = nullptr;
+    }
+    if (MContext != nullptr)
+    {
+        auto* ScopedContext = static_cast<ma_context*>(MContext);
+        ma_context_uninit(ScopedContext);
+        delete ScopedContext;
+        MContext = nullptr;
     }
     MMixer.Shutdown();
     ResetRuntimeState();

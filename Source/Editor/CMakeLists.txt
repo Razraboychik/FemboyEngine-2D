@@ -52,6 +52,9 @@ if((FBY_WITH_ASAN OR FBY_WITH_UBSAN) AND NOT WIN32)
     fby_asan_apply(fby_editor)
 endif()
 add_library(FemboyEngine2D::Editor ALIAS fby_editor)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(fby_editor PRIVATE -Werror=switch)
+endif()
 
 target_link_libraries(fby_editor
     PUBLIC

@@ -377,9 +377,11 @@ void AnimationTimelinePanel::DrawTrailer()
 
     const auto ScopedTimeToX = [&](float InTime) { return ScopedLeft + (InTime - MScroll) * ScopedPixelsPerSecond; };
     // Ruler.
-    for (float ScopedSecond = std::floor(MScroll); ScopedSecond <= MScroll + ScopedVisibleSeconds + 1.0f;
-         ScopedSecond += 1.0f)
+    const int ScopedFirstSecond = static_cast<int>(std::floor(MScroll));
+    const int ScopedLastSecond = static_cast<int>(std::floor(MScroll + ScopedVisibleSeconds + 1.0f));
+    for (int ScopedSecondIndex = ScopedFirstSecond; ScopedSecondIndex <= ScopedLastSecond; ++ScopedSecondIndex)
     {
+        const float ScopedSecond = static_cast<float>(ScopedSecondIndex);
         const float ScopedX = ScopedTimeToX(ScopedSecond);
         if (ScopedX < ScopedLeft || ScopedX > ScopedRight)
         {
@@ -410,8 +412,11 @@ void AnimationTimelinePanel::DrawTrailer()
         // Curve polyline.
         ImVec2 ScopedPreviousPoint{};
         bool ScopedHasPrevious = false;
-        for (float ScopedPixel = ScopedLeft; ScopedPixel <= ScopedRight; ScopedPixel += 3.0f)
+        const int ScopedCurveSamples =
+            std::max(0, static_cast<int>(std::floor((ScopedRight - ScopedLeft) / 3.0f)) + 1);
+        for (int ScopedSample = 0; ScopedSample < ScopedCurveSamples; ++ScopedSample)
         {
+            const float ScopedPixel = ScopedLeft + static_cast<float>(ScopedSample) * 3.0f;
             const float ScopedT = MScroll + (ScopedPixel - ScopedLeft) / ScopedPixelsPerSecond;
             const Vector2D ScopedValue =
                 ScopedTimeline.EvaluateTrack(static_cast<std::uint16_t>(ScopedTrackIndex), ScopedT, Vector2D{});

@@ -130,11 +130,19 @@ template <typename Component> [[nodiscard]] ComponentId ComponentIdOf() noexcept
     static const ComponentId ScopedId = []
     {
         const std::uint32_t ScopedNext = NextComponentId();
-        assert(ScopedNext < kMaxComponents);
+        // The id is also the bit index in Signature and in the scheduler access
+        // masks. Running past the table is an out-of-bounds write, so this is a
+        // hard failure in every build rather than a debug-only assert.
+        if (ScopedNext >= kMaxComponents)
+        {
+            Fby::FailAssert("Fby::Fcs::ComponentIdOf", __FILE__, __LINE__,
+                            "component type limit exceeded (kMaxComponents)");
+        }
         ComponentMeta& ScopedMeta = ComponentTable()[ScopedNext];
         // A tag has no state; keeping it at zero bytes means a tag-only
         // archetype needs no component storage at all. The signature still
-        // distinguishes the archetype.
+        // distinguishes the archetype. The returned reference is never read or
+        // written, which keeps the zero-allocation contract of tag-only worlds.
         ScopedMeta.Size = std::is_empty_v<Component> ? 0u : static_cast<std::uint32_t>(sizeof(Component));
         ScopedMeta.Alignment = std::max<std::uint32_t>(1u, static_cast<std::uint32_t>(alignof(Component)));
         NextComponentId() = ScopedNext + 1u;
@@ -350,7 +358,10 @@ public:
         EntityRecord& ScopedRecord = MRecords[InEntity.Index];
         if (ScopedRecord.Archetype != kInvalidIndex)
         {
-            return Entity{InEntity.Index, ScopedRecord.Generation};
+            // The slot is already live. Returning its current generation would
+            // silently hand the caller a different entity, so a generation
+            // mismatch is a failed restore rather than a replacement.
+            return ScopedRecord.Generation == InEntity.Generation ? InEntity : kNullEntity;
         }
         const auto ScopedFree = std::find(MFreeIndices.begin(), MFreeIndices.end(), InEntity.Index);
         if (ScopedFree != MFreeIndices.end())
@@ -369,7 +380,7 @@ public:
         return InEntity;
     }
 
-    void Destroy(Entity InEntity) noexcept
+    void Destroy(Entity InEntity)
     {
         ++MRevision;
         assert(MIterationDepth == 0 && "FCS: structural change during iteration; queue it through CommandBuffer");
@@ -481,7 +492,7 @@ public:
         Signature ScopedMask;
         (ScopedMask.set(Detail::ComponentIdOf<Components>()), ...);
         (Detail::AccessValidation::Write(Detail::ComponentIdOf<Components>()), ...);
-        ++MRevision;
+        ++MModificationRevision;
         for (Archetype& ScopedArchetype : MArchetypes)
         {
             if ((ScopedArchetype.Type & ScopedMask) != ScopedMask)
@@ -541,17 +552,24 @@ public:
         return MIterationDepth;
     }
 
-    // Monotonic revision used by render-side caches. Structural changes and
-    // mutable component access bump it; a paused world with no writes keeps it
-    // constant, which lets the frame composer reuse its previous packet.
+    // Structural revision used by render-side caches. Only create, destroy,
+    // emplace, remove and clear move it; a paused world keeps it constant, so a
+    // cache can reuse its previous packet even while systems iterate views.
     [[nodiscard]] std::uint64_t Revision() const noexcept
     {
         return MRevision;
     }
 
+    // Mutable component access revision. Iteration and non-const get() bump it;
+    // caches that mirror component values (not just the entity set) compare it.
+    [[nodiscard]] std::uint64_t ModificationRevision() const noexcept
+    {
+        return MModificationRevision;
+    }
+
     void MarkRevision() noexcept
     {
-        ++MRevision;
+        ++MModificationRevision;
     }
 
     [[nodiscard]] std::uint32_t& IterationDepthRef() noexcept
@@ -625,6 +643,10 @@ public:
 
     void Clear()
     {
+        // Clearing is a structural change: render-side caches compare the
+        // revision and must not reuse a packet that still describes the removed
+        // entities.
+        ++MRevision;
         // Keep the archetype and chunk storage: rollback and PIE clear the world
         // every replay, and reallocating the chunks would violate the zero
         // allocation contract. Component destructors are not needed because FCS
@@ -883,6 +905,7 @@ private:
     std::size_t MLiveCount = 0;
     std::uint32_t MIterationDepth = 0;
     std::uint64_t MRevision = 0;
+    std::uint64_t MModificationRevision = 0;
 };
 
 }

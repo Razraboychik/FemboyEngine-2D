@@ -5,6 +5,7 @@
 #include "Engine/ECS/Schedule.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <type_traits>
 
@@ -99,8 +100,17 @@ struct GraphSystem
     bool enabled = true;
     SystemAccess access{};
     // Filled by Run() when timing is enabled; mutable because Run is const and
-    // the field is diagnostics, not scheduling state.
+    // the field is diagnostics, not scheduling state. Writers and readers use
+    // atomic_ref so the editor can sample it without a data race.
     mutable std::uint64_t LastNs = 0;
+    // Set when the node throws. A faulted node is skipped on later frames so a
+    // broken system cannot flood the log or corrupt the world every tick.
+    mutable bool Faulted = false;
+
+    [[nodiscard]] std::uint64_t LastNanoseconds() const noexcept
+    {
+        return std::atomic_ref<std::uint64_t>(LastNs).load(std::memory_order_relaxed);
+    }
 };
 
 class SystemGraph

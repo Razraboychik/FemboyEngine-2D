@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -179,12 +180,13 @@ bool LoadSpriteAtlasAsset(std::string_view InText, SpriteAtlasAsset* OutAsset, s
             float ScopedPivotY = 0.5f;
             if (std::sscanf(ScopedText.c_str(), "sprite %u %u %u %u %u %f %f", &ScopedId, &ScopedX, &ScopedY,
                             &ScopedWidth, &ScopedHeight, &ScopedPivotX, &ScopedPivotY) != 7 ||
-                ScopedId == 0 || ScopedWidth == 0 || ScopedHeight == 0)
+                ScopedId == 0 || ScopedWidth == 0 || ScopedHeight == 0 ||
+                !std::isfinite(ScopedPivotX) || !std::isfinite(ScopedPivotY))
             {
                 return ScopedFail("atlas: invalid sprite line");
             }
-            if (ScopedX + ScopedWidth > OutAsset->Atlas.PageWidth ||
-                ScopedY + ScopedHeight > OutAsset->Atlas.PageHeight)
+            if (ScopedX > OutAsset->Atlas.PageWidth || ScopedWidth > OutAsset->Atlas.PageWidth - ScopedX ||
+                ScopedY > OutAsset->Atlas.PageHeight || ScopedHeight > OutAsset->Atlas.PageHeight - ScopedY)
             {
                 return ScopedFail("atlas: sprite outside the page");
             }

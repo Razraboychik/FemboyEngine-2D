@@ -55,9 +55,9 @@ std::uint32_t CrowdPool::Add(Vector2D InPosition, std::uint32_t InGroup, Vector2
         return kInvalidAgent;
     }
     CrowdAgent& ScopedAgent = MAgents[MCount];
-    ScopedAgent.Position = InPosition;
+    ScopedAgent.Position = std::isfinite(InPosition.X) && std::isfinite(InPosition.Y) ? InPosition : Vector2D{};
     ScopedAgent.Velocity = Vector2D{0.0f, 0.0f};
-    ScopedAgent.Target = InTarget;
+    ScopedAgent.Target = std::isfinite(InTarget.X) && std::isfinite(InTarget.Y) ? InTarget : ScopedAgent.Position;
     ScopedAgent.Group = InGroup;
     ScopedAgent.MaxSpeed = InMaxSpeed > 0.0f ? InMaxSpeed : 80.0f;
     ScopedAgent.WanderPhase = static_cast<float>(MCount) * 0.37f;
@@ -77,7 +77,7 @@ const CrowdAgent* CrowdPool::At(std::uint32_t InIndex) const noexcept
 
 void CrowdPool::SetTarget(std::uint32_t InIndex, Vector2D InTarget) noexcept
 {
-    if (InIndex < MCount)
+    if (InIndex < MCount && std::isfinite(InTarget.X) && std::isfinite(InTarget.Y))
     {
         MAgents[InIndex].Target = InTarget;
     }
@@ -88,7 +88,7 @@ std::uint32_t CrowdPool::SetGroupTarget(std::uint32_t InGroup, Vector2D InTarget
     std::uint32_t ScopedUpdated = 0;
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < MCount; ++ScopedIndex)
     {
-        if (MAgents[ScopedIndex].Group == InGroup)
+        if (MAgents[ScopedIndex].Group == InGroup && std::isfinite(InTarget.X) && std::isfinite(InTarget.Y))
         {
             MAgents[ScopedIndex].Target = InTarget;
             ++ScopedUpdated;
@@ -111,6 +111,16 @@ void CrowdPool::RebuildGrid() noexcept
         return;
     }
     MCellSize = std::max(MCellSize, 1.0f);
+    for (CrowdAgent& ScopedAgent : MAgents)
+    {
+        if (!std::isfinite(ScopedAgent.Position.X) || !std::isfinite(ScopedAgent.Position.Y))
+        {
+            ScopedAgent.Position = std::isfinite(ScopedAgent.Target.X) && std::isfinite(ScopedAgent.Target.Y)
+                                       ? ScopedAgent.Target
+                                       : Vector2D{};
+            ScopedAgent.Velocity = Vector2D{};
+        }
+    }
     Vector2D ScopedMin = MAgents[0].Position;
     Vector2D ScopedMax = MAgents[0].Position;
     for (std::uint32_t ScopedIndex = 1; ScopedIndex < MCount; ++ScopedIndex)
@@ -129,6 +139,24 @@ void CrowdPool::RebuildGrid() noexcept
     MGridOrigin = ScopedMin;
     MGridWidth = std::min(ScopedWidth, 4096u);
     MGridHeight = std::min(ScopedHeight, 4096u);
+    // The cell table is dense. A large spread with a small perception radius
+    // would otherwise allocate up to 128 MiB every step; coarsen the grid until
+    // it fits a bounded budget.
+    constexpr std::uint32_t kMaxGridCells = 1u << 20;
+    while (static_cast<std::uint64_t>(MGridWidth) * MGridHeight > kMaxGridCells && MCellSize < 4096.0f)
+    {
+        MCellSize *= 2.0f;
+        MGridWidth = std::min(
+            static_cast<std::uint32_t>((ScopedMax.X - MGridOrigin.X) / MCellSize) + 3u, 4096u);
+        MGridHeight = std::min(
+            static_cast<std::uint32_t>((ScopedMax.Y - MGridOrigin.Y) / MCellSize) + 3u, 4096u);
+    }
+    if (static_cast<std::uint64_t>(MGridWidth) * MGridHeight > kMaxGridCells)
+    {
+        // Even the coarsest cell can stay at 4096x4096; clamp one axis to the
+        // bounded table size. Agents beyond it share the last cell.
+        MGridHeight = std::max(1u, static_cast<std::uint32_t>(kMaxGridCells / MGridWidth));
+    }
     const std::size_t ScopedCells = static_cast<std::size_t>(MGridWidth) * MGridHeight;
     MCellStart.assign(ScopedCells + 1, 0);
     MCellCount.assign(ScopedCells, 0);
@@ -284,7 +312,23 @@ void CrowdPool::Step(float InDt, const CrowdSettings& InSettings) noexcept
         {
             ScopedAgent.Velocity = NormalizeOrZero(ScopedAgent.Velocity) * ScopedAgent.MaxSpeed;
         }
+        // A NaN position would become UB at the next float-to-cell cast.
+        if (!std::isfinite(ScopedAgent.Position.X) || !std::isfinite(ScopedAgent.Position.Y))
+        {
+            ScopedAgent.Position = std::isfinite(ScopedAgent.Target.X) && std::isfinite(ScopedAgent.Target.Y)
+                                       ? ScopedAgent.Target
+                                       : Vector2D{};
+            ScopedAgent.Velocity = Vector2D{};
+        }
         ScopedAgent.Position += ScopedAgent.Velocity * InDt;
+        if (!std::isfinite(ScopedAgent.Position.X) || !std::isfinite(ScopedAgent.Position.Y) ||
+            !std::isfinite(ScopedAgent.Velocity.X) || !std::isfinite(ScopedAgent.Velocity.Y))
+        {
+            ScopedAgent.Position = std::isfinite(ScopedAgent.Target.X) && std::isfinite(ScopedAgent.Target.Y)
+                                       ? ScopedAgent.Target
+                                       : Vector2D{};
+            ScopedAgent.Velocity = Vector2D{};
+        }
         ScopedAgent.WanderPhase += InDt;
     }
 }

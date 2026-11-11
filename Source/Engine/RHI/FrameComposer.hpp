@@ -99,6 +99,15 @@ struct FrameComposerStats
 class FrameComposer
 {
 public:
+    // The packet's spans point into this composer's vectors, so a copy would
+    // leave them pointing at the source object. A viewport owns exactly one
+    // composer for its lifetime.
+    FrameComposer() = default;
+    FrameComposer(const FrameComposer&) = delete;
+    FrameComposer& operator=(const FrameComposer&) = delete;
+    FrameComposer(FrameComposer&&) = delete;
+    FrameComposer& operator=(FrameComposer&&) = delete;
+
     // `InExtraMeshItems` (cloth) and `InTileQuads` are copied into the
     // composer's storage and appended after the registry's own sprites.
     void BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::CameraData& InCamera, Color32 InClear,
@@ -272,6 +281,22 @@ public:
         MSdfField = InField;
     }
 
+    // Optional conservative world bounds. When the camera view fully contains
+    // them, the extractor can skip per-sprite visibility tests. Callers must
+    // include every renderable sprite in the bounds.
+    void SetWorldBounds(Vector2D InMin, Vector2D InMax) noexcept
+    {
+        MWorldMin = InMin;
+        MWorldMax = InMax;
+        MHasWorldBounds = true;
+        MHasLastFrame = false;
+    }
+    void ClearWorldBounds() noexcept
+    {
+        MHasWorldBounds = false;
+        MHasLastFrame = false;
+    }
+
 private:
     struct ParallelChunkRef
     {
@@ -333,10 +358,14 @@ private:
     Rhi::ViewportPresenter MViewportPresenter{};
     FrameComposerStats MStats{};
     const SdfField* MSdfField = nullptr;
+    Vector2D MWorldMin{-1.0e9f, -1.0e9f};
+    Vector2D MWorldMax{1.0e9f, 1.0e9f};
+    bool MHasWorldBounds = false;
     std::uint32_t MCount = 0;
     std::uint32_t MLastCount = 0;
     bool MHasLastFrame = false;
     std::uint64_t MLastSceneRevision = 0;
+    std::uint64_t MLastModificationRevision = 0;
     std::uint32_t MLastTextureArray = 0xFFFFFFFFu;
     Rhi::ViewportMode MLastViewportMode{};
     bool MHasLastCamera = false;

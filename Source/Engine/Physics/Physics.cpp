@@ -241,6 +241,9 @@ PhysicsCapabilities PhysicsSystem::Capabilities() const noexcept
         ScopedResult.Ccd = false;
         ScopedResult.Deterministic = true;
         ScopedResult.LargeWorlds = true;
+        ScopedResult.Friction = false;
+        ScopedResult.Restitution = false;
+        ScopedResult.RotationContacts = false;
         ScopedResult.MaxRecommendedBodies = kMaxTrackedPhysicsBodies;
         return ScopedResult;
     }

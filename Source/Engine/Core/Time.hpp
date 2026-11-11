@@ -442,7 +442,8 @@ public:
         MActiveCount = 0;
         MFreeCount = 0;
         MHighWater = 0;
-        MNextGeneration = 1;
+        // Keep the generation counter monotonic. Resetting it would make a
+        // handle saved before Clear() match a freshly created timer.
     }
 
 private:
@@ -609,10 +610,20 @@ inline void SleepMicroseconds(double InMicroseconds) noexcept
 [[nodiscard]] inline std::int32_t LocalOffsetMinutes() noexcept
 {
 #if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 201907
-    if (const std::chrono::time_zone* ScopedZone = std::chrono::current_zone(); ScopedZone != nullptr)
+    // current_zone()/get_info() may throw when the time-zone database is not
+    // available (common in minimal containers). UTC is the safe fallback and
+    // keeps this noexcept helper from terminating the process.
+    try
     {
-        const auto ScopedInfo = ScopedZone->get_info(std::chrono::system_clock::now());
-        return static_cast<std::int32_t>(ScopedInfo.offset.count() / 60);
+        if (const std::chrono::time_zone* ScopedZone = std::chrono::current_zone(); ScopedZone != nullptr)
+        {
+            const auto ScopedInfo = ScopedZone->get_info(std::chrono::system_clock::now());
+            return static_cast<std::int32_t>(ScopedInfo.offset.count() / 60);
+        }
+    }
+    catch (...)
+    {
+        return 0;
     }
 #endif
     return 0;

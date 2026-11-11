@@ -10,7 +10,7 @@ layout(location = 0) out vec4 outColor;
 layout(set = 0, binding = 0) uniform sampler2D uScene;
 layout(set = 0, binding = 1) uniform sampler2D uBloom;
 
-layout(push_constant) uniform PostFxBlock
+layout(set = 0, binding = 2) uniform PostFxBlock
 {
     vec4 flagsAndCrt;
     vec4 vignetteAndBloom;

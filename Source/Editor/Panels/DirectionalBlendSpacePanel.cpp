@@ -213,7 +213,7 @@ void DirectionalBlendSpacePanel::AfterDocumentChange() noexcept
 
 void DirectionalBlendSpacePanel::CaptureFrameSnapshot() noexcept
 {
-    std::memcpy(MFrameSnapshot.data(), &MDocument, sizeof(MDocument));
+    MFrameSnapshot = MDocument;
 }
 
 std::uint32_t DirectionalBlendSpacePanel::DominantClip() const noexcept
@@ -597,18 +597,22 @@ void DirectionalBlendSpacePanel::DrawPlaneCanvas(const ImVec2& InOrigin, const I
         }
     }
     const ImU32 ScopedGrid = IM_COL32(52, 48, 64, 160);
-    std::uint32_t ScopedLines = 0;
-    for (float ScopedX = std::floor(ScopedTopLeft.X / ScopedStep) * ScopedStep;
-         ScopedX <= ScopedBottomRight.X && ScopedLines < 400; ScopedX += ScopedStep, ++ScopedLines)
+    const float ScopedFirstX = std::floor(ScopedTopLeft.X / ScopedStep) * ScopedStep;
+    const int ScopedLineCountX =
+        std::min(400, std::max(0, static_cast<int>(std::floor((ScopedBottomRight.X - ScopedFirstX) / ScopedStep)) + 1));
+    for (int ScopedIndex = 0; ScopedIndex < ScopedLineCountX; ++ScopedIndex)
     {
+        const float ScopedX = ScopedFirstX + static_cast<float>(ScopedIndex) * ScopedStep;
         const ImVec2 ScopedFrom = WorldToScreen(ScopedView, {ScopedX, ScopedBottomRight.Y});
         const ImVec2 ScopedTo = WorldToScreen(ScopedView, {ScopedX, ScopedTopLeft.Y});
         ScopedDraw->AddLine(ScopedFrom, ScopedTo, ScopedGrid, 1.0f);
     }
-    ScopedLines = 0;
-    for (float ScopedY = std::floor(ScopedBottomRight.Y / ScopedStep) * ScopedStep;
-         ScopedY <= ScopedTopLeft.Y && ScopedLines < 400; ScopedY += ScopedStep, ++ScopedLines)
+    const float ScopedFirstY = std::floor(ScopedBottomRight.Y / ScopedStep) * ScopedStep;
+    const int ScopedLineCountY =
+        std::min(400, std::max(0, static_cast<int>(std::floor((ScopedTopLeft.Y - ScopedFirstY) / ScopedStep)) + 1));
+    for (int ScopedIndex = 0; ScopedIndex < ScopedLineCountY; ++ScopedIndex)
     {
+        const float ScopedY = ScopedFirstY + static_cast<float>(ScopedIndex) * ScopedStep;
         const ImVec2 ScopedFrom = WorldToScreen(ScopedView, {ScopedTopLeft.X, ScopedY});
         const ImVec2 ScopedTo = WorldToScreen(ScopedView, {ScopedBottomRight.X, ScopedY});
         ScopedDraw->AddLine(ScopedFrom, ScopedTo, ScopedGrid, 1.0f);
@@ -1049,7 +1053,7 @@ void DirectionalBlendSpacePanel::HandleCanvasInput(const ImVec2& InOrigin, const
             {
                 SelectAnchor(ScopedHit);
                 MDragAnchor = ScopedHit;
-                std::memcpy(MEditBefore.data(), MFrameSnapshot.data(), MEditBefore.size());
+                MEditBefore = MFrameSnapshot;
                 (void)OpenEdit("Move blend anchor");
             }
             else
@@ -1108,7 +1112,7 @@ void DirectionalBlendSpacePanel::RecordEdit() noexcept
         return;
     }
     const auto ScopedRecorded = MCommands->Record(
-        Fby::kNullEntity, MCodec, std::span<const std::byte>(MEditBefore.data(), sizeof(MDocument)),
+        Fby::kNullEntity, MCodec, std::span<const std::byte>(reinterpret_cast<const std::byte*>(&MEditBefore), sizeof(MEditBefore)),
         std::span<const std::byte>(reinterpret_cast<const std::byte*>(&MDocument), sizeof(MDocument)));
     if (ScopedRecorded != CommandStack::Result::Ok)
     {
@@ -1122,7 +1126,7 @@ void DirectionalBlendSpacePanel::CommitEdit() noexcept
     {
         return;
     }
-    if (std::memcmp(MEditBefore.data(), &MDocument, sizeof(MDocument)) == 0)
+    if (MEditBefore == MDocument)
     {
         if (MCommands != nullptr)
         {
@@ -1155,7 +1159,7 @@ void DirectionalBlendSpacePanel::StartFieldEdit(const char* InLabel) noexcept
     {
         return;
     }
-    std::memcpy(MEditBefore.data(), MFrameSnapshot.data(), MEditBefore.size());
+    MEditBefore = MFrameSnapshot;
     (void)OpenEdit(InLabel);
 }
 
@@ -1170,7 +1174,7 @@ void DirectionalBlendSpacePanel::FinishFieldEdit() noexcept
 
 void DirectionalBlendSpacePanel::CommitSnapshotEdit(const char* InLabel) noexcept
 {
-    if (std::memcmp(MFrameSnapshot.data(), &MDocument, sizeof(MDocument)) == 0)
+    if (MFrameSnapshot == MDocument)
     {
         return;
     }
@@ -1190,7 +1194,7 @@ void DirectionalBlendSpacePanel::CommitSnapshotEdit(const char* InLabel) noexcep
         return;
     }
     const auto ScopedRecorded = MCommands->Record(
-        Fby::kNullEntity, MCodec, std::span<const std::byte>(MFrameSnapshot.data(), sizeof(MDocument)),
+        Fby::kNullEntity, MCodec, std::span<const std::byte>(reinterpret_cast<const std::byte*>(&MFrameSnapshot), sizeof(MFrameSnapshot)),
         std::span<const std::byte>(reinterpret_cast<const std::byte*>(&MDocument), sizeof(MDocument)));
     if (ScopedRecorded != CommandStack::Result::Ok)
     {

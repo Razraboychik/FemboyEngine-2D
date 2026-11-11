@@ -235,7 +235,7 @@ public:
     // Rebuilds runtime TilemapComponent grids from their authored
     // TilemapAssetRefComponent references. Called after a scene load and after
     // the PIE clone is created.
-    void ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSystem* InVfs) noexcept;
+    void ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSystem* InVfs);
 
 private:
     struct Impl;

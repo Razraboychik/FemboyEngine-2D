@@ -560,6 +560,30 @@ int main()
         }
     }
 
+    // A view that fully covers explicit world bounds skips the per-sprite
+    // visibility test; every sprite must still reach the packet.
+    {
+        Fby::Ecs::Registry ScopedBoundsRegistry;
+        for (std::uint32_t ScopedI = 0; ScopedI < 4096; ++ScopedI)
+        {
+            const Fby::Entity ScopedEntity = ScopedBoundsRegistry.create();
+            ScopedBoundsRegistry.emplace<Fby::Transform2D>(
+                ScopedEntity, Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedI % 64u) * 2.0f,
+                                                             static_cast<float>(ScopedI / 64u) * 2.0f}});
+            ScopedBoundsRegistry.emplace<Fby::Sprite2D>(ScopedEntity, Fby::Sprite2D{});
+            ScopedBoundsRegistry.emplace<Fby::DrawOrder>(ScopedEntity, Fby::DrawOrder{0u, 0.0f});
+        }
+        const Fby::Rhi::CameraData ScopedBoundsCamera{Fby::Vector2D{64.0f, 64.0f}, Fby::Vector2D{10000.0f, 10000.0f},
+                                                      1.0f};
+        Fby::JobSystem ScopedBoundsJobs(8);
+        Fby::Rhi::FrameComposer ScopedBoundsComposer;
+        ScopedBoundsComposer.SetJobSystem(&ScopedBoundsJobs);
+        ScopedBoundsComposer.SetWorldBounds(Fby::Vector2D{-100.0f, -100.0f}, Fby::Vector2D{1000.0f, 5000.0f});
+        ScopedBoundsComposer.BuildFramePacket(ScopedBoundsRegistry, ScopedBoundsCamera, Fby::Color32::Black(), 0u);
+        Check(ScopedBoundsComposer.Packet().items.size() == 4096u, "covered world bounds keep every sprite");
+        Check(ScopedBoundsComposer.Stats().CulledSprites == 0u, "covered world bounds skip per-sprite culling");
+    }
+
     if (GFailures == 0)
     {
         std::printf("frame_composer: OK\n");

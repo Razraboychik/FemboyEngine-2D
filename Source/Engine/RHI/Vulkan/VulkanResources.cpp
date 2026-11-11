@@ -2774,7 +2774,7 @@ bool VulkanRHI::CreatePostFxResources()
     }
     Vk::Api& ScopedApi = Vk::GetApi();
 
-    VkDescriptorSetLayoutBinding ScopedBindings[2]{};
+    VkDescriptorSetLayoutBinding ScopedBindings[3]{};
     for (std::uint32_t ScopedI = 0; ScopedI < 2; ++ScopedI)
     {
         ScopedBindings[ScopedI].binding = ScopedI;
@@ -2782,9 +2782,13 @@ bool VulkanRHI::CreatePostFxResources()
         ScopedBindings[ScopedI].descriptorCount = 1;
         ScopedBindings[ScopedI].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     }
+    ScopedBindings[2].binding = 2;
+    ScopedBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedBindings[2].descriptorCount = 1;
+    ScopedBindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     VkDescriptorSetLayoutCreateInfo ScopedSetInfo{};
     ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    ScopedSetInfo.bindingCount = 2;
+    ScopedSetInfo.bindingCount = 3;
     ScopedSetInfo.pBindings = ScopedBindings;
     if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetInfo, nullptr, &MPostFxSetLayout) != VK_SUCCESS)
     {
@@ -2792,32 +2796,56 @@ bool VulkanRHI::CreatePostFxResources()
         return false;
     }
 
-    VkPushConstantRange ScopedPushRange{};
-    ScopedPushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    ScopedPushRange.size = sizeof(PostFxBlock);
     VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
     ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     ScopedLayoutInfo.setLayoutCount = 1;
     ScopedLayoutInfo.pSetLayouts = &MPostFxSetLayout;
-    ScopedLayoutInfo.pushConstantRangeCount = 1;
-    ScopedLayoutInfo.pPushConstantRanges = &ScopedPushRange;
+    ScopedLayoutInfo.pushConstantRangeCount = 0;
+    ScopedLayoutInfo.pPushConstantRanges = nullptr;
     if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MPostFxLayout) != VK_SUCCESS)
     {
         LogWarn("vulkan", "postfx composite: pipeline layout creation failed");
         return false;
     }
 
-    VkDescriptorPoolSize ScopedPoolSize{};
-    ScopedPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    ScopedPoolSize.descriptorCount = 2;
+    VkDescriptorPoolSize ScopedPoolSizes[2]{};
+    ScopedPoolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedPoolSizes[0].descriptorCount = 2;
+    ScopedPoolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedPoolSizes[1].descriptorCount = 1;
     VkDescriptorPoolCreateInfo ScopedPoolInfo{};
     ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     ScopedPoolInfo.maxSets = 1;
-    ScopedPoolInfo.poolSizeCount = 1;
-    ScopedPoolInfo.pPoolSizes = &ScopedPoolSize;
+    ScopedPoolInfo.poolSizeCount = 2;
+    ScopedPoolInfo.pPoolSizes = ScopedPoolSizes;
     if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MPostFxPool) != VK_SUCCESS)
     {
         LogWarn("vulkan", "postfx composite: descriptor pool creation failed");
+        return false;
+    }
+
+    VkBufferCreateInfo ScopedBufferInfo{};
+    ScopedBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    ScopedBufferInfo.size = sizeof(PostFxBlock);
+    ScopedBufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    ScopedBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (ScopedApi.vkCreateBuffer(MDevice, &ScopedBufferInfo, nullptr, &MPostFxUniformBuffer) != VK_SUCCESS)
+    {
+        LogWarn("vulkan", "postfx composite: uniform buffer creation failed");
+        return false;
+    }
+    VkMemoryRequirements ScopedBufferRequirements{};
+    ScopedApi.vkGetBufferMemoryRequirements(MDevice, MPostFxUniformBuffer, &ScopedBufferRequirements);
+    VkMemoryAllocateInfo ScopedBufferAllocate{};
+    ScopedBufferAllocate.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ScopedBufferAllocate.allocationSize = ScopedBufferRequirements.size;
+    ScopedBufferAllocate.memoryTypeIndex =
+        FindMemoryType(MMemoryProperties, ScopedBufferRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (ScopedBufferAllocate.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
+        ScopedApi.vkAllocateMemory(MDevice, &ScopedBufferAllocate, nullptr, &MPostFxUniformMemory) != VK_SUCCESS ||
+        ScopedApi.vkBindBufferMemory(MDevice, MPostFxUniformBuffer, MPostFxUniformMemory, 0) != VK_SUCCESS)
+    {
+        LogWarn("vulkan", "postfx composite: uniform buffer memory failed");
         return false;
     }
 
@@ -2928,7 +2956,11 @@ bool VulkanRHI::CreatePostFxResources()
     ScopedImage.sampler = MAccessibilitySampler;
     ScopedImage.imageView = MAccessibilitySwapView;
     ScopedImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    VkWriteDescriptorSet ScopedWrites[2]{};
+    VkDescriptorBufferInfo ScopedUniform{};
+    ScopedUniform.buffer = MPostFxUniformBuffer;
+    ScopedUniform.offset = 0;
+    ScopedUniform.range = sizeof(PostFxBlock);
+    VkWriteDescriptorSet ScopedWrites[3]{};
     for (std::uint32_t ScopedI = 0; ScopedI < 2; ++ScopedI)
     {
         ScopedWrites[ScopedI].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2938,7 +2970,13 @@ bool VulkanRHI::CreatePostFxResources()
         ScopedWrites[ScopedI].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         ScopedWrites[ScopedI].pImageInfo = &ScopedImage;
     }
-    ScopedApi.vkUpdateDescriptorSets(MDevice, 2, ScopedWrites, 0, nullptr);
+    ScopedWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrites[2].dstSet = MPostFxSet;
+    ScopedWrites[2].dstBinding = 2;
+    ScopedWrites[2].descriptorCount = 1;
+    ScopedWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedWrites[2].pBufferInfo = &ScopedUniform;
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 3, ScopedWrites, 0, nullptr);
     MPostFxReady = true;
     return true;
 }
@@ -2958,6 +2996,20 @@ void VulkanRHI::RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const Pos
     ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ScopedBarrier);
+
+    ScopedApi.vkCmdUpdateBuffer(InCommandBuffer, MPostFxUniformBuffer, 0, sizeof(InBlock), &InBlock);
+    VkBufferMemoryBarrier ScopedUniformBarrier{};
+    ScopedUniformBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    ScopedUniformBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ScopedUniformBarrier.dstAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
+    ScopedUniformBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedUniformBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedUniformBarrier.buffer = MPostFxUniformBuffer;
+    ScopedUniformBarrier.offset = 0;
+    ScopedUniformBarrier.size = sizeof(InBlock);
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &ScopedUniformBarrier, 0,
+                                   nullptr);
 
     VkClearValue ScopedClearValues[2]{};
     ScopedClearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
@@ -2982,8 +3034,6 @@ void VulkanRHI::RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const Pos
     ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPostFxPipeline);
     ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPostFxLayout, 0, 1,
                                       &MPostFxSet, 0, nullptr);
-    ScopedApi.vkCmdPushConstants(InCommandBuffer, MPostFxLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(InBlock),
-                                 &InBlock);
     ScopedApi.vkCmdDraw(InCommandBuffer, 3, 1, 0, 0);
     ScopedApi.vkCmdEndRenderPass(InCommandBuffer);
 }
@@ -3001,12 +3051,35 @@ void VulkanRHI::RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const Pos
                                             InSettings.bloomIntensity, InSettings.exposure};
     ScopedBlock.exposureAndChromatic = Vector4D{InSettings.chromaticAberration, InSettings.filmGrain,
                                                 InSettings.flashGuardGain, InSettings.colorVisionStrength};
-    ScopedBlock.grainAndFlash = Vector4D{static_cast<float>(MFrameCounter % 997u), 60.0f, 0.0f, 0.0f};
+    ScopedBlock.grainAndFlash = Vector4D{static_cast<float>(InExtent.width), static_cast<float>(InExtent.height), 0.0f,
+                                         0.0f};
     const ColorMatrix3 ScopedMatrix =
         ColorVisionMatrix(static_cast<ColorVisionDeficiency>(std::min<std::uint32_t>(InSettings.colorVision, 3u)));
     ScopedBlock.colorRow0 = Vector4D{ScopedMatrix.m[0], ScopedMatrix.m[1], ScopedMatrix.m[2], 0.0f};
     ScopedBlock.colorRow1 = Vector4D{ScopedMatrix.m[3], ScopedMatrix.m[4], ScopedMatrix.m[5], 0.0f};
     ScopedBlock.colorRow2 = Vector4D{ScopedMatrix.m[6], ScopedMatrix.m[7], ScopedMatrix.m[8], 0.0f};
+    const auto ScopedEffectColor = [](std::uint32_t InColor)
+    {
+        return Vector4D{static_cast<float>(InColor & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 8u) & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 16u) & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 24u) & 0xFFu) / 255.0f};
+    };
+    const PostFxAccessibilityEffect& ScopedEffect = InSettings.accessibility;
+    ScopedBlock.effect0 = Vector4D{static_cast<float>(ScopedEffect.kind), ScopedEffect.intensity,
+                                   static_cast<float>(ScopedEffect.pattern), ScopedEffect.patternScale};
+    const Vector4D ScopedTint = ScopedEffectColor(ScopedEffect.tint);
+    ScopedBlock.effect1 = Vector4D{ScopedTint.X, ScopedTint.Y, ScopedTint.Z, ScopedEffect.blur};
+    ScopedBlock.effect2 = Vector4D{ScopedEffect.sharpness, ScopedEffect.doubleVision, ScopedEffect.wobble,
+                                   ScopedEffect.wobbleFrequency};
+    ScopedBlock.effect3 = Vector4D{ScopedEffect.chromatic, ScopedEffect.vignette, ScopedEffect.desaturation,
+                                   ScopedEffect.afterimage};
+    ScopedBlock.effect4 = Vector4D{ScopedEffect.pulse, ScopedEffect.sway, ScopedEffect.scaleBreathing, 0.0f};
+    ScopedBlock.palette0 = ScopedEffectColor(ScopedEffect.palette[0]);
+    ScopedBlock.palette1 = ScopedEffectColor(ScopedEffect.palette[1]);
+    ScopedBlock.palette2 = ScopedEffectColor(ScopedEffect.palette[2]);
+    ScopedBlock.palette3 = ScopedEffectColor(ScopedEffect.palette[3]);
+    ScopedBlock.palette4 = ScopedEffectColor(ScopedEffect.palette[4]);
     RecordPostFxComposite(InCommandBuffer, ScopedBlock, InExtent);
 }
 
@@ -3080,6 +3153,16 @@ void VulkanRHI::DestroyAccessibilitySwapchainResources() noexcept
     {
         ScopedApi.vkDestroyDescriptorPool(MDevice, MPostFxPool, nullptr);
         MPostFxPool = VK_NULL_HANDLE;
+    }
+    if (MPostFxUniformBuffer != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyBuffer(MDevice, MPostFxUniformBuffer, nullptr);
+        MPostFxUniformBuffer = VK_NULL_HANDLE;
+    }
+    if (MPostFxUniformMemory != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkFreeMemory(MDevice, MPostFxUniformMemory, nullptr);
+        MPostFxUniformMemory = VK_NULL_HANDLE;
     }
     if (MPostFxSetLayout != VK_NULL_HANDLE)
     {

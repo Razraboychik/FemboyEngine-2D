@@ -167,8 +167,8 @@ private:
     CommandStack* MCommands = nullptr;
     std::uint16_t MCodec = 0xFFFFu;
     std::uint32_t MCodecSize = 0;
-    std::array<std::byte, sizeof(Animation::DirectionalBlendSpaceDocument)> MEditBefore{};
-    std::array<std::byte, sizeof(Animation::DirectionalBlendSpaceDocument)> MFrameSnapshot{};
+    Animation::DirectionalBlendSpaceDocument MEditBefore{};
+    Animation::DirectionalBlendSpaceDocument MFrameSnapshot{};
     bool MEditing = false;
     bool MInitialized = false;
 
