@@ -1212,7 +1212,7 @@ bool PhysicsSystem::RayCast(Ecs::Registry& InRegistry, Vector2D InFrom, Vector2D
         {
             return false;
         }
-        OutHit.Entity = EntityFromShape(ScopedCollector.shape);
+        OutHit.EntityHandle = EntityFromShape(ScopedCollector.shape);
         OutHit.Point = ToPixels(ScopedCollector.point, MDesc.pixelsPerMeter);
         OutHit.Normal = Vector2D{ScopedCollector.normal.x, ScopedCollector.normal.y};
         OutHit.Distance = ScopedCollector.fraction * ScopedLength;
@@ -1296,7 +1296,7 @@ bool PhysicsSystem::RayCast(Ecs::Registry& InRegistry, Vector2D InFrom, Vector2D
         {
             ScopedBest = ScopedDistance;
             ScopedFound = true;
-            OutHit.Entity = ScopedEntity;
+            OutHit.EntityHandle = ScopedEntity;
             OutHit.Distance = ScopedDistance;
             OutHit.Point = InFrom + ScopedDelta * ScopedEnter;
             OutHit.Normal = ScopedNormal;

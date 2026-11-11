@@ -90,7 +90,7 @@ int main()
     if (!ScopedSystem.Manifolds().empty())
     {
         const SdfContactManifold& ScopedManifold = ScopedSystem.Manifolds()[0];
-        FBY_CHECK(ScopedManifold.Entity == ScopedBody);
+        FBY_CHECK(ScopedManifold.EntityHandle == ScopedBody);
         FBY_CHECK(ScopedManifold.Count >= 1 && ScopedManifold.Count <= 4);
         bool ScopedDepthsValid = true;
         bool ScopedNormalsValid = true;

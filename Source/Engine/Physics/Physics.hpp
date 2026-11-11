@@ -128,7 +128,7 @@ struct PhysicsContactEvent
 
 struct PhysicsRayHit
 {
-    Entity Entity = Fby::kNullEntity;
+    Entity EntityHandle = Fby::kNullEntity;
     Vector2D Point{};
     Vector2D Normal{0.0f, -1.0f};
     float Distance = 0.0f;

@@ -96,7 +96,7 @@ int main()
     Check(ScopedPhysics.RayCast(ScopedRegistry, Vector2D{0.0f, 0.0f}, Vector2D{100.0f, 0.0f}, Fby::kNullEntity,
                                 0xFFFFFFFFu, ScopedHit),
           "segment query finds a wall");
-    Check(ScopedHit.Entity == ScopedWall, "segment query returns the wall");
+    Check(ScopedHit.EntityHandle == ScopedWall, "segment query returns the wall");
     Check(ScopedHit.Point.X < 46.0f, "segment query stops at the near face");
 
     const Entity ScopedProjectile =
