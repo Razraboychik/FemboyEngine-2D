@@ -191,6 +191,28 @@ void PostFxPass::RefreshConstants(const RenderGraphContext& InContext) noexcept
                                       ScopedDistortion.stretchX, ScopedDistortion.stretchY};
     MConstants.distortion1 = Vector4D{ScopedDistortion.radialWarp, ScopedDistortion.chromaticSplit,
                                       ScopedDistortion.wobbleAmplitude, ScopedDistortion.wobbleFrequency};
+    const auto ScopedEffectColor = [](std::uint32_t InColor)
+    {
+        return Vector4D{static_cast<float>(InColor & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 8u) & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 16u) & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 24u) & 0xFFu) / 255.0f};
+    };
+    const Rhi::PostFxAccessibilityEffect& ScopedEffect = ScopedSettings.accessibility;
+    MConstants.effect0 = Vector4D{static_cast<float>(ScopedEffect.kind), ScopedEffect.intensity,
+                                  static_cast<float>(ScopedEffect.pattern), ScopedEffect.patternScale};
+    const Vector4D ScopedTint = ScopedEffectColor(ScopedEffect.tint);
+    MConstants.effect1 = Vector4D{ScopedTint.X, ScopedTint.Y, ScopedTint.Z, ScopedEffect.blur};
+    MConstants.effect2 = Vector4D{ScopedEffect.sharpness, ScopedEffect.doubleVision, ScopedEffect.wobble,
+                                  ScopedEffect.wobbleFrequency};
+    MConstants.effect3 = Vector4D{ScopedEffect.chromatic, ScopedEffect.vignette, ScopedEffect.desaturation,
+                                  ScopedEffect.afterimage};
+    MConstants.effect4 = Vector4D{ScopedEffect.pulse, ScopedEffect.sway, ScopedEffect.scaleBreathing, 0.0f};
+    MConstants.palette0 = ScopedEffectColor(ScopedEffect.palette[0]);
+    MConstants.palette1 = ScopedEffectColor(ScopedEffect.palette[1]);
+    MConstants.palette2 = ScopedEffectColor(ScopedEffect.palette[2]);
+    MConstants.palette3 = ScopedEffectColor(ScopedEffect.palette[3]);
+    MConstants.palette4 = ScopedEffectColor(ScopedEffect.palette[4]);
 }
 
 void PostFxPass::ExecutePrefilter(RenderGraphContext& InContext, void* InUser)

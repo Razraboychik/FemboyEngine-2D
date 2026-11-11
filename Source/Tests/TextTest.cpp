@@ -179,7 +179,7 @@ void TestServiceAndComponent()
 
     Fby::Scene::ComponentRegistry ScopedComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     Fby::TextComponent ScopedComponent;
     ScopedComponent.SetRef(ScopedRef, 1);
@@ -188,7 +188,7 @@ void TestServiceAndComponent()
     const std::string ScopedToml = Fby::Scene::SaveSceneToml(ScopedRegistry, ScopedComponents);
     Check(ScopedToml.find("TextComponent") != std::string::npos, "scene TOML carries TextComponent");
 
-    entt::registry ScopedLoaded;
+    Fby::Scene::Registry ScopedLoaded;
     const auto ScopedLoadedResult = Fby::Scene::LoadSceneToml(ScopedLoaded, ScopedComponents, ScopedToml);
     Check(ScopedLoadedResult.has_value(), "text component scene loads");
     auto ScopedView = ScopedLoaded.view<Fby::TextComponent>();
@@ -207,7 +207,7 @@ void TestServiceAndComponent()
     Fby::DeterministicRng ScopedRng = Fby::DeterministicRng::FromSeed(3);
     Check(Fby::Ecs::CaptureSnapshot(ScopedRegistry, ScopedSchema, ScopedSnapshot, 1, ScopedRng),
           "text component snapshot captures");
-    entt::registry ScopedRestored;
+    Fby::Scene::Registry ScopedRestored;
     Check(Fby::Ecs::RestoreSnapshot(ScopedRestored, ScopedSchema, ScopedSnapshot), "text component snapshot restores");
     auto ScopedRestoredView = ScopedRestored.view<Fby::TextComponent>();
     Check(!ScopedRestoredView.empty(), "restored registry has TextComponent");

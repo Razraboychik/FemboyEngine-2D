@@ -24,10 +24,8 @@ dirty/autosave rules. The task walkthrough stays in
 
 ## Scene lifecycle
 
-- `Scene::DestroyAllEntities` clears both the entities and the entity pool.
-  EnTT's `registry::clear()` only invalidates slots in this version, so without
-  the pool clear the hierarchy kept ghosts after Load/Reload/PIE stop and
-  snapshot restore did not start from an empty registry.
+- `Scene::DestroyAllEntities` clears both the entities and the entity pool, so
+  Load/Reload/PIE stop and snapshot restore start from an empty registry.
 - Contact-end events are guarded against dead shapes: destroying a touching body
   (opening a project over the demo world, reloading, Play/Stop) makes Box2D push
   end-touch events whose shape ids are already dead. `EntityFromShape` validates

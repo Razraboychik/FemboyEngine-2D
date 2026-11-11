@@ -6,6 +6,7 @@
 #include "Engine/Core/Log.hpp"
 #include "Engine/RHI/ViewportModes.hpp"
 #include "Engine/UI/Accessibility.hpp"
+#include "Editor/Infrastructure/EditorTheme.hpp"
 
 #include <cstdint>
 #include <string>
@@ -28,6 +29,10 @@ struct EditorSettings
     float fontScriptPinInput = 18.0f;
     float fontScriptPinOutput = 18.0f;
     float fontSceneText = 18.0f;
+    // Extra text spacing in logical pixels, applied by the ImGui renderer.
+    float textLineSpacing = 0.0f;
+    float textLetterSpacing = 0.0f;
+    float textWordSpacing = 0.0f;
     // Per-category log journal limits. The editor applies them to the engine
     // sink on commit; see LogRetention for the pruning and compaction rules.
     std::uint32_t logMaxFiles = kRecommendedLogRetention.MaxFiles;
@@ -39,6 +44,19 @@ struct EditorSettings
     bool showGrid = true;
     bool saveEditorIniOnCommit = true;
     char theme[32] = "graphite";
+    // Text is independent from the panel theme: authored sRGB colour, alpha
+    // and WCAG contrast multiplier against the selected panel background.
+    std::uint32_t textColor = 0xF2F2F2;
+    float textOpacity = 1.0f;
+    float textContrast = 1.0f;
+    bool textOutline = false;
+    std::uint32_t textOutlineColor = 0x000000;
+    float textOutlineSize = 1.0f;
+    // Very light accent glow around panels; 0 disables it.
+    float panelGlow = 0.15f;
+    // Per-symbol overrides; zero entries follow the selected theme.
+    bool customSymbolColors = false;
+    EditorSymbolColors symbolColors{};
 
     // Presentation: 0 = windowed, 1 = borderless fullscreen (default), 2 =
     // exclusive fullscreen. Width/height are the windowed size.

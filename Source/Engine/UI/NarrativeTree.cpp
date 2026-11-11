@@ -157,7 +157,7 @@ void AppendText(char* OutText, std::size_t InCapacity, std::uint32_t* InLength, 
 
 [[nodiscard]] std::uint32_t EntityId(Entity InEntity) noexcept
 {
-    return static_cast<std::uint32_t>(entt::to_integral(InEntity));
+    return static_cast<std::uint32_t>(Fby::ToIntegral(InEntity));
 }
 
 // Authored name, or an empty view. The component is fixed-capacity and may not

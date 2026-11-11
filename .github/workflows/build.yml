@@ -55,13 +55,31 @@ jobs:
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-ci/bin/tools/fby_fempak.exe
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build-ci/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --version 0.4.0-alpha.1 --out build-ci/release-manifest.json
       - name: Desktop package
         run: python Source/Tools/Dev/PackageDesktop.py --platform windows --preset ci-clangcl --build-dir build-ci --output build/package --skip-build
       - name: Vendor usage report
         run: python Source/Tools/Dev/ReportVendorUsage.py --build build-ci --output build-ci/vendor-usage.md --strict
       - name: Test
         run: ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings"
+
+  windows-msvc:
+    # MSVC is a supported compiler with the same minimum (19.44, VS 2022 17.14+).
+    # Advisory until the first hosted run, then flip continue-on-error off.
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Verify MSVC
+        shell: pwsh
+        run: cl 2>&1 | Select-Object -First 3
+      - name: Configure
+        run: cmake -S . -B build-msvc -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=ON -DFBY_BUILD_TESTS=ON -DFBY_BUILD_TOOLS=OFF -DFBY_BUILD_SANDBOX=OFF -DFBY_BUILD_SERVER=OFF -DFBY_BUILD_LOBBY=OFF -DFBY_BUILD_PLATFORM_PROVIDERS=OFF -DFBY_WITH_RNNOISE=OFF
+      - name: Build
+        run: cmake --build build-msvc --parallel 8 -- -k 0
+      - name: Test
+        run: ctest --test-dir build-msvc --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings"
 
   linux-clang:
     env:
@@ -80,7 +98,7 @@ jobs:
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.4.0-alpha.1 --out build/release-manifest.json
       - name: Desktop package
         run: python Source/Tools/Dev/PackageDesktop.py --platform linux --build-dir build --output build/package --skip-build
       - name: Test
@@ -90,7 +108,7 @@ jobs:
     env:
       SDL_VIDEODRIVER: x11
     runs-on: ubuntu-latest
-    container: gcc:16
+    container: gcc:16.2
     continue-on-error: true
     steps:
       - name: Prepare container
@@ -217,7 +235,7 @@ jobs:
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-macos-release/bin/tools/fby_fempak
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-macos-release/bin --artifacts build-macos-release/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.3.0-alpha.1 --out build-macos-release/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-macos-release/bin --artifacts build-macos-release/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --version 0.4.0-alpha.1 --out build-macos-release/release-manifest.json
       - name: Desktop package
         run: python Source/Tools/Dev/PackageDesktop.py --platform macos --build-dir build-macos-release --output build-macos-release/package --skip-build
       - name: Test

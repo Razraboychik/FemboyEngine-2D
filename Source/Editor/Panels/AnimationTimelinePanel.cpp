@@ -9,6 +9,7 @@
 #include "Engine/Script/ScriptSystem.hpp"
 
 #include <imgui.h>
+#include "Editor/Infrastructure/EditorTheme.hpp"
 #include <implot.h>
 
 #include <algorithm>
@@ -504,7 +505,9 @@ void AnimationTimelinePanel::DrawCurveEditor()
                     .EvaluateTrack(static_cast<std::uint16_t>(MSelectedTrack), ScopedTimes[ScopedI], Vector2D{})
                     .X;
         }
-        ImPlot::PlotLine("value", ScopedTimes.data(), ScopedValues.data(), static_cast<int>(ScopedTimes.size()));
+        ImPlotSpec ScopedPlotSpec;
+        ScopedPlotSpec.LineColor = PlotColor(0);
+        ImPlot::PlotLine("value", ScopedTimes.data(), ScopedValues.data(), static_cast<int>(ScopedTimes.size()), ScopedPlotSpec);
         // Keys and Bezier handles.
         for (std::uint32_t ScopedKey = 0; ScopedKey < ScopedTrack.keyCount; ++ScopedKey)
         {

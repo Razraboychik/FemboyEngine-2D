@@ -7,6 +7,7 @@ add_library(fby_editor STATIC
     Infrastructure/CommandStack.cpp
     Infrastructure/EditorFonts.cpp
     Infrastructure/EditorSettings.cpp
+    Infrastructure/EditorTheme.cpp
     Infrastructure/EditorTypography.cpp
     Infrastructure/EditorSystem.cpp
     Infrastructure/EditorWidgets.cpp
@@ -21,11 +22,14 @@ add_library(fby_editor STATIC
     Panels/LevelSettingsPanel.cpp
     Panels/AnimationGraphCanvasPanel.cpp
     Panels/AnimationTimelinePanel.cpp
+    Panels/DirectionalBlendFile.cpp
+    Panels/DirectionalBlendSpacePanel.cpp
     Panels/ContentBrowserPanel.cpp
     Panels/LogBoyPanel.cpp
     Panels/LicensesPanel.cpp
     Panels/NetworkDiagnosticsPanel.cpp
     Panels/PieClientViewport.cpp
+    Panels/SdfCharacterPanel.cpp
     Panels/VoiceDevicePanel.cpp
     Panels/MaterialGraphPanel.cpp
     Panels/NodeCanvasPanel.cpp

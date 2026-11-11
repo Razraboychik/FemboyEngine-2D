@@ -45,7 +45,7 @@ void TestCompileAndBreakpoint()
     FBY_CHECK(ScopedPanel.SetBreakpointLine(3));
     FBY_CHECK(!ScopedPanel.SetBreakpointLine(3));
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
 
@@ -84,7 +84,7 @@ void TestFaultReporting()
     ScopedPanel.SetSource(kSource);
     FBY_CHECK(ScopedPanel.Compile(ScopedComponents));
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     // No Transform2D on purpose: the program must fault instead of crashing.
     FBY_CHECK(!ScopedPanel.RunOnce(ScopedRegistry, ScopedEntity));
@@ -116,7 +116,7 @@ void TestGraphProgramDebugging()
     FBY_CHECK(ScopedPanel.Status().find("LogicGraph") != std::string::npos);
     FBY_CHECK(ScopedPanel.SetBreakpointLine(ScopedSetVelocity));
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Velocity>(ScopedEntity, Fby::Velocity{});
     FBY_CHECK(ScopedPanel.RunOnce(ScopedRegistry, ScopedEntity));

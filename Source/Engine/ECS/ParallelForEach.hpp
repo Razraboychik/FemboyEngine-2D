@@ -1,4 +1,4 @@
-// FemboyEngine2D - parallel iteration over an EnTT view.
+// FemboyEngine2D - parallel iteration over an FCS view.
 #pragma once
 
 #include "Engine/Core/JobSystem.hpp"

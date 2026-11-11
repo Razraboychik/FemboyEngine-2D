@@ -81,12 +81,20 @@ int main()
 
     Ecs::Registry ScopedRegistry;
     const Entity ScopedActor = ScopedRegistry.create();
-    auto& ScopedAttributeComponent = ScopedRegistry.emplace<GameplayAttributesComponent>(ScopedActor);
-    SetGameplayAttributeBase(ScopedAttributeComponent, ScopedHealth, 100.0f);
-    SetGameplayAttributeBase(ScopedAttributeComponent, ScopedMaxHealth, 100.0f);
-    SetGameplayAttributeBase(ScopedAttributeComponent, ScopedMana, 20.0f);
-    auto& ScopedTagComponent = ScopedRegistry.emplace<GameplayTagsComponent>(ScopedActor);
-    ScopedTagComponent.BaseTags.Add(ScopedCharacter);
+    (void)ScopedRegistry.emplace<GameplayAttributesComponent>(ScopedActor);
+    (void)ScopedRegistry.emplace<GameplayTagsComponent>(ScopedActor);
+    const auto ActorAttributes = [&]() -> GameplayAttributesComponent&
+    {
+        return ScopedRegistry.get<GameplayAttributesComponent>(ScopedActor);
+    };
+    const auto ActorTags = [&]() -> GameplayTagsComponent&
+    {
+        return ScopedRegistry.get<GameplayTagsComponent>(ScopedActor);
+    };
+    SetGameplayAttributeBase(ActorAttributes(), ScopedHealth, 100.0f);
+    SetGameplayAttributeBase(ActorAttributes(), ScopedMaxHealth, 100.0f);
+    SetGameplayAttributeBase(ActorAttributes(), ScopedMana, 20.0f);
+    ActorTags().BaseTags.Add(ScopedCharacter);
 
     GameplayEffectSystem ScopedEffects;
     ScopedEffects.Initialize(ScopedTags, ScopedAttributes);
@@ -100,13 +108,13 @@ int main()
     ScopedBuff.GrantedTags[0] = ScopedBurning;
     FBY_CHECK(ScopedEffects.AddDef(ScopedBuff));
     FBY_CHECK(ScopedEffects.Apply(ScopedRegistry, ScopedActor, 1, ScopedActor));
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedAttributeComponent, ScopedHealth), 120.0f));
-    FBY_CHECK(ScopedTagComponent.Tags.HasExact(ScopedBurning));
+    FBY_CHECK(Near(GameplayAttributeValue(ActorAttributes(), ScopedHealth), 120.0f));
+    FBY_CHECK(ActorTags().Tags.HasExact(ScopedBurning));
     ScopedEffects.Update(ScopedRegistry, 1.0f);
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedAttributeComponent, ScopedHealth), 120.0f));
+    FBY_CHECK(Near(GameplayAttributeValue(ActorAttributes(), ScopedHealth), 120.0f));
     FBY_CHECK(ScopedEffects.Remove(ScopedRegistry, ScopedActor, 1));
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedAttributeComponent, ScopedHealth), 100.0f));
-    FBY_CHECK(!ScopedTagComponent.Tags.HasExact(ScopedBurning));
+    FBY_CHECK(Near(GameplayAttributeValue(ActorAttributes(), ScopedHealth), 100.0f));
+    FBY_CHECK(!ActorTags().Tags.HasExact(ScopedBurning));
 
     GameplayEffectDef ScopedDamage;
     ScopedDamage.Id = 2;
@@ -115,7 +123,7 @@ int main()
     ScopedDamage.Modifiers[0] = GameplayAttributeModifier{ScopedHealth, GameplayModifierOp::Add, -30.0f};
     FBY_CHECK(ScopedEffects.AddDef(ScopedDamage));
     FBY_CHECK(ScopedEffects.Apply(ScopedRegistry, ScopedActor, 2, ScopedActor));
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedAttributeComponent, ScopedHealth), 70.0f));
+    FBY_CHECK(Near(GameplayAttributeValue(ActorAttributes(), ScopedHealth), 70.0f));
 
     GameplayEffectDef ScopedBurn;
     ScopedBurn.Id = 3;
@@ -131,7 +139,7 @@ int main()
     {
         ScopedEffects.Update(ScopedRegistry, 0.25f);
     }
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedAttributeComponent, ScopedHealth), 50.0f));
+    FBY_CHECK(Near(GameplayAttributeValue(ActorAttributes(), ScopedHealth), 50.0f));
     std::uint32_t ScopedPeriodicEvents = 0;
     for (const GameplayEffectEvent& ScopedEvent : ScopedEffects.Events())
     {
@@ -153,7 +161,7 @@ int main()
     ScopedEffects.ClearEvents();
     FBY_CHECK(ScopedEffects.Apply(ScopedRegistry, ScopedActor, 4, ScopedActor));
     FBY_CHECK(ScopedEffects.Apply(ScopedRegistry, ScopedActor, 4, ScopedActor));
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedAttributeComponent, ScopedHealth), 70.0f));
+    FBY_CHECK(Near(GameplayAttributeValue(ActorAttributes(), ScopedHealth), 70.0f));
     FBY_CHECK(ScopedEffects.Events().size() == 2);
     FBY_CHECK(ScopedEffects.Events()[1].Stacks == 2);
     FBY_CHECK(ScopedEffects.Remove(ScopedRegistry, ScopedActor, 4));
@@ -190,31 +198,46 @@ int main()
     FBY_CHECK(ScopedSkills.AddDef(ScopedFireball));
 
     const Entity ScopedCaster = ScopedRegistry.create();
-    auto& ScopedCasterAttributes = ScopedRegistry.emplace<GameplayAttributesComponent>(ScopedCaster);
-    SetGameplayAttributeBase(ScopedCasterAttributes, ScopedHealth, 100.0f);
-    SetGameplayAttributeBase(ScopedCasterAttributes, ScopedMana, 20.0f);
-    auto& ScopedCasterTags = ScopedRegistry.emplace<GameplayTagsComponent>(ScopedCaster);
+    (void)ScopedRegistry.emplace<GameplayAttributesComponent>(ScopedCaster);
+    (void)ScopedRegistry.emplace<GameplayTagsComponent>(ScopedCaster);
     const Entity ScopedTarget = ScopedRegistry.create();
-    auto& ScopedTargetAttributes = ScopedRegistry.emplace<GameplayAttributesComponent>(ScopedTarget);
-    SetGameplayAttributeBase(ScopedTargetAttributes, ScopedHealth, 50.0f);
+    (void)ScopedRegistry.emplace<GameplayAttributesComponent>(ScopedTarget);
+    const auto CasterAttributes = [&]() -> GameplayAttributesComponent&
+    {
+        return ScopedRegistry.get<GameplayAttributesComponent>(ScopedCaster);
+    };
+    const auto CasterTags = [&]() -> GameplayTagsComponent&
+    {
+        return ScopedRegistry.get<GameplayTagsComponent>(ScopedCaster);
+    };
+    const auto TargetAttributes = [&]() -> GameplayAttributesComponent&
+    {
+        return ScopedRegistry.get<GameplayAttributesComponent>(ScopedTarget);
+    };
+    const auto CasterSkills = [&]() -> GameplaySkillsComponent&
+    {
+        return ScopedRegistry.get<GameplaySkillsComponent>(ScopedCaster);
+    };
+    SetGameplayAttributeBase(CasterAttributes(), ScopedHealth, 100.0f);
+    SetGameplayAttributeBase(CasterAttributes(), ScopedMana, 20.0f);
+    SetGameplayAttributeBase(TargetAttributes(), ScopedHealth, 50.0f);
 
     FBY_CHECK(ScopedSkills.SetSlot(ScopedRegistry, ScopedCaster, 0, 100));
     FBY_CHECK(!ScopedSkills.TryActivate(ScopedRegistry, ScopedCaster, 0, ScopedTarget));
-    ScopedCasterTags.BaseTags.Add(ScopedMage);
-    ScopedCasterTags.Tags.Add(ScopedMage);
+    CasterTags().BaseTags.Add(ScopedMage);
+    CasterTags().Tags.Add(ScopedMage);
     ScopedSkills.ClearEvents();
     FBY_CHECK(ScopedSkills.TryActivate(ScopedRegistry, ScopedCaster, 0, ScopedTarget));
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedCasterAttributes, ScopedMana), 10.0f));
-    const auto& ScopedCasterSkills = ScopedRegistry.get<GameplaySkillsComponent>(ScopedCaster);
-    FBY_CHECK(ScopedCasterSkills.Slots[0].State == GameplaySkillState::Casting);
+    FBY_CHECK(Near(GameplayAttributeValue(CasterAttributes(), ScopedMana), 10.0f));
+    FBY_CHECK(CasterSkills().Slots[0].State == GameplaySkillState::Casting);
     FBY_CHECK(!ScopedSkills.TryActivate(ScopedRegistry, ScopedCaster, 0, ScopedTarget));
     ScopedSkills.Update(ScopedRegistry, 0.5f);
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedTargetAttributes, ScopedHealth), 40.0f));
-    FBY_CHECK(ScopedCasterSkills.Slots[0].State == GameplaySkillState::Ready);
-    FBY_CHECK(ScopedCasterSkills.Slots[0].CooldownRemaining > 0.0f);
+    FBY_CHECK(Near(GameplayAttributeValue(TargetAttributes(), ScopedHealth), 40.0f));
+    FBY_CHECK(CasterSkills().Slots[0].State == GameplaySkillState::Ready);
+    FBY_CHECK(CasterSkills().Slots[0].CooldownRemaining > 0.0f);
     FBY_CHECK(!ScopedSkills.TryActivate(ScopedRegistry, ScopedCaster, 0, ScopedTarget));
     ScopedSkills.Update(ScopedRegistry, 1.0f);
-    FBY_CHECK(ScopedCasterSkills.Slots[0].CooldownRemaining <= 0.0f);
+    FBY_CHECK(CasterSkills().Slots[0].CooldownRemaining <= 0.0f);
     FBY_CHECK(ScopedSkills.TryActivate(ScopedRegistry, ScopedCaster, 0, ScopedTarget));
 
     // Snapshot: every gameplay component has a raw codec in BuiltIns.
@@ -226,12 +249,12 @@ int main()
     FBY_CHECK(Ecs::CaptureSnapshot(ScopedRegistry, ScopedSchema, ScopedSnapshot, 1, ScopedRng,
                                    &ScopedSnapshotBytes));
     ScopedSnapshot.resize(ScopedSnapshotBytes);
-    ScopedTagComponent.BaseTags.Clear();
-    ScopedTagComponent.Tags.Clear();
-    ScopedTargetAttributes.Values.Base[ScopedHealth.Id - 1u] = 999.0f;
+    ActorTags().BaseTags.Clear();
+    ActorTags().Tags.Clear();
+    TargetAttributes().Values.Base[ScopedHealth.Id - 1u] = 999.0f;
     FBY_CHECK(Ecs::RestoreSnapshot(ScopedRegistry, ScopedSchema, ScopedSnapshot));
-    FBY_CHECK(ScopedTagComponent.BaseTags.HasExact(ScopedCharacter));
-    FBY_CHECK(Near(GameplayAttributeValue(ScopedTargetAttributes, ScopedHealth), 40.0f));
+    FBY_CHECK(ActorTags().BaseTags.HasExact(ScopedCharacter));
+    FBY_CHECK(Near(GameplayAttributeValue(TargetAttributes(), ScopedHealth), 40.0f));
 
     // StateTree writes an ActivateSkill command; the gameplay layer executes it.
     StateTreeDefinition ScopedTree;

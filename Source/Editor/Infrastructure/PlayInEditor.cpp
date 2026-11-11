@@ -34,6 +34,22 @@ namespace Fby::Editor
 {
 namespace
 {
+// PIE gameplay sounds use their own bus so the editor's preview SFX stays
+// audible when a paused game mutes its own audio.
+void RoutePieAudio(Ecs::Registry& InWorld, AudioSystem* InAudio) noexcept
+{
+    if (InAudio == nullptr)
+    {
+        return;
+    }
+    const std::uint16_t ScopedGameBus = InAudio->GameplayBusId();
+    auto ScopedSources = InWorld.view<AudioSourceComponent>();
+    for (auto [ScopedEntity, ScopedSource] : ScopedSources.each())
+    {
+        (void)ScopedEntity;
+        ScopedSource.BusID = ScopedGameBus;
+    }
+}
 // Launches the sandbox client without waiting for it: the session talks to it
 // over UDP and terminates it on Stop. `InArguments` is a plain command line
 // built from ports only, so no quoting is involved.
@@ -223,6 +239,7 @@ PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs
     MServices = CaptureServices(InServices);
     // Systems must use the PIE world, never the editor's PhysicsSystem.
     MServices.physics = &MPiePhysics;
+    RoutePieAudio(MWorld, MServices.audio);
     // The editor's CommandBuffer contains authoring transactions against the
     MServices.commands = nullptr;
     MActive = true;
@@ -248,6 +265,7 @@ PlayInEditor::Result PlayInEditor::StartMultiplayer(Ecs::Registry& InEditorWorld
         Stop();
         return Result::RestoreFailed;
     }
+    RoutePieAudio(MClientWorld, MServices.audio);
     MClientDelta.assign(MMaxSnapshotBytes, std::byte{0});
     MClientCount = InClientCount == 0 ? 1 : InClientCount;
     MPieBaselineTick = InTick;
@@ -737,6 +755,10 @@ bool PlayInEditor::Step(Ecs::SystemGraph& InGraph, float InDeltaSeconds, float I
     {
         return false;
     }
+    if (MServices.audio != nullptr)
+    {
+        MServices.audio->SetGameplayBusActive(true);
+    }
     // PIE is the authoritative simulation: never fan fixed phases across worker
     // threads, so DOD physics/SDF stay on the deterministic main-thread path.
     InGraph.SetDeterministicSimulation(true);
@@ -768,6 +790,10 @@ bool PlayInEditor::Step(Ecs::SystemGraph& InGraph, float InDeltaSeconds, float I
     }
     MTick += 1;
     MElapsed += InDeltaSeconds;
+    if (MServices.audio != nullptr)
+    {
+        MServices.audio->SetGameplayBusActive(false);
+    }
     return true;
 }
 

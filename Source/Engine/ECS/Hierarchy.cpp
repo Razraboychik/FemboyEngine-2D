@@ -4,6 +4,7 @@
 #include "Engine/Core/SimMath.hpp"
 
 #include <unordered_map>
+#include <vector>
 
 namespace Fby::Ecs
 {
@@ -79,7 +80,7 @@ struct HierarchyScratch
     }
 
     const Parent2D* ScopedParent = InRegistry.try_get<Parent2D>(InEntity);
-    if (ScopedParent == nullptr || ScopedParent->Parent == entt::null)
+    if (ScopedParent == nullptr || ScopedParent->Parent == Fby::kNullEntity)
     {
         HierarchyEntry& ScopedEntry = InScratch.Entries[InEntity];
         ScopedEntry.World = Transform2D{ScopedLocal->Position, ScopedLocal->Scale, ScopedLocal->Rotation};
@@ -112,10 +113,15 @@ bool UpdateHierarchy(Registry& InRegistry) noexcept
     HierarchyScratch& ScopedScratch = InRegistry.ctx().emplace<HierarchyScratch>();
     ScopedScratch.Entries.clear();
     bool ScopedOk = true;
-    auto ScopedLocals = InRegistry.view<LocalTransform2D>();
-    for (auto [ScopedEntity, ScopedLocal] : ScopedLocals.each())
+    // Collect first: adding Transform2D moves the entity to another archetype,
+    // and a structural change must not invalidate an active view cursor.
+    std::vector<Entity> ScopedLocalEntities;
+    for (const Entity ScopedEntity : InRegistry.view<LocalTransform2D>())
     {
-        (void)ScopedLocal;
+        ScopedLocalEntities.push_back(ScopedEntity);
+    }
+    for (const Entity ScopedEntity : ScopedLocalEntities)
+    {
         bool ScopedEntityOk = true;
         const Transform2D* ScopedWorld = ResolveWorld(InRegistry, ScopedScratch, ScopedEntity, 0, ScopedEntityOk);
         if (ScopedWorld == nullptr)

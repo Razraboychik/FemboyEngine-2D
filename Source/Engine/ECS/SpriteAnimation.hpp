@@ -65,7 +65,7 @@ inline constexpr std::uint32_t kSpriteAnimationEventContact = 1;
 
 struct SpriteFrameEvent
 {
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     std::uint32_t frame = 0;
     std::uint32_t eventId = kSpriteAnimationEventFrame;
     std::uint32_t sequence = 0;

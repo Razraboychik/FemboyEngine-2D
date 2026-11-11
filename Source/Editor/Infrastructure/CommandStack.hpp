@@ -122,7 +122,7 @@ public:
     {
         return MPayload != nullptr;
     }
-    void Bind(entt::registry* InRegistry, const Scene::ComponentRegistry* InComponents) noexcept;
+    void Bind(Scene::Registry* InRegistry, const Scene::ComponentRegistry* InComponents) noexcept;
 
     // Component codecs. Register every component the editor may edit. The raw
     [[nodiscard]] std::uint16_t RegisterComponentOps(const Scene::ComponentOps& InOps) noexcept;
@@ -222,18 +222,18 @@ private:
         std::string_view name{};
         std::uint64_t layoutHash = 0;
         std::uint32_t size = 0;
-        const void* (*get)(const entt::registry&, Entity) = nullptr;
-        void* (*getMutable)(entt::registry&, Entity) = nullptr;
-        bool (*has)(const entt::registry&, Entity) = nullptr;
-        void (*emplaceBytes)(entt::registry&, Entity, const void*) = nullptr;
-        void (*remove)(entt::registry&, Entity) = nullptr;
+        const void* (*get)(const Scene::Registry&, Entity) = nullptr;
+        void* (*getMutable)(Scene::Registry&, Entity) = nullptr;
+        bool (*has)(const Scene::Registry&, Entity) = nullptr;
+        void (*emplaceBytes)(Scene::Registry&, Entity, const void*) = nullptr;
+        void (*remove)(Scene::Registry&, Entity) = nullptr;
         // Non-null for an external buffer registered with RegisterExternalBuffer.
         void* external = nullptr;
     };
 
     struct Command
     {
-        Entity entity = entt::null;
+        Entity entity = Fby::kNullEntity;
         std::uint16_t codec = 0;
         std::uint16_t rangeCount = 0;
         // >0 only on the first command of a transaction
@@ -254,7 +254,7 @@ private:
 
     struct PendingEdit
     {
-        Entity entity = entt::null;
+        Entity entity = Fby::kNullEntity;
         std::uint16_t codec = 0;
         std::uint32_t oldOffset = 0;
         std::uint32_t newOffset = 0;
@@ -263,7 +263,7 @@ private:
 
     struct PendingSpawn
     {
-        Entity entity = entt::null;
+        Entity entity = Fby::kNullEntity;
         bool active = false;
     };
 
@@ -310,7 +310,7 @@ private:
     std::array<PendingSpawn, kMaxSpawnedEntitiesPerTransaction> MPendingDestroys{};
     std::uint32_t MPendingDestroyCount = 0;
     std::array<Command, kMaxSpawnedEntitiesPerTransaction> MPendingDestroyCommands{};
-    entt::registry* MRegistry = nullptr;
+    Scene::Registry* MRegistry = nullptr;
     const Scene::ComponentRegistry* MComponents = nullptr;
     ApplyObserver MObserver = nullptr;
     void* MObserverUser = nullptr;

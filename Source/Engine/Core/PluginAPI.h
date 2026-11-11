@@ -3,7 +3,7 @@
  * This header is plain C: a plugin may be compiled by any compiler that matches
  * the host's C++ ABI (GCC/MinGW on Windows, GCC/Clang on Linux, Clang on
  * macOS). The exported entry points are `extern "C"`, the tables
- * are POD, and the only C++ type crossing the boundary is the EnTT registry,
+ * are POD, and the only C++ type crossing the boundary is the FCS registry,
  * which the plugin receives as an opaque pointer and casts back after checking
  * the ABI version.
  *
@@ -25,7 +25,7 @@ extern "C"
 {
 #endif
 
-#define FBY_PLUGIN_ABI_VERSION 1u
+#define FBY_PLUGIN_ABI_VERSION 6u
 
 #if defined(_WIN32)
 #define FBY_PLUGIN_EXPORT __declspec(dllexport)
@@ -44,14 +44,16 @@ extern "C"
         FBY_LOG_ERROR
     } FbyLogLevel;
 
-    /* Mirrors Fby::Ecs::Phase. Kept as an int ABI so a plugin built against an
-     * older header still lands in a sane phase. */
+    /* Mirrors Fby::Ecs::Phase exactly. The ABI is versioned, so a plugin must
+     * include the matching header instead of relying on a tolerant fallback. */
     typedef enum FbyPhase
     {
         FBY_PHASE_PRE_UPDATE = 0,
         FBY_PHASE_FIXED_UPDATE = 1,
         FBY_PHASE_POST_UPDATE = 2,
-        FBY_PHASE_RENDER = 3
+        FBY_PHASE_UI = 3,
+        FBY_PHASE_RENDER = 4,
+        FBY_PHASE_COUNT = 5
     } FbyPhase;
 
     typedef struct FbyComponentInfo
@@ -74,6 +76,85 @@ extern "C"
         const char* build_info; /* compiler, standard library, flags */
     } FbyPluginInfo;
 
+    /* Optional accessibility/theme table. A plugin may register named palettes
+     * and select the active one; it never receives a renderer, UI context or
+     * draw list. Colours are packed 0xAABBGGRR (Fby::Color32). */
+#define FBY_THEME_COLOR_COUNT 16
+    typedef struct FbyThemeDesc
+    {
+        uint32_t struct_size;
+        const char* id;
+        const char* display_name;
+        uint32_t flags;
+        uint32_t colors[FBY_THEME_COLOR_COUNT]; /* background, surface, raised, border,
+                                                  text, muted, primary, secondary, accent,
+                                                  success, warning, danger, info, axis_x,
+                                                  axis_y, highlight */
+        uint32_t text_color;
+        uint32_t text_outline_color;
+        float text_opacity;
+        float text_contrast;
+        float text_outline_size;
+        float text_font_scale;
+    } FbyThemeDesc;
+
+#define FBY_PALETTE_EXTENSION_COLORS 80
+#define FBY_EFFECT_TAGS 16
+#define FBY_ALCOHOL_EFFECTS 10
+#define FBY_TEMPERATURE_BANDS 5
+    typedef struct FbyPaletteExtensionDesc
+    {
+        uint32_t struct_size;
+        const char* id;
+        const char* display_name;
+        uint32_t colors[FBY_PALETTE_EXTENSION_COLORS];
+    } FbyPaletteExtensionDesc;
+
+    typedef struct FbyTemperatureBandDesc
+    {
+        char tag[64];
+        uint32_t color;
+    } FbyTemperatureBandDesc;
+
+    typedef struct FbyAlcoholEffectDesc
+    {
+        uint32_t effect; /* FbyAlcoholEffect */
+        float intensity;
+        float frequency;
+    } FbyAlcoholEffectDesc;
+
+    typedef struct FbyEffectDesc
+    {
+        uint32_t struct_size;
+        const char* id;
+        const char* display_name;
+        uint32_t kind; /* 0 = NVG, 1 = thermal */
+        float intensity;
+        float blur;
+        float sharpness;
+        uint32_t pattern; /* FbyNvgPattern */
+        float pattern_scale;
+        uint32_t generation;
+        uint32_t tint; /* default NVG/base colour, 0xAABBGGRR */
+        uint32_t tag_count;
+        char tags[FBY_EFFECT_TAGS][64];
+        uint32_t alcohol_effect_count;
+        FbyAlcoholEffectDesc alcohol_effects[FBY_ALCOHOL_EFFECTS];
+        FbyTemperatureBandDesc temperatures[FBY_TEMPERATURE_BANDS];
+    } FbyEffectDesc;
+
+    typedef struct FbyAccessibilityApi
+    {
+        uint32_t struct_size;
+        uint32_t abi_version;
+        /* Returns 0 on success. The host copies the descriptor. */
+        int (*register_theme)(void* user, const FbyThemeDesc* theme);
+        int (*set_theme)(void* user, const char* id);
+        int (*register_palette_extension)(void* user, const FbyPaletteExtensionDesc* extension);
+        int (*register_effect)(void* user, const FbyEffectDesc* effect);
+        int (*set_effect)(void* user, const char* id);
+    } FbyAccessibilityApi;
+
     /* The host table handed to fby_plugin_load(). Every function receives the
      * opaque `user` pointer, so the host can move the context without touching
      * the plugin ABI. */
@@ -82,7 +163,8 @@ extern "C"
         uint32_t struct_size;
         uint32_t abi_version;
         void* user;
-        /* entt::registry* - only valid together with `component_layout_hash`
+        /* Opaque ECS registry pointer. The host and the plugin must be built
+         * with the same storage backend and with `component_layout_hash`
          * agreeing for every component the plugin touches. */
         void* registry;
 
@@ -97,6 +179,8 @@ extern "C"
          * not allocate unless its allocator came from this table. */
         int (*add_system)(void* InUser, const char* InName, int InPhase, int InOrder,
                           void (*InTick)(void* InUser, float InDt));
+        /* Optional in ABI 2; nullptr when the host has no runtime theme registry. */
+        const FbyAccessibilityApi* accessibility;
     } FbyHostApi;
 
     typedef const FbyPluginInfo* (*FbyPluginInfoFn)(void);

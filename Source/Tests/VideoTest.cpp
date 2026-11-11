@@ -774,7 +774,7 @@ void TestSystemDropsAndLoops()
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
     ScopedContext.renderer = &ScopedRhi;
 
-    const entt::entity ScopedEntity = ScopedRegistry.create();
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
     VideoStreamComponent ScopedComponent;
     ScopedComponent.Loop = false;
     ScopedComponent.Speed = 1.0f;
@@ -844,7 +844,7 @@ void TestSteadyStateAllocations()
     Fby::JobSystem ScopedJobs(1);
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
 
-    const entt::entity ScopedEntity = ScopedRegistry.create();
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
     VideoStreamComponent ScopedComponent;
     ScopedComponent.Loop = true;
     FBY_CHECK(ScopedSystem.OpenMemory(ScopedComponent, ScopedWebm, &ScopedError));

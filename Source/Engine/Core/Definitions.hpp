@@ -242,7 +242,7 @@ template <typename To, typename From> [[nodiscard]] FORCEINLINE const To& Cast(c
     return *ScopedResult;
 }
 
-// Type-safe component lookup. This is the ECS spelling of a cast: EnTT proves
+// Type-safe component lookup. This is the ECS spelling of a cast: the type system proves
 template <typename To, typename Registry, typename Entity>
 [[nodiscard]] FORCEINLINE To* CastComponent(Registry& InRegistry, Entity InEntity) noexcept
 {

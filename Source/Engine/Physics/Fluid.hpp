@@ -254,7 +254,7 @@ public:
 private:
     struct Tracked
     {
-        Entity entity = entt::null;
+        Entity entity = Fby::kNullEntity;
         bool inside = false;
     };
 

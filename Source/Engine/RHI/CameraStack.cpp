@@ -86,7 +86,7 @@ bool CameraStackSystem::Push(Ecs::Registry& InRegistry, const CameraStackDesc& I
     ScopedSlot.desc = InDesc;
     ScopedSlot.camera = InDesc.camera;
     ScopedSlot.baseCamera = InDesc.camera;
-    if (InDesc.cameraEntity != entt::null && InRegistry.valid(InDesc.cameraEntity))
+    if (InDesc.cameraEntity != Fby::kNullEntity && InRegistry.valid(InDesc.cameraEntity))
     {
         if (const auto* ScopedAuthored = InRegistry.try_get<Camera2D>(InDesc.cameraEntity); ScopedAuthored != nullptr)
         {
@@ -95,7 +95,7 @@ bool CameraStackSystem::Push(Ecs::Registry& InRegistry, const CameraStackDesc& I
         }
     }
 
-    if (InDesc.followTarget != entt::null && InRegistry.valid(InDesc.followTarget))
+    if (InDesc.followTarget != Fby::kNullEntity && InRegistry.valid(InDesc.followTarget))
     {
         if (const auto* ScopedTarget = InRegistry.try_get<Transform2D>(InDesc.followTarget); ScopedTarget != nullptr)
         {
@@ -161,7 +161,7 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
         Camera2D ScopedBase = ScopedSlot.baseCamera;
 
         // Pick up authoring changes (zoom, viewport) without overwriting the
-        if (ScopedSlot.desc.cameraEntity != entt::null && InView.registry.valid(ScopedSlot.desc.cameraEntity))
+        if (ScopedSlot.desc.cameraEntity != Fby::kNullEntity && InView.registry.valid(ScopedSlot.desc.cameraEntity))
         {
             if (const auto* ScopedAuthored = InView.registry.try_get<Camera2D>(ScopedSlot.desc.cameraEntity);
                 ScopedAuthored != nullptr)
@@ -175,7 +175,7 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
             }
         }
 
-        if (ScopedSlot.desc.followTarget != entt::null && InView.registry.valid(ScopedSlot.desc.followTarget))
+        if (ScopedSlot.desc.followTarget != Fby::kNullEntity && InView.registry.valid(ScopedSlot.desc.followTarget))
         {
             if (const auto* ScopedTarget = InView.registry.try_get<Transform2D>(ScopedSlot.desc.followTarget);
                 ScopedTarget != nullptr)
@@ -243,7 +243,8 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
                 ScopedSlot.phaseX += InView.dt * ScopedSlot.desc.shakeFrequency * kTwoPi;
                 ScopedSlot.phaseY += InView.dt * ScopedSlot.desc.shakeFrequency * 1.37f * kTwoPi;
                 ScopedSlot.phaseRoll += InView.dt * ScopedSlot.desc.shakeFrequency * 0.63f * kTwoPi;
-                const float ScopedAmplitude = ScopedSlot.desc.shakeAmplitude * ScopedIntensity;
+                const float ScopedAmplitude =
+                    ScopedSlot.desc.shakeAmplitude * ScopedIntensity * MComfortShakeScale;
                 ScopedResolved.Center.X += ValueNoise(ScopedSlot.phaseX, ScopedSlot.desc.seed) * ScopedAmplitude;
                 ScopedResolved.Center.Y += ValueNoise(ScopedSlot.phaseY, ScopedSlot.desc.seed ^ 0x9E3779B9u) *
                                            ScopedAmplitude * 0.78f;
@@ -272,7 +273,7 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
             BuildProjection(ScopedResolved, ScopedSlot.desc.tiltRadians, ScopedSlot.desc.perspectiveDistance);
         ScopedSlot.projectionPrimed = true;
 
-        if ((ScopedSlot.desc.flags & CameraStackWriteBack) != 0 && ScopedSlot.desc.cameraEntity != entt::null &&
+        if ((ScopedSlot.desc.flags & CameraStackWriteBack) != 0 && ScopedSlot.desc.cameraEntity != Fby::kNullEntity &&
             InView.registry.valid(ScopedSlot.desc.cameraEntity))
         {
             if (auto* ScopedAuthored = InView.registry.try_get<Camera2D>(ScopedSlot.desc.cameraEntity);
@@ -472,6 +473,11 @@ void CameraStackSystem::SetFollowTarget(Entity InEntity) noexcept
 void CameraStackSystem::SetDisplayScale(float InScale) noexcept
 {
     MDisplayScale = std::clamp(InScale, 0.5f, 4.0f);
+}
+
+void CameraStackSystem::SetComfortShakeScale(float InScale) noexcept
+{
+    MComfortShakeScale = std::clamp(InScale, 0.0f, 1.0f);
 }
 
 void CameraStackSystem::SetPostFx(const Rhi::PostFxSettings& InSettings) noexcept

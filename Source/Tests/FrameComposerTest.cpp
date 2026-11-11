@@ -2,10 +2,16 @@
 #include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Lighting.hpp"
+#include "Engine/ECS/Presentation.hpp"
+#include "Engine/Physics/SdfCharacter.hpp"
+#include "Engine/RHI/SdfCharacterRender.hpp"
+#include "Engine/Core/JobSystem.hpp"
 
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <span>
 
 namespace
 {
@@ -96,8 +102,7 @@ int main()
     ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Color32::Black(), 0u);
     Check(ScopedComposer.Packet().gpuLighting, "GPU lighting flag reaches the packet");
     ScopedComposer.SetGpuLighting(false);
-    Check(Near(Rhi::DecodeDepth(ScopedComposer.Packet().items[1].flags), 0.5f, 0.01f),
-          "the depth byte round-trips");
+    Check(Near(Rhi::DecodeDepth(ScopedComposer.Packet().items[1].flags), 0.5f, 0.01f), "the depth byte round-trips");
     Check(ScopedComposer.Packet().lights.size() == 1u, "the light is packed for the cluster pass");
     Check(Near(ScopedComposer.Packet().lights[0].PositionAndRadius.X, 650.0f), "the light is in screen space");
     Check(Near(ScopedComposer.Packet().lights[0].PositionAndRadius.Y, 360.0f), "screen Y follows the viewport");
@@ -112,8 +117,10 @@ int main()
     ScopedRegistry.get<Transform2D>(ScopedLower).Position.X = 40.0f;
     ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Color32::Black(), 0u);
     Check(ScopedComposer.Packet().items.size() == 2u, "the count stays stable");
-    Check(Near(ScopedComposer.Packet().items[0].position.X, 40.0f), "the lower layer stays first after a content-only update");
-    Check(Near(ScopedComposer.Packet().items[1].position.X, 30.0f), "the upper layer stays second after a content-only update");
+    Check(Near(ScopedComposer.Packet().items[0].position.X, 40.0f),
+          "the lower layer stays first after a content-only update");
+    Check(Near(ScopedComposer.Packet().items[1].position.X, 30.0f),
+          "the upper layer stays second after a content-only update");
 
     // Change a key: the composer must rebuild the order and the batches.
     ScopedRegistry.get<DrawOrder>(ScopedUpper).Layer = 0u;
@@ -198,8 +205,7 @@ int main()
             ScopedFrontRegistry.emplace<Transform2D>(
                 ScopedEntity, Transform2D{Vector2D{static_cast<float>(ScopedLayer) * 10.0f, 0.0f}});
             ScopedFrontRegistry.emplace<Sprite2D>(ScopedEntity, Sprite2D{});
-            ScopedFrontRegistry.emplace<DrawOrder>(ScopedEntity,
-                                                   DrawOrder{0u, ScopedLayer == 0 ? 0.0f : 0.5f});
+            ScopedFrontRegistry.emplace<DrawOrder>(ScopedEntity, DrawOrder{0u, ScopedLayer == 0 ? 0.0f : 0.5f});
         }
         Rhi::FrameComposer ScopedFrontComposer;
         ScopedFrontComposer.SetOpaqueFrontToBack(true);
@@ -235,13 +241,221 @@ int main()
     }
     ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Color32::Black(), 0u);
     Check(!ScopedComposer.Packet().motionItems.empty(), "second frame emits motion vectors");
-    if (!ScopedComposer.Packet().motionItems.empty())
+    bool ScopedHasMotion = false;
+    for (const Rhi::MotionVectorItem& ScopedMotion : ScopedComposer.Packet().motionItems)
     {
-        const Rhi::MotionVectorItem& ScopedMotion = ScopedComposer.Packet().motionItems[0];
-        Check(ScopedMotion.previousPosition.X != ScopedMotion.position.X,
-              "motion vector keeps the previous sprite position");
-        Check(ScopedMotion.screenDelta.X > 0.0f, "motion vector has a screen-space delta");
-        Check(!ScopedMotion.IsReactive(), "opaque sprite is not reactive");
+        // The storage backend controls entity order, so the moved sprite is not
+        // guaranteed to be the first record.
+        if (ScopedMotion.previousPosition.X != ScopedMotion.position.X && ScopedMotion.screenDelta.X > 0.0f)
+        {
+            ScopedHasMotion = true;
+            Check(!ScopedMotion.IsReactive(), "opaque sprite is not reactive");
+            break;
+        }
+    }
+    Check(ScopedHasMotion, "motion vector keeps the previous sprite position and screen delta");
+
+    Fby::SdfCharacterMeshData ScopedCharacterMesh;
+    ScopedCharacterMesh.Positions = {Fby::Vector2D{0.0f, 0.0f}, Fby::Vector2D{8.0f, 0.0f}, Fby::Vector2D{8.0f, 8.0f},
+                                     Fby::Vector2D{0.0f, 8.0f}};
+    ScopedCharacterMesh.Indices = {0, 1, 2, 0, 2, 3};
+    const std::array<Fby::SdfCharacterMeshData, 1> ScopedCharacterMeshes{ScopedCharacterMesh};
+    ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Color32::Black(), 0u, {}, {},
+                                    Fby::Rhi::PostFxDisabled(), ScopedCharacterMeshes);
+    Check(ScopedComposer.Packet().meshItems.size() == 1u, "SDF character mesh reaches the packet");
+    if (!ScopedComposer.Packet().meshItems.empty())
+    {
+        const Rhi::MeshRenderItem& ScopedItem = ScopedComposer.Packet().meshItems[0];
+        Check(ScopedItem.vertices.size() == 4u && ScopedItem.indices.size() == 6u,
+              "SDF character mesh keeps its topology");
+        Check((ScopedItem.flags & Rhi::MeshItemUnskinned) != 0, "SDF character mesh is unskinned");
+    }
+
+    Fby::Ecs::Registry ScopedSdfRegistry;
+    const Fby::Entity ScopedSdfEntity = ScopedSdfRegistry.create();
+    Fby::SkeletonComponent ScopedSkeleton;
+    Fby::SkeletonReset(ScopedSkeleton);
+    (void)Fby::SkeletonAddBone(ScopedSkeleton, "root", -1, Fby::Vector2D{0.0f, 0.0f}, 0.0f);
+    Fby::SkeletonBindPose(ScopedSkeleton);
+    (void)ScopedSdfRegistry.emplace<Fby::SkeletonComponent>(ScopedSdfEntity, ScopedSkeleton);
+    Fby::SdfCharacterComponent ScopedCharacter;
+    ScopedCharacter.PartCount = 1;
+    ScopedCharacter.Parts[0].Shape = Fby::MakeSdfShape(Fby::SdfShapeType::Circle);
+    ScopedCharacter.Parts[0].Shape.Radius = 8.0f;
+    ScopedCharacter.Parts[0].BoneIndex = 0;
+    (void)ScopedSdfRegistry.emplace<Fby::SdfCharacterComponent>(ScopedSdfEntity, ScopedCharacter);
+    Fby::Rhi::SdfCharacterRenderCache ScopedSdfCache;
+    ScopedSdfCache.Build(ScopedSdfRegistry, 24);
+    Check(!ScopedSdfCache.Meshes().empty(), "the SDF character cache bakes ECS entities");
+    if (!ScopedSdfCache.Meshes().empty())
+    {
+        Fby::Rhi::FrameComposer ScopedSdfComposer;
+        ScopedSdfComposer.BuildFramePacket(ScopedSdfRegistry, ScopedCamera, Color32::Black(), 0u, {}, {},
+                                           Fby::Rhi::PostFxDisabled(), ScopedSdfCache.Meshes());
+        Check(!ScopedSdfComposer.Packet().meshItems.empty(), "the cached SDF character reaches the composed packet");
+    }
+
+    // The chunk-prefix extract must produce exactly the same packet as the
+    // deterministic serial fallback.
+    {
+        Fby::Ecs::Registry ScopedParallelRegistry;
+        Fby::Entity ScopedParallelFirst = Fby::kNullEntity;
+        for (std::uint32_t ScopedI = 0; ScopedI < 5000; ++ScopedI)
+        {
+            const Fby::Entity ScopedEntity = ScopedParallelRegistry.create();
+            if (ScopedI == 0)
+            {
+                ScopedParallelFirst = ScopedEntity;
+            }
+            ScopedParallelRegistry.emplace<Fby::Transform2D>(
+                ScopedEntity, Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedI % 100u) * 2.0f,
+                                                             static_cast<float>(ScopedI / 100u) * 2.0f},
+                                               Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+            ScopedParallelRegistry.emplace<Fby::Sprite2D>(ScopedEntity, Fby::Sprite2D{});
+            ScopedParallelRegistry.emplace<Fby::DrawOrder>(
+                ScopedEntity, Fby::DrawOrder{static_cast<std::uint16_t>(ScopedI % 3u), 0.0f});
+        }
+        const Fby::Rhi::CameraData ScopedParallelCamera{Fby::Vector2D{100.0f, 100.0f},
+                                                        Fby::Vector2D{100000.0f, 100000.0f}, 1.0f};
+        Fby::JobSystem ScopedParallelJobs(8);
+        Fby::Rhi::FrameComposer ScopedParallelComposer;
+        ScopedParallelComposer.SetJobSystem(&ScopedParallelJobs);
+        Fby::Rhi::FrameComposer ScopedSerialComposer;
+        ScopedParallelComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(),
+                                                0u);
+        ScopedSerialComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(), 0u);
+        const Fby::Rhi::FramePacket& ScopedParallelPacket = ScopedParallelComposer.Packet();
+        const Fby::Rhi::FramePacket& ScopedSerialPacket = ScopedSerialComposer.Packet();
+        Check(ScopedParallelPacket.items.size() == ScopedSerialPacket.items.size(),
+              "parallel extract item count matches serial");
+        Check(ScopedParallelPacket.batches.size() == ScopedSerialPacket.batches.size(),
+              "parallel extract batch count matches serial");
+        Check(ScopedParallelPacket.items.size() == 5000u, "parallel extract keeps every visible sprite");
+        Check(ScopedParallelPacket.items.size() == 5000u &&
+                  std::memcmp(ScopedParallelPacket.items.data(), ScopedSerialPacket.items.data(),
+                              ScopedParallelPacket.items.size() * sizeof(Fby::Rhi::RenderItem)) == 0,
+              "parallel extract item order matches serial");
+
+        ScopedParallelComposer.SetTemporalState(true);
+        ScopedSerialComposer.SetTemporalState(true);
+        ScopedParallelComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(),
+                                                0u);
+        ScopedSerialComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(), 0u);
+        ScopedParallelComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(),
+                                                0u);
+        ScopedSerialComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(), 0u);
+        Check(ScopedParallelComposer.Packet().motionItems.size() == 5000u,
+              "parallel temporal extract keeps every motion item");
+        Check(ScopedParallelComposer.Packet().motionItems.size() == ScopedSerialComposer.Packet().motionItems.size() &&
+                  std::memcmp(ScopedParallelComposer.Packet().motionItems.data(),
+                              ScopedSerialComposer.Packet().motionItems.data(),
+                              ScopedParallelComposer.Packet().motionItems.size() *
+                                  sizeof(Fby::Rhi::MotionVectorItem)) == 0,
+              "parallel temporal motion order matches serial");
+
+        ScopedParallelComposer.SetInstanceDeltasEnabled(true);
+        ScopedParallelComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(),
+                                                0u);
+        if (ScopedParallelFirst != Fby::kNullEntity)
+        {
+            auto& ScopedMoved = ScopedParallelRegistry.get<Fby::Transform2D>(ScopedParallelFirst);
+            ScopedMoved.Position.X += 4.0f;
+        }
+        ScopedParallelComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(),
+                                                0u);
+        Check(ScopedParallelComposer.Packet().instanceRangesAreDeltas,
+              "instance deltas are emitted when the sort order is unchanged");
+        Check(!ScopedParallelComposer.Packet().instanceRanges.empty(),
+              "a changed transform produces a non-empty instance range");
+
+        std::array<Fby::TileQuad, 2> ScopedTiles{};
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedTiles.size(); ++ScopedI)
+        {
+            ScopedTiles[ScopedI].Item.position = Fby::Vector2D{static_cast<float>(ScopedI) * 4.0f, 0.0f};
+            ScopedTiles[ScopedI].Item.size = Fby::Vector2D{4.0f, 4.0f};
+            ScopedTiles[ScopedI].Key = ScopedI;
+        }
+        const std::span<const Fby::TileQuad> ScopedTileSpan(ScopedTiles.data(), ScopedTiles.size());
+        ScopedParallelComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(), 0u,
+                                                {}, ScopedTileSpan);
+        ScopedSerialComposer.BuildFramePacket(ScopedParallelRegistry, ScopedParallelCamera, Fby::Color32::Black(), 0u,
+                                              {}, ScopedTileSpan);
+        Check(ScopedParallelComposer.Packet().items.size() == ScopedSerialComposer.Packet().items.size(),
+              "parallel tile append matches serial item count");
+        Check(ScopedParallelComposer.Packet().items.size() == ScopedSerialComposer.Packet().items.size() &&
+                  std::memcmp(ScopedParallelComposer.Packet().items.data(), ScopedSerialComposer.Packet().items.data(),
+                              ScopedParallelComposer.Packet().items.size() * sizeof(Fby::Rhi::RenderItem)) == 0,
+              "parallel tile append keeps deterministic order");
+    }
+
+    // Optional render filters take the same parallel path only when their
+    // per-entity checks are applied; the serial packet is the reference.
+    {
+        Fby::Ecs::Registry ScopedFilteredRegistry;
+        for (std::uint32_t ScopedI = 0; ScopedI < 4096; ++ScopedI)
+        {
+            const Fby::Entity ScopedEntity = ScopedFilteredRegistry.create();
+            ScopedFilteredRegistry.emplace<Fby::Transform2D>(
+                ScopedEntity,
+                Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedI % 64u), static_cast<float>(ScopedI / 64u)},
+                                 Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+            ScopedFilteredRegistry.emplace<Fby::Sprite2D>(ScopedEntity, Fby::Sprite2D{});
+            ScopedFilteredRegistry.emplace<Fby::DrawOrder>(ScopedEntity, Fby::DrawOrder{0u, 0.0f});
+            if (ScopedI % 10u == 0u)
+            {
+                ScopedFilteredRegistry.emplace<Fby::Hidden>(ScopedEntity, Fby::Hidden{});
+            }
+            if (ScopedI % 7u == 0u)
+            {
+                Fby::RenderMaskComponent ScopedMask;
+                ScopedMask.ExcludePass(Fby::RenderPassSprites);
+                ScopedFilteredRegistry.emplace<Fby::RenderMaskComponent>(ScopedEntity, ScopedMask);
+            }
+        }
+        const Fby::Rhi::CameraData ScopedFilteredCamera{Fby::Vector2D{32.0f, 32.0f},
+                                                        Fby::Vector2D{100000.0f, 100000.0f}, 1.0f};
+        Fby::JobSystem ScopedFilteredJobs(8);
+        Fby::Rhi::FrameComposer ScopedFilteredParallel;
+        ScopedFilteredParallel.SetJobSystem(&ScopedFilteredJobs);
+        Fby::Rhi::FrameComposer ScopedFilteredSerial;
+        ScopedFilteredParallel.BuildFramePacket(ScopedFilteredRegistry, ScopedFilteredCamera, Fby::Color32::Black(),
+                                                0u);
+        ScopedFilteredSerial.BuildFramePacket(ScopedFilteredRegistry, ScopedFilteredCamera, Fby::Color32::Black(), 0u);
+        Check(!ScopedFilteredParallel.Packet().items.empty(), "optional filters leave visible sprites");
+        Check(ScopedFilteredParallel.Packet().items.size() == ScopedFilteredSerial.Packet().items.size(),
+              "optional-filter parallel item count matches serial");
+        Check(ScopedFilteredParallel.Packet().items.size() == ScopedFilteredSerial.Packet().items.size() &&
+                  std::memcmp(ScopedFilteredParallel.Packet().items.data(), ScopedFilteredSerial.Packet().items.data(),
+                              ScopedFilteredParallel.Packet().items.size() * sizeof(Fby::Rhi::RenderItem)) == 0,
+              "optional-filter parallel item order matches serial");
+    }
+
+    // A recycled entity index must not inherit the previous entity's motion
+    // history; generation is part of the history key.
+    {
+        Fby::Ecs::Registry ScopedRecycleRegistry;
+        const Fby::Entity ScopedOriginal = ScopedRecycleRegistry.create();
+        ScopedRecycleRegistry.emplace<Fby::Transform2D>(ScopedOriginal, Fby::Transform2D{});
+        ScopedRecycleRegistry.emplace<Fby::Sprite2D>(ScopedOriginal, Fby::Sprite2D{});
+        ScopedRecycleRegistry.emplace<Fby::DrawOrder>(ScopedOriginal, Fby::DrawOrder{0u, 0.0f});
+        const Fby::Rhi::CameraData ScopedRecycleCamera{Fby::Vector2D{0.0f, 0.0f}, Fby::Vector2D{1000.0f, 1000.0f},
+                                                       1.0f};
+        Fby::Rhi::FrameComposer ScopedRecycleComposer;
+        ScopedRecycleComposer.SetTemporalState(true);
+        ScopedRecycleComposer.BuildFramePacket(ScopedRecycleRegistry, ScopedRecycleCamera, Fby::Color32::Black(), 0u);
+        ScopedRecycleComposer.BuildFramePacket(ScopedRecycleRegistry, ScopedRecycleCamera, Fby::Color32::Black(), 0u);
+        Check(ScopedRecycleComposer.Packet().motionItems.size() == 1u, "temporal history seeds once");
+
+        ScopedRecycleRegistry.destroy(ScopedOriginal);
+        const Fby::Entity ScopedRecycled = ScopedRecycleRegistry.create();
+        Check((Fby::ToIntegral(ScopedRecycled) & 0xFFFFFu) == (Fby::ToIntegral(ScopedOriginal) & 0xFFFFFu),
+              "the test reuses the same entity index");
+        ScopedRecycleRegistry.emplace<Fby::Transform2D>(ScopedRecycled, Fby::Transform2D{});
+        ScopedRecycleRegistry.emplace<Fby::Sprite2D>(ScopedRecycled, Fby::Sprite2D{});
+        ScopedRecycleRegistry.emplace<Fby::DrawOrder>(ScopedRecycled, Fby::DrawOrder{0u, 0.0f});
+        ScopedRecycleComposer.BuildFramePacket(ScopedRecycleRegistry, ScopedRecycleCamera, Fby::Color32::Black(), 0u);
+        Check(ScopedRecycleComposer.Packet().motionItems.empty(),
+              "recycled entity generation does not inherit old motion history");
     }
 
     if (GFailures == 0)

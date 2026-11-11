@@ -66,7 +66,7 @@ static_assert(std::is_trivially_copyable_v<GameplayEffectDef>);
 struct ActiveGameplayEffect
 {
     std::uint32_t DefId = 0;
-    Entity Source = entt::null;
+    Entity Source = Fby::kNullEntity;
     float Remaining = 0.0f;
     float NextTick = 0.0f;
     std::uint16_t Stacks = 1;
@@ -94,8 +94,8 @@ enum class GameplayEffectEventType : std::uint8_t
 
 struct GameplayEffectEvent
 {
-    Entity Target = entt::null;
-    Entity Source = entt::null;
+    Entity Target = Fby::kNullEntity;
+    Entity Source = Fby::kNullEntity;
     std::uint32_t DefId = 0;
     std::uint16_t Stacks = 1;
     GameplayEffectEventType Type = GameplayEffectEventType::Applied;

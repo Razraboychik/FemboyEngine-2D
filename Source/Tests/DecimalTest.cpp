@@ -198,14 +198,14 @@ void TestSceneAndSnapshot()
 
     Fby::Scene::ComponentRegistry ScopedComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::DecimalComponent>(ScopedEntity, Fby::DecimalComponent{ScopedValue});
 
     const std::string ScopedToml = Fby::Scene::SaveSceneToml(ScopedRegistry, ScopedComponents);
     Check(ScopedToml.find("-123.45") != std::string::npos, "scene TOML carries the decimal");
 
-    entt::registry ScopedLoaded;
+    Fby::Scene::Registry ScopedLoaded;
     const auto ScopedLoadedResult = Fby::Scene::LoadSceneToml(ScopedLoaded, ScopedComponents, ScopedToml);
     Check(ScopedLoadedResult.has_value(), "scene decimal loads");
     auto ScopedView = ScopedLoaded.view<Fby::DecimalComponent>();
@@ -222,7 +222,7 @@ void TestSceneAndSnapshot()
     Fby::DeterministicRng ScopedRng = Fby::DeterministicRng::FromSeed(2);
     Check(Fby::Ecs::CaptureSnapshot(ScopedRegistry, ScopedSchema, ScopedSnapshot, 1, ScopedRng),
           "decimal snapshot captures");
-    entt::registry ScopedRestored;
+    Fby::Scene::Registry ScopedRestored;
     Check(Fby::Ecs::RestoreSnapshot(ScopedRestored, ScopedSchema, ScopedSnapshot), "decimal snapshot restores");
     auto ScopedRestoredView = ScopedRestored.view<Fby::DecimalComponent>();
     Check(!ScopedRestoredView.empty(), "restored registry has DecimalComponent");

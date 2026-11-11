@@ -1,4 +1,4 @@
-// FemboyEngine2D - the ECS bridge between bytecode and EnTT storage.
+// FemboyEngine2D - the ECS bridge between bytecode and FCS storage.
 #pragma once
 
 #include "Engine/ECS/Components.hpp"

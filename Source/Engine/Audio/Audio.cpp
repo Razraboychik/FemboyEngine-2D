@@ -67,6 +67,12 @@ bool AudioSystem::Initialize(std::uint32_t InSampleRate)
     {
         return false;
     }
+    BusId ScopedGameSfx = kInvalidBus;
+    MGameSfxBus = kSfxBus;
+    if (MMixer.CreateBus(kSfxBus, 1.0f, &ScopedGameSfx) == DspResult::Ok)
+    {
+        MGameSfxBus = ScopedGameSfx;
+    }
     // The limiter is part of the device boundary, not an optional effect: it
     MLimiter.Configure(InSampleRate);
 
@@ -211,6 +217,8 @@ void AudioSystem::Shutdown()
     }
     MMixer.Shutdown();
     ResetRuntimeState();
+    MGameSfxBus = kSfxBus;
+    MGameplayBusActive = false;
     MInitialized = false;
 }
 
@@ -225,6 +233,8 @@ void AudioSystem::ResetRuntimeState()
         ScopedRuntime = SourceRuntime{};
     }
     MLegacyStamp = 0;
+    MPauseMuted.fill(false);
+    MComponentMuted.fill(false);
     for (BusRuntime& ScopedRuntime : MBusRuntime)
     {
         ScopedRuntime = BusRuntime{};
@@ -406,14 +416,51 @@ bool AudioSystem::RegisterOggMusic(AssetId InId, std::span<const std::byte> InCo
     return true;
 }
 
+BusId AudioSystem::BusIdFor(AudioBus InBus) const noexcept
+{
+    return InBus == AudioBus::GameSfx ? MGameSfxBus : ToBusId(InBus);
+}
+
 void AudioSystem::SetBusVolume(AudioBus InBus, float InVolume)
 {
-    (void)MMixer.SetBusGain(ToBusId(InBus), InVolume);
+    (void)MMixer.SetBusGain(BusIdFor(InBus), InVolume);
 }
 
 float AudioSystem::BusVolume(AudioBus InBus) const noexcept
 {
-    return MMixer.BusGain(ToBusId(InBus));
+    return MMixer.BusGain(BusIdFor(InBus));
+}
+
+void AudioSystem::SetBusPaused(AudioBus InBus, bool InPaused) noexcept
+{
+    const BusId ScopedBus = BusIdFor(InBus);
+    if (ScopedBus >= kMaxBuses)
+    {
+        return;
+    }
+    MPauseMuted[ScopedBus] = InPaused;
+    (void)MMixer.SetBusMuted(ScopedBus, InPaused || MComponentMuted[ScopedBus]);
+}
+
+bool AudioSystem::BusPaused(AudioBus InBus) const noexcept
+{
+    const BusId ScopedBus = BusIdFor(InBus);
+    return ScopedBus < kMaxBuses && MPauseMuted[ScopedBus];
+}
+
+void AudioSystem::SetGameplayBusActive(bool InActive) noexcept
+{
+    MGameplayBusActive = InActive;
+}
+
+bool AudioSystem::GameplayBusActive() const noexcept
+{
+    return MGameplayBusActive;
+}
+
+std::uint16_t AudioSystem::GameplayBusId() const noexcept
+{
+    return MGameSfxBus;
 }
 
 bool AudioSystem::SetBusZoneParameters(AudioBus InBus, float InReverbGain, float InLowPassHz,
@@ -427,7 +474,7 @@ bool AudioSystem::SetBusZoneParameters(AudioBus InBus, float InReverbGain, float
     ScopedParams.reverbGain = InReverbGain;
     ScopedParams.lowPassHz = InLowPassHz;
     ScopedParams.smoothingSeconds = InSmoothingSeconds;
-    return MMixer.SetBusFilter(ToBusId(InBus), ScopedParams) == DspResult::Ok;
+    return MMixer.SetBusFilter(BusIdFor(InBus), ScopedParams) == DspResult::Ok;
 }
 
 void AudioSystem::SetMasterMuted(bool InMuted) noexcept
@@ -500,7 +547,8 @@ std::uint32_t AudioSystem::StartClip(AssetId InId, BusId InBus, float InVolume, 
 
 std::uint32_t AudioSystem::Play(AssetId InId, AudioBus InBus, float InVolume, float InPitch, bool InLoop)
 {
-    return StartClip(InId, ToBusId(InBus), InVolume, InPitch, InLoop);
+    const AudioBus ScopedBus = MGameplayBusActive && InBus == AudioBus::Sfx ? AudioBus::GameSfx : InBus;
+    return StartClip(InId, BusIdFor(ScopedBus), InVolume, InPitch, InLoop);
 }
 
 void AudioSystem::Stop(std::uint32_t InVoice)
@@ -537,9 +585,9 @@ void AudioSystem::Mix(float* Output, std::uint32_t InFrameCount) noexcept
         std::uint32_t ScopedOffset = 0;
         while (ScopedOffset < InFrameCount)
         {
-            const std::uint32_t ScopedChunk =
-                InFrameCount - ScopedOffset < ScopedMono.size() ? InFrameCount - ScopedOffset
-                                                               : static_cast<std::uint32_t>(ScopedMono.size());
+            const std::uint32_t ScopedChunk = InFrameCount - ScopedOffset < ScopedMono.size()
+                                                  ? InFrameCount - ScopedOffset
+                                                  : static_cast<std::uint32_t>(ScopedMono.size());
             for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedChunk; ++ScopedIndex)
             {
                 const std::uint32_t ScopedSource = (ScopedOffset + ScopedIndex) * 2;
@@ -554,9 +602,9 @@ void AudioSystem::Mix(float* Output, std::uint32_t InFrameCount) noexcept
 void AudioSystem::Update(Ecs::Registry& InRegistry)
 {
     // The listener is a scene singleton; a duplicate must resolve the same way
-    // regardless of the EnTT view order.
+    // regardless of the storage view order.
     const AudioListener* ScopedListener = nullptr;
-    Entity ScopedListenerOwner = entt::null;
+    Entity ScopedListenerOwner = Fby::kNullEntity;
     auto ScopedListenerView = InRegistry.view<AudioListener>();
     for (auto [ScopedEntity, ScopedCandidate] : ScopedListenerView.each())
     {
@@ -564,7 +612,7 @@ void AudioSystem::Update(Ecs::Registry& InRegistry)
         {
             continue;
         }
-        if (ScopedListener == nullptr || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedListenerOwner))
+        if (ScopedListener == nullptr || Fby::ToIntegral(ScopedEntity) < Fby::ToIntegral(ScopedListenerOwner))
         {
             ScopedListenerOwner = ScopedEntity;
             ScopedListener = &ScopedCandidate;
@@ -581,7 +629,7 @@ void AudioSystem::Update(Ecs::Registry& InRegistry)
     }
     const auto ScopedLegacySlot = [this](Entity InEntity) noexcept -> SourceRuntime*
     {
-        const std::uint32_t ScopedRaw = static_cast<std::uint32_t>(entt::to_integral(InEntity));
+        const std::uint32_t ScopedRaw = static_cast<std::uint32_t>(Fby::ToIntegral(InEntity));
         SourceRuntime* ScopedFree = nullptr;
         for (SourceRuntime& ScopedCandidate : MLegacySources)
         {
@@ -625,8 +673,7 @@ void AudioSystem::Update(Ecs::Registry& InRegistry)
             float ScopedVolume = ScopedSource.volume;
             if (ScopedSource.spatial && ScopedListener != nullptr)
             {
-                ScopedVolume *=
-                    Attenuate(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
+                ScopedVolume *= Attenuate(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
             }
             ScopedRuntime->voice =
                 Play(ScopedSource.clip, ScopedSource.bus, ScopedVolume, ScopedSource.pitch, ScopedSource.loop);
@@ -637,8 +684,7 @@ void AudioSystem::Update(Ecs::Registry& InRegistry)
             float ScopedPan = 0.0f;
             if (ScopedSource.spatial && ScopedListener != nullptr)
             {
-                ScopedVolume *=
-                    Attenuate(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
+                ScopedVolume *= Attenuate(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
                 ScopedPan = PanPosition(ScopedSource.position, ScopedListener->position, ScopedSource.maxDistance);
             }
             (void)SetVoiceSpatial(ScopedRuntime->voice, ScopedVolume, ScopedPan);
@@ -713,7 +759,9 @@ void AudioSystem::SyncBusComponents(Ecs::Registry& InRegistry)
                 ScopedRuntime.parent = ScopedBus.ParentBus;
             }
         }
-        (void)MMixer.SetBusMuted(ScopedBus.BusID, (ScopedBus.Flags & kAudioBusFlagMuted) != 0);
+        const bool ScopedComponentMuted = (ScopedBus.Flags & kAudioBusFlagMuted) != 0;
+        MComponentMuted[ScopedBus.BusID] = ScopedComponentMuted;
+        (void)MMixer.SetBusMuted(ScopedBus.BusID, ScopedComponentMuted || MPauseMuted[ScopedBus.BusID]);
         ScopedRuntime.flags = ScopedBus.Flags;
         ScopedRuntime.applied = true;
     }

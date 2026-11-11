@@ -34,6 +34,8 @@ enum class InputSourceKind : std::uint8_t
     MouseAxis = 2,
     GamepadButton = 3,
     GamepadAxis = 4,
+    Touch = 5,
+    TouchAxis = 6,
 };
 
 enum class InputModifierKind : std::uint8_t
@@ -150,7 +152,6 @@ public:
     [[nodiscard]] bool PushContext(std::uint32_t InUserId, std::uint16_t InContext) noexcept;
     [[nodiscard]] bool PopContext(std::uint32_t InUserId, std::uint16_t InContext) noexcept;
     void SetGamepadSlot(std::uint32_t InUserId, std::uint32_t InGamepadSlot) noexcept;
-
     // Call once per fixed tick, before gameplay systems read actions.
     void Update(const InputState& InInput, std::uint64_t InTick, std::uint64_t InTimestampNs, float InDeltaSeconds) noexcept;
 
@@ -179,7 +180,7 @@ private:
     struct UserSlot
     {
         bool Bound = false;
-        Entity Owner = entt::null;
+        Entity Owner = Fby::kNullEntity;
         std::uint32_t GamepadSlot = 0xFFFFFFFFu;
         std::array<std::uint16_t, kMaxInputContextStack> Contexts{};
         std::uint32_t ContextCount = 0;

@@ -147,6 +147,13 @@ int main()
     const Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Transform2D>(ScopedEntity, Transform2D{Vector2D{1.0f, 2.0f}, Vector2D{1.0f, 1.0f}, 0.0f});
     const Ecs::SnapshotSchema ScopedSchema = Ecs::SnapshotSchema::BuiltIns();
+    // Snapshot v5 must carry every built-in codec, including the gameplay
+    // state that used to fall off the old 32-component cap.
+    FBY_CHECK(ScopedSchema.Size() >= 35);
+    FBY_CHECK(ScopedSchema.Find("GameplayTagsComponent") != nullptr);
+    FBY_CHECK(ScopedSchema.Find("GameplayAttributesComponent") != nullptr);
+    FBY_CHECK(ScopedSchema.Find("GameplayEffectsComponent") != nullptr);
+    FBY_CHECK(ScopedSchema.Find("GameplaySkillsComponent") != nullptr);
     auto ScopedWorld = std::make_unique<Ecs::WorldSnapshotV3>();
     ScopedWorld->chainCount = 0;
     std::vector<std::byte> ScopedWorldBytes(Ecs::WorldSnapshotBytes());
@@ -269,7 +276,7 @@ int main()
         std::memcpy(&ScopedHeader, ScopedBad.data(), sizeof(ScopedHeader));
         const std::size_t ScopedPayloadOffset = sizeof(ScopedHeader);
         FBY_CHECK(ScopedHeader.payloadBytes >= sizeof(Entity));
-        const Entity ScopedNull = entt::null;
+        const Entity ScopedNull = Fby::kNullEntity;
         std::memcpy(ScopedBad.data() + ScopedPayloadOffset, &ScopedNull, sizeof(ScopedNull));
         std::uint64_t ScopedHash = 1469598103934665603ull;
         for (std::size_t ScopedI = 0; ScopedI < ScopedHeader.payloadBytes; ++ScopedI)
@@ -298,6 +305,17 @@ int main()
         Ecs::Registry ScopedOther;
         DeterministicRng ScopedOtherRng;
         FBY_CHECK(!Ecs::RestoreSnapshot(ScopedOther, ScopedSchema, ScopedBad, &ScopedOtherRng));
+    }
+
+    // Snapshot v4 is no longer accepted: the 0.4 alpha line reads v5 only.
+    {
+        std::vector<std::byte> ScopedOld = ScopedSnapshot;
+        Ecs::SnapshotHeader ScopedHeader{};
+        std::memcpy(&ScopedHeader, ScopedOld.data(), sizeof(ScopedHeader));
+        ScopedHeader.version = 4;
+        std::memcpy(ScopedHeader.magic, "FBSNAP04", sizeof(ScopedHeader.magic));
+        std::memcpy(ScopedOld.data(), &ScopedHeader, sizeof(ScopedHeader));
+        FBY_CHECK(!Ecs::ValidateSnapshot(ScopedOld, ScopedSchema));
     }
 
     // A payload size that wraps the total-size arithmetic must be rejected
@@ -412,7 +430,7 @@ int main()
     // A physics system that never created (or already destroyed) its world must
     // still clear stale native handles in the registry.
     {
-        entt::registry ScopedStaleRegistry;
+        Ecs::Registry ScopedStaleRegistry;
         const Entity ScopedStale = ScopedStaleRegistry.create();
         ScopedStaleRegistry.emplace<RigidBody2D>(ScopedStale).Body = 0x1234u;
         ScopedStaleRegistry.emplace<Collider2D>(ScopedStale).Shape = 0x5678u;
@@ -424,11 +442,11 @@ int main()
 
     // A registered native cleanup hook runs before the registry is cleared.
     {
-        entt::registry ScopedHookRegistry;
+        Ecs::Registry ScopedHookRegistry;
         int ScopedCalls = 0;
         Scene::SetNativeCleanupHook(
             ScopedHookRegistry,
-            [](void* InUser, entt::registry&) noexcept
+            [](void* InUser, Ecs::Registry&) noexcept
             {
                 ++*static_cast<int*>(InUser);
             },

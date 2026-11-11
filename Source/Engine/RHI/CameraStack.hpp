@@ -55,8 +55,8 @@ struct CameraDistortionSettings
 
 struct CameraStackDesc
 {
-    Entity cameraEntity = entt::null;
-    Entity followTarget = entt::null;
+    Entity cameraEntity = Fby::kNullEntity;
+    Entity followTarget = Fby::kNullEntity;
     Vector2D followOffset{};
     // Higher = tighter follow
     float followSharpness = 6.0f;
@@ -134,6 +134,8 @@ public:
     }
     // Replaces the top camera's post-process policy. The render graph reads the
     void SetPostFx(const Rhi::PostFxSettings& InSettings) noexcept;
+    // 0 disables trauma shake, 1 keeps the authored amplitude.
+    void SetComfortShakeScale(float InScale) noexcept;
     [[nodiscard]] const Rhi::PostFxSettings& ActivePostFx() const noexcept;
 
     [[nodiscard]] static Mat4 BuildProjection(const Camera2D& InCamera, float InTiltRadians,
@@ -178,6 +180,7 @@ private:
     std::array<Slot, kMaxCameras> MSlots{};
     std::uint32_t MCount = 0;
     Rhi::PostFxSettings MDefaultPostFx{};
+    float MComfortShakeScale = 1.0f;
     float MDisplayScale = 1.0f;
     float MMotionScale = 1.0f;
     float MEffectiveMotionScale = 1.0f;

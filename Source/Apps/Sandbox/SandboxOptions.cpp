@@ -53,6 +53,8 @@ void PrintSandboxUsage()
                 "  --connect <host:port>       PIE host address, acknowledgements go here\n"
                 "  --listen <port>             snapshot receive port (default: host port + 1)\n"
                 "  --headless                  no window; run the client until the host stops\n"
+                "  --no-vsync                  disable presentation vsync for benchmarks\n"
+                "  --static                     freeze gameplay/extract after frame 0\n"
                 "  --help                      this text\n");
 }
 
@@ -90,6 +92,16 @@ bool ParseSandboxOptions(int InCount, char** InArgs, SandboxOptions* OutOptions,
         if (ScopedArg == "--headless")
         {
             ScopedOptions.Headless = true;
+            continue;
+        }
+        if (ScopedArg == "--no-vsync")
+        {
+            ScopedOptions.NoVsync = true;
+            continue;
+        }
+        if (ScopedArg == "--static")
+        {
+            ScopedOptions.Static = true;
             continue;
         }
         if (ScopedArg == "--connect" || ScopedArg == "--listen")

@@ -49,7 +49,7 @@ struct ClothRuntime
     std::uint16_t sortLayer = 0;
     float depth = 0.0f;
     Color32 color = Color32::White();
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
 
     std::array<Vector2D, ClothSystem::kMaxParticles> positions{};
     std::array<Vector2D, ClothSystem::kMaxParticles> previous{};
@@ -143,7 +143,7 @@ void ClothSystem::Shutdown(Ecs::Registry& InRegistry) noexcept
         Runtime& ScopedCloth = MStorage->cloths[ScopedI];
         if (ScopedCloth.active)
         {
-            if (ScopedCloth.entity != entt::null && InRegistry.valid(ScopedCloth.entity))
+            if (ScopedCloth.entity != Fby::kNullEntity && InRegistry.valid(ScopedCloth.entity))
             {
                 const auto* ScopedMarker = InRegistry.try_get<ClothComponent>(ScopedCloth.entity);
                 if (ScopedMarker != nullptr && ScopedMarker->ClothIndex == ScopedCloth.index &&
@@ -388,7 +388,7 @@ bool ClothSystem::Destroy(Ecs::Registry& InRegistry, ClothHandle InHandle) noexc
     {
         return false;
     }
-    if (ScopedCloth->entity != entt::null && InRegistry.valid(ScopedCloth->entity))
+    if (ScopedCloth->entity != Fby::kNullEntity && InRegistry.valid(ScopedCloth->entity))
     {
         const auto* ScopedMarker = InRegistry.try_get<ClothComponent>(ScopedCloth->entity);
         if (ScopedMarker != nullptr && ScopedMarker->ClothIndex == ScopedCloth->index &&

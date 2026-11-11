@@ -11,8 +11,7 @@
 namespace Fby::Editor
 {
 
-bool PlaybackIconButton(const char* InId, PlaybackIcon InIcon, bool InEngaged, bool InDisabled,
-                        const char* InTooltip)
+bool PlaybackIconButton(const char* InId, PlaybackIcon InIcon, bool InEngaged, bool InDisabled, const char* InTooltip)
 {
     const float ScopedHeight = ImGui::GetFrameHeight();
     const ImVec2 ScopedSize{ScopedHeight, ScopedHeight};
@@ -35,14 +34,41 @@ bool PlaybackIconButton(const char* InId, PlaybackIcon InIcon, bool InEngaged, b
     }
 
     ImDrawList* ScopedDraw = ImGui::GetWindowDrawList();
+    const EditorPalette& ScopedPalette = CurrentEditorPalette();
     const ImVec4 ScopedBackground =
-        HexColor(ScopedHovered && !InDisabled ? kThemeFrameHover : kThemeFrame, ScopedAlpha);
+        HexColor(ScopedHovered && !InDisabled ? ScopedPalette.FrameHover : ScopedPalette.Frame, ScopedAlpha);
     ScopedDraw->AddRectFilled(ScopedMin, ScopedMax, ImGui::GetColorU32(ScopedBackground), 4.0f);
-    const ImVec4 ScopedBorder = HexColor(kThemeBorder, ScopedAlpha);
+    const ImVec4 ScopedBorder = HexColor(ScopedPalette.Border, ScopedAlpha);
     ScopedDraw->AddRect(ScopedMin, ScopedMax, ImGui::GetColorU32(ScopedBorder), 4.0f);
 
-    const ImU32 ScopedGlyph =
-        IM_COL32(238, 238, 242, static_cast<int>(255.0f * ScopedAlpha * (InEngaged ? 0.85f : 1.0f)));
+    EditorSymbolRole ScopedRole = EditorSymbolRole::Play;
+    switch (InIcon)
+    {
+        case PlaybackIcon::Pause:
+            ScopedRole = EditorSymbolRole::Pause;
+            break;
+        case PlaybackIcon::Step:
+            ScopedRole = EditorSymbolRole::Step;
+            break;
+        case PlaybackIcon::Stop:
+            ScopedRole = EditorSymbolRole::Stop;
+            break;
+        case PlaybackIcon::Multiplayer:
+            ScopedRole = EditorSymbolRole::Multiplayer;
+            break;
+        case PlaybackIcon::Play:
+        default:
+            break;
+    }
+    ImVec4 ScopedGlyphColor = SymbolColor(ScopedRole, ScopedAlpha * (InEngaged ? 0.95f : 1.0f));
+    if (InEngaged)
+    {
+        const ImVec4 ScopedText = HexColor(ScopedPalette.Text, ScopedAlpha);
+        ScopedGlyphColor.x += (ScopedText.x - ScopedGlyphColor.x) * 0.28f;
+        ScopedGlyphColor.y += (ScopedText.y - ScopedGlyphColor.y) * 0.28f;
+        ScopedGlyphColor.z += (ScopedText.z - ScopedGlyphColor.z) * 0.28f;
+    }
+    const ImU32 ScopedGlyph = ImGui::ColorConvertFloat4ToU32(ScopedGlyphColor);
     const ImVec2 ScopedCenter{(ScopedMin.x + ScopedMax.x) * 0.5f, (ScopedMin.y + ScopedMax.y) * 0.5f};
     const float ScopedHalf = ScopedHeight * 0.26f;
     const auto ScopedBar = [&](float InLeft, float InRight)
@@ -58,26 +84,26 @@ bool PlaybackIconButton(const char* InId, PlaybackIcon InIcon, bool InEngaged, b
     };
     switch (InIcon)
     {
-    case PlaybackIcon::Play:
-        ScopedTriangle(-ScopedHalf * 0.75f, ScopedHalf);
-        break;
-    case PlaybackIcon::Pause:
-        ScopedBar(-ScopedHalf * 0.75f, -ScopedHalf * 0.20f);
-        ScopedBar(ScopedHalf * 0.20f, ScopedHalf * 0.75f);
-        break;
-    case PlaybackIcon::Step:
-        ScopedTriangle(-ScopedHalf * 0.85f, ScopedHalf * 0.35f);
-        ScopedBar(ScopedHalf * 0.55f, ScopedHalf * 0.95f);
-        break;
-    case PlaybackIcon::Stop:
-        ScopedDraw->AddRectFilled(ImVec2(ScopedCenter.x - ScopedHalf * 0.75f, ScopedCenter.y - ScopedHalf * 0.75f),
-                                  ImVec2(ScopedCenter.x + ScopedHalf * 0.75f, ScopedCenter.y + ScopedHalf * 0.75f),
-                                  ScopedGlyph, 1.5f);
-        break;
-    case PlaybackIcon::Multiplayer:
-        ScopedTriangle(-ScopedHalf * 0.95f, -ScopedHalf * 0.05f);
-        ScopedTriangle(-ScopedHalf * 0.05f, ScopedHalf * 0.85f);
-        break;
+        case PlaybackIcon::Play:
+            ScopedTriangle(-ScopedHalf * 0.75f, ScopedHalf);
+            break;
+        case PlaybackIcon::Pause:
+            ScopedBar(-ScopedHalf * 0.75f, -ScopedHalf * 0.20f);
+            ScopedBar(ScopedHalf * 0.20f, ScopedHalf * 0.75f);
+            break;
+        case PlaybackIcon::Step:
+            ScopedTriangle(-ScopedHalf * 0.85f, ScopedHalf * 0.35f);
+            ScopedBar(ScopedHalf * 0.55f, ScopedHalf * 0.95f);
+            break;
+        case PlaybackIcon::Stop:
+            ScopedDraw->AddRectFilled(ImVec2(ScopedCenter.x - ScopedHalf * 0.75f, ScopedCenter.y - ScopedHalf * 0.75f),
+                                      ImVec2(ScopedCenter.x + ScopedHalf * 0.75f, ScopedCenter.y + ScopedHalf * 0.75f),
+                                      ScopedGlyph, 1.5f);
+            break;
+        case PlaybackIcon::Multiplayer:
+            ScopedTriangle(-ScopedHalf * 0.95f, -ScopedHalf * 0.05f);
+            ScopedTriangle(-ScopedHalf * 0.05f, ScopedHalf * 0.85f);
+            break;
     }
 
     if (ScopedHovered && InTooltip != nullptr)
@@ -88,7 +114,7 @@ bool PlaybackIconButton(const char* InId, PlaybackIcon InIcon, bool InEngaged, b
 }
 
 bool EditorSlider(const char* InId, float* InValue, float InMin, float InMax, const char* InFormat, float InWidth,
-                  bool InOverflow, bool InLogarithmic, float InTrackHeight)
+                  bool InOverflow, bool InLogarithmic, float InTrackHeight, bool InShowValue)
 {
     ImGui::PushID(InId);
     const ImVec2 ScopedSize{InWidth, ImGui::GetFrameHeight()};
@@ -99,10 +125,10 @@ bool EditorSlider(const char* InId, float* InValue, float InMin, float InMax, co
     ImGui::PopID();
 
     const float ScopedCenterY = ScopedMin.y + ScopedSize.y * 0.5f;
-    const float ScopedGrabWidth = std::max(7.0f, ScopedSize.y * 0.30f);
-    // Contained: the grab fits strictly inside the track. Overflow: it is taller
-    // than the track and spills over both sides.
-    const float ScopedGrabHeight = InOverflow ? InTrackHeight * 2.4f : InTrackHeight;
+    const float ScopedGrabWidth = std::max(10.0f, ScopedSize.y * 0.32f);
+    // The grab is deliberately thicker than the track so it reads as a handle,
+    // not as a second fill bar. Overflow keeps the old taller variant available.
+    const float ScopedGrabHeight = InOverflow ? InTrackHeight * 3.0f : std::max(InTrackHeight * 3.0f, 12.0f);
     const float ScopedTrackLeft = ScopedMin.x + ScopedGrabWidth * 0.5f;
     const float ScopedTrackRight = ScopedMin.x + InWidth - ScopedGrabWidth * 0.5f;
     const float ScopedTrackSpan = std::max(ScopedTrackRight - ScopedTrackLeft, 1.0f);
@@ -156,9 +182,13 @@ bool EditorSlider(const char* InId, float* InValue, float InMin, float InMax, co
 
     std::array<char, 64> ScopedText{};
     std::snprintf(ScopedText.data(), ScopedText.size(), InFormat, static_cast<double>(*InValue));
-    const ImVec2 ScopedTextSize = ImGui::CalcTextSize(ScopedText.data());
-    ScopedDraw->AddText(ImVec2(ScopedMin.x + (InWidth - ScopedTextSize.x) * 0.5f, ScopedCenterY - ScopedTextSize.y * 0.5f),
-                        ImGui::GetColorU32(ImGuiCol_Text), ScopedText.data());
+    if (InShowValue)
+    {
+        const ImVec2 ScopedTextSize = ImGui::CalcTextSize(ScopedText.data());
+        ScopedDraw->AddText(
+            ImVec2(ScopedMin.x + (InWidth - ScopedTextSize.x) * 0.5f, ScopedCenterY - ScopedTextSize.y * 0.5f),
+            ImGui::GetColorU32(ImGuiCol_Text), ScopedText.data());
+    }
     return ScopedChanged;
 }
 

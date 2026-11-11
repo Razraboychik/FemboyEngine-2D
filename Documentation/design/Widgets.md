@@ -1,10 +1,10 @@
 # Pink UI widget and HUD catalog
 
-FemboyEngine2D 0.3.0-alpha.1 has one retained-mode UI module: `Fby::Ui::WidgetCanvas` in
+FemboyEngine2D 0.4.0-alpha.1 has one retained-mode UI module: `Fby::Ui::WidgetCanvas` in
 [PinkUI.hpp](../../Source/Engine/UI/PinkUI.hpp). This page is the element catalog,
 the interaction and focus contracts, the visibility rules, the custom-widget
 extension point and the recommended next additions. The engine version stays
-0.3.0-alpha.1: everything listed as shipped is part of the existing API.
+0.4.0-alpha.1: everything listed as shipped is part of the existing API.
 
 ## Drawing model
 
@@ -59,7 +59,7 @@ supply `InlineSprites` to map atom ids to atlas slices. Long shaped blocks
 expose `SetTextLineRange` for a viewport window, and `SetTextBlock` pages between
 `TextStore` blocks.
 
-## Elements shipped in 0.3.0-alpha.1
+## Elements shipped in 0.4.0-alpha.1
 
 | Kind | Draws | Quads | State and interaction | Main colours |
 | --- | --- | --- | --- | --- |

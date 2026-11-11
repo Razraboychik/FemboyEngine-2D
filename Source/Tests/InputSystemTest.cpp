@@ -140,6 +140,27 @@ int main()
     Check(ScopedPadState != nullptr && ScopedPadState->X > 0.3f && ScopedPadState->X < 0.4f,
           "gamepad deadzone remaps the axis");
 
+    // Touch button mapping.
+    InputSystem ScopedTouchInput;
+    const std::uint16_t ScopedTouchAction = ScopedTouchInput.RegisterAction("Touch", InputActionType::Bool);
+    const std::uint16_t ScopedTouchContext = ScopedTouchInput.RegisterContext("Gameplay", 0, false);
+    InputMappingDesc ScopedTouchDesc;
+    ScopedTouchDesc.Action = ScopedTouchAction;
+    ScopedTouchDesc.Context = ScopedTouchContext;
+    ScopedTouchDesc.Source.Kind = InputSourceKind::Touch;
+    ScopedTouchDesc.Source.Code = 0;
+    Check(ScopedTouchInput.AddMapping(ScopedTouchDesc), "touch mapping registers");
+    Check(ScopedTouchInput.BindUser(Entity{3}, 0, 0), "touch user binds");
+    Check(ScopedTouchInput.PushContext(0, ScopedTouchContext), "touch context pushes");
+    InputState ScopedTouchRaw;
+    ScopedTouchRaw.BeginFrame();
+    ScopedTouchRaw.touches[0].active = true;
+    ScopedTouchRaw.touches[0].pressed = true;
+    ScopedTouchRaw.touches[0].position = Vector2D{0.25f, 0.75f};
+    ScopedTouchInput.Update(ScopedTouchRaw, 40, 5000, 1.0f / 60.0f);
+    const InputActionState* ScopedTouchState = ScopedTouchInput.Action(0, ScopedTouchAction);
+    Check(ScopedTouchState != nullptr && ScopedTouchState->Triggered, "touch press triggers");
+
     std::printf("input_system: ok\n");
     return 0;
 }

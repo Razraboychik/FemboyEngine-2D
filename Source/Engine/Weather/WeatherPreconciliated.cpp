@@ -43,10 +43,10 @@ bool WeatherPreconciliatedSystem::Update(Ecs::SystemContext& InContext) noexcept
     auto ScopedView = InContext.registry.view<WeatherContextComponent>();
     // Must match WeatherSystem's primary-context rule (lowest entity id).
     const WeatherContextComponent* ScopedWeather = nullptr;
-    Entity ScopedOwner = entt::null;
+    Entity ScopedOwner = Fby::kNullEntity;
     for (const Entity ScopedEntity : ScopedView)
     {
-        if (ScopedWeather == nullptr || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedOwner))
+        if (ScopedWeather == nullptr || Fby::ToIntegral(ScopedEntity) < Fby::ToIntegral(ScopedOwner))
         {
             ScopedOwner = ScopedEntity;
             ScopedWeather = &ScopedView.get<WeatherContextComponent>(ScopedEntity);
@@ -75,23 +75,19 @@ bool WeatherPreconciliatedSystem::Update(Ecs::SystemContext& InContext) noexcept
     }
     const float ScopedTime = ScopedWeather->timeSeconds;
     const float ScopedDt = std::max(InContext.dt, 0.0f);
-    MConstants.windAndTime =
-        Vector4D{ScopedWeather->resolvedWindX, ScopedWeather->resolvedWindY, ScopedTime, ScopedDt};
-    MConstants.atmosphere =
-        Vector4D{ScopedWeather->atmosphereDensity, ScopedWeather->airViscosity, ScopedWeather->gravityScale,
-                 ScopedWeather->temperatureCelsius};
+    MConstants.windAndTime = Vector4D{ScopedWeather->resolvedWindX, ScopedWeather->resolvedWindY, ScopedTime, ScopedDt};
+    MConstants.atmosphere = Vector4D{ScopedWeather->atmosphereDensity, ScopedWeather->airViscosity,
+                                     ScopedWeather->gravityScale, ScopedWeather->temperatureCelsius};
     MConstants.clouds = Vector4D{ScopedWeather->cloudCoverage, ScopedWeather->cloudSpeed, ScopedWeather->cloudHeight,
                                  ScopedWeather->cloudShadowStrength};
-    MConstants.precipitation =
-        Vector4D{ScopedRain, ScopedSnow, ScopedWeather->fireIntensity, ScopedWeather->wetness};
+    MConstants.precipitation = Vector4D{ScopedRain, ScopedSnow, ScopedWeather->fireIntensity, ScopedWeather->wetness};
     MConstants.fog = Vector4D{ScopedWeather->fogDensity, ScopedWeather->fogFalloff, ScopedTime,
                               static_cast<float>(ScopedWeather->flags)};
     MConstants.fieldTransform = MField.Valid()
                                     ? Vector4D{MField.origin.X, MField.origin.Y, MField.cellSize.X, MField.cellSize.Y}
                                     : Vector4D{0.0f, 0.0f, 1.0f, 1.0f};
-    MConstants.fieldExtent =
-        Vector4D{static_cast<float>(MField.width), static_cast<float>(MField.height),
-                 static_cast<float>(ScopedParticles), static_cast<float>(MDesc.splashCapacity)};
+    MConstants.fieldExtent = Vector4D{static_cast<float>(MField.width), static_cast<float>(MField.height),
+                                      static_cast<float>(ScopedParticles), static_cast<float>(MDesc.splashCapacity)};
     MConstants.volume = Vector4D{MDesc.areaWidth, MDesc.areaHeight, MDesc.rainFallSpeed, MDesc.snowFallSpeed};
     return true;
 }
@@ -157,41 +153,41 @@ void WeatherPreconciliatedSystem::ExecuteRain(RenderGraphContext& InContext, voi
 {
     auto* ScopedSelf = static_cast<WeatherPreconciliatedSystem*>(InUser);
     const RenderCommandRecord ScopedRecord =
-        MakeComputeRecord("weather_rain.comp", ScopedSelf->MConstants,
-                          std::max(ScopedSelf->MStats.dispatchGroups, 1u));
+        MakeComputeRecord("weather_rain.comp", ScopedSelf->MConstants, std::max(ScopedSelf->MStats.dispatchGroups, 1u));
     (void)InContext.Push(ScopedRecord);
 }
 
 void WeatherPreconciliatedSystem::ExecuteSplashSpawn(RenderGraphContext& InContext, void* InUser)
 {
     auto* ScopedSelf = static_cast<WeatherPreconciliatedSystem*>(InUser);
-    const RenderCommandRecord ScopedRecord =
-        MakeComputeRecord("weather_rain_splash.comp", ScopedSelf->MConstants,
-                          std::max(ScopedSelf->MStats.dispatchGroups, 1u));
+    const RenderCommandRecord ScopedRecord = MakeComputeRecord("weather_rain_splash.comp", ScopedSelf->MConstants,
+                                                               std::max(ScopedSelf->MStats.dispatchGroups, 1u));
     (void)InContext.Push(ScopedRecord);
 }
 
 void WeatherPreconciliatedSystem::ExecuteRainLines(RenderGraphContext& InContext, void* InUser)
 {
     auto* ScopedSelf = static_cast<WeatherPreconciliatedSystem*>(InUser);
-    const RenderCommandRecord ScopedRecord =
-        MakeGraphicsRecord("weather_rain.vert", ScopedSelf->MConstants, InContext.extent.width, InContext.extent.height);
+    const RenderCommandRecord ScopedRecord = MakeGraphicsRecord("weather_rain.vert", ScopedSelf->MConstants,
+                                                                InContext.extent.width, InContext.extent.height);
     (void)InContext.Push(ScopedRecord);
 }
 
 void WeatherPreconciliatedSystem::ExecuteSplashSprites(RenderGraphContext& InContext, void* InUser)
 {
     auto* ScopedSelf = static_cast<WeatherPreconciliatedSystem*>(InUser);
-    const RenderCommandRecord ScopedRecord =
-        MakeGraphicsRecord("weather_splash.frag", ScopedSelf->MConstants, InContext.extent.width,
-                           InContext.extent.height);
+    const RenderCommandRecord ScopedRecord = MakeGraphicsRecord("weather_splash.frag", ScopedSelf->MConstants,
+                                                                InContext.extent.width, InContext.extent.height);
     (void)InContext.Push(ScopedRecord);
 }
 
 bool WeatherPreconciliatedSystem::Register(Ecs::SystemGraph& InGraph, WeatherPreconciliatedSystem& InSystem)
 {
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<WeatherContextComponent>();
+    ScopedAccess.Writes = Ecs::kServiceRenderer;
     return InGraph.Add(Ecs::Phase::PreUpdate, "WeatherPreconciliatedSystem", &WeatherPreconciliatedSystem::Tick,
-                       &InSystem);
+                       &InSystem, 0, 0, ScopedAccess);
 }
 
 void WeatherPreconciliatedSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
@@ -283,8 +279,8 @@ void WeatherAtmospherePass::Refresh(const RenderGraphContext& InContext) noexcep
     MConstants.clouds = ScopedField.cloud;
     MConstants.precipitation = ScopedField.precipitation;
     MConstants.fog = ScopedField.fog;
-    MConstants.fieldExtent = Vector4D{static_cast<float>(InContext.extent.width),
-                                      static_cast<float>(InContext.extent.height), 0.0f, 0.0f};
+    MConstants.fieldExtent =
+        Vector4D{static_cast<float>(InContext.extent.width), static_cast<float>(InContext.extent.height), 0.0f, 0.0f};
 }
 
 void WeatherAtmospherePass::ExecuteClouds(RenderGraphContext& InContext, void* InUser)
@@ -343,9 +339,8 @@ void WeatherAtmospherePass::ExecuteComposite(RenderGraphContext& InContext, void
 {
     auto* ScopedSelf = static_cast<WeatherAtmospherePass*>(InUser);
     ScopedSelf->Refresh(InContext);
-    const RenderCommandRecord ScopedRecord =
-        MakeGraphicsRecord("weather_composite.frag", ScopedSelf->MConstants, InContext.extent.width,
-                           InContext.extent.height);
+    const RenderCommandRecord ScopedRecord = MakeGraphicsRecord("weather_composite.frag", ScopedSelf->MConstants,
+                                                                InContext.extent.width, InContext.extent.height);
     (void)InContext.Push(ScopedRecord);
 }
 }

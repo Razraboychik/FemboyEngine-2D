@@ -30,8 +30,8 @@ struct ChainSaveV3
     ChainId chainId{};
     JointChainKind kind = JointChainKind::Rope;
     std::uint32_t flags = 0;
-    Entity anchorA = entt::null;
-    Entity anchorB = entt::null;
+    Entity anchorA = Fby::kNullEntity;
+    Entity anchorB = Fby::kNullEntity;
     Vector2D start{};
     Vector2D end{};
     std::array<Vector2D, kMaxSnapshotChainPath> path{};

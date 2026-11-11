@@ -42,7 +42,7 @@ struct Harness
 {
     Fby::ScriptRuntime Runtime{};
     Fby::Script::EcsBridge Bridge{};
-    entt::registry Registry{};
+    Fby::Scene::Registry Registry{};
     Fby::Script::VmContext Context{Registry};
     Fby::Script::BoundProgram Bound{};
 
@@ -213,7 +213,7 @@ event update {
     const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
     Check(ScopedHandle != Fby::kScriptNoProgram, "big integer text program loads");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
@@ -255,7 +255,7 @@ event update {
     const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
     Check(ScopedHandle != Fby::kScriptNoProgram, "decimal text program loads");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
     Fby::Script::VmContext ScopedContext{ScopedRegistry};

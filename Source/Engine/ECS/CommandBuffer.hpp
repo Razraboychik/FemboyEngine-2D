@@ -29,7 +29,7 @@ using CommandApply = void (*)(Registry&, Entity, const void*);
 struct Command
 {
     CommandKind kind = CommandKind::Destroy;
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     CommandApply apply = nullptr;
     const void* payload = nullptr;
 };
@@ -87,7 +87,7 @@ public:
         for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
         {
             const Command& ScopedCommand = MCommands[ScopedI];
-            if (ScopedCommand.entity != entt::null && ScopedCommand.apply != nullptr)
+            if (ScopedCommand.entity != Fby::kNullEntity && ScopedCommand.apply != nullptr)
             {
                 ScopedCommand.apply(InRegistry, ScopedCommand.entity, ScopedCommand.payload);
             }
@@ -104,7 +104,7 @@ private:
     template <typename T>
     [[nodiscard]] bool Push(CommandKind InKind, Entity InEntity, CommandApply InApply, const T& InValue)
     {
-        if (MArena == nullptr || MCount >= kCommandBufferCapacity || InEntity == entt::null)
+        if (MArena == nullptr || MCount >= kCommandBufferCapacity || InEntity == Fby::kNullEntity)
         {
             return false;
         }

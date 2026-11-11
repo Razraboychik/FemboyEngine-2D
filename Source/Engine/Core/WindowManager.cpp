@@ -387,6 +387,48 @@ bool WindowManager::PumpEvents()
                 MInput.wheel += ScopedEvent.wheel.y;
                 break;
 
+            case SDL_EVENT_FINGER_DOWN:
+            case SDL_EVENT_FINGER_MOTION:
+            case SDL_EVENT_FINGER_UP:
+            case SDL_EVENT_FINGER_CANCELED:
+            {
+                const std::uint64_t ScopedId = ScopedEvent.tfinger.fingerID;
+                TouchPoint* ScopedTouch = nullptr;
+                for (TouchPoint& ScopedCandidate : MInput.touches)
+                {
+                    if (ScopedCandidate.active && ScopedCandidate.id == ScopedId)
+                    {
+                        ScopedTouch = &ScopedCandidate;
+                        break;
+                    }
+                }
+                if (ScopedTouch == nullptr && ScopedEvent.type == SDL_EVENT_FINGER_DOWN)
+                {
+                    for (TouchPoint& ScopedCandidate : MInput.touches)
+                    {
+                        if (!ScopedCandidate.active)
+                        {
+                            ScopedTouch = &ScopedCandidate;
+                            ScopedTouch->id = ScopedId;
+                            ScopedTouch->active = true;
+                            ScopedTouch->pressed = true;
+                            break;
+                        }
+                    }
+                }
+                if (ScopedTouch != nullptr)
+                {
+                    ScopedTouch->position = Vector2D{ScopedEvent.tfinger.x, ScopedEvent.tfinger.y};
+                    ScopedTouch->delta = Vector2D{ScopedEvent.tfinger.dx, ScopedEvent.tfinger.dy};
+                    if (ScopedEvent.type == SDL_EVENT_FINGER_UP || ScopedEvent.type == SDL_EVENT_FINGER_CANCELED)
+                    {
+                        ScopedTouch->released = ScopedEvent.type == SDL_EVENT_FINGER_UP;
+                        ScopedTouch->active = false;
+                    }
+                }
+                break;
+            }
+
             case SDL_EVENT_GAMEPAD_ADDED:
                 (void)OpenGamepad(static_cast<std::uint32_t>(ScopedEvent.gdevice.which));
                 break;
@@ -438,6 +480,15 @@ bool WindowManager::PumpEvents()
 
             default:
                 break;
+        }
+    }
+
+    MInput.touchCount = 0;
+    for (const TouchPoint& ScopedTouch : MInput.touches)
+    {
+        if (ScopedTouch.active)
+        {
+            ++MInput.touchCount;
         }
     }
 

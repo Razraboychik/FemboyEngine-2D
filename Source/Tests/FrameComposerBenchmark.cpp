@@ -1,6 +1,7 @@
 // FemboyEngine2D - FrameComposer scale benchmark.
 #include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/Core/JobSystem.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -18,15 +19,16 @@ void RunCase(std::uint32_t InCount)
         ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity, Fby::Transform2D{Fby::Vector2D{ScopedX, ScopedY}});
         ScopedRegistry.emplace<Fby::Sprite2D>(ScopedEntity, Fby::Sprite2D{});
         ScopedRegistry.emplace<Fby::DrawOrder>(
-            ScopedEntity, Fby::DrawOrder{static_cast<std::uint16_t>(ScopedIndex % 8u),
-                                         static_cast<float>(ScopedIndex) * 0.001f});
+            ScopedEntity,
+            Fby::DrawOrder{static_cast<std::uint16_t>(ScopedIndex % 8u), static_cast<float>(ScopedIndex) * 0.001f});
     }
 
     Fby::Rhi::FrameComposer ScopedComposer;
+    Fby::JobSystem ScopedJobs(8);
+    ScopedComposer.SetJobSystem(&ScopedJobs);
     // Large view so both cases measure the full extract/sort path rather than
     // the offscreen-culling fast path.
-    const Fby::Rhi::CameraData ScopedCamera{Fby::Vector2D{1024.0f, 2048.0f},
-                                            Fby::Vector2D{100000.0f, 100000.0f}, 1.0f};
+    const Fby::Rhi::CameraData ScopedCamera{Fby::Vector2D{1024.0f, 2048.0f}, Fby::Vector2D{100000.0f, 100000.0f}, 1.0f};
     // Warm caches and capacity before the measured frame.
     ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Fby::Color32::Black(), 0u);
     ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Fby::Color32::Black(), 0u);

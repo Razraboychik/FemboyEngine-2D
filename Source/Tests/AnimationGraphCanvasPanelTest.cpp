@@ -1,5 +1,6 @@
 // FemboyEngine2D - Animation Graph canvas tests.
 #include "Editor/Infrastructure/CommandStack.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Editor/Panels/AnimationGraphCanvasPanel.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/Components.hpp"
@@ -293,8 +294,7 @@ void TestSceneTomlRoundTrip()
         if (ScopedReloaded.Document().Links[ScopedLink].Kind == Fby::Editor::AnimationGraphLinkKind::Transition &&
             ScopedReloaded.Document().Links[ScopedLink].Transition.TagsAnyCount == 1)
         {
-            ScopedTagRoundtrip =
-                ScopedReloaded.Document().Links[ScopedLink].Transition.TagsAny[0] == ScopedGrounded;
+            ScopedTagRoundtrip = ScopedReloaded.Document().Links[ScopedLink].Transition.TagsAny[0] == ScopedGrounded;
         }
     }
     FBY_CHECK(ScopedTagRoundtrip);
@@ -310,7 +310,7 @@ void TestPIEState()
     FBY_CHECK(ScopedPanel.Initialize(ScopedCommands, 13));
     FBY_CHECK(ScopedPanel.CompileGraph());
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::EditorSelected>(ScopedEntity);
     Fby::AnimStateComponent& ScopedState = ScopedRegistry.emplace<Fby::AnimStateComponent>(ScopedEntity);
@@ -472,6 +472,73 @@ void TestPanelDrawHeadless()
     ScopedPanel.Shutdown();
     ImGui::DestroyContext();
 }
+
+void TestCompileDirectionalGraph()
+{
+    Fby::Editor::CommandStack ScopedCommands;
+    FBY_CHECK(ScopedCommands.Initialize());
+    Fby::Editor::AnimationGraphCanvasPanel ScopedPanel;
+    FBY_CHECK(ScopedPanel.Initialize(ScopedCommands, 15));
+    ScopedPanel.ResetDocument();
+
+    const std::uint16_t ScopedEast = ScopedPanel.AddNode(Fby::Editor::AnimationGraphNodeKind::Clip, {-200.0f, 0.0f});
+    const std::uint16_t ScopedNorth = ScopedPanel.AddNode(Fby::Editor::AnimationGraphNodeKind::Clip, {-200.0f, 140.0f});
+    const std::uint16_t ScopedDirectional =
+        ScopedPanel.AddNode(Fby::Editor::AnimationGraphNodeKind::DirectionalBlend, {80.0f, 0.0f});
+    FBY_CHECK(ScopedEast != 0xFFFFu && ScopedNorth != 0xFFFFu && ScopedDirectional != 0xFFFFu);
+    FBY_CHECK(ScopedPanel.AddNode(Fby::Editor::AnimationGraphNodeKind::DirectionalBlend, {80.0f, 200.0f}) == 0xFFFFu);
+
+    Fby::Editor::AnimationGraphNode& ScopedEastNode = ScopedPanel.Document().Nodes[ScopedEast];
+    ScopedEastNode.Clip.State = 301;
+    ScopedEastNode.Clip.SpriteStartFrame = 0;
+    ScopedEastNode.Clip.SpriteFrameCount = 4;
+    Fby::Editor::AnimationGraphNode& ScopedNorthNode = ScopedPanel.Document().Nodes[ScopedNorth];
+    ScopedNorthNode.Clip.State = 302;
+    ScopedNorthNode.Clip.SpriteStartFrame = 4;
+    ScopedNorthNode.Clip.SpriteFrameCount = 4;
+
+    Fby::Editor::AnimationGraphNode& ScopedDirectionalNode = ScopedPanel.Document().Nodes[ScopedDirectional];
+    ScopedDirectionalNode.Directional.AnchorCount = 2;
+    ScopedDirectionalNode.Directional.Anchors[0].Position = {1.0f, 0.0f};
+    ScopedDirectionalNode.Directional.Anchors[0].ClipId = 0;
+    ScopedDirectionalNode.Directional.Anchors[1].Position = {0.0f, 1.0f};
+    ScopedDirectionalNode.Directional.Anchors[1].ClipId = 1;
+
+    FBY_CHECK(ScopedPanel.AddLink(ScopedEast, 0, ScopedDirectional, 0));
+    FBY_CHECK(ScopedPanel.AddLink(ScopedNorth, 0, ScopedDirectional, 0));
+    FBY_CHECK(ScopedPanel.CompileGraph());
+    const Fby::AnimGraphDefinitionComponent& ScopedGraph = ScopedPanel.CompiledGraph();
+    FBY_CHECK(ScopedGraph.HasDirectional);
+    FBY_CHECK(ScopedGraph.DirectionalState == ScopedDirectionalNode.Clip.State);
+    FBY_CHECK(ScopedGraph.DirectionalStates[0] == 301);
+    FBY_CHECK(ScopedGraph.DirectionalStates[1] == 302);
+    FBY_CHECK(ScopedGraph.Directional.AnchorCount == 2);
+    const std::uint64_t ScopedExpectedState = ScopedDirectionalNode.Clip.State;
+
+    // Scene round trip: the anchor payload and the state must survive the TOML
+    // block that the panel writes.
+    const std::filesystem::path ScopedDirectory = std::filesystem::current_path() / "anim_graph_directional_test";
+    std::error_code ScopedCode;
+    std::filesystem::remove_all(ScopedDirectory, ScopedCode);
+    std::filesystem::create_directories(ScopedDirectory, ScopedCode);
+    const std::filesystem::path ScopedScene = ScopedDirectory / "scene.toml";
+    {
+        std::ofstream ScopedFile(ScopedScene, std::ios::binary | std::ios::trunc);
+        ScopedFile << "version = 1\nname = \"directional_test\"\n\n[[entity]]\nid = 0\nname = \"hero\"\n";
+    }
+    ScopedPanel.SetScenePath(ScopedScene);
+    FBY_CHECK(ScopedPanel.SaveToSceneToml());
+    ScopedPanel.ResetDocument();
+    FBY_CHECK(ScopedPanel.LoadFromSceneToml());
+    FBY_CHECK(ScopedPanel.Document().NodeCount == 3);
+    const Fby::Editor::AnimationGraphNode& ScopedLoadedDirectional = ScopedPanel.Document().Nodes[2];
+    FBY_CHECK(ScopedLoadedDirectional.Kind == Fby::Editor::AnimationGraphNodeKind::DirectionalBlend);
+    FBY_CHECK(ScopedLoadedDirectional.Directional.AnchorCount == 2);
+    FBY_CHECK(ScopedLoadedDirectional.Directional.Anchors[1].ClipId == 1);
+    FBY_CHECK(ScopedLoadedDirectional.Directional.Anchors[1].Position.Y == 1.0f);
+    FBY_CHECK(ScopedLoadedDirectional.Clip.State == ScopedExpectedState);
+    std::filesystem::remove_all(ScopedDirectory, ScopedCode);
+}
 }
 
 int main()
@@ -485,6 +552,7 @@ int main()
     TestPIEState();
     TestPIEConcurrentPublication();
     TestPanelDrawHeadless();
+    TestCompileDirectionalGraph();
 
     if (GFailures == 0)
     {

@@ -113,8 +113,8 @@ enum class PhysicsEventType : std::uint8_t
 
 struct PhysicsContactEvent
 {
-    Entity a = entt::null;
-    Entity b = entt::null;
+    Entity a = Fby::kNullEntity;
+    Entity b = Fby::kNullEntity;
     Vector2D point{};
     Vector2D normal{};
     float speed = 0.0f;
@@ -124,7 +124,7 @@ struct PhysicsContactEvent
 
 struct PhysicsRayHit
 {
-    Entity Entity = entt::null;
+    Entity Entity = Fby::kNullEntity;
     Vector2D Point{};
     Vector2D Normal{0.0f, -1.0f};
     float Distance = 0.0f;
@@ -302,7 +302,7 @@ private:
 
     struct BodyRecord
     {
-        Entity entity = entt::null;
+        Entity entity = Fby::kNullEntity;
         // Packed b2BodyId
         std::uint64_t body = 0;
     };

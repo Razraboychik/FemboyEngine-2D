@@ -101,7 +101,7 @@ void CommandStack::Shutdown() noexcept
     MComponents = nullptr;
 }
 
-void CommandStack::Bind(entt::registry* InRegistry, const Scene::ComponentRegistry* InComponents) noexcept
+void CommandStack::Bind(Scene::Registry* InRegistry, const Scene::ComponentRegistry* InComponents) noexcept
 {
     MRegistry = InRegistry;
     MComponents = InComponents;
@@ -791,7 +791,7 @@ bool CommandStack::ApplySpawnSnapshot(const Command& InCommand) noexcept
         // A redo target that is still alive is a stale history record
         return false;
     }
-    // EnTT's hinted create() reuses the exact identifier, including its version
+    // The hinted create() reuses the exact identifier, including its version
     const Entity ScopedCreated = MRegistry->create(InCommand.entity);
     if (!MRegistry->valid(ScopedCreated))
     {

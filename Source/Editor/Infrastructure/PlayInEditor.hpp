@@ -255,7 +255,7 @@ private:
     Ecs::SnapshotSchema MSchema{};
     FrameArena MArena{};
     std::span<std::byte> MStorage{};
-    entt::registry MWorld{};
+    Ecs::Registry MWorld{};
     // The play world gets its own Box2D world. Sharing the editor's
     PhysicsSystem MPiePhysics{};
     bool MPhysicsOwned = false;

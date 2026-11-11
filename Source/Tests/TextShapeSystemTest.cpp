@@ -1,5 +1,6 @@
 // FemboyEngine2D - ECS shape-cache fill system tests.
 #include "Engine/Assets/Localization.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/Core/AssetId.hpp"
 #include "Engine/ECS/Components.hpp"
@@ -69,7 +70,7 @@ int main()
     auto ScopedText = std::make_unique<Text::TextService>();
     auto ScopedCache = std::make_unique<Text::TextShapeCache>();
     Text::CodepointShaper ScopedShaper;
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Entity ScopedEntity = ScopedRegistry.create();
     const AssetId ScopedAsset = AssetId::FromPath("text/system.txt", AssetKind::Text);
     Check(ScopedText->AddAsset(ScopedAsset, "AA"), "shape system asset stores");
@@ -106,7 +107,7 @@ int main()
           "shape system invalidates a stale key hash");
 
     auto ScopedFallbackCache = std::make_unique<Text::TextShapeCache>();
-    entt::registry ScopedFallbackRegistry;
+    Fby::Scene::Registry ScopedFallbackRegistry;
     const Entity ScopedFallbackEntity = ScopedFallbackRegistry.create();
     ScopedFallbackRegistry.emplace<TextComponent>(ScopedFallbackEntity, ScopedComponent);
     NotdefShaper ScopedNotdef;
@@ -118,7 +119,7 @@ int main()
           "shape system runs a fallback chain");
 
     auto ScopedScriptCache = std::make_unique<Text::TextShapeCache>();
-    entt::registry ScopedScriptRegistry;
+    Fby::Scene::Registry ScopedScriptRegistry;
     const Entity ScopedScriptEntity = ScopedScriptRegistry.create();
     const AssetId ScopedScriptAsset = AssetId::FromPath("text/system_script.txt", AssetKind::Text);
     Check(ScopedText->AddAsset(ScopedScriptAsset, "\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7"),
@@ -163,7 +164,7 @@ int main()
 
         auto ScopedSceneText = std::make_unique<Text::TextService>();
         auto ScopedSceneCache = std::make_unique<Text::TextShapeCache>();
-        entt::registry ScopedScene;
+        Fby::Scene::Registry ScopedScene;
         const std::array<std::string_view, 3> ScopedBlocks = {
             "Hello scene",
             "\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7",

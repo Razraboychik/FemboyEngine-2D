@@ -93,7 +93,7 @@ int main()
 
     const Entity ScopedWall = MakeBody(ScopedRegistry, Vector2D{50.0f, 0.0f}, Vector2D{5.0f, 20.0f}, BodyType::Static);
     PhysicsRayHit ScopedHit;
-    Check(ScopedPhysics.RayCast(ScopedRegistry, Vector2D{0.0f, 0.0f}, Vector2D{100.0f, 0.0f}, entt::null,
+    Check(ScopedPhysics.RayCast(ScopedRegistry, Vector2D{0.0f, 0.0f}, Vector2D{100.0f, 0.0f}, Fby::kNullEntity,
                                 0xFFFFFFFFu, ScopedHit),
           "segment query finds a wall");
     Check(ScopedHit.Entity == ScopedWall, "segment query returns the wall");

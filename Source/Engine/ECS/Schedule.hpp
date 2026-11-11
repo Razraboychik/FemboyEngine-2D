@@ -19,6 +19,8 @@ enum class Phase : std::uint8_t
     PreUpdate = 0,
     FixedUpdate,
     PostUpdate,
+    // HUD/UI animation can keep running while the simulation graph is paused.
+    Ui,
     Render,
     Count
 };
@@ -33,6 +35,8 @@ enum class Phase : std::uint8_t
             return "FixedUpdate";
         case Phase::PostUpdate:
             return "PostUpdate";
+        case Phase::Ui:
+            return "Ui";
         case Phase::Render:
             return "Render";
         case Phase::Count:
@@ -59,7 +63,13 @@ public:
         requires std::is_invocable_r_v<void, decltype(Function), SystemContext&>
     [[nodiscard]] bool Add(Phase InPhase, const char* InName)
     {
-        return Add(InPhase, InName, +[](SystemContext& InContext, void*) { Function(InContext); }, nullptr);
+        return Add(
+            InPhase, InName,
+            +[](SystemContext& InContext, void*)
+            {
+                Function(InContext);
+            },
+            nullptr);
     }
     void Clear() noexcept;
     void Run(Phase InPhase, SystemContext& InContext) const;

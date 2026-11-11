@@ -12,14 +12,15 @@
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -WithVendorSdks -AcceptVendorLicenses
 #
 # Versions are the ones the CI slate validates:
-#   LLVM             23.1.4 (clang-cl, the validated Windows toolchain)
-#   GCC              15+ (MinGW-w64, second-opinion toolchain)
+#   LLVM             23.1.4 (clang-cl and clang++, the validated Windows toolchain)
+#   MSVC             19.44+ (cl.exe, Visual Studio Build Tools)
+#   GCC              16.2+ (MinGW-w64, portability toolchain)
 #   SDL3              release-3.4.18
 #   Vulkan-Headers    v1.4.366
 #   glslang           15.3.0
 #   miniaudio         0.11.23
 #   Box2D             v3.2.0
-#   Monocypher        4.0.2
+#   Monocypher        4.0.3
 #   LZMA SDK          25.01
 param(
     [switch]$SkipSystem,
@@ -38,12 +39,13 @@ New-Item -ItemType Directory -Force -Path $ThirdParty, $Downloads | Out-Null
 
 $Versions = [ordered]@{
     Llvm        = "23.1.4"
+    Msvc        = "19.44"
     SDL         = "release-3.4.18"
     Vulkan      = "v1.4.366"
     Glslang     = "15.3.0"
     Miniaudio   = "0.11.23"
     Box2D       = "v3.2.0"
-    Monocypher  = "4.0.2"
+    Monocypher  = "4.0.3"
     Rnnoise     = "0.1.1"
     LzmaSdk     = "25.01"
 }
@@ -164,6 +166,60 @@ function Ensure-Llvm {
     return $true
 }
 
+function Get-MsvcInstallPath {
+    $VsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\\Installer\\vswhere.exe"
+    if (-not (Test-Path $VsWhere)) {
+        return $null
+    }
+    $Path = (& $VsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null)
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+    return $Path.Trim()
+}
+
+function Get-MsvcVersion([string]$InstallPath) {
+    $Tools = Join-Path $InstallPath "VC\\Tools\\MSVC"
+    if (-not (Test-Path $Tools)) {
+        return $null
+    }
+    $Version = Get-ChildItem -Path $Tools -Directory |
+        Sort-Object { [version]$_.Name } -Descending |
+        Select-Object -First 1
+    if ($null -eq $Version) {
+        return $null
+    }
+    return $Version.Name
+}
+
+function Ensure-Msvc {
+    $InstallPath = Get-MsvcInstallPath
+    if ($null -ne $InstallPath) {
+        $Version = Get-MsvcVersion $InstallPath
+        Write-Host "  cl        : $Version ($InstallPath)"
+        return $true
+    }
+    if ($SkipSystem) {
+        Write-Warning "  MSVC Build Tools are missing. Install 'Visual Studio Build Tools' with the C++ workload."
+        return $false
+    }
+    Write-Host "  installing Visual Studio Build Tools via winget (Microsoft.VisualStudio.2022.BuildTools)"
+    winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --silent `
+        --accept-source-agreements --accept-package-agreements `
+        --override "--wait --quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+    $MachinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$MachinePath;$UserPath"
+    $InstallPath = Get-MsvcInstallPath
+    if ($null -eq $InstallPath) {
+        Write-Warning "  MSVC Build Tools installation did not register the C++ workload."
+        return $false
+    }
+    $Version = Get-MsvcVersion $InstallPath
+    Write-Host "  cl        : $Version ($InstallPath)"
+    return $true
+}
+
 function Report-Compiler([string]$Name, [string]$VersionText, [int]$MinimumMajor) {
     if ([string]::IsNullOrWhiteSpace($VersionText)) {
         Write-Warning "  $Name version could not be read"
@@ -228,26 +284,46 @@ $Has7z = if ($Component -eq "All") {
 } else {
     $null -ne (Get-Command "7z" -ErrorAction SilentlyContinue)
 }
-# Both compiler families are requirements: clang-cl is the validated build
-# toolchain, GCC 16+ is the second opinion used by the portability checks.
+# All four Windows-supported frontends are installed/checked: clang-cl, clang++,
+# MSVC (cl.exe) and MinGW-w64 g++. Clang and clang-cl are the primary gates;
+# MSVC and GCC are the portability toolchains.
 $HasClang = Ensure-Llvm
+$HasMsvc = Ensure-Msvc
 $HasGcc = Ensure-Tool "g++" "BrechtSanders.WinLibs.POSIX.UCRT"
 if (-not ($HasCMake -and $HasNinja -and $HasGit)) {
     throw "cmake, ninja and git are required"
 }
 if ($HasClang) {
     $ClangVersion = (& clang-cl --version 2>$null | Select-Object -First 1)
-    Report-Compiler "clang-cl" $ClangVersion 19
+    Report-Compiler "clang-cl" $ClangVersion 23
     $Lock.Add("clang = $ClangVersion")
+    $ClangXx = Get-Command clang++ -ErrorAction SilentlyContinue
+    if ($null -ne $ClangXx) {
+        $ClangXxVersion = (& $ClangXx.Source --version 2>$null | Select-Object -First 1)
+        Report-Compiler "clang++" $ClangXxVersion 23
+        $Lock.Add("clangxx = $ClangXxVersion")
+    } else {
+        Write-Warning "clang++ is missing; LLVM installs it next to clang-cl."
+    }
 } else {
-    Write-Warning "clang-cl is missing. Install LLVM 19+ or re-run without -SkipSystem."
+    Write-Warning "clang-cl is missing. Install LLVM 23.1.4+ or re-run without -SkipSystem."
+}
+if ($HasMsvc) {
+    $MsvcInstallPath = Get-MsvcInstallPath
+    $MsvcVersion = Get-MsvcVersion $MsvcInstallPath
+    # The VC toolset directory is 14.xx while cl.exe reports 19.xx.
+    $MsvcDisplay = if ($MsvcVersion -match '^14\.(\d+)') { "19.$($Matches[1])" } else { $MsvcVersion }
+    Report-Compiler "cl" $MsvcDisplay 19
+    $Lock.Add("msvc = $MsvcDisplay")
+} else {
+    Write-Warning "cl is missing. Install Visual Studio Build Tools 19.44+ with the C++ workload."
 }
 if ($HasGcc) {
     $GccVersion = (& g++ -dumpfullversion 2>$null)
     Report-Compiler "g++" $GccVersion 16
     $Lock.Add("gcc = $GccVersion")
 } else {
-    Write-Warning "g++ is missing. Install MinGW-w64 GCC 16+ or re-run without -SkipSystem."
+    Write-Warning "g++ is missing. Install MinGW-w64 GCC 16.2+ or re-run without -SkipSystem."
 }
 
 Write-Step "Vulkan SDK"
@@ -324,12 +400,11 @@ if ($Has7z) {
 }
 
 $Required = @(
-    "third_party\entt-main\entt-main\src\entt\entt.hpp",
     "third_party\tomlplusplus-master\tomlplusplus-master\toml.hpp",
     "third_party\stb\stb_image.h",
     "third_party\opus-master\opus-main\CMakeLists.txt",
     "third_party\monocypher\monocypher.c",
-    "third_party\harfbuzz-download\harfbuzz-15.0.0\CMakeLists.txt",
+    "third_party\harfbuzz-download\harfbuzz-15.1.0\CMakeLists.txt",
     "third_party\sheenbidi-download\SheenBidi-3.0.0\CMakeLists.txt",
     "third_party\rnnoise\src\denoise.c"
 )
@@ -349,7 +424,9 @@ if ($Component -eq "All") {
 Write-Step "Done"
 Write-Host "  pinned lock : $LockPath"
 Write-Host "  clang-cl    : validated toolchain for the default build"
-Write-Host "  g++         : second-opinion toolchain (GCC 16+)"
+Write-Host "  clang++     : LLVM C++ frontend (same install as clang-cl)"
+Write-Host "  cl          : MSVC portability toolchain (VS 2022 Build Tools)"
+Write-Host "  g++         : MinGW-w64 portability toolchain (GCC 16.2+)"
 Write-Host "  configure   : cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON"
 Write-Host "  build       : cmake --build build"
 Write-Host "  test        : ctest --test-dir build --output-on-failure"

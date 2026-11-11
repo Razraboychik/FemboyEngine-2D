@@ -65,7 +65,7 @@ struct SdfCollisionDesc
 
 struct SdfContact
 {
-    Entity Entity = entt::null;
+    Entity Entity = Fby::kNullEntity;
     Vector2D Point{};
     Vector2D Normal{0.0f, -1.0f};
     float Penetration = 0.0f;
@@ -96,7 +96,7 @@ static_assert(std::is_trivially_copyable_v<SdfContactPoint>);
 // The per-body manifold a solver would consume. Fixed size, no allocation.
 struct SdfContactManifold
 {
-    Entity Entity = entt::null;
+    Entity Entity = Fby::kNullEntity;
     std::uint32_t Count = 0;
     std::array<SdfContactPoint, 4> Points{};
 };

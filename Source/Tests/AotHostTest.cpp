@@ -1,6 +1,7 @@
 // FemboyEngine2D - nativized program registry tests: manifest, cook gate and a
 // VM-free dispatch path through FemboyScriptSystem.
 #include "Engine/Script/AotHost.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/ECS/Components.hpp"
@@ -12,6 +13,7 @@
 #include <bit>
 #include <cstdio>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -169,7 +171,7 @@ void TestNativizedSystem()
     AotHost ScopedHost;
     Check(ScopedHost.RegisterModule(ScopedHash, ScopedModule, ScopedRuntime.Bridge(), "half"), "module registers");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     Fby::JobSystem ScopedJobs;
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
@@ -226,7 +228,7 @@ void TestAotOnlySystem()
     AotHost ScopedHost;
     Check(ScopedHost.RegisterModule(0xCAFE, ScopedModule, ScopedBridge, "half"), "module registers for the cooked path");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     Fby::JobSystem ScopedJobs;
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
@@ -265,13 +267,29 @@ void TestProgramHash()
 }
 }
 
-int main()
+int main(int InCount, char** InArgs)
 {
-    TestManifest();
-    TestCookGate();
-    TestNativizedSystem();
-    TestAotOnlySystem();
-    TestProgramHash();
+    const std::string_view ScopedOnly = InCount > 1 && InArgs[1] != nullptr ? InArgs[1] : "";
+    if (ScopedOnly.empty() || ScopedOnly == "manifest")
+    {
+        TestManifest();
+    }
+    if (ScopedOnly.empty() || ScopedOnly == "cook" || ScopedOnly == "runtime")
+    {
+        TestCookGate();
+    }
+    if (ScopedOnly.empty() || ScopedOnly == "nativized" || ScopedOnly == "systems")
+    {
+        TestNativizedSystem();
+    }
+    if (ScopedOnly.empty() || ScopedOnly == "aot-only" || ScopedOnly == "systems")
+    {
+        TestAotOnlySystem();
+    }
+    if (ScopedOnly.empty() || ScopedOnly == "hash")
+    {
+        TestProgramHash();
+    }
 
     if (GFailures != 0)
     {

@@ -20,10 +20,10 @@ namespace
 }
 
 // Every thread the engine creates is tagged once, so debug tooling and log
-thread_local bool tls_worker = false;
+thread_local bool ThreadLocalWorker = false;
 // The storage owns the characters; the view is only a cheap read handle, so a
-thread_local std::string tls_threadNameStorage = "main";
-thread_local std::string_view tls_threadName = tls_threadNameStorage;
+thread_local std::string ThreadLocalNameStorage = "main";
+thread_local std::string_view ThreadLocalName = ThreadLocalNameStorage;
 
 // Shared state of one ParallelFor call. It lives on the caller's stack; the
 struct ParallelShared
@@ -135,20 +135,20 @@ void JobSystem::WaitIdle()
 
 bool JobSystem::IsWorkerThread() noexcept
 {
-    return tls_worker;
+    return ThreadLocalWorker;
 }
 
 std::string_view JobSystem::CurrentThreadName() noexcept
 {
-    return tls_threadName;
+    return ThreadLocalName;
 }
 
 void JobSystem::WorkerMain(std::stop_token InToken, std::uint32_t InIndex)
 {
-    tls_worker = true;
+    ThreadLocalWorker = true;
     BindThreadRole(ThreadRole::Worker);
-    tls_threadNameStorage = "worker-" + std::to_string(InIndex);
-    tls_threadName = tls_threadNameStorage;
+    ThreadLocalNameStorage = "worker-" + std::to_string(InIndex);
+    ThreadLocalName = ThreadLocalNameStorage;
 
     while (!InToken.stop_requested())
     {

@@ -1,6 +1,7 @@
 // FemboyEngine2D - GPU timestamp A/B harness for optimization flags.
 
 #include "Engine/RHI/FrameComposer.hpp"
+#include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/WindowManager.hpp"
 #include "Engine/ECS/Components.hpp"
@@ -41,9 +42,8 @@ void AddLights(Fby::Ecs::Registry& InRegistry, std::uint32_t InCount)
     {
         const Fby::Entity ScopedEntity = InRegistry.create();
         InRegistry.emplace<Fby::Transform2D>(
-            ScopedEntity,
-            Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedIndex % 16u) * 40.0f,
-                                           static_cast<float>(ScopedIndex / 16u) * 40.0f}});
+            ScopedEntity, Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedIndex % 16u) * 40.0f,
+                                                         static_cast<float>(ScopedIndex / 16u) * 40.0f}});
         Fby::Light2DComponent ScopedLight;
         ScopedLight.Flags = Fby::kLight2DFlagEnabled;
         ScopedLight.Radius = 96.0f;
@@ -76,6 +76,12 @@ int main(int argc, char** argv)
     std::uint32_t ScopedWidth = 640;
     std::uint32_t ScopedHeight = 480;
     std::uint32_t ScopedFrames = 120;
+    std::uint32_t ScopedSprites = 15000;
+    std::uint32_t ScopedLights = 64;
+    std::uint32_t ScopedFramesInFlight = 3;
+    bool ScopedFullView = false;
+    bool ScopedStatic = false;
+    bool ScopedRenderOnly = false;
     bool ScopedUseTarget = true;
     float ScopedRenderScale = 1.0f;
     std::string ScopedOnly;
@@ -85,6 +91,21 @@ int main(int argc, char** argv)
         if (ScopedOption == "--swapchain")
         {
             ScopedUseTarget = false;
+            continue;
+        }
+        if (ScopedOption == "--fullview")
+        {
+            ScopedFullView = true;
+            continue;
+        }
+        if (ScopedOption == "--static")
+        {
+            ScopedStatic = true;
+            continue;
+        }
+        if (ScopedOption == "--render-only")
+        {
+            ScopedRenderOnly = true;
             continue;
         }
         if (ScopedArg + 1 >= argc)
@@ -104,6 +125,21 @@ int main(int argc, char** argv)
         else if (ScopedOption == "--frames")
         {
             ScopedFrames = static_cast<std::uint32_t>(std::strtoul(argv[ScopedArg + 1], nullptr, 10));
+            ++ScopedArg;
+        }
+        else if (ScopedOption == "--sprites")
+        {
+            ScopedSprites = static_cast<std::uint32_t>(std::strtoul(argv[ScopedArg + 1], nullptr, 10));
+            ++ScopedArg;
+        }
+        else if (ScopedOption == "--lights")
+        {
+            ScopedLights = static_cast<std::uint32_t>(std::strtoul(argv[ScopedArg + 1], nullptr, 10));
+            ++ScopedArg;
+        }
+        else if (ScopedOption == "--frames-in-flight")
+        {
+            ScopedFramesInFlight = static_cast<std::uint32_t>(std::strtoul(argv[ScopedArg + 1], nullptr, 10));
             ++ScopedArg;
         }
         else if (ScopedOption == "--scale")
@@ -143,8 +179,9 @@ int main(int argc, char** argv)
     }
 
     Fby::Ecs::Registry ScopedRegistry;
-    AddSprites(ScopedRegistry, 15000);
-    AddLights(ScopedRegistry, 64);
+    AddSprites(ScopedRegistry, ScopedSprites);
+    AddLights(ScopedRegistry, ScopedLights);
+    Fby::JobSystem ScopedJobs(8);
 
     const std::array<Scenario, 8> ScopedScenarios{{
         {"baseline", false, false, false, false, false, false, false, false, true},
@@ -165,10 +202,15 @@ int main(int argc, char** argv)
     ScopedTextureDesc.srgb = false;
 
     const auto ScopedActualWindow = ScopedWindow.Size();
+    const std::uint64_t ScopedColorBytes = static_cast<std::uint64_t>(ScopedRenderWidth) * ScopedRenderHeight * 4ull;
+    const std::uint64_t ScopedDepthBytes = static_cast<std::uint64_t>(ScopedRenderWidth) * ScopedRenderHeight * 4ull;
     std::printf("resolution=%ux%u render=%ux%u window=%ux%u\n", ScopedWidth, ScopedHeight, ScopedRenderWidth,
                 ScopedRenderHeight, ScopedActualWindow.width, ScopedActualWindow.height);
+    std::printf("target_bytes=color=%llu depth=%llu total=%llu\n", static_cast<unsigned long long>(ScopedColorBytes),
+                static_cast<unsigned long long>(ScopedDepthBytes),
+                static_cast<unsigned long long>(ScopedColorBytes + ScopedDepthBytes));
     std::printf("scenario,cpu_ms,gpu_ms,depth_ms,main_ms,cluster_ms,postfx_ms,fps,draws,depth_items,gpu_main_items,"
-                "cull_hits,cluster_hits,lost,valid,timestamp_result\n");
+                "cull_hits,cluster_hits,lost,valid,timestamp_result,uploaded_bytes\n");
     for (const Scenario& ScopedScenario : ScopedScenarios)
     {
         if (!ScopedOnly.empty() && ScopedOnly != ScopedScenario.name)
@@ -178,9 +220,10 @@ int main(int argc, char** argv)
         Fby::Rhi::DeviceDesc ScopedDesc;
         ScopedDesc.backend = Fby::Rhi::Backend::Vulkan;
         ScopedDesc.nativeWindow = ScopedWindow.NativeWindow();
-        ScopedDesc.size = ScopedUseTarget ? Fby::Rhi::Extent2D{640, 480}
-                                          : Fby::Rhi::Extent2D{ScopedWidth, ScopedHeight};
+        ScopedDesc.size =
+            ScopedUseTarget ? Fby::Rhi::Extent2D{640, 480} : Fby::Rhi::Extent2D{ScopedWidth, ScopedHeight};
         ScopedDesc.vsync = false;
+        ScopedDesc.framesInFlight = std::clamp(ScopedFramesInFlight, 1u, 3u);
         ScopedDesc.enableDepthPrepass = ScopedScenario.depthPrepass;
         ScopedDesc.enableGpuCulling = ScopedScenario.gpuCulling;
         ScopedDesc.enableHiZ = ScopedScenario.hiZ;
@@ -217,6 +260,8 @@ int main(int argc, char** argv)
         }
 
         Fby::Rhi::FrameComposer ScopedComposer;
+        ScopedComposer.SetJobSystem(&ScopedJobs);
+        ScopedComposer.SetInstanceDeltasEnabled(ScopedDesc.framesInFlight == 1);
         ScopedComposer.SetGpuLighting(ScopedScenario.gpuLighting);
         ScopedComposer.SetOpaqueLayerModes(std::array<Fby::Assets::TextureAlphaMode, 4>{
             Fby::Assets::TextureAlphaMode::Opaque, Fby::Assets::TextureAlphaMode::Opaque,
@@ -224,7 +269,9 @@ int main(int argc, char** argv)
         ScopedComposer.SetOpaqueFrontToBack(ScopedScenario.opaqueFrontToBack);
         Fby::Rhi::CameraData ScopedCamera{
             Fby::Vector2D{static_cast<float>(ScopedWidth) * 0.5f, static_cast<float>(ScopedHeight) * 0.5f},
-            Fby::Vector2D{static_cast<float>(ScopedWidth), static_cast<float>(ScopedHeight)}, 1.0f};
+            ScopedFullView ? Fby::Vector2D{100000.0f, 100000.0f}
+                           : Fby::Vector2D{static_cast<float>(ScopedWidth), static_cast<float>(ScopedHeight)},
+            1.0f};
 
         const std::uint32_t kMeasured = std::max(ScopedFrames, 1u);
         const std::uint32_t kWarmup = std::min(20u, kMeasured / 4u);
@@ -240,8 +287,8 @@ int main(int argc, char** argv)
             }
             ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Fby::Color32::FromBytes(12, 14, 22),
                                             ScopedTexture.id);
-            const bool ScopedRecorded = ScopedBake.Bake(*ScopedGpu, ScopedComposer.Packet(),
-                                                        {ScopedWidth, ScopedHeight});
+            const bool ScopedRecorded =
+                ScopedBake.Bake(*ScopedGpu, ScopedComposer.Packet(), {ScopedWidth, ScopedHeight});
             ScopedGpu->EndFrame();
             const bool ScopedFinalized = ScopedRecorded && ScopedBake.Finalize(*ScopedGpu);
             std::printf("%s,bake=%d\n", ScopedScenario.name, ScopedFinalized ? 1 : 0);
@@ -278,9 +325,9 @@ int main(int argc, char** argv)
                 const double ScopedGpuMs =
                     ScopedGpuSamples > 0 ? ScopedGpuTotal / static_cast<double>(ScopedGpuSamples) : 0.0;
                 std::printf("%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%u,%u,%u,%u,%u,%u,%u,%d\n", ScopedScenario.name,
-                            ScopedCpuMs, ScopedGpuMs, 0.0, 0.0, 0.0, 0.0, ScopedGpuMs > 0.0 ? 1000.0 / ScopedGpuMs : 0.0,
-                            ScopedLastStats.drawCalls, 0u, 1u, 0u, 0u, 0u,
-                            ScopedLastStats.gpuTimestampsValid ? 1u : 0u, ScopedLastStats.gpuTimestampResult);
+                            ScopedCpuMs, ScopedGpuMs, 0.0, 0.0, 0.0, 0.0,
+                            ScopedGpuMs > 0.0 ? 1000.0 / ScopedGpuMs : 0.0, ScopedLastStats.drawCalls, 0u, 1u, 0u, 0u,
+                            0u, ScopedLastStats.gpuTimestampsValid ? 1u : 0u, ScopedLastStats.gpuTimestampResult);
             }
             ScopedBake.Release(*ScopedGpu);
             ScopedGpu->DestroyTextureArray(ScopedTexture);
@@ -300,12 +347,12 @@ int main(int argc, char** argv)
         std::fflush(stdout);
         for (std::uint32_t ScopedFrame = 0; ScopedFrame < kWarmup + kMeasured; ++ScopedFrame)
         {
-            if (ScopedScenario.animate)
+            if (ScopedScenario.animate && !ScopedStatic)
             {
-                const Fby::Entity ScopedFirst = ScopedRegistry.view<Fby::Transform2D>().begin()
-                                                    != ScopedRegistry.view<Fby::Transform2D>().end()
-                                                ? *ScopedRegistry.view<Fby::Transform2D>().begin()
-                                                : Fby::Entity{};
+                const Fby::Entity ScopedFirst =
+                    ScopedRegistry.view<Fby::Transform2D>().begin() != ScopedRegistry.view<Fby::Transform2D>().end()
+                        ? *ScopedRegistry.view<Fby::Transform2D>().begin()
+                        : Fby::Entity{};
                 if (ScopedFirst != Fby::Entity{})
                 {
                     auto& ScopedTransform = ScopedRegistry.get<Fby::Transform2D>(ScopedFirst);
@@ -332,7 +379,10 @@ int main(int argc, char** argv)
                 Fby::Rhi::FramePacket ScopedPresentPacket;
                 ScopedPresentPacket.clear = Fby::Color32::FromBytes(0, 0, 0);
                 ScopedGpu->Submit(ScopedPresentPacket);
-                ScopedGpu->PresentRenderTarget(ScopedTarget);
+                if (!ScopedRenderOnly)
+                {
+                    ScopedGpu->PresentRenderTarget(ScopedTarget);
+                }
             }
             else
             {
@@ -354,16 +404,15 @@ int main(int argc, char** argv)
         }
         ScopedGpu->WaitIdle();
         const double ScopedCpuMs = ScopedCpuTotal / static_cast<double>(kMeasured);
-        const double ScopedGpuMs =
-            ScopedGpuSamples > 0 ? ScopedGpuTotal / static_cast<double>(ScopedGpuSamples) : 0.0;
+        const double ScopedGpuMs = ScopedGpuSamples > 0 ? ScopedGpuTotal / static_cast<double>(ScopedGpuSamples) : 0.0;
         const double ScopedFps = ScopedGpuMs > 0.0 ? 1000.0 / ScopedGpuMs : 0.0;
-        std::printf("%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%u,%u,%u,%u,%u,%u,%u,%d\n", ScopedScenario.name,
-                    ScopedCpuMs, ScopedGpuMs, ScopedLastStats.gpuDepthMilliseconds,
-                    ScopedLastStats.gpuMainMilliseconds, ScopedLastStats.gpuClusterMilliseconds,
-                    ScopedLastStats.gpuPostFxMilliseconds, ScopedFps, ScopedLastStats.drawCalls,
-                    ScopedLastStats.depthItems, ScopedLastStats.gpuMainItems, ScopedLastStats.cullCacheHits,
-                    ScopedLastStats.clusterCacheHits, ScopedLastStats.deviceLost ? 1u : 0u,
-                    ScopedLastStats.gpuTimestampsValid ? 1u : 0u, ScopedLastStats.gpuTimestampResult);
+        std::printf("%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%u,%u,%u,%u,%u,%u,%u,%d,%llu\n", ScopedScenario.name,
+                    ScopedCpuMs, ScopedGpuMs, ScopedLastStats.gpuDepthMilliseconds, ScopedLastStats.gpuMainMilliseconds,
+                    ScopedLastStats.gpuClusterMilliseconds, ScopedLastStats.gpuPostFxMilliseconds, ScopedFps,
+                    ScopedLastStats.drawCalls, ScopedLastStats.depthItems, ScopedLastStats.gpuMainItems,
+                    ScopedLastStats.cullCacheHits, ScopedLastStats.clusterCacheHits,
+                    ScopedLastStats.deviceLost ? 1u : 0u, ScopedLastStats.gpuTimestampsValid ? 1u : 0u,
+                    ScopedLastStats.gpuTimestampResult, static_cast<unsigned long long>(ScopedLastStats.uploadedBytes));
         if (ScopedTarget.IsValid())
         {
             ScopedGpu->DestroyRenderTarget(ScopedTarget);

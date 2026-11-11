@@ -170,14 +170,14 @@ private:
         MActive = false;
         MDirty = false;
         MStack = nullptr;
-        MEntity = entt::null;
+        MEntity = Fby::kNullEntity;
         MCodec = 0xFFFFu;
         MSource = Source::None;
         MSize = 0;
     }
 
     CommandStack* MStack = nullptr;
-    Entity MEntity = entt::null;
+    Entity MEntity = Fby::kNullEntity;
     std::uint16_t MCodec = 0xFFFFu;
     Source MSource = Source::None;
     std::array<std::byte, kMaxTrackedComponentBytes> MOriginal{};

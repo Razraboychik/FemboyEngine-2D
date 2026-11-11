@@ -79,7 +79,7 @@ struct GameplaySkillSlot
     std::uint32_t SkillId = 0;
     float CooldownRemaining = 0.0f;
     float CastRemaining = 0.0f;
-    Entity Target = entt::null;
+    Entity Target = Fby::kNullEntity;
     GameplaySkillState State = GameplaySkillState::Ready;
     std::uint8_t Reserved[3] = {};
 };
@@ -97,8 +97,8 @@ static_assert(std::is_standard_layout_v<GameplaySkillsComponent>);
 
 struct GameplaySkillEvent
 {
-    Entity Caster = entt::null;
-    Entity Target = entt::null;
+    Entity Caster = Fby::kNullEntity;
+    Entity Target = Fby::kNullEntity;
     std::uint32_t SkillId = 0;
     std::uint16_t Slot = 0;
     GameplaySkillEventType Type = GameplaySkillEventType::Activated;

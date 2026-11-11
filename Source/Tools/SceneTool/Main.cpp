@@ -15,7 +15,7 @@
 // A test-only component with an entity reference. It lives in the tool so the
 struct FollowTarget
 {
-    Fby::Entity Target = entt::null;
+    Fby::Entity Target = Fby::kNullEntity;
     float Stiffness = 1.0f;
 };
 
@@ -185,7 +185,7 @@ void BuildRegistry(ComponentRegistry& InRegistry)
     }
 
     // Apply twice into the same world and prove the ids are fresh. This is the
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Entity ScopedSquatter = ScopedRegistry.create();
     Fby::Transform2D ScopedSquatterTransform;
     ScopedSquatterTransform.Position = {1234.0f, 5678.0f};
@@ -214,7 +214,7 @@ void BuildRegistry(ComponentRegistry& InRegistry)
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedFirstLoad->Size(); ++ScopedI)
     {
         const Entity ScopedA = ScopedFirstLoad->entities[ScopedI];
-        if (ScopedA == ScopedSquatter || ScopedA == entt::null || !ScopedRegistry.valid(ScopedA))
+        if (ScopedA == ScopedSquatter || ScopedA == Fby::kNullEntity || !ScopedRegistry.valid(ScopedA))
         {
             std::fprintf(stderr, "load #1 reused an existing/invalid entity id\n");
             return 1;
@@ -300,7 +300,7 @@ void BuildRegistry(ComponentRegistry& InRegistry)
         return 1;
     }
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Entity ScopedExisting = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedExisting, Fby::Transform2D{});
 
@@ -322,7 +322,7 @@ void BuildRegistry(ComponentRegistry& InRegistry)
     if (ScopedFollow == nullptr || ScopedFollow->Target != ScopedRoot || ScopedFollow->Target == ScopedExisting)
     {
         std::fprintf(stderr, "selftest: entity remap failed (target %u, expected %u)\n",
-                     static_cast<unsigned>(ScopedFollow != nullptr ? ScopedFollow->Target : entt::null),
+                     static_cast<unsigned>(ScopedFollow != nullptr ? ScopedFollow->Target : Fby::kNullEntity),
                      static_cast<unsigned>(ScopedRoot));
         return 1;
     }

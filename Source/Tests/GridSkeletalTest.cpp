@@ -536,7 +536,7 @@ void TestTilemapRefSerialization()
 {
     Fby::Scene::ComponentRegistry ScopedComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     Fby::TilemapAssetRefComponent ScopedRef;
     std::strncpy(ScopedRef.Path, "assets/main.tilemap", sizeof(ScopedRef.Path) - 1);
@@ -548,7 +548,7 @@ void TestTilemapRefSerialization()
     FBY_CHECK(ScopedToml.find("TilemapAssetRefComponent") != std::string::npos);
     FBY_CHECK(ScopedToml.find("assets/main.tilemap") != std::string::npos);
 
-    entt::registry ScopedLoaded;
+    Fby::Scene::Registry ScopedLoaded;
     Fby::Scene::SceneLoadOptions ScopedOptions;
     const auto ScopedResult = Fby::Scene::LoadSceneToml(ScopedLoaded, ScopedComponents, ScopedToml, ScopedOptions);
     FBY_CHECK(static_cast<bool>(ScopedResult));

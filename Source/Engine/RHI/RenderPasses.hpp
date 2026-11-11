@@ -109,9 +109,22 @@ struct PostFxConstants
     // chromatic split, wobble amplitude and frequency.
     Vector4D distortion0{};
     Vector4D distortion1{};
+    // Plugin accessibility effect: kind, intensity, pattern, pattern scale;
+    // tint, blur, sharpness, double vision; wobble, frequency, chromatic,
+    // vignette; desaturation, afterimage, pulse, sway; scale breathing, spare.
+    Vector4D effect0{};
+    Vector4D effect1{};
+    Vector4D effect2{};
+    Vector4D effect3{};
+    Vector4D effect4{};
+    Vector4D palette0{};
+    Vector4D palette1{};
+    Vector4D palette2{};
+    Vector4D palette3{};
+    Vector4D palette4{};
 };
 
-static_assert(sizeof(PostFxConstants) == 144, "the composite UBO is layout-checked against the shader");
+static_assert(sizeof(PostFxConstants) == 304, "the composite UBO is layout-checked against the shader");
 
 struct ColorGradingSettings
 {

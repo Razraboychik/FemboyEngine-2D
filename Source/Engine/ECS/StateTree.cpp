@@ -21,12 +21,12 @@ namespace
 }
 
 // The target's live transform wins; TargetPosition is the fallback for a target
-[[nodiscard]] Vector2D ResolveTargetPosition(const Ecs::Registry& InRegistry, const StateTreeComponent& InState) noexcept
+[[nodiscard]] Vector2D ResolveTargetPosition(const Ecs::Registry& InRegistry,
+                                             const StateTreeComponent& InState) noexcept
 {
-    if (InState.Target != entt::null)
+    if (InState.Target != Fby::kNullEntity)
     {
-        if (const auto* ScopedTransform = InRegistry.try_get<Transform2D>(InState.Target);
-            ScopedTransform != nullptr)
+        if (const auto* ScopedTransform = InRegistry.try_get<Transform2D>(InState.Target); ScopedTransform != nullptr)
         {
             return ScopedTransform->Position;
         }
@@ -94,7 +94,7 @@ namespace
             const float ScopedValue =
                 GameplayAttributeValue(*ScopedAttributes, GameplayAttribute{InEvaluator.AttributeId});
             return InEvaluator.Kind == StateTreeEvaluatorKind::AttributeBelow ? ScopedValue < InEvaluator.Threshold
-                                                                            : ScopedValue >= InEvaluator.Threshold;
+                                                                              : ScopedValue >= InEvaluator.Threshold;
         }
         case StateTreeEvaluatorKind::TargetWithinRadius:
         case StateTreeEvaluatorKind::TargetBeyondRadius:
@@ -238,8 +238,8 @@ void EmitCommand(Ecs::Registry& InRegistry, Entity InEntity, Ecs::CommandBuffer*
     }
 }
 
-void RunTask(Ecs::Registry& InRegistry, Entity InEntity, StateTreeComponent& InState,
-             const StateTreeDefinition& InTree, std::uint16_t InNodeIndex, Ecs::CommandBuffer* InCommands) noexcept
+void RunTask(Ecs::Registry& InRegistry, Entity InEntity, StateTreeComponent& InState, const StateTreeDefinition& InTree,
+             std::uint16_t InNodeIndex, Ecs::CommandBuffer* InCommands) noexcept
 {
     if (InNodeIndex >= InTree.NodeCount)
     {
@@ -301,7 +301,8 @@ void RunTask(Ecs::Registry& InRegistry, Entity InEntity, StateTreeComponent& InS
         }
         case StateTreeTaskKind::ActivateSkill:
         {
-            AICommandComponent ScopedCommand = MakeCommand(AICommandKind::ActivateSkill, InState, ScopedTask, InNodeIndex);
+            AICommandComponent ScopedCommand =
+                MakeCommand(AICommandKind::ActivateSkill, InState, ScopedTask, InNodeIndex);
             ScopedCommand.SkillSlot = ScopedTask.SkillSlot;
             ScopedCommand.Position = ResolveTargetPosition(InRegistry, InState);
             EmitCommand(InRegistry, InEntity, InCommands, ScopedCommand);
@@ -485,8 +486,7 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
                 {
                     continue;
                 }
-                if (ScopedTransition.FromLeaf != kStateTreeNone &&
-                    ScopedTransition.FromLeaf != ScopedState.CurrentLeaf)
+                if (ScopedTransition.FromLeaf != kStateTreeNone && ScopedTransition.FromLeaf != ScopedState.CurrentLeaf)
                 {
                     continue;
                 }
@@ -558,18 +558,26 @@ void StateTreeSystemThunk(const Ecs::GameplaySystemView& InView, void* InUser)
 
 void RegisterStateTreeSystem(Ecs::Schedule& InSchedule, StateTreeSystem& InSystem)
 {
-    (void)InSchedule.Add(Ecs::Phase::FixedUpdate, "state_tree",
-                         +[](Ecs::SystemContext& InContext, void* InUser)
-                         {
-                             Ecs::GameplaySystemView ScopedView = InContext.GameplayView();
-                             static_cast<StateTreeSystem*>(InUser)->Run(ScopedView);
-                         },
-                         &InSystem);
+    (void)InSchedule.Add(
+        Ecs::Phase::FixedUpdate, "state_tree",
+        +[](Ecs::SystemContext& InContext, void* InUser)
+        {
+            Ecs::GameplaySystemView ScopedView = InContext.GameplayView();
+            static_cast<StateTreeSystem*>(InUser)->Run(ScopedView);
+        },
+        &InSystem);
 }
 
 void RegisterStateTreeSystem(Ecs::SystemGraph& InGraph, StateTreeSystem& InSystem)
 {
-    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "state_tree",
-                      Ecs::BindGameplaySystem<&StateTreeSystemThunk>(), &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads =
+        Ecs::MakeComponentAccessMask<AICommandComponent, GameplayAttributesComponent, GameplaySkillsComponent,
+                                     GameplayTagsComponent, StateTreeComponent, Transform2D>();
+    ScopedAccess.ComponentWrites =
+        Ecs::MakeComponentAccessMask<AICommandComponent, GameplayAttributesComponent, GameplaySkillsComponent,
+                                     GameplayTagsComponent, StateTreeComponent>();
+    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "state_tree", Ecs::BindGameplaySystem<&StateTreeSystemThunk>(),
+                      &InSystem, 0, 0, ScopedAccess);
 }
 }

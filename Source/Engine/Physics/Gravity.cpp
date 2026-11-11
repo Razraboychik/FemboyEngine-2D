@@ -117,11 +117,11 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
     // The scene setting is a singleton by contract, but a duplicated component
     // must still resolve the same way every tick: pick the lowest entity id.
     const LevelGravityComponent* ScopedLevel = nullptr;
-    Entity ScopedLevelOwner = entt::null;
+    Entity ScopedLevelOwner = Fby::kNullEntity;
     auto ScopedLevelView = InRegistry.view<LevelGravityComponent>();
     for (const Entity ScopedEntity : ScopedLevelView)
     {
-        if (ScopedLevel == nullptr || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedLevelOwner))
+        if (ScopedLevel == nullptr || Fby::ToIntegral(ScopedEntity) < Fby::ToIntegral(ScopedLevelOwner))
         {
             ScopedLevelOwner = ScopedEntity;
             ScopedLevel = &ScopedLevelView.get<LevelGravityComponent>(ScopedEntity);
@@ -210,10 +210,9 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
         const float ScopedRadius = std::max(ScopedField.Radius, 0.0f);
         const float ScopedHalfX = std::max(ScopedField.HalfExtents.X, 0.0f);
         const float ScopedHalfY = std::max(ScopedField.HalfExtents.Y, 0.0f);
-        const float ScopedEdgeDepth =
-            ScopedShape == GravityBodyShape::Circle
-                ? std::max(ScopedField.FalloffDepth, ScopedRadius)
-                : std::max(ScopedField.FalloffDepth, std::min(ScopedHalfX, ScopedHalfY));
+        const float ScopedEdgeDepth = ScopedShape == GravityBodyShape::Circle
+                                          ? std::max(ScopedField.FalloffDepth, ScopedRadius)
+                                          : std::max(ScopedField.FalloffDepth, std::min(ScopedHalfX, ScopedHalfY));
 
         for (auto [ScopedTarget, ScopedBody] : ScopedBodyView.each())
         {
@@ -259,14 +258,13 @@ void GravitySystem::Update(Registry& InRegistry, PhysicsSystem& InPhysics, float
             if (ScopedMode == GravityBodyMode::Directional)
             {
                 const Vector2D ScopedLocal = ScopedField.Direction;
-                ScopedDirection = NormalizedOrZero(Vector2D{
-                    ScopedLocal.X * ScopedCos - ScopedLocal.Y * ScopedSin,
-                    ScopedLocal.X * ScopedSin + ScopedLocal.Y * ScopedCos});
+                ScopedDirection = NormalizedOrZero(Vector2D{ScopedLocal.X * ScopedCos - ScopedLocal.Y * ScopedSin,
+                                                            ScopedLocal.X * ScopedSin + ScopedLocal.Y * ScopedCos});
             }
             else
             {
                 ScopedDirection = ScopedMode == GravityBodyMode::Attract ? ScopedCenter - ScopedBody.Position
-                                                                        : ScopedBody.Position - ScopedCenter;
+                                                                         : ScopedBody.Position - ScopedCenter;
                 ScopedDirection = NormalizedOrZero(ScopedDirection);
             }
             if (ScopedDirection.LengthSquared() <= 0.0f)
@@ -299,7 +297,13 @@ void GravitySystemThunk(Ecs::PhysicsSystemView& InView, void* InUser)
 
 bool GravitySystem::Register(Ecs::SystemGraph& InGraph, GravitySystem& InSystem)
 {
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads =
+        Ecs::MakeComponentAccessMask<LevelGravityComponent, TilemapComponent, GravityBodyComponent, RigidBody2D,
+                                     Transform2D, Collider2D>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<RigidBody2D, Transform2D>();
+    ScopedAccess.Writes = Ecs::kServicePhysics;
     return InGraph.Add(Ecs::Phase::FixedUpdate, "GravitySystem", Ecs::BindPhysicsSystem<&GravitySystemThunk>(),
-                       &InSystem);
+                       &InSystem, 0, 0, ScopedAccess);
 }
 }

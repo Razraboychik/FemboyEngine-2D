@@ -48,7 +48,7 @@ public:
     {
         for (std::uint32_t ScopedSlot = 0; ScopedSlot < Capacity; ++ScopedSlot)
         {
-            MEntities[ScopedSlot] = entt::null;
+            MEntities[ScopedSlot] = Fby::kNullEntity;
             MItems[ScopedSlot] = RenderItem{};
             MKeys[ScopedSlot] = 0;
             MOutputIndex[ScopedSlot] = 0;
@@ -271,7 +271,7 @@ private:
 
     [[nodiscard]] static std::uint32_t EntityKey(Entity InEntity) noexcept
     {
-        return static_cast<std::uint32_t>(entt::to_integral(InEntity));
+        return static_cast<std::uint32_t>(Fby::ToIntegral(InEntity));
     }
 
     [[nodiscard]] static std::uint8_t MaterialBucketOf(RenderKey InKey) noexcept
@@ -459,7 +459,7 @@ private:
         }
         --MActiveSlotCount;
         MActive[InSlot] = 0;
-        MEntities[InSlot] = entt::null;
+        MEntities[InSlot] = Fby::kNullEntity;
         MItems[InSlot] = RenderItem{};
         MKeys[InSlot] = 0;
         MOutputIndex[InSlot] = 0;

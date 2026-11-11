@@ -388,7 +388,7 @@ void TilemapEditorPanel::DrawToolbar(Ecs::Registry& InRegistry, Entity InSelecte
     ImGui::SetNextItemWidth(220.0f);
     (void)ImGui::InputText("path", MPath.data(), MPath.size());
     ImGui::SameLine();
-    ImGui::BeginDisabled(InSelected == entt::null);
+    ImGui::BeginDisabled(InSelected == Fby::kNullEntity);
     if (ImGui::Button("Bake to selection"))
     {
         // The runtime grid is rebuilt from the authored reference on load, so the

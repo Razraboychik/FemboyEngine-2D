@@ -14,8 +14,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #include "stb_image.h"
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
+#include "Engine/Assets/PngWriter.hpp"
 
 namespace
 {
@@ -184,8 +183,8 @@ int main(int InArgc, char** InArgv)
 
     const std::filesystem::path ScopedPagePath = ScopedOutput.string() + ".png";
     const std::filesystem::path ScopedMetaPath = ScopedOutput.string() + ".fbyatlas";
-    if (stbi_write_png(ScopedPagePath.string().c_str(), static_cast<int>(ScopedPage), static_cast<int>(ScopedPage), 4,
-                       ScopedPagePixels.data(), static_cast<int>(ScopedPage * 4u)) == 0)
+    if (!Fby::Assets::WritePng(ScopedPagePath, ScopedPage, ScopedPage,
+                               std::span<const std::uint8_t>(ScopedPagePixels.data(), ScopedPagePixels.size())))
     {
         std::fprintf(stderr, "fby_atlas: cannot write '%s'\n", ScopedPagePath.string().c_str());
         return 1;
@@ -194,7 +193,7 @@ int main(int InArgc, char** InArgv)
     std::ofstream ScopedMeta(ScopedMetaPath, std::ios::trunc);
     if (!ScopedMeta)
     {
-        std::fprintf(stderr, "fby_atlas: cannot write '%s'\n", ScopedMetaPath.string().c_str());
+        std::fprintf(stderr, "fby_atlas: cannot write '%s'\n", ScopedPagePath.string().c_str());
         return 1;
     }
     ScopedMeta << "FBYATLAS 1\n";

@@ -267,6 +267,32 @@ float InputSystem::ReadSource(const InputState& InInput, const UserSlot& InUser,
             *OutHeld = ScopedGamepad.held[InSource.Code];
             return *OutHeld ? 1.0f : 0.0f;
         }
+        case InputSourceKind::Touch:
+        {
+            if (InSource.Code >= kMaxTouches)
+            {
+                return 0.0f;
+            }
+            const TouchPoint& ScopedTouch = InInput.touches[InSource.Code];
+            *OutPressed = ScopedTouch.pressed;
+            *OutReleased = ScopedTouch.released;
+            *OutHeld = ScopedTouch.active;
+            return ScopedTouch.active ? 1.0f : 0.0f;
+        }
+        case InputSourceKind::TouchAxis:
+        {
+            if (InSource.Code >= kMaxTouches * 2u)
+            {
+                return 0.0f;
+            }
+            const TouchPoint& ScopedTouch = InInput.touches[InSource.Code / 2u];
+            if (!ScopedTouch.active)
+            {
+                return 0.0f;
+            }
+            *OutHeld = true;
+            return InSource.Code % 2u == 0u ? ScopedTouch.position.X : ScopedTouch.position.Y;
+        }
         case InputSourceKind::GamepadAxis:
         {
             if (InUser.GamepadSlot >= kMaxGamepads || InSource.Code >= kMaxGamepadAxes)

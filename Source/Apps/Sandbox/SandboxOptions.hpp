@@ -18,6 +18,12 @@ struct SandboxOptions
     bool PieClient = false;
     // Headless client mode is for CI and for a second copy without a window.
     bool Headless = false;
+    // Benchmark mode: uncap presentation so the frame-time probe is not
+    // clamped by the monitor refresh rate.
+    bool NoVsync = false;
+    // Static benchmark: no gameplay updates and no re-extraction after the first
+    // frame, so the probe measures presentation instead of ECS work.
+    bool Static = false;
     // PIE host address; the client sends acknowledgements here.
     Net::NetAddress Connect{};
     // Local UDP port that receives snapshots. The parser fills in

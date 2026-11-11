@@ -1,5 +1,6 @@
 // FemboyEngine2D - accessibility kernel implementation.
 #include "Engine/UI/Accessibility.hpp"
+#include "Engine/UI/AccessibilityEffectConsumer.hpp"
 
 #include "Engine/Assets/Localization.hpp"
 #include "Engine/Core/Assert.hpp"
@@ -398,7 +399,7 @@ void AccessibilityKernel::NarrateScene(Ecs::Registry& InRegistry) noexcept
     MNarrative.Build(InRegistry);
     char ScopedBuffer[kNarrativeTextBytes]{};
     (void)MNarrative.DescribeScene(InRegistry, ScopedBuffer, sizeof(ScopedBuffer));
-    PublishNarrative(200, entt::null, Vector2D{}, std::string_view(ScopedBuffer), 0);
+    PublishNarrative(200, Fby::kNullEntity, Vector2D{}, std::string_view(ScopedBuffer), 0);
     const std::uint32_t ScopedLimit = std::min<std::uint32_t>(MNarrative.NodeCount(), 16);
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedLimit; ++ScopedIndex)
     {
@@ -551,6 +552,10 @@ void AccessibilityKernel::ApplyPostFx(Rhi::PostFxSettings& InSettings) const noe
         InSettings.flags |= Rhi::PostFxColorVision;
         InSettings.colorVision = std::min<std::uint32_t>(static_cast<std::uint32_t>(MSettings.colorVision), 3u);
         InSettings.colorVisionStrength = std::clamp(MSettings.colorVisionStrength, 0.0f, 1.0f);
+    }
+    if (MEffects != nullptr && MEffects->Active() != nullptr)
+    {
+        Ui::ApplyAccessibilityEffect(*MEffects->Active(), InSettings);
     }
 }
 
@@ -786,7 +791,7 @@ void AccessibilityKernel::PollVoiceCaptions() noexcept
         }
         if (BlindMode())
         {
-            PublishNarrative(ScopedEvent.CueId, entt::null, {}, ScopedEvent.Text, ScopedEvent.Priority);
+            PublishNarrative(ScopedEvent.CueId, Fby::kNullEntity, {}, ScopedEvent.Text, ScopedEvent.Priority);
         }
     }
 }

@@ -33,7 +33,7 @@ void AudioZoneSystem::Update(Ecs::Registry& InRegistry, AudioSystem* InAudio, fl
     // Match AudioSystem's rule: the lowest active listener entity is primary.
     Vector2D ScopedGlobalListener{};
     bool ScopedHasGlobalListener = false;
-    Entity ScopedListenerOwner = entt::null;
+    Entity ScopedListenerOwner = Fby::kNullEntity;
     auto ScopedListenerView = InRegistry.view<AudioListener>();
     for (auto [ScopedEntity, ScopedListener] : ScopedListenerView.each())
     {
@@ -41,7 +41,7 @@ void AudioZoneSystem::Update(Ecs::Registry& InRegistry, AudioSystem* InAudio, fl
         {
             continue;
         }
-        if (!ScopedHasGlobalListener || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedListenerOwner))
+        if (!ScopedHasGlobalListener || Fby::ToIntegral(ScopedEntity) < Fby::ToIntegral(ScopedListenerOwner))
         {
             ScopedListenerOwner = ScopedEntity;
             ScopedGlobalListener = ScopedListener.position;

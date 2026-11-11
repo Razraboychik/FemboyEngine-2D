@@ -18,6 +18,10 @@ target_include_directories(fby_fempak PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${FBY_SOURCE_ROOT}")
 
+if(WIN32)
+    # SecureRng.cpp calls BCryptGenRandom directly in the tool.
+    target_link_libraries(fby_fempak PRIVATE bcrypt)
+endif()
 if(FBY_OPUS_TARGET)
     target_link_libraries(fby_fempak PRIVATE ${FBY_OPUS_TARGET})
 endif()

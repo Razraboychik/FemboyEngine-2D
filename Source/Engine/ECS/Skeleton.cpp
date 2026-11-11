@@ -185,7 +185,7 @@ void Deform(const SkeletonComponent& InSkeleton, SkinComponent& InSkin) noexcept
 }
 }
 
-void SkeletonSystem::Run(entt::registry& InRegistry) const
+void SkeletonSystem::Run(Ecs::Registry& InRegistry) const
 {
     auto ScopedView = InRegistry.view<SkeletonComponent>();
     for (auto [ScopedEntity, ScopedSkeleton] : ScopedView.each())

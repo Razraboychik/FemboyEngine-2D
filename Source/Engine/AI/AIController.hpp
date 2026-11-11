@@ -35,7 +35,7 @@ struct AIControllerComponent
     std::uint32_t LastTaskIndex = 0xFFFFFFFFu;
     std::uint32_t LastKind = 0;
     std::uint32_t LastSkillSlot = 0;
-    Entity Target = entt::null;
+    Entity Target = Fby::kNullEntity;
     float SkillRetryTimer = 0.0f;
     std::uint32_t Flags = 0;
 };
@@ -59,7 +59,7 @@ static_assert(std::is_trivially_copyable_v<AIPerceptionSettings>);
 
 struct AIPerceptionComponent
 {
-    Entity Target = entt::null;
+    Entity Target = Fby::kNullEntity;
     float Timer = 0.0f;
 };
 
@@ -83,7 +83,7 @@ private:
     struct GridEntry
     {
         std::uint64_t Key = 0;
-        Entity Owner = entt::null;
+        Entity Owner = Fby::kNullEntity;
         Vector2D Position{};
     };
     std::vector<GridEntry> MGrid;

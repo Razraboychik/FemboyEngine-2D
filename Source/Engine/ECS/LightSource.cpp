@@ -43,7 +43,7 @@ struct OccluderSample
     Vector2D HalfExtents{};
     float Radius = 0.0f;
     std::uint32_t Flags = 0;
-    Entity Owner = entt::null;
+    Entity Owner = Fby::kNullEntity;
 };
 
 [[nodiscard]] float UnpackChannel(std::uint32_t InRgba, std::uint32_t InShift) noexcept
@@ -95,7 +95,7 @@ struct CombinedField
     const SdfField* Static = nullptr;
     const OccluderSample* Occluders = nullptr;
     std::uint32_t OccluderCount = 0;
-    Entity Receiver = entt::null;
+    Entity Receiver = Fby::kNullEntity;
 
     [[nodiscard]] bool Active() const noexcept
     {
@@ -117,8 +117,8 @@ struct CombinedField
 };
 
 // SDF soft shadow for one light/target pair, with a bounded step budget.
-[[nodiscard]] float SdfShadowFactor(const CombinedField& InField, Vector2D InFrom, Vector2D InTo, std::uint32_t InMaxSteps,
-                                    float InSoftness, std::uint32_t* Samples) noexcept
+[[nodiscard]] float SdfShadowFactor(const CombinedField& InField, Vector2D InFrom, Vector2D InTo,
+                                    std::uint32_t InMaxSteps, float InSoftness, std::uint32_t* Samples) noexcept
 {
     const Vector2D ScopedDelta = InTo - InFrom;
     const float ScopedDistance = std::sqrt(ScopedDelta.LengthSquared());
@@ -221,7 +221,7 @@ struct CombinedField
 
 [[nodiscard]] std::uint64_t MixEntity(std::uint64_t InHash, Entity InEntity) noexcept
 {
-    return (InHash ^ static_cast<std::uint64_t>(entt::to_integral(InEntity))) * 1099511628211ull;
+    return (InHash ^ static_cast<std::uint64_t>(Fby::ToIntegral(InEntity))) * 1099511628211ull;
 }
 }
 
@@ -244,7 +244,7 @@ namespace
 [[nodiscard]] std::uint32_t TargetIndexCursor(Entity InEntity) noexcept
 {
     constexpr std::uint32_t ScopedMask = LightSourceSystem::kTargetIndexSize - 1u;
-    return (static_cast<std::uint32_t>(entt::to_integral(InEntity)) * 2654435761u) & ScopedMask;
+    return (static_cast<std::uint32_t>(Fby::ToIntegral(InEntity)) * 2654435761u) & ScopedMask;
 }
 }
 
@@ -258,7 +258,7 @@ std::uint32_t LightSourceSystem::FindStaticTarget(Entity InEntity) const noexcep
         {
             return ScopedEntry.Slot;
         }
-        if (ScopedEntry.Owner == entt::null)
+        if (ScopedEntry.Owner == Fby::kNullEntity)
         {
             return kInvalidTargetSlot;
         }
@@ -273,7 +273,7 @@ void LightSourceSystem::InsertStaticTarget(Entity InEntity, std::uint32_t InSlot
     for (std::uint32_t ScopedProbe = 0; ScopedProbe < kTargetIndexSize; ++ScopedProbe)
     {
         TargetIndexEntry& ScopedEntry = MTargetIndex[ScopedCursor];
-        if (ScopedEntry.Owner == entt::null || ScopedEntry.Owner == InEntity)
+        if (ScopedEntry.Owner == Fby::kNullEntity || ScopedEntry.Owner == InEntity)
         {
             ScopedEntry.Owner = InEntity;
             ScopedEntry.Slot = InSlot;
@@ -298,8 +298,7 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
     auto ScopedOccluderView = InRegistry.view<Transform2D, Light2DOccluderComponent>();
     for (auto [ScopedEntity, ScopedTransform, ScopedOccluder] : ScopedOccluderView.each())
     {
-        if ((ScopedOccluder.Flags & kLight2DOccluderFlagDisabled) != 0 ||
-            ScopedOccluderCount >= kMaxDynamicOccluders)
+        if ((ScopedOccluder.Flags & kLight2DOccluderFlagDisabled) != 0 || ScopedOccluderCount >= kMaxDynamicOccluders)
         {
             continue;
         }
@@ -335,8 +334,7 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
     auto ScopedLightView = InRegistry.view<LightSourceComponent>();
     for (auto [ScopedEntity, ScopedSource] : ScopedLightView.each())
     {
-        if (!ScopedSource.IsEnabled() ||
-            !EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassLightSources))
+        if (!ScopedSource.IsEnabled() || !EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassLightSources))
         {
             continue;
         }
@@ -493,10 +491,9 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
             ScopedEntry.Blue = ScopedBaseBlue;
             ScopedField.Receiver = ScopedEntity;
             const bool ScopedShadows = EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows);
-            ScopedStaticSamples +=
-                AccumulateLights(ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position),
-                                 ScopedTransform.Position, true, ScopedShadows, ScopedField, InSettings,
-                                 &ScopedEntry.Red, &ScopedEntry.Green, &ScopedEntry.Blue);
+            ScopedStaticSamples += AccumulateLights(
+                ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position), ScopedTransform.Position, true,
+                ScopedShadows, ScopedField, InSettings, &ScopedEntry.Red, &ScopedEntry.Green, &ScopedEntry.Blue);
             if (ScopedField.Active() && InSettings.SdfAmbientOcclusion > 0.0f)
             {
                 const float ScopedOcclusion =
@@ -541,16 +538,14 @@ std::uint32_t LightSourceSystem::Run(Ecs::Registry& InRegistry, const LightSourc
         }
         else
         {
-            ScopedShadowSamples +=
-                AccumulateLights(ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position),
-                                 ScopedTransform.Position, true,
-                                 EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows), ScopedField,
-                                 InSettings, &ScopedRed, &ScopedGreen, &ScopedBlue);
+            ScopedShadowSamples += AccumulateLights(ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position),
+                                                    ScopedTransform.Position, true,
+                                                    EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows),
+                                                    ScopedField, InSettings, &ScopedRed, &ScopedGreen, &ScopedBlue);
         }
         ScopedShadowSamples +=
-            AccumulateLights(ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position),
-                             ScopedTransform.Position, false,
-                             EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows), ScopedField,
+            AccumulateLights(ScopedLights.data(), MLightGrid.Query(ScopedTransform.Position), ScopedTransform.Position,
+                             false, EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassShadows), ScopedField,
                              InSettings, &ScopedRed, &ScopedGreen, &ScopedBlue);
         if (!ScopedUsingCache && ScopedField.Active() && InSettings.SdfAmbientOcclusion > 0.0f)
         {
@@ -614,7 +609,13 @@ void LightSourceSystem::Tick(Ecs::RenderSystemView& InView, void* InUser)
 
 bool LightSourceSystem::Register(Ecs::SystemGraph& InGraph, LightSourceSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "LightSourceSystem",
-                       Ecs::BindRenderSystem<&LightSourceSystem::Tick>(), &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads =
+        Ecs::MakeComponentAccessMask<Transform2D, Sprite2D, Light2DComponent, LightSourceComponent,
+                                     Light2DOccluderComponent, Light2DTargetComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<Light2DResultComponent>();
+    ScopedAccess.Writes = Ecs::kServiceRenderer;
+    return InGraph.Add(Ecs::Phase::PostUpdate, "LightSourceSystem", Ecs::BindRenderSystem<&LightSourceSystem::Tick>(),
+                       &InSystem, 0, 0, ScopedAccess);
 }
 }

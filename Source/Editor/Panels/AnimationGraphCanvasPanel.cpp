@@ -3,6 +3,8 @@
 
 #include "Editor/Infrastructure/EditorTypography.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
+#include "Editor/Panels/ContentBrowserPanel.hpp"
+#include "Editor/Panels/DirectionalBlendFile.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/Mirror.hpp"
 #include "Engine/ECS/Components.hpp"
@@ -43,6 +45,7 @@ constexpr ImU32 kPreviousNeon = IM_COL32(80, 200, 255, 255);
 constexpr ImU32 kClipTitle = IM_COL32(64, 38, 54, 255);
 constexpr ImU32 kParamTitle = IM_COL32(34, 52, 74, 255);
 constexpr ImU32 kBlendTitle = IM_COL32(58, 40, 76, 255);
+constexpr ImU32 kDirectionalTitle = IM_COL32(30, 58, 52, 255);
 constexpr ImU32 kTransitionLink = IM_COL32(150, 150, 162, 190);
 constexpr ImU32 kBlendLink = IM_COL32(156, 116, 210, 210);
 constexpr ImU32 kParameterLink = IM_COL32(90, 190, 220, 210);
@@ -508,6 +511,8 @@ const char* AnimationGraphNodeKindName(AnimationGraphNodeKind InKind) noexcept
             return "Anim Float";
         case AnimationGraphNodeKind::Blend:
             return "Anim Blend";
+        case AnimationGraphNodeKind::DirectionalBlend:
+            return "Anim Directional";
     }
     return "Anim ?";
 }
@@ -726,7 +731,8 @@ std::uint16_t AnimationGraphCanvasPanel::AddNode(AnimationGraphNodeKind InKind, 
     }
     if ((InKind == AnimationGraphNodeKind::Clip && ScopedKindCount >= kMaxAnimClips) ||
         (InKind == AnimationGraphNodeKind::FloatParameter && ScopedKindCount >= kMaxAnimParams) ||
-        (InKind == AnimationGraphNodeKind::Blend && ScopedKindCount >= kMaxAnimationGraphBlends))
+        (InKind == AnimationGraphNodeKind::Blend && ScopedKindCount >= kMaxAnimationGraphBlends) ||
+        (InKind == AnimationGraphNodeKind::DirectionalBlend && ScopedKindCount >= kMaxAnimationGraphDirectional))
     {
         SetStatus("Anim graph: fixed capacity for this node kind is full");
         return 0xFFFFu;
@@ -792,6 +798,33 @@ std::uint16_t AnimationGraphCanvasPanel::AddNode(AnimationGraphNodeKind InKind, 
             ScopedNode.Blend.StateTimeThreshold = 0.0f;
             ScopedNode.Blend.BlendDuration = 0.15f;
             ScopedNode.Blend.Enabled = true;
+            break;
+        }
+        case AnimationGraphNodeKind::DirectionalBlend:
+        {
+            char ScopedName[32]{};
+            std::snprintf(ScopedName, sizeof(ScopedName), "Directional %u", static_cast<unsigned>(ScopedKindCount));
+            CopyName(ScopedNode.Name, ScopedName);
+            std::uint64_t ScopedState = 0x40000000ull;
+            for (std::uint16_t ScopedOther = 0; ScopedOther < MDocument.NodeCount; ++ScopedOther)
+            {
+                if (MDocument.Nodes[ScopedOther].Kind == AnimationGraphNodeKind::Clip ||
+                    MDocument.Nodes[ScopedOther].Kind == AnimationGraphNodeKind::DirectionalBlend)
+                {
+                    ScopedState = std::max(ScopedState, MDocument.Nodes[ScopedOther].Clip.State + 1);
+                }
+            }
+            ScopedNode.Clip.State = ScopedState;
+            ScopedNode.Directional.AnchorCount = 8;
+            ScopedNode.Directional.NormalizeWeights = true;
+            for (std::uint16_t ScopedAnchor = 0; ScopedAnchor < 8; ++ScopedAnchor)
+            {
+                const float ScopedAngle = static_cast<float>(ScopedAnchor) * (3.14159265f / 4.0f);
+                ScopedNode.Directional.Anchors[ScopedAnchor].Position = {std::cos(ScopedAngle), std::sin(ScopedAngle)};
+                ScopedNode.Directional.Anchors[ScopedAnchor].ClipId = ScopedAnchor;
+                ScopedNode.Directional.Anchors[ScopedAnchor].WeightScale = 1.0f;
+                ScopedNode.Directional.Anchors[ScopedAnchor].Enabled = true;
+            }
             break;
         }
     }
@@ -869,16 +902,38 @@ bool AnimationGraphCanvasPanel::AddLink(std::uint16_t InFromNode, std::uint8_t I
 
     AnimationGraphLinkKind ScopedKind = AnimationGraphLinkKind::Transition;
     bool ScopedKnown = false;
-    if (ScopedFrom.Kind == AnimationGraphNodeKind::Clip && ScopedTo.Kind == AnimationGraphNodeKind::Clip &&
+    const auto ScopedIsState = [](AnimationGraphNodeKind InKind)
+    {
+        return InKind == AnimationGraphNodeKind::Clip || InKind == AnimationGraphNodeKind::DirectionalBlend;
+    };
+    if (ScopedFrom.Kind == AnimationGraphNodeKind::Clip && ScopedTo.Kind == AnimationGraphNodeKind::Blend &&
         InFromPin == 0 && InToPin == 0)
+    {
+        ScopedKind = AnimationGraphLinkKind::BlendSource;
+        ScopedKnown = true;
+    }
+    else if (ScopedFrom.Kind == AnimationGraphNodeKind::Clip &&
+             ScopedTo.Kind == AnimationGraphNodeKind::DirectionalBlend && InFromPin == 0 && InToPin == 0)
+    {
+        ScopedKind = AnimationGraphLinkKind::BlendSource;
+        ScopedKnown = true;
+    }
+    else if (ScopedFrom.Kind == AnimationGraphNodeKind::Clip && ScopedTo.Kind == AnimationGraphNodeKind::Clip &&
+             InFromPin == 0 && InToPin == 0)
     {
         ScopedKind = AnimationGraphLinkKind::Transition;
         ScopedKnown = true;
     }
-    else if (ScopedFrom.Kind == AnimationGraphNodeKind::Clip && ScopedTo.Kind == AnimationGraphNodeKind::Blend &&
-             InFromPin == 0 && InToPin == 0)
+    else if (ScopedIsState(ScopedFrom.Kind) && ScopedTo.Kind == AnimationGraphNodeKind::DirectionalBlend &&
+             InFromPin == 0 && InToPin == 1)
     {
-        ScopedKind = AnimationGraphLinkKind::BlendSource;
+        ScopedKind = AnimationGraphLinkKind::Transition;
+        ScopedKnown = true;
+    }
+    else if (ScopedFrom.Kind == AnimationGraphNodeKind::DirectionalBlend &&
+             ScopedTo.Kind == AnimationGraphNodeKind::Clip && InFromPin == 0 && InToPin == 0)
+    {
+        ScopedKind = AnimationGraphLinkKind::Transition;
         ScopedKnown = true;
     }
     else if (ScopedFrom.Kind == AnimationGraphNodeKind::FloatParameter &&
@@ -1006,7 +1061,7 @@ bool AnimationGraphCanvasPanel::BeginEdit(const char* InLabel, EditSource InSour
         }
         CommitEdit();
     }
-    if (MCommands->CaptureComponent(entt::null, MCodec, std::span<std::byte>(MBefore.data(), MCodecSize)) !=
+    if (MCommands->CaptureComponent(Fby::kNullEntity, MCodec, std::span<std::byte>(MBefore.data(), MCodecSize)) !=
         CommandStack::Result::Ok)
     {
         SetStatus("Anim graph: cannot capture document for undo");
@@ -1030,14 +1085,14 @@ void AnimationGraphCanvasPanel::RecordEdit() noexcept
     {
         return;
     }
-    if (MCommands->CaptureComponent(entt::null, MCodec, std::span<std::byte>(MAfter.data(), MCodecSize)) !=
+    if (MCommands->CaptureComponent(Fby::kNullEntity, MCodec, std::span<std::byte>(MAfter.data(), MCodecSize)) !=
         CommandStack::Result::Ok)
     {
         SetStatus("Anim graph: cannot capture edited document");
         return;
     }
     const auto ScopedRecorded =
-        MCommands->Record(entt::null, MCodec, std::span<const std::byte>(MBefore.data(), MCodecSize),
+        MCommands->Record(Fby::kNullEntity, MCodec, std::span<const std::byte>(MBefore.data(), MCodecSize),
                           std::span<const std::byte>(MAfter.data(), MCodecSize));
     if (ScopedRecorded != CommandStack::Result::Ok)
     {
@@ -1341,6 +1396,7 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
     std::uint16_t ScopedClipCount = 0;
     std::uint16_t ScopedParamCount = 0;
     std::uint16_t ScopedTransitionCount = 0;
+    std::uint16_t ScopedDirectionalNode = 0xFFFFu;
     MCompiledClipNode.fill(0xFFFFu);
     MCompiledTransitionLink.fill(0xFFFFu);
 
@@ -1407,6 +1463,31 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
             ScopedCompiled.Floats[ScopedSource.ParameterIndex] = ScopedSource.ParameterValue;
             ++ScopedParamCount;
         }
+        else if (ScopedSource.Kind == AnimationGraphNodeKind::DirectionalBlend)
+        {
+            if (ScopedDirectionalNode != 0xFFFFu)
+            {
+                SetStatus("Anim compile: only one directional node is supported");
+                return false;
+            }
+            if (ScopedSource.Clip.State == 0 || ScopedSource.Clip.State == kAnimAnyState)
+            {
+                SetStatus("Anim compile: directional node %u needs a non-zero state id",
+                          static_cast<unsigned>(ScopedNode));
+                return false;
+            }
+            for (std::uint16_t ScopedOther = 0; ScopedOther < ScopedClipCount; ++ScopedOther)
+            {
+                if (ScopedStateIds[ScopedOther] == ScopedSource.Clip.State)
+                {
+                    SetStatus("Anim compile: directional node %u reuses state id %llu",
+                              static_cast<unsigned>(ScopedNode),
+                              static_cast<unsigned long long>(ScopedSource.Clip.State));
+                    return false;
+                }
+            }
+            ScopedDirectionalNode = ScopedNode;
+        }
         else if (ScopedSource.Kind != AnimationGraphNodeKind::Blend)
         {
             SetStatus("Anim compile: node %u has an unknown kind", static_cast<unsigned>(ScopedNode));
@@ -1439,15 +1520,19 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
         const AnimationGraphNode& ScopedFrom = MDocument.Nodes[ScopedLinkData.FromNode];
         const AnimationGraphNode& ScopedTo = MDocument.Nodes[ScopedLinkData.ToNode];
         bool ScopedValid = false;
+        const auto ScopedIsState = [](AnimationGraphNodeKind InKind)
+        {
+            return InKind == AnimationGraphNodeKind::Clip || InKind == AnimationGraphNodeKind::DirectionalBlend;
+        };
         switch (ScopedLinkData.Kind)
         {
             case AnimationGraphLinkKind::Transition:
-                ScopedValid =
-                    ScopedFrom.Kind == AnimationGraphNodeKind::Clip && ScopedTo.Kind == AnimationGraphNodeKind::Clip;
+                ScopedValid = ScopedIsState(ScopedFrom.Kind) && ScopedIsState(ScopedTo.Kind);
                 break;
             case AnimationGraphLinkKind::BlendSource:
-                ScopedValid =
-                    ScopedFrom.Kind == AnimationGraphNodeKind::Clip && ScopedTo.Kind == AnimationGraphNodeKind::Blend;
+                ScopedValid = ScopedFrom.Kind == AnimationGraphNodeKind::Clip &&
+                              (ScopedTo.Kind == AnimationGraphNodeKind::Blend ||
+                               ScopedTo.Kind == AnimationGraphNodeKind::DirectionalBlend);
                 break;
             case AnimationGraphLinkKind::BlendParameter:
                 ScopedValid = ScopedFrom.Kind == AnimationGraphNodeKind::FloatParameter &&
@@ -1612,6 +1697,74 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
         }
     }
 
+    // Directional node: the inbound BlendSource links are the clip sources, in
+    // link order. Every anchor ClipId indexes that order.
+    if (ScopedDirectionalNode != 0xFFFFu)
+    {
+        const AnimationGraphNode& ScopedDirectional = MDocument.Nodes[ScopedDirectionalNode];
+        std::array<std::uint64_t, kMaxAnimClips> ScopedSourceStates{};
+        std::uint16_t ScopedSourceCount = 0;
+        for (std::uint16_t ScopedLink = 0; ScopedLink < MDocument.LinkCount; ++ScopedLink)
+        {
+            const AnimationGraphLink& ScopedLinkData = MDocument.Links[ScopedLink];
+            if (ScopedLinkData.Kind != AnimationGraphLinkKind::BlendSource ||
+                ScopedLinkData.ToNode != ScopedDirectionalNode)
+            {
+                continue;
+            }
+            if (ScopedSourceCount >= kMaxAnimClips)
+            {
+                SetStatus("Anim compile: directional node has more than %u sources",
+                          static_cast<unsigned>(kMaxAnimClips));
+                return false;
+            }
+            const AnimationGraphNode& ScopedClipNode = MDocument.Nodes[ScopedLinkData.FromNode];
+            if (ScopedClipNode.Kind != AnimationGraphNodeKind::Clip || ScopedClipNode.Clip.State == 0)
+            {
+                SetStatus("Anim compile: directional source %u is not a clip node",
+                          static_cast<unsigned>(ScopedSourceCount));
+                return false;
+            }
+            ScopedSourceStates[ScopedSourceCount] = ScopedClipNode.Clip.State;
+            ++ScopedSourceCount;
+        }
+        if (ScopedSourceCount == 0)
+        {
+            SetStatus("Anim compile: directional node %u has no clip sources",
+                      static_cast<unsigned>(ScopedDirectionalNode));
+            return false;
+        }
+        for (std::uint16_t ScopedAnchor = 0; ScopedAnchor < ScopedDirectional.Directional.AnchorCount; ++ScopedAnchor)
+        {
+            if (ScopedAnchor >= Animation::kMaxDirectionalAnchors)
+            {
+                SetStatus("Anim compile: directional node %u has too many anchors",
+                          static_cast<unsigned>(ScopedDirectionalNode));
+                return false;
+            }
+            if (ScopedDirectional.Directional.Anchors[ScopedAnchor].Enabled &&
+                ScopedDirectional.Directional.Anchors[ScopedAnchor].ClipId >= ScopedSourceCount)
+            {
+                SetStatus("Anim compile: directional anchor %u points at source %u outside 0..%u",
+                          static_cast<unsigned>(ScopedAnchor),
+                          static_cast<unsigned>(ScopedDirectional.Directional.Anchors[ScopedAnchor].ClipId),
+                          static_cast<unsigned>(ScopedSourceCount - 1));
+                return false;
+            }
+        }
+        Animation::DirectionalBlendTable ScopedDirectionalTable;
+        if (!Animation::BakeDirectionalBlendSpace(ScopedDirectional.Directional, &ScopedDirectionalTable))
+        {
+            SetStatus("Anim compile: directional node %u has an invalid blend space",
+                      static_cast<unsigned>(ScopedDirectionalNode));
+            return false;
+        }
+        ScopedDefinition.Directional = ScopedDirectionalTable;
+        ScopedDefinition.DirectionalStates = ScopedSourceStates;
+        ScopedDefinition.DirectionalState = ScopedDirectional.Clip.State;
+        ScopedDefinition.HasDirectional = true;
+    }
+
     ScopedDefinition.ClipCount = ScopedClipCount;
     // Authored transitions are counted by MAuthoredTransitionCount. The
     ScopedDefinition.TransitionCount = ScopedTransitionCount;
@@ -1704,14 +1857,14 @@ bool AnimationGraphCanvasPanel::PublishPIEStateFromWorlds() noexcept
     }
     // This runs on the simulation thread at a quiescent point: after the fixed
     const Ecs::Registry& ScopedSelection = MSelectionWorld != nullptr ? *MSelectionWorld : *MRuntimeWorld;
-    Entity ScopedSelected = entt::null;
+    Entity ScopedSelected = Fby::kNullEntity;
     const auto ScopedView = ScopedSelection.view<EditorSelected>();
     const auto ScopedIt = ScopedView.begin();
     if (ScopedIt != ScopedView.end())
     {
         ScopedSelected = *ScopedIt;
     }
-    if (ScopedSelected == entt::null)
+    if (ScopedSelected == Fby::kNullEntity)
     {
         return false;
     }
@@ -2030,7 +2183,9 @@ void AnimationGraphCanvasPanel::DrawCanvas()
             const ImU32 ScopedTitle =
                 ScopedNodeData.Kind == AnimationGraphNodeKind::Clip
                     ? kClipTitle
-                    : (ScopedNodeData.Kind == AnimationGraphNodeKind::FloatParameter ? kParamTitle : kBlendTitle);
+                    : (ScopedNodeData.Kind == AnimationGraphNodeKind::FloatParameter
+                           ? kParamTitle
+                           : (ScopedNodeData.Kind == AnimationGraphNodeKind::Blend ? kBlendTitle : kDirectionalTitle));
             ImNodes::PushColorStyle(ImNodesCol_TitleBar, ScopedTitle);
         }
 
@@ -2087,6 +2242,32 @@ void AnimationGraphCanvasPanel::DrawCanvas()
                 ImGui::TextDisabled("blend %.3fs | conditions 0x%x",
                                     static_cast<double>(ScopedNodeData.Blend.BlendDuration),
                                     ScopedNodeData.Blend.Conditions);
+                ImNodes::BeginOutputAttribute(OutputId(ScopedNode, 0), ImNodesPinShape_TriangleFilled);
+                ImGui::TextUnformatted("Out");
+                ImNodes::EndOutputAttribute();
+                break;
+            }
+            case AnimationGraphNodeKind::DirectionalBlend:
+            {
+                ImNodes::BeginInputAttribute(InputId(ScopedNode, 0), ImNodesPinShape_CircleFilled);
+                ImGui::TextUnformatted("Src");
+                ImNodes::EndInputAttribute();
+                ImNodes::BeginInputAttribute(InputId(ScopedNode, 1), ImNodesPinShape_CircleFilled);
+                ImGui::TextUnformatted("In");
+                ImNodes::EndInputAttribute();
+                std::uint16_t ScopedSourceCount = 0;
+                for (std::uint16_t ScopedLink = 0; ScopedLink < MDocument.LinkCount; ++ScopedLink)
+                {
+                    if (MDocument.Links[ScopedLink].Kind == AnimationGraphLinkKind::BlendSource &&
+                        MDocument.Links[ScopedLink].ToNode == ScopedNode)
+                    {
+                        ++ScopedSourceCount;
+                    }
+                }
+                ImGui::TextDisabled("state %llu", static_cast<unsigned long long>(ScopedNodeData.Clip.State));
+                ImGui::TextDisabled("%u anchors | %u sources",
+                                    static_cast<unsigned>(ScopedNodeData.Directional.AnchorCount),
+                                    static_cast<unsigned>(ScopedSourceCount));
                 ImNodes::BeginOutputAttribute(OutputId(ScopedNode, 0), ImNodesPinShape_TriangleFilled);
                 ImGui::TextUnformatted("Out");
                 ImNodes::EndOutputAttribute();
@@ -2452,6 +2633,101 @@ void AnimationGraphCanvasPanel::DrawNodeInspector(std::uint16_t InNode)
             AnimTransition& ScopedBlend = ScopedNode.Blend;
             ImGui::SeparatorText("Cross-fade");
             DrawTransitionFields(ScopedBlend, false);
+            break;
+        }
+        case AnimationGraphNodeKind::DirectionalBlend:
+        {
+            ImU64 ScopedState = static_cast<ImU64>(ScopedNode.Clip.State);
+            if (ImGui::InputScalar("State id", ImGuiDataType_U64, &ScopedState, nullptr, nullptr, "%llx",
+                                   ImGuiInputTextFlags_CharsHexadecimal) &&
+                EnsureInspectorEdit("Edit directional state id"))
+            {
+                ScopedNode.Clip.State = static_cast<std::uint64_t>(ScopedState);
+                RecordEdit();
+            }
+            if (ImGui::IsItemDeactivated())
+            {
+                FinishInspectorEdit(true);
+            }
+            ImGui::SeparatorText("Directional blend");
+            ImGui::SetNextItemWidth(-1.0f);
+            (void)ImGui::InputText("##directional_path", ScopedNode.DirectionalPath.data(),
+                                   ScopedNode.DirectionalPath.size());
+            const auto ScopedLoadDirectional = [&](const std::string& InPath)
+            {
+                Animation::DirectionalBlendSpaceDocument ScopedDocument;
+                std::string ScopedError;
+                if (!DirectionalBlendFile::Load(InPath, &ScopedDocument, nullptr, &ScopedError) &&
+                    !DirectionalBlendFile::Load(std::filesystem::path("assets") / InPath, &ScopedDocument, nullptr,
+                                                &ScopedError))
+                {
+                    SetStatus("Anim graph: %s", ScopedError.c_str());
+                    return false;
+                }
+                if (EnsureInspectorEdit("Load directional blend"))
+                {
+                    ScopedNode.Directional = ScopedDocument;
+                    RecordEdit();
+                    FinishInspectorEdit(true);
+                }
+                MarkDocumentDirty();
+                return true;
+            };
+            if (ImGui::Button("Load blend file"))
+            {
+                (void)ScopedLoadDirectional(ScopedNode.DirectionalPath.data());
+            }
+            ImGui::SameLine();
+            (void)ImGui::Button("Drop .fblend here");
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* ScopedPayload =
+                        ImGui::AcceptDragDropPayload(ContentBrowserPanel::kDragPayloadType))
+                {
+                    if (ScopedPayload->DataSize == static_cast<int>(sizeof(ContentBrowserPanel::DragPayload)) &&
+                        ScopedPayload->Data != nullptr)
+                    {
+                        const auto* ScopedData =
+                            static_cast<const ContentBrowserPanel::DragPayload*>(ScopedPayload->Data);
+                        std::snprintf(ScopedNode.DirectionalPath.data(), ScopedNode.DirectionalPath.size(), "%s",
+                                      ScopedData->path);
+                        (void)ScopedLoadDirectional(ScopedNode.DirectionalPath.data());
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+            ImGui::Text("Anchors: %u / %u", static_cast<unsigned>(ScopedNode.Directional.AnchorCount),
+                        static_cast<unsigned>(Animation::kMaxDirectionalAnchors));
+            for (std::uint16_t ScopedAnchor = 0; ScopedAnchor < ScopedNode.Directional.AnchorCount; ++ScopedAnchor)
+            {
+                const Animation::DirectionalBlendAnchor& ScopedAnchorData =
+                    ScopedNode.Directional.Anchors[ScopedAnchor];
+                ImGui::TextDisabled("#%u -> source %u  scale %.2f%s", static_cast<unsigned>(ScopedAnchor),
+                                    static_cast<unsigned>(ScopedAnchorData.ClipId),
+                                    static_cast<double>(ScopedAnchorData.WeightScale),
+                                    ScopedAnchorData.Enabled ? "" : " (off)");
+            }
+            ImGui::SeparatorText("Sources");
+            std::uint16_t ScopedSourceIndex = 0;
+            for (std::uint16_t ScopedLink = 0; ScopedLink < MDocument.LinkCount; ++ScopedLink)
+            {
+                const AnimationGraphLink& ScopedLinkData = MDocument.Links[ScopedLink];
+                if (ScopedLinkData.Kind != AnimationGraphLinkKind::BlendSource || ScopedLinkData.ToNode != InNode ||
+                    ScopedLinkData.FromNode >= MDocument.NodeCount)
+                {
+                    continue;
+                }
+                const AnimationGraphNode& ScopedClipNode = MDocument.Nodes[ScopedLinkData.FromNode];
+                ImGui::TextDisabled("[%u] %s (state %llu)", static_cast<unsigned>(ScopedSourceIndex),
+                                    NameOrFallback(ScopedClipNode.Name),
+                                    static_cast<unsigned long long>(ScopedClipNode.Clip.State));
+                ++ScopedSourceIndex;
+            }
+            if (ScopedSourceIndex == 0)
+            {
+                ImGui::TextDisabled("Connect clip nodes to Src");
+            }
+            ImGui::TextWrapped("Clips are ordered by link id; anchor ClipId indexes that order.");
             break;
         }
     }
@@ -2999,6 +3275,27 @@ bool AnimationGraphCanvasPanel::SaveToSceneToml()
         ScopedText += "\nparam_value = ";
         AppendFloat(ScopedText, ScopedData.ParameterValue);
         AppendTransitionFields(ScopedText, ScopedData.Blend, "blend_", MTags);
+        ScopedText += "\ndir_anchor_count = ";
+        AppendInt(ScopedText, ScopedData.Directional.AnchorCount);
+        ScopedText += "\ndir_normalize = ";
+        AppendBool(ScopedText, ScopedData.Directional.NormalizeWeights);
+        ScopedText += "\ndir_path = ";
+        AppendQuoted(ScopedText, ScopedData.DirectionalPath.data());
+        for (std::uint16_t ScopedAnchor = 0; ScopedAnchor < ScopedData.Directional.AnchorCount; ++ScopedAnchor)
+        {
+            const Animation::DirectionalBlendAnchor& ScopedAnchorData = ScopedData.Directional.Anchors[ScopedAnchor];
+            ScopedText += "\n[[anim_graph.node.dir_anchor]]\nposition = [";
+            AppendFloat(ScopedText, ScopedAnchorData.Position.X);
+            ScopedText += ", ";
+            AppendFloat(ScopedText, ScopedAnchorData.Position.Y);
+            ScopedText += "]\nclip = ";
+            AppendInt(ScopedText, ScopedAnchorData.ClipId);
+            ScopedText += "\nscale = ";
+            AppendFloat(ScopedText, ScopedAnchorData.WeightScale);
+            ScopedText += "\nenabled = ";
+            AppendBool(ScopedText, ScopedAnchorData.Enabled);
+            ScopedText += '\n';
+        }
         for (std::uint16_t ScopedKey = 0; ScopedKey < ScopedData.Clip.KeyCount; ++ScopedKey)
         {
             ScopedText += "\n[[anim_graph.node.key]]\nbone = ";
@@ -3134,6 +3431,38 @@ bool AnimationGraphCanvasPanel::LoadFromSceneToml()
         ScopedNode.ParameterIndex = static_cast<std::uint16_t>(ReadInt(*ScopedTable, "param_index", 0));
         ScopedNode.ParameterValue = ReadFloat(*ScopedTable, "param_value", 0.0f);
         ReadTransitionFields(*ScopedTable, "blend_", ScopedNode.Blend, MTags);
+        ScopedNode.Directional.NormalizeWeights = ReadBool(*ScopedTable, "dir_normalize", true);
+        const std::string ScopedDirectionalPath = ReadString(*ScopedTable, "dir_path", "");
+        std::snprintf(ScopedNode.DirectionalPath.data(), ScopedNode.DirectionalPath.size(), "%s",
+                      ScopedDirectionalPath.c_str());
+        ScopedNode.Directional.AnchorCount = static_cast<std::uint16_t>(
+            std::clamp<std::int64_t>(ReadInt(*ScopedTable, "dir_anchor_count", 0), 0,
+                                     static_cast<std::int64_t>(Animation::kMaxDirectionalAnchors)));
+        if (const toml::array* ScopedAnchors = (*ScopedTable)["dir_anchor"].as_array(); ScopedAnchors != nullptr)
+        {
+            const std::size_t ScopedAnchorCount =
+                std::min<std::size_t>(ScopedAnchors->size(), Animation::kMaxDirectionalAnchors);
+            for (std::size_t ScopedAnchor = 0; ScopedAnchor < ScopedAnchorCount; ++ScopedAnchor)
+            {
+                const toml::table* ScopedAnchorTable = ScopedAnchors->get(ScopedAnchor)->as_table();
+                if (ScopedAnchorTable == nullptr)
+                {
+                    continue;
+                }
+                Animation::DirectionalBlendAnchor& ScopedAnchorData = ScopedNode.Directional.Anchors[ScopedAnchor];
+                if (const toml::array* ScopedPosition = (*ScopedAnchorTable)["position"].as_array();
+                    ScopedPosition != nullptr && ScopedPosition->size() >= 2)
+                {
+                    ScopedAnchorData.Position.X =
+                        static_cast<float>(ScopedPosition->get(0)->value<double>().value_or(0.0));
+                    ScopedAnchorData.Position.Y =
+                        static_cast<float>(ScopedPosition->get(1)->value<double>().value_or(0.0));
+                }
+                ScopedAnchorData.ClipId = static_cast<std::uint32_t>(ReadInt(*ScopedAnchorTable, "clip", 0));
+                ScopedAnchorData.WeightScale = ReadFloat(*ScopedAnchorTable, "scale", 1.0f);
+                ScopedAnchorData.Enabled = ReadBool(*ScopedAnchorTable, "enabled", true);
+            }
+        }
         if (ScopedNode.Clip.KeyCount > kMaxAnimPoseKeys)
         {
             ScopedNode.Clip.KeyCount = kMaxAnimPoseKeys;

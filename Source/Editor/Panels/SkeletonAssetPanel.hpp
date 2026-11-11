@@ -18,7 +18,7 @@ namespace Fby::Editor
 
 struct SkeletonInspectorState
 {
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     std::string path;
     std::string status;
     Skeleton::SkeletonNameTable names;

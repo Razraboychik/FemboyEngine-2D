@@ -369,7 +369,7 @@ submit path.
 
 Design:
 
-- **Pool, not archetype.** 100k agents in EnTT archetypes would cost a per-entity
+- **Pool, not archetype.** 100k agents in archetype storage would cost a per-entity
   storage walk and a chunk hop per component. Use `CrowdPool`: SoA of position,
   velocity, group, wander phase, flags, 32 bytes per agent, 3.2 MB at 100k, which
   fits comfortably in cache-friendly chunks.

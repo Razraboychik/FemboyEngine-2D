@@ -2,6 +2,7 @@
 #include "Engine/Core/CrashHandler.hpp"
 #include "Engine/Core/AssetPaths.hpp"
 #include "Engine/Core/Time.hpp"
+#include "Engine/Core/Pause.hpp"
 #include "PieClient.hpp"
 #include "SandboxOptions.hpp"
 
@@ -66,8 +67,9 @@ public:
 
     void Begin(std::size_t InCount)
     {
+        // Batches survive when FinishSorted reuses a previous key order; the
+        // sort path clears them when the key set changes.
         MCount = InCount;
-        MBatches.clear();
     }
 
     [[nodiscard]] std::size_t Count() const noexcept
@@ -85,7 +87,7 @@ public:
     // Sorted view for the CPU accessibility pass: colours only, order untouched.
     [[nodiscard]] std::span<Fby::Rhi::RenderItem> SortedItems() noexcept
     {
-        return std::span<Fby::Rhi::RenderItem>(MSorted.data(), MCount);
+        return std::span<Fby::Rhi::RenderItem>(MIdentityOrder ? MItems.data() : MSorted.data(), MCount);
     }
     [[nodiscard]] Fby::Rhi::RenderKey* Keys() noexcept
     {
@@ -93,37 +95,61 @@ public:
     }
 
     // Sorts the frame by (layer, depth) and packs it into one contiguous array.
+    // A dynamic scene usually keeps the same sort keys while positions change;
+    // reuse the previous order and batches in that case and only gather items.
     void FinishSorted()
     {
-        for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+        const bool ScopedSameKeys =
+            MHasLast && MCount == MLastCount &&
+            (MCount == 0 || std::memcmp(MKeys.data(), MLastKeys.data(),
+                                        static_cast<std::size_t>(MCount) * sizeof(Fby::Rhi::RenderKey)) == 0);
+        if (!ScopedSameKeys)
         {
-            MOrder[ScopedI] = ScopedI;
-        }
-        MSorter.Sort(std::span<const Fby::Rhi::RenderKey>(MKeys.data(), MCount),
-                     std::span<std::uint32_t>(MOrder.data(), MCount));
-
-        // Gather: one linear pass, cache friendly because it is a sequential
-        for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
-        {
-            MSorted[ScopedI] = MItems[MOrder[ScopedI]];
-        }
-
-        // One batch per layer change. With a texture array there is no reason to
-        MBatches.clear();
-        std::uint32_t ScopedBegin = 0;
-        for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
-        {
-            const bool ScopedLayerChanged =
-                ScopedI > 0 && (MKeys[MOrder[ScopedI]] >> 48) != (MKeys[MOrder[ScopedI - 1]] >> 48);
-            if (ScopedLayerChanged)
+            for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
             {
-                MBatches.push_back(Fby::Rhi::DrawBatch{ScopedBegin, ScopedI - ScopedBegin, 0, 0});
-                ScopedBegin = ScopedI;
+                MOrder[ScopedI] = ScopedI;
             }
+            MSorter.Sort(std::span<const Fby::Rhi::RenderKey>(MKeys.data(), MCount),
+                         std::span<std::uint32_t>(MOrder.data(), MCount));
+
+            MBatches.clear();
+            std::uint32_t ScopedBegin = 0;
+            for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+            {
+                const bool ScopedLayerChanged =
+                    ScopedI > 0 && (MKeys[MOrder[ScopedI]] >> 48) != (MKeys[MOrder[ScopedI - 1]] >> 48);
+                if (ScopedLayerChanged)
+                {
+                    MBatches.push_back(Fby::Rhi::DrawBatch{ScopedBegin, ScopedI - ScopedBegin, 0, 0});
+                    ScopedBegin = ScopedI;
+                }
+            }
+            if (MCount > 0)
+            {
+                MBatches.push_back(Fby::Rhi::DrawBatch{ScopedBegin, MCount - ScopedBegin, 0, 0});
+            }
+            MIdentityOrder = true;
+            for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+            {
+                if (MOrder[ScopedI] != ScopedI)
+                {
+                    MIdentityOrder = false;
+                    break;
+                }
+            }
+            MLastKeys.assign(MKeys.begin(), MKeys.begin() + MCount);
+            MLastCount = MCount;
+            MHasLast = true;
         }
-        if (MCount > 0)
+
+        // Gather only when the sort permutation is not the identity. With one
+        // layer and equal depth the common case keeps MItems contiguous.
+        if (!MIdentityOrder)
         {
-            MBatches.push_back(Fby::Rhi::DrawBatch{ScopedBegin, MCount - ScopedBegin, 0, 0});
+            for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+            {
+                MSorted[ScopedI] = MItems[MOrder[ScopedI]];
+            }
         }
     }
 
@@ -131,7 +157,8 @@ public:
                                                Fby::Color32 InClear) const noexcept
     {
         Fby::Rhi::FramePacket ScopedPacket;
-        ScopedPacket.items = std::span<const Fby::Rhi::RenderItem>(MSorted.data(), MCount);
+        ScopedPacket.items =
+            std::span<const Fby::Rhi::RenderItem>(MIdentityOrder ? MItems.data() : MSorted.data(), MCount);
         ScopedPacket.keys = std::span<const Fby::Rhi::RenderKey>(MKeys.data(), MCount);
         ScopedPacket.batches = std::span<const Fby::Rhi::DrawBatch>(MBatches.data(), MBatches.size());
         ScopedPacket.camera = InCamera;
@@ -143,11 +170,15 @@ private:
     std::vector<Fby::Rhi::RenderItem> MItems;
     std::vector<Fby::Rhi::RenderItem> MSorted;
     std::vector<Fby::Rhi::RenderKey> MKeys;
+    std::vector<Fby::Rhi::RenderKey> MLastKeys;
     std::vector<std::uint32_t> MOrder;
     std::vector<Fby::Rhi::DrawBatch> MBatches;
     Fby::Rhi::KeySorter MSorter;
     std::size_t MCapacity = 0;
     std::uint32_t MCount = 0;
+    std::uint32_t MLastCount = 0;
+    bool MHasLast = false;
+    bool MIdentityOrder = false;
 };
 
 struct World
@@ -239,7 +270,7 @@ void MovementSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
                                });
 }
 
-void RenderExtractSystem(Fby::Ecs::RenderSystemView& InView, void* InUser)
+void RenderExtractSystem(const Fby::Ecs::ConstRenderSystemView& InView, void* InUser)
 {
     SandboxSystems& ScopedSystems = *static_cast<SandboxSystems*>(InUser);
     const std::uint32_t ScopedCount = static_cast<std::uint32_t>(ScopedSystems.world->sprites.size());
@@ -248,26 +279,26 @@ void RenderExtractSystem(Fby::Ecs::RenderSystemView& InView, void* InUser)
     Fby::Rhi::RenderItem* ScopedItems = ScopedSystems.extract->Items();
     Fby::Rhi::RenderKey* ScopedKeys = ScopedSystems.extract->Keys();
 
-    InView.jobs.ParallelFor(
-        ScopedCount, kChunkSize,
-        [&](std::uint32_t InBegin, std::uint32_t InEnd)
-        {
-            for (std::uint32_t ScopedI = InBegin; ScopedI < InEnd; ++ScopedI)
-            {
-                const Fby::Entity ScopedEntity = ScopedSystems.world->sprites[ScopedI];
-                const auto& ScopedTransform = ScopedView.get<Fby::Transform2D>(ScopedEntity);
-                const auto& ScopedSprite = ScopedView.get<Fby::Sprite2D>(ScopedEntity);
-                const auto& ScopedOrder = ScopedView.get<Fby::DrawOrder>(ScopedEntity);
+    InView.jobs.ParallelFor(ScopedCount, kChunkSize,
+                            [&](std::uint32_t InBegin, std::uint32_t InEnd)
+                            {
+                                for (std::uint32_t ScopedI = InBegin; ScopedI < InEnd; ++ScopedI)
+                                {
+                                    const Fby::Entity ScopedEntity = ScopedSystems.world->sprites[ScopedI];
+                                    const auto& ScopedTransform = ScopedView.get<Fby::Transform2D>(ScopedEntity);
+                                    const auto& ScopedSprite = ScopedView.get<Fby::Sprite2D>(ScopedEntity);
+                                    const auto& ScopedOrder = ScopedView.get<Fby::DrawOrder>(ScopedEntity);
 
-                ScopedItems[ScopedI] = Fby::Rhi::RenderItem{
-                    ScopedTransform.Position, ScopedSprite.Size,       ScopedSprite.UVMin,       ScopedSprite.UVMax,
-                    ScopedSprite.Layer,       ScopedSprite.Color.rgba, ScopedTransform.Rotation, ScopedSprite.Flags};
-                ScopedKeys[ScopedI] = Fby::Rhi::MakeRenderKey(ScopedOrder.Layer, ScopedOrder.Depth);
-            }
-        });
+                                    ScopedItems[ScopedI] = Fby::Rhi::RenderItem{
+                                        ScopedTransform.Position, ScopedSprite.Size,  ScopedSprite.UVMin,
+                                        ScopedSprite.UVMax,       ScopedSprite.Layer, ScopedSprite.Color.rgba,
+                                        ScopedTransform.Rotation, ScopedSprite.Flags};
+                                    ScopedKeys[ScopedI] = Fby::Rhi::MakeRenderKey(ScopedOrder.Layer, ScopedOrder.Depth);
+                                }
+                            });
 }
 
-void ExtractRegistry(Fby::Ecs::Registry& InRegistry, RenderExtract& InExtract)
+void ExtractRegistry(const Fby::Ecs::Registry& InRegistry, RenderExtract& InExtract)
 {
     auto ScopedView = InRegistry.view<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder>();
     const std::size_t ScopedCount = ScopedView.size_hint();
@@ -383,7 +414,7 @@ int main(int argc, char** argv)
     ScopedDeviceDesc.backend = Fby::Rhi::SelectDefaultBackend();
     ScopedDeviceDesc.nativeWindow = ScopedWindow.NativeWindow();
     ScopedDeviceDesc.size = {ScopedWindow.Size().width, ScopedWindow.Size().height};
-    ScopedDeviceDesc.vsync = true;
+    ScopedDeviceDesc.vsync = !ScopedOptions.NoVsync;
     ScopedDeviceDesc.maxItemsPerFrame =
         std::max<std::uint32_t>(ScopedOptions.PieClient ? 4096u : ScopedOptions.SpriteCount + 4096u, 1u << 16);
 
@@ -512,8 +543,7 @@ int main(int argc, char** argv)
 
             const Fby::WindowExtent ScopedSize = ScopedWindow.Size();
             if (ScopedSize.width > 0 && ScopedSize.height > 0 &&
-                (ScopedSize.width != ScopedDeviceDesc.size.width ||
-                 ScopedSize.height != ScopedDeviceDesc.size.height))
+                (ScopedSize.width != ScopedDeviceDesc.size.width || ScopedSize.height != ScopedDeviceDesc.size.height))
             {
                 ScopedDeviceDesc.size = {ScopedSize.width, ScopedSize.height};
                 ScopedGpu->Resize(ScopedDeviceDesc.size);
@@ -525,8 +555,7 @@ int main(int argc, char** argv)
             {
                 const Fby::Rhi::CameraData ScopedCamera{
                     ScopedCameraCenter,
-                    {static_cast<float>(ScopedDeviceDesc.size.width),
-                     static_cast<float>(ScopedDeviceDesc.size.height)},
+                    {static_cast<float>(ScopedDeviceDesc.size.width), static_cast<float>(ScopedDeviceDesc.size.height)},
                     ScopedZoom};
                 ScopedGpu->Submit(ScopedClientExtract.Packet(ScopedCamera, Fby::Color32::FromBytes(8, 10, 18)));
                 ScopedGpu->EndFrame();
@@ -538,8 +567,7 @@ int main(int argc, char** argv)
                 const std::size_t ScopedEntities = ScopedClient.World().storage<Fby::Entity>().size();
                 Fby::LogInfo("sandbox", "PIE client: tick {}, {} entities, {} items, state {}",
                              static_cast<unsigned long long>(ScopedClient.AppliedTick()), ScopedEntities,
-                             ScopedClientExtract.Count(),
-                             Fby::Net::ReplicationStatusName(ScopedClient.Status()));
+                             ScopedClientExtract.Count(), Fby::Net::ReplicationStatusName(ScopedClient.Status()));
                 ScopedWindow.SetTitle(std::format("FemboyEngine2D 1.0 - PIE client | tick {} | {} items",
                                                   static_cast<unsigned long long>(ScopedClient.AppliedTick()),
                                                   ScopedClientExtract.Count()));
@@ -583,8 +611,8 @@ int main(int argc, char** argv)
     Fby::Text::CodepointShaper ScopedUiFallbackShaper;
     std::string ScopedUiFontError;
     bool ScopedUiFontsReady = false;
-    if (ScopedUiFontStack.AddFont(ScopedVfs, "fonts/IBMPlexSans-Regular.ttf", 0, Fby::Text::TextScript::Latin,
-                                  32.0f, 1024, false, &ScopedUiFontError))
+    if (ScopedUiFontStack.AddFont(ScopedVfs, "fonts/IBMPlexSans-Regular.ttf", 0, Fby::Text::TextScript::Latin, 32.0f,
+                                  1024, false, &ScopedUiFontError))
     {
         ScopedUiFontsReady = ScopedUiFontStack.Fonts().MountToTextureArray(*ScopedGpu);
     }
@@ -599,14 +627,13 @@ int main(int argc, char** argv)
     }
     Fby::Assets::TextureArrayAsset ScopedSplashAtlas;
     {
-        const std::string ScopedManifest =
-            "name = \"splash\"\nwidth = 1024\nheight = 1024\nsrgb = false\n"
-            "layers = [ { name = \"logo\", source = \"Logo.ftex\" } ]\n";
+        const std::string ScopedManifest = "name = \"splash\"\nwidth = 1024\nheight = 1024\nsrgb = false\n"
+                                           "layers = [ { name = \"logo\", source = \"Logo.ftex\" } ]\n";
         const auto* ScopedBytes = reinterpret_cast<const std::byte*>(ScopedManifest.data());
         std::string ScopedSplashError;
-        if (!ScopedSplashAtlas.LoadFromManifest(
-                ScopedVfs, *ScopedGpu,
-                std::span<const std::byte>(ScopedBytes, ScopedManifest.size()), &ScopedSplashError))
+        if (!ScopedSplashAtlas.LoadFromManifest(ScopedVfs, *ScopedGpu,
+                                                std::span<const std::byte>(ScopedBytes, ScopedManifest.size()),
+                                                &ScopedSplashError))
         {
             Fby::LogWarn("sandbox", "splash logo unavailable: {}", ScopedSplashError);
         }
@@ -628,6 +655,10 @@ int main(int argc, char** argv)
         Fby::LogWarn("sandbox", "project.femproj could not be read; splash defaults to on");
     }
     Fby::SplashClock ScopedSplash(ScopedShowSplash);
+    if (ScopedOptions.Static)
+    {
+        ScopedSplash.Skip();
+    }
 
     Fby::Ecs::SystemContext ScopedContext{ScopedWorld.registry, ScopedJobs, 0.0f, 0};
     ScopedContext.localization = &ScopedLocalization;
@@ -641,8 +672,14 @@ int main(int argc, char** argv)
     SandboxSystems ScopedSystems{&ScopedWorld, &ScopedExtract};
 
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, &ScopedSystems);
+    Fby::Ecs::SystemAccess ScopedExtractAccess;
+    ScopedExtractAccess.ComponentReads =
+        Fby::Ecs::MakeComponentAccessMask<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder>();
+    ScopedExtractAccess.Writes = Fby::Ecs::kServiceRenderer;
+    ScopedExtractAccess.ParallelSafe = true;
     (void)ScopedGraph.Add(Fby::Ecs::Phase::Render, "render_extract",
-                          Fby::Ecs::BindRenderSystem<&RenderExtractSystem>(), &ScopedSystems);
+                          Fby::Ecs::BindConstRenderSystem<&RenderExtractSystem>(), &ScopedSystems, 0, 0,
+                          ScopedExtractAccess);
     if (!ScopedGraph.Build())
     {
         Fby::LogError("sandbox", "SystemGraph build failed");
@@ -650,6 +687,7 @@ int main(int argc, char** argv)
     }
 
     Fby::Core::Clock ScopedClock;
+    Fby::Core::PauseController ScopedPause;
     float ScopedAccumulator = 0.0f;
     std::uint64_t ScopedFrameIndex = 0;
 
@@ -685,13 +723,20 @@ int main(int argc, char** argv)
         {
             ScopedShowStats = !ScopedShowStats;
         }
+        if (ScopedWindow.Input().WasPressed(Fby::Key::P))
+        {
+            const bool ScopedPaused = !ScopedPause.Paused();
+            ScopedPause.SetPaused(ScopedPaused, ScopedClock, nullptr);
+            ScopedGraph.SetPaused(ScopedPaused, !ScopedPause.Settings().PauseHudAnimations);
+            Fby::LogInfo("sandbox", "{}", ScopedPaused ? "paused" : "resumed");
+        }
         // Accessibility hotkeys: F2 blind, F3 deaf, F4 flash guard, F5 colour
         // vision cycle. The same profile fields ship in project.femproj.
         if (ScopedWindow.Input().WasPressed(Fby::Key::F2))
         {
-            Fby::AccessibilitySetFlag(&ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode,
-                                      !Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags,
-                                                                 Fby::AccessibilityBlindMode));
+            Fby::AccessibilitySetFlag(
+                &ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode,
+                !Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode));
             ScopedAccessibility.ApplyProfile(ScopedProfile);
         }
         if (ScopedWindow.Input().WasPressed(Fby::Key::F3))
@@ -718,11 +763,10 @@ int main(int argc, char** argv)
         }
         if (ScopedWindow.Input().WasPressed(Fby::Key::F5))
         {
-            const std::uint8_t ScopedNext = static_cast<std::uint8_t>(
-                (static_cast<std::uint8_t>(ScopedProfile.runtime.colorVision) + 1u) % 4u);
+            const std::uint8_t ScopedNext =
+                static_cast<std::uint8_t>((static_cast<std::uint8_t>(ScopedProfile.runtime.colorVision) + 1u) % 4u);
             ScopedProfile.runtime.colorVision = static_cast<Fby::ColorVisionDeficiency>(ScopedNext);
-            Fby::AccessibilitySetFlag(&ScopedProfile.runtime.flags, Fby::AccessibilityColorVisionMode,
-                                      ScopedNext != 0);
+            Fby::AccessibilitySetFlag(&ScopedProfile.runtime.flags, Fby::AccessibilityColorVisionMode, ScopedNext != 0);
             ScopedAccessibility.ApplyProfile(ScopedProfile);
         }
 
@@ -759,30 +803,36 @@ int main(int argc, char** argv)
             ScopedGpu->Resize(ScopedDeviceDesc.size);
         }
 
+        const bool ScopedFrozen = ScopedOptions.Static && ScopedFrameIndex > 0;
         ++ScopedFrameIndex;
         ScopedContext.frameIndex = ScopedFrameIndex;
         ScopedContext.dt = ScopedDt;
-        ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
-
-        // Fixed step: gameplay sees a constant dt, presentation sees the
-        ScopedAccumulator += ScopedDt;
-        int ScopedSteps = 0;
-        while (ScopedAccumulator >= kFixedStep && ScopedSteps < kMaxFixedStepsPerFrame)
+        ScopedContext.uiDt = ScopedPause.HudDelta(ScopedDt, static_cast<float>(ScopedClock.RealDelta()));
+        if (!ScopedFrozen)
         {
-            ScopedContext.dt = kFixedStep;
-            ScopedGraph.Run(Fby::Ecs::Phase::FixedUpdate, ScopedContext);
-            ScopedAccumulator -= kFixedStep;
-            ++ScopedSteps;
-        }
-        if (ScopedAccumulator >= kFixedStep)
-        {
-            ScopedAccumulator = std::fmod(ScopedAccumulator, kFixedStep);
-        }
+            ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
 
-        ScopedContext.dt = ScopedDt;
-        ScopedGraph.Run(Fby::Ecs::Phase::PostUpdate, ScopedContext);
-        ScopedGraph.Run(Fby::Ecs::Phase::Render, ScopedContext);
-        ScopedExtract.FinishSorted();
+            // Fixed step: gameplay sees a constant dt, presentation sees the
+            ScopedAccumulator += ScopedDt;
+            int ScopedSteps = 0;
+            while (ScopedAccumulator >= kFixedStep && ScopedSteps < kMaxFixedStepsPerFrame)
+            {
+                ScopedContext.dt = kFixedStep;
+                ScopedGraph.Run(Fby::Ecs::Phase::FixedUpdate, ScopedContext);
+                ScopedAccumulator -= kFixedStep;
+                ++ScopedSteps;
+            }
+            if (ScopedAccumulator >= kFixedStep)
+            {
+                ScopedAccumulator = std::fmod(ScopedAccumulator, kFixedStep);
+            }
+
+            ScopedContext.dt = ScopedDt;
+            ScopedGraph.Run(Fby::Ecs::Phase::PostUpdate, ScopedContext);
+            ScopedGraph.Run(Fby::Ecs::Phase::Ui, ScopedContext);
+            ScopedGraph.Run(Fby::Ecs::Phase::Render, ScopedContext);
+            ScopedExtract.FinishSorted();
+        }
 
         if (ScopedGpu->BeginFrame())
         {
@@ -794,11 +844,10 @@ int main(int argc, char** argv)
             Fby::Rhi::FramePacket ScopedFrame = ScopedExtract.Packet(ScopedCamera, ScopedClear);
             if (!ScopedSplash.Done() && ScopedSplashAtlas.IsValid())
             {
-                const auto ScopedAlpha = static_cast<std::uint8_t>(
-                    std::clamp(ScopedSplash.Opacity(), 0.0f, 1.0f) * 255.0f);
-                const Fby::Rhi::RenderItem ScopedLogo =
-                    Fby::Rhi::RenderItem::Quad({0.0f, 0.0f}, {512.0f, 512.0f},
-                                                Fby::Color32::FromBytes(255, 255, 255, ScopedAlpha).rgba);
+                const auto ScopedAlpha =
+                    static_cast<std::uint8_t>(std::clamp(ScopedSplash.Opacity(), 0.0f, 1.0f) * 255.0f);
+                const Fby::Rhi::RenderItem ScopedLogo = Fby::Rhi::RenderItem::Quad(
+                    {0.0f, 0.0f}, {512.0f, 512.0f}, Fby::Color32::FromBytes(255, 255, 255, ScopedAlpha).rgba);
                 const Fby::Rhi::RenderKey ScopedLogoKey{};
                 const Fby::Rhi::DrawBatch ScopedLogoBatch{0, 1, 0, 0};
                 ScopedFrame = Fby::Rhi::FramePacket{};
@@ -853,16 +902,18 @@ int main(int argc, char** argv)
             // Blind mode skips the game and UI draw in the backend; deaf mode is
             // enforced by the app's audio policy, the flags travel for the rest.
             ScopedAccessibility.ApplyToFrame(ScopedFrame);
+            ScopedAccessibility.ApplyPostFx(ScopedFrame.postFx);
+            ScopedFrame.postFxEnabled = true;
             ScopedGpu->Submit(ScopedFrame);
             if (!ScopedSplash.Done() && ScopedSplashTextCount > 0u &&
                 ScopedUiFontStack.Fonts().TextureArray().IsValid())
             {
                 Fby::Rhi::FramePacket ScopedSplashText;
                 ScopedSplashText.textureArray = ScopedUiFontStack.Fonts().TextureArray().id;
-                ScopedSplashText.items = std::span<const Fby::Rhi::RenderItem>(ScopedSplashTextItems.data(),
-                                                                               ScopedSplashTextCount);
-                ScopedSplashText.keys = std::span<const Fby::Rhi::RenderKey>(ScopedSplashTextKeys.data(),
-                                                                             ScopedSplashTextCount);
+                ScopedSplashText.items =
+                    std::span<const Fby::Rhi::RenderItem>(ScopedSplashTextItems.data(), ScopedSplashTextCount);
+                ScopedSplashText.keys =
+                    std::span<const Fby::Rhi::RenderKey>(ScopedSplashTextKeys.data(), ScopedSplashTextCount);
                 const Fby::Rhi::DrawBatch ScopedSplashTextBatch{0, ScopedSplashTextCount, 0, 0};
                 ScopedSplashText.batches = std::span<const Fby::Rhi::DrawBatch>(&ScopedSplashTextBatch, 1);
                 (void)ScopedGpu->DrawOverlay(ScopedSplashText);

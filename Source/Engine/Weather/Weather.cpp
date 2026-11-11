@@ -17,8 +17,7 @@ namespace
 {
     const float ScopedCos = Sim::Cos(InRadians);
     const float ScopedSin = Sim::Sin(InRadians);
-    return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin,
-                    InValue.X * ScopedSin + InValue.Y * ScopedCos};
+    return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin, InValue.X * ScopedSin + InValue.Y * ScopedCos};
 }
 }
 
@@ -37,10 +36,10 @@ void WeatherSystem::Update(Ecs::SystemContext& InContext) noexcept
     auto ScopedView = InContext.registry.view<WeatherContextComponent>();
     // Several contexts are legal (zones), but the single global wind field must
     // resolve deterministically: the lowest entity id is the primary context.
-    Entity ScopedPrimary = entt::null;
+    Entity ScopedPrimary = Fby::kNullEntity;
     for (const Entity ScopedEntity : ScopedView)
     {
-        if (ScopedPrimary == entt::null || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedPrimary))
+        if (ScopedPrimary == Fby::kNullEntity || Fby::ToIntegral(ScopedEntity) < Fby::ToIntegral(ScopedPrimary))
         {
             ScopedPrimary = ScopedEntity;
         }
@@ -73,8 +72,8 @@ void WeatherSystem::Update(Ecs::SystemContext& InContext) noexcept
         ScopedContext.resolvedWindX = ScopedDirection.X * ScopedSpeed;
         ScopedContext.resolvedWindY = ScopedDirection.Y * ScopedSpeed;
         ScopedContext.gust = ScopedGust;
-        ScopedContext.wetness = std::clamp(ScopedContext.wetness + ScopedDt * (ScopedContext.rainIntensity * 0.4f - 0.05f),
-                                           0.0f, 1.0f);
+        ScopedContext.wetness =
+            std::clamp(ScopedContext.wetness + ScopedDt * (ScopedContext.rainIntensity * 0.4f - 0.05f), 0.0f, 1.0f);
         ScopedContext.flags &= ~(WeatherRain | WeatherSnow | WeatherFire);
         if (ScopedContext.cloudCoverage > 0.01f)
         {
@@ -119,17 +118,20 @@ void WeatherSystem::Update(Ecs::SystemContext& InContext) noexcept
 Vector2D WeatherSystem::WindAt(Vector2D InWorld, float InTimeSeconds) const noexcept
 {
     const float ScopedScale = 0.0025f;
-    const float ScopedForward = MNoise.Fbm2D(InWorld.X * ScopedScale + InTimeSeconds * 0.07f,
-                                             InWorld.Y * ScopedScale, 4);
-    const float ScopedAcross = MNoise.Fbm2D(InWorld.Y * ScopedScale + 17.3f,
-                                            InWorld.X * ScopedScale - InTimeSeconds * 0.055f, 4);
+    const float ScopedForward =
+        MNoise.Fbm2D(InWorld.X * ScopedScale + InTimeSeconds * 0.07f, InWorld.Y * ScopedScale, 4);
+    const float ScopedAcross =
+        MNoise.Fbm2D(InWorld.Y * ScopedScale + 17.3f, InWorld.X * ScopedScale - InTimeSeconds * 0.055f, 4);
     const float ScopedSpeed = std::max(MDesc.baseSpeed, 0.0f) * (1.0f + ScopedForward * 0.6f);
     return Vector2D{ScopedSpeed, ScopedAcross * ScopedSpeed * 0.45f};
 }
 
 bool WeatherSystem::Register(Ecs::SystemGraph& InGraph, WeatherSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PreUpdate, "WeatherSystem", &WeatherSystem::Tick, &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<WeatherContextComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<WeatherContextComponent>();
+    return InGraph.Add(Ecs::Phase::PreUpdate, "WeatherSystem", &WeatherSystem::Tick, &InSystem, 0, 0, ScopedAccess);
 }
 
 void WeatherSystem::Tick(Ecs::SystemContext& InContext, void* InUser)

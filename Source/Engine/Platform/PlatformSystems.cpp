@@ -37,7 +37,8 @@ void Store64(std::byte* OutData, std::uint64_t InValue) noexcept
     Store32(OutData + 4, static_cast<std::uint32_t>(InValue >> 32));
 }
 
-[[nodiscard]] std::uint64_t Fnv1a(std::span<const std::byte> InBytes, std::uint64_t InSeed = 14695981039346656037ull) noexcept
+[[nodiscard]] std::uint64_t Fnv1a(std::span<const std::byte> InBytes,
+                                  std::uint64_t InSeed = 14695981039346656037ull) noexcept
 {
     std::uint64_t ScopedHash = InSeed;
     for (const std::byte ScopedByte : InBytes)
@@ -71,8 +72,8 @@ void PlatformCommandLog::Clear() noexcept
     MChecksum = 0;
 }
 
-bool PlatformCommandLog::Append(PlatformLogType InType, std::uint64_t InTick, std::uint64_t InId, std::string_view InName,
-                                std::span<const std::byte> InData) noexcept
+bool PlatformCommandLog::Append(PlatformLogType InType, std::uint64_t InTick, std::uint64_t InId,
+                                std::string_view InName, std::span<const std::byte> InData) noexcept
 {
     if (InName.size() > 0xFFFFu || InData.size() > 4096u)
     {
@@ -169,8 +170,8 @@ bool PlatformCommandLog::Replay(PlatformLogSink InSink, void* InUser) const noex
         ScopedEvent.id = Load64(ScopedRecord + 16);
         ScopedEvent.name = std::string_view(
             reinterpret_cast<const char*>(MStorage.data() + ScopedOffset + kRecordBytes), ScopedNameSize);
-        ScopedEvent.data = std::span<const std::byte>(MStorage.data() + ScopedOffset + kRecordBytes + ScopedNameSize,
-                                                      ScopedDataSize);
+        ScopedEvent.data =
+            std::span<const std::byte>(MStorage.data() + ScopedOffset + kRecordBytes + ScopedNameSize, ScopedDataSize);
         InSink(InUser, ScopedEvent);
         ScopedOffset += kRecordBytes + ScopedNameSize + ScopedDataSize;
     }
@@ -223,9 +224,10 @@ void SteamAchievementSystem::Update(Ecs::SystemContext& InContext)
         {
             const Entity ScopedPrev = ScopedEntities[ScopedJ - 1];
             const AchievementRequest& ScopedPrevRequest = ScopedView.get<AchievementRequest>(ScopedPrev);
-            const bool ScopedGreater = ScopedPrevRequest.achievementId > ScopedValueRequest.achievementId ||
-                                       (ScopedPrevRequest.achievementId == ScopedValueRequest.achievementId &&
-                                        static_cast<std::uint32_t>(ScopedPrev) > static_cast<std::uint32_t>(ScopedValue));
+            const bool ScopedGreater =
+                ScopedPrevRequest.achievementId > ScopedValueRequest.achievementId ||
+                (ScopedPrevRequest.achievementId == ScopedValueRequest.achievementId &&
+                 static_cast<std::uint32_t>(ScopedPrev) > static_cast<std::uint32_t>(ScopedValue));
             if (!ScopedGreater)
             {
                 break;
@@ -263,7 +265,12 @@ void SteamAchievementSystem::Update(Ecs::SystemContext& InContext)
 
 bool SteamAchievementSystem::Register(Ecs::SystemGraph& InGraph, SteamAchievementSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::FixedUpdate, "SteamAchievementSystem", &SteamAchievementSystem::Tick, &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<AchievementRequest>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<AchievementRequest>();
+    ScopedAccess.Writes = Ecs::kServiceNetwork;
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "SteamAchievementSystem", &SteamAchievementSystem::Tick, &InSystem, 0,
+                       0, ScopedAccess);
 }
 
 void SteamAchievementSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
@@ -400,7 +407,11 @@ void EgsStoreSystem::Update(Ecs::SystemContext& InContext)
 
 bool EgsStoreSystem::Register(Ecs::SystemGraph& InGraph, EgsStoreSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "EgsStoreSystem", &EgsStoreSystem::Tick, &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<CloudSaveComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<CloudSaveComponent>();
+    ScopedAccess.Writes = Ecs::kServiceNetwork;
+    return InGraph.Add(Ecs::Phase::PostUpdate, "EgsStoreSystem", &EgsStoreSystem::Tick, &InSystem, 0, 0, ScopedAccess);
 }
 
 void EgsStoreSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
@@ -451,9 +462,10 @@ void GogAchievementSystem::Update(Ecs::SystemContext& InContext)
         {
             const Entity ScopedPrev = ScopedEntities[ScopedJ - 1];
             const AchievementRequest& ScopedPrevRequest = ScopedView.get<AchievementRequest>(ScopedPrev);
-            const bool ScopedGreater = ScopedPrevRequest.achievementId > ScopedValueRequest.achievementId ||
-                                       (ScopedPrevRequest.achievementId == ScopedValueRequest.achievementId &&
-                                        static_cast<std::uint32_t>(ScopedPrev) > static_cast<std::uint32_t>(ScopedValue));
+            const bool ScopedGreater =
+                ScopedPrevRequest.achievementId > ScopedValueRequest.achievementId ||
+                (ScopedPrevRequest.achievementId == ScopedValueRequest.achievementId &&
+                 static_cast<std::uint32_t>(ScopedPrev) > static_cast<std::uint32_t>(ScopedValue));
             if (!ScopedGreater)
             {
                 break;
@@ -503,7 +515,12 @@ void GogAchievementSystem::Update(Ecs::SystemContext& InContext)
 
 bool GogAchievementSystem::Register(Ecs::SystemGraph& InGraph, GogAchievementSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "GogAchievementSystem", &GogAchievementSystem::Tick, &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<AchievementRequest>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<AchievementRequest>();
+    ScopedAccess.Writes = Ecs::kServiceNetwork;
+    return InGraph.Add(Ecs::Phase::PostUpdate, "GogAchievementSystem", &GogAchievementSystem::Tick, &InSystem, 0, 0,
+                       ScopedAccess);
 }
 
 void GogAchievementSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
@@ -563,8 +580,8 @@ bool GogStorageSystem::StageWrite(std::uint64_t InSaveId, std::string_view InFil
         return false;
     }
     const bool ScopedOverwrite =
-        ScopedSlot->used && (ScopedSlot->size != InData.size() ||
-                             std::memcmp(ScopedSlot->data.data(), InData.data(), InData.size()) != 0);
+        ScopedSlot->used &&
+        (ScopedSlot->size != InData.size() || std::memcmp(ScopedSlot->data.data(), InData.data(), InData.size()) != 0);
     if (ScopedOverwrite)
     {
         // Two producers staged different bytes for the same save id before the
@@ -651,7 +668,12 @@ void GogStorageSystem::Update(Ecs::SystemContext& InContext)
 
 bool GogStorageSystem::Register(Ecs::SystemGraph& InGraph, GogStorageSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "GogStorageSystem", &GogStorageSystem::Tick, &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<CloudSaveComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<CloudSaveComponent>();
+    ScopedAccess.Writes = Ecs::kServiceNetwork;
+    return InGraph.Add(Ecs::Phase::PostUpdate, "GogStorageSystem", &GogStorageSystem::Tick, &InSystem, 0, 0,
+                       ScopedAccess);
 }
 
 void GogStorageSystem::Tick(Ecs::SystemContext& InContext, void* InUser)

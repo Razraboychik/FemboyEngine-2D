@@ -3,7 +3,7 @@
 [English](README.md) | [Русский перевод](README_RU.md)
 
 Этот каталог — точка входа в документацию FemboyEngine2D. Текущая публичная
-линия — **0.3.0-alpha.1**. Движок представляет собой data-oriented 2D-рантайм на
+линия — **0.4.0-alpha.1**. Движок представляет собой data-oriented 2D-рантайм на
 C++26: ECS-хранилища фиксированной ёмкости, явные системы, окно SDL3,
 интерфейс рендеринга Vulkan или null, физика Box2D v3 и детерминированный
 роллбэк.
@@ -13,7 +13,7 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 
 ## Что покрывает движок
 
-- **Рантайм и ECS** — реестр EnTT, декларативный `SystemGraph`, контракты
+- **Рантайм и ECS** — реестр FCS, декларативный `SystemGraph`, контракты
   снапшотов и роллбэка, кадровый арена-аллокатор и командные буферы.
 - **Рендер** — Vulkan и null RHI, спрайтовый и меш-путь, 2D-освещение с SDF-
   тенями, OIT, запекание статических слоёв, виртуальные текстуры, батчинг
@@ -49,6 +49,11 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 |---|---|
 | Собрать движок и открыть редактор | [Начало работы](md/ru/FemboyEngineGettingStarted_RU.md) |
 | Настроить VS Code, clangd и ручную сборку | [Рабочий процесс сборки](design/build-workflow_RU.md) |
+| Проверить требования к железу редактора | [Системные требования](design/system-requirements_RU.md) |
+| Собрать и выпустить игру, Steam/EOS/GOG | [Распространение игры](design/game-distribution_RU.md) |
+| Понять chunked-хранилище FCS | [FCS](design/fcs_ru.md) |
+| Деформируемые SDF-персонажи | [SDF-персонажи](design/sdf-characters_ru.md) |
+| Контракт доступа и исключений SystemGraph | [SystemGraph](design/system-graph_ru.md) |
 | Изучить движок на примере игры | [Практическое руководство](md/ru/FemboyEngineApplicationGuide_RU.md) |
 | Найти тип, функцию или поле payload | [Справочник API](md/ru/FemboyEngineAPIReference_RU.md) |
 | Понять архитектуру | [Архитектурная спецификация](md/ru/FemboyEngineArchitecture_RU.md) |
@@ -59,7 +64,7 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 | Настроить движение и искажения камеры | [Эффекты камеры](design/camera-effects.md) |
 | Добавить действия, контексты, геймпады и ремап | [Система ввода](design/input-system.md) |
 | Построить авторитетный ввод и репликацию | [Практическое руководство: репликация](md/ru/FemboyEngineApplicationGuide_RU.md#51-детерминированный-ввод-и-репликация-при-создании-игры) |
-| Использовать FemboyScript, LogicGraph или StateTree | [FemboyScript](md/ru/FemboyScript_RU.md) |
+| Использовать FemboyScript, LogicGraph или StateTree | [FemboyScript](md/ru/FemboyScript_RU.md), [значения LogicGraph и AOT](design/scripting.md) |
 | Разобраться с FSR/DLSS-апскейлингом и генерацией кадров | [Генерация кадров](md/ru/FemboyEngineFrameGeneration_RU.md) |
 | Показывать книги и руководства с форматированием | [Потоковые книги](design/books.md), [TXT-документы](design/documents.md) |
 | Переносить проект между Windows, Linux и macOS | [Переносимость desktop-проектов](design/desktop-portability.md) |
@@ -72,6 +77,8 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 | Настроить гравитацию, поля, верёвки и цепочки | [Гравитация и верёвки](design/gravity-and-ropes.md) |
 | Собрать текстовый и голосовой чат, включая эффекты и условия | [Чат и голосовые эффекты](design/chat.md) |
 | Проверить безопасность транспорта | [Безопасность](design/security.md) |
+| Спланировать плагины и accessibility-паки | [Архитектура плагинов](design/plugins.md) |
+| Понять исключённые вендорные алерты CodeQL | [Неиспользуемые алерты CodeQL](md/ru/CodeQLUnusedAlerts_RU.md) |
 | Работать с голосом, светом, текстом, PIE или сетью | [Дизайн-документы](design) |
 
 ## Языки и форматы

@@ -26,7 +26,7 @@ const char* TransportGroupPanel::EntityLabel(const Ecs::Registry& InRegistry, En
         std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "%s", ScopedName->Value);
         return ScopedBuffer;
     }
-    std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "Entity %u", entt::to_integral(InEntity));
+    std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "Entity %u", Fby::ToIntegral(InEntity));
     return ScopedBuffer;
 }
 
@@ -160,7 +160,7 @@ void TransportGroupPanel::DrawMemberList(Ecs::Registry& InRegistry, std::uint32_
         {
             continue;
         }
-        ImGui::PushID(entt::to_integral(ScopedEntity));
+        ImGui::PushID(Fby::ToIntegral(ScopedEntity));
         ImGui::Text("%s  mode=%s", EntityLabel(InRegistry, ScopedEntity),
                     ScopedMember.Mode < static_cast<std::uint32_t>(IM_ARRAYSIZE(kMemberModes))
                         ? kMemberModes[ScopedMember.Mode]
@@ -250,9 +250,9 @@ void TransportGroupPanel::Draw(bool* InOpen, Ecs::Registry& InRegistry, Entity I
         {
             ImGui::Separator();
             ImGui::TextDisabled("Vehicle wheel");
-            std::uint32_t ScopedChassis = ScopedWheel->Chassis == entt::null
+            std::uint32_t ScopedChassis = ScopedWheel->Chassis == Fby::kNullEntity
                                                ? 0u
-                                               : static_cast<std::uint32_t>(entt::to_integral(ScopedWheel->Chassis));
+                                               : static_cast<std::uint32_t>(Fby::ToIntegral(ScopedWheel->Chassis));
             if (ImGui::InputScalar("Chassis entity", ImGuiDataType_U32, &ScopedChassis))
             {
                 ScopedWheel->Chassis = static_cast<Entity>(ScopedChassis);

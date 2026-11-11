@@ -23,7 +23,7 @@ namespace
     {
         return ScopedEntity;
     }
-    return entt::null;
+    return Fby::kNullEntity;
 }
 }
 
@@ -38,14 +38,14 @@ void LevelSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::Separator();
 
     ImGui::SeparatorText("Gravity");
-    Entity ScopedGravityEntity = entt::null;
+    Entity ScopedGravityEntity = Fby::kNullEntity;
     auto ScopedGravityView = InContext.registry.view<LevelGravityComponent>();
     for (const Entity ScopedEntity : ScopedGravityView)
     {
         ScopedGravityEntity = ScopedEntity;
         break;
     }
-    if (ScopedGravityEntity == entt::null)
+    if (ScopedGravityEntity == Fby::kNullEntity)
     {
         if (ImGui::Button("Create level gravity"))
         {
@@ -83,7 +83,7 @@ void LevelSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 
     ImGui::SeparatorText("Gravity fields");
     const Entity ScopedSelected = SelectedEntity(InContext.registry);
-    if (ScopedSelected != entt::null && InContext.registry.try_get<GravityBodyComponent>(ScopedSelected) == nullptr)
+    if (ScopedSelected != Fby::kNullEntity && InContext.registry.try_get<GravityBodyComponent>(ScopedSelected) == nullptr)
     {
         if (ImGui::Button("Add field to selected"))
         {

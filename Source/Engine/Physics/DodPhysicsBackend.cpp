@@ -31,8 +31,8 @@ constexpr std::uint32_t kInvalidBody = std::numeric_limits<std::uint32_t>::max()
 
 std::uint64_t DodPhysicsBackend::PairKey(Entity InA, Entity InB) noexcept
 {
-    const std::uint32_t ScopedA = entt::to_integral(InA);
-    const std::uint32_t ScopedB = entt::to_integral(InB);
+    const std::uint32_t ScopedA = Fby::ToIntegral(InA);
+    const std::uint32_t ScopedB = Fby::ToIntegral(InB);
     return (static_cast<std::uint64_t>(std::min(ScopedA, ScopedB)) << 32) | std::max(ScopedA, ScopedB);
 }
 
@@ -74,7 +74,7 @@ std::uint32_t DodPhysicsBackend::AcquireBodySlot() noexcept
         return ScopedIndex;
     }
     const std::uint32_t ScopedIndex = BodyCount();
-    MColumns.Entities.push_back(entt::null);
+    MColumns.Entities.push_back(Fby::kNullEntity);
     MColumns.Positions.push_back(Vector2D{});
     MColumns.PreviousPositions.push_back(Vector2D{});
     MColumns.Velocities.push_back(Vector2D{});
@@ -100,7 +100,7 @@ std::uint32_t DodPhysicsBackend::AcquireBodySlot() noexcept
 
 void DodPhysicsBackend::ResetBodySlot(std::uint32_t InIndex) noexcept
 {
-    MColumns.Entities[InIndex] = entt::null;
+    MColumns.Entities[InIndex] = Fby::kNullEntity;
     MColumns.Positions[InIndex] = Vector2D{};
     MColumns.PreviousPositions[InIndex] = Vector2D{};
     MColumns.Velocities[InIndex] = Vector2D{};
@@ -210,7 +210,7 @@ void DodPhysicsBackend::PruneDeadBodies(Ecs::Registry& InRegistry)
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < BodyCount(); ++ScopedIndex)
     {
         const Entity ScopedEntity = MColumns.Entities[ScopedIndex];
-        if (ScopedEntity == entt::null)
+        if (ScopedEntity == Fby::kNullEntity)
         {
             continue;
         }
@@ -337,7 +337,7 @@ void DodPhysicsBackend::Step(Ecs::Registry& InRegistry, float InFixedDt)
     const Vector2D ScopedGravity = MDesc.gravity * MDesc.pixelsPerMeter;
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < BodyCount(); ++ScopedIndex)
     {
-        if (MColumns.Entities[ScopedIndex] == entt::null)
+        if (MColumns.Entities[ScopedIndex] == Fby::kNullEntity)
         {
             continue;
         }
@@ -414,7 +414,7 @@ void DodPhysicsBackend::Step(Ecs::Registry& InRegistry, float InFixedDt)
     MGrid.reserve(BodyCount());
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < BodyCount(); ++ScopedIndex)
     {
-        if (MColumns.Entities[ScopedIndex] == entt::null ||
+        if (MColumns.Entities[ScopedIndex] == Fby::kNullEntity ||
             (MColumns.Flags[ScopedIndex] & RigidBodyEnabled) == 0)
         {
             continue;
@@ -480,7 +480,7 @@ void DodPhysicsBackend::Step(Ecs::Registry& InRegistry, float InFixedDt)
     // before Resolve would keep every grounded body awake forever.
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < BodyCount(); ++ScopedIndex)
     {
-        if (MColumns.Entities[ScopedIndex] == entt::null ||
+        if (MColumns.Entities[ScopedIndex] == Fby::kNullEntity ||
             MColumns.Types[ScopedIndex] != BodyType::Dynamic ||
             (MColumns.Flags[ScopedIndex] & RigidBodyEnabled) == 0)
         {

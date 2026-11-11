@@ -20,6 +20,9 @@ namespace Fby::Editor
 inline constexpr std::uint32_t kMaxAnimationGraphNodes = 24;
 inline constexpr std::uint32_t kMaxAnimationGraphLinks = 32;
 inline constexpr std::uint32_t kMaxAnimationGraphBlends = 8;
+// The compiled definition carries one directional table, so the editor allows
+// one directional node per graph.
+inline constexpr std::uint32_t kMaxAnimationGraphDirectional = 1;
 inline constexpr std::uint32_t kAnimationGraphStatusBytes = 384;
 inline constexpr std::uint32_t kAnimationGraphNameBytes = 32;
 
@@ -28,6 +31,7 @@ enum class AnimationGraphNodeKind : std::uint8_t
     Clip = 0,
     FloatParameter,
     Blend,
+    DirectionalBlend,
 };
 
 enum class AnimationGraphLinkKind : std::uint8_t
@@ -58,6 +62,11 @@ struct AnimationGraphNode
     // Float Parameter node payload.
     std::uint16_t ParameterIndex = 0;
     float ParameterValue = 0.0f;
+
+    // Directional blend payload. Clip.State is the directional state id; every
+    // anchor's ClipId indexes the inbound BlendSource links in link order.
+    Animation::DirectionalBlendSpaceDocument Directional{};
+    std::array<char, 260> DirectionalPath{};
 };
 
 static_assert(std::is_trivially_copyable_v<AnimationGraphNode>);

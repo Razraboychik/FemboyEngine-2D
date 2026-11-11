@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 namespace Fby::Ui
 {
@@ -57,9 +58,16 @@ void CardBoardSystem::Update(const Ecs::CoreSystemView& InView) noexcept
         ++ScopedBoardCount;
     }
     auto ScopedSlotView = InView.registry.view<SlotComponent>();
+    // Adding Transform2D/DrawOrder below moves the slot entity between
+    // archetypes, so collect the slots before the structural pass.
+    std::vector<Entity> ScopedSlotEntities;
     for (const Entity ScopedEntity : ScopedSlotView)
     {
-        SlotComponent& ScopedSlot = ScopedSlotView.get<SlotComponent>(ScopedEntity);
+        ScopedSlotEntities.push_back(ScopedEntity);
+    }
+    for (const Entity ScopedEntity : ScopedSlotEntities)
+    {
+        SlotComponent& ScopedSlot = InView.registry.get<SlotComponent>(ScopedEntity);
         const CardBoardComponent* ScopedBoard = nullptr;
         for (std::uint32_t ScopedI = 0; ScopedI < ScopedBoardCount; ++ScopedI)
         {
@@ -96,7 +104,15 @@ void CardBoardSystem::Update(const Ecs::CoreSystemView& InView) noexcept
 
 bool CardBoardSystem::Register(Ecs::SystemGraph& InGraph)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "CardBoardSystem", Ecs::BindCoreSystem<&CardBoardSystem::Tick>());
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads =
+        Ecs::MakeComponentAccessMask<CardBoardComponent, SlotComponent, Transform2D, DrawOrder>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<SlotComponent, Transform2D, DrawOrder>();
+    // The layout pass owns only board/slot data and has no engine service side
+    // effects, so it is safe next to an independent PostUpdate system.
+    ScopedAccess.ParallelSafe = true;
+    return InGraph.Add(Ecs::Phase::PostUpdate, "CardBoardSystem", Ecs::BindCoreSystem<&CardBoardSystem::Tick>(),
+                       nullptr, 0, 0, ScopedAccess);
 }
 
 void CardBoardSystem::Tick(const Ecs::CoreSystemView& InView, void* InUser)

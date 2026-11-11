@@ -238,7 +238,7 @@ void TestSceneRoundTrip()
     Fby::Scene::ComponentRegistry ScopedComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     Int128 ScopedValue;
     Check(Int128::FromString("-170141183460469231731687303715884105728", &ScopedValue) == Status::Ok,
@@ -250,7 +250,7 @@ void TestSceneRoundTrip()
           "scene TOML carries the full 128-bit value");
     Check(ScopedToml.find("BigIntComponent") != std::string::npos, "scene TOML names BigIntComponent");
 
-    entt::registry ScopedLoaded;
+    Fby::Scene::Registry ScopedLoaded;
     const auto ScopedResult = Fby::Scene::LoadSceneToml(ScopedLoaded, ScopedComponents, ScopedToml);
     Check(ScopedResult.has_value(), "scene TOML loads");
     if (!ScopedResult.has_value())
@@ -276,7 +276,7 @@ void TestSnapshotRoundTrip()
     Check(Int128::FromString("170141183460469231731687303715884105727", &ScopedValue) == Status::Ok,
           "snapshot value parses");
 
-    entt::registry ScopedSource;
+    Fby::Scene::Registry ScopedSource;
     const Fby::Entity ScopedEntity = ScopedSource.create();
     ScopedSource.emplace<Fby::BigIntComponent>(ScopedEntity, Fby::BigIntComponent{ScopedValue});
 
@@ -287,7 +287,7 @@ void TestSnapshotRoundTrip()
     Check(Fby::Ecs::CaptureSnapshot(ScopedSource, ScopedSchema, ScopedSnapshot, 1, ScopedRng),
           "BigIntComponent snapshot captures");
 
-    entt::registry ScopedTarget;
+    Fby::Scene::Registry ScopedTarget;
     Check(Fby::Ecs::RestoreSnapshot(ScopedTarget, ScopedSchema, ScopedSnapshot), "BigIntComponent snapshot restores");
     auto ScopedView = ScopedTarget.view<Fby::BigIntComponent>();
     Check(!ScopedView.empty(), "restored registry has BigIntComponent");

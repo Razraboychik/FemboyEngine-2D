@@ -11,12 +11,27 @@ endfunction()
 # The text, shaper and editor tests keep large frame-level objects on the stack.
 # Give every test target the same 16 MiB reservation as the GUI applications.
 if(WIN32)
-    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_link_options("-Wl,--stack,16777216")
+    elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         add_link_options("/STACK:16777216")
     else()
         add_link_options("LINKER:/STACK:16777216")
     endif()
 endif()
+
+function(fby_set_test_stack target)
+    if(NOT WIN32)
+        return()
+    endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(${target} PRIVATE "-Wl,--stack,16777216")
+    elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        target_link_options(${target} PRIVATE "/STACK:16777216")
+    else()
+        target_link_options(${target} PRIVATE "LINKER:/STACK:16777216")
+    endif()
+endfunction()
 
 function(fby_add_engine_test target test_name source)
     add_executable(${target} ${source})
@@ -57,6 +72,7 @@ fby_add_engine_test(fby_sim_math_test sim_math SimMathTest.cpp)
 fby_add_engine_test(fby_job_system_test job_system JobSystemTest.cpp)
 # System graph: dependency order, cycle rejection, mask validation, removal.
 fby_add_engine_test(fby_system_graph_test system_graph SystemGraphTest.cpp)
+fby_add_engine_test(fby_pause_test pause PauseTest.cpp)
 # Parser mutation sweep: input packet, .femarc and the FbyLz codec.
 fby_add_engine_test(fby_fuzz_parsers_test fuzz_parsers FuzzParsersTest.cpp)
 # Noise handshake and record mutation sweep.
@@ -89,6 +105,9 @@ fby_add_engine_test(fby_vfs_pak_test vfs_pak VfsPakTest.cpp)
 fby_add_engine_test(fby_hot_reload_test hot_reload HotReloadTest.cpp)
 # Opt-in parent/child transform composition.
 fby_add_engine_test(fby_hierarchy_test hierarchy HierarchyTest.cpp)
+# FCS chunked storage: archetype moves, generation checks and 100k iteration.
+fby_add_engine_test(fby_fcs_world_test fcs_world FcsWorldTest.cpp)
+fby_add_engine_test(fby_fcs_registry_test fcs_registry FcsRegistryTest.cpp)
 # Per-instance prefab overrides.
 fby_add_engine_test(fby_prefab_override_test prefab_overrides PrefabOverrideTest.cpp)
 
@@ -98,6 +117,15 @@ if(TARGET fby_hello_mod)
     target_compile_definitions(fby_plugin_reload_test PRIVATE
         FBY_TEST_PLUGIN_PATH="$<TARGET_FILE:fby_hello_mod>"
         FBY_TEST_BAD_PLUGIN_PATH="$<TARGET_FILE:fby_hello_mod_bad>")
+    add_dependencies(fby_plugin_reload_test fby_hello_mod fby_hello_mod_bad)
+    if(TARGET fby_rainbow_palette)
+        target_compile_definitions(fby_plugin_reload_test PRIVATE
+            FBY_TEST_RAINBOW_PALETTE_PATH="$<TARGET_FILE:fby_rainbow_palette>"
+            FBY_TEST_NVG_PATH="$<TARGET_FILE:fby_nvg>"
+            FBY_TEST_THERMAL_PATH="$<TARGET_FILE:fby_thermal>"
+            FBY_TEST_ALCOHOL_PATH="$<TARGET_FILE:fby_alcohol>")
+        add_dependencies(fby_plugin_reload_test fby_rainbow_palette fby_nvg fby_thermal fby_alcohol)
+    endif()
 endif()
 # Runtime storage layout, log file sink, rotation and crash reports.
 fby_add_engine_test(fby_storage_test storage StorageTest.cpp)
@@ -344,7 +372,16 @@ add_test(NAME voice_effects COMMAND fby_voice_effects_test)
 fby_add_engine_test(fby_notices_test notices NoticesTest.cpp)
 
 # Nativized programs: AOT manifest, cook gate and the VM-free dispatch path.
-fby_add_engine_test(fby_aot_host_test aot_host AotHostTest.cpp)
+# Each scenario runs in its own process: the old single-process aggregate
+# exposed a rare Windows heap-corruption interaction between scenarios while
+# every isolated scenario was stable.
+add_executable(fby_aot_host_test AotHostTest.cpp)
+target_link_libraries(fby_aot_host_test PRIVATE FemboyEngine2D::Engine)
+set_target_properties(fby_aot_host_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+foreach(FbyAotPart IN ITEMS manifest cook nativized aot-only hash)
+    add_test(NAME "aot_host_${FbyAotPart}" COMMAND fby_aot_host_test ${FbyAotPart})
+endforeach()
 
 # Virtual texture address contract: page table, slot grid, tile math, feedback.
 fby_add_engine_test(fby_vt_format_test vt_format VirtualTextureFormatTest.cpp)
@@ -454,6 +491,14 @@ set_target_properties(fby_texture_cook_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 add_test(NAME texture_cook COMMAND fby_texture_cook_test)
 
+# Minimal PNG writer: header, IHDR, written-file signature and invalid spans.
+fby_add_engine_test(fby_png_writer_test png_writer PngWriterTest.cpp)
+
+fby_add_engine_test(fby_editor_theme_test editor_theme EditorThemeTest.cpp)
+fby_add_engine_test(fby_accessibility_theme_test accessibility_theme AccessibilityThemeTest.cpp)
+fby_add_engine_test(fby_accessibility_effect_consumer_test accessibility_effect_consumer AccessibilityEffectConsumerTest.cpp)
+target_link_libraries(fby_editor_theme_test PRIVATE FemboyEngine2D::Editor)
+
 # P1 authoring: .femeta metadata/transactions, animation timeline model and
 fby_add_engine_test(fby_asset_meta_test asset_meta AssetMetaTest.cpp)
 fby_add_engine_test(fby_document_test document DocumentTest.cpp)
@@ -480,6 +525,29 @@ elseif(TARGET opus)
 endif()
 fby_add_engine_test(fby_animation_timeline_test animation_timeline AnimationTimelineTest.cpp)
 
+# Directional blend space: ring bracketing, plane barycentric weights, baked
+# tables and the pure sampler.
+fby_add_engine_test(fby_directional_blend_test directional_blend DirectionalBlendTest.cpp)
+
+# Runtime clip sampling: bone-hash binding, shared phase, circular rotation
+# blending and the directional table driving a skeletal pose.
+fby_add_engine_test(fby_animation_clip_pose_test animation_clip_pose AnimationClipPoseTest.cpp)
+
+# Animation graph directional state: facing-driven clip selection and the
+# skeletal/sprite bridges staying on the same resolved source.
+fby_add_engine_test(fby_animation_graph_directional_test animation_graph_directional
+                    AnimationGraphDirectionalTest.cpp)
+
+# Runtime directional player: fixed clip pool, VFS .fanim loading, shared phase
+# and the skeletal/sprite outputs driven by one facing vector.
+fby_add_engine_test(fby_directional_animation_player_test directional_animation_player
+                    DirectionalAnimationPlayerTest.cpp)
+
+# Sprite and skeletal mixing: a bone-driven transform for flipbook attachments
+# and the second sprite layer used by a flipbook crossfade.
+fby_add_engine_test(fby_bone_attachment_test bone_attachment BoneAttachmentTest.cpp)
+fby_add_engine_test(fby_sprite_overlay_test sprite_overlay SpriteOverlayTest.cpp)
+
 # Isometric grid math, tilemaps, skeletal IK/retargeting and clip compression.
 fby_add_engine_test(fby_grid_skeletal_test grid_skeletal GridSkeletalTest.cpp)
 
@@ -503,13 +571,28 @@ fby_add_engine_test(fby_presentation_test presentation PresentationTest.cpp)
 
 # SDF primitive palette: every shape family, gradients and the reflected component.
 fby_add_engine_test(fby_sdf_primitives_test sdf_primitives SdfPrimitivesTest.cpp)
+fby_add_engine_test(fby_sdf_character_test sdf_character SdfCharacterTest.cpp)
 
 if(TARGET fby_editor)
+    # Directional blend space authoring panel: default document, preview
+    # sampling, anchor editing, topology switching and the panel file codec.
+    add_executable(fby_directional_blend_panel_test DirectionalBlendSpacePanelTest.cpp)
+    target_link_libraries(fby_directional_blend_panel_test PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_directional_blend_panel_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME directional_blend_panel COMMAND fby_directional_blend_panel_test)
+
     add_executable(fby_editor_command_stack_test EditorCommandStackTest.cpp)
     target_link_libraries(fby_editor_command_stack_test PRIVATE FemboyEngine2D::Editor)
     set_target_properties(fby_editor_command_stack_test PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME editor_command_stack COMMAND fby_editor_command_stack_test)
+
+    add_executable(fby_editor_requirements_benchmark EditorRequirementsBenchmark.cpp)
+    target_link_libraries(fby_editor_requirements_benchmark PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_editor_requirements_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME editor_requirements_benchmark COMMAND fby_editor_requirements_benchmark)
 
     add_executable(fby_pie_multiplayer_test PieMultiplayerTest.cpp)
     target_link_libraries(fby_pie_multiplayer_test PRIVATE FemboyEngine2D::Editor)
@@ -661,6 +744,12 @@ if(TARGET fby_editor)
     set_target_properties(fby_optimization_ab PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 
+    # Backend-agnostic RHI benchmark: Vulkan, Metal and Null share one code path.
+    add_executable(fby_rhi_backend_benchmark RhiBackendBenchmark.cpp)
+    target_link_libraries(fby_rhi_backend_benchmark PRIVATE FemboyEngine2D::Engine)
+    set_target_properties(fby_rhi_backend_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+
     add_executable(fby_graph_editor_test GraphEditorTest.cpp)
     target_link_libraries(fby_graph_editor_test PRIVATE FemboyEngine2D::Editor)
     target_compile_definitions(fby_graph_editor_test PRIVATE
@@ -758,6 +847,16 @@ if(TARGET fby_platform_gog)
     target_compile_definitions(fby_platform_bridge_test PRIVATE
         FBY_GOG_PROVIDER_PATH="$<TARGET_FILE:fby_platform_gog>")
 endif()
+
+# Editor requirement baseline: frame cost and peak RSS for 10k and 100k sprites.
+add_executable(fby_requirements_benchmark RequirementsBenchmark.cpp)
+target_link_libraries(fby_requirements_benchmark PRIVATE FemboyEngine2D::Engine)
+if(WIN32)
+    target_link_libraries(fby_requirements_benchmark PRIVATE psapi)
+endif()
+set_target_properties(fby_requirements_benchmark PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+add_test(NAME requirements_benchmark COMMAND fby_requirements_benchmark)
 
 # Hybrid SDF physics: mdspan bilinear sampling, gradient normals and Box2D v3
 fby_add_engine_test(fby_sdf_physics_test sdf_physics SdfPhysicsTest.cpp)
@@ -860,6 +959,33 @@ fby_add_engine_test(fby_project_bundle_test project_bundle ProjectBundleTest.cpp
 
 # Data-driven descriptors, transactional prefab spawn, Units DPI and theme palette.
 fby_add_engine_test(fby_data_driven_test data_driven DataDrivenTest.cpp)
+
+# Snapshot size report: full versus delta bytes for a 10k-entity world. The
+# plan uses it to decide whether payload compression is justified.
+add_executable(fby_snapshot_size_report SnapshotSizeReport.cpp)
+target_link_libraries(fby_snapshot_size_report PRIVATE FemboyEngine2D::Engine)
+set_target_properties(fby_snapshot_size_report PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+add_test(NAME snapshot_size_report COMMAND fby_snapshot_size_report)
+set_tests_properties(snapshot_size_report PROPERTIES LABELS "benchmark")
+
+# SystemGraph serial/parallel report: eight independent NoEcsAccess nodes. It
+# quantifies the scheduler and job overhead before real systems opt in.
+add_executable(fby_system_graph_benchmark SystemGraphBenchmark.cpp)
+target_link_libraries(fby_system_graph_benchmark PRIVATE FemboyEngine2D::Engine)
+set_target_properties(fby_system_graph_benchmark PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+add_test(NAME system_graph_benchmark COMMAND fby_system_graph_benchmark)
+set_tests_properties(system_graph_benchmark PROPERTIES LABELS "benchmark")
+
+# Static versus dynamic composer cost: the static path reuses the extracted
+# packet and must not run the ECS walk again.
+add_executable(fby_frame_composer_static_benchmark FrameComposerStaticBenchmark.cpp)
+target_link_libraries(fby_frame_composer_static_benchmark PRIVATE FemboyEngine2D::Engine)
+set_target_properties(fby_frame_composer_static_benchmark PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+add_test(NAME frame_composer_static_benchmark COMMAND fby_frame_composer_static_benchmark)
+set_tests_properties(frame_composer_static_benchmark PROPERTIES LABELS "benchmark")
 
 # Definitions.hpp: stable type ids, FemCast and checked Cast without RTTI.
 fby_add_engine_test(fby_definitions_test definitions DefinitionsTest.cpp)

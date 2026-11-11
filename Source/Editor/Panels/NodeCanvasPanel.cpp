@@ -142,7 +142,7 @@ bool NodeCanvasPanel::BeginDocumentEdit(const char* InLabel) noexcept
     {
         return true;
     }
-    if (MCommands->CaptureComponent(entt::null, MCodec, std::span<std::byte>(MBefore.data(), MCodecSize)) !=
+    if (MCommands->CaptureComponent(Fby::kNullEntity, MCodec, std::span<std::byte>(MBefore.data(), MCodecSize)) !=
         CommandStack::Result::Ok)
     {
         SetStatus("cannot capture graph for undo");
@@ -164,14 +164,14 @@ void NodeCanvasPanel::RecordDocumentEdit() noexcept
     {
         return;
     }
-    if (MCommands->CaptureComponent(entt::null, MCodec, std::span<std::byte>(MAfter.data(), MCodecSize)) !=
+    if (MCommands->CaptureComponent(Fby::kNullEntity, MCodec, std::span<std::byte>(MAfter.data(), MCodecSize)) !=
         CommandStack::Result::Ok)
     {
         SetStatus("cannot capture edited graph");
         return;
     }
     const auto ScopedResult =
-        MCommands->Record(entt::null, MCodec, std::span<const std::byte>(MBefore.data(), MCodecSize),
+        MCommands->Record(Fby::kNullEntity, MCodec, std::span<const std::byte>(MBefore.data(), MCodecSize),
                           std::span<const std::byte>(MAfter.data(), MCodecSize));
     if (ScopedResult != CommandStack::Result::Ok)
     {

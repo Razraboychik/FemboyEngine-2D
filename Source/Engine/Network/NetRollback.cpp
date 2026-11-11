@@ -24,7 +24,7 @@ namespace
 
 [[nodiscard]] constexpr std::uint32_t RawEntity(Entity InEntity) noexcept
 {
-    return static_cast<std::uint32_t>(entt::to_integral(InEntity));
+    return static_cast<std::uint32_t>(Fby::ToIntegral(InEntity));
 }
 
 [[nodiscard]] constexpr std::uint64_t SaturatingAdd(std::uint64_t InLeft, std::uint64_t InRight) noexcept
@@ -252,7 +252,7 @@ std::uint32_t NetEntityMap::FindLocalSlot(std::uint32_t InLocal) const noexcept
 
 bool NetEntityMap::Register(NetEntityId InNet, Entity InLocal) noexcept
 {
-    if (!InNet.IsValid() || InLocal == entt::null)
+    if (!InNet.IsValid() || InLocal == Fby::kNullEntity)
     {
         return false;
     }
@@ -326,19 +326,19 @@ Entity NetEntityMap::Resolve(NetEntityId InNet) const noexcept
 {
     if (!InNet.IsValid())
     {
-        return entt::null;
+        return Fby::kNullEntity;
     }
     const std::uint32_t ScopedSlot = FindNetSlot(InNet.value);
     if (ScopedSlot == kInvalidNetEntityId || MByNet[ScopedSlot].net != InNet.value)
     {
-        return entt::null;
+        return Fby::kNullEntity;
     }
     return static_cast<Entity>(MByNet[ScopedSlot].local);
 }
 
 NetEntityId NetEntityMap::IdOf(Entity InLocal) const noexcept
 {
-    if (InLocal == entt::null)
+    if (InLocal == Fby::kNullEntity)
     {
         return {};
     }
@@ -688,7 +688,7 @@ NetRollbackSession::Result NetRollbackSession::GatherInputs(std::uint64_t InTick
 // Entity identity
 NetEntityId NetRollbackSession::RegisterEntity(Entity InLocal, NetEntityId InPreferred) noexcept
 {
-    if (!MInitialized || MRegistry == nullptr || InLocal == entt::null || !MRegistry->valid(InLocal))
+    if (!MInitialized || MRegistry == nullptr || InLocal == Fby::kNullEntity || !MRegistry->valid(InLocal))
     {
         return {};
     }
@@ -698,7 +698,7 @@ NetEntityId NetRollbackSession::RegisterEntity(Entity InLocal, NetEntityId InPre
     }
     if (InPreferred.IsValid())
     {
-        if (MEntities.Resolve(InPreferred) != entt::null)
+        if (MEntities.Resolve(InPreferred) != Fby::kNullEntity)
         {
             return {};
         }
@@ -713,7 +713,7 @@ NetEntityId NetRollbackSession::RegisterEntity(Entity InLocal, NetEntityId InPre
             continue;
         }
         const NetEntityId ScopedCandidate{ScopedRaw};
-        if (MEntities.Resolve(ScopedCandidate) != entt::null)
+        if (MEntities.Resolve(ScopedCandidate) != Fby::kNullEntity)
         {
             continue;
         }
@@ -731,7 +731,7 @@ NetRollbackSession::Result NetRollbackSession::UnregisterEntity(NetEntityId InNe
     {
         return Result::NotInitialized;
     }
-    if (!InNet.IsValid() || MEntities.Resolve(InNet) == entt::null)
+    if (!InNet.IsValid() || MEntities.Resolve(InNet) == Fby::kNullEntity)
     {
         return Result::InvalidArgument;
     }
@@ -741,7 +741,7 @@ NetRollbackSession::Result NetRollbackSession::UnregisterEntity(NetEntityId InNe
 
 Entity NetRollbackSession::ResolveEntity(NetEntityId InNet) const noexcept
 {
-    return MInitialized ? MEntities.Resolve(InNet) : entt::null;
+    return MInitialized ? MEntities.Resolve(InNet) : Fby::kNullEntity;
 }
 
 NetEntityId NetRollbackSession::NetIdOf(Entity InLocal) const noexcept
@@ -1173,7 +1173,7 @@ namespace
 {
 struct FilteredRecordHeader
 {
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     std::uint16_t flags = 0;
     std::uint16_t componentCount = 0;
     std::uint32_t payloadBytes = 0;

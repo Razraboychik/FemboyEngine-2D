@@ -1,8 +1,8 @@
-# FemboyEngine2D 0.3.0-alpha.1 - public alpha build
+# FemboyEngine2D 0.4.0-alpha.1 - public alpha build
 cmake_minimum_required(VERSION 3.28)
 
 project(FemboyEngine2D
-    VERSION 0.3.0
+    VERSION 0.4.0
     DESCRIPTION "Data-oriented 2D game engine"
     LANGUAGES C CXX)
 
@@ -87,11 +87,20 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
     # instrumented and plain objects in one executable trips lld's
     # /failifmismatch.
     set(FBY_ASAN_COMPILE_OPTIONS "")
-    if(FBY_WITH_ASAN)
-        list(APPEND FBY_ASAN_COMPILE_OPTIONS -fsanitize=address)
-    endif()
-    if(FBY_WITH_UBSAN)
-        list(APPEND FBY_ASAN_COMPILE_OPTIONS -fsanitize=undefined -fno-sanitize-recover=all)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        if(FBY_WITH_UBSAN)
+            message(FATAL_ERROR "FBY_WITH_UBSAN is not supported by MSVC; use Clang or GCC for UBSan")
+        endif()
+        if(FBY_WITH_ASAN)
+            list(APPEND FBY_ASAN_COMPILE_OPTIONS /fsanitize=address)
+        endif()
+    else()
+        if(FBY_WITH_ASAN)
+            list(APPEND FBY_ASAN_COMPILE_OPTIONS -fsanitize=address)
+        endif()
+        if(FBY_WITH_UBSAN)
+            list(APPEND FBY_ASAN_COMPILE_OPTIONS -fsanitize=undefined -fno-sanitize-recover=all)
+        endif()
     endif()
     if(WIN32 AND FBY_WITH_UBSAN AND NOT CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "MultiThreaded")
         message(FATAL_ERROR
@@ -101,14 +110,14 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
     if(WIN32 AND FBY_WITH_ASAN AND FBY_WITH_UBSAN)
         message(FATAL_ERROR "ASan and UBSan cannot be combined on Windows (different CRT runtimes)")
     endif()
-    # clang-cl rejects the GCC spelling; the MSVC frontend keeps frame pointers
-    # through /Oy- instead.
+    # clang-cl rejects the GCC spelling; its driver keeps frame pointers through
+    # /Oy- instead. The Microsoft compiler itself is rejected in FbyCompiler.cmake.
     if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         list(APPEND FBY_ASAN_COMPILE_OPTIONS -fno-omit-frame-pointer)
     else()
         list(APPEND FBY_ASAN_COMPILE_OPTIONS /Oy-)
     endif()
-    if(WIN32)
+    if(WIN32 AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         get_filename_component(FBY_ASAN_CLANG_ROOT "${CMAKE_CXX_COMPILER}" DIRECTORY)
         get_filename_component(FBY_ASAN_CLANG_ROOT "${FBY_ASAN_CLANG_ROOT}" DIRECTORY)
         file(GLOB FBY_ASAN_RUNTIME_LIBS
@@ -133,7 +142,11 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
             return()
         endif()
         if(FBY_WITH_ASAN)
-            target_link_options(${target} PRIVATE -fsanitize=address)
+            if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+                target_link_options(${target} PRIVATE /fsanitize=address)
+            else()
+                target_link_options(${target} PRIVATE -fsanitize=address)
+            endif()
         endif()
         if(FBY_WITH_UBSAN)
             target_link_options(${target} PRIVATE -fsanitize=undefined)
@@ -176,11 +189,13 @@ function(fby_set_app_stack target)
     if(NOT WIN32)
         return()
     endif()
-    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(${target} PRIVATE "-Wl,--stack,16777216")
+    elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         target_link_options(${target} PRIVATE "/STACK:16777216")
     else()
-        # clang++/GCC use the GNU driver and the MSVC linker on Windows; the
-        # LINKER: prefix forwards the switch through that driver.
+        # clang++ uses the MSVC linker on Windows; the LINKER: prefix forwards
+        # the switch through the GNU driver.
         target_link_options(${target} PRIVATE "LINKER:/STACK:16777216")
     endif()
 endfunction()

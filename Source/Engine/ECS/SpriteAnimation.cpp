@@ -16,7 +16,8 @@ constexpr float kMinFrameDuration = 1.0f / 1000.0f;
     return std::max(InSpriteAnimation.FrameCount, 1u);
 }
 
-[[nodiscard]] std::uint32_t SafeColumns(const SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid) noexcept
+[[nodiscard]] std::uint32_t SafeColumns(const SpriteAnimationComponent& InSpriteAnimation,
+                                        const SpriteSheetComponent* InGrid) noexcept
 {
     if (InGrid != nullptr && InGrid->Columns > 0)
     {
@@ -31,7 +32,8 @@ constexpr float kMinFrameDuration = 1.0f / 1000.0f;
 }
 }
 
-SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid) noexcept
+SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation,
+                              const SpriteSheetComponent* InGrid) noexcept
 {
     SpriteFrameRect ScopedResult;
     const std::uint32_t ScopedFrameCount = SafeFrameCount(InSpriteAnimation);
@@ -44,7 +46,9 @@ SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation,
     // currentFrame is local to the clip; startFrame selects the first cell in
     const std::uint32_t ScopedLocal = InSpriteAnimation.CurrentFrame % ScopedFrameCount;
     const std::uint64_t ScopedAbsolute =
-        ScopedTotalCells > 0 ? (static_cast<std::uint64_t>(InSpriteAnimation.StartFrame) + ScopedLocal) % ScopedTotalCells : 0;
+        ScopedTotalCells > 0
+            ? (static_cast<std::uint64_t>(InSpriteAnimation.StartFrame) + ScopedLocal) % ScopedTotalCells
+            : 0;
     const std::uint64_t ScopedColumn = ScopedAbsolute % ScopedColumns;
     const std::uint64_t ScopedRow = (ScopedAbsolute / ScopedColumns) % ScopedRows;
 
@@ -60,7 +64,8 @@ SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation,
     return ScopedResult;
 }
 
-void ApplySpriteFrame(const SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid, Sprite2D& InSprite) noexcept
+void ApplySpriteFrame(const SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid,
+                      Sprite2D& InSprite) noexcept
 {
     // A default-constructed SpriteAnimationComponent has no clip yet; it must not erase the
     if (InSpriteAnimation.FrameCount == 0)
@@ -90,9 +95,11 @@ bool AdvanceSpriteAnimation(SpriteAnimationComponent& InSpriteAnimation, float I
     }
 
     // A NaN duration from a corrupt scene must not turn into a NaN -> uint64
-    const float ScopedDuration =
-        std::isfinite(InSpriteAnimation.FrameDuration) ? std::max(InSpriteAnimation.FrameDuration, kMinFrameDuration) : kMinFrameDuration;
-    const double ScopedElapsed = std::isfinite(InSpriteAnimation.ElapsedTime) ? static_cast<double>(InSpriteAnimation.ElapsedTime) : 0.0;
+    const float ScopedDuration = std::isfinite(InSpriteAnimation.FrameDuration)
+                                     ? std::max(InSpriteAnimation.FrameDuration, kMinFrameDuration)
+                                     : kMinFrameDuration;
+    const double ScopedElapsed =
+        std::isfinite(InSpriteAnimation.ElapsedTime) ? static_cast<double>(InSpriteAnimation.ElapsedTime) : 0.0;
     const double ScopedTotal = ScopedElapsed + static_cast<double>(InDt);
     // 1e-6 of a frame is below what a display can show but above float rounding:
     const double ScopedStepCount =
@@ -117,7 +124,8 @@ bool AdvanceSpriteAnimation(SpriteAnimationComponent& InSpriteAnimation, float I
     }
     else
     {
-        const std::uint64_t ScopedRemaining = static_cast<std::uint64_t>(ScopedFrameCount - 1u - InSpriteAnimation.CurrentFrame);
+        const std::uint64_t ScopedRemaining =
+            static_cast<std::uint64_t>(ScopedFrameCount - 1u - InSpriteAnimation.CurrentFrame);
         if (ScopedSteps >= ScopedRemaining)
         {
             InSpriteAnimation.CurrentFrame = ScopedFrameCount - 1u;
@@ -177,17 +185,22 @@ void SpriteAnimationSystemThunk(const Ecs::CoreSystemView& InView, void*)
 
 void RegisterSpriteAnimationSystem(Ecs::Schedule& InSchedule)
 {
-    (void)InSchedule.Add(Ecs::Phase::FixedUpdate, "spriteAnimation",
-                         +[](Ecs::SystemContext& InContext, void*)
-                         {
-                             Ecs::CoreSystemView ScopedView = InContext.CoreView();
-                             SpriteAnimationSystem{}.Run(ScopedView);
-                         });
+    (void)InSchedule.Add(
+        Ecs::Phase::FixedUpdate, "spriteAnimation",
+        +[](Ecs::SystemContext& InContext, void*)
+        {
+            Ecs::CoreSystemView ScopedView = InContext.CoreView();
+            SpriteAnimationSystem{}.Run(ScopedView);
+        });
 }
 
 void RegisterSpriteAnimationSystem(Ecs::SystemGraph& InGraph)
 {
-    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "spriteAnimation",
-                      Ecs::BindCoreSystem<&SpriteAnimationSystemThunk>());
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads =
+        Ecs::MakeComponentAccessMask<SpriteAnimationComponent, Sprite2D, SpriteSheetComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<SpriteAnimationComponent, Sprite2D>();
+    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "spriteAnimation", Ecs::BindCoreSystem<&SpriteAnimationSystemThunk>(),
+                      nullptr, 0, 0, ScopedAccess);
 }
 }

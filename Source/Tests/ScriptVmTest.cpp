@@ -71,7 +71,7 @@ bool TestArithmetic()
     Check(BindProgram(ScopedParsed, ScopedBridge, &ScopedBound, &ScopedError), "program with no components binds");
     Check(ScopedBound.componentCount == 0, "program declares no components");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
     Fby::Script::ScriptVm ScopedVm;
@@ -109,7 +109,7 @@ bool TestBranch()
     Fby::Script::EcsBridge ScopedBridge;
     BoundProgram ScopedBound;
     Check(BindProgram(ScopedParsed, ScopedBridge, &ScopedBound, &ScopedError), "branch program binds");
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
     Fby::Script::ScriptVm ScopedVm;
     Check(ScopedVm.Run(ScopedBound, ScriptEvent::Update, ScopedRegistry.create(), ScopedContext),
@@ -137,7 +137,7 @@ bool TestSignedIntegerImmediate()
     Fby::Script::EcsBridge ScopedBridge;
     BoundProgram ScopedBound;
     Check(BindProgram(ScopedParsed, ScopedBridge, &ScopedBound, &ScopedError), "signed immediate program binds");
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
     Fby::Script::ScriptVm ScopedVm;
     Check(ScopedVm.Run(ScopedBound, ScriptEvent::Update, ScopedRegistry.create(), ScopedContext),
@@ -208,7 +208,7 @@ bool TestGraphHalfVelocity()
     const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedCompiled.program, &ScopedError);
     Check(ScopedHandle != Fby::kScriptNoProgram, "compiled graph loads into the runtime");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Velocity>(ScopedEntity, Fby::Velocity{Fby::Vector2D{2.0f, 4.0f}});
 
@@ -217,7 +217,7 @@ bool TestGraphHalfVelocity()
     Fby::Script::VmFault ScopedFault;
     Check(Fby::RunScriptOnce(ScopedRuntime, ScopedHandle, ScopedEntity, Fby::Script::ScriptEvent::Update, ScopedContext,
                              &ScopedFault),
-          "graph program runs against EnTT storage");
+          "graph program runs against FCS storage");
     Check(ScopedFault.Ok(), "no VM fault while writing a Velocity field");
 
     const Fby::Velocity& ScopedResult = ScopedRegistry.get<Fby::Velocity>(ScopedEntity);
@@ -299,7 +299,7 @@ bool TestMissingComponentFault()
     const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedCompiled.program);
     Check(ScopedHandle != Fby::kScriptNoProgram, "rotation program loads");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     // Deliberately no Transform2D
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
@@ -329,13 +329,13 @@ bool TestNoAllocationInHotPath()
     const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedCompiled.program);
     Check(ScopedHandle != Fby::kScriptNoProgram, "no-alloc program loads");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Velocity>(ScopedEntity, Fby::Velocity{});
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
     ScopedContext.rng = &ScopedRuntime.Rng();
 
-    // Warm up EnTT's storage lookups so the counter measures only steady state.
+    // Warm up storage lookups so the counter measures only steady state.
     Check(
         Fby::RunScriptOnce(ScopedRuntime, ScopedHandle, ScopedEntity, Fby::Script::ScriptEvent::Update, ScopedContext),
         "warm-up run succeeds");
@@ -465,7 +465,7 @@ event update {
     Check(ScopedRuntime.Initialize(), "text runtime initializes");
     const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
     Check(ScopedHandle != Fby::kScriptNoProgram, "text program loads");
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
     Fby::Script::VmContext ScopedContext{ScopedRegistry};

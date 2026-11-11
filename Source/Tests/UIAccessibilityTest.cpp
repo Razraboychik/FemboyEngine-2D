@@ -109,8 +109,8 @@ int main()
     FBY_CHECK(ScopedHypertext.View(ScopedLiteral).text.find("broken") == 0);
 
     NarrativeLog ScopedLog;
-    FBY_CHECK(ScopedLog.Push(1, entt::null, Vector2D{1.0f, 2.0f}, "first"));
-    FBY_CHECK(ScopedLog.Push(2, entt::null, Vector2D{3.0f, 4.0f}, "second"));
+    FBY_CHECK(ScopedLog.Push(1, Fby::kNullEntity, Vector2D{1.0f, 2.0f}, "first"));
+    FBY_CHECK(ScopedLog.Push(2, Fby::kNullEntity, Vector2D{3.0f, 4.0f}, "second"));
     NarrativeEvent ScopedEvent{};
     FBY_CHECK(ScopedLog.Pop(ScopedEvent));
     FBY_CHECK(ScopedEvent.code == 1);

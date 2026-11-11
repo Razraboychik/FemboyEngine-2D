@@ -21,7 +21,7 @@ inline void RouteContactEvents(std::span<const PhysicsContactEvent> InContacts, 
         const Entity ScopedCandidates[2] = {ScopedContact.a, ScopedContact.b};
         for (const Entity ScopedEntity : ScopedCandidates)
         {
-            if (ScopedEntity == entt::null)
+            if (ScopedEntity == Fby::kNullEntity)
             {
                 continue;
             }

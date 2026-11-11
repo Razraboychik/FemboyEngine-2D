@@ -23,7 +23,7 @@ inline void SetNativeCleanupHook(Registry& InRegistry, void (*InCleanup)(void*, 
 
 // Destroys every entity in the registry.
 //
-// EnTT's registry::clear() clears the component pools and invalidates the
+// Registry::clear() clears the component pools and invalidates the
 // entities in this version, but it leaves their slots in the entity storage, so
 // the hierarchy keeps counting the previous world after a scene reload. The
 // entity pool has to be cleared explicitly to drop those dead slots.
@@ -35,6 +35,6 @@ inline void DestroyAllEntities(Registry& InRegistry)
         ScopedHook->cleanup(ScopedHook->user, InRegistry);
     }
     InRegistry.clear();
-    InRegistry.storage<Entity>().clear();
+    GetEntityStorage(InRegistry).clear();
 }
 }

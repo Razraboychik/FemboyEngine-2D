@@ -20,11 +20,13 @@
 namespace Fby::Ecs
 {
 
-inline constexpr std::uint32_t kSnapshotVersion = 4;
-inline constexpr std::uint32_t kMaxSnapshotEntities = 16384;
-inline constexpr std::uint32_t kMaxSnapshotComponents = 32;
+// Snapshot wire identity. The version gates compatibility; the magic is the
+// stable file tag and carries the same numeric suffix as the version.
+inline constexpr std::uint32_t kSnapshotVersion = 5;
+inline constexpr std::uint32_t kMaxSnapshotEntities = 65536;
+inline constexpr std::uint32_t kMaxSnapshotComponents = 64;
 inline constexpr std::uint32_t kMaxSnapshotComponentBytes = 2048;
-inline constexpr char kSnapshotMagic[8] = {'F', 'B', 'S', 'N', 'A', 'P', '0', '3'};
+inline constexpr char kSnapshotMagic[8] = {'F', 'B', 'S', 'N', 'A', 'P', '0', '5'};
 
 enum SnapshotFlags : std::uint32_t
 {

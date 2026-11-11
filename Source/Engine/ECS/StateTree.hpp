@@ -175,7 +175,7 @@ enum class AICommandKind : std::uint8_t
 struct AICommandComponent
 {
     std::uint32_t Kind = static_cast<std::uint32_t>(AICommandKind::None);
-    Entity Target = entt::null;
+    Entity Target = Fby::kNullEntity;
     Vector2D Position{};
     float Speed = 0.0f;
     std::uint32_t Flags = 0;
@@ -201,7 +201,7 @@ struct StateTreeComponent
     // Blackboard / trigger state. Tags are read from GameplayTagsComponent; the
     // tree never duplicates the tag container per entity.
     std::uint64_t Triggers = 0;
-    Entity Target = entt::null;
+    Entity Target = Fby::kNullEntity;
     Vector2D TargetPosition{};
     std::array<float, 4> Floats{};
 

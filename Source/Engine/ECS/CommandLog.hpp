@@ -81,7 +81,7 @@ struct CommandRecord
     std::uint16_t reserved = 0;
     std::uint32_t payloadBytes = 0;
     std::uint32_t sequence = 0;
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     std::uint64_t tick = 0;
 };
 

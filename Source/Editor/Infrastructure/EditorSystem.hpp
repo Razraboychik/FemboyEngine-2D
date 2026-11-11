@@ -36,6 +36,16 @@ namespace Editor
 {
 struct VirtualTextureSettings;
 }
+
+namespace Plugin
+{
+class PluginHost;
+}
+
+namespace Ui
+{
+class AccessibilityEffectRegistry;
+}
 }
 
 namespace Fby::Editor
@@ -120,6 +130,14 @@ public:
     // Optional frame profiler. The host records phase scopes into it and the
     // Profiler panel draws the aggregated rows next to the frame graph.
     void SetProfiler(Core::Profiler* InProfiler) noexcept;
+    // Runtime plugin host owned by the app. Plugins are project-scoped; the
+    // editor only displays and loads paths from the current project.
+    void SetPluginHost(Plugin::PluginHost* InHost) noexcept;
+    // Runtime accessibility effect catalog consumed by the PIE frame.
+    void SetEffectRegistry(Ui::AccessibilityEffectRegistry* InEffects) noexcept;
+    // Reloads only the current project's plugin list. The host is unloaded
+    // first so plugins cannot leak from the previous project.
+    void SyncProjectPlugins();
 
     // SDL_Event* from WindowManager's observer.
     void OnPlatformEvent(const void* InSdlEvent);
@@ -169,6 +187,8 @@ public:
     [[nodiscard]] Ecs::Registry* PieClientWorld() noexcept;
     [[nodiscard]] bool IsPlaying() const noexcept;
     [[nodiscard]] bool IsPaused() const noexcept;
+    // True when PIE is paused and its HUD animation is intentionally frozen.
+    [[nodiscard]] bool PieHudAnimationsPaused() const noexcept;
     [[nodiscard]] ProjectDashboard& Dashboard() noexcept;
     [[nodiscard]] ProjectConfigStore& Config() noexcept;
     [[nodiscard]] ProjectSettingsPanel& ProjectSettings() noexcept;

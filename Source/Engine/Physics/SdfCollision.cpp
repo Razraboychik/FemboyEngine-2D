@@ -323,8 +323,12 @@ std::uint32_t SdfCollisionSystem::Update(Ecs::PhysicsSystemView& InView) noexcep
 
 bool SdfCollisionSystem::Register(Ecs::SystemGraph& InGraph)
 {
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<RigidBody2D, Collider2D, Transform2D>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<RigidBody2D, Transform2D>();
+    ScopedAccess.Writes = Ecs::kServicePhysics;
     return InGraph.Add(Ecs::Phase::FixedUpdate, "SdfCollisionSystem",
-                       Ecs::BindPhysicsSystem<&SdfCollisionSystem::Tick>(), this);
+                       Ecs::BindPhysicsSystem<&SdfCollisionSystem::Tick>(), this, 0, 0, ScopedAccess);
 }
 
 void SdfCollisionSystem::Tick(Ecs::PhysicsSystemView& InView, void* InUser)

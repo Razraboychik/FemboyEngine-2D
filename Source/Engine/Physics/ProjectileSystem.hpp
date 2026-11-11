@@ -11,8 +11,8 @@ namespace Fby
 
 struct ProjectileHitEvent
 {
-    Entity projectile = entt::null;
-    Entity target = entt::null;
+    Entity projectile = Fby::kNullEntity;
+    Entity target = Fby::kNullEntity;
     Vector2D point{};
     Vector2D normal{};
     float speed = 0.0f;

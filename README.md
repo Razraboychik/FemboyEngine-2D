@@ -8,34 +8,31 @@
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.3.0-alpha.1](https://img.shields.io/badge/status-0.3.0--alpha.1-blue.svg)]()
+[![Status: 0.4.0-alpha.1](https://img.shields.io/badge/status-0.4.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D is a compact, deterministic, data-oriented engine for 2D games:
-a hand-written Vulkan/Metal RHI, an EnTT-based ECS, a declarative parallel
-`SystemGraph`, Box2D v3 physics, rollback networking, a transactional asset
-pipeline, a full editor and a clean-slate project generator.
+a hand-written Vulkan/Metal RHI, the FCS chunked ECS storage, a declarative
+`SystemGraph` with opt-in parallel execution, Box2D v3 physics, rollback
+networking, a transactional asset pipeline, a full editor and a clean-slate
+project generator.
 
 The runtime has no `std::function` on the frame path, no allocation on the frame
 path, no JSON in the shipped runtime and no hidden object graph. Components are
 trivially copyable data; systems are free functions; the frame is a flat
 `RenderItem` array submitted through one RHI packet.
 
-**Status: 0.3.0-alpha.1.** This is the current public alpha line. The tree
-includes a working FemboyScript debugger (source
-spans, breakpoints, stepping, locals, self fields), isometric and tile-based maps
-with a map editor, skeletal IK, retargeting and clip compression (`.fanim`), grid
-navigation, 2D lighting, a UDP transport with reliability and MTU fragmentation,
-live spatial audio, texture thumbnails in the editor and import backpressure.
-Public CMake targets and C++ namespaces are PascalCase
-(`FemboyEngine2D::Engine`, `Fby::Ecs`, `Fby::Rhi`); no legacy compatibility
-aliases remain. The current gate passes the full CTest suite with Clang 23.1.4
-on Windows and Clang on Linux; MSVC is not a supported compiler. The style gate
-passes, and a generated Clean Slate project builds and launches with the null RHI.
-The current line also includes hybrid SDF destruction, transport groups for
-elevators, trains and moving platforms, FSR/DLSS-class upscaling and frame
-generation, and voice effects with conditions. The engine is strictly 2D: there
-is no 3D renderer, 3D physics or 3D scene format.
+**Status: 0.4.0-alpha.1.** FemboyEngine2D is in the public 0.4 alpha line. Its
+runtime includes the FemboyScript debugger (source spans, breakpoints, stepping,
+locals and self fields), isometric and tile-based maps with a map editor,
+skeletal IK, retargeting and clip compression (`.fanim`), grid navigation, 2D
+lighting, UDP transport with reliability and MTU fragmentation, live spatial
+audio, texture thumbnails in the editor and import backpressure. Public CMake
+targets and C++ namespaces are PascalCase (`FemboyEngine2D::Engine`, `Fby::Ecs`,
+`Fby::Rhi`). Hybrid SDF destruction, transport groups for elevators, trains and
+moving platforms, FSR/DLSS-class upscaling and frame generation, and voice
+effects with conditions are part of the same runtime. The engine is strictly 2D:
+there is no 3D renderer, 3D physics or 3D scene format.
 
 ---
 
@@ -104,7 +101,7 @@ memory model.
 |---|---|---|
 | Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, vectors, Mirror reflection, jobs, SDL3 platform, plugin ABI | Value types, checked casts compile away, no RTTI in hot paths, worker pool with latched task-fault containment |
 | RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, engine-side `Rhi::FrameComposer`, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts | One flat packet per frame, explicit frame lifetime, no per-item allocations, bindless-style keys |
-| ECS | EnTT registry, trivially copyable components, four-phase schedule, parallel `SystemGraph` with per-call semaphores and declared service-access conflicts, Snapshot v4 | Archetype storage, systems borrow spans instead of owning objects, snapshots are explicit copies |
+| ECS | FCS chunked registry, trivially copyable components, four-phase schedule, `SystemGraph` with opt-in parallel waves and declared service/component access, Snapshot v5 | Archetype/chunk storage, systems borrow spans instead of owning objects, snapshots are explicit copies; v4 snapshots are rejected |
 | Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input | No heap in the input path; bounded events and mapping tables; deterministic per-tick sampling |
 | Gameplay | Project tag database edited in Project Settings, hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown | Data tables and fixed component layouts; effects run through command buffers, not hidden object graphs |
 | AI | `StateTree` to command buffer to `AIController` to perception, navigation and skills; `ActionId` is data for game-owned ECS systems, tag-driven targets, grid and convex navmesh, raw/LOS/Chaikin/Catmull-Rom paths, deterministic route randomization | Bounded state trees, per-frame repath budget, no background allocation from the AI tick |
@@ -143,12 +140,14 @@ The editor coordinator, the script host and the plugin thunk keep the full conte
 because they deliberately bind every domain.
 
 The schedule has four phases: `PreUpdate`, `FixedUpdate`, `PostUpdate` and
-`Render`. `SystemGraph` runs independent systems in parallel with per-call
-semaphores. A system may declare which engine services it reads and writes; two
-same-phase systems that conflict on a service are ordered by registration instead
-of running together. A system that mutates a component is registered by stable
-name, so determinism and replay do not depend on declaration order. Loading,
-reloading or unloading a plugin rebuilds the compiled order before the next frame.
+`Render`. `SystemGraph` compiles dependency edges from stable names, service
+access and component read/write masks. Same-phase systems run serially by
+default; a system opts into parallel waves with `ParallelSafe`, and even then a
+declared service or component conflict keeps the pair ordered. This makes the
+safe path the default while still allowing explicit parallel batches. A system
+that mutates a component is registered by stable name, so determinism and replay
+do not depend on declaration order. Loading, reloading or unloading a plugin
+rebuilds the compiled order before the next frame.
 
 ### DOD: memory is the frame budget
 
@@ -183,10 +182,14 @@ worlds.
 
 Signed distance fields are the resolution-independent geometry layer. The same
 field drives collision, CSG carve/destruction, screen-space shadow masks and the
-procedural SDF primitives in PinkUI. Static fields are uploaded once per version;
-moving occluders are small bounded buffers; sparse brick atlases keep large
-fields practical. A field can be evaluated on the CPU for gameplay and sampled on
-the GPU for lighting without rebuilding the scene.
+procedural SDF primitives in PinkUI. Static fields are baked at a fixed
+resolution and uploaded once per version; moving occluders use small bounded
+buffers; sparse brick atlases keep large fields practical. A field can be
+evaluated on the CPU for gameplay and sampled on the GPU for lighting without
+rebuilding the scene. Deformable characters use bone-bound SDF parts with a
+polynomial smooth union; the resolved field is baked into the render mesh bridge
+for the GPU and sampled by the same collision path on the CPU. Silhouette and
+collision follow the skeleton at every zoom; there is no distance LOD switch.
 
 ### Why this matters for high resolution
 
@@ -246,22 +249,18 @@ upscaler SDKs are optional and are not part of the archive; see
 
 ## Build
 
-Requirements: CMake 3.28+, Ninja, Clang 19+ (clang-cl on Windows, clang++ on
-Unix) or GCC 16+. On Windows, run from a shell that provides the Windows SDK
-headers and libraries; the MSVC compiler itself is not a supported toolchain.
-The setup scripts install both compiler families: clang-cl / clang++ for the
-validated build and GCC 16+ (MinGW-w64 UCRT on Windows, Homebrew or the
-distribution package elsewhere) for the second-opinion toolchain. On Windows,
-`SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI and verifies the
-`clang-cl` version. The Unix scripts install the distribution Clang (19+); CI
-pins LLVM 23.1.4 for the authoritative Windows gate.
+Requirements: CMake 3.28+, Ninja, and one of **MSVC 19.44+**, **Clang 23.1.4+**
+(clang-cl on Windows, clang++ on Unix), **AppleClang 21+** or **GCC 16.2.0+**.
+On Windows, run from a shell that provides the Windows SDK headers and
+libraries. The setup scripts install clang-cl / clang++ as the reference
+toolchain and GCC 16.2.0 (MinGW-w64 UCRT) as the second opinion. On Windows,
+`SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI
+and verifies the `clang-cl` version.
 
 The validated build uses **clang-cl 23.1.4 on Windows and clang++ elsewhere**;
-that is what CI and the release gate run. GCC 16.2.0 (MinGW-W64 UCRT) is
-installed by `SetupScripts/Windows/SetupCpp.bat` and recorded in the dependency lock; a `-std=c++2c`
-smoke program and an engine header syntax check pass with it, but the full gate
-has not been run with GCC yet. The honest status for this release is therefore
-`GCC not run` for the full build, until a Linux GCC runner joins CI.
+that is what CI and the release gate run. **MSVC 19.44+**, **GCC 16.2.0** and
+**AppleClang 21+** are supported alternatives; the compiler-selection matrix is
+in [build-workflow.md](Documentation/design/build-workflow.md).
 
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
@@ -438,27 +437,16 @@ independent Markdown, Word, PDF and DjVu editions. Start at
 is [README_RU.md](README_RU.md).
 
 - [Architecture specification (EN)](Documentation/md/en/FemboyEngineArchitecture_EN.md)
-- [Architecture specification (RU)](Documentation/md/ru/FemboyEngineArchitecture_RU.md)
 - [Application guide (EN)](Documentation/md/en/FemboyEngineApplicationGuide_EN.md)
-- [Application guide (RU)](Documentation/md/ru/FemboyEngineApplicationGuide_RU.md)
 - [API reference (EN)](Documentation/md/en/FemboyEngineAPIReference_EN.md)
-- [API reference (RU)](Documentation/md/ru/FemboyEngineAPIReference_RU.md)
 - [Complete reference manual (EN)](Documentation/md/en/FemboyEngineCompleteReference_EN.md)
-- [Complete reference manual (RU)](Documentation/md/ru/FemboyEngineCompleteReference_RU.md)
 - [CMake project and engine management (EN)](Documentation/md/en/CMakeProjectManagement_EN.md)
-- [CMake project and engine management (RU)](Documentation/md/ru/CMakeProjectManagement_RU.md)
 - [FemboyScript manual (EN)](Documentation/md/en/FemboyScript_EN.md)
-- [FemboyScript manual (RU)](Documentation/md/ru/FemboyScript_RU.md)
 - [Physics, SDF destruction and transport groups (EN)](Documentation/md/en/Physics_EN.md)
-- [Physics, SDF destruction and transport groups (RU)](Documentation/md/ru/Physics_RU.md)
 - [Frame generation and upscaling (EN)](Documentation/md/en/FemboyEngineFrameGeneration_EN.md)
-- [Frame generation and upscaling (RU)](Documentation/md/ru/FemboyEngineFrameGeneration_RU.md)
 - [Viewport display modes (EN)](Documentation/md/en/ViewportModes_EN.md)
-- [Viewport display modes (RU)](Documentation/md/ru/ViewportModes_RU.md)
 - [Editor settings reference (EN)](Documentation/md/en/EditorSettingsReference_EN.md)
-- [Editor settings reference (RU)](Documentation/md/ru/EditorSettingsReference_RU.md)
 - [Project settings recommendations (EN)](Documentation/md/en/ProjectSettingsRecommendations_EN.md)
-- [Project settings recommendations (RU)](Documentation/md/ru/ProjectSettingsRecommendations_RU.md)
 - [Code style](Documentation/style/CodeStyle.md)
 - [Naming conventions](Documentation/style/NAMING.md)
 - [Roadmap](Documentation/ROADMAP.md)
@@ -529,23 +517,21 @@ present.
 - [SECURITY.md](.github/SECURITY.md)
 - [CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md)
 
-The 0.2 alpha line is the current feature batch on top of the first public
-baseline. It will develop with community feedback; 1.0 is reserved for the
-own-library milestone.
-
 ---
 
 ## Hardware
 
 These are development-machine targets for the editor and a debug/release build.
 They are not runtime requirements for a shipped 2D game: a finished game can be
-much lighter than the tools that produced it.
+much lighter than the tools that produced it. The measured editor table and the
+probe methodology are in
+[system requirements](Documentation/design/system-requirements.md).
 
 | Component | Small 2D game (minimum) | Medium 2D game (recommended) |
 |---|---|---|
 | CPU | 4 cores / 8 threads, e.g. Ryzen 3 3100 or Core i3-10100 | 8 cores / 16 threads, e.g. Ryzen 7 5800X or Core i7-12700 |
-| RAM | 8 GB absolute minimum, 16 GB comfortable | 32 GB |
-| GPU | Vulkan 1.4-capable driver or Metal 2, 2 GB VRAM, e.g. GTX 1050, RX 560, Iris Xe | Vulkan 1.4 or Metal 3, 6-8 GB VRAM, e.g. RTX 3060, RX 6600, Apple M1 Pro |
+| RAM | 8 GB absolute minimum, 16 GB comfortable | 16 GB (32 GB for large projects) |
+| GPU | Vulkan 1.4-capable driver or Metal 2, 2 GB VRAM, e.g. GTX 1050, RX 560, Iris Xe | Vulkan 1.4 or Metal 3, 6 GB VRAM, e.g. RTX 3060, RX 6600, Apple M1 Pro |
 | Storage | 10 GB free on an SSD | 25 GB free on NVMe |
 | Display | 1920x1080 | 2560x1440 |
 | OS | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 14+ | Windows 11, Ubuntu 24.04, macOS 14+ on Apple Silicon |
@@ -562,8 +548,10 @@ The build uses Vulkan-Headers **1.4.366**. The RHI requests the highest Vulkan
 version the loader offers, capped at 1.4, and enables 1.2/1.3 features only when
 the device exposes them; **Vulkan 1.4 is the minimum supported driver**. A
 machine at or above the recommended column runs the editor and the full CTest
-suite without hardware-specific workarounds. Vulkan is used on Windows/Linux;
-Metal is used on macOS; the null RHI keeps headless CI machines usable.
+suite without hardware-specific workarounds. The 0.4 alpha smoke run on an
+RTX 4060 Laptop (Vulkan 1.4.341) executed the mesh/SDF path at 2560x1600 with
+three frames in flight. Vulkan is used on Windows/Linux; Metal is used on macOS;
+the null RHI keeps headless CI machines usable.
 
 ---
 

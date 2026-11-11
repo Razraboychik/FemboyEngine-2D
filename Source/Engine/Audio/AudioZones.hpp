@@ -22,13 +22,15 @@ enum class AudioZoneKind : std::uint32_t
 };
 
 inline constexpr std::uint32_t kAudioZoneFlagEnabled = 1u << 0;
-// Per-bus target mask. Bit 0 Master, bit 1 SFX, bit 2 Music.
+// Per-bus target mask. Bit 0 Master, bit 1 SFX, bit 2 Music, bit 3 game SFX.
 inline constexpr std::uint32_t kAudioZoneBusMaster = 1u << 0;
 inline constexpr std::uint32_t kAudioZoneBusSfx = 1u << 1;
 inline constexpr std::uint32_t kAudioZoneBusMusic = 1u << 2;
-inline constexpr std::uint32_t kAudioZoneBusAll = kAudioZoneBusMaster | kAudioZoneBusSfx | kAudioZoneBusMusic;
+inline constexpr std::uint32_t kAudioZoneBusGameSfx = 1u << 3;
+inline constexpr std::uint32_t kAudioZoneBusAll =
+    kAudioZoneBusMaster | kAudioZoneBusSfx | kAudioZoneBusMusic | kAudioZoneBusGameSfx;
 
-// The authored zone. `zoneId` is a stable gameplay id (not an EnTT id) so a
+// The authored zone. `zoneId` is a stable gameplay id (not an runtime entity id) so a
 struct AudioZoneComponent
 {
     Vector2D Min{-128.0f, -128.0f};

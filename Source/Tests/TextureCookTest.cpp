@@ -2,9 +2,7 @@
 #include "Engine/Assets/TextureCook.hpp"
 
 #include "Engine/Assets/TextureFormat.hpp"
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
+#include "Engine/Assets/PngWriter.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -50,20 +48,13 @@ using Bytes = std::vector<std::byte>;
     return ScopedPixels;
 }
 
-void AppendToVector(void* InContext, void* InData, int InSize)
-{
-    auto* ScopedBytes = static_cast<std::vector<std::uint8_t>*>(InContext);
-    const auto* ScopedSource = static_cast<const std::uint8_t*>(InData);
-    ScopedBytes->insert(ScopedBytes->end(), ScopedSource, ScopedSource + InSize);
-}
-
 [[nodiscard]] Bytes MakePng(const std::vector<std::uint8_t>& InRgba, std::uint32_t InWidth, std::uint32_t InHeight)
 {
-    std::vector<std::uint8_t> ScopedEncoded;
-    const int ScopedResult =
-        stbi_write_png_to_func(&AppendToVector, &ScopedEncoded, static_cast<int>(InWidth), static_cast<int>(InHeight),
-                               4, InRgba.data(), static_cast<int>(InWidth) * 4);
-    FBY_CHECK(ScopedResult != 0);
+    std::vector<std::byte> ScopedEncoded;
+    const bool ScopedOk =
+        Fby::Assets::EncodePng(InWidth, InHeight,
+                               std::span<const std::uint8_t>(InRgba.data(), InRgba.size()), &ScopedEncoded);
+    FBY_CHECK(ScopedOk);
     Bytes ScopedBytes(ScopedEncoded.size());
     std::memcpy(ScopedBytes.data(), ScopedEncoded.data(), ScopedEncoded.size());
     return ScopedBytes;

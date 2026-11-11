@@ -293,6 +293,10 @@ namespace Detail
     {                                                                                                                  \
     template <> struct Reflection<::type>                                                                              \
     {                                                                                                                  \
+        static_assert(std::is_trivially_copyable_v<::type>,                                                            \
+                      "Mirror: a reflected component must be trivially copyable");                                     \
+        static_assert(std::is_standard_layout_v<::type>,                                                               \
+                      "Mirror: a reflected component must be standard layout");                                        \
         static constexpr bool kRegistered = true;                                                                      \
         static constexpr std::string_view kName = displayName;                                                         \
         static constexpr auto kFields = std::array{__VA_ARGS__};                                                       \
@@ -305,6 +309,10 @@ namespace Detail
     {                                                                                                                  \
     template <> struct Reflection<::type>                                                                              \
     {                                                                                                                  \
+        static_assert(std::is_trivially_copyable_v<::type>,                                                            \
+                      "Mirror: a reflected component must be trivially copyable");                                     \
+        static_assert(std::is_standard_layout_v<::type>,                                                               \
+                      "Mirror: a reflected component must be standard layout");                                        \
         static constexpr bool kRegistered = true;                                                                      \
         static constexpr std::string_view kName = displayName;                                                         \
         static constexpr std::array<FieldDesc, 0> kFields{};                                                           \

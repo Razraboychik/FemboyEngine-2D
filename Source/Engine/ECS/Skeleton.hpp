@@ -209,7 +209,7 @@ public:
     bool deformOnCpu = false;
 
     // Runs Evaluate (and optionally Deform) for every entity with a skeleton.
-    void Run(entt::registry& InRegistry) const;
+    void Run(Ecs::Registry& InRegistry) const;
     void Run(const Ecs::CoreSystemView& InView) const;
 };
 }

@@ -261,6 +261,73 @@ void AnimGraphApplySpriteClip(const AnimStateComponent& InState, const AnimGraph
     }
 }
 
+bool AnimGraphResolveDirectional(const AnimGraphDefinitionComponent& InDefinition, const AnimStateComponent& InState,
+                                 Vector2D InDirection, AnimStateComponent* OutPoseState) noexcept
+{
+    if (OutPoseState == nullptr || !InDefinition.HasDirectional ||
+        InState.CurrentState != InDefinition.DirectionalState)
+    {
+        return false;
+    }
+    Animation::DirectionalBlendSample ScopedSample;
+    Animation::EvaluateDirectionalBlend(InDefinition.Directional, InDirection, &ScopedSample);
+    std::uint8_t ScopedDominant = 0xFFu;
+    std::uint8_t ScopedSecond = 0xFFu;
+    float ScopedDominantWeight = 0.0f;
+    float ScopedSecondWeight = 0.0f;
+    for (std::uint8_t ScopedIndex = 0; ScopedIndex < ScopedSample.Count; ++ScopedIndex)
+    {
+        const float ScopedWeight = ScopedSample.Weights[ScopedIndex].Weight;
+        if (ScopedWeight > ScopedDominantWeight)
+        {
+            ScopedSecond = ScopedDominant;
+            ScopedSecondWeight = ScopedDominantWeight;
+            ScopedDominant = ScopedIndex;
+            ScopedDominantWeight = ScopedWeight;
+        }
+        else if (ScopedWeight > ScopedSecondWeight)
+        {
+            ScopedSecond = ScopedIndex;
+            ScopedSecondWeight = ScopedWeight;
+        }
+    }
+    if (ScopedDominant == 0xFFu || !(ScopedDominantWeight > Animation::kDirectionalBlendEpsilon))
+    {
+        return false;
+    }
+    const std::uint32_t ScopedDominantClip = ScopedSample.Weights[ScopedDominant].ClipId;
+    if (ScopedDominantClip >= kMaxAnimClips || InDefinition.DirectionalStates[ScopedDominantClip] == 0)
+    {
+        return false;
+    }
+    const std::uint64_t ScopedDominantState = InDefinition.DirectionalStates[ScopedDominantClip];
+    std::uint64_t ScopedSecondState = ScopedDominantState;
+    float ScopedWeight = 1.0f;
+    if (ScopedSecond != 0xFFu)
+    {
+        const std::uint32_t ScopedSecondClip = ScopedSample.Weights[ScopedSecond].ClipId;
+        if (ScopedSecondClip < kMaxAnimClips && InDefinition.DirectionalStates[ScopedSecondClip] != 0)
+        {
+            ScopedSecondState = InDefinition.DirectionalStates[ScopedSecondClip];
+            const float ScopedSum = ScopedDominantWeight + ScopedSecondWeight;
+            if (ScopedSecondState != ScopedDominantState && ScopedSum > Animation::kDirectionalBlendEpsilon)
+            {
+                ScopedWeight = std::clamp(ScopedSecondWeight / ScopedSum, 0.0f, 1.0f);
+            }
+            else
+            {
+                ScopedSecondState = ScopedDominantState;
+                ScopedWeight = 1.0f;
+            }
+        }
+    }
+    *OutPoseState = InState;
+    OutPoseState->CurrentState = ScopedDominantState;
+    OutPoseState->PreviousState = ScopedSecondState;
+    OutPoseState->BlendWeight = ScopedWeight;
+    return true;
+}
+
 void AnimGraphSystem::Run(Ecs::Registry& InRegistry, float InDt) const noexcept
 {
     RunWithTags(InRegistry, InDt, MTags);
@@ -316,19 +383,31 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
                                           : 1.0f;
         }
 
+        // A directional state chooses its clip from the facing vector instead of
+        // the two-pose transition blend. The resolved pose state feeds both
+        // bridges, so the sprite and the skeleton stay on the same source.
+        AnimStateComponent ScopedPoseState = ScopedState;
+        bool ScopedDirectional = false;
+        if (const auto* ScopedFacing = InRegistry.try_get<Facing2D>(ScopedEntity); ScopedFacing != nullptr)
+        {
+            ScopedDirectional =
+                AnimGraphResolveDirectional(ScopedDefinition, ScopedState, ScopedFacing->Direction, &ScopedPoseState);
+        }
+
         // Bridge 1: SkeletalAnimation. Always apply, not only on a transition, because the
         if (auto* ScopedSkeleton = InRegistry.try_get<SkeletonComponent>(ScopedEntity); ScopedSkeleton != nullptr)
         {
-            AnimGraphApplySkeletal(ScopedState, ScopedDefinition, *ScopedSkeleton);
+            AnimGraphApplySkeletal(ScopedPoseState, ScopedDefinition, *ScopedSkeleton);
         }
 
         // Bridge 2: SpriteAnimation. Only on a state change; SpriteAnimationSystem owns the frame
-        if (ScopedStateChanged)
+        if (ScopedStateChanged || ScopedDirectional)
         {
-            if (auto* ScopedSpriteAnimation = InRegistry.try_get<SpriteAnimationComponent>(ScopedEntity); ScopedSpriteAnimation != nullptr)
+            if (auto* ScopedSpriteAnimation = InRegistry.try_get<SpriteAnimationComponent>(ScopedEntity);
+                ScopedSpriteAnimation != nullptr)
             {
                 const SpriteSheetComponent* ScopedGrid = InRegistry.try_get<SpriteSheetComponent>(ScopedEntity);
-                AnimGraphApplySpriteClip(ScopedState, ScopedDefinition, *ScopedSpriteAnimation, ScopedGrid,
+                AnimGraphApplySpriteClip(ScopedPoseState, ScopedDefinition, *ScopedSpriteAnimation, ScopedGrid,
                                          InRegistry.try_get<Sprite2D>(ScopedEntity));
             }
         }
@@ -363,6 +442,13 @@ void RegisterAnimGraphSystem(Ecs::Schedule& InSchedule)
 
 void RegisterAnimGraphSystem(Ecs::SystemGraph& InGraph)
 {
-    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "anim_graph", Ecs::BindGameplaySystem<&AnimGraphSystemThunk>());
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads =
+        Ecs::MakeComponentAccessMask<AnimGraphDefinitionComponent, AnimStateComponent, GameplayTagsComponent,
+                                     SkeletonComponent, SpriteAnimationComponent, SpriteSheetComponent>();
+    ScopedAccess.ComponentWrites =
+        Ecs::MakeComponentAccessMask<AnimStateComponent, SkeletonComponent, SpriteAnimationComponent>();
+    (void)InGraph.Add(Ecs::Phase::FixedUpdate, "anim_graph", Ecs::BindGameplaySystem<&AnimGraphSystemThunk>(), nullptr,
+                      0, 0, ScopedAccess);
 }
 }

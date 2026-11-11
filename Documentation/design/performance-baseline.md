@@ -1,0 +1,82 @@
+# Performance baseline
+
+This page records the first 0.4 alpha measurements. They are not marketing
+numbers: the exact hardware is listed and the probes are reproducible from the
+test tree.
+
+## FCS versus EnTT (historical)
+
+The fixture that created 100k entities with `Position` and `Velocity` and ran 50
+mutation passes has been removed with EnTT; the recorded run is:
+
+| Storage | Time, 50 passes | Relative |
+|---|---|---|
+| EnTT `view<Position, Velocity>` | 15.1 ms | 1.00 |
+| FCS `ForEach<Position, Velocity>` | 4.0 ms | 0.26 |
+
+The FCS pass is about 3.8 times faster on this workload because every chunk
+walks two contiguous columns; the EnTT view resolves the second component
+through its sparse index for every entity. This is an iteration microbenchmark,
+not a full-frame benchmark: physics, upload and GPU time are outside it.
+
+## Engine frame baseline
+
+`fby_requirements_benchmark` builds 10k and 100k sprite scenes, composes 120
+frames with `FrameComposer` and reports average frame time and peak resident
+memory. It runs without a GPU or window, so the numbers are the CPU-side engine
+baseline; the editor adds ImGui, asset caches and the project browser on top.
+
+| Scene | Average frame | Peak RSS | Instance buffers |
+|---|---|---|---|
+| 10k sprites | 0.20 ms | 8.1 MiB | 1.4 MiB |
+| 100k sprites | 3.0 ms | 27.0 MiB | 13.7 MiB |
+
+## Editor backbone baseline
+
+`fby_editor_requirements_benchmark` measures the headless editor backbone:
+component registration, an inspector-style traversal of the scene and a bounded
+undo transaction. It deliberately excludes ImGui draw cost; the full editor delta
+is the sum of this probe and the GPU/UI numbers measured on the reference
+project.
+
+| Scene | Inspector pass | Undo transaction | PIE start | Peak RSS |
+|---|---|---|---|---|
+| 10k sprites | 0.09 ms/frame | 0.94 us/edit | 10.9 ms | 15.0 MiB |
+| 100k sprites | 0.87 ms/frame | 0.89 us/edit | 9.2 ms | 33.3 MiB |
+
+The scene build itself is outside the per-frame column; the probe reports peak
+RSS after the scene and the transaction loop have run.
+
+A real editor startup was sampled on the same machine: `fby_editor.exe` with the
+project dashboard and no project loaded held **291-335 MiB RSS** after 8-12 s
+(two runs). A generated reference project with a 10k-entity scene held
+**293.4 MiB** and a 100k-entity scene held **302.2 MiB**; the scene logs show
+about 0.6 s and 2.1 s from "applied" to "loaded" respectively. These numbers
+include ImGui, the asset database and the GPU device, so they are the practical
+editor memory floor on this machine.
+
+The same editor was run with `FBY_EDITOR_NOVSYNC=1`, `FBY_EDITOR_STATS=1` and
+`FBY_EDITOR_QUIT_AFTER_FRAMES`: at 2560x1600 borderless fullscreen the 10k scene
+held **~82-87 FPS**, while the 100k scene held **~32-34 FPS** (~12 ms and ~30 ms
+per editor frame). The editor frame includes ImGui, the outliner, the viewport
+and the same ECS extract as the sandbox.
+
+## Vulkan 1.4 smoke
+
+`mesh_indirect_smoke` was run on an RTX 4060 Laptop (driver API 1.4.341) at
+2560x1600 with three frames in flight. It exercised static and skinned meshes,
+indirect draws, the skin dispatch, the SDF shadow mask and the 144 MiB instance
+ring; the AMD iGPU on the same machine reported API 1.3.302 and was correctly
+rejected by the 1.4 device gate.
+
+## How to reproduce
+
+```bat
+cmake --build build --target fby_requirements_benchmark fby_editor_requirements_benchmark
+build/bin/tests/fby_requirements_benchmark.exe
+build/bin/tests/fby_editor_requirements_benchmark.exe
+build/bin/tests/fby_mesh_indirect_smoke_test.exe
+```
+
+Record the machine and compiler with every run. A change that makes FCS slower
+than the EnTT baseline on the 100k iteration case blocks the FCS migration.

@@ -173,7 +173,7 @@ private:
     std::array<bool, kScriptMaxPrograms> MFaultReported{};
     struct ActiveScript
     {
-        Entity Owner = entt::null;
+        Entity Owner = Fby::kNullEntity;
         std::uint32_t Program = 0;
         std::uint32_t Stamp = 0;
         bool Nativized = false;

@@ -20,6 +20,7 @@ inline constexpr std::size_t kMaxMouseButtons = 8;
 inline constexpr std::size_t kMaxGamepads = 8;
 inline constexpr std::size_t kMaxGamepadButtons = 16;
 inline constexpr std::size_t kMaxGamepadAxes = 6;
+inline constexpr std::size_t kMaxTouches = 10;
 
 // Snapshot of one SDL gamepad. The window layer owns the SDL handle; this POD
 // is the only device state gameplay and the input mapper see.
@@ -32,6 +33,17 @@ struct GamepadState
     std::array<bool, kMaxGamepadButtons> released{};
     // Left/right stick X/Y followed by left/right trigger.
     std::array<float, kMaxGamepadAxes> axes{};
+};
+
+struct TouchPoint
+{
+    bool active = false;
+    bool pressed = false;
+    bool released = false;
+    std::uint64_t id = 0;
+    // Normalised client coordinates: (0,0) is the top-left corner.
+    Vector2D position{};
+    Vector2D delta{};
 };
 
 struct WindowExtent
@@ -121,6 +133,8 @@ struct InputState
     std::array<bool, kMaxMouseButtons> mouseReleased{};
     std::array<GamepadState, kMaxGamepads> gamepads{};
     std::uint32_t gamepadCount = 0;
+    std::array<TouchPoint, kMaxTouches> touches{};
+    std::uint32_t touchCount = 0;
 
     // Client-space pixels
     Vector2D mouse{};
@@ -175,6 +189,12 @@ struct InputState
         {
             ScopedGamepad.pressed.fill(false);
             ScopedGamepad.released.fill(false);
+        }
+        for (TouchPoint& ScopedTouch : touches)
+        {
+            ScopedTouch.pressed = false;
+            ScopedTouch.released = false;
+            ScopedTouch.delta = {};
         }
         textInputLength = 0;
     }

@@ -9,8 +9,6 @@
 #include "Engine/ECS/CoreComponents.hpp"
 #include "Engine/Text/TextAsset.hpp"
 
-#include <entt/entt.hpp>
-
 #include <cstdint>
 #include <type_traits>
 
@@ -71,7 +69,7 @@ inline constexpr std::uint32_t kWheelFlagSteer = 1u << 1;
 
 struct Wheel2D
 {
-    Entity Chassis = entt::null;
+    Entity Chassis = Fby::kNullEntity;
     // Chassis-local suspension anchor, pixels.
     Vector2D LocalAnchor{};
     // Chassis-local suspension axis.

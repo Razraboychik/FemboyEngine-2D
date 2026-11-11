@@ -47,6 +47,12 @@ void AppendEditorSettingsIni(std::string& InText, const EditorSettings& InEditor
     InText += std::to_string(InEditor.fontPanelTitle);
     InText += "\nfont_panel_body = ";
     InText += std::to_string(InEditor.fontPanelBody);
+    InText += "\ntext_line_spacing = ";
+    InText += std::to_string(InEditor.textLineSpacing);
+    InText += "\ntext_letter_spacing = ";
+    InText += std::to_string(InEditor.textLetterSpacing);
+    InText += "\ntext_word_spacing = ";
+    InText += std::to_string(InEditor.textWordSpacing);
     InText += "\nfont_tooltip = ";
     InText += std::to_string(InEditor.fontTooltip);
     InText += "\nfont_script_node_title = ";
@@ -102,5 +108,46 @@ void AppendEditorSettingsIni(std::string& InText, const EditorSettings& InEditor
     InText += "\ntheme = \"";
     InText += ThemeText(InEditor.theme, sizeof(InEditor.theme));
     InText += "\"\n";
+    InText += "text_color = ";
+    InText += std::to_string(InEditor.textColor);
+    InText += "text_opacity = ";
+    InText += std::to_string(InEditor.textOpacity);
+    InText += "text_contrast = ";
+    InText += std::to_string(InEditor.textContrast);
+    InText += "panel_glow = ";
+    InText += std::to_string(InEditor.panelGlow);
+    InText += "text_outline = ";
+    InText += InEditor.textOutline ? "true" : "false";
+    InText += "text_outline_color = ";
+    InText += std::to_string(InEditor.textOutlineColor);
+    InText += "text_outline_size = ";
+    InText += std::to_string(InEditor.textOutlineSize);
+    InText += "custom_symbol_colors = ";
+    InText += InEditor.customSymbolColors ? "true" : "false";
+    InText += "\nsymbol_axis_x = ";
+    InText += std::to_string(InEditor.symbolColors.AxisX);
+    InText += "\nsymbol_axis_y = ";
+    InText += std::to_string(InEditor.symbolColors.AxisY);
+    InText += "\nsymbol_grid = ";
+    InText += std::to_string(InEditor.symbolColors.Grid);
+    InText += "\nsymbol_play = ";
+    InText += std::to_string(InEditor.symbolColors.Play);
+    InText += "\nsymbol_pause = ";
+    InText += std::to_string(InEditor.symbolColors.Pause);
+    InText += "\nsymbol_step = ";
+    InText += std::to_string(InEditor.symbolColors.Step);
+    InText += "\nsymbol_stop = ";
+    InText += std::to_string(InEditor.symbolColors.Stop);
+    InText += "\nsymbol_rotate = ";
+    InText += std::to_string(InEditor.symbolColors.Rotate);
+    InText += "\nsymbol_multiplayer = ";
+    InText += std::to_string(InEditor.symbolColors.Multiplayer);
+    for (std::size_t ScopedI = 0; ScopedI < InEditor.symbolColors.Plot.size(); ++ScopedI)
+    {
+        InText += "\nsymbol_plot_";
+        InText += std::to_string(ScopedI);
+        InText += " = ";
+        InText += std::to_string(InEditor.symbolColors.Plot[ScopedI]);
+    }
 }
 }

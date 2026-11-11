@@ -14,6 +14,7 @@ set(FBY_ENGINE_SOURCES
     Assets/FempakWriter.cpp
     Assets/Localization.cpp
     Assets/LocalizationCompiler.cpp
+    Assets/PngWriter.cpp
     Assets/TextureArray.cpp
     Assets/SpriteAtlas.cpp
     Assets/VFS.cpp
@@ -43,16 +44,21 @@ set(FBY_ENGINE_SOURCES
     Core/Log.cpp
     Core/NoiseGenerator.cpp
     Core/PluginHost.cpp
+    Core/Pause.cpp
     Core/SecureRng.cpp
     Core/ThirdPartyNotices.cpp
     Core/ThreadAffinity.cpp
     Core/WindowManager.cpp
     Core/WindowHost.cpp
     Input/InputSystem.cpp
+    ECS/AnimationClipPose.cpp
+    ECS/DirectionalAnimationPlayer.cpp
     ECS/AnimationCompression.cpp
     ECS/AnimationTimeline.cpp
     ECS/AnimGraph.cpp
+    ECS/BoneAttachment.cpp
     ECS/CommandLog.cpp
+    ECS/DirectionalBlend.cpp
     ECS/Lighting.cpp
     ECS/LightSource.cpp
     ECS/Presentation.cpp
@@ -109,6 +115,7 @@ set(FBY_ENGINE_SOURCES
     Physics/ProjectileSystem.cpp
     Physics/PhysicsJoints.cpp
     Physics/PhysicsJointsScene.cpp
+    Physics/SdfCharacter.cpp
     Physics/SdfCollision.cpp
     Physics/SdfDestructible.cpp
     Physics/SdfPrimitives.cpp
@@ -121,6 +128,7 @@ set(FBY_ENGINE_SOURCES
     RHI/CameraStack.cpp
     RHI/DynamicResolution.cpp
     RHI/FrameComposer.cpp
+    RHI/SdfCharacterRender.cpp
     RHI/FrameExporter.cpp
     RHI/MaterialAsset.cpp
     RHI/MaterialGraph.cpp
@@ -163,6 +171,9 @@ set(FBY_ENGINE_SOURCES
     Text/TextShaper.cpp
     Text/UnicodeBreak.cpp
     UI/Accessibility.cpp
+    UI/AccessibilityTheme.cpp
+    UI/AccessibilityEffects.cpp
+    UI/AccessibilityEffectConsumer.cpp
     UI/AccessibilityOverlay.cpp
     UI/CardBoard.cpp
     UI/FontAtlas.cpp
@@ -388,7 +399,7 @@ if(FBY_WITH_HARFBUZZ)
     set(HB_HAVE_ICU OFF CACHE BOOL "" FORCE)
     set(HB_HAVE_FREETYPE OFF CACHE BOOL "" FORCE)
     set(HB_HAVE_GRAPHITE2 OFF CACHE BOOL "" FORCE)
-    add_subdirectory("${FBY_ENGINE_REPO_ROOT}/third_party/harfbuzz-download/harfbuzz-15.0.0"
+    add_subdirectory("${FBY_ENGINE_REPO_ROOT}/third_party/harfbuzz-download/harfbuzz-15.1.0"
                      "${CMAKE_BINARY_DIR}/harfbuzz" EXCLUDE_FROM_ALL)
     if(APPLE AND TARGET harfbuzz)
         # CoreFoundation headers use legacy casts that HarfBuzz promotes to
@@ -428,7 +439,6 @@ target_include_directories(fby_engine
 target_link_libraries(fby_engine
     PUBLIC
         fby::compiler_flags
-        fby::entt
         fby::toml
     PRIVATE
         ${FBY_SDL_TARGET}

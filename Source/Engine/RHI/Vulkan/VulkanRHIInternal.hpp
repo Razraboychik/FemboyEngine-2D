@@ -93,7 +93,6 @@ enum FrameTimestampIndex : std::uint32_t
     return InFormat == VK_FORMAT_R8G8B8A8_SRGB || InFormat == VK_FORMAT_B8G8R8A8_SRGB;
 }
 
-
 // Matches the SdfBlock UBO declared by quad.frag. `occluders` holds pairs:
 // shape (x, y, radius, 0) and extents (halfX, halfY, box, 0).
 struct SdfGpuBlock
@@ -301,7 +300,7 @@ struct AccessibilityCompositePush
 static_assert(sizeof(AccessibilityCompositePush) == 80);
 
 [[nodiscard]] inline std::uint32_t FindMemoryType(const VkPhysicalDeviceMemoryProperties& InMemoryProperties,
-                                           std::uint32_t InTypeBits, VkMemoryPropertyFlags InRequired)
+                                                  std::uint32_t InTypeBits, VkMemoryPropertyFlags InRequired)
 {
     for (std::uint32_t ScopedI = 0; ScopedI < InMemoryProperties.memoryTypeCount; ++ScopedI)
     {
@@ -523,8 +522,7 @@ public:
         OutHandles.DeviceProcAddr = reinterpret_cast<void*>(Vk::GetApi().vkGetDeviceProcAddr);
         return MDevice != VK_NULL_HANDLE;
     }
-    [[nodiscard]] bool RenderTargetDepthTexture(RenderTargetHandle InHandle,
-                                                NativeTextureView& InView) const override;
+    [[nodiscard]] bool RenderTargetDepthTexture(RenderTargetHandle InHandle, NativeTextureView& InView) const override;
     [[nodiscard]] bool MainDepthTexture(NativeTextureView& InView) const override;
     [[nodiscard]] bool TextureArrayLayerView(TextureArrayHandle InHandle, std::uint32_t InLayer,
                                              NativeTextureView& InView) const override;
@@ -561,16 +559,15 @@ private:
                           const FrameAccessibility& InAccessibility) noexcept;
     bool CreateAccessibilitySwapchainResources();
     bool CreatePostFxResources();
-    void RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const PostFxBlock& InBlock,
-                               const Extent2D& InExtent);
+    void RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const PostFxBlock& InBlock, const Extent2D& InExtent);
     void RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const PostFxSettings& InSettings,
                                const Extent2D& InExtent);
     void DestroyAccessibilitySwapchainResources() noexcept;
     [[nodiscard]] bool AccessibilityCompositeWanted(const FramePacket& InPacket) const noexcept;
     void RecordAccessibilityComposite(VkCommandBuffer InCommandBuffer, VkRenderPass InRenderPass,
-                                      VkFramebuffer InFramebuffer, VkPipeline InPipeline,
-                                      VkDescriptorSet InSet, Extent2D InExtent,
-                                      const FrameAccessibility& InAccessibility, bool InHasDepth) noexcept;
+                                      VkFramebuffer InFramebuffer, VkPipeline InPipeline, VkDescriptorSet InSet,
+                                      Extent2D InExtent, const FrameAccessibility& InAccessibility,
+                                      bool InHasDepth) noexcept;
     bool CreateFramebuffers();
     bool CreateDepthPrepassResources();
     bool CreateDepthPrepassFramebuffers();
@@ -598,15 +595,13 @@ private:
     bool UploadMotionVectors(std::span<const MotionVectorItem> InItems) override;
     bool CopyColorImage(RenderTargetHandle InSource, RenderTargetHandle InDestination) override;
     bool CopyDepth(RenderTargetHandle InSource, RenderTargetHandle InDestination) override;
-    bool TemporalResolve(RenderTargetHandle InCurrent, RenderTargetHandle InHistory,
-                         RenderTargetHandle InMotion, RenderTargetHandle InDepth,
-                         RenderTargetHandle InHistoryDepth, RenderTargetHandle InOutput,
+    bool TemporalResolve(RenderTargetHandle InCurrent, RenderTargetHandle InHistory, RenderTargetHandle InMotion,
+                         RenderTargetHandle InDepth, RenderTargetHandle InHistoryDepth, RenderTargetHandle InOutput,
                          float InHistoryWeight, float InMotionScale, bool InResetHistory) override;
     bool ClearMotionVectors(RenderTargetHandle InTarget) override;
-    bool RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t InCount,
-                             Vector2D InCameraCenter, Vector2D InPreviousCameraCenter,
-                             float InCameraZoom, float InPreviousCameraZoom, Vector2D InJitter,
-                             Vector2D InPreviousJitter, Vector2D InViewport) override;
+    bool RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t InCount, Vector2D InCameraCenter,
+                             Vector2D InPreviousCameraCenter, float InCameraZoom, float InPreviousCameraZoom,
+                             Vector2D InJitter, Vector2D InPreviousJitter, Vector2D InViewport) override;
     bool RenderHudTarget() override;
     bool CompositeHud() override;
     void SetHudUpscale(bool InNearest) override
@@ -699,8 +694,8 @@ private:
     void DestroyRenderTargetResources(RenderTarget& InTarget) noexcept;
     void RecordDepthPrepass(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket, bool InAccessibility);
 
-    void DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket, bool InOffscreen,
-                    bool InSrgb, std::uint32_t InSdfSlot, bool InDepthOnly = false);
+    void DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
+                    bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot, bool InDepthOnly = false);
     void PreUploadInstances(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
     // The shared sprite sets outlive a frame slot, so any rewrite has to wait for
     // every command buffer that may still reference them.
@@ -728,7 +723,7 @@ private:
     std::uint32_t MQueueFamily = 0;
     // Instance API version negotiated with the loader. Device feature chains must
     // not use a version above it, or a strict layer rejects vkCreateDevice.
-    std::uint32_t MInstanceApiVersion = VK_API_VERSION_1_1;
+    std::uint32_t MInstanceApiVersion = VK_API_VERSION_1_4;
 
     VkSwapchainKHR MSwapchain = VK_NULL_HANDLE;
     VkFormat MFormat = VK_FORMAT_UNDEFINED;
@@ -1056,7 +1051,7 @@ private:
     // pass that draws it reuses the same slice.
     struct PreUploadedPacket
     {
-        const void* packet = nullptr;
+        const FramePacket* packet = nullptr;
         VkDeviceSize base = 0;
         std::uint32_t count = 0;
     };
@@ -1066,6 +1061,13 @@ private:
     VkDeviceMemory MInstanceStagingMemory = VK_NULL_HANDLE;
     void* MInstanceMapped = nullptr;
     std::uint32_t MInstanceCapacity = 0;
+    // Dedicated tail slices, one per frame in flight, for a static packet. They
+    // survive frame rotation and are overwritten only when that frame's static
+    // scene version changes.
+    std::array<bool, 8> MStaticInstanceSliceValid{};
+    std::array<std::uint64_t, 8> MStaticSceneId{};
+    std::array<std::uint64_t, 8> MStaticSceneVersion{};
+    std::array<std::uint32_t, 8> MStaticItemCount{};
     std::uint32_t MFramesInFlight = 1;
     // Items already uploaded in this frame. Several viewports (PIE + editor + UI)
     // share one frame, so each pass takes its own contiguous range instead of

@@ -182,6 +182,10 @@ enum class LogicNodeKind : std::uint8_t
     CameraRoll = 52,
     CameraClearEffects = 53,
     CameraSetMotionScale = 54,
+    GetFrameIndex = 55,
+    RandomRange = 56,
+    LogVec2 = 57,
+    PlaySound = 58,
     Count
 };
 
@@ -506,6 +510,12 @@ struct LogicGraph
             case LogicNodeKind::Branch:
                 // Pin 0 = "true" exec branch, pin 1 = "false" exec branch.
                 return PinType::Exec;
+            case LogicNodeKind::LogVec2:
+            case LogicNodeKind::PlaySound:
+                return InPin == 0 ? PinType::Exec : PinType::Float;
+            case LogicNodeKind::RandomRange:
+            case LogicNodeKind::GetFrameIndex:
+                return PinType::Float;
             case LogicNodeKind::LogValue:
             case LogicNodeKind::SetPosition:
             case LogicNodeKind::SetVelocity:
@@ -573,6 +583,16 @@ struct LogicGraph
             case LogicNodeKind::Vec2Scale:
                 // Vec2, float
                 return 2;
+            case LogicNodeKind::GetFrameIndex:
+                return 0;
+            case LogicNodeKind::RandomRange:
+                return 1;
+            case LogicNodeKind::LogVec2:
+                // Exec, vec2
+                return 2;
+            case LogicNodeKind::PlaySound:
+                // Exec, asset id
+                return 2;
             case LogicNodeKind::LogValue:
                 // Exec, float
                 return 2;
@@ -628,6 +648,12 @@ struct LogicGraph
     {
         switch (InKind)
         {
+            case LogicNodeKind::LogVec2:
+                return InPin == 0 ? PinType::Exec : PinType::Vector2D;
+            case LogicNodeKind::PlaySound:
+                return InPin == 0 ? PinType::Exec : PinType::Float;
+            case LogicNodeKind::RandomRange:
+                return PinType::Float;
             case LogicNodeKind::LogValue:
             case LogicNodeKind::Branch:
                 return InPin == 0 ? PinType::Exec : PinType::Float;
