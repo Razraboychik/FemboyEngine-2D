@@ -234,7 +234,7 @@ jobs:
           LLVM_PREFIX="$(brew --prefix llvm)"
           cmake --preset macos-release             -DCMAKE_C_COMPILER="${LLVM_PREFIX}/bin/clang"             -DCMAKE_CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
       - name: Build editor, tools and core tests
-        run: cmake --build --preset macos-release --target fby_editor_app fby_sandbox fby_fempak fby_scene_tool fby_aotc fby_editor_infrastructure_test fby_frame_composer_test fby_input_system_test fby_release_cooker_test fby_text_shaper_test -- -k 0
+        run: cmake --build --preset macos-release --target fby_editor_app fby_sandbox fby_fempak fby_scene_tool fby_aotc fby_editor_infrastructure_test fby_frame_composer_test fby_input_system_test fby_release_cooker_test fby_project_bundle_test fby_text_shaper_test -- -k 0
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-macos-release/bin/tools/fby_fempak
       - name: Release checklist
