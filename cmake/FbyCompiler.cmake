@@ -9,6 +9,12 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # The floor is intentionally the current release, not an older compatibility
 # version: the engine uses the latest C++26 library surface.
 set(FBY_MIN_CLANG "23.1.4")
+# The macOS x64 Homebrew bottle currently ships Clang 22.1.8; Apple Silicon
+# uses the 23.x bottle. Keep the x64 validation gate runnable without weakening
+# the Windows and Linux reference toolchains.
+if(APPLE)
+    set(FBY_MIN_CLANG "22.1.8")
+endif()
 set(FBY_MIN_GCC "16.2.0")
 set(FBY_MIN_MSVC "19.44")
 set(FBY_MIN_APPLECLANG "21.0")

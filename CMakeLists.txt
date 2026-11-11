@@ -121,11 +121,12 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
     if(WIN32 AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         get_filename_component(FBY_ASAN_CLANG_ROOT "${CMAKE_CXX_COMPILER}" DIRECTORY)
         get_filename_component(FBY_ASAN_CLANG_ROOT "${FBY_ASAN_CLANG_ROOT}" DIRECTORY)
+        string(REGEX MATCH "^[0-9]+" FBY_ASAN_CLANG_MAJOR "${CMAKE_CXX_COMPILER_VERSION}")
         file(GLOB FBY_ASAN_RUNTIME_LIBS
-             "${FBY_ASAN_CLANG_ROOT}/lib/clang/*/lib/windows/clang_rt.asan_dynamic-x86_64.lib"
-             "${FBY_ASAN_CLANG_ROOT}/lib/clang/*/lib/windows/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib")
+             "${FBY_ASAN_CLANG_ROOT}/lib/clang/${FBY_ASAN_CLANG_MAJOR}*/lib/windows/clang_rt.asan_dynamic-x86_64.lib"
+             "${FBY_ASAN_CLANG_ROOT}/lib/clang/${FBY_ASAN_CLANG_MAJOR}*/lib/windows/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib")
         file(GLOB FBY_ASAN_RUNTIME_DLL
-             "${FBY_ASAN_CLANG_ROOT}/lib/clang/*/lib/windows/clang_rt.asan_dynamic-x86_64.dll")
+             "${FBY_ASAN_CLANG_ROOT}/lib/clang/${FBY_ASAN_CLANG_MAJOR}*/lib/windows/clang_rt.asan_dynamic-x86_64.dll")
     endif()
 
     # One rule for every instrumented target: compile options everywhere, link
