@@ -122,7 +122,13 @@ def render_markdown(components: list[dict[str, str]]) -> str:
 def cpp_string(text: str) -> str:
     if f'){RAW_DELIMITER}"' in text:
         fail(f"text collides with the raw string delimiter {RAW_DELIMITER}")
-    return f'R"{RAW_DELIMITER}({text}){RAW_DELIMITER}"'
+    # MSVC caps a single string literal at 16380 characters (C2026). Split the
+    # generated literal into adjacent raw literals, which concatenate exactly.
+    max_chunk = 4000
+    if len(text) <= max_chunk:
+        return f'R"{RAW_DELIMITER}({text}){RAW_DELIMITER}"'
+    chunks = [text[index:index + max_chunk] for index in range(0, len(text), max_chunk)]
+    return "\n        ".join(f'R"{RAW_DELIMITER}({chunk}){RAW_DELIMITER}"' for chunk in chunks)
 
 
 def render_source(components: list[dict[str, str]], markdown: str) -> str:

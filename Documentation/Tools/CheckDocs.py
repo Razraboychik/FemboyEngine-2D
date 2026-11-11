@@ -55,6 +55,7 @@ PAIRED_DOCUMENTS = (
     "EditorSettingsReference",
     "Physics",
     "FemboyEngineFrameGeneration",
+    "CodeQLUnusedAlerts",
 )
 
 # Files that are allowed directly in Documentation/. Source documents live in
