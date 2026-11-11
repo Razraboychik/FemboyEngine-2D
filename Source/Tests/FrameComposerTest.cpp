@@ -411,6 +411,15 @@ int main()
                 ScopedMask.ExcludePass(Fby::RenderPassSprites);
                 ScopedFilteredRegistry.emplace<Fby::RenderMaskComponent>(ScopedEntity, ScopedMask);
             }
+            if (ScopedI % 13u == 0u)
+            {
+                Fby::SpriteOverlay2D ScopedOverlay;
+                ScopedOverlay.UVMin = Fby::Vector2D{0.25f, 0.25f};
+                ScopedOverlay.UVMax = Fby::Vector2D{0.75f, 0.75f};
+                ScopedOverlay.Layer = 1u;
+                ScopedOverlay.Weight = 0.5f;
+                ScopedFilteredRegistry.emplace<Fby::SpriteOverlay2D>(ScopedEntity, ScopedOverlay);
+            }
         }
         const Fby::Rhi::CameraData ScopedFilteredCamera{Fby::Vector2D{32.0f, 32.0f},
                                                         Fby::Vector2D{100000.0f, 100000.0f}, 1.0f};

@@ -167,7 +167,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
 
     std::size_t ScopedIndex = 0;
     const bool ScopedParallelEligible = MJobs != nullptr && MJobs->ThreadCount() > 0 && ScopedSpriteCount >= 4096 &&
-                                        ScopedMode == Rhi::ViewportMode::Standard && !ScopedHasOverlay;
+                                        ScopedMode == Rhi::ViewportMode::Standard;
     if (ScopedParallelEligible)
     {
         Fcs::Signature ScopedMask;
@@ -234,6 +234,14 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                     ++ScopedOit;
                 }
                 ++MParallelOffsets[ScopedChunkIndex + 1];
+                if (ScopedHasOverlay)
+                {
+                    if (const auto* ScopedOverlay = ScopedRegistry.try_get<SpriteOverlay2D>(ScopedEntity);
+                        ScopedOverlay != nullptr && ScopedOverlay->Weight > 0.0f)
+                    {
+                        ++MParallelOffsets[ScopedChunkIndex + 1];
+                    }
+                }
             }
         }
         for (std::size_t ScopedI = 1; ScopedI < MParallelOffsets.size(); ++ScopedI)
@@ -360,6 +368,40 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                                 MMotionHistory.Epoch[ScopedHistoryIndex] = MMotionEpoch;
                                 MMotionHistory.Generation[ScopedHistoryIndex] = ScopedGeneration;
                             }
+                        }
+                        const auto* ScopedOverlay =
+                            ScopedHasOverlay ? ScopedRegistry.try_get<SpriteOverlay2D>(ScopedEntity) : nullptr;
+                        if (ScopedOverlay != nullptr && ScopedOverlay->Weight > 0.0f)
+                        {
+                            const float ScopedWeight = std::clamp(ScopedOverlay->Weight, 0.0f, 1.0f);
+                            Color32 ScopedOverlayColor = ScopedOverlay->Color;
+                            const std::uint8_t ScopedAlpha = static_cast<std::uint8_t>(std::clamp(
+                                static_cast<float>(ScopedOverlayColor.A()) * ScopedWeight + 0.5f, 0.0f, 255.0f));
+                            ScopedOverlayColor = Color32::FromBytes(ScopedOverlayColor.R(), ScopedOverlayColor.G(),
+                                                                    ScopedOverlayColor.B(), ScopedAlpha);
+                            std::uint32_t ScopedOverlayPacked = ScopedOverlayColor.rgba;
+                            if (!ScopedUnlit && !MGpuLighting && ScopedHasLightResult && ScopedChunkHasLightResult)
+                            {
+                                if (const auto* ScopedLight =
+                                        ScopedRegistry.try_get<Light2DResultComponent>(ScopedEntity))
+                                {
+                                    ScopedOverlayPacked =
+                                        LightingSystem::Compose(ScopedOverlayColor, ScopedLight->Color).rgba;
+                                }
+                            }
+                            ++ScopedWrite;
+                            const float ScopedOverlayDepth = ScopedOrder->Depth + ScopedOverlay->DepthBias;
+                            MItems[ScopedWrite] =
+                                Rhi::RenderItem{ScopedTransform->Position,
+                                                ScopedSprite->Size * ScopedTransform->Scale,
+                                                ScopedOverlay->UVMin,
+                                                ScopedOverlay->UVMax,
+                                                ScopedOverlay->Layer,
+                                                ScopedOverlayPacked,
+                                                ScopedTransform->Rotation,
+                                                Rhi::EncodeDepth(ScopedOverlay->Flags, ScopedOverlayDepth, false)};
+                            MKeys[ScopedWrite] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
+                                                                            ScopedOrder->Layer, ScopedOverlayDepth);
                         }
                         ++ScopedWrite;
                     }

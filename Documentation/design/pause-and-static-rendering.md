@@ -95,7 +95,8 @@ The dynamic gains came from six safe changes:
 - optional render filters (`RenderMaskComponent`, `Hidden`,
   `Light2DResultComponent`) are checked once per archetype; hidden chunks are
   skipped entirely, and archetypes without a mask/light do no per-row lookup;
-  `SpriteOverlay2D` still uses the serial path;
+- `SpriteOverlay2D` is counted and emitted inside the same chunk job, including
+  the base+overlay prefix offsets;
 - tile quads are appended deterministically after the parallel sprite ranges;
 - temporal history is owned by `FrameComposer`, indexed by entity index, and is
   updated inside the chunk-prefix extract; motion items keep chunk order;
@@ -114,7 +115,8 @@ buffers. It never structurally changes the registry. `FrameComposer` asserts in
 debug builds that one instance is built from one thread; the job pool must
 outlive the composer. A debug assertion checks every chunk's write count against
 its prefix offset. The serial fallback remains the reference and is used for
-overlays, tile quads and non-Standard viewport modes.
+non-Standard viewport modes and any path that fails the parallel eligibility
+checks.
 
 ## Build-level optimisation
 
