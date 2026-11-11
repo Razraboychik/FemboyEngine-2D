@@ -9,6 +9,7 @@
 #include "Engine/Physics/CollisionFilter.hpp"
 #include "Engine/UI/Accessibility.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -159,8 +160,29 @@ enum class TemporalUpscaleMode : std::uint8_t
     Auto = 3
 };
 
+struct ProjectPluginEntry
+{
+    char Path[192]{};
+    bool Enabled = true;
+
+    [[nodiscard]] friend bool operator==(const ProjectPluginEntry&, const ProjectPluginEntry&) noexcept = default;
+};
+
+struct MotionComfortSettings
+{
+    float cameraShakeScale = 1.0f;
+    float headBobScale = 1.0f;
+    float fovScale = 1.0f;
+    float motionBlurScale = 1.0f;
+    float vignetteScale = 1.0f;
+
+    [[nodiscard]] friend bool operator==(const MotionComfortSettings&, const MotionComfortSettings&) noexcept = default;
+};
+
 struct ProjectSettings
 {
+    static constexpr std::uint32_t kMaxPlugins = 8;
+
     char name[kProjectNameCapacity] = "Untitled Project";
     char version[kProjectVersionCapacity] = "0.1.0";
     char studioName[64] = "Independent Studio";
@@ -201,6 +223,9 @@ struct ProjectSettings
     // the developer-side editor preferences. The project file stores it, the
     // settings panel edits it, AccessibilityKernel::ApplyProfile applies it.
     AccessibilityProfile accessibility{};
+    // Comfort is project policy, not plugin state. Input behaviour (hold/toggle,
+    // inversion, repeat, one-button) belongs to the input map/user preferences.
+    MotionComfortSettings motionComfort{};
 
     // The single authored tag tree. It lives in the project file, the editor
     // edits it in Project Settings, and the runtime copies it into
@@ -244,6 +269,13 @@ struct ProjectSettings
 
     // Layer matrix edited by ProjectSettingsPanel. The runtime receives it on
     CollisionFilterMatrix collision = CollisionFilterMatrix::Defaults();
+
+    // Project-scoped plugins. Paths are relative to the project root and are
+    // loaded only for this project; the editor's own plugins are separate.
+    std::array<ProjectPluginEntry, kMaxPlugins> plugins{};
+    std::uint32_t pluginCount = 0;
+    // Empty = no accessibility effect. Persisted per project.
+    char activeEffect[64]{};
 
     // Compiler-generated field-by-field comparison. Every member (including
     [[nodiscard]] friend bool operator==(const ProjectSettings&, const ProjectSettings&) noexcept = default;

@@ -30,7 +30,7 @@ struct DrawKey
 }
 }
 
-void ClothRenderSystem::Collect(Ecs::Registry& InRegistry) noexcept
+void ClothRenderSystem::Collect(const Ecs::Registry& InRegistry) noexcept
 {
     MCount = 0;
     MTruncated = false;
@@ -44,8 +44,7 @@ void ClothRenderSystem::Collect(Ecs::Registry& InRegistry) noexcept
     for (const Entity ScopedEntity : ScopedView)
     {
         const ClothComponent& ScopedComponent = InRegistry.get<ClothComponent>(ScopedEntity);
-        const ClothHandle ScopedHandle{ScopedComponent.ClothIndex, ScopedComponent.Generation,
-                                       ScopedComponent.ClothID};
+        const ClothHandle ScopedHandle{ScopedComponent.ClothIndex, ScopedComponent.Generation, ScopedComponent.ClothID};
         if (!MCloth->IsValid(ScopedHandle))
         {
             continue;
@@ -87,11 +86,17 @@ void ClothRenderSystem::Collect(Ecs::Registry& InRegistry) noexcept
 
 bool ClothRenderSystem::Register(Ecs::SystemGraph& InGraph, ClothRenderSystem& InSystem)
 {
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<ClothComponent>();
+    ScopedAccess.Writes = Ecs::kServiceRenderer;
+    // Collect writes only the system's own draw list; the ECS is read-only, so
+    // it can share a wave with a system that touches disjoint components.
+    ScopedAccess.ParallelSafe = true;
     return InGraph.Add(Ecs::Phase::PostUpdate, "ClothRenderSystem",
-                       Ecs::BindRenderSystem<&ClothRenderSystem::Tick>(), &InSystem);
+                       Ecs::BindConstRenderSystem<&ClothRenderSystem::Tick>(), &InSystem, 0, 0, ScopedAccess);
 }
 
-void ClothRenderSystem::Tick(Ecs::RenderSystemView& InView, void* InUser)
+void ClothRenderSystem::Tick(const Ecs::ConstRenderSystemView& InView, void* InUser)
 {
     static_cast<ClothRenderSystem*>(InUser)->Collect(InView.registry);
 }

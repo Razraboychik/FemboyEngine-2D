@@ -21,16 +21,6 @@ foreach(dep IN ITEMS SDL3 VulkanHeaders glslang)
     endif()
 endforeach()
 
-# EnTT (header only)
-set(ENTT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/entt-main/entt-main")
-if (EXISTS "${ENTT_DIR}/src/entt/entt.hpp")
-    add_library(fby_entt INTERFACE)
-    target_include_directories(fby_entt SYSTEM INTERFACE "${ENTT_DIR}/src")
-    add_library(fby::entt ALIAS fby_entt)
-else()
-    message(FATAL_ERROR "EnTT not found in third_party/entt-main/entt-main")
-endif()
-
 # libunibreak - Unicode line, word and grapheme boundaries (Zlib licence).
 set(FBY_LIBUNIBREAK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libunibreak")
 if (EXISTS "${FBY_LIBUNIBREAK_DIR}/src/linebreak.c")
@@ -210,7 +200,7 @@ endif()
 # RNNoise (neural speech denoise). Optional: FBY_WITH_RNNOISE=OFF keeps the
 # spectral tier as the fallback.
 set(RNNOISE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rnnoise")
-if (FBY_WITH_RNNOISE AND EXISTS "${RNNOISE_DIR}/src/denoise.c")
+if (FBY_WITH_RNNOISE AND NOT MSVC AND EXISTS "${RNNOISE_DIR}/src/denoise.c")
     add_library(fby_rnnoise STATIC
         "${RNNOISE_DIR}/src/denoise.c"
         "${RNNOISE_DIR}/src/rnn.c"
@@ -222,6 +212,8 @@ if (FBY_WITH_RNNOISE AND EXISTS "${RNNOISE_DIR}/src/denoise.c")
     target_compile_definitions(fby_rnnoise PRIVATE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
     add_library(fby::rnnoise ALIAS fby_rnnoise)
     message(STATUS "RNNoise: ${RNNOISE_DIR}")
+elseif (FBY_WITH_RNNOISE AND MSVC)
+    message(STATUS "RNNoise: the C sources use VLAs; the MSVC tier falls back to spectral")
 elseif (FBY_WITH_RNNOISE)
     message(STATUS "RNNoise: sources missing, the rnnoise tier falls back to spectral")
 endif()

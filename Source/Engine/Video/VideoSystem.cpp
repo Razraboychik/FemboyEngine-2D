@@ -193,7 +193,7 @@ void VideoSystem::Update(Ecs::Registry& InRegistry, float InDeltaSeconds)
     }
     MSlotSeen.fill(false);
     auto ScopedView = InRegistry.view<VideoStreamComponent>();
-    for (const entt::entity ScopedEntity : ScopedView)
+    for (const Fby::Entity ScopedEntity : ScopedView)
     {
         VideoStreamComponent& ScopedComponent = ScopedView.get<VideoStreamComponent>(ScopedEntity);
         const std::uint32_t ScopedSlot = ScopedComponent.Player;
@@ -252,7 +252,12 @@ void VideoCoreTick(const Ecs::CoreSystemView& InView, void* InUser)
 
 bool VideoSystem::Register(Ecs::SystemGraph& InGraph, VideoSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "VideoSystem", Ecs::BindCoreSystem<&VideoCoreTick>(), &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<VideoStreamComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<VideoStreamComponent>();
+    ScopedAccess.Writes = Ecs::kServiceRenderer;
+    return InGraph.Add(Ecs::Phase::PostUpdate, "VideoSystem", Ecs::BindCoreSystem<&VideoCoreTick>(), &InSystem, 0, 0,
+                       ScopedAccess);
 }
 
 VideoPlayer* VideoSystem::Player(std::uint32_t InSlot) noexcept

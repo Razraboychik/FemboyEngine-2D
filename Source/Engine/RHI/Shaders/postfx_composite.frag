@@ -10,7 +10,7 @@ layout(location = 0) out vec4 outColor;
 layout(set = 0, binding = 0) uniform sampler2D uScene;
 layout(set = 0, binding = 1) uniform sampler2D uBloom;
 
-layout(push_constant) uniform PostFxBlock
+layout(set = 0, binding = 2) uniform PostFxBlock
 {
     vec4 flagsAndCrt;
     vec4 vignetteAndBloom;
@@ -23,6 +23,16 @@ layout(push_constant) uniform PostFxBlock
     // radial warp, chromatic split, wobble amplitude and frequency.
     vec4 distortion0;
     vec4 distortion1;
+    vec4 effect0;
+    vec4 effect1;
+    vec4 effect2;
+    vec4 effect3;
+    vec4 effect4;
+    vec4 palette0;
+    vec4 palette1;
+    vec4 palette2;
+    vec4 palette3;
+    vec4 palette4;
 } fx;
 
 uint flagBit(uint bit)
@@ -187,6 +197,100 @@ void main()
     if ((flags & 32u) != 0u)
     {
         color *= clamp(fx.exposureAndChromatic.z, 0.0, 1.0);
+    }
+    const uint effectKind = uint(fx.effect0.x);
+    if (effectKind != 0u)
+    {
+        const float effectAmount = clamp(fx.effect0.y, 0.0, 1.0);
+        if (effectKind == 1u)
+        {
+            const float value = luma(color);
+            const vec3 tinted = fx.effect1.rgb * (0.25 + 0.75 * value);
+            color = mix(color, tinted, effectAmount);
+            const uint pattern = uint(fx.effect0.z);
+            if (pattern == 1u)
+            {
+                color *= 1.0 - 0.12 * effectAmount * (0.5 + 0.5 * sin(vUv.y * fx.grainAndFlash.y * 3.14159 *
+                                                                        fx.effect0.w));
+            }
+            else if (pattern == 2u)
+            {
+                const vec2 grid = abs(fract(vUv * fx.grainAndFlash.xy * fx.effect0.w * 0.02) - 0.5);
+                color *= 1.0 - 0.10 * effectAmount * smoothstep(0.48, 0.5, max(grid.x, grid.y));
+            }
+            else if (pattern == 3u)
+            {
+                color += (hash12(vUv * fx.grainAndFlash.xy) - 0.5) * 0.06 * effectAmount;
+            }
+        }
+        else if (effectKind == 2u)
+        {
+            const vec2 texel = 1.0 / vec2(textureSize(uScene, 0));
+            vec3 blurred = color;
+            if (fx.effect1.w > 0.0)
+            {
+                const float radius = fx.effect1.w;
+                blurred = (color + sceneColor(vUv + vec2(texel.x * radius, 0.0)) +
+                           sceneColor(vUv - vec2(texel.x * radius, 0.0)) +
+                           sceneColor(vUv + vec2(0.0, texel.y * radius)) +
+                           sceneColor(vUv - vec2(0.0, texel.y * radius))) * 0.2;
+            }
+            const float value = clamp(luma(blurred), 0.0, 1.0);
+            const vec3 ramp0 = mix(fx.palette0.rgb, fx.palette1.rgb, clamp(value * 2.0, 0.0, 1.0));
+            const vec3 ramp1 = mix(fx.palette2.rgb, fx.palette3.rgb, clamp(value * 2.0 - 1.0, 0.0, 1.0));
+            const vec3 ramp = value < 0.5 ? ramp0 : mix(ramp1, fx.palette4.rgb, clamp(value * 2.0 - 2.0, 0.0, 1.0));
+            color = mix(blurred, ramp, effectAmount);
+        }
+        else if (effectKind == 3u)
+        {
+            const float scaleBreath = fx.effect4.z * effectAmount;
+            vec2 distortedUv = (vUv - 0.5) * (1.0 + sin(fx.flagsAndCrt.w * 1.7) * scaleBreath * 0.03) + 0.5;
+            const float sway = fx.effect4.y * effectAmount;
+            if (sway > 0.0)
+            {
+                distortedUv += vec2(sin(fx.flagsAndCrt.w * 0.6), cos(fx.flagsAndCrt.w * 0.45)) * sway * 0.008;
+            }
+            const float wobble = fx.effect2.z * effectAmount;
+            if (wobble > 0.0)
+            {
+                distortedUv.x += sin(vUv.y * 18.0 + fx.flagsAndCrt.w * fx.effect2.w) * wobble * 0.012;
+                distortedUv.y += cos(vUv.x * 14.0 + fx.flagsAndCrt.w * fx.effect2.w) * wobble * 0.008;
+            }
+            const vec3 base = sceneColor(distortedUv);
+            const float ghost = clamp(fx.effect2.y * effectAmount * 0.02, 0.0, 0.08);
+            const vec3 doubled = mix(base, sceneColor(distortedUv + vec2(ghost, 0.0)), clamp(fx.effect2.y, 0.0, 0.5));
+            vec3 sampled = doubled;
+            if (fx.effect1.w > 0.0)
+            {
+                const vec2 texel = 1.0 / vec2(textureSize(uScene, 0));
+                sampled = (sampled + sceneColor(distortedUv + texel) + sceneColor(distortedUv - texel)) / 3.0;
+            }
+            if (fx.effect3.x > 0.0)
+            {
+                const float chroma = fx.effect3.x * effectAmount * 0.01;
+                sampled.r = sceneColor(distortedUv + vec2(chroma, 0.0)).r;
+                sampled.b = sceneColor(distortedUv - vec2(chroma, 0.0)).b;
+            }
+            if (fx.effect3.y > 0.0)
+            {
+                const float radius = length((vUv - 0.5) * vec2(1.15, 1.0));
+                sampled *= 1.0 - clamp(fx.effect3.y * effectAmount, 0.0, 0.8) * smoothstep(0.3, 0.9, radius);
+            }
+            if (fx.effect3.z > 0.0)
+            {
+                sampled = mix(sampled, vec3(luma(sampled)), fx.effect3.z * effectAmount);
+            }
+            if (fx.effect3.w > 0.0)
+            {
+                const vec3 trail = sceneColor(distortedUv - vec2(0.008 * fx.effect3.w, 0.0));
+                sampled = mix(sampled, trail, clamp(fx.effect3.w * effectAmount * 0.35, 0.0, 0.5));
+            }
+            if (fx.effect4.x > 0.0)
+            {
+                sampled *= 1.0 + sin(fx.flagsAndCrt.w * 4.0) * fx.effect4.x * effectAmount * 0.05;
+            }
+            color = mix(color, sampled, effectAmount);
+        }
     }
     outColor = vec4(max(color, vec3(0.0)), 1.0);
 }

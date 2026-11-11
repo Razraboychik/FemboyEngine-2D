@@ -56,7 +56,7 @@ public:
     // Recomputes the tint table for the current mode. Standard and Unlit only
     // count the visible sprites; the diagnostic modes sample colliders, lights
     // and the SDF field.
-    void Prepare(Ecs::Registry& InRegistry) noexcept;
+    void Prepare(const Ecs::Registry& InRegistry) noexcept;
 
     // Writes the diagnostic colour for one entity. Returns false for Standard
     // and Unlit, where the extract keeps the authored/lit colour.
@@ -75,18 +75,18 @@ public:
     [[nodiscard]] static Color32 CollisionModeColor(std::uint32_t InMode) noexcept;
 
 private:
-    [[nodiscard]] std::uint32_t CountReachingLights(Ecs::Registry& InRegistry, Entity InEntity,
+    [[nodiscard]] std::uint32_t CountReachingLights(const Ecs::Registry& InRegistry, Entity InEntity,
                                                     Vector2D InPosition) const noexcept;
 
     struct TintEntry
     {
-        Entity Owner = entt::null;
+        Entity Owner = Fby::kNullEntity;
         std::uint32_t Color = 0xFFFFFFFFu;
     };
 
     struct VisibleSprite
     {
-        Entity Owner = entt::null;
+        Entity Owner = Fby::kNullEntity;
         Vector2D Center{};
         Vector2D HalfExtents{};
         std::uint32_t BaseColor = 0xFFFFFFFFu;

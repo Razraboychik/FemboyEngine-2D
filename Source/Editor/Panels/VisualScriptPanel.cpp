@@ -44,7 +44,9 @@ constexpr Script::LogicNodeKind kAddableKinds[] = {
     Script::LogicNodeKind::CameraAddTrauma, Script::LogicNodeKind::CameraDistort,
     Script::LogicNodeKind::CameraOffset, Script::LogicNodeKind::CameraZoom,
     Script::LogicNodeKind::CameraRoll, Script::LogicNodeKind::CameraClearEffects,
-    Script::LogicNodeKind::CameraSetMotionScale,
+    Script::LogicNodeKind::CameraSetMotionScale, Script::LogicNodeKind::GetFrameIndex,
+    Script::LogicNodeKind::RandomRange, Script::LogicNodeKind::LogVec2,
+    Script::LogicNodeKind::PlaySound,
 };
 
 constexpr std::uint32_t kAddableCount = sizeof(kAddableKinds) / sizeof(kAddableKinds[0]);
@@ -83,6 +85,12 @@ constexpr std::uint32_t kAddableCount = sizeof(kAddableKinds) / sizeof(kAddableK
             return InPin == 0 ? "Exec" : "Condition";
         case Script::LogicNodeKind::LogValue:
             return InPin == 0 ? "Exec" : "Value";
+        case Script::LogicNodeKind::LogVec2:
+            return InPin == 0 ? "Exec" : "Vec2";
+        case Script::LogicNodeKind::RandomRange:
+            return "Max";
+        case Script::LogicNodeKind::PlaySound:
+            return InPin == 0 ? "Exec" : "Asset";
         case Script::LogicNodeKind::SetPosition:
         case Script::LogicNodeKind::SetVelocity:
             return InPin == 0 ? "Exec" : "Value";
@@ -116,6 +124,8 @@ constexpr std::uint32_t kAddableCount = sizeof(kAddableKinds) / sizeof(kAddableK
         case Script::LogicNodeKind::SelfRotation:
         case Script::LogicNodeKind::DeltaTime:
         case Script::LogicNodeKind::Random01:
+        case Script::LogicNodeKind::GetFrameIndex:
+        case Script::LogicNodeKind::RandomRange:
             return "Value";
         default:
             return "Then";

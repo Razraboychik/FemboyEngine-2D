@@ -474,7 +474,7 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                     return FaultStop(InFault, VmFault::Code::SpawnUnavailable, ScopedPc, ScopedInstruction.operand);
                 }
                 const std::uint32_t ScopedSpawned = InContext.spawn(InContext, ScopedInstruction.operand);
-                if (ScopedSpawned == static_cast<std::uint32_t>(entt::null))
+                if (ScopedSpawned == static_cast<std::uint32_t>(Fby::kNullEntity))
                 {
                     return FaultStop(InFault, VmFault::Code::BadEntity, ScopedPc, ScopedInstruction.operand);
                 }
@@ -492,7 +492,10 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 {
                     return FaultStop(InFault, VmFault::Code::BadEntity, ScopedPc, MRegisters[ScopedInstruction.src].u);
                 }
-                (void)InContext.commands->Destroy(ScopedEntity);
+                if (!InContext.commands->Destroy(ScopedEntity))
+                {
+                    return FaultStop(InFault, VmFault::Code::CommandBufferFull, ScopedPc);
+                }
                 break;
             }
 

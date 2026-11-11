@@ -16,9 +16,9 @@
 #
 # Versions validated by CI:
 #   SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0,
-#   miniaudio 0.11.23, Box2D v3.2.0, Monocypher 4.0.2, LZMA SDK 25.01
+#   miniaudio 0.11.23, Box2D v3.2.0, Monocypher 4.0.3, LZMA SDK 25.01
 #
-# HarfBuzz 15.0.0 and SheenBidi 3.0.0 ship inside third_party/ and are not
+# HarfBuzz 15.1.0 and SheenBidi 3.0.0 ship inside third_party/ and are not
 # downloaded: the text pipeline links the vendored sources.
 set -euo pipefail
 
@@ -127,8 +127,8 @@ install_system_linux() {
         log "DNF packages"
         if [[ "${RUN_CPP}" -eq 1 ]]; then
             sudo dnf install -y ${CPP_DNF}
-            if ! sudo dnf install -y gcc-toolset-15-gcc-c++; then
-                warn "gcc-toolset-15 is not packaged here; the distribution g++ is installed instead"
+            if ! sudo dnf install -y gcc-toolset-16-gcc-c++; then
+                warn "gcc-toolset-16 is not packaged here; the distribution g++ is installed instead"
             fi
         fi
         if [[ "${RUN_ARCHIVER}" -eq 1 ]]; then
@@ -192,23 +192,23 @@ if command -v clang++ >/dev/null 2>&1; then
     CLANG_VERSION="$(clang++ --version | head -n1)"
     CLANG_MAJOR="$(printf '%s\n' "${CLANG_VERSION}" | awk '{print $3}' | cut -d. -f1)"
     echo "  clang++ : ${CLANG_VERSION}"
-    if [[ "${CLANG_MAJOR}" =~ ^[0-9]+$ ]] && [[ "${CLANG_MAJOR}" -lt 19 ]]; then
-        warn "clang++ ${CLANG_MAJOR} is below the supported minimum 19"
+    if [[ "${CLANG_MAJOR}" =~ ^[0-9]+$ ]] && [[ "${CLANG_MAJOR}" -lt 23 ]]; then
+        warn "clang++ ${CLANG_MAJOR} is below the supported minimum 23"
     fi
     printf 'clang = %s\n' "${CLANG_VERSION}" >> "${LOCK}"
 else
-    warn "clang++ is missing; Clang 19+ is the validated toolchain"
+    warn "clang++ is missing; Clang 23.1.4+ is the validated toolchain"
 fi
 if command -v g++ >/dev/null 2>&1; then
     GCC_VERSION="$(g++ -dumpfullversion 2>/dev/null || g++ -dumpversion)"
     GCC_MAJOR="${GCC_VERSION%%.*}"
     echo "  g++     : ${GCC_VERSION}"
-    if [[ "${GCC_MAJOR}" -lt 15 ]]; then
-        warn "g++ ${GCC_MAJOR} is below the supported minimum 15"
+    if [[ "${GCC_MAJOR}" -lt 16 ]]; then
+        warn "g++ ${GCC_MAJOR} is below the supported minimum 16"
     fi
     printf 'gcc = %s\n' "${GCC_VERSION}" >> "${LOCK}"
 else
-    warn "g++ is missing; GCC 16+ is the second-opinion toolchain"
+    warn "g++ is missing; GCC 16.2+ is the second-opinion toolchain"
 fi
 if [[ -n "${VULKAN_SDK:-}" ]]; then
     echo "  VULKAN_SDK=${VULKAN_SDK}"
@@ -254,16 +254,16 @@ cp -f "${RNNOISE_TEMP}/rnnoise-0.1.1/COPYING" "${THIRD_PARTY}/rnnoise/"
 printf 'rnnoise = 0.1.1
 ' >> "${LOCK}"
 
-log "Monocypher 4.0.2"
-MONOCYPHER_ARCHIVE="$(download "https://github.com/LoupVaillant/Monocypher/archive/refs/tags/4.0.2.tar.gz" monocypher.tar.gz)"
+log "Monocypher 4.0.3"
+MONOCYPHER_ARCHIVE="$(download "https://github.com/LoupVaillant/Monocypher/archive/refs/tags/4.0.3.tar.gz" monocypher.tar.gz)"
 MONOCYPHER_TEMP="${DOWNLOADS}/monocypher"
 rm -rf "${MONOCYPHER_TEMP}"
 mkdir -p "${MONOCYPHER_TEMP}" "${THIRD_PARTY}/monocypher"
 tar -xzf "${MONOCYPHER_ARCHIVE}" -C "${MONOCYPHER_TEMP}"
-cp -f "${MONOCYPHER_TEMP}/Monocypher-4.0.2/src/monocypher.h" "${THIRD_PARTY}/monocypher/"
-cp -f "${MONOCYPHER_TEMP}/Monocypher-4.0.2/src/monocypher.c" "${THIRD_PARTY}/monocypher/"
-cp -f "${MONOCYPHER_TEMP}/Monocypher-4.0.2/LICENCE.md" "${THIRD_PARTY}/monocypher/"
-printf 'monocypher = 4.0.2\n' >> "${LOCK}"
+cp -f "${MONOCYPHER_TEMP}/Monocypher-4.0.3/src/monocypher.h" "${THIRD_PARTY}/monocypher/"
+cp -f "${MONOCYPHER_TEMP}/Monocypher-4.0.3/src/monocypher.c" "${THIRD_PARTY}/monocypher/"
+cp -f "${MONOCYPHER_TEMP}/Monocypher-4.0.3/LICENCE.md" "${THIRD_PARTY}/monocypher/"
+printf 'monocypher = 4.0.3\n' >> "${LOCK}"
 
 log "LZMA SDK 25.01"
 if command -v 7z >/dev/null 2>&1 || command -v 7za >/dev/null 2>&1; then
@@ -284,7 +284,7 @@ for required in \
     "third_party/tomlplusplus-master/tomlplusplus-master/toml.hpp" \
     "third_party/stb/stb_image.h" \
     "third_party/opus-master/opus-main/CMakeLists.txt" \
-    "third_party/harfbuzz-download/harfbuzz-15.0.0/CMakeLists.txt" \
+    "third_party/harfbuzz-download/harfbuzz-15.1.0/CMakeLists.txt" \
     "third_party/sheenbidi-download/SheenBidi-3.0.0/CMakeLists.txt" \
     "third_party/monocypher/monocypher.c" \n    "third_party/rnnoise/src/denoise.c"; do
     if [[ ! -e "${ROOT}/${required}" ]]; then

@@ -9,6 +9,18 @@ will build the engine; there is no cross-OS launcher.
 | Linux | `Linux/` | `Linux/Setup.sh` |
 | macOS | `macOS/` | `macOS/Setup.command` |
 
+## Compilers installed or checked
+
+| Host | Supported frontends |
+|---|---|
+| Windows | clang-cl, clang++, MSVC `cl`, MinGW-w64 `g++` |
+| Linux | clang++ and GCC `g++` |
+| macOS | AppleClang `clang++`, Homebrew LLVM `clang++`, GCC `g++` |
+
+Windows deliberately installs both compiler families because clang-cl is the
+primary gate and MSVC/GCC are the portability gates. Linux and macOS do not
+reference MSVC, clang-cl or any Windows-only toolchain.
+
 ## Component entry points
 
 Windows and Linux keep the component wrappers next to the all-in-one script:
@@ -27,7 +39,9 @@ all-in-one macOS setup. Vendor SDK download is no longer a separate script: use
 
 - C++ setup installs the pinned toolchain (or checks it), downloads the pinned
   third-party sources into `third_party/`, and writes
-  `third_party/dependencies.lock`.
+  `third_party/dependencies.lock`. On Windows it installs/checks clang-cl,
+  clang++, MSVC Build Tools and MinGW-w64 GCC; on Linux it installs/checks
+  clang++ and GCC; on macOS it installs/checks AppleClang, Homebrew LLVM and GCC.
 - The archiver setup installs 7-Zip/p7zip for `.fempak` compression.
 - Vendor SDK setup is part of the all-in-one Setup: it verifies local DLSS,
   FidelityFX and XeSS SDKs and can download them from GitHub only with an

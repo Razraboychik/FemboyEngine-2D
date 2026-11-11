@@ -6,10 +6,12 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstring>
 #include <format>
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace Fby::Scene
 {
@@ -85,6 +87,28 @@ void AppendFieldToml(std::string& Out, const SceneComponent& InComponent, const 
                 Out += '0';
                 Out += '"';
             }
+            break;
+        }
+        case Reflect::FieldKind::Vector2DArray:
+        {
+            const std::size_t ScopedCapacity = Vec2ArrayCapacity(InField);
+            const auto* ScopedBase = static_cast<const std::byte*>(InComponent.data.data()) + InField.offset;
+            Out += "[";
+            for (std::size_t ScopedI = 0; ScopedI < ScopedCapacity; ++ScopedI)
+            {
+                Vector2D ScopedValue{};
+                std::memcpy(&ScopedValue, ScopedBase + ScopedI * sizeof(Vector2D), sizeof(Vector2D));
+                if (ScopedI != 0)
+                {
+                    Out += ", ";
+                }
+                Out += "[";
+                Out += FormatFloat(ScopedValue.X);
+                Out += ", ";
+                Out += FormatFloat(ScopedValue.Y);
+                Out += "]";
+            }
+            Out += "]";
             break;
         }
         case Reflect::FieldKind::Decimal:
@@ -296,6 +320,45 @@ void AppendFieldToml(std::string& Out, const SceneComponent& InComponent, const 
             if (!WriteDecimal(InComponent, InField, ScopedValue))
             {
                 *InError = "invalid Decimal field size";
+                return false;
+            }
+            return true;
+        }
+        case Reflect::FieldKind::Vector2DArray:
+        {
+            const toml::array* ScopedArray = InNode.as_array();
+            if (ScopedArray == nullptr)
+            {
+                *InError = "expected an array of [x, y] pairs";
+                return false;
+            }
+            if (ScopedArray->size() > Vec2ArrayCapacity(InField))
+            {
+                *InError = "array has more elements than its fixed-capacity field";
+                return false;
+            }
+            std::vector<Vector2D> ScopedValues;
+            ScopedValues.reserve(ScopedArray->size());
+            for (const toml::node& ScopedElement : *ScopedArray)
+            {
+                const toml::array* ScopedPair = ScopedElement.as_array();
+                if (ScopedPair == nullptr || ScopedPair->size() != 2)
+                {
+                    *InError = "expected [x, y] for every array element";
+                    return false;
+                }
+                const auto ScopedX = (*ScopedPair)[0].value<double>();
+                const auto ScopedY = (*ScopedPair)[1].value<double>();
+                if (!ScopedX || !ScopedY)
+                {
+                    *InError = "array element coordinates must be numbers";
+                    return false;
+                }
+                ScopedValues.push_back(Vector2D{static_cast<float>(*ScopedX), static_cast<float>(*ScopedY)});
+            }
+            if (!WriteVec2Array(InComponent, InField, ScopedValues))
+            {
+                *InError = "invalid Vector2DArray field size";
                 return false;
             }
             return true;
@@ -527,6 +590,14 @@ std::expected<SceneData, std::string> DecodeSceneToml(std::string_view InToml, c
                     const toml::node* ScopedNode = ScopedComponentTable->get(ScopedField.name);
                     if (ScopedNode == nullptr)
                     {
+                        // Array fields added after the first scene format revision
+                        // are optional: an older scene leaves them zeroed instead
+                        // of becoming unloadable.
+                        if (ScopedField.kind == Reflect::FieldKind::Vector2DArray)
+                        {
+                            std::memset(ScopedComponent.data.data() + ScopedField.offset, 0, ScopedField.size);
+                            continue;
+                        }
                         return std::unexpected(FieldPath(ScopedEntityIndex, ScopedOps->name, ScopedField.name) +
                                                ": field is missing");
                     }

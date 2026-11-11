@@ -80,42 +80,93 @@ void CreateSessionDirectory() noexcept
     std::snprintf(GSessionDirectory, sizeof(GSessionDirectory), "%s", ScopedDirectory.c_str());
 }
 
-void AppendReportLine(std::string& InText, std::string_view InLabel, std::string_view InValue)
+void AppendText(char* InBuffer, std::size_t InCapacity, std::size_t& InOffset, std::string_view InText) noexcept
 {
-    InText.push_back('\n');
-    InText.append(InLabel);
-    InText.append(": ");
-    InText.append(InValue);
+    const std::size_t ScopedRoom = InOffset < InCapacity ? InCapacity - InOffset : 0;
+    const std::size_t ScopedCopy = InText.size() < ScopedRoom ? InText.size() : ScopedRoom;
+    if (ScopedCopy > 0)
+    {
+        std::memcpy(InBuffer + InOffset, InText.data(), ScopedCopy);
+        InOffset += ScopedCopy;
+    }
 }
 
-void WriteReportFile(std::string_view InText) noexcept
+void AppendReportLine(char* InBuffer, std::size_t InCapacity, std::size_t& InOffset, std::string_view InLabel,
+                      std::string_view InValue) noexcept
+{
+    AppendText(InBuffer, InCapacity, InOffset, "\n");
+    AppendText(InBuffer, InCapacity, InOffset, InLabel);
+    AppendText(InBuffer, InCapacity, InOffset, ": ");
+    AppendText(InBuffer, InCapacity, InOffset, InValue);
+}
+
+void BuildReport(char* OutBuffer, std::size_t InCapacity, std::string_view InReason, std::string_view InDetails,
+                  unsigned int InSequence = 0) noexcept
+{
+    std::size_t ScopedOffset = 0;
+    char ScopedTimestamp[40] = {};
+    FormatTimestamp(ScopedTimestamp, sizeof(ScopedTimestamp), false);
+    char ScopedPid[32] = {};
+    std::snprintf(ScopedPid, sizeof(ScopedPid), "%llu", static_cast<unsigned long long>(ProcessId()));
+    AppendText(OutBuffer, InCapacity, ScopedOffset, "FemboyEngine crash report\n");
+    AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "time", ScopedTimestamp);
+    AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "application", GApplicationName);
+    AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "pid", ScopedPid);
+    const BuildInfo& ScopedBuild = GetBuildInfo();
+    AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "compiler", ScopedBuild.compiler);
+    AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "build", ScopedBuild.buildType);
+    AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "flags", ScopedBuild.flags);
+    AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "deps", ScopedBuild.dependencies);
+    AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "reason", InReason);
+    if (!InDetails.empty())
+    {
+        AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "details", InDetails);
+    }
+    if (InSequence != 0)
+    {
+        char ScopedSequence[32] = {};
+        std::snprintf(ScopedSequence, sizeof(ScopedSequence), "%u", InSequence);
+        AppendReportLine(OutBuffer, InCapacity, ScopedOffset, "report", ScopedSequence);
+    }
+    if (ScopedOffset < InCapacity)
+    {
+        OutBuffer[ScopedOffset] = '\0';
+    }
+}
+
+void WriteReportFile(std::string_view InReason, std::string_view InDetails,
+                      unsigned int InSequence = 0) noexcept
 {
     if (GSessionDirectory[0] == '\0')
     {
         return;
     }
-    const std::string ScopedPath = std::string(GSessionDirectory) + "/report.txt";
+    char ScopedPath[1200] = {};
+    std::snprintf(ScopedPath, sizeof(ScopedPath), "%s/report.txt", GSessionDirectory);
+    char ScopedReport[4096] = {};
+    BuildReport(ScopedReport, sizeof(ScopedReport), InReason, InDetails, InSequence);
+    const std::size_t ScopedLength = std::strlen(ScopedReport);
 #if defined(_WIN32)
-    HANDLE ScopedHandle = ::CreateFileA(ScopedPath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
+    HANDLE ScopedHandle = ::CreateFileA(ScopedPath, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
                                         FILE_ATTRIBUTE_NORMAL, nullptr);
     if (ScopedHandle == INVALID_HANDLE_VALUE)
     {
         return;
     }
     DWORD ScopedWritten = 0;
-    ::WriteFile(ScopedHandle, InText.data(), static_cast<DWORD>(InText.size()), &ScopedWritten, nullptr);
+    ::WriteFile(ScopedHandle, ScopedReport, static_cast<DWORD>(ScopedLength), &ScopedWritten, nullptr);
     ::FlushFileBuffers(ScopedHandle);
     ::CloseHandle(ScopedHandle);
 #else
-    const int ScopedHandle = ::open(ScopedPath.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+    const int ScopedHandle = ::open(ScopedPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (ScopedHandle < 0)
     {
         return;
     }
     std::size_t ScopedOffset = 0;
-    while (ScopedOffset < InText.size())
+    while (ScopedOffset < ScopedLength)
     {
-        const ssize_t ScopedWritten = ::write(ScopedHandle, InText.data() + ScopedOffset, InText.size() - ScopedOffset);
+        const ssize_t ScopedWritten = ::write(ScopedHandle, ScopedReport + ScopedOffset, ScopedLength - ScopedOffset);
         if (ScopedWritten <= 0)
         {
             break;
@@ -127,39 +178,11 @@ void WriteReportFile(std::string_view InText) noexcept
 #endif
 }
 
-// Builds the report text once, so the handler does not format anything twice.
-[[nodiscard]] std::string BuildReport(std::string_view InReason, std::string_view InDetails) noexcept
-{
-    char ScopedTimestamp[40] = {};
-    FormatTimestamp(ScopedTimestamp, sizeof(ScopedTimestamp), false);
-    char ScopedPid[32] = {};
-    std::snprintf(ScopedPid, sizeof(ScopedPid), "%llu", static_cast<unsigned long long>(ProcessId()));
-    std::string ScopedText;
-    ScopedText.reserve(512);
-    ScopedText.append("FemboyEngine crash report\n");
-    AppendReportLine(ScopedText, "time", ScopedTimestamp);
-    AppendReportLine(ScopedText, "application", GApplicationName);
-    AppendReportLine(ScopedText, "pid", ScopedPid);
-    // The compiled-in toolchain and lock identify the binary without reading
-    // the crash dump.
-    const BuildInfo& ScopedBuild = GetBuildInfo();
-    AppendReportLine(ScopedText, "compiler", ScopedBuild.compiler);
-    AppendReportLine(ScopedText, "build", ScopedBuild.buildType);
-    AppendReportLine(ScopedText, "flags", ScopedBuild.flags);
-    AppendReportLine(ScopedText, "deps", ScopedBuild.dependencies);
-    AppendReportLine(ScopedText, "reason", InReason);
-    if (!InDetails.empty())
-    {
-        AppendReportLine(ScopedText, "details", InDetails);
-    }
-    return ScopedText;
-}
-
 void HandleTerminate() noexcept
 {
     if (!GInHandler.exchange(true))
     {
-        WriteReportFile(BuildReport("std::terminate", "an exception escaped or a noexcept boundary was violated"));
+        WriteReportFile("std::terminate", "an exception escaped or a noexcept boundary was violated");
     }
     std::abort();
 }
@@ -171,8 +194,9 @@ void WriteMiniDump(EXCEPTION_POINTERS* InExceptionInfo) noexcept
     {
         return;
     }
-    const std::string ScopedPath = std::string(GSessionDirectory) + "/crash.dmp";
-    const HANDLE ScopedFile = ::CreateFileA(ScopedPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+    char ScopedPath[1200] = {};
+    std::snprintf(ScopedPath, sizeof(ScopedPath), "%s/crash.dmp", GSessionDirectory);
+    const HANDLE ScopedFile = ::CreateFileA(ScopedPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                                             FILE_ATTRIBUTE_NORMAL, nullptr);
     if (ScopedFile == INVALID_HANDLE_VALUE)
     {
@@ -213,7 +237,7 @@ LONG WINAPI UnhandledException(EXCEPTION_POINTERS* InExceptionInfo) noexcept
     }
     // The filter must not run twice for the same fault.
     (void)GInHandler.exchange(true);
-    WriteReportFile(BuildReport("unhandled exception", ScopedDetails));
+    WriteReportFile("unhandled exception", ScopedDetails);
     WriteMiniDump(InExceptionInfo);
     ::TerminateProcess(::GetCurrentProcess(), 3);
     return EXCEPTION_EXECUTE_HANDLER;
@@ -226,11 +250,12 @@ void HandleFatalSignal(int InSignal, siginfo_t* InInfo, void*) noexcept
         char ScopedDetails[192] = {};
         std::snprintf(ScopedDetails, sizeof(ScopedDetails), "signal %d at address %p", InSignal,
                       InInfo != nullptr ? InInfo->si_addr : nullptr);
-        WriteReportFile(BuildReport("fatal signal", ScopedDetails));
+        WriteReportFile("fatal signal", ScopedDetails);
         if (GSessionDirectory[0] != '\0')
         {
-            const std::string ScopedPath = std::string(GSessionDirectory) + "/report.txt";
-            const int ScopedHandle = ::open(ScopedPath.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+            char ScopedPath[1200] = {};
+            std::snprintf(ScopedPath, sizeof(ScopedPath), "%s/report.txt", GSessionDirectory);
+            const int ScopedHandle = ::open(ScopedPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
             if (ScopedHandle >= 0)
             {
                 void* ScopedFrames[32] = {};
@@ -310,10 +335,8 @@ bool WriteCrashReport(std::string_view InApplicationName, std::string_view InRea
     {
         return false;
     }
-    std::string ScopedText = BuildReport(InReason, InDetails);
     const unsigned int ScopedSequence = GReportSequence.fetch_add(1, std::memory_order_relaxed);
-    AppendReportLine(ScopedText, "report", std::to_string(ScopedSequence));
-    WriteReportFile(ScopedText);
+    WriteReportFile(InReason, InDetails, ScopedSequence);
     return true;
 }
 

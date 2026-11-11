@@ -501,7 +501,7 @@ bool TransportGroupSystem::CreateGroup(Ecs::Registry& InRegistry, Entity InRoot,
 bool TransportGroupSystem::DestroyGroup(Ecs::Registry& InRegistry, std::uint32_t InGroupId) noexcept
 {
     const Entity ScopedRoot = FindGroupRoot(InRegistry, InGroupId);
-    if (ScopedRoot == entt::null)
+    if (ScopedRoot == Fby::kNullEntity)
     {
         return false;
     }
@@ -550,13 +550,13 @@ bool TransportGroupSystem::SetParentGroup(Ecs::Registry& InRegistry, std::uint32
         return false;
     }
     const Entity ScopedRoot = FindGroupRoot(InRegistry, InGroupId);
-    if (ScopedRoot == entt::null)
+    if (ScopedRoot == Fby::kNullEntity)
     {
         return false;
     }
     if (InParentGroupId != 0)
     {
-        if (FindGroupRoot(InRegistry, InParentGroupId) == entt::null)
+        if (FindGroupRoot(InRegistry, InParentGroupId) == Fby::kNullEntity)
         {
             return false;
         }
@@ -584,7 +584,7 @@ bool TransportGroupSystem::Attach(Ecs::Registry& InRegistry, Entity InMember, st
         return false;
     }
     const Entity ScopedRoot = FindGroupRoot(InRegistry, InGroupId);
-    if (ScopedRoot == entt::null)
+    if (ScopedRoot == Fby::kNullEntity)
     {
         return false;
     }
@@ -1112,7 +1112,7 @@ Entity TransportGroupSystem::FindGroupRoot(Ecs::Registry& InRegistry, std::uint3
             return ScopedEntity;
         }
     }
-    return entt::null;
+    return Fby::kNullEntity;
 }
 
 bool TransportGroupSystem::ParentChainContains(Ecs::Registry& InRegistry, std::uint32_t InStartGroupId,

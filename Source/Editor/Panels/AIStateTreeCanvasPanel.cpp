@@ -1184,7 +1184,7 @@ bool AIStateTreeCanvasPanel::BeginEdit(const char* InLabel, EditSource InSource)
         CommitEdit();
     }
     const auto ScopedCaptured =
-        MCommands->CaptureComponent(entt::null, MCodec, std::span<std::byte>(MBefore.data(), MCodecSize));
+        MCommands->CaptureComponent(Fby::kNullEntity, MCodec, std::span<std::byte>(MBefore.data(), MCodecSize));
     if (ScopedCaptured != CommandStack::Result::Ok)
     {
         SetStatus("AI: cannot capture document for undo");
@@ -1208,14 +1208,14 @@ void AIStateTreeCanvasPanel::RecordEdit() noexcept
     {
         return;
     }
-    if (MCommands->CaptureComponent(entt::null, MCodec, std::span<std::byte>(MAfter.data(), MCodecSize)) !=
+    if (MCommands->CaptureComponent(Fby::kNullEntity, MCodec, std::span<std::byte>(MAfter.data(), MCodecSize)) !=
         CommandStack::Result::Ok)
     {
         SetStatus("AI: cannot capture edited document");
         return;
     }
     const auto ScopedRecorded =
-        MCommands->Record(entt::null, MCodec, std::span<const std::byte>(MBefore.data(), MCodecSize),
+        MCommands->Record(Fby::kNullEntity, MCodec, std::span<const std::byte>(MBefore.data(), MCodecSize),
                           std::span<const std::byte>(MAfter.data(), MCodecSize));
     if (ScopedRecorded != CommandStack::Result::Ok)
     {
@@ -1646,14 +1646,14 @@ std::uint32_t AIStateTreeCanvasPanel::RefreshPIEActivePath() noexcept
     }
 
     const Ecs::Registry& ScopedSelection = MSelectionWorld != nullptr ? *MSelectionWorld : *MRuntimeWorld;
-    Entity ScopedSelected = entt::null;
+    Entity ScopedSelected = Fby::kNullEntity;
     const auto ScopedView = ScopedSelection.view<EditorSelected>();
     const auto ScopedIt = ScopedView.begin();
     if (ScopedIt != ScopedView.end())
     {
         ScopedSelected = *ScopedIt;
     }
-    if (ScopedSelected == entt::null)
+    if (ScopedSelected == Fby::kNullEntity)
     {
         return 0;
     }
@@ -2599,14 +2599,14 @@ void AIStateTreeCanvasPanel::DrawPIEInspector()
         return;
     }
     const Ecs::Registry& ScopedSelection = MSelectionWorld != nullptr ? *MSelectionWorld : *ScopedWorld;
-    Entity ScopedSelected = entt::null;
+    Entity ScopedSelected = Fby::kNullEntity;
     const auto ScopedView = ScopedSelection.view<EditorSelected>();
     const auto ScopedIt = ScopedView.begin();
     if (ScopedIt != ScopedView.end())
     {
         ScopedSelected = *ScopedIt;
     }
-    if (ScopedSelected == entt::null)
+    if (ScopedSelected == Fby::kNullEntity)
     {
         ImGui::TextDisabled("select an entity with StateTreeComponent");
         return;
@@ -2681,6 +2681,13 @@ void AIStateTreeCanvasPanel::DrawPIEInspector()
                             std::min<std::uint32_t>(ScopedField.size, sizeof(ScopedValue)));
                 ImGui::Text("%.*s: %u", static_cast<int>(ScopedField.name.size()), ScopedField.name.data(),
                             ScopedValue);
+                break;
+            }
+            case Reflect::FieldKind::Vector2DArray:
+            {
+                ImGui::TextDisabled("%.*s: %u point(s)", static_cast<int>(ScopedField.name.size()),
+                                    ScopedField.name.data(),
+                                    static_cast<unsigned>(ScopedField.size / sizeof(Vector2D)));
                 break;
             }
         }

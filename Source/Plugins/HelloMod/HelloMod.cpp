@@ -27,10 +27,10 @@ const FbyComponentInfo kComponents[] = {
 
 #if defined(FBY_PLUGIN_BAD_LAYOUT)
 constexpr const char* kPluginName = "hello_mod_bad_layout";
-constexpr const char* kPluginVersion = "0.3.0-alpha.1-bad";
+constexpr const char* kPluginVersion = "0.4.0-alpha.1-bad";
 #else
 constexpr const char* kPluginName = "hello_mod";
-constexpr const char* kPluginVersion = "0.3.0-alpha.1";
+constexpr const char* kPluginVersion = "0.4.0-alpha.1";
 #endif
 
 const FbyPluginInfo kInfo = {
@@ -71,6 +71,12 @@ void FixedTick(void* InUser, float InDt)
     std::snprintf(ScopedMessage, sizeof(ScopedMessage), "tick after %.2f s (dt %.4f)", 5.0f, static_cast<double>(InDt));
     Log(ScopedMessage);
 }
+
+void UiTick(void* InUser, float InDt)
+{
+    (void)InUser;
+    (void)InDt;
+}
 }
 
 FBY_PLUGIN_ENTRY const FbyPluginInfo* fby_plugin_info()
@@ -87,9 +93,28 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
     GHost = InHost;
     Log("loaded; component layout hashes accepted");
 
+    if (InHost->accessibility != nullptr && InHost->accessibility->register_theme != nullptr)
+    {
+        FbyThemeDesc ScopedTheme{};
+        ScopedTheme.struct_size = static_cast<std::uint32_t>(sizeof(FbyThemeDesc));
+        ScopedTheme.id = "Hello.Theme";
+        ScopedTheme.display_name = "Hello theme";
+        for (std::uint32_t ScopedI = 0; ScopedI < FBY_THEME_COLOR_COUNT; ++ScopedI)
+        {
+            ScopedTheme.colors[ScopedI] = 0xFF000000u | (ScopedI * 0x0A0A0Au);
+        }
+        ScopedTheme.text_color = 0xFFFFFFFFu;
+        ScopedTheme.text_outline_color = 0xFF000000u;
+        ScopedTheme.text_opacity = 1.0f;
+        ScopedTheme.text_contrast = 1.0f;
+        ScopedTheme.text_outline_size = 0.0f;
+        ScopedTheme.text_font_scale = 1.0f;
+        (void)InHost->accessibility->register_theme(InHost->user, &ScopedTheme);
+    }
     if (InHost->add_system != nullptr)
     {
         InHost->add_system(InHost->user, "hello_mod_fixed_tick", FBY_PHASE_FIXED_UPDATE, 100, &FixedTick);
+        InHost->add_system(InHost->user, "hello_mod_ui_tick", FBY_PHASE_UI, 0, &UiTick);
     }
     return 0;
 }

@@ -7,6 +7,7 @@ add_library(fby_editor STATIC
     Infrastructure/CommandStack.cpp
     Infrastructure/EditorFonts.cpp
     Infrastructure/EditorSettings.cpp
+    Infrastructure/EditorTheme.cpp
     Infrastructure/EditorTypography.cpp
     Infrastructure/EditorSystem.cpp
     Infrastructure/EditorWidgets.cpp
@@ -21,11 +22,14 @@ add_library(fby_editor STATIC
     Panels/LevelSettingsPanel.cpp
     Panels/AnimationGraphCanvasPanel.cpp
     Panels/AnimationTimelinePanel.cpp
+    Panels/DirectionalBlendFile.cpp
+    Panels/DirectionalBlendSpacePanel.cpp
     Panels/ContentBrowserPanel.cpp
     Panels/LogBoyPanel.cpp
     Panels/LicensesPanel.cpp
     Panels/NetworkDiagnosticsPanel.cpp
     Panels/PieClientViewport.cpp
+    Panels/SdfCharacterPanel.cpp
     Panels/VoiceDevicePanel.cpp
     Panels/MaterialGraphPanel.cpp
     Panels/NodeCanvasPanel.cpp
@@ -48,6 +52,9 @@ if((FBY_WITH_ASAN OR FBY_WITH_UBSAN) AND NOT WIN32)
     fby_asan_apply(fby_editor)
 endif()
 add_library(FemboyEngine2D::Editor ALIAS fby_editor)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(fby_editor PRIVATE -Werror=switch)
+endif()
 
 target_link_libraries(fby_editor
     PUBLIC

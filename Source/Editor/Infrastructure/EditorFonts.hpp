@@ -97,7 +97,7 @@ public:
     // Applies the UI scale through the supported 1.92+ path.
     void SetUiScale(float InScale) noexcept;
     // Replaces the logical pixel sizes used by the next ReloadFonts().
-    void SetSpec(const EditorFontSpec& InSpec) noexcept;
+    void SetSpec(const EditorFontSpec& InSpec);
 
     // Rebuilds the ImGui atlas in place. The stable TTF copies are dropped, the
     [[nodiscard]] bool ReloadFonts(ImGuiIO& InIo);

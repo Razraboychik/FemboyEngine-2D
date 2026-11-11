@@ -46,7 +46,7 @@ enum class NarrativeGroup : std::uint8_t
 
 struct NarrativeNode
 {
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     std::uint8_t archetype = static_cast<std::uint8_t>(NarrativeArchetype::Unknown);
     std::uint8_t group = static_cast<std::uint8_t>(NarrativeGroup::Other);
     std::uint16_t reserved = 0;

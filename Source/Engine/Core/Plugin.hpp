@@ -4,8 +4,7 @@
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/PluginAPI.h"
 #include "Engine/Core/Mirror.hpp"
-
-#include <entt/entt.hpp>
+#include "Engine/ECS/ComponentRegistry.hpp"
 
 #include <array>
 #include <cstddef>
@@ -21,9 +20,9 @@ struct Host
 {
     FbyHostApi* api = nullptr;
 
-    [[nodiscard]] entt::registry& Registry() const
+    [[nodiscard]] Scene::Registry& Registry() const
     {
-        return *static_cast<entt::registry*>(api->registry);
+        return *static_cast<Scene::Registry*>(api->registry);
     }
 
     void Log(FbyLogLevel level, std::string_view channel, std::string_view message) const

@@ -312,6 +312,56 @@ def reflected_field_failures(text: str) -> list[tuple[int, str]]:
     return failures
 
 
+def component_field_failures(text: str) -> list[tuple[int, str]]:
+    """Reject non-value fields in a component registered with Mirror.
+
+    ``is_trivially_copyable`` does not reject raw pointers or string/span views,
+    so the style gate inspects the reflected struct body directly. The check is
+    limited to structs named by FBY_REFLECT_COMPONENT in the same file.
+    """
+    failures: list[tuple[int, str]] = []
+    masked = mask_non_code(text)
+    registered = {
+        match.group(1)
+        for match in re.finditer(
+            r"FBY_REFLECT_COMPONENT(?:_EMPTY)?\(\s*(?:::)?(?:Fby::)?([A-Za-z_]\w*)", text
+        )
+    }
+    if not registered:
+        return failures
+    forbidden_type = re.compile(r"\bstd::(?:string|vector|function|string_view|span|unique_ptr|shared_ptr)\b")
+    pointer_member = re.compile(
+        r"^\s*(?:const\s+|mutable\s+)?[A-Za-z_][\w:<>,\s]*?[*&]\s*[A-Za-z_]\w*\s*(?:\[[^\]]*\])?\s*(?:=.*)?;"
+    )
+    for name in sorted(registered):
+        for declaration in re.finditer(rf"\b(?:struct|class)\s+{re.escape(name)}\b", masked):
+            open_brace = masked.find("{", declaration.end())
+            if open_brace < 0:
+                continue
+            depth = 1
+            cursor = open_brace + 1
+            while cursor < len(masked) and depth > 0:
+                if masked[cursor] == "{":
+                    depth += 1
+                elif masked[cursor] == "}":
+                    depth -= 1
+                cursor += 1
+            if depth != 0:
+                continue
+            body = masked[open_brace + 1 : cursor - 1]
+            first_line = masked.count("\n", 0, open_brace + 1) + 1
+            for offset, line in enumerate(body.splitlines()):
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                if forbidden_type.search(stripped):
+                    failures.append((first_line + offset, f"component {name} has a non-value field"))
+                    continue
+                if pointer_member.match(stripped):
+                    failures.append((first_line + offset, f"component {name} has a pointer/reference field"))
+    return failures
+
+
 def script_comment(line: str) -> str:
     """Extract a hash or batch comment while ignoring quoted text."""
     stripped = line.lstrip()
@@ -435,6 +485,8 @@ def main() -> int:
         for number, message in type_declaration_failures(text):
             failures.append(f"{relative}:{number}: {message}")
         for number, message in reflected_field_failures(text):
+            failures.append(f"{relative}:{number}: {message}")
+        for number, message in component_field_failures(text):
             failures.append(f"{relative}:{number}: {message}")
         for number, comment in comment_spans(text):
             if NON_ASCII.search(comment):

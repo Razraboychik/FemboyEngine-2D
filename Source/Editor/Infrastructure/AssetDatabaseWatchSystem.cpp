@@ -32,12 +32,116 @@ constexpr std::uint32_t kChangeBufferBytes = 8192;
     return Assets::NormalizePakPath(InPath);
 }
 
+std::size_t NormalizeInto(char* OutPath, std::size_t InCapacity, std::string_view InPath) noexcept
+{
+    if (OutPath == nullptr || InCapacity == 0)
+    {
+        return 0;
+    }
+    std::size_t ScopedRead = 0;
+    while (ScopedRead + 1 < InPath.size() && InPath[ScopedRead] == '.' && InPath[ScopedRead + 1] == '/')
+    {
+        ScopedRead += 2;
+    }
+    while (ScopedRead < InPath.size() && InPath[ScopedRead] == '/')
+    {
+        ++ScopedRead;
+    }
+    std::size_t ScopedWritten = 0;
+    for (; ScopedRead < InPath.size() && ScopedWritten + 1 < InCapacity; ++ScopedRead)
+    {
+        char ScopedCharacter = InPath[ScopedRead];
+        if (ScopedCharacter == '\\')
+        {
+            ScopedCharacter = '/';
+        }
+        if (ScopedCharacter == '\0')
+        {
+            continue;
+        }
+        if (ScopedCharacter == '/' && ScopedWritten > 0 && OutPath[ScopedWritten - 1] == '/')
+        {
+            continue;
+        }
+        OutPath[ScopedWritten++] = ScopedCharacter;
+    }
+    OutPath[ScopedWritten] = '\0';
+    return ScopedWritten;
+}
+
 void SetError(std::string* InError, std::string_view InText)
 {
     if (InError != nullptr)
     {
         *InError = InText;
     }
+}
+
+constexpr char LowerAscii(char InCharacter) noexcept
+{
+    return InCharacter >= 'A' && InCharacter <= 'Z' ? static_cast<char>(InCharacter + ('a' - 'A')) : InCharacter;
+}
+
+[[nodiscard]] bool StartsWithNoCase(std::string_view InText, std::string_view InPrefix) noexcept
+{
+    if (InText.size() < InPrefix.size())
+    {
+        return false;
+    }
+    for (std::size_t ScopedI = 0; ScopedI < InPrefix.size(); ++ScopedI)
+    {
+        if (LowerAscii(InText[ScopedI]) != LowerAscii(InPrefix[ScopedI]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool EndsWithNoCase(std::string_view InText, std::string_view InSuffix) noexcept
+{
+    if (InText.size() < InSuffix.size())
+    {
+        return false;
+    }
+    const std::size_t ScopedOffset = InText.size() - InSuffix.size();
+    for (std::size_t ScopedI = 0; ScopedI < InSuffix.size(); ++ScopedI)
+    {
+        if (LowerAscii(InText[ScopedOffset + ScopedI]) != LowerAscii(InSuffix[ScopedI]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool ContainsNoCase(std::string_view InText, std::string_view InNeedle) noexcept
+{
+    if (InNeedle.empty())
+    {
+        return true;
+    }
+    if (InText.size() < InNeedle.size())
+    {
+        return false;
+    }
+    for (std::size_t ScopedOffset = 0; ScopedOffset + InNeedle.size() <= InText.size(); ++ScopedOffset)
+    {
+        bool ScopedMatch = true;
+        for (std::size_t ScopedI = 0; ScopedI < InNeedle.size(); ++ScopedI)
+        {
+            if (LowerAscii(InText[ScopedOffset + ScopedI]) != LowerAscii(InNeedle[ScopedI]))
+            {
+                ScopedMatch = false;
+                break;
+            }
+        }
+        if (ScopedMatch)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Recursively schedules the assets that recorded a dependency on InGuid. The
@@ -87,19 +191,18 @@ bool AssetDatabaseWatchSystem::IsRelevantFile(std::string_view InPath) noexcept
 
 bool AssetDatabaseWatchSystem::IsRelevantSourceFile(std::string_view InPath) noexcept
 {
-    const auto ScopedEndsWith = [InPath](std::string_view InSuffix)
-    { return InPath.size() >= InSuffix.size() && InPath.substr(InPath.size() - InSuffix.size()) == InSuffix; };
     // Cooked payloads are outputs, never sources. Excluding them here is what
-    const bool ScopedToml = ScopedEndsWith(".toml");
+    const bool ScopedToml = EndsWithNoCase(InPath, ".toml");
     const bool ScopedSceneToml =
-        ScopedToml && (InPath.starts_with("scenes/") || InPath.find("/scenes/") != std::string_view::npos ||
-                       InPath.starts_with("prefabs/") || InPath.find("/prefabs/") != std::string_view::npos);
+        ScopedToml && (StartsWithNoCase(InPath, "scenes/") || ContainsNoCase(InPath, "/scenes/") ||
+                       StartsWithNoCase(InPath, "prefabs/") || ContainsNoCase(InPath, "/prefabs/"));
     const bool ScopedAtlasToml =
-        ScopedToml && (InPath.starts_with("atlas/") || InPath.find("/atlas/") != std::string_view::npos);
-    return ScopedEndsWith(".png") || ScopedEndsWith(".tga") || ScopedEndsWith(".wav") || ScopedEndsWith(".ogg") ||
-           ScopedEndsWith(".opus") || ScopedEndsWith(".webm") || ScopedSceneToml || ScopedAtlasToml ||
-           ScopedEndsWith(".feskl") || ScopedEndsWith(".fanim") || ScopedEndsWith(".fmat") ||
-           ScopedEndsWith(".fscript");
+        ScopedToml && (StartsWithNoCase(InPath, "atlas/") || ContainsNoCase(InPath, "/atlas/"));
+    return EndsWithNoCase(InPath, ".png") || EndsWithNoCase(InPath, ".tga") || EndsWithNoCase(InPath, ".wav") ||
+           EndsWithNoCase(InPath, ".ogg") || EndsWithNoCase(InPath, ".opus") || EndsWithNoCase(InPath, ".webm") ||
+           ScopedSceneToml || ScopedAtlasToml || EndsWithNoCase(InPath, ".feskl") ||
+           EndsWithNoCase(InPath, ".fanim") || EndsWithNoCase(InPath, ".fmat") ||
+           EndsWithNoCase(InPath, ".fscript");
 }
 
 bool AssetDatabaseWatchSystem::Initialize(Assets::AssetDatabase& InDatabase, const Config& InConfig,
@@ -221,14 +324,14 @@ bool AssetDatabaseWatchSystem::PushChangeLocked(std::string_view InRelativePath)
     const std::uint32_t ScopedNext = (MPendingHead + 1u) % kMaxPendingChanges;
     if (ScopedNext == MPendingTail)
     {
-        // Ring full: a hot-reload burst drops the newest change and reports it.
+        // Ring full: a hot-reload burst drops the newest change; the counter is
+        // part of the public diagnostics so the loss is visible.
+        ++MStats.droppedChanges;
         return false;
     }
     Change& ScopedChange = MPending[MPendingHead];
-    const std::string ScopedNormalized = Normalize(InRelativePath);
-    const std::size_t ScopedLength = std::min<std::size_t>(ScopedNormalized.size(), kWatchPathCapacity - 1);
     std::memset(ScopedChange.path, 0, sizeof(ScopedChange.path));
-    std::memcpy(ScopedChange.path, ScopedNormalized.data(), ScopedLength);
+    NormalizeInto(ScopedChange.path, sizeof(ScopedChange.path), InRelativePath);
     ScopedChange.sourceHash = 0;
     ScopedChange.sequence = MStats.changesSeen++;
     MPendingHead = ScopedNext;
@@ -515,8 +618,13 @@ bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
                 const DWORD ScopedWait = WaitForSingleObject(ScopedOverlapped.hEvent, 100);
                 if (ScopedWait == WAIT_TIMEOUT)
                 {
-                    CancelIoEx(ScopedDirectory, &ScopedOverlapped);
-                    WaitForSingleObject(ScopedOverlapped.hEvent, 100);
+                    (void)CancelIoEx(ScopedDirectory, &ScopedOverlapped);
+                    DWORD ScopedCancelledBytes = 0;
+                    if (!GetOverlappedResult(ScopedDirectory, &ScopedOverlapped, &ScopedCancelledBytes, TRUE) &&
+                        GetLastError() != ERROR_OPERATION_ABORTED)
+                    {
+                        break;
+                    }
                     continue;
                 }
                 if (ScopedWait != WAIT_OBJECT_0)

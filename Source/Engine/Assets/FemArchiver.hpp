@@ -91,6 +91,9 @@ struct ArchiveProgress
     std::string_view path;
     std::uint64_t rawBytes = 0;
     std::uint64_t storedBytes = 0;
+    // Codec actually stored for this entry. A compressor fallback reports
+    // Store here, so a cooker can warn about incompressible input.
+    ArchiveCodec storedCodec = ArchiveCodec::Store;
 };
 
 // Function pointer, not std::function: the cooker may call this from its worker
@@ -183,6 +186,9 @@ private:
     std::uint32_t MEntryCount = 0;
     std::uint32_t MTableOffset = 0;
     std::uint32_t MStringOffset = 0;
+    // End of the path/string region. Data bytes must start at or after it, so a
+    // crafted entry cannot alias the index or another entry's path.
+    std::uint32_t MStringEnd = 0;
     std::uint32_t MDataOffset = 0;
     std::uint64_t MRawBytes = 0;
     ArchiveCodec MCodec = ArchiveCodec::Store;

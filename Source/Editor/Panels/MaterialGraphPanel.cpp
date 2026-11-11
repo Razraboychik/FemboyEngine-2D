@@ -606,7 +606,7 @@ void MaterialGraphPanel::ModelDrawPanelTools(void* InUser) noexcept
 
 bool MaterialGraphPanel::SaveGraph(const char* InPath)
 {
-    if (InPath == nullptr || InPath[0] == ' ')
+    if (InPath == nullptr || InPath[0] == '\0')
     {
         return false;
     }
@@ -627,7 +627,7 @@ bool MaterialGraphPanel::SaveGraph(const char* InPath)
 
 bool MaterialGraphPanel::LoadGraph(const char* InPath)
 {
-    if (InPath == nullptr || InPath[0] == ' ')
+    if (InPath == nullptr || InPath[0] == '\0')
     {
         return false;
     }
@@ -676,7 +676,7 @@ void MaterialGraphPanel::DrawNodeInspector()
     // replaces the sampling block of quad.frag and keeps the quad vertex stage.
     int ScopedDomain = MRuntime.Domain() == Render::MaterialDomain::Sprite ? 1 : 0;
     ImGui::SetNextItemWidth(110.0f);
-    if (ImGui::Combo("Domain", &ScopedDomain, "Mesh Sprite "))
+    if (ImGui::Combo("Domain", &ScopedDomain, "Mesh\0Sprite\0"))
     {
         SetDomain(ScopedDomain == 1 ? Render::MaterialDomain::Sprite : Render::MaterialDomain::Mesh);
         (void)ApplyShader();

@@ -38,6 +38,12 @@ public:
         {
             return nullptr;
         }
+        // Rounding the offset only aligns relative to MBase; the arena cannot
+        // satisfy an alignment its backing storage does not have.
+        if ((reinterpret_cast<std::uintptr_t>(MBase) & (InAlignment - 1u)) != 0)
+        {
+            return nullptr;
+        }
         const std::size_t ScopedAligned = (MOffset + InAlignment - 1u) & ~(InAlignment - 1u);
         if (ScopedAligned > MCapacity || InSize > MCapacity - ScopedAligned)
         {

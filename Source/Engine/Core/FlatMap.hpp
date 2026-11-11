@@ -1,4 +1,4 @@
-// FemboyEngine2D - flat map, standard when available.
+// FemboyEngine2D - flat map with a sorted-vector storage.
 #pragma once
 
 #include <algorithm>
@@ -13,16 +13,10 @@
 #include <version>
 #include <vector>
 
-#if defined(__cpp_lib_flat_map) && __cpp_lib_flat_map >= 202207L && defined(__has_include)
-#if __has_include(<flat_map>)
-#include <flat_map>
-#define FBY_HAS_STD_FLAT_MAP 1
-#else
+// std::flat_map does not expose reserve(), while the engine's container
+// contract and the VFS mount path rely on it. Keep the sorted-vector
+// implementation on every toolchain instead of switching on <flat_map>.
 #define FBY_HAS_STD_FLAT_MAP 0
-#endif
-#else
-#define FBY_HAS_STD_FLAT_MAP 0
-#endif
 
 namespace Fby
 {

@@ -5,6 +5,8 @@
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/Core/PluginAPI.h"
 #include "Engine/Core/Mirror.hpp"
+#include "Engine/UI/AccessibilityTheme.hpp"
+#include "Engine/UI/AccessibilityEffects.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -14,6 +16,13 @@
 
 namespace Fby::Plugin
 {
+
+static_assert(static_cast<int>(Ecs::Phase::PreUpdate) == FBY_PHASE_PRE_UPDATE, "plugin phase ABI drifted");
+static_assert(static_cast<int>(Ecs::Phase::FixedUpdate) == FBY_PHASE_FIXED_UPDATE, "plugin phase ABI drifted");
+static_assert(static_cast<int>(Ecs::Phase::PostUpdate) == FBY_PHASE_POST_UPDATE, "plugin phase ABI drifted");
+static_assert(static_cast<int>(Ecs::Phase::Ui) == FBY_PHASE_UI, "plugin phase ABI drifted");
+static_assert(static_cast<int>(Ecs::Phase::Render) == FBY_PHASE_RENDER, "plugin phase ABI drifted");
+static_assert(static_cast<int>(Ecs::Phase::Count) == FBY_PHASE_COUNT, "plugin phase ABI drifted");
 
 struct ComponentType
 {
@@ -76,7 +85,8 @@ struct LoadedPlugin
 class PluginHost
 {
 public:
-    // `ecsRegistry` is entt::registry*; it is passed to plugins verbatim.
+    // `ecsRegistry` is the active ECS registry pointer; it is passed to plugins
+    // verbatim and is opaque to the C ABI.
     PluginHost(ComponentRegistry& InComponents, void* InEcsRegistry);
     ~PluginHost();
 
@@ -93,6 +103,37 @@ public:
         return MSystemGraph;
     }
 
+    // Optional runtime theme registry. Plugins receive the accessibility table
+    // only after this is bound; the editor binds the same registry used by the
+    // game project and never by the editor's own palette.
+    void BindAccessibilityThemes(Ui::AccessibilityThemeRegistry* InThemes) noexcept
+    {
+        MThemes = InThemes;
+        MAccessibilityApi.struct_size = static_cast<std::uint32_t>(sizeof(FbyAccessibilityApi));
+        MAccessibilityApi.abi_version = FBY_PLUGIN_ABI_VERSION;
+        MAccessibilityApi.register_theme = &PluginHost::HostRegisterTheme;
+        MAccessibilityApi.set_theme = &PluginHost::HostSetTheme;
+        MAccessibilityApi.register_palette_extension = &PluginHost::HostRegisterExtension;
+        MAccessibilityApi.register_effect = &PluginHost::HostRegisterEffect;
+        MAccessibilityApi.set_effect = &PluginHost::HostSetEffect;
+        MApi.accessibility = (InThemes != nullptr || MExtensions != nullptr || MEffects != nullptr) ? &MAccessibilityApi : nullptr;
+    }
+
+    void BindAccessibilityEffects(Ui::AccessibilityExtensionRegistry* InExtensions,
+                                  Ui::AccessibilityEffectRegistry* InEffects) noexcept
+    {
+        MExtensions = InExtensions;
+        MEffects = InEffects;
+        MAccessibilityApi.struct_size = static_cast<std::uint32_t>(sizeof(FbyAccessibilityApi));
+        MAccessibilityApi.abi_version = FBY_PLUGIN_ABI_VERSION;
+        MAccessibilityApi.register_theme = &PluginHost::HostRegisterTheme;
+        MAccessibilityApi.set_theme = &PluginHost::HostSetTheme;
+        MAccessibilityApi.register_palette_extension = &PluginHost::HostRegisterExtension;
+        MAccessibilityApi.register_effect = &PluginHost::HostRegisterEffect;
+        MAccessibilityApi.set_effect = &PluginHost::HostSetEffect;
+        MApi.accessibility = (MThemes != nullptr || InExtensions != nullptr || InEffects != nullptr) ? &MAccessibilityApi : nullptr;
+    }
+
     // Returns false and fills `error` when the library is missing, the ABI does
     bool Load(const std::string& InPath, std::string* InError);
 
@@ -100,6 +141,9 @@ public:
     // unload entry runs and the library closes) and loads it again. Other plugins
     // are untouched. When `path` is not loaded this behaves like Load().
     bool Reload(const std::string& InPath, std::string* InError);
+
+    // Unloads one plugin. Missing paths return false with an error.
+    bool Unload(const std::string& InPath, std::string* InError);
 
     // Calls fby_plugin_unload on every plugin and closes the libraries.
     void UnloadAll();
@@ -126,11 +170,20 @@ private:
     static std::uint64_t HostLayoutHash(void* InUser, const char* InName);
     static int HostAddSystem(void* InUser, const char* InName, int InPhase, int InOrder,
                              void (*InTick)(void* InUser, float InDt));
+    static int HostRegisterTheme(void* InUser, const FbyThemeDesc* InTheme);
+    static int HostSetTheme(void* InUser, const char* InId);
+    static int HostRegisterExtension(void* InUser, const FbyPaletteExtensionDesc* InExtension);
+    static int HostRegisterEffect(void* InUser, const FbyEffectDesc* InEffect);
+    static int HostSetEffect(void* InUser, const char* InId);
     static void PluginSystemThunk(Ecs::SystemContext& InContext, void* InUser);
 
     ComponentRegistry& MComponents;
     void* MEcsRegistry = nullptr;
     FbyHostApi MApi{};
+    FbyAccessibilityApi MAccessibilityApi{};
+    Ui::AccessibilityThemeRegistry* MThemes = nullptr;
+    Ui::AccessibilityExtensionRegistry* MExtensions = nullptr;
+    Ui::AccessibilityEffectRegistry* MEffects = nullptr;
     LoadedPlugin* MLoading = nullptr;
     Ecs::SystemGraph* MSystemGraph = nullptr;
     std::vector<std::unique_ptr<LoadedPlugin>> MPlugins;

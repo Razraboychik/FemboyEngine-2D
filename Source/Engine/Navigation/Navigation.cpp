@@ -773,6 +773,12 @@ void NavigationSystem::Tick(Ecs::SystemContext& InContext, void* InUser)
 
 bool NavigationSystem::Register(Ecs::SystemGraph& InGraph, NavigationSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::FixedUpdate, "NavigationSystem", &NavigationSystem::Tick, &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads =
+        Ecs::MakeComponentAccessMask<Transform2D, NavAgentSettings, NavAgentComponent, NavAgentPathSettings>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<Transform2D, NavAgentComponent>();
+    ScopedAccess.Writes = Ecs::kServiceNavigation;
+    return InGraph.Add(Ecs::Phase::FixedUpdate, "NavigationSystem", &NavigationSystem::Tick, &InSystem, 0, 0,
+                       ScopedAccess);
 }
 }

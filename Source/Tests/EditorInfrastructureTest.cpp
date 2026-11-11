@@ -16,9 +16,7 @@
 #include "Engine/ECS/Scene.hpp"
 
 #include "Engine/ECS/Components.hpp"
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
+#include "Engine/Assets/PngWriter.hpp"
 
 #include <algorithm>
 #include <array>
@@ -81,7 +79,8 @@ void Check(bool InCondition, const char* InMessage)
     }
     std::error_code ScopedCode;
     std::filesystem::create_directories(InPath.parent_path(), ScopedCode);
-    return stbi_write_png(InPath.string().c_str(), InWidth, InHeight, 4, ScopedPixels.data(), InWidth * 4) != 0;
+    return Fby::Assets::WritePng(InPath, static_cast<std::uint32_t>(InWidth), static_cast<std::uint32_t>(InHeight),
+                                 std::span<const std::uint8_t>(ScopedPixels.data(), ScopedPixels.size()));
 }
 
 void TestProjectCreationAndConfig()
@@ -133,14 +132,14 @@ void TestProjectCreationAndConfig()
         Check(ScopedText.find("SystemGraph") != std::string::npos, "generated GameMain owns a SystemGraph");
     }
 
-    entt::registry ScopedSceneRegistry;
+    Fby::Scene::Registry ScopedSceneRegistry;
     Fby::Scene::ComponentRegistry ScopedSceneComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedSceneComponents);
     const auto ScopedEmptyScene =
         Fby::Scene::LoadSceneFileToml(ScopedSceneRegistry, ScopedSceneComponents, ScopedPaths.scenes / "main.toml");
     Check(ScopedEmptyScene.has_value(), "generated main scene is valid TOML");
 
-    // A scene reload replaces the world. EnTT's registry::clear() only clears
+    // A scene reload replaces the world. Registry::clear() only clears
     // component pools, so a loader that relied on it kept component-less ghost
     // entities from the previous world in the hierarchy.
     {
@@ -537,7 +536,7 @@ void TestSpawnCommand()
 
     Fby::Scene::ComponentRegistry ScopedComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     Fby::Editor::CommandStack ScopedCommands;
     Check(ScopedCommands.Initialize(), "spawn command stack initializes");
     ScopedCommands.Bind(&ScopedRegistry, &ScopedComponents);
@@ -612,7 +611,7 @@ Rotation = 0.0
 
 void TestDestroyCommand()
 {
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     Fby::Scene::ComponentRegistry ScopedComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
     Fby::Editor::CommandStack ScopedCommands;
@@ -660,7 +659,7 @@ void TestPrefabSceneRoundTrip()
 
     Fby::Scene::ComponentRegistry ScopedComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
-    entt::registry ScopedSource;
+    Fby::Scene::Registry ScopedSource;
     const Fby::Entity ScopedFirst = ScopedSource.create();
     Fby::Transform2D ScopedTransform;
     ScopedTransform.Position = {12.0f, 34.0f};
@@ -683,7 +682,7 @@ void TestPrefabSceneRoundTrip()
           "selection saves as a prefab scene");
 
     // The Content Browser drop path loads a prefab with clearExisting=false.
-    entt::registry ScopedTarget;
+    Fby::Scene::Registry ScopedTarget;
     Fby::Scene::SceneLoadOptions ScopedOptions;
     ScopedOptions.clearExisting = false;
     const auto ScopedLoaded =
@@ -731,14 +730,14 @@ void TestSettingsExternalTransaction()
     Fby::Editor::ProjectSettings ScopedSettings;
     Fby::Editor::CommandStack ScopedCommands;
     Check(ScopedCommands.Initialize(), "settings command stack initializes");
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     ScopedCommands.Bind(&ScopedRegistry, nullptr);
     const std::uint16_t ScopedCodec =
         ScopedCommands.RegisterExternalBuffer("ProjectSettings", &ScopedSettings, sizeof(Fby::Editor::ProjectSettings));
     Check(ScopedCodec != 0xFFFFu, "settings external codec registered");
 
     std::array<std::byte, sizeof(Fby::Editor::ProjectSettings)> ScopedBefore{};
-    Check(ScopedCommands.CaptureComponent(entt::null, ScopedCodec, ScopedBefore) ==
+    Check(ScopedCommands.CaptureComponent(Fby::kNullEntity, ScopedCodec, ScopedBefore) ==
               Fby::Editor::CommandStack::Result::Ok,
           "capture settings pre-image");
     Fby::AccessibilitySetFlag(&ScopedSettings.accessibility.runtime.flags, Fby::AccessibilityBlindMode, true);
@@ -746,7 +745,7 @@ void TestSettingsExternalTransaction()
     ScopedSettings.fixedUpdateHz = 90.0f;
 
     Fby::Editor::InteractionTransaction ScopedTransaction;
-    Check(ScopedTransaction.BeginWithSnapshot(ScopedCommands, entt::null, ScopedCodec, "Project settings",
+    Check(ScopedTransaction.BeginWithSnapshot(ScopedCommands, Fby::kNullEntity, ScopedCodec, "Project settings",
                                               Fby::Editor::InteractionTransaction::Source::Settings,
                                               std::span<const std::byte>(ScopedBefore.data(), ScopedBefore.size())) ==
               Fby::Editor::CommandStack::Result::Ok,

@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -226,6 +227,39 @@ namespace Fby::Scene::Detail
         return false;
     }
     std::memcpy(FieldAddress(InComponent, InField), &InValue, sizeof(InValue));
+    return true;
+}
+
+[[nodiscard]] inline std::size_t Vec2ArrayCapacity(const Reflect::FieldDesc& InField) noexcept
+{
+    return InField.size / sizeof(Vector2D);
+}
+
+[[nodiscard]] inline bool ReadVec2Array(const void* InComponent, const Reflect::FieldDesc& InField,
+                                        std::span<Vector2D> OutValues) noexcept
+{
+    if (InField.size % sizeof(Vector2D) != 0 || OutValues.size() < Vec2ArrayCapacity(InField))
+    {
+        return false;
+    }
+    std::memcpy(OutValues.data(), FieldAddress(InComponent, InField), InField.size);
+    return true;
+}
+
+[[nodiscard]] inline bool WriteVec2Array(void* InComponent, const Reflect::FieldDesc& InField,
+                                         std::span<const Vector2D> InValues) noexcept
+{
+    const std::size_t ScopedCapacity = Vec2ArrayCapacity(InField);
+    if (InField.size % sizeof(Vector2D) != 0 || InValues.size() > ScopedCapacity)
+    {
+        return false;
+    }
+    std::byte* ScopedAddress = FieldAddress(InComponent, InField);
+    std::memset(ScopedAddress, 0, InField.size);
+    if (!InValues.empty())
+    {
+        std::memcpy(ScopedAddress, InValues.data(), InValues.size() * sizeof(Vector2D));
+    }
     return true;
 }
 

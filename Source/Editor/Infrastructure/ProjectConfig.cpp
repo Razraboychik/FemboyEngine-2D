@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <sstream>
 #include <system_error>
 
@@ -85,7 +86,7 @@ void SetError(std::string* InError, std::string InText)
 {
     if (const auto ScopedValue = InTable[InKey].value<double>(); ScopedValue)
     {
-        return *ScopedValue;
+        return std::isfinite(*ScopedValue) ? *ScopedValue : InFallback;
     }
     if (const auto ScopedValue = InTable[InKey].value<std::int64_t>(); ScopedValue)
     {
@@ -102,6 +103,13 @@ void SetError(std::string* InError, std::string InText)
     }
     if (const auto ScopedValue = InTable[InKey].value<double>(); ScopedValue)
     {
+        constexpr double kInt64MinAsDouble = -9223372036854775808.0;
+        constexpr double kInt64MaxExclusiveAsDouble = 9223372036854775808.0;
+        if (!std::isfinite(*ScopedValue) || *ScopedValue < kInt64MinAsDouble ||
+            *ScopedValue >= kInt64MaxExclusiveAsDouble)
+        {
+            return InFallback;
+        }
         return static_cast<std::int64_t>(*ScopedValue);
     }
     return InFallback;
@@ -701,6 +709,18 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
         "default_scene", std::string(ProjectString(ScopedProject.defaultScene, sizeof(ScopedProject.defaultScene))));
     ScopedRoot.insert("project", std::move(ScopedProjectTable));
 
+    toml::array ScopedPlugins;
+    const std::uint32_t ScopedPluginCount = std::min<std::uint32_t>(ScopedProject.pluginCount, ProjectSettings::kMaxPlugins);
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedPluginCount; ++ScopedI)
+    {
+        toml::table ScopedPlugin;
+        ScopedPlugin.insert("path", std::string(ProjectString(ScopedProject.plugins[ScopedI].Path,
+                                                             sizeof(ScopedProject.plugins[ScopedI].Path))));
+        ScopedPlugin.insert("enabled", ScopedProject.plugins[ScopedI].Enabled);
+        ScopedPlugins.push_back(std::move(ScopedPlugin));
+    }
+    ScopedRoot.insert("plugins", std::move(ScopedPlugins));
+
     toml::table ScopedSimulation;
     ScopedSimulation.insert("fixed_update_hz", static_cast<double>(ScopedProject.fixedUpdateHz));
     ScopedSimulation.insert("max_fixed_steps", static_cast<std::int64_t>(ScopedProject.maxFixedSteps));
@@ -794,6 +814,8 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     const AccessibilityProfile& ScopedProfile = ScopedProject.accessibility;
     toml::table ScopedAccessibility;
     ScopedAccessibility.insert("profile_version", static_cast<std::int64_t>(ScopedProfile.version));
+    ScopedAccessibility.insert("active_effect", std::string(ProjectString(ScopedProject.activeEffect,
+                                                                        sizeof(ScopedProject.activeEffect))));
     ScopedAccessibility.insert("blind_mode", AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityBlindMode));
     ScopedAccessibility.insert("deaf_mode", AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityDeafMode));
     ScopedAccessibility.insert("show_subtitles", ScopedProfile.runtime.showSubtitles);
@@ -813,11 +835,23 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
                                static_cast<double>(ScopedProfile.presentation.minimumContrastRatio));
     ScopedRoot.insert("accessibility", std::move(ScopedAccessibility));
 
+    toml::table ScopedComfort;
+    ScopedComfort.insert("camera_shake_scale", static_cast<double>(ScopedProject.motionComfort.cameraShakeScale));
+    ScopedComfort.insert("head_bob_scale", static_cast<double>(ScopedProject.motionComfort.headBobScale));
+    ScopedComfort.insert("fov_scale", static_cast<double>(ScopedProject.motionComfort.fovScale));
+    ScopedComfort.insert("motion_blur_scale", static_cast<double>(ScopedProject.motionComfort.motionBlurScale));
+    ScopedComfort.insert("vignette_scale", static_cast<double>(ScopedProject.motionComfort.vignetteScale));
+    ScopedRoot.insert("comfort", std::move(ScopedComfort));
+
+
     toml::table ScopedEditorTable;
     ScopedEditorTable.insert("ui_scale", static_cast<double>(ScopedEditor.uiScale));
     ScopedEditorTable.insert("font_panel_title", static_cast<double>(ScopedEditor.fontPanelTitle));
     ScopedEditorTable.insert("font_panel_body", static_cast<double>(ScopedEditor.fontPanelBody));
     ScopedEditorTable.insert("font_tooltip", static_cast<double>(ScopedEditor.fontTooltip));
+    ScopedEditorTable.insert("text_line_spacing", static_cast<double>(ScopedEditor.textLineSpacing));
+    ScopedEditorTable.insert("text_letter_spacing", static_cast<double>(ScopedEditor.textLetterSpacing));
+    ScopedEditorTable.insert("text_word_spacing", static_cast<double>(ScopedEditor.textWordSpacing));
     ScopedEditorTable.insert("font_script_node_title", static_cast<double>(ScopedEditor.fontScriptNodeTitle));
     ScopedEditorTable.insert("font_script_pin_input", static_cast<double>(ScopedEditor.fontScriptPinInput));
     ScopedEditorTable.insert("font_script_pin_output", static_cast<double>(ScopedEditor.fontScriptPinOutput));
@@ -836,6 +870,28 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedEditorTable.insert("window_height", static_cast<std::int64_t>(ScopedEditor.windowHeight));
     ScopedEditorTable.insert("save_ini_on_commit", ScopedEditor.saveEditorIniOnCommit);
     ScopedEditorTable.insert("theme", std::string(ProjectString(ScopedEditor.theme, sizeof(ScopedEditor.theme))));
+    ScopedEditorTable.insert("text_color", static_cast<std::int64_t>(ScopedEditor.textColor));
+    ScopedEditorTable.insert("text_opacity", static_cast<double>(ScopedEditor.textOpacity));
+    ScopedEditorTable.insert("text_contrast", static_cast<double>(ScopedEditor.textContrast));
+    ScopedEditorTable.insert("text_outline", ScopedEditor.textOutline);
+    ScopedEditorTable.insert("text_outline_color", static_cast<std::int64_t>(ScopedEditor.textOutlineColor));
+    ScopedEditorTable.insert("text_outline_size", static_cast<double>(ScopedEditor.textOutlineSize));
+    ScopedEditorTable.insert("panel_glow", static_cast<double>(ScopedEditor.panelGlow));
+    ScopedEditorTable.insert("custom_symbol_colors", ScopedEditor.customSymbolColors);
+    ScopedEditorTable.insert("symbol_axis_x", static_cast<std::int64_t>(ScopedEditor.symbolColors.AxisX));
+    ScopedEditorTable.insert("symbol_axis_y", static_cast<std::int64_t>(ScopedEditor.symbolColors.AxisY));
+    ScopedEditorTable.insert("symbol_grid", static_cast<std::int64_t>(ScopedEditor.symbolColors.Grid));
+    ScopedEditorTable.insert("symbol_play", static_cast<std::int64_t>(ScopedEditor.symbolColors.Play));
+    ScopedEditorTable.insert("symbol_pause", static_cast<std::int64_t>(ScopedEditor.symbolColors.Pause));
+    ScopedEditorTable.insert("symbol_step", static_cast<std::int64_t>(ScopedEditor.symbolColors.Step));
+    ScopedEditorTable.insert("symbol_stop", static_cast<std::int64_t>(ScopedEditor.symbolColors.Stop));
+    ScopedEditorTable.insert("symbol_rotate", static_cast<std::int64_t>(ScopedEditor.symbolColors.Rotate));
+    ScopedEditorTable.insert("symbol_multiplayer", static_cast<std::int64_t>(ScopedEditor.symbolColors.Multiplayer));
+    for (std::size_t ScopedI = 0; ScopedI < ScopedEditor.symbolColors.Plot.size(); ++ScopedI)
+    {
+        ScopedEditorTable.insert("symbol_plot_" + std::to_string(ScopedI),
+                                 static_cast<std::int64_t>(ScopedEditor.symbolColors.Plot[ScopedI]));
+    }
     const AccessibilityEditorSettings& ScopedEditorProfile = ScopedProfile.editor;
     ScopedEditorTable.insert("ide_blind_mode", ScopedEditorProfile.blindMode);
     ScopedEditorTable.insert("ide_deaf_mode", ScopedEditorProfile.deafMode);
@@ -905,6 +961,30 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             if (const auto ScopedPath = ScopedNode.value<std::string>(); ScopedPath.has_value())
             {
                 (void)ScopedConfig.project.gameplayTags.Add(*ScopedPath);
+            }
+        }
+    }
+
+    ScopedConfig.project.pluginCount = 0;
+    if (const toml::array* ScopedPlugins = ScopedRoot["plugins"].as_array(); ScopedPlugins != nullptr)
+    {
+        for (const toml::node& ScopedNode : *ScopedPlugins)
+        {
+            if (ScopedConfig.project.pluginCount >= ProjectSettings::kMaxPlugins)
+            {
+                break;
+            }
+            const toml::table* ScopedPlugin = ScopedNode.as_table();
+            if (ScopedPlugin == nullptr)
+            {
+                continue;
+            }
+            ProjectPluginEntry& ScopedEntry = ScopedConfig.project.plugins[ScopedConfig.project.pluginCount];
+            CopyProjectString(ScopedEntry.Path, sizeof(ScopedEntry.Path), StringField(*ScopedPlugin, "path"));
+            ScopedEntry.Enabled = BoolField(*ScopedPlugin, "enabled", true);
+            if (ScopedEntry.Path[0] != '\0')
+            {
+                ++ScopedConfig.project.pluginCount;
             }
         }
     }
@@ -1029,7 +1109,7 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
     {
         for (std::uint32_t ScopedLayer = 0; ScopedLayer < kNamedCollisionLayers; ++ScopedLayer)
         {
-            const std::string_view ScopedHex = StringField(*ScopedCollision, kCollisionKeys[ScopedLayer]);
+            const std::string ScopedHex = StringField(*ScopedCollision, kCollisionKeys[ScopedLayer]);
             if (!ScopedHex.empty())
             {
                 ScopedConfig.project.collision.masks[ScopedLayer] = ParseHexMask(ScopedHex);
@@ -1114,6 +1194,12 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             FloatField(*ScopedEditor, "font_script_pin_output", ScopedConfig.editor.fontScriptPinOutput), 16.0, 40.0));
         ScopedConfig.editor.fontSceneText = static_cast<float>(
             std::clamp(FloatField(*ScopedEditor, "font_scene_text", ScopedConfig.editor.fontSceneText), 16.0, 64.0));
+        ScopedConfig.editor.textLineSpacing = static_cast<float>(
+            std::clamp(FloatField(*ScopedEditor, "text_line_spacing", ScopedConfig.editor.textLineSpacing), -4.0, 24.0));
+        ScopedConfig.editor.textLetterSpacing = static_cast<float>(
+            std::clamp(FloatField(*ScopedEditor, "text_letter_spacing", ScopedConfig.editor.textLetterSpacing), -2.0, 12.0));
+        ScopedConfig.editor.textWordSpacing = static_cast<float>(
+            std::clamp(FloatField(*ScopedEditor, "text_word_spacing", ScopedConfig.editor.textWordSpacing), -4.0, 24.0));
         ScopedConfig.editor.logMaxFiles = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
             IntField(*ScopedEditor, "log_max_files", ScopedConfig.editor.logMaxFiles), 1, 512));
         ScopedConfig.editor.logMaxLinesPerFile = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
@@ -1161,6 +1247,44 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             BoolField(*ScopedEditor, "save_ini_on_commit", ScopedConfig.editor.saveEditorIniOnCommit);
         CopyProjectString(ScopedConfig.editor.theme, sizeof(ScopedConfig.editor.theme),
                           StringField(*ScopedEditor, "theme"));
+        ScopedConfig.editor.textColor = static_cast<std::uint32_t>(
+            std::clamp<std::int64_t>(IntField(*ScopedEditor, "text_color", ScopedConfig.editor.textColor), 0, 0xFFFFFF));
+        ScopedConfig.editor.textOpacity = static_cast<float>(
+            std::clamp(FloatField(*ScopedEditor, "text_opacity", ScopedConfig.editor.textOpacity), 0.2, 1.0));
+        ScopedConfig.editor.textContrast = static_cast<float>(
+            std::clamp(FloatField(*ScopedEditor, "text_contrast", ScopedConfig.editor.textContrast), 0.5, 2.0));
+        ScopedConfig.editor.textOutline =
+            BoolField(*ScopedEditor, "text_outline", ScopedConfig.editor.textOutline);
+        ScopedConfig.editor.textOutlineColor = static_cast<std::uint32_t>(
+            std::clamp<std::int64_t>(IntField(*ScopedEditor, "text_outline_color", ScopedConfig.editor.textOutlineColor), 0,
+                                     0xFFFFFF));
+        ScopedConfig.editor.textOutlineSize = static_cast<float>(
+            std::clamp(FloatField(*ScopedEditor, "text_outline_size", ScopedConfig.editor.textOutlineSize), 0.5, 4.0));
+        ScopedConfig.editor.panelGlow = static_cast<float>(
+            std::clamp(FloatField(*ScopedEditor, "panel_glow", ScopedConfig.editor.panelGlow), 0.0, 1.0));
+        ScopedConfig.editor.customSymbolColors =
+            BoolField(*ScopedEditor, "custom_symbol_colors", ScopedConfig.editor.customSymbolColors);
+        const auto ScopedReadColor = [&](const char* InKey, std::uint32_t InDefault)
+        {
+            return static_cast<std::uint32_t>(
+                std::clamp<std::int64_t>(IntField(*ScopedEditor, InKey, InDefault), 0, 0xFFFFFF));
+        };
+        ScopedConfig.editor.symbolColors.AxisX = ScopedReadColor("symbol_axis_x", ScopedConfig.editor.symbolColors.AxisX);
+        ScopedConfig.editor.symbolColors.AxisY = ScopedReadColor("symbol_axis_y", ScopedConfig.editor.symbolColors.AxisY);
+        ScopedConfig.editor.symbolColors.Grid = ScopedReadColor("symbol_grid", ScopedConfig.editor.symbolColors.Grid);
+        ScopedConfig.editor.symbolColors.Play = ScopedReadColor("symbol_play", ScopedConfig.editor.symbolColors.Play);
+        ScopedConfig.editor.symbolColors.Pause = ScopedReadColor("symbol_pause", ScopedConfig.editor.symbolColors.Pause);
+        ScopedConfig.editor.symbolColors.Step = ScopedReadColor("symbol_step", ScopedConfig.editor.symbolColors.Step);
+        ScopedConfig.editor.symbolColors.Stop = ScopedReadColor("symbol_stop", ScopedConfig.editor.symbolColors.Stop);
+        ScopedConfig.editor.symbolColors.Rotate = ScopedReadColor("symbol_rotate", ScopedConfig.editor.symbolColors.Rotate);
+        ScopedConfig.editor.symbolColors.Multiplayer =
+            ScopedReadColor("symbol_multiplayer", ScopedConfig.editor.symbolColors.Multiplayer);
+        for (std::size_t ScopedI = 0; ScopedI < ScopedConfig.editor.symbolColors.Plot.size(); ++ScopedI)
+        {
+            const std::string ScopedKey = "symbol_plot_" + std::to_string(ScopedI);
+            ScopedConfig.editor.symbolColors.Plot[ScopedI] =
+                ScopedReadColor(ScopedKey.c_str(), ScopedConfig.editor.symbolColors.Plot[ScopedI]);
+        }
         ScopedProfile.editor.blindMode =
             BoolField(*ScopedEditor, "ide_blind_mode", ScopedProfile.editor.blindMode);
         ScopedProfile.editor.deafMode = BoolField(*ScopedEditor, "ide_deaf_mode", ScopedProfile.editor.deafMode);
@@ -1180,6 +1304,23 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
 
     ScopedConfig.project.accessibility = ScopedProfile;
 
+    if (const toml::table* ScopedComfort = Section(ScopedRoot, "comfort"); ScopedComfort != nullptr)
+    {
+        ScopedConfig.project.motionComfort.cameraShakeScale = static_cast<float>(
+            std::clamp(FloatField(*ScopedComfort, "camera_shake_scale",
+                                  ScopedConfig.project.motionComfort.cameraShakeScale), 0.0, 1.0));
+        ScopedConfig.project.motionComfort.headBobScale = static_cast<float>(
+            std::clamp(FloatField(*ScopedComfort, "head_bob_scale", ScopedConfig.project.motionComfort.headBobScale),
+                       0.0, 1.0));
+        ScopedConfig.project.motionComfort.fovScale = static_cast<float>(
+            std::clamp(FloatField(*ScopedComfort, "fov_scale", ScopedConfig.project.motionComfort.fovScale), 0.5, 1.5));
+        ScopedConfig.project.motionComfort.motionBlurScale = static_cast<float>(
+            std::clamp(FloatField(*ScopedComfort, "motion_blur_scale",
+                                  ScopedConfig.project.motionComfort.motionBlurScale), 0.0, 1.0));
+        ScopedConfig.project.motionComfort.vignetteScale = static_cast<float>(
+            std::clamp(FloatField(*ScopedComfort, "vignette_scale", ScopedConfig.project.motionComfort.vignetteScale),
+                       0.0, 1.5));
+    }
     if (ScopedConfig.project.name[0] == '\0')
     {
         CopyProjectString(ScopedConfig.project.name, sizeof(ScopedConfig.project.name), "Untitled Project");

@@ -32,6 +32,9 @@ enum class FieldKind : std::uint8_t
     Int128,
     // Fixed-width signed decimal with coefficient and base-10 exponent.
     Decimal,
+    // Inline array of Vector2D values. The field size determines the capacity;
+    // TOML writes every element and readers zero-fill unused slots.
+    Vector2DArray,
 };
 
 struct FieldDesc
@@ -250,6 +253,7 @@ namespace Detail
             break;
         case FieldKind::Int128:
         case FieldKind::Decimal:
+        case FieldKind::Vector2DArray:
             return Detail::ByteRangeEqual(ScopedA, ScopedB, InField.size);
         case FieldKind::String:
             return Detail::StringFieldEqual(ScopedA, ScopedB, InField.size);
@@ -293,6 +297,10 @@ namespace Detail
     {                                                                                                                  \
     template <> struct Reflection<::type>                                                                              \
     {                                                                                                                  \
+        static_assert(std::is_trivially_copyable_v<::type>,                                                            \
+                      "Mirror: a reflected component must be trivially copyable");                                     \
+        static_assert(std::is_standard_layout_v<::type>,                                                               \
+                      "Mirror: a reflected component must be standard layout");                                        \
         static constexpr bool kRegistered = true;                                                                      \
         static constexpr std::string_view kName = displayName;                                                         \
         static constexpr auto kFields = std::array{__VA_ARGS__};                                                       \
@@ -305,6 +313,10 @@ namespace Detail
     {                                                                                                                  \
     template <> struct Reflection<::type>                                                                              \
     {                                                                                                                  \
+        static_assert(std::is_trivially_copyable_v<::type>,                                                            \
+                      "Mirror: a reflected component must be trivially copyable");                                     \
+        static_assert(std::is_standard_layout_v<::type>,                                                               \
+                      "Mirror: a reflected component must be standard layout");                                        \
         static constexpr bool kRegistered = true;                                                                      \
         static constexpr std::string_view kName = displayName;                                                         \
         static constexpr std::array<FieldDesc, 0> kFields{};                                                           \

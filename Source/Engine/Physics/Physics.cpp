@@ -46,12 +46,12 @@ namespace
 {
     if (!b2Body_IsValid(InBody))
     {
-        return entt::null;
+        return Fby::kNullEntity;
     }
     const auto* ScopedRaw = static_cast<const std::uint8_t*>(b2Body_GetUserData(InBody));
     if (ScopedRaw == nullptr)
     {
-        return entt::null;
+        return Fby::kNullEntity;
     }
     return static_cast<Entity>(reinterpret_cast<std::uintptr_t>(ScopedRaw) - 1u);
 }
@@ -64,14 +64,14 @@ namespace
 {
     if (!b2Shape_IsValid(InShape))
     {
-        return entt::null;
+        return Fby::kNullEntity;
     }
     return EntityFromBody(b2Shape_GetBody(InShape));
 }
 
 [[nodiscard]] void* BodyUserData(Entity InEntity) noexcept
 {
-    return reinterpret_cast<void*>(static_cast<std::uintptr_t>(entt::to_integral(InEntity)) + 1u);
+    return reinterpret_cast<void*>(static_cast<std::uintptr_t>(Fby::ToIntegral(InEntity)) + 1u);
 }
 
 // Shape creation lives in one place so a runtime collider edit can recreate the
@@ -118,7 +118,7 @@ namespace
 // tracks the smallest fraction instead of trusting the first callback order.
 struct RayCastCollector
 {
-    Entity ignore = entt::null;
+    Entity ignore = Fby::kNullEntity;
     bool found = false;
     float fraction = 1.0f;
     b2ShapeId shape{};
@@ -130,7 +130,7 @@ float CollectRayHit(b2ShapeId InShape, b2Pos InPoint, b2Vec2 InNormal, float InF
 {
     auto* ScopedCollector = static_cast<RayCastCollector*>(InContext);
     const Entity ScopedEntity = EntityFromShape(InShape);
-    if (ScopedEntity == entt::null || ScopedEntity == ScopedCollector->ignore)
+    if (ScopedEntity == Fby::kNullEntity || ScopedEntity == ScopedCollector->ignore)
     {
         return -1.0f;
     }
@@ -175,8 +175,7 @@ struct LivePhysicsRegistry
 }
 }
 
-PhysicsSystem::PhysicsSystem()
-    : MInstanceId(NextPhysicsInstance())
+PhysicsSystem::PhysicsSystem() : MInstanceId(NextPhysicsInstance())
 {
     LivePhysicsRegistry& ScopedRegistry = LivePhysics();
     if (ScopedRegistry.Count < ScopedRegistry.Records.size())
@@ -191,8 +190,7 @@ PhysicsSystem::~PhysicsSystem()
     LivePhysicsRegistry& ScopedRegistry = LivePhysics();
     for (std::size_t ScopedI = 0; ScopedI < ScopedRegistry.Count; ++ScopedI)
     {
-        if (ScopedRegistry.Records[ScopedI].System == this &&
-            ScopedRegistry.Records[ScopedI].Instance == MInstanceId)
+        if (ScopedRegistry.Records[ScopedI].System == this && ScopedRegistry.Records[ScopedI].Instance == MInstanceId)
         {
             ScopedRegistry.Records[ScopedI] = ScopedRegistry.Records[--ScopedRegistry.Count];
             break;
@@ -243,6 +241,9 @@ PhysicsCapabilities PhysicsSystem::Capabilities() const noexcept
         ScopedResult.Ccd = false;
         ScopedResult.Deterministic = true;
         ScopedResult.LargeWorlds = true;
+        ScopedResult.Friction = false;
+        ScopedResult.Restitution = false;
+        ScopedResult.RotationContacts = false;
         ScopedResult.MaxRecommendedBodies = kMaxTrackedPhysicsBodies;
         return ScopedResult;
     }
@@ -262,13 +263,12 @@ bool PhysicsSystem::Initialize(const PhysicsDesc& InDesc)
         MDesc.pixelsPerMeter = 50.0f;
     }
 
-    PhysicsBackendKind ScopedKind =
-        MRequestedBackend != PhysicsBackendKind::Auto ? MRequestedBackend : MDesc.backend;
+    PhysicsBackendKind ScopedKind = MRequestedBackend != PhysicsBackendKind::Auto ? MRequestedBackend : MDesc.backend;
     if (ScopedKind == PhysicsBackendKind::Auto)
     {
         const bool ScopedLarge = MDesc.bodyBudget >= 4096 || MDesc.deterministic;
         ScopedKind = MDesc.requireJoints ? PhysicsBackendKind::Box2D
-                                        : (ScopedLarge ? PhysicsBackendKind::Dod : PhysicsBackendKind::Box2D);
+                                         : (ScopedLarge ? PhysicsBackendKind::Dod : PhysicsBackendKind::Box2D);
     }
     if (ScopedKind == PhysicsBackendKind::Dod && !MDesc.requireJoints)
     {
@@ -395,7 +395,7 @@ void PhysicsSystem::PruneDeadBodies(Ecs::Registry& InRegistry) noexcept
     while (ScopedI < MBodies.size())
     {
         const BodyRecord ScopedRecord = MBodies[ScopedI];
-        const bool ScopedEntityGone = ScopedRecord.entity != entt::null && !InRegistry.valid(ScopedRecord.entity);
+        const bool ScopedEntityGone = ScopedRecord.entity != Fby::kNullEntity && !InRegistry.valid(ScopedRecord.entity);
         const bool ScopedBodyGone = !b2Body_IsValid(b2LoadBodyId(ScopedRecord.body));
         if (!ScopedEntityGone && !ScopedBodyGone)
         {
@@ -550,8 +550,7 @@ void PhysicsSystem::CreateMissingBodies(Ecs::Registry& InRegistry)
                 {
                     const b2ShapeId ScopedNewShape =
                         CreateColliderShape(ScopedExisting, ScopedCollider, MDesc.pixelsPerMeter);
-                    ScopedCollider.Shape =
-                        b2Shape_IsValid(ScopedNewShape) ? b2StoreShapeId(ScopedNewShape) : 0;
+                    ScopedCollider.Shape = b2Shape_IsValid(ScopedNewShape) ? b2StoreShapeId(ScopedNewShape) : 0;
                     ApplyShapeFilter(ScopedCollider);
                 }
                 else
@@ -583,11 +582,10 @@ void PhysicsSystem::CreateMissingBodies(Ecs::Registry& InRegistry)
                                 std::max(ScopedCollider.HalfExtents.X, 0.0f) / MDesc.pixelsPerMeter;
                             const float ScopedExpectedHalfY =
                                 std::max(ScopedCollider.HalfExtents.Y, 0.0f) / MDesc.pixelsPerMeter;
-                            ScopedShapeChanged =
-                                ScopedShapeChanged ||
-                                b2Shape_IsSensor(ScopedShape) != ScopedCollider.Sensor ||
-                                std::fabs(ScopedActualHalfX - ScopedExpectedHalfX) > 1.0e-3f ||
-                                std::fabs(ScopedActualHalfY - ScopedExpectedHalfY) > 1.0e-3f;
+                            ScopedShapeChanged = ScopedShapeChanged ||
+                                                 b2Shape_IsSensor(ScopedShape) != ScopedCollider.Sensor ||
+                                                 std::fabs(ScopedActualHalfX - ScopedExpectedHalfX) > 1.0e-3f ||
+                                                 std::fabs(ScopedActualHalfY - ScopedExpectedHalfY) > 1.0e-3f;
                         }
                         if (ScopedShapeChanged)
                         {
@@ -596,8 +594,7 @@ void PhysicsSystem::CreateMissingBodies(Ecs::Registry& InRegistry)
                             b2DestroyShape(ScopedShape, true);
                             const b2ShapeId ScopedNewShape =
                                 CreateColliderShape(ScopedExisting, ScopedCollider, MDesc.pixelsPerMeter);
-                            ScopedCollider.Shape =
-                                b2Shape_IsValid(ScopedNewShape) ? b2StoreShapeId(ScopedNewShape) : 0;
+                            ScopedCollider.Shape = b2Shape_IsValid(ScopedNewShape) ? b2StoreShapeId(ScopedNewShape) : 0;
                             ApplyShapeFilter(ScopedCollider);
                         }
                         else
@@ -610,8 +607,7 @@ void PhysicsSystem::CreateMissingBodies(Ecs::Registry& InRegistry)
                             {
                                 b2Shape_SetFriction(ScopedShape, ScopedCollider.Friction);
                             }
-                            if (std::fabs(b2Shape_GetRestitution(ScopedShape) - ScopedCollider.Restitution) >
-                                1.0e-6f)
+                            if (std::fabs(b2Shape_GetRestitution(ScopedShape) - ScopedCollider.Restitution) > 1.0e-6f)
                             {
                                 b2Shape_SetRestitution(ScopedShape, ScopedCollider.Restitution);
                             }
@@ -753,19 +749,17 @@ void PhysicsSystem::ReadContactEvents(Ecs::Registry& InRegistry)
         b2ContactData ScopedContactData{};
         if (b2Shape_GetContactData(ScopedSource.shapeIdA, &ScopedContactData, 1) > 0)
         {
-            ScopedEvent.normal =
-                Vector2D{ScopedContactData.manifold.normal.x, ScopedContactData.manifold.normal.y};
+            ScopedEvent.normal = Vector2D{ScopedContactData.manifold.normal.x, ScopedContactData.manifold.normal.y};
             if (ScopedContactData.manifold.pointCount > 0)
             {
                 const b2Vec2 ScopedAnchor = ScopedContactData.manifold.points[0].anchorA;
                 const b2Pos ScopedCenter = b2Body_GetWorldCenter(b2Shape_GetBody(ScopedSource.shapeIdA));
-                ScopedEvent.point =
-                    ToPixels(b2Pos{static_cast<float>(ScopedCenter.x) + ScopedAnchor.x,
-                                   static_cast<float>(ScopedCenter.y) + ScopedAnchor.y},
-                             MDesc.pixelsPerMeter);
+                ScopedEvent.point = ToPixels(b2Pos{static_cast<float>(ScopedCenter.x) + ScopedAnchor.x,
+                                                   static_cast<float>(ScopedCenter.y) + ScopedAnchor.y},
+                                             MDesc.pixelsPerMeter);
             }
         }
-        if (ScopedEvent.a != entt::null || ScopedEvent.b != entt::null)
+        if (ScopedEvent.a != Fby::kNullEntity || ScopedEvent.b != Fby::kNullEntity)
         {
             ScopedPush(ScopedEvent);
         }
@@ -777,7 +771,7 @@ void PhysicsSystem::ReadContactEvents(Ecs::Registry& InRegistry)
         ScopedEvent.type = PhysicsEventType::EndTouch;
         ScopedEvent.a = EntityFromShape(ScopedSource.shapeIdA);
         ScopedEvent.b = EntityFromShape(ScopedSource.shapeIdB);
-        if (ScopedEvent.a != entt::null || ScopedEvent.b != entt::null)
+        if (ScopedEvent.a != Fby::kNullEntity || ScopedEvent.b != Fby::kNullEntity)
         {
             ScopedPush(ScopedEvent);
         }
@@ -792,7 +786,7 @@ void PhysicsSystem::ReadContactEvents(Ecs::Registry& InRegistry)
         ScopedEvent.point = ToPixels(ScopedSource.point, MDesc.pixelsPerMeter);
         ScopedEvent.normal = Vector2D{ScopedSource.normal.x, ScopedSource.normal.y};
         ScopedEvent.speed = ScopedSource.approachSpeed * MDesc.pixelsPerMeter;
-        if (ScopedEvent.a != entt::null || ScopedEvent.b != entt::null)
+        if (ScopedEvent.a != Fby::kNullEntity || ScopedEvent.b != Fby::kNullEntity)
         {
             ScopedPush(ScopedEvent);
         }
@@ -1193,7 +1187,7 @@ void PhysicsSystem::ApplyAcceleration(Ecs::Registry& InRegistry, Entity InEntity
 }
 
 bool PhysicsSystem::RayCast(Ecs::Registry& InRegistry, Vector2D InFrom, Vector2D InTo, Entity InIgnore,
-                             std::uint32_t InMask, PhysicsRayHit& OutHit) const noexcept
+                            std::uint32_t InMask, PhysicsRayHit& OutHit) const noexcept
 {
     const Vector2D ScopedDelta = InTo - InFrom;
     const float ScopedLength = std::sqrt(ScopedDelta.Dot(ScopedDelta));
@@ -1340,10 +1334,14 @@ void PhysicsFixedStepThunk(Ecs::PhysicsSystemView& InView, void* InUser)
 }
 }
 
-bool PhysicsFixedStepSystem::Register(Ecs::SystemGraph& InGraph, PhysicsSystem& InSystem,
-                                      std::uint64_t InDependencies)
+bool PhysicsFixedStepSystem::Register(Ecs::SystemGraph& InGraph, PhysicsSystem& InSystem, std::uint64_t InDependencies)
 {
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<RigidBody2D, Collider2D, Transform2D, TimeScaleComponent,
+                                                               CollisionPolicyComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<RigidBody2D, Collider2D, Transform2D>();
+    ScopedAccess.Writes = Ecs::kServicePhysics;
     return InGraph.Add(Ecs::Phase::FixedUpdate, "PhysicsFixedStepSystem",
-                       Ecs::BindPhysicsSystem<&PhysicsFixedStepThunk>(), &InSystem, InDependencies);
+                       Ecs::BindPhysicsSystem<&PhysicsFixedStepThunk>(), &InSystem, InDependencies, 0, ScopedAccess);
 }
 }

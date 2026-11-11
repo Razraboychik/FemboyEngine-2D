@@ -1,5 +1,7 @@
 #include "Engine/ECS/Snapshot.hpp"
 
+#include "Engine/Core/Assert.hpp"
+#include "Engine/Core/Log.hpp"
 #include "Engine/ECS/SkeletonAssetRef.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
@@ -30,7 +32,7 @@ constexpr std::uint32_t kMagicSize = sizeof(kSnapshotMagic);
 
 struct RecordHeader
 {
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     std::uint16_t flags = 0;
     std::uint16_t componentCount = 0;
     std::uint32_t payloadBytes = 0;
@@ -157,7 +159,7 @@ private:
 
 struct BaseEntity
 {
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     std::uint32_t firstComponent = 0;
     std::uint16_t componentCount = 0;
 };
@@ -199,8 +201,8 @@ struct BaseView
     Out.entities.reserve(ScopedView.header.entityCount);
     // Open() already bounds the count by the payload; reserve from that bound so
     // a corrupt header can never throw inside this noexcept parser.
-    Out.components.reserve(std::min<std::size_t>(ScopedView.header.componentCount,
-                                                 ScopedView.payload.size() / sizeof(ComponentHeader)));
+    Out.components.reserve(
+        std::min<std::size_t>(ScopedView.header.componentCount, ScopedView.payload.size() / sizeof(ComponentHeader)));
 
     Reader ScopedReader(ScopedView.payload.data(), ScopedView.payload.size());
     for (std::uint32_t ScopedRecordIndex = 0; ScopedRecordIndex < ScopedView.header.entityCount; ++ScopedRecordIndex)
@@ -267,14 +269,13 @@ struct BaseView
 // destroys anything, so a semantically invalid (but checksum-valid) snapshot
 // cannot leave a half-built registry.
 [[nodiscard]] bool ValidatePayload(std::span<const std::byte> InPayload, const SnapshotSchema& InSchema,
-                                   std::uint32_t InEntityCount, bool InAllowRemoved,
-                                   std::string_view* InError) noexcept
+                                   std::uint32_t InEntityCount, bool InAllowRemoved, std::string_view* InError) noexcept
 {
     Reader ScopedReader(InPayload.data(), InPayload.size());
     for (std::uint32_t ScopedRecordIndex = 0; ScopedRecordIndex < InEntityCount; ++ScopedRecordIndex)
     {
         RecordHeader ScopedRecord;
-        if (!ScopedReader.Read(ScopedRecord) || ScopedRecord.entity == entt::null)
+        if (!ScopedReader.Read(ScopedRecord) || ScopedRecord.entity == Fby::kNullEntity)
         {
             if (InError != nullptr)
             {
@@ -384,7 +385,9 @@ void CollectSortedComponents(const SnapshotSchema& InSchema, std::span<const Sna
     }
     std::sort(InDestination.begin(), InDestination.begin() + ScopedCount,
               [](const SnapshotComponent* InLeft, const SnapshotComponent* InRight)
-              { return InLeft->typeId < InRight->typeId; });
+              {
+                  return InLeft->typeId < InRight->typeId;
+              });
     *OutCount = ScopedCount;
 }
 
@@ -393,16 +396,8 @@ void CollectSortedComponents(const SnapshotSchema& InSchema, std::span<const Sna
 {
     std::uint32_t ScopedCount = 0;
     bool ScopedOverflow = false;
-    const auto* ScopedStorage = InRegistry.storage<Entity>();
-    if (ScopedStorage == nullptr)
-    {
-        if (OutOverflow != nullptr)
-        {
-            *OutOverflow = false;
-        }
-        return 0;
-    }
-    for (const Entity ScopedEntity : *ScopedStorage)
+    const auto& ScopedStorage = Scene::GetEntityStorage(InRegistry);
+    for (const Entity ScopedEntity : ScopedStorage)
     {
         if (ScopedCount >= InDestination.size())
         {
@@ -412,7 +407,10 @@ void CollectSortedComponents(const SnapshotSchema& InSchema, std::span<const Sna
         InDestination[ScopedCount++] = ScopedEntity;
     }
     std::sort(InDestination.begin(), InDestination.begin() + ScopedCount,
-              [](Entity InLeft, Entity InRight) { return entt::to_integral(InLeft) < entt::to_integral(InRight); });
+              [](Entity InLeft, Entity InRight)
+              {
+                  return Fby::ToIntegral(InLeft) < Fby::ToIntegral(InRight);
+              });
     if (OutOverflow != nullptr)
     {
         *OutOverflow = ScopedOverflow;
@@ -481,6 +479,9 @@ struct ChangeScratch
             }
             else if (ScopedCodec.size > 0)
             {
+                // Zero the canonical buffer so a codec that leaves padding
+                // untouched cannot leak stale bytes into the delta checksum.
+                std::memset(ScopedCanonical.data(), 0, ScopedCodec.size);
                 if (!ScopedCodec.capture(InRegistry, InEntity,
                                          std::span<std::byte>(ScopedCanonical.data(), ScopedCodec.size)))
                 {
@@ -539,6 +540,9 @@ bool CaptureRigidBody(const Registry& InRegistry, Entity InEntity, std::span<std
         return false;
     }
     RigidBodySnapshot ScopedSnapshot{};
+    // BodyType is narrower than its slot; zero the whole image so padding
+    // bytes cannot leak into the snapshot checksum.
+    std::memset(&ScopedSnapshot, 0, sizeof(ScopedSnapshot));
     ScopedSnapshot.position = ScopedBody->Position;
     ScopedSnapshot.linearVelocity = ScopedBody->LinearVelocity;
     ScopedSnapshot.rotation = ScopedBody->Rotation;
@@ -601,6 +605,7 @@ bool CaptureCollider(const Registry& InRegistry, Entity InEntity, std::span<std:
         return false;
     }
     ColliderSnapshot ScopedSnapshot{};
+    std::memset(&ScopedSnapshot, 0, sizeof(ScopedSnapshot));
     ScopedSnapshot.halfExtents = ScopedCollider->HalfExtents;
     ScopedSnapshot.density = ScopedCollider->Density;
     ScopedSnapshot.friction = ScopedCollider->Friction;
@@ -687,7 +692,10 @@ void AddPhysicsCodecs(SnapshotSchema& InSchema)
     // The authoring chain record owns its path array and therefore cannot use
     ScopedAddRaw(
         "JointChainComponent", static_cast<std::uint32_t>(sizeof(JointChainComponent)),
-        +[](const Registry& InRegistry, Entity InEntity) { return InRegistry.all_of<JointChainComponent>(InEntity); },
+        +[](const Registry& InRegistry, Entity InEntity)
+        {
+            return InRegistry.all_of<JointChainComponent>(InEntity);
+        },
         +[](const Registry& InRegistry, Entity InEntity, std::span<std::byte> InDestination)
         {
             const auto* ScopedComponent = InRegistry.try_get<JointChainComponent>(InEntity);
@@ -752,7 +760,10 @@ void AddPhysicsCodecs(SnapshotSchema& InSchema)
             InRegistry.emplace_or_replace<JointChainComponent>(InEntity, ScopedComponent);
             return true;
         },
-        +[](Registry& InRegistry, Entity InEntity) { InRegistry.remove<JointChainComponent>(InEntity); },
+        +[](Registry& InRegistry, Entity InEntity)
+        {
+            InRegistry.remove<JointChainComponent>(InEntity);
+        },
         SnapshotTypeId("JointChainComponent/v5"));
 }
 }
@@ -760,8 +771,15 @@ void AddPhysicsCodecs(SnapshotSchema& InSchema)
 // Schema
 bool SnapshotSchema::AddCodec(const SnapshotComponent& InCodec)
 {
+    // Running out of codec slots would silently stop capturing a component and
+    // desynchronize rollback, so it is a hard failure rather than a false return.
+    if (MCount >= MComponents.size())
+    {
+        Fby::FailAssert("Fby::Ecs::SnapshotSchema::AddCodec", __FILE__, __LINE__,
+                        "snapshot component limit exceeded (kMaxSnapshotComponents)");
+    }
     if (InCodec.name.empty() || InCodec.has == nullptr || InCodec.capture == nullptr || InCodec.restore == nullptr ||
-        InCodec.remove == nullptr || InCodec.size > kMaxSnapshotComponentBytes || MCount >= MComponents.size())
+        InCodec.remove == nullptr || InCodec.size > kMaxSnapshotComponentBytes)
     {
         return false;
     }
@@ -942,12 +960,8 @@ std::size_t SnapshotSize(const Registry& InRegistry, const SnapshotSchema& InSch
                          std::size_t InExtensionBytes) noexcept
 {
     std::size_t ScopedBytes = sizeof(SnapshotHeader) + InExtensionBytes;
-    const auto* ScopedStorage = InRegistry.storage<Entity>();
-    if (ScopedStorage == nullptr)
-    {
-        return ScopedBytes;
-    }
-    for (const Entity ScopedEntity : *ScopedStorage)
+    const auto& ScopedStorage = Scene::GetEntityStorage(InRegistry);
+    for (const Entity ScopedEntity : ScopedStorage)
     {
         ScopedBytes += sizeof(RecordHeader);
         for (const SnapshotComponent& ScopedCodec : InSchema.All())
@@ -978,6 +992,8 @@ bool CaptureSnapshot(const Registry& InRegistry, const SnapshotSchema& InSchema,
     {
         // More entities than the snapshot table can hold: fail instead of
         // silently capturing a subset.
+        LogError("snapshot", "entity count exceeds the snapshot limit ({}); capture refused",
+                 static_cast<std::uint32_t>(kMaxSnapshotEntities));
         return false;
     }
 
@@ -1030,6 +1046,7 @@ bool CaptureSnapshot(const Registry& InRegistry, const SnapshotSchema& InSchema,
             }
             if (ScopedCodec.size > 0)
             {
+                std::memset(ScopedCanonical.data(), 0, ScopedCodec.size);
                 if (!ScopedCodec.capture(InRegistry, ScopedEntity,
                                          std::span<std::byte>(ScopedCanonical.data(), ScopedCodec.size)))
                 {
@@ -1095,6 +1112,8 @@ bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema, st
     const std::uint32_t ScopedEntityCount = CollectEntities(InRegistry, ScopedEntities, &ScopedOverflow);
     if (ScopedOverflow)
     {
+        LogError("snapshot", "entity count exceeds the delta snapshot limit ({}); capture refused",
+                 static_cast<std::uint32_t>(kMaxSnapshotEntities));
         return false;
     }
     std::array<const SnapshotComponent*, kMaxSnapshotComponents> ScopedComponents{};
@@ -1113,10 +1132,10 @@ bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema, st
         const BaseEntity* ScopedPrevious =
             ScopedBaseIndex < ScopedBase.entities.size() ? &ScopedBase.entities[ScopedBaseIndex] : nullptr;
         const Entity ScopedCurrent =
-            ScopedCurrentIndex < ScopedEntityCount ? ScopedEntities[ScopedCurrentIndex] : entt::null;
+            ScopedCurrentIndex < ScopedEntityCount ? ScopedEntities[ScopedCurrentIndex] : Fby::kNullEntity;
 
         if (ScopedPrevious != nullptr && (ScopedCurrentIndex >= ScopedEntityCount ||
-                                          entt::to_integral(ScopedPrevious->entity) < entt::to_integral(ScopedCurrent)))
+                                          Fby::ToIntegral(ScopedPrevious->entity) < Fby::ToIntegral(ScopedCurrent)))
         {
             // Entity existed in the base and is gone now.
             RecordHeader ScopedRecord;
@@ -1133,7 +1152,7 @@ bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema, st
             continue;
         }
 
-        if (ScopedPrevious == nullptr || entt::to_integral(ScopedCurrent) < entt::to_integral(ScopedPrevious->entity))
+        if (ScopedPrevious == nullptr || Fby::ToIntegral(ScopedCurrent) < Fby::ToIntegral(ScopedPrevious->entity))
         {
             // New entity: write every component.
             std::uint16_t ScopedPresent = 0;
@@ -1172,6 +1191,7 @@ bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema, st
                 }
                 if (ScopedCodec.size > 0)
                 {
+                    std::memset(ScopedCanonical.data(), 0, ScopedCodec.size);
                     if (!ScopedCodec.capture(InRegistry, ScopedCurrent,
                                              std::span<std::byte>(ScopedCanonical.data(), ScopedCodec.size)) ||
                         !ScopedWriter.WriteBytes(std::span<const std::byte>(ScopedCanonical.data(), ScopedCodec.size)))
@@ -1217,6 +1237,7 @@ bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema, st
                 }
                 if (ScopedComponent.size > 0)
                 {
+                    std::memset(ScopedCanonical.data(), 0, ScopedComponent.size);
                     if (!ScopedChange.codec->capture(
                             InRegistry, ScopedCurrent,
                             std::span<std::byte>(ScopedCanonical.data(), ScopedComponent.size)) ||
@@ -1303,7 +1324,7 @@ bool RestoreSnapshot(Registry& InRegistry, const SnapshotSchema& InSchema, std::
     for (std::uint32_t ScopedRecordIndex = 0; ScopedRecordIndex < ScopedView.header.entityCount; ++ScopedRecordIndex)
     {
         RecordHeader ScopedRecord;
-        if (!ScopedReader.Read(ScopedRecord) || ScopedRecord.entity == entt::null)
+        if (!ScopedReader.Read(ScopedRecord) || ScopedRecord.entity == Fby::kNullEntity)
         {
             return false;
         }
@@ -1398,16 +1419,15 @@ bool RestoreDelta(Registry& InRegistry, const SnapshotSchema& InSchema, std::spa
         return false;
     }
     if (ScopedView.header.baseChecksum != ScopedBase.header.checksum ||
-        ScopedView.header.baseTick != ScopedBase.header.tick ||
-        ScopedView.header.schemaHash != InSchema.Hash() || ScopedBase.header.schemaHash != InSchema.Hash())
+        ScopedView.header.baseTick != ScopedBase.header.tick || ScopedView.header.schemaHash != InSchema.Hash() ||
+        ScopedBase.header.schemaHash != InSchema.Hash())
     {
         // Delta belongs to a different base frame or schema
         return false;
     }
     // Validate the delta before the base restore touches the registry.
     std::string_view ScopedDeltaPayloadError;
-    if (!ValidatePayload(ScopedView.payload, InSchema, ScopedView.header.entityCount, true,
-                         &ScopedDeltaPayloadError))
+    if (!ValidatePayload(ScopedView.payload, InSchema, ScopedView.header.entityCount, true, &ScopedDeltaPayloadError))
     {
         return false;
     }
@@ -1423,7 +1443,7 @@ bool RestoreDelta(Registry& InRegistry, const SnapshotSchema& InSchema, std::spa
     for (std::uint32_t ScopedRecordIndex = 0; ScopedRecordIndex < ScopedView.header.entityCount; ++ScopedRecordIndex)
     {
         RecordHeader ScopedRecord;
-        if (!ScopedReader.Read(ScopedRecord) || ScopedRecord.entity == entt::null)
+        if (!ScopedReader.Read(ScopedRecord) || ScopedRecord.entity == Fby::kNullEntity)
         {
             return false;
         }
@@ -1509,7 +1529,7 @@ bool ApplyDelta(Registry& InRegistry, const SnapshotSchema& InSchema, std::span<
     for (std::uint32_t ScopedRecordIndex = 0; ScopedRecordIndex < ScopedView.header.entityCount; ++ScopedRecordIndex)
     {
         RecordHeader ScopedRecord;
-        if (!ScopedReader.Read(ScopedRecord) || ScopedRecord.entity == entt::null)
+        if (!ScopedReader.Read(ScopedRecord) || ScopedRecord.entity == Fby::kNullEntity)
         {
             return false;
         }
@@ -1579,8 +1599,8 @@ bool RememberBaseline(SnapshotBaseline& OutBaseline, std::span<const std::byte> 
     return true;
 }
 
-bool ApplyDeltaChecked(Registry& InRegistry, const SnapshotSchema& InSchema,
-                       std::span<const std::byte> InDelta, const SnapshotBaseline& InBaseline) noexcept
+bool ApplyDeltaChecked(Registry& InRegistry, const SnapshotSchema& InSchema, std::span<const std::byte> InDelta,
+                       const SnapshotBaseline& InBaseline) noexcept
 {
     if (!InBaseline.Valid)
     {
@@ -1589,8 +1609,7 @@ bool ApplyDeltaChecked(Registry& InRegistry, const SnapshotSchema& InSchema,
     std::string_view ScopedError;
     const SnapshotView ScopedView = SnapshotView::Open(InDelta, &ScopedError);
     if (ScopedView.header.version == 0 || (ScopedView.header.flags & SnapshotDelta) == 0 ||
-        ScopedView.header.baseTick != InBaseline.Tick ||
-        ScopedView.header.baseChecksum != InBaseline.PayloadChecksum)
+        ScopedView.header.baseTick != InBaseline.Tick || ScopedView.header.baseChecksum != InBaseline.PayloadChecksum)
     {
         return false;
     }

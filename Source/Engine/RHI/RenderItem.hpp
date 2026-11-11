@@ -20,8 +20,7 @@ inline constexpr std::uint32_t DepthWriteMask = 1u << 9;
 
 // Packs a normalized depth into the high byte and marks the item for the depth
 // prepass. A value of 0 is near, 1 is far.
-[[nodiscard]] inline std::uint32_t EncodeDepth(std::uint32_t InFlags, float InDepth,
-                                              bool InWriteDepth = true) noexcept
+[[nodiscard]] inline std::uint32_t EncodeDepth(std::uint32_t InFlags, float InDepth, bool InWriteDepth = true) noexcept
 {
     const std::uint32_t ScopedBase = InFlags & ~(kDepthFlagMask | DepthWriteMask);
     if (!InWriteDepth)
@@ -174,9 +173,14 @@ using RenderKey = std::uint64_t;
 // with the same material lands in one contiguous run and therefore in one batch.
 inline constexpr std::uint32_t kLayerBits = 16;
 inline constexpr std::uint32_t kMaterialBits = 8;
-inline constexpr std::uint32_t kDepthBits = 32;
 inline constexpr std::uint32_t kSequenceBits = 8;
+// The depth value itself is 24 bits; the low 8 bits of the 32-bit field carry
+// the stable sequence so equal-depth items keep their submission order.
+inline constexpr std::uint32_t kDepthValueBits = 24;
+inline constexpr std::uint32_t kDepthBits = kDepthValueBits + kSequenceBits;
 inline constexpr std::uint64_t kDepthScale = (1ull << kDepthBits) - 1ull;
+static_assert(kDepthBits == 32);
+static_assert((std::uint64_t{65535} << kSequenceBits) <= kDepthScale);
 inline constexpr std::uint32_t kMaxMaterialBuckets = 1u << kMaterialBits;
 inline constexpr std::uint32_t kMaterialKeyShift = kDepthBits + kSequenceBits;
 inline constexpr std::uint32_t kLayerKeyShift = kMaterialKeyShift + kMaterialBits;
@@ -187,13 +191,12 @@ inline constexpr std::uint32_t kLayerKeyShift = kMaterialKeyShift + kMaterialBit
     // Map [-32768, 32767] world depth to [0, 2^32): a monotonic, branch-free
     // range. The negated comparison also catches NaN, which would otherwise
     // reach a float-to-integer conversion with an out-of-range value.
-    const float ScopedClamped =
-        !(InDepth >= -32768.0f) ? -32768.0f : (InDepth > 32767.0f ? 32767.0f : InDepth);
+    const float ScopedClamped = !(InDepth >= -32768.0f) ? -32768.0f : (InDepth > 32767.0f ? 32767.0f : InDepth);
     // Scale by the sequence-bit count before the integer conversion, so
     // sub-unit depths survive; converting first truncated every fractional
     // depth to the same key.
-    const std::uint64_t ScopedDepthBits = static_cast<std::uint64_t>(
-        (static_cast<double>(ScopedClamped) + 32768.0) * static_cast<double>(1u << kSequenceBits));
+    const std::uint64_t ScopedDepthBits = static_cast<std::uint64_t>((static_cast<double>(ScopedClamped) + 32768.0) *
+                                                                     static_cast<double>(1u << kSequenceBits));
     return (static_cast<std::uint64_t>(InLayer) << kLayerKeyShift) |
            (static_cast<std::uint64_t>(InMaterialBucket) << kMaterialKeyShift) | (ScopedDepthBits & kDepthScale) |
            InSequence;
@@ -466,6 +469,9 @@ struct FramePacket
     // Hi-Z and culling lists remain valid.
     bool sceneStatic = false;
     std::uint32_t sceneVersion = 0;
+    // Stable owner id for the static instance cache. A packet is copied by the
+    // app every frame, so its address is not a valid cache key.
+    std::uint64_t sceneId = 0;
     std::uint32_t lightVersion = 0;
 
     // Optional SDF GI probe volume for the fragment shader.

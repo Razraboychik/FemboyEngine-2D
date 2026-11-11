@@ -215,7 +215,7 @@ std::uint32_t HostSpawn(void* InUser, std::uint32_t InPrefabId) noexcept
     auto* ScopedHost = static_cast<HostUser*>(InUser);
     if (ScopedHost == nullptr || ScopedHost->context == nullptr || ScopedHost->context->spawn == nullptr)
     {
-        return static_cast<std::uint32_t>(entt::null);
+        return static_cast<std::uint32_t>(Fby::kNullEntity);
     }
     return ScopedHost->context->spawn(*ScopedHost->context, InPrefabId);
 }

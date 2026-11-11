@@ -58,6 +58,7 @@
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/WindowManager.hpp"
 #include "Engine/Core/PluginHost.hpp"
+#include "Engine/UI/AccessibilityTheme.hpp"
 #include "Engine/RHI/RHI.hpp"
 #include "Engine/RHI/RenderGraph.hpp"
 #include "Engine/UI/AccessibilityOverlay.hpp"
@@ -76,6 +77,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -711,17 +713,17 @@ int main(int argc, char** argv)
     }
     const Fby::Entity ScopedSkeletalAnimationEntity = SpawnSkeletonDemo(ScopedRegistry);
     Fby::LogInfo("editor_app", "Skeleton demo entity {}: 3 bones, 4 skinned vertices",
-                 entt::to_integral(ScopedSkeletalAnimationEntity));
+                 Fby::ToIntegral(ScopedSkeletalAnimationEntity));
     const std::string_view ScopedAtlasPath = ScopedAssetDb.Path(ScopedAtlasId);
     const Fby::Assets::AssetHandle ScopedAtlasHandle =
         ScopedAtlasPath.empty() ? Fby::Assets::AssetHandle{}
                                 : ScopedAssetDb.EnsureMeta(ScopedAtlasId, Fby::AssetKind::SpriteSheet, ScopedAtlasPath);
     const Fby::Entity ScopedSpriteAnimationEntity = SpawnSpriteAnimationDemo(ScopedRegistry, ScopedAtlasHandle);
     Fby::LogInfo("editor_app", "SpriteAnimation demo entity {}: 4 cells, 0.12 s/frame",
-                 entt::to_integral(ScopedSpriteAnimationEntity));
+                 Fby::ToIntegral(ScopedSpriteAnimationEntity));
     const Fby::Entity ScopedPhysicsEntity = SpawnPhysicsDemo(ScopedRegistry);
     Fby::LogInfo("editor_app", "Box2D demo entity {}: dynamic crate over static ground",
-                 entt::to_integral(ScopedPhysicsEntity));
+                 Fby::ToIntegral(ScopedPhysicsEntity));
 
     Fby::Ecs::SystemGraph ScopedGraph;
     // Host-owned strict text runtime. The editor tries the same asset TTF stack
@@ -771,12 +773,12 @@ int main(int argc, char** argv)
     constexpr std::uint64_t kAfterPhysics = 1ull << 3;
     constexpr std::uint64_t kAfterContacts = 1ull << 4;
     constexpr std::uint64_t kAfterSpriteAnimation = 1ull << 5;
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "events_clear",
-                          Fby::Ecs::BindCoreSystem<&EventsClear>(), &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "gravity",
-                          Fby::Ecs::BindPhysicsSystem<&GravityStepSystem>(), &ScopedGameSystems, kAfterEvents);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement",
-                          Fby::Ecs::BindCoreSystem<&MovementSystem>(), nullptr, kAfterEvents | kAfterGravity);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "events_clear", Fby::Ecs::BindCoreSystem<&EventsClear>(),
+                          &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "gravity", Fby::Ecs::BindPhysicsSystem<&GravityStepSystem>(),
+                          &ScopedGameSystems, kAfterEvents);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", Fby::Ecs::BindCoreSystem<&MovementSystem>(),
+                          nullptr, kAfterEvents | kAfterGravity);
     (void)Fby::PhysicsFixedStepSystem::Register(ScopedGraph, ScopedPhysics, kAfterMovement);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "contact_to_spriteAnimation",
                           Fby::Ecs::BindPhysicsSystem<&ContactToSpriteAnimationSystem>(), &ScopedGameSystems,
@@ -798,8 +800,8 @@ int main(int argc, char** argv)
                           Fby::Ecs::BindGameplaySystem<&AICommandApplySystem>(), &ScopedGameSystems);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ai_controller",
                           Fby::Ecs::BindGameplaySystem<&AIControllerStepSystem>(), &ScopedGameSystems);
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "navigation",
-                          Fby::Ecs::BindCoreSystem<&NavigationStepSystem>(), &ScopedGameSystems);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "navigation", Fby::Ecs::BindCoreSystem<&NavigationStepSystem>(),
+                          &ScopedGameSystems);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::PreUpdate, "audio", Fby::Ecs::BindAudioSystem<&AudioUpdateSystem>());
     (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "skeletal_evaluate",
                           Fby::Ecs::BindCoreSystem<&SkeletalEvaluateSystem>(), &ScopedGameSystems);
@@ -972,8 +974,8 @@ int main(int argc, char** argv)
     // point-light tint so shadows are not applied twice.
     ScopedLighting.Settings.SdfShadows = false;
     ScopedLighting.Settings.SdfAmbientOcclusion = 0.0f;
-    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "lighting",
-                          Fby::Ecs::BindRenderSystem<&LightingStepSystem>(), &ScopedLightingBridge);
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "lighting", Fby::Ecs::BindRenderSystem<&LightingStepSystem>(),
+                          &ScopedLightingBridge);
     (void)Fby::ClothRenderSystem::Register(ScopedGraph, ScopedClothRender);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "scripts", &ScriptSystem, &ScopedScripts,
                           kAfterSpriteAnimation);
@@ -1080,37 +1082,49 @@ int main(int argc, char** argv)
 
     Fby::Plugin::PluginHost ScopedPluginHost(ScopedPluginComponents, &ScopedRegistry);
     ScopedPluginHost.BindSystemGraph(ScopedGraph);
+    Fby::Ui::AccessibilityThemeRegistry ScopedAccessibilityThemes;
+    Fby::Ui::AccessibilityExtensionRegistry ScopedAccessibilityExtensions;
+    Fby::Ui::AccessibilityEffectRegistry ScopedAccessibilityEffects;
+    (void)ScopedAccessibilityThemes.Register(Fby::Ui::DefaultAccessibilityTheme());
+    ScopedPluginHost.BindAccessibilityThemes(&ScopedAccessibilityThemes);
+    ScopedPluginHost.BindAccessibilityEffects(&ScopedAccessibilityExtensions, &ScopedAccessibilityEffects);
+    ScopedEditor.SetPluginHost(&ScopedPluginHost);
+    ScopedEditor.SetEffectRegistry(&ScopedAccessibilityEffects);
     const std::filesystem::path ScopedExecutableDir = std::filesystem::path(argv[0]).has_parent_path()
                                                           ? std::filesystem::path(argv[0]).parent_path()
                                                           : std::filesystem::path(".");
     const std::filesystem::path ScopedPluginsDir = ScopedExecutableDir / "plugins";
     Fby::LogInfo("editor_app", "plugin directory: {}", ScopedPluginsDir.string());
 
+    if (std::getenv("FBY_PLUGIN_SELFTEST") != nullptr)
     {
-        std::string ScopedError;
-        const std::filesystem::path ScopedGood = ScopedPluginsDir / (std::string("fby_hello_mod") + kPluginSuffix);
-        if (!ScopedPluginHost.Load(ScopedGood.string(), &ScopedError))
         {
-            Fby::LogWarn("editor_app", "test plugin not loaded: {}", ScopedError);
-            ScopedEditor.PrintLine("plugin rejected: " + ScopedError);
+            std::string ScopedError;
+            const std::filesystem::path ScopedGood = ScopedPluginsDir / (std::string("fby_hello_mod") + kPluginSuffix);
+            if (!ScopedPluginHost.Load(ScopedGood.string(), &ScopedError))
+            {
+                Fby::LogWarn("editor_app", "test plugin not loaded: {}", ScopedError);
+                ScopedEditor.PrintLine("plugin rejected: " + ScopedError);
+            }
+            else
+            {
+                ScopedEditor.PrintLine("plugin loaded: hello_mod (Transform2D, Velocity)");
+            }
         }
-        else
         {
-            ScopedEditor.PrintLine("plugin loaded: hello_mod (Transform2D, Velocity)");
-        }
-    }
-    {
-        // This is the ABI test: the library is valid, but its Transform2D hash
-        std::string ScopedError;
-        const std::filesystem::path ScopedBad = ScopedPluginsDir / (std::string("fby_hello_mod_bad") + kPluginSuffix);
-        if (ScopedPluginHost.Load(ScopedBad.string(), &ScopedError))
-        {
-            Fby::LogError("editor_app", "BAD PLUGIN WAS ACCEPTED - layout checking is broken");
-        }
-        else
-        {
-            Fby::LogInfo("editor_app", "bad-layout plugin rejected as expected: {}", ScopedError);
-            ScopedEditor.PrintLine("plugin rejected as expected: " + ScopedError);
+            // This is the ABI test: the library is valid, but its Transform2D hash
+            std::string ScopedError;
+            const std::filesystem::path ScopedBad =
+                ScopedPluginsDir / (std::string("fby_hello_mod_bad") + kPluginSuffix);
+            if (ScopedPluginHost.Load(ScopedBad.string(), &ScopedError))
+            {
+                Fby::LogError("editor_app", "BAD PLUGIN WAS ACCEPTED - layout checking is broken");
+            }
+            else
+            {
+                Fby::LogInfo("editor_app", "bad-layout plugin rejected as expected: {}", ScopedError);
+                ScopedEditor.PrintLine("plugin rejected as expected: " + ScopedError);
+            }
         }
     }
 
@@ -1258,7 +1272,15 @@ int main(int argc, char** argv)
                                      Fby::Rhi::kVirtualTexturePageTableMissing);
                 if (const char* ScopedDebug = std::getenv("FBY_VT_DEBUG"); ScopedDebug != nullptr)
                 {
-                    ScopedVtDebugMode = static_cast<std::uint32_t>(std::clamp(std::atoi(ScopedDebug), 0, 2));
+                    const std::string_view ScopedDebugText(ScopedDebug);
+                    int ScopedParsed = 0;
+                    const auto ScopedParse =
+                        std::from_chars(ScopedDebugText.data(), ScopedDebugText.data() + ScopedDebugText.size(),
+                                        ScopedParsed);
+                    if (ScopedParse.ec == std::errc{} && ScopedParse.ptr == ScopedDebugText.data() + ScopedDebugText.size())
+                    {
+                        ScopedVtDebugMode = static_cast<std::uint32_t>(std::clamp(ScopedParsed, 0, 2));
+                    }
                 }
                 else
                 {
@@ -1278,7 +1300,7 @@ int main(int argc, char** argv)
                      ScopedVtTableSize);
     }
 
-    Fby::Entity ScopedVtSprite = entt::null;
+    Fby::Entity ScopedVtSprite = Fby::kNullEntity;
     if (ScopedVtDemo)
     {
         ScopedVtSprite = ScopedRegistry.create();
@@ -1304,10 +1326,13 @@ int main(int argc, char** argv)
     Fby::Rhi::SdfShadowPass ScopedShadowPass;
     Fby::Rhi::FrameComposer ScopedExtract;
     Fby::Rhi::FrameComposer ScopedPieExtract;
+    ScopedExtract.SetJobSystem(&ScopedJobs);
+    ScopedPieExtract.SetJobSystem(&ScopedJobs);
+    ScopedExtract.SetInstanceDeltasEnabled(ScopedGpu->Info().framesInFlight == 1);
+    ScopedPieExtract.SetInstanceDeltasEnabled(ScopedGpu->Info().framesInFlight == 1);
     // The viewport composes into fixed storage and does not need the diagnostic
     // render-ECS mirror, so both composers skip the per-sprite pack.
-    const std::uint32_t ScopedComposerItems =
-        std::min<std::uint32_t>(ScopedGpu->Info().maxItemsPerFrame, 1u << 16);
+    const std::uint32_t ScopedComposerItems = std::min<std::uint32_t>(ScopedGpu->Info().maxItemsPerFrame, 1u << 16);
     ScopedExtract.Reserve(ScopedComposerItems);
     ScopedPieExtract.Reserve(ScopedComposerItems);
     ScopedExtract.SetRenderEcsMirror(false);
@@ -1445,6 +1470,10 @@ int main(int argc, char** argv)
         ++ScopedFrameIndex;
         ScopedContext.frameIndex = ScopedFrameIndex;
         ScopedContext.dt = ScopedDt;
+        ScopedContext.uiDt =
+            ScopedEditor.IsPaused()
+                ? (ScopedEditor.PieHudAnimationsPaused() ? 0.0f : static_cast<float>(ScopedClock.RealDelta()))
+                : ScopedDt;
         {
             auto ScopedPhaseScope = ScopedProfiler.BeginRound(0);
             ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
@@ -1476,6 +1505,10 @@ int main(int argc, char** argv)
         {
             auto ScopedPhaseScope = ScopedProfiler.BeginRound(2);
             ScopedGraph.Run(Fby::Ecs::Phase::PostUpdate, ScopedContext);
+        }
+        {
+            auto ScopedPhaseScope = ScopedProfiler.BeginRound(2);
+            ScopedGraph.Run(Fby::Ecs::Phase::Ui, ScopedContext);
         }
         {
             auto ScopedPhaseScope = ScopedProfiler.BeginRound(3);
@@ -1814,6 +1847,10 @@ int main(int argc, char** argv)
                     // The offscreen target path runs the GPU composite pass, so the
                     // colour transform travels as packet flags only.
                     ScopedKernel.ApplyToFrame(ScopedPiePacket);
+                    ScopedKernel.ApplyPostFx(ScopedPiePacket.postFx);
+                    ScopedPiePacket.postFx.vignetteStrength *=
+                        ScopedEditor.ProjectSettings().Values().motionComfort.vignetteScale;
+                    ScopedPiePacket.postFxEnabled = true;
                 }
                 if (ScopedPieSettings.oitMode != Fby::Editor::OitMode::Off &&
                     !ScopedPieExtract.OitPacket().items.empty() &&

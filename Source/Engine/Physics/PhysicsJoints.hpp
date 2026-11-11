@@ -200,8 +200,8 @@ struct JointChainDesc
     // replaces SegmentCount when Path is empty.
     std::span<const JointChainSection> Sections{};
 
-    Entity AnchorA = entt::null;
-    Entity AnchorB = entt::null;
+    Entity AnchorA = Fby::kNullEntity;
+    Entity AnchorB = Fby::kNullEntity;
 
     // Pixels
     float Radius = 3.0f;
@@ -380,8 +380,8 @@ struct JointChainComponent
     ChainId ChainID{};
     std::uint32_t Kind = static_cast<std::uint32_t>(JointChainKind::Rope);
     std::uint32_t Flags = JointChainPinStart | JointChainPinEnd;
-    Entity AnchorA = entt::null;
-    Entity AnchorB = entt::null;
+    Entity AnchorA = Fby::kNullEntity;
+    Entity AnchorB = Fby::kNullEntity;
     Vector2D Start{};
     Vector2D End{0.0f, 128.0f};
     std::uint32_t SegmentCount = 8;
@@ -436,8 +436,8 @@ struct JointChainInfo
     // Connections that still hold; broken ones are counted separately
     std::uint32_t JointCount = 0;
     std::uint32_t BrokenCount = 0;
-    Entity AnchorA = entt::null;
-    Entity AnchorB = entt::null;
+    Entity AnchorA = Fby::kNullEntity;
+    Entity AnchorB = Fby::kNullEntity;
 };
 
 // PhysicsJointSystem
@@ -625,8 +625,8 @@ private:
         std::uint32_t Flags = 0;
         std::uint32_t LinkCount = 0;
         std::uint32_t ConnectionCount = 0;
-        Entity AnchorA = entt::null;
-        Entity AnchorB = entt::null;
+        Entity AnchorA = Fby::kNullEntity;
+        Entity AnchorB = Fby::kNullEntity;
         // Packed b2BodyId (owned or borrowed)
         std::uint64_t AnchorBodyA = 0;
         std::uint64_t AnchorBodyB = 0;

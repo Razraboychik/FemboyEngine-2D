@@ -103,7 +103,7 @@ template <typename OutRange> std::uint32_t CollectPcsForLine(const CompiledProgr
 struct DebugFrame
 {
     ScriptEvent Event = ScriptEvent::Update;
-    Entity Self = entt::null;
+    Entity Self = Fby::kNullEntity;
     std::uint32_t Pc = 0;
     SourceLocation Location{};
 };

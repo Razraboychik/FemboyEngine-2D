@@ -1,6 +1,9 @@
 #include "Engine/Assets/FempakWriter.hpp"
 
+#include "Engine/Core/PathUtil.hpp"
+
 #include <algorithm>
+#include <bit>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -85,7 +88,9 @@ void FempakWriter::Add(std::string_view InPath, std::vector<std::byte> InBytes, 
     FempakInput ScopedInput;
     ScopedInput.path = ScopedNormalized;
     ScopedInput.bytes = std::move(InBytes);
-    ScopedInput.alignment = std::max(InAlignment, 1u);
+    // AlignUp masks the low bits, so a non-power-of-two alignment would not
+    // actually align the payload. Round up to the next power of two.
+    ScopedInput.alignment = std::bit_ceil(std::max(InAlignment, 1u));
     if (ScopedExisting != MEntries.end())
     {
         *ScopedExisting = std::move(ScopedInput);
@@ -98,7 +103,7 @@ bool FempakWriter::AddDirectory(std::string_view InDirectory, std::string_view I
 {
     namespace fs = std::filesystem;
     std::error_code ScopedCode;
-    const fs::path ScopedRoot{std::string(InDirectory)};
+    const fs::path ScopedRoot = Core::PathFromUtf8(InDirectory);
     if (!fs::is_directory(ScopedRoot, ScopedCode))
     {
         SetError(InError, "not a directory: " + std::string(InDirectory));
@@ -193,12 +198,17 @@ std::vector<std::byte> FempakWriter::Build(std::string* InError) const
     ScopedHeader.dataOffset = ScopedDataOffset;
     std::memcpy(ScopedOut.data(), &ScopedHeader, sizeof(ScopedHeader));
 
-    std::uint32_t ScopedPathCursor = 0;
+    std::uint64_t ScopedPathCursor = 0;
     for (std::size_t ScopedI = 0; ScopedI < ScopedSorted.size(); ++ScopedI)
     {
         const FempakInput& ScopedInput = *ScopedSorted[ScopedI];
+        if (ScopedPathCursor > std::numeric_limits<std::uint32_t>::max())
+        {
+            SetError(InError, "fempak string table exceeds 4 GiB");
+            return {};
+        }
         PakEntry ScopedEntry{};
-        ScopedEntry.pathOffset = ScopedPathCursor;
+        ScopedEntry.pathOffset = static_cast<std::uint32_t>(ScopedPathCursor);
         ScopedEntry.pathSize = static_cast<std::uint32_t>(ScopedInput.path.size());
         ScopedEntry.offset = ScopedPayloadOffsets[ScopedI];
         ScopedEntry.size = ScopedInput.bytes.size();
@@ -229,7 +239,7 @@ std::vector<std::byte> FempakWriter::Build(std::string* InError) const
 bool WriteFileAtomically(std::string_view InPath, std::span<const std::byte> InBytes, std::string* InError)
 {
     namespace fs = std::filesystem;
-    const fs::path ScopedTarget{std::string(InPath)};
+    const fs::path ScopedTarget = Core::PathFromUtf8(InPath);
     fs::path ScopedTemporary = ScopedTarget;
     ScopedTemporary += ".tmp";
 

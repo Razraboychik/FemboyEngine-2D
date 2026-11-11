@@ -55,7 +55,7 @@ struct AssetId
     [[nodiscard]] friend constexpr bool operator==(AssetId, AssetId) = default;
 
     // Deterministic: kind is mixed as a 16-bit prefix, the path is normalized to
-    [[nodiscard]] static AssetId FromPath(std::string_view InPath, AssetKind InKind) noexcept
+    [[nodiscard]] static AssetId FromPath(std::string_view InPath, AssetKind InKind)
     {
         std::uint64_t ScopedHash = 1469598103934665603ull;
         const auto ScopedMix = [&ScopedHash](std::uint8_t InByte)

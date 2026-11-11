@@ -69,6 +69,7 @@ void TestTextDocument()
     FBY_CHECK(ScopedBytes > ScopedTiny.size());
 
     FBY_CHECK(!ScopedDocuments.PageText(ScopedHandle, 2, ScopedPage, &ScopedBytes));
+    FBY_CHECK(!ScopedDocuments.PageText(ScopedHandle, 0xFFFFFFFFu, ScopedPage, &ScopedBytes));
     FBY_CHECK(ScopedDocuments.FindPage(ScopedHandle, "Third") == 1);
     FBY_CHECK(ScopedDocuments.FindPage(ScopedHandle, "missing") == Fby::Documents::kInvalidDocumentIndex);
 

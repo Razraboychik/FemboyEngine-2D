@@ -1,6 +1,7 @@
 // FemboyEngine2D - deferred structural ECS changes.
 #pragma once
 
+#include "Engine/Core/Assert.hpp"
 #include "Engine/Core/FrameArena.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Schedule.hpp"
@@ -29,7 +30,7 @@ using CommandApply = void (*)(Registry&, Entity, const void*);
 struct Command
 {
     CommandKind kind = CommandKind::Destroy;
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     CommandApply apply = nullptr;
     const void* payload = nullptr;
 };
@@ -87,7 +88,7 @@ public:
         for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
         {
             const Command& ScopedCommand = MCommands[ScopedI];
-            if (ScopedCommand.entity != entt::null && ScopedCommand.apply != nullptr)
+            if (ScopedCommand.entity != Fby::kNullEntity && ScopedCommand.apply != nullptr)
             {
                 ScopedCommand.apply(InRegistry, ScopedCommand.entity, ScopedCommand.payload);
             }
@@ -104,7 +105,14 @@ private:
     template <typename T>
     [[nodiscard]] bool Push(CommandKind InKind, Entity InEntity, CommandApply InApply, const T& InValue)
     {
-        if (MArena == nullptr || MCount >= kCommandBufferCapacity || InEntity == entt::null)
+        if (MCount >= kCommandBufferCapacity)
+        {
+            // Dropping a structural command silently desynchronizes the world;
+            // a full per-frame command budget is a caller bug.
+            Fby::FailAssert("Fby::Ecs::CommandBuffer::Push", __FILE__, __LINE__,
+                            "command buffer capacity exceeded (kCommandBufferCapacity)");
+        }
+        if (MArena == nullptr || InEntity == Fby::kNullEntity)
         {
             return false;
         }

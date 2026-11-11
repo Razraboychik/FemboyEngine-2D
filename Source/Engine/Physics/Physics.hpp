@@ -43,6 +43,10 @@ struct PhysicsCapabilities
     bool SoftBodies = false;
     bool Deterministic = false;
     bool LargeWorlds = false;
+    // Contact material terms the active solver actually applies.
+    bool Friction = true;
+    bool Restitution = true;
+    bool RotationContacts = true;
     std::uint32_t MaxRecommendedBodies = 0;
 };
 
@@ -113,8 +117,8 @@ enum class PhysicsEventType : std::uint8_t
 
 struct PhysicsContactEvent
 {
-    Entity a = entt::null;
-    Entity b = entt::null;
+    Entity a = Fby::kNullEntity;
+    Entity b = Fby::kNullEntity;
     Vector2D point{};
     Vector2D normal{};
     float speed = 0.0f;
@@ -124,7 +128,7 @@ struct PhysicsContactEvent
 
 struct PhysicsRayHit
 {
-    Entity Entity = entt::null;
+    Entity Entity = Fby::kNullEntity;
     Vector2D Point{};
     Vector2D Normal{0.0f, -1.0f};
     float Distance = 0.0f;
@@ -302,7 +306,7 @@ private:
 
     struct BodyRecord
     {
-        Entity entity = entt::null;
+        Entity entity = Fby::kNullEntity;
         // Packed b2BodyId
         std::uint64_t body = 0;
     };
@@ -347,7 +351,9 @@ FBY_REFLECT_COMPONENT(Fby::RigidBody2D, "RigidBody2D", FBY_FIELD(Fby::RigidBody2
                       FBY_FIELD(Fby::RigidBody2D, Rotation, Float), FBY_FIELD(Fby::RigidBody2D, AngularVelocity, Float),
                       FBY_FIELD(Fby::RigidBody2D, GravityScale, Float),
                       FBY_FIELD(Fby::RigidBody2D, LinearDamping, Float),
-                      FBY_FIELD(Fby::RigidBody2D, AngularDamping, Float))
+                      FBY_FIELD(Fby::RigidBody2D, AngularDamping, Float),
+                      FBY_FIELD(Fby::RigidBody2D, Type, UInt32),
+                      FBY_FIELD(Fby::RigidBody2D, Flags, UInt32))
 
 FBY_REFLECT_COMPONENT(Fby::Collider2D, "Collider2D", FBY_FIELD(Fby::Collider2D, HalfExtents, Vector2D),
                       FBY_FIELD(Fby::Collider2D, Density, Float), FBY_FIELD(Fby::Collider2D, Friction, Float),

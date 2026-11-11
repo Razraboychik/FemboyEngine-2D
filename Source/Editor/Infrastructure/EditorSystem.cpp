@@ -1,7 +1,10 @@
 #include "Editor/Infrastructure/EditorSystem.hpp"
 
+#include "Engine/RHI/CameraStack.hpp"
+
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Audio/VoiceSystem.hpp"
+#include "Engine/Core/PluginHost.hpp"
 #include "Engine/UI/Accessibility.hpp"
 #include "Engine/Text/TextService.hpp"
 #include "Engine/Assets/VFS.hpp"
@@ -21,6 +24,7 @@
 #include "Engine/Gameplay/GameplayAttributes.hpp"
 #include "Editor/Panels/AnimationGraphCanvasPanel.hpp"
 #include "Editor/Panels/AnimationTimelinePanel.hpp"
+#include "Editor/Panels/DirectionalBlendSpacePanel.hpp"
 #include "Editor/Infrastructure/AssetDatabaseWatchSystem.hpp"
 #include "Editor/Infrastructure/AssetImportService.hpp"
 #include "Editor/Infrastructure/CommandStack.hpp"
@@ -45,6 +49,7 @@
 #include "Editor/Infrastructure/ReleaseCooker.hpp"
 #include "Editor/Infrastructure/TextureThumbnails.hpp"
 #include "Editor/Panels/ProjectDashboard.hpp"
+#include "Editor/Panels/SdfCharacterPanel.hpp"
 #include "Editor/Panels/SceneDiagnosticsPanel.hpp"
 #include "Editor/Panels/ScriptDebuggerPanel.hpp"
 #include "Editor/Panels/SettingsPanels.hpp"
@@ -98,143 +103,9 @@ inline constexpr std::size_t kPieArenaBytes = 32u * 1024u * 1024u;
 // The marker next to the ImGui ini then forces one rebuild, so an old saved
 // layout cannot hide the Viewport behind stale tabs.
 inline constexpr std::uint32_t kEditorLayoutVersion = 2;
-// Strict graphite palette. The hex values below are the intended on-screen
-void ApplyEditorTheme()
-{
-    ImGuiStyle& ScopedStyle = ImGui::GetStyle();
-    // No stock ImGui theme survives this line
-    ScopedStyle = ImGuiStyle{};
-
-    const ImVec4 ScopedWindowBackground = HexColor(0x101012);
-    const ImVec4 ScopedPopupBackground = HexColor(0x141416);
-    const ImVec4 ScopedBorder = HexColor(0x222226);
-    const ImVec4 ScopedFrame = HexColor(0x18181C);
-    const ImVec4 ScopedFrameHover = HexColor(0x22222A);
-    const ImVec4 ScopedFrameActive = HexColor(0x2C2C36);
-    const ImVec4 ScopedTitle = HexColor(0x141416);
-    const ImVec4 ScopedTitleActive = HexColor(0x1C1C22);
-    const ImVec4 ScopedTabActive = HexColor(0x1C1C22);
-    const ImVec4 ScopedHeader = HexColor(0x1C1C22);
-    const ImVec4 ScopedHeaderHover = HexColor(0x262630);
-    const ImVec4 ScopedHeaderActive = HexColor(0x30303C);
-    const ImVec4 ScopedText = HexColor(0xEEEEEE);
-    const ImVec4 ScopedTextDisabled = HexColor(0x666666);
-    const ImVec4 ScopedAccent = HexColor(0xD05280);
-    const ImVec4 ScopedAccentActive = HexColor(0xE06290);
-
-    ImVec4* ScopedColors = ScopedStyle.Colors;
-    ScopedColors[ImGuiCol_Text] = ScopedText;
-    ScopedColors[ImGuiCol_TextDisabled] = ScopedTextDisabled;
-    ScopedColors[ImGuiCol_WindowBg] = ScopedWindowBackground;
-    ScopedColors[ImGuiCol_ChildBg] = ScopedWindowBackground;
-    ScopedColors[ImGuiCol_PopupBg] = ScopedPopupBackground;
-    ScopedColors[ImGuiCol_Border] = ScopedBorder;
-    ScopedColors[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-
-    ScopedColors[ImGuiCol_FrameBg] = ScopedFrame;
-    ScopedColors[ImGuiCol_FrameBgHovered] = ScopedFrameHover;
-    ScopedColors[ImGuiCol_FrameBgActive] = ScopedFrameActive;
-
-    ScopedColors[ImGuiCol_TitleBg] = ScopedTitle;
-    ScopedColors[ImGuiCol_TitleBgActive] = ScopedTitleActive;
-    ScopedColors[ImGuiCol_TitleBgCollapsed] = ScopedWindowBackground;
-    ScopedColors[ImGuiCol_MenuBarBg] = ScopedWindowBackground;
-
-    ScopedColors[ImGuiCol_ScrollbarBg] = ScopedWindowBackground;
-    ScopedColors[ImGuiCol_ScrollbarGrab] = ScopedBorder;
-    ScopedColors[ImGuiCol_ScrollbarGrabHovered] = ScopedFrameHover;
-    ScopedColors[ImGuiCol_ScrollbarGrabActive] = ScopedFrameActive;
-
-    // Pink is deliberately rare: sliders, check marks and "currently active"
-    ScopedColors[ImGuiCol_CheckMark] = ScopedAccent;
-    ScopedColors[ImGuiCol_SliderGrab] = ScopedAccent;
-    ScopedColors[ImGuiCol_SliderGrabActive] = ScopedAccentActive;
-
-    ScopedColors[ImGuiCol_Button] = ScopedHeader;
-    ScopedColors[ImGuiCol_ButtonHovered] = ScopedHeaderHover;
-    ScopedColors[ImGuiCol_ButtonActive] = ScopedHeaderActive;
-
-    ScopedColors[ImGuiCol_Header] = ScopedHeader;
-    ScopedColors[ImGuiCol_HeaderHovered] = ScopedHeaderHover;
-    ScopedColors[ImGuiCol_HeaderActive] = ScopedHeaderActive;
-
-    ScopedColors[ImGuiCol_Separator] = ScopedBorder;
-    ScopedColors[ImGuiCol_SeparatorHovered] = ScopedHeaderHover;
-    ScopedColors[ImGuiCol_SeparatorActive] = ScopedHeaderActive;
-    ScopedColors[ImGuiCol_ResizeGrip] = ScopedBorder;
-    ScopedColors[ImGuiCol_ResizeGripHovered] = ScopedHeaderHover;
-    ScopedColors[ImGuiCol_ResizeGripActive] = ScopedHeaderActive;
-
-    // ImGui 1.93 names: TabActive -> TabSelected, TabUnfocused -> TabDimmed,
-    ScopedColors[ImGuiCol_Tab] = ScopedTitle;
-    ScopedColors[ImGuiCol_TabHovered] = ScopedFrameHover;
-    ScopedColors[ImGuiCol_TabSelected] = ScopedTabActive;
-    ScopedColors[ImGuiCol_TabSelectedOverline] = ScopedAccent;
-    ScopedColors[ImGuiCol_TabDimmed] = ScopedTitle;
-    ScopedColors[ImGuiCol_TabDimmedSelected] = ScopedTabActive;
-    ScopedColors[ImGuiCol_TabDimmedSelectedOverline] = ScopedBorder;
-
-    ScopedColors[ImGuiCol_DockingPreview] = HexColor(0xD05280, 0.55f);
-    ScopedColors[ImGuiCol_DockingEmptyBg] = ScopedWindowBackground;
-    ScopedColors[ImGuiCol_DragDropTarget] = ScopedAccent;
-    ScopedColors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.64f);
-
-    ScopedColors[ImGuiCol_PlotLines] = HexColor(0x8A8A93);
-    ScopedColors[ImGuiCol_PlotLinesHovered] = ScopedText;
-    ScopedColors[ImGuiCol_PlotHistogram] = HexColor(0x6F6F7A);
-    ScopedColors[ImGuiCol_PlotHistogramHovered] = ScopedText;
-
-    ScopedColors[ImGuiCol_TableHeaderBg] = ScopedHeader;
-    ScopedColors[ImGuiCol_TableBorderStrong] = ScopedBorder;
-    ScopedColors[ImGuiCol_TableBorderLight] = ScopedTitleActive;
-    ScopedColors[ImGuiCol_TableRowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-    ScopedColors[ImGuiCol_TableRowBgAlt] = ScopedPopupBackground;
-
-    ScopedColors[ImGuiCol_TextSelectedBg] = HexColor(0xD05280, 0.28f);
-    ScopedColors[ImGuiCol_NavCursor] = ScopedAccent;
-    ScopedColors[ImGuiCol_NavWindowingHighlight] = ScopedAccentActive;
-    ScopedColors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.50f);
-
-    ScopedStyle.WindowPadding = ImVec2(8.0f, 8.0f);
-    ScopedStyle.FramePadding = ImVec2(6.0f, 4.0f);
-    ScopedStyle.CellPadding = ImVec2(4.0f, 2.0f);
-    ScopedStyle.ItemSpacing = ImVec2(6.0f, 6.0f);
-    ScopedStyle.ItemInnerSpacing = ImVec2(4.0f, 4.0f);
-    ScopedStyle.TouchExtraPadding = ImVec2(0.0f, 0.0f);
-    ScopedStyle.IndentSpacing = 14.0f;
-    ScopedStyle.ScrollbarSize = 11.0f;
-    ScopedStyle.GrabMinSize = 8.0f;
-
-    ScopedStyle.WindowBorderSize = 1.0f;
-    ScopedStyle.ChildBorderSize = 1.0f;
-    ScopedStyle.PopupBorderSize = 1.0f;
-    ScopedStyle.FrameBorderSize = 1.0f;
-    ScopedStyle.TabBorderSize = 1.0f;
-    ScopedStyle.TabBarBorderSize = 1.0f;
-    // No floating highlight above tabs
-    ScopedStyle.TabBarOverlineSize = 0.0f;
-    ScopedStyle.DockingSeparatorSize = 1.0f;
-
-    // Panels are monolithic: no rounding. Only controls get a 2px radius.
-    ScopedStyle.WindowRounding = 0.0f;
-    ScopedStyle.ChildRounding = 0.0f;
-    ScopedStyle.FrameRounding = 2.0f;
-    ScopedStyle.PopupRounding = 0.0f;
-    ScopedStyle.ScrollbarRounding = 0.0f;
-    ScopedStyle.GrabRounding = 2.0f;
-    ScopedStyle.TabRounding = 0.0f;
-    ScopedStyle.ImageBorderSize = 0.0f;
-
-    ScopedStyle.WindowTitleAlign = ImVec2(0.0f, 0.5f);
-    ScopedStyle.WindowMenuButtonPosition = ImGuiDir_None;
-    ScopedStyle.SeparatorTextBorderSize = 1.0f;
-    ScopedStyle.SeparatorTextPadding = ImVec2(8.0f, 3.0f);
-    ScopedStyle.DisabledAlpha = 0.60f;
-}
-
 [[nodiscard]] std::string EntityLabel(Entity InEntity)
 {
-    return std::format("Entity {}", entt::to_integral(InEntity));
+    return std::format("Entity {}", Fby::ToIntegral(InEntity));
 }
 
 [[nodiscard]] std::string EntityLabel(const Ecs::Registry& InRegistry, Entity InEntity)
@@ -251,13 +122,13 @@ void ApplyEditorTheme()
 {
     const auto ScopedView = InRegistry.view<EditorSelected>();
     const auto ScopedIt = ScopedView.begin();
-    return ScopedIt != ScopedView.end() ? *ScopedIt : entt::null;
+    return ScopedIt != ScopedView.end() ? *ScopedIt : Fby::kNullEntity;
 }
 
 void SelectOnly(Ecs::Registry& InRegistry, Entity InEntity)
 {
     InRegistry.clear<EditorSelected>();
-    if (InEntity != entt::null)
+    if (InEntity != Fby::kNullEntity)
     {
         InRegistry.emplace<EditorSelected>(InEntity);
     }
@@ -265,7 +136,7 @@ void SelectOnly(Ecs::Registry& InRegistry, Entity InEntity)
 
 void AddToSelection(Ecs::Registry& InRegistry, Entity InEntity)
 {
-    if (InEntity != entt::null && !InRegistry.all_of<EditorSelected>(InEntity))
+    if (InEntity != Fby::kNullEntity && !InRegistry.all_of<EditorSelected>(InEntity))
     {
         InRegistry.emplace<EditorSelected>(InEntity);
     }
@@ -273,7 +144,7 @@ void AddToSelection(Ecs::Registry& InRegistry, Entity InEntity)
 
 void ToggleSelection(Ecs::Registry& InRegistry, Entity InEntity)
 {
-    if (InEntity == entt::null)
+    if (InEntity == Fby::kNullEntity)
     {
         return;
     }
@@ -305,7 +176,7 @@ void ToggleSelection(Ecs::Registry& InRegistry, Entity InEntity)
 // draw so a click selects what the user sees.
 [[nodiscard]] Entity PickEntityAt(const Ecs::Registry& InRegistry, Vector2D InWorld)
 {
-    Entity ScopedBest = entt::null;
+    Entity ScopedBest = Fby::kNullEntity;
     float ScopedBestKey = -1.0e30f;
     auto ScopedSprites = InRegistry.view<Sprite2D, Transform2D>();
     for (auto [ScopedEntity, ScopedSprite, ScopedTransform] : ScopedSprites.each())
@@ -332,7 +203,7 @@ void ToggleSelection(Ecs::Registry& InRegistry, Entity InEntity)
             ScopedBest = ScopedEntity;
         }
     }
-    if (ScopedBest != entt::null)
+    if (ScopedBest != Fby::kNullEntity)
     {
         return ScopedBest;
     }
@@ -351,7 +222,7 @@ void ToggleSelection(Ecs::Registry& InRegistry, Entity InEntity)
             return ScopedEntity;
         }
     }
-    return entt::null;
+    return Fby::kNullEntity;
 }
 
 [[nodiscard]] float* FloatAt(void* InComponent, const Reflect::FieldDesc& InField)
@@ -680,7 +551,7 @@ struct EditorSystem::Impl
     InteractionTransaction interaction;
     std::uint16_t transformCodec = 0xFFFFu;
     char hierarchySearch[64] = {};
-    Entity renamingEntity = entt::null;
+    Entity renamingEntity = Fby::kNullEntity;
     bool renameFocusTaken = false;
     // Clipboard and snapping live in the editor session; they are not saved.
     struct ClipboardComponent
@@ -712,6 +583,7 @@ struct EditorSystem::Impl
     Rhi::VirtualTextureSystem* virtualTextureSource = nullptr;
     AIStateTreeCanvasPanel aiStateTree;
     AnimationGraphCanvasPanel animationGraph;
+    DirectionalBlendSpacePanel directionalBlendSpace;
     const Ecs::Registry* aiPlayWorld = nullptr;
     bool aiPlayActive = false;
 
@@ -720,6 +592,9 @@ struct EditorSystem::Impl
     std::vector<std::byte> pieArena;
     Ecs::SystemGraph* graph = nullptr;
     bool piePaused = false;
+    bool piePauseSfx = true;
+    bool piePauseMusic = false;
+    bool piePauseHud = true;
     bool pieInitialized = false;
     bool pieVoicePushToTalk = false;
     enum class PieCommand : std::uint8_t
@@ -776,6 +651,7 @@ struct EditorSystem::Impl
     bool voiceDevicesReady = false;
     bool voiceAttempted = false;
     SceneDiagnosticsPanel sceneDiagnostics;
+    SdfCharacterPanel sdfCharacters;
     PhysicsDebugVisualizer physicsDebug;
     std::uint16_t projectSettingsCodec = 0xFFFFu;
     std::uint16_t editorSettingsCodec = 0xFFFFu;
@@ -785,6 +661,11 @@ struct EditorSystem::Impl
     bool showProjectSettings = false;
     bool showLevelSettings = true;
     bool showEditorSettings = false;
+    bool showPluginManager = false;
+    Plugin::PluginHost* pluginHost = nullptr;
+    Ui::AccessibilityEffectRegistry* effectRegistry = nullptr;
+    std::array<char, 192> pluginPath{};
+    std::string pluginStatus;
     bool showUserSettings = false;
 
     bool showHierarchy = true;
@@ -795,6 +676,7 @@ struct EditorSystem::Impl
     bool showStats = false;
     bool showLogBoy = true;
     bool showSceneDiagnostics = true;
+    bool showSdfCharacters = false;
     bool showPhysicsDebug = false;
     bool showNavigationDebug = false;
     bool showLightDebug = false;
@@ -811,6 +693,7 @@ struct EditorSystem::Impl
     bool showVirtualTexture = false;
     bool showAIStateTree = true;
     bool showAnimationGraph = true;
+    bool showDirectionalBlendSpace = true;
     bool showDemo = false;
 
     std::string assetDir;
@@ -1099,8 +982,9 @@ struct EditorSystem::Impl
         {
             const std::uint8_t ScopedBackend = projectConfig.Project().physicsBackend;
             const Fby::PhysicsBackendKind ScopedKind =
-                ScopedBackend == 1 ? Fby::PhysicsBackendKind::Box2D
-                                    : (ScopedBackend == 2 ? Fby::PhysicsBackendKind::Dod : Fby::PhysicsBackendKind::Auto);
+                ScopedBackend == 1
+                    ? Fby::PhysicsBackendKind::Box2D
+                    : (ScopedBackend == 2 ? Fby::PhysicsBackendKind::Dod : Fby::PhysicsBackendKind::Auto);
             InContext.physics->SetProjectPolicy(ScopedKind, projectConfig.Project().physicsBodyBudget);
         }
         const PlayInEditor::Result ScopedResult =
@@ -1113,6 +997,15 @@ struct EditorSystem::Impl
             return;
         }
         piePaused = false;
+        if (InContext.audio != nullptr)
+        {
+            InContext.audio->SetBusPaused(Fby::AudioBus::GameSfx, false);
+            InContext.audio->SetBusPaused(Fby::AudioBus::Music, false);
+        }
+        if (graph != nullptr)
+        {
+            graph->SetPaused(false);
+        }
         // The PIE clone only carries registered (snapshot) components, so the
         // runtime tilemap grids are rebuilt from their authored references.
         owner->ResolveTilemapRefs(pie.World(), InContext.assets != nullptr ? InContext.assets : vfs);
@@ -1160,6 +1053,15 @@ struct EditorSystem::Impl
         pie.Stop();
         ReleasePieClientTarget();
         piePaused = false;
+        if (InContext.audio != nullptr)
+        {
+            InContext.audio->SetBusPaused(Fby::AudioBus::GameSfx, false);
+            InContext.audio->SetBusPaused(Fby::AudioBus::Music, false);
+        }
+        if (graph != nullptr)
+        {
+            graph->SetPaused(false);
+        }
         pieVoicePushToTalk = false;
         animationGraph.InvalidatePIEState();
         SyncCanvasWorlds(InContext);
@@ -1181,6 +1083,15 @@ struct EditorSystem::Impl
                 if (pie.Active())
                 {
                     piePaused = !piePaused;
+                    if (InContext.audio != nullptr)
+                    {
+                        InContext.audio->SetBusPaused(Fby::AudioBus::GameSfx, piePaused && piePauseSfx);
+                        InContext.audio->SetBusPaused(Fby::AudioBus::Music, piePaused && piePauseMusic);
+                    }
+                    if (graph != nullptr)
+                    {
+                        graph->SetPaused(piePaused, !piePauseHud);
+                    }
                     SetStatus(piePaused ? "PIE paused" : "PIE resumed");
                 }
                 break;
@@ -1209,9 +1120,17 @@ struct EditorSystem::Impl
                 // can be inspected frame by frame.
                 const float ScopedFixedHz = std::clamp(projectConfig.Project().fixedUpdateHz, 15.0f, 240.0f);
                 const float ScopedFixedStep = 1.0f / std::max(ScopedFixedHz, 1.0f);
+                if (graph != nullptr)
+                {
+                    graph->SetPaused(false);
+                }
                 const bool ScopedStepped = pie.Multiplayer()
                                                ? pie.StepMultiplayer(*graph, ScopedFixedStep, ScopedFixedStep)
                                                : pie.Step(*graph, ScopedFixedStep, ScopedFixedStep);
+                if (graph != nullptr)
+                {
+                    graph->SetPaused(piePaused, !piePauseHud);
+                }
                 if (ScopedStepped)
                 {
                     SyncCanvasWorlds(InContext);
@@ -1591,6 +1510,7 @@ struct EditorSystem::Impl
         ImGui::DockBuilderDockWindow("VisualScript", ScopedGraphs);
         ImGui::DockBuilderDockWindow("AI State Tree", ScopedGraphs);
         ImGui::DockBuilderDockWindow("Animation Graph", ScopedGraphs);
+        ImGui::DockBuilderDockWindow("Directional Blend Space", ScopedGraphs);
         ImGui::DockBuilderDockWindow("Timeline & Curves", ScopedGraphs);
         ImGui::DockBuilderDockWindow("Script Debugger", ScopedGraphs);
         ImGui::DockBuilderDockWindow("Tilemap", ScopedGraphs);
@@ -1915,6 +1835,13 @@ struct EditorSystem::Impl
                 }
                 break;
             }
+            case Reflect::FieldKind::Vector2DArray:
+            {
+                const std::size_t ScopedPointCount = InField.size / sizeof(Vector2D);
+                BeginPropertyRow(ScopedLabel.c_str());
+                ImGui::TextDisabled("%zu control point(s)", ScopedPointCount);
+                break;
+            }
         }
         ImGui::PopID();
         if (ScopedTrackable)
@@ -1997,7 +1924,7 @@ struct EditorSystem::Impl
             SpawnEntity(InContext, camera.center);
         }
         ImGui::SameLine();
-        ImGui::BeginDisabled(ScopedSelected == entt::null);
+        ImGui::BeginDisabled(ScopedSelected == Fby::kNullEntity);
         if (ImGui::SmallButton("Duplicate"))
         {
             DuplicateSelected(InContext);
@@ -2083,7 +2010,7 @@ struct EditorSystem::Impl
                     {
                         SetEntityName(InContext, ScopedEntity, ScopedBuffer);
                     }
-                    renamingEntity = entt::null;
+                    renamingEntity = Fby::kNullEntity;
                     renameFocusTaken = false;
                 }
                 continue;
@@ -2166,7 +2093,7 @@ struct EditorSystem::Impl
             EndEditorPanel();
             return;
         }
-        if (ScopedEntity == entt::null || !ScopedRegistry.valid(ScopedEntity))
+        if (ScopedEntity == Fby::kNullEntity || !ScopedRegistry.valid(ScopedEntity))
         {
             if (interaction.Active())
             {
@@ -2182,7 +2109,7 @@ struct EditorSystem::Impl
             CommitInteraction();
         }
 
-        ImGui::Text("Entity %u", static_cast<unsigned>(entt::to_integral(ScopedEntity)));
+        ImGui::Text("Entity %u", static_cast<unsigned>(Fby::ToIntegral(ScopedEntity)));
         if (const auto* ScopedName = ScopedRegistry.try_get<NameComponent>(ScopedEntity);
             ScopedName != nullptr && ScopedName->Value[0] != '\0')
         {
@@ -2758,8 +2685,9 @@ struct EditorSystem::Impl
             const float ScopedWorldRight = camera.center.X + (ScopedImageMax.x - ScopedImageMin.x) * 0.5f / ScopedZoom;
             const float ScopedWorldTop = camera.center.Y - (ScopedImageMax.y - ScopedImageMin.y) * 0.5f / ScopedZoom;
             const float ScopedWorldBottom = camera.center.Y + (ScopedImageMax.y - ScopedImageMin.y) * 0.5f / ScopedZoom;
-            const ImU32 ScopedGridColor = IM_COL32(120, 128, 150, 60);
-            const ImU32 ScopedAxisColor = IM_COL32(210, 130, 170, 150);
+            const ImU32 ScopedGridColor = SymbolColorU32(EditorSymbolRole::Grid, 0.24f);
+            const ImU32 ScopedAxisColor = SymbolColorU32(EditorSymbolRole::AxisX, 0.65f);
+            const ImU32 ScopedAxisYColor = SymbolColorU32(EditorSymbolRole::AxisY, 0.65f);
 
             const auto ScopedToScreen = [&](Vector2D InWorld)
             {
@@ -2835,17 +2763,23 @@ struct EditorSystem::Impl
             {
                 const float ScopedStep = std::max(ScopedGrid.CellSize.X, 4.0f);
                 const float ScopedFirstX = std::floor(ScopedWorldLeft / ScopedStep) * ScopedStep;
-                for (float ScopedX = ScopedFirstX; ScopedX <= ScopedWorldRight; ScopedX += ScopedStep)
+                const int ScopedLineCountX =
+                    std::max(0, static_cast<int>(std::floor((ScopedWorldRight - ScopedFirstX) / ScopedStep)) + 1);
+                for (int ScopedIndex = 0; ScopedIndex < ScopedLineCountX; ++ScopedIndex)
                 {
+                    const float ScopedX = ScopedFirstX + static_cast<float>(ScopedIndex) * ScopedStep;
                     const float ScopedScreenX = ScopedCenterScreen.x + (ScopedX - camera.center.X) * ScopedZoom;
-                    const ImU32 ScopedColor = std::fabs(ScopedX) < 0.001f ? ScopedAxisColor : ScopedGridColor;
+                    const ImU32 ScopedColor = std::fabs(ScopedX) < 0.001f ? ScopedAxisYColor : ScopedGridColor;
                     ScopedDraw->AddLine(ImVec2(ScopedScreenX, ScopedImageMin.y),
                                         ImVec2(ScopedScreenX, ScopedImageMax.y), ScopedColor, 1.0f);
                 }
                 const float ScopedStepY = std::max(ScopedGrid.CellSize.Y, 4.0f);
                 const float ScopedFirstY = std::floor(ScopedWorldTop / ScopedStepY) * ScopedStepY;
-                for (float ScopedY = ScopedFirstY; ScopedY <= ScopedWorldBottom; ScopedY += ScopedStepY)
+                const int ScopedLineCountY =
+                    std::max(0, static_cast<int>(std::floor((ScopedWorldBottom - ScopedFirstY) / ScopedStepY)) + 1);
+                for (int ScopedIndex = 0; ScopedIndex < ScopedLineCountY; ++ScopedIndex)
                 {
+                    const float ScopedY = ScopedFirstY + static_cast<float>(ScopedIndex) * ScopedStepY;
                     const float ScopedScreenY = ScopedCenterScreen.y + (ScopedY - camera.center.Y) * ScopedZoom;
                     const ImU32 ScopedColor = std::fabs(ScopedY) < 0.001f ? ScopedAxisColor : ScopedGridColor;
                     ScopedDraw->AddLine(ImVec2(ScopedImageMin.x, ScopedScreenY),
@@ -3198,6 +3132,31 @@ struct EditorSystem::Impl
             pieCommand = PieCommand::TogglePause;
         }
         ImGui::SameLine();
+        if (ImGui::Button("Pause audio"))
+        {
+            ImGui::OpenPopup("pie_pause_options");
+        }
+        if (ImGui::BeginPopup("pie_pause_options"))
+        {
+            bool ScopedChanged = false;
+            ScopedChanged |= ImGui::Checkbox("Pause SFX", &piePauseSfx);
+            ScopedChanged |= ImGui::Checkbox("Pause music", &piePauseMusic);
+            ScopedChanged |= ImGui::Checkbox("Pause HUD animations", &piePauseHud);
+            if (ScopedChanged)
+            {
+                if (InContext.audio != nullptr)
+                {
+                    InContext.audio->SetBusPaused(Fby::AudioBus::GameSfx, piePaused && piePauseSfx);
+                    InContext.audio->SetBusPaused(Fby::AudioBus::Music, piePaused && piePauseMusic);
+                }
+                if (graph != nullptr)
+                {
+                    graph->SetPaused(piePaused, !piePauseHud);
+                }
+            }
+            ImGui::EndPopup();
+        }
+        ImGui::SameLine();
         if (PlaybackIconButton("step", PlaybackIcon::Step, false, !piePaused, "Step"))
         {
             pieCommand = PieCommand::Step;
@@ -3211,7 +3170,8 @@ struct EditorSystem::Impl
         if (pie.Active())
         {
             ImGui::TextColored(ImVec4(0.816f, 0.322f, 0.502f, 1.0f), "PIE %s%s  tick %llu",
-                               pie.Multiplayer() ? "multiplayer " : "", piePaused ? "paused" : "playing",
+                               pie.Multiplayer() ? "multiplayer " : "",
+                               piePaused ? (piePauseMusic ? "paused (music muted)" : "paused") : "playing",
                                static_cast<unsigned long long>(pie.TickCount()));
         }
         else
@@ -3272,11 +3232,20 @@ struct EditorSystem::Impl
         const auto ScopedModeButton = [this](const char* InLabel, ImGuizmo::OPERATION InOperation)
         {
             const bool ScopedActive = gizmoOperation == InOperation;
+            const bool ScopedRotate = InOperation == ImGuizmo::ROTATE;
             if (ScopedActive)
             {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
             }
+            if (ScopedRotate)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Text, SymbolColor(EditorSymbolRole::Rotate));
+            }
             const bool ScopedPressed = ImGui::Button(InLabel);
+            if (ScopedRotate)
+            {
+                ImGui::PopStyleColor();
+            }
             if (ScopedActive)
             {
                 ImGui::PopStyleColor();
@@ -3334,6 +3303,7 @@ struct EditorSystem::Impl
         }
         ImGui::SameLine();
         ScopedModeButton("Move", ImGuizmo::TRANSLATE);
+        ScopedModeButton("Rotate", ImGuizmo::ROTATE);
         ScopedModeButton("Scale", ImGuizmo::SCALE);
         if (ImGui::Button(gizmoMode == ImGuizmo::WORLD ? "World" : "Local"))
         {
@@ -3344,7 +3314,7 @@ struct EditorSystem::Impl
         ImGui::TextDisabled("|");
         ImGui::SameLine();
         const Entity ScopedSelectedEntity = SelectedEntity(InContext.registry);
-        ImGui::BeginDisabled(ScopedSelectedEntity == entt::null);
+        ImGui::BeginDisabled(ScopedSelectedEntity == Fby::kNullEntity);
         const float ScopedStep = snapEnabled ? snapGrid : (ImGui::GetIO().KeyShift ? 10.0f : 1.0f);
         const float ScopedTurn =
             snapEnabled ? kSnapAngleDegrees * 0.0174532925f : 0.0872665f * (ImGui::GetIO().KeyShift ? 3.0f : 1.0f);
@@ -3399,17 +3369,21 @@ struct EditorSystem::Impl
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
-        ImGui::TextUnformatted("Zoom");
-        ImGui::SameLine();
+        ImGui::BeginGroup();
+        ImGui::Text("Zoom %.0f%%", static_cast<double>(camera.zoom * 100.0f));
         float ScopedZoomPercent = camera.zoom * 100.0f;
-        if (EditorSlider("##zoom", &ScopedZoomPercent, 25.0f, 800.0f, "%.0f%%", 120.0f, sliderGrabOverflow, true))
+        if (EditorSlider("##zoom", &ScopedZoomPercent, 25.0f, 800.0f, "%.0f%%", 120.0f, sliderGrabOverflow, true, 3.0f,
+                         false))
         {
             camera.zoom = std::clamp(ScopedZoomPercent / 100.0f, 0.05f, 8.0f);
         }
+        ImGui::EndGroup();
         ImGui::SameLine();
-        ImGui::TextUnformatted("Camera speed");
-        ImGui::SameLine();
-        (void)EditorSlider("##panSpeed", &camera.panSpeed, 0.25f, 4.0f, "%.2fx", 96.0f, sliderGrabOverflow);
+        ImGui::BeginGroup();
+        ImGui::Text("Camera speed %.2fx", static_cast<double>(camera.panSpeed));
+        (void)EditorSlider("##panSpeed", &camera.panSpeed, 0.25f, 4.0f, "%.2fx", 96.0f, sliderGrabOverflow, false, 3.0f,
+                           false);
+        ImGui::EndGroup();
         ImGui::SameLine();
         if (ImGui::Button("Display"))
         {
@@ -3424,7 +3398,7 @@ struct EditorSystem::Impl
         ImGui::SameLine();
         if (ImGui::Button("Fit"))
         {
-            if (ScopedSelectedEntity != entt::null)
+            if (ScopedSelectedEntity != Fby::kNullEntity)
             {
                 FrameSelected(InContext);
             }
@@ -3453,7 +3427,7 @@ struct EditorSystem::Impl
 
         const Entity ScopedEntity = SelectedEntity(InContext.registry);
         auto* ScopedTransform =
-            ScopedEntity != entt::null ? InContext.registry.try_get<Transform2D>(ScopedEntity) : nullptr;
+            ScopedEntity != Fby::kNullEntity ? InContext.registry.try_get<Transform2D>(ScopedEntity) : nullptr;
         if (ScopedTransform != nullptr && targetTexture != ImTextureID_Invalid)
         {
             const float ScopedWidth = std::max(ScopedImageMax.x - ScopedImageMin.x, 1.0f);
@@ -3567,8 +3541,8 @@ struct EditorSystem::Impl
                 {
                     SelectOnly(InContext.registry, ScopedPicked);
                 }
-                SetStatus(ScopedPicked == entt::null ? "selection cleared"
-                                                     : EntityLabel(InContext.registry, ScopedPicked));
+                SetStatus(ScopedPicked == Fby::kNullEntity ? "selection cleared"
+                                                           : EntityLabel(InContext.registry, ScopedPicked));
             }
         }
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
@@ -3604,13 +3578,13 @@ struct EditorSystem::Impl
         if (!projectOpen)
         {
             SetStatus("open a project before adding entities");
-            return entt::null;
+            return Fby::kNullEntity;
         }
         SpawnTransaction ScopedTransaction;
         if (ScopedTransaction.Begin(commands, "Add entity") != CommandStack::Result::Ok)
         {
             SetStatus("another edit is already in progress");
-            return entt::null;
+            return Fby::kNullEntity;
         }
         const Entity ScopedEntity = InContext.registry.create();
         Transform2D ScopedTransform;
@@ -3628,12 +3602,12 @@ struct EditorSystem::Impl
             InContext.registry.destroy(ScopedEntity);
             ScopedTransaction.Cancel();
             SetStatus("cannot record the new entity");
-            return entt::null;
+            return Fby::kNullEntity;
         }
         (void)ScopedTransaction.Commit();
         SelectOnly(InContext.registry, ScopedEntity);
         SetStatus("entity added");
-        LogInfo("editor", "added entity {} at ({:.1f}, {:.1f})", entt::to_integral(ScopedEntity),
+        LogInfo("editor", "added entity {} at ({:.1f}, {:.1f})", Fby::ToIntegral(ScopedEntity),
                 static_cast<double>(InPosition.X), static_cast<double>(InPosition.Y));
         return ScopedEntity;
     }
@@ -3990,7 +3964,7 @@ struct EditorSystem::Impl
     void FrameSelected(Ecs::SystemContext& InContext)
     {
         const Entity ScopedEntity = SelectedEntity(InContext.registry);
-        if (ScopedEntity == entt::null)
+        if (ScopedEntity == Fby::kNullEntity)
         {
             return;
         }
@@ -4012,7 +3986,7 @@ struct EditorSystem::Impl
             return;
         }
         const Entity ScopedEntity = SelectedEntity(InContext.registry);
-        if (ScopedEntity == entt::null)
+        if (ScopedEntity == Fby::kNullEntity)
         {
             return;
         }
@@ -4098,7 +4072,9 @@ struct EditorSystem::Impl
         if (ImPlot::BeginPlot("Frame time", ImVec2(-1.0f, 150.0f)))
         {
             ImPlot::SetupAxes("frame", "ms", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
-            ImPlot::PlotLine("frame", frameMs.data(), static_cast<int>(frameMs.size()));
+            ImPlotSpec ScopedPlotSpec;
+            ScopedPlotSpec.LineColor = PlotColor(0);
+            ImPlot::PlotLine("frame", frameMs.data(), static_cast<int>(frameMs.size()), 1.0, 0.0, ScopedPlotSpec);
             ImPlot::EndPlot();
         }
         ImGui::Text("%.2f ms  |  %.0f fps", InContext.dt * 1000.0f, ImGui::GetIO().Framerate);
@@ -4283,6 +4259,13 @@ struct EditorSystem::Impl
         bool ScopedDirtyShortcut = false;
         if (ImGui::BeginMainMenuBar())
         {
+            if (ImGui::Button("Quit"))
+            {
+                ImGui::OpenPopup("Quit editor");
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("|");
+            ImGui::SameLine();
             if (ImGui::BeginMenu("File"))
             {
                 if (ImGui::MenuItem("Project Dashboard..."))
@@ -4347,7 +4330,7 @@ struct EditorSystem::Impl
                     SpawnEntity(InContext, camera.center);
                 }
                 const Entity ScopedSelected = SelectedEntity(InContext.registry);
-                const bool ScopedHasSelection = ScopedSelected != entt::null;
+                const bool ScopedHasSelection = ScopedSelected != Fby::kNullEntity;
                 if (ImGui::MenuItem("Duplicate Selected", nullptr, false, ScopedHasSelection))
                 {
                     DuplicateSelected(InContext);
@@ -4426,6 +4409,8 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("Profiler", "F7", &showProfiler);
                 ImGui::MenuItem("SDF Composer", "F8", &showSdfComposer);
                 ImGui::MenuItem("Scene Diagnostics", nullptr, &showSceneDiagnostics);
+                ImGui::MenuItem("SDF Character", nullptr, &showSdfCharacters);
+                ImGui::MenuItem("Plugin Manager", nullptr, &showPluginManager);
                 ImGui::MenuItem("LogBoy", nullptr, &showLogBoy);
                 ImGui::MenuItem("Physics Debug Draw", nullptr, &showPhysicsDebug);
                 ImGui::MenuItem("Navigation Debug Draw", nullptr, &showNavigationDebug);
@@ -4465,6 +4450,7 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("Virtual Texture", nullptr, &showVirtualTexture);
                 ImGui::MenuItem("AI State Tree", nullptr, &showAIStateTree);
                 ImGui::MenuItem("Animation Graph", nullptr, &showAnimationGraph);
+                ImGui::MenuItem("Directional Blend Space", nullptr, &showDirectionalBlendSpace);
                 ImGui::Separator();
                 ImGui::MenuItem("Level Settings", nullptr, &showLevelSettings);
                 ImGui::MenuItem("Project Settings", nullptr, &showProjectSettings);
@@ -4478,6 +4464,22 @@ struct EditorSystem::Impl
                 ImGui::EndMenu();
             }
             ImGui::TextDisabled("  %s", desc.title.c_str());
+            if (ImGui::BeginPopupModal("Quit editor", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::TextUnformatted("Quit FemboyEngine editor?");
+                ImGui::Separator();
+                if (ImGui::Button("Quit", ImVec2(120.0f, 0.0f)))
+                {
+                    ImGui::CloseCurrentPopup();
+                    owner->RequestQuit();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)))
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
             ImGui::EndMainMenuBar();
         }
 
@@ -4552,7 +4554,16 @@ EditorSystem::EditorSystem() : MImpl(std::make_unique<Impl>())
 
 EditorSystem::~EditorSystem()
 {
-    Shutdown();
+    // A destructor is implicitly noexcept; Shutdown performs filesystem and
+    // ImGui teardown that may allocate. Contain any failure so the process logs
+    // and exits instead of terminating during unwinding.
+    try
+    {
+        Shutdown();
+    }
+    catch (...)
+    {
+    }
 }
 
 bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& InDesc)
@@ -4611,7 +4622,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     ScopedIo.ConfigWindowsMoveFromTitleBarOnly = true;
     ScopedIo.IniFilename = MImpl->iniPath.c_str();
 
-    ApplyEditorTheme();
+    ApplyEditorTheme(MImpl->projectConfig.Editor());
     MImpl->styleUiScale = InDesc.uiScale;
     MImpl->ApplyStyleScale();
 
@@ -4730,6 +4741,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     (void)MImpl->aiStateTree.Initialize(MImpl->commands);
     MImpl->aiStateTree.SetGameplayTagRegistry(&MImpl->gameplayTags);
     (void)MImpl->animationGraph.Initialize(MImpl->commands);
+    (void)MImpl->directionalBlendSpace.Initialize(MImpl->commands);
     MImpl->animationGraph.SetGameplayTagRegistry(&MImpl->gameplayTags);
 
     // Allocate the PIE arena once, at editor startup. Play/Step/Stop then
@@ -4991,6 +5003,10 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         std::lock_guard<std::mutex> ScopedLock(MImpl->sceneDialogMutex);
         ScopedPendingScene.swap(MImpl->pendingNewScenePath);
         ScopedPendingPrefab.swap(MImpl->pendingPrefabPath);
+    }
+    if (InContext.cameraStack != nullptr)
+    {
+        InContext.cameraStack->SetComfortShakeScale(MImpl->projectConfig.Project().motionComfort.cameraShakeScale);
     }
     if (!ScopedPendingScene.empty())
     {
@@ -5287,9 +5303,11 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             MImpl->visualScript.Canvas().CommitDocumentEdit();
             MImpl->aiStateTree.CommitEdit();
             MImpl->animationGraph.CommitEdit();
+            MImpl->directionalBlendSpace.CommitPendingEdit();
             (void)MImpl->commands.Undo();
             MImpl->aiStateTree.NotifyHistoryChanged();
             MImpl->animationGraph.NotifyHistoryChanged();
+            MImpl->directionalBlendSpace.NotifyHistoryChanged();
             MImpl->projectSettings.SyncFromHistory(InContext);
             MImpl->editorSettings.SyncFromHistory(InContext);
         }
@@ -5301,9 +5319,11 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             MImpl->visualScript.Canvas().CommitDocumentEdit();
             MImpl->aiStateTree.CommitEdit();
             MImpl->animationGraph.CommitEdit();
+            MImpl->directionalBlendSpace.CommitPendingEdit();
             (void)MImpl->commands.Redo();
             MImpl->aiStateTree.NotifyHistoryChanged();
             MImpl->animationGraph.NotifyHistoryChanged();
+            MImpl->directionalBlendSpace.NotifyHistoryChanged();
             MImpl->projectSettings.SyncFromHistory(InContext);
             MImpl->editorSettings.SyncFromHistory(InContext);
         }
@@ -5392,6 +5412,7 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     MImpl->SyncCanvasWorlds(InContext);
     MImpl->aiStateTree.Draw("AI State Tree", &MImpl->showAIStateTree);
     MImpl->animationGraph.Draw("Animation Graph", &MImpl->showAnimationGraph);
+    MImpl->directionalBlendSpace.Draw("Directional Blend Space", &MImpl->showDirectionalBlendSpace);
     MImpl->DrawViewport(InContext);
     MImpl->DrawPieClientViewport();
     if (MImpl->showLevelSettings)
@@ -5405,6 +5426,156 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     if (MImpl->showEditorSettings)
     {
         MImpl->editorSettings.Draw(InContext, &MImpl->showEditorSettings);
+    }
+    if (MImpl->showPluginManager)
+    {
+        if (BeginEditorPanel("Plugin Manager", &MImpl->showPluginManager))
+        {
+            ImGui::TextWrapped("Plugins belong to the open project. Paths are relative to the project root; "
+                               "the editor never loads a project plugin into another project.");
+            ImGui::SeparatorText("Project plugins");
+            Fby::Editor::ProjectSettings& ScopedProjectSettings = MImpl->projectConfig.Config().project;
+            const bool ScopedProjectOpen = MImpl->projectConfig.Loaded() && !MImpl->projectConfig.Paths().root.empty();
+            ImGui::BeginDisabled(!ScopedProjectOpen);
+            ImGui::SetNextItemWidth(420.0f);
+            ImGui::InputText("##plugin_path", MImpl->pluginPath.data(), MImpl->pluginPath.size());
+            ImGui::SameLine();
+            if (ImGui::Button("Add & load") && MImpl->pluginHost != nullptr && ScopedProjectOpen)
+            {
+                const std::string ScopedText(MImpl->pluginPath.data());
+                const std::filesystem::path ScopedRelative(ScopedText);
+                std::error_code ScopedErrorCode;
+                const std::filesystem::path ScopedRoot =
+                    std::filesystem::weakly_canonical(MImpl->projectConfig.Paths().root, ScopedErrorCode);
+                const std::filesystem::path ScopedResolved =
+                    std::filesystem::weakly_canonical(ScopedRoot / ScopedRelative, ScopedErrorCode);
+                const std::filesystem::path ScopedRelativeToRoot =
+                    std::filesystem::relative(ScopedResolved, ScopedRoot, ScopedErrorCode);
+                const bool ScopedUnderProject = !ScopedRelative.is_absolute() &&
+                                                ScopedText.find("..") == std::string::npos && !ScopedErrorCode &&
+                                                !ScopedRelativeToRoot.empty() && *ScopedRelativeToRoot.begin() != "..";
+                const bool ScopedKnownSuffix = ScopedRelative.extension() == ".dll" ||
+                                               ScopedRelative.extension() == ".so" ||
+                                               ScopedRelative.extension() == ".dylib";
+                if (!ScopedUnderProject || !ScopedKnownSuffix)
+                {
+                    MImpl->pluginStatus = "rejected: path must be a plugin inside the project root";
+                }
+                else if (ScopedProjectSettings.pluginCount >= Fby::Editor::ProjectSettings::kMaxPlugins)
+                {
+                    MImpl->pluginStatus = "rejected: project plugin list is full";
+                }
+                else
+                {
+                    std::string ScopedLoadError;
+                    if (!MImpl->pluginHost->Load(ScopedResolved.string(), &ScopedLoadError))
+                    {
+                        MImpl->pluginStatus = "load failed: " + ScopedLoadError;
+                    }
+                    else
+                    {
+                        Fby::Editor::ProjectPluginEntry& ScopedEntry =
+                            ScopedProjectSettings.plugins[ScopedProjectSettings.pluginCount++];
+                        std::snprintf(ScopedEntry.Path, sizeof(ScopedEntry.Path), "%s",
+                                      ScopedRelative.generic_string().c_str());
+                        ScopedEntry.Enabled = true;
+                        std::string ScopedPersistError;
+                        (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                        MImpl->pluginStatus = "loaded and saved to project: " + ScopedRelative.generic_string();
+                    }
+                }
+            }
+            for (std::uint32_t ScopedI = 0; ScopedI < ScopedProjectSettings.pluginCount; ++ScopedI)
+            {
+                Fby::Editor::ProjectPluginEntry& ScopedEntry = ScopedProjectSettings.plugins[ScopedI];
+                ImGui::PushID(static_cast<int>(ScopedI));
+                ImGui::TextUnformatted(ScopedEntry.Path);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Load") && MImpl->pluginHost != nullptr)
+                {
+                    std::string ScopedLoadError;
+                    const std::string ScopedFull = (MImpl->projectConfig.Paths().root / ScopedEntry.Path).string();
+                    MImpl->pluginStatus = MImpl->pluginHost->Load(ScopedFull, &ScopedLoadError)
+                                              ? "loaded " + std::string(ScopedEntry.Path)
+                                              : "load failed: " + ScopedLoadError;
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Forget"))
+                {
+                    for (std::uint32_t ScopedMove = ScopedI + 1; ScopedMove < ScopedProjectSettings.pluginCount;
+                         ++ScopedMove)
+                    {
+                        ScopedProjectSettings.plugins[ScopedMove - 1] = ScopedProjectSettings.plugins[ScopedMove];
+                    }
+                    --ScopedProjectSettings.pluginCount;
+                    std::string ScopedPersistError;
+                    (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndDisabled();
+            ImGui::SeparatorText("Loaded in this project");
+            if (MImpl->pluginHost == nullptr)
+            {
+                ImGui::TextDisabled("No plugin host bound.");
+            }
+            else
+            {
+                for (const auto& ScopedPlugin : MImpl->pluginHost->Plugins())
+                {
+                    ImGui::PushID(ScopedPlugin.get());
+                    ImGui::Text("%s %s", ScopedPlugin->name.c_str(), ScopedPlugin->version.c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Reload"))
+                    {
+                        std::string ScopedError;
+                        MImpl->pluginStatus = MImpl->pluginHost->Reload(ScopedPlugin->path, &ScopedError)
+                                                  ? "reloaded " + ScopedPlugin->name
+                                                  : "reload failed: " + ScopedError;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Unload"))
+                    {
+                        std::string ScopedError;
+                        MImpl->pluginStatus = MImpl->pluginHost->Unload(ScopedPlugin->path, &ScopedError)
+                                                  ? "unloaded " + ScopedPlugin->name
+                                                  : "unload failed: " + ScopedError;
+                    }
+                    ImGui::PopID();
+                }
+            }
+            if (MImpl->effectRegistry != nullptr)
+            {
+                ImGui::SeparatorText("Project effect");
+                const Ui::AccessibilityEffectProfile* ScopedActiveEffect = MImpl->effectRegistry->Active();
+                const char* ScopedPreview = ScopedActiveEffect != nullptr ? ScopedActiveEffect->DisplayName : "None";
+                if (ImGui::BeginCombo("##active_effect", ScopedPreview))
+                {
+                    for (const Ui::AccessibilityEffectProfile& ScopedEffect : MImpl->effectRegistry->Effects())
+                    {
+                        const bool ScopedSelected = ScopedActiveEffect != nullptr &&
+                                                    std::string_view(ScopedActiveEffect->Id) == ScopedEffect.Id;
+                        if (ImGui::Selectable(ScopedEffect.DisplayName, ScopedSelected))
+                        {
+                            (void)MImpl->effectRegistry->SetActive(ScopedEffect.Id);
+                            std::snprintf(ScopedProjectSettings.activeEffect,
+                                          sizeof(ScopedProjectSettings.activeEffect), "%s", ScopedEffect.Id);
+                            std::string ScopedPersistError;
+                            (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+            if (!MImpl->pluginStatus.empty())
+            {
+                ImGui::Separator();
+                ImGui::TextWrapped("%s", MImpl->pluginStatus.c_str());
+            }
+            EndEditorPanel();
+        }
     }
     if (MImpl->showUserSettings)
     {
@@ -5457,6 +5628,11 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         MImpl->sceneDiagnostics.SetReleaseProgress(MImpl->releaseCooker.Progress());
         ImGui::SetNextWindowDockID(MImpl->DockHostFor("Stats"), ImGuiCond_FirstUseEver);
         MImpl->sceneDiagnostics.Draw(InContext, &MImpl->showSceneDiagnostics);
+    }
+    if (MImpl->showSdfCharacters)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("SDF Character"), ImGuiCond_FirstUseEver);
+        MImpl->sdfCharacters.Draw(InContext, &MImpl->showSdfCharacters);
     }
     MImpl->DrawConsole();
     MImpl->DrawStats(InContext);
@@ -5534,6 +5710,69 @@ void EditorSystem::SetVisible(bool InVisible)
 void EditorSystem::SetProfiler(Core::Profiler* InProfiler) noexcept
 {
     MImpl->profiler = InProfiler;
+}
+
+void EditorSystem::SetEffectRegistry(Ui::AccessibilityEffectRegistry* InEffects) noexcept
+{
+    MImpl->effectRegistry = InEffects;
+    MImpl->accessibility.SetEffectRegistry(InEffects);
+    if (InEffects != nullptr && MImpl->projectConfig.Loaded())
+    {
+        const char* ScopedActive = MImpl->projectConfig.Project().activeEffect;
+        if (ScopedActive[0] != '\0')
+        {
+            (void)InEffects->SetActive(ScopedActive);
+        }
+    }
+}
+
+void EditorSystem::SetPluginHost(Plugin::PluginHost* InHost) noexcept
+{
+    MImpl->pluginHost = InHost;
+    if (MImpl->initialized && MImpl->projectConfig.Loaded())
+    {
+        try
+        {
+            SyncProjectPlugins();
+        }
+        catch (...)
+        {
+            LogError("editor", "project plugin synchronization failed");
+        }
+    }
+}
+
+void EditorSystem::SyncProjectPlugins()
+{
+    if (MImpl->pluginHost == nullptr || !MImpl->projectConfig.Loaded())
+    {
+        return;
+    }
+    MImpl->pluginHost->UnloadAll();
+    const Fby::Editor::ProjectSettings& ScopedPluginProject = MImpl->projectConfig.Project();
+    const std::filesystem::path& ScopedRoot = MImpl->projectConfig.Paths().root;
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedPluginProject.pluginCount; ++ScopedI)
+    {
+        const Fby::Editor::ProjectPluginEntry& ScopedEntry = ScopedPluginProject.plugins[ScopedI];
+        if (!ScopedEntry.Enabled || ScopedEntry.Path[0] == '\0')
+        {
+            continue;
+        }
+        std::string ScopedPluginError;
+        const std::filesystem::path ScopedPluginPath = ScopedRoot / ScopedEntry.Path;
+        if (!MImpl->pluginHost->Load(ScopedPluginPath.string(), &ScopedPluginError))
+        {
+            LogWarn("editor", "project plugin '{}' not loaded: {}", ScopedEntry.Path, ScopedPluginError);
+        }
+    }
+    if (MImpl->effectRegistry != nullptr)
+    {
+        const char* ScopedActive = ScopedPluginProject.activeEffect;
+        if (ScopedActive[0] != '\0')
+        {
+            (void)MImpl->effectRegistry->SetActive(ScopedActive);
+        }
+    }
 }
 
 Rhi::RenderTargetHandle EditorSystem::ViewportTarget() const noexcept
@@ -5687,6 +5926,11 @@ bool EditorSystem::IsPaused() const noexcept
     return MImpl->pie.Active() && MImpl->piePaused;
 }
 
+bool EditorSystem::PieHudAnimationsPaused() const noexcept
+{
+    return MImpl->pie.Active() && MImpl->piePaused && MImpl->piePauseHud;
+}
+
 ProjectDashboard& EditorSystem::Dashboard() noexcept
 {
     return MImpl->dashboard;
@@ -5789,6 +6033,7 @@ bool EditorSystem::OpenProject(Ecs::SystemContext& InContext, const ProjectPaths
         return false;
     }
 
+    SyncProjectPlugins();
     MImpl->desc.projectRoot = InPaths.root;
     MImpl->desc.showProjectDashboard = false;
     MImpl->projectConfig.Project().gameplayTags.ApplyToRegistry(MImpl->gameplayTags);
@@ -5873,27 +6118,25 @@ void EditorSystem::PrintLine(std::string_view InLine)
     }
 }
 
-void EditorSystem::ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSystem* InVfs) noexcept
+void EditorSystem::ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSystem* InVfs)
 {
     if (InVfs == nullptr)
     {
         return;
     }
     // Structural changes are batched: collect first, then add the runtime grids.
-    std::array<Entity, 256> ScopedEntities{};
-    std::uint32_t ScopedCount = 0;
-    auto ScopedView = InRegistry.view<TilemapAssetRefComponent>();
-    for (auto [ScopedEntity, ScopedRef] : ScopedView.each())
+    std::vector<Entity> ScopedEntities;
     {
-        (void)ScopedRef;
-        if (ScopedCount < ScopedEntities.size())
+        auto ScopedView = InRegistry.view<TilemapAssetRefComponent>();
+        for (auto [ScopedEntity, ScopedRef] : ScopedView.each())
         {
-            ScopedEntities[ScopedCount++] = ScopedEntity;
+            (void)ScopedRef;
+            ScopedEntities.push_back(ScopedEntity);
         }
     }
-    for (std::uint32_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
+    for (const Entity ScopedEntity : ScopedEntities)
     {
-        const auto* ScopedRef = InRegistry.try_get<TilemapAssetRefComponent>(ScopedEntities[ScopedI]);
+        const auto* ScopedRef = InRegistry.try_get<TilemapAssetRefComponent>(ScopedEntity);
         if (ScopedRef == nullptr || ScopedRef->Path[0] == '\0')
         {
             continue;
@@ -5906,7 +6149,7 @@ void EditorSystem::ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSyst
             continue;
         }
         ScopedMap.SortLayer = static_cast<std::uint16_t>(std::min(ScopedRef->SortLayer, 65535u));
-        InRegistry.emplace_or_replace<TilemapComponent>(ScopedEntities[ScopedI], ScopedMap);
+        InRegistry.emplace_or_replace<TilemapComponent>(ScopedEntity, ScopedMap);
     }
 }
 
@@ -5955,6 +6198,11 @@ bool EditorSystem::LoadScene(Ecs::SystemContext& InContext, const std::filesyste
         }
         return false;
     }
+    // Loading replaces every entity in the world. Commands recorded against the
+    // previous scene would target reused ids or stale entities, so the history
+    // must not survive the load.
+    MImpl->commands.CancelTransaction();
+    MImpl->commands.ClearHistory();
     MImpl->currentScene = InPath;
     MImpl->aiStateTree.SetScenePath(InPath);
     (void)MImpl->aiStateTree.LoadCompiledFromSceneToml();

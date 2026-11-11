@@ -59,9 +59,9 @@ Linux and macOS has identical source bytes, entry order and checksums.
 
 | OS | Compiler | RHI | Build |
 |---|---|---|---|
-| Windows 10/11 x64 | clang-cl 23.1.4 | Vulkan | `windows-release` |
-| Linux x64 | Clang 19+ / GCC 16+ | Vulkan | `linux-release` |
-| macOS 14+ x64/arm64 | Homebrew Clang 19+ | Metal | `macos-release` |
+| Windows 10/11 x64 | clang-cl 23.1.4 / Clang 23.1.4 / MSVC 19.44 / GCC 16.2.0 | Vulkan | `windows-release` |
+| Linux x64 | Clang 23.1.4+ / GCC 16.2.0+ | Vulkan | `linux-release` |
+| macOS 14+ x64/arm64 | Homebrew Clang 23.1.4+ | Metal | `macos-release` |
 
 Presets configure the editor, sandbox, tools and tests. Each preset writes its
 own build tree; no build directory is shared between OSes.

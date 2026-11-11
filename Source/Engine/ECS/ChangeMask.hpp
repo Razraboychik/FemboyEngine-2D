@@ -1,6 +1,7 @@
 // FemboyEngine2D - frame-local component change masks.
 #pragma once
 
+#include "Engine/Core/Assert.hpp"
 #include "Engine/Core/Definitions.hpp"
 #include "Engine/Core/Mirror.hpp"
 #include "Engine/Core/Types.hpp"
@@ -114,6 +115,14 @@ FORCEINLINE void Mark(Ecs::Registry& InRegistry, Entity InEntity, ChangeMask InB
     ComponentChangeMask* ScopedMask = InRegistry.try_get<ComponentChangeMask>(InEntity);
     if (ScopedMask == nullptr)
     {
+        // Creating the mask moves the entity between archetypes. Doing that while
+        // a view is alive would invalidate its cursor, so it is debug-fatal and a
+        // release no-op: spawners must call Ensure() before the frame systems.
+        if (InRegistry.Data().IterationDepth() != 0)
+        {
+            FBY_ASSERT_MSG(false, "Change::Mark created a mask during ECS iteration; call Change::Ensure at spawn");
+            return;
+        }
         ScopedMask = &InRegistry.emplace<ComponentChangeMask>(InEntity);
     }
     Mark(*ScopedMask, InBits, InFrame);

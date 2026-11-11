@@ -59,7 +59,7 @@ void WheelSystem::Update(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, fl
 bool WheelSystem::EnsureJoint(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, Entity InWheel) noexcept
 {
     Wheel2D* ScopedWheel = InRegistry.try_get<Wheel2D>(InWheel);
-    if (ScopedWheel == nullptr || ScopedWheel->Chassis == entt::null || !InRegistry.valid(ScopedWheel->Chassis))
+    if (ScopedWheel == nullptr || ScopedWheel->Chassis == Fby::kNullEntity || !InRegistry.valid(ScopedWheel->Chassis))
     {
         return false;
     }

@@ -2,6 +2,7 @@
 #include "Engine/UI/PinkUI.hpp"
 #include "Engine/UI/WidgetLayoutAsset.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -80,6 +81,23 @@ int main()
     Check(SameRect(ScopedLoaded.RectOf(ScopedLoaded.Handle(ScopedButton)),
                    ScopedSource.RectOf(ScopedSource.Handle(ScopedButton))),
           "the button rect is identical after the round-trip");
+
+    constexpr std::array<WidgetKind, 4> kExtendedKinds{WidgetKind::NineSlice, WidgetKind::ToggleSwitch,
+                                                      WidgetKind::RadioButton, WidgetKind::TextBlock};
+    for (const WidgetKind ScopedKind : kExtendedKinds)
+    {
+        WidgetCanvas ScopedKindCanvas;
+        ScopedKindCanvas.SetCanvasSize(Vector2D{100.0f, 100.0f});
+        WidgetDesc ScopedKindDesc;
+        ScopedKindDesc.kind = ScopedKind;
+        (void)ScopedKindCanvas.AddWidget(ScopedKindDesc);
+        const std::string ScopedKindToml = WidgetLayoutAsset::Serialize(ScopedKindCanvas);
+        WidgetCanvas ScopedKindLoaded;
+        ScopedKindLoaded.SetCanvasSize(Vector2D{100.0f, 100.0f});
+        Check(WidgetLayoutAsset::Load(ScopedKindLoaded, ScopedKindToml, &ScopedError), "extended kind loads");
+        Check(ScopedKindLoaded.widgetCount == 1 && ScopedKindLoaded.kinds[0] == ScopedKind,
+              "extended kind survives the round-trip");
+    }
 
     // Malformed input is rejected with an error and leaves the canvas empty.
     Check(!WidgetLayoutAsset::Load(ScopedLoaded, "version =", &ScopedError), "bad TOML is rejected");

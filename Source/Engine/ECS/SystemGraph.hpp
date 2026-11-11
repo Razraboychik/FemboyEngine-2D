@@ -1,9 +1,11 @@
 // FemboyEngine2D - declarative system graph.
 #pragma once
 
+#include "Engine/ECS/FCS/World.hpp"
 #include "Engine/ECS/Schedule.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <type_traits>
 
@@ -26,13 +28,63 @@ inline constexpr std::uint32_t kServiceAssets = 1u << 7;
 inline constexpr std::uint32_t kServiceNavigation = 1u << 8;
 inline constexpr std::uint32_t kServiceInput = 1u << 9;
 
-// What a system reads and writes outside the registry. The bits are Service
-// constants; a zero declaration keeps the previous behavior.
+// Component IDs are runtime ids from the FCS table, so the access mask is four
+// 64-bit words. A zero mask keeps the previous behavior.
+using ComponentAccessMask = std::array<std::uint64_t, 4>;
+
+template <typename... Components> [[nodiscard]] ComponentAccessMask MakeComponentAccessMask() noexcept
+{
+    ComponentAccessMask ScopedMask{};
+    const auto ScopedAdd = [&ScopedMask](std::uint16_t InId)
+    {
+        ScopedMask[InId / 64u] |= (std::uint64_t{1} << (InId % 64u));
+    };
+    (ScopedAdd(Fby::Fcs::Detail::ComponentIdOf<Components>()), ...);
+    return ScopedMask;
+}
+
+[[nodiscard]] constexpr bool ComponentAccessMasksConflict(const ComponentAccessMask& InLeftReads,
+                                                          const ComponentAccessMask& InLeftWrites,
+                                                          const ComponentAccessMask& InRightReads,
+                                                          const ComponentAccessMask& InRightWrites) noexcept
+{
+    for (std::size_t ScopedWord = 0; ScopedWord < InLeftReads.size(); ++ScopedWord)
+    {
+        if ((InLeftWrites[ScopedWord] & (InRightReads[ScopedWord] | InRightWrites[ScopedWord])) != 0u ||
+            (InLeftReads[ScopedWord] & InRightWrites[ScopedWord]) != 0u)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// What a system reads and writes outside the registry and in the ECS. Service
+// bits are the constants above; component masks are optional but let Build()
+// serialize systems that declare overlapping component access.
 struct SystemAccess
 {
     std::uint32_t Reads = 0;
     std::uint32_t Writes = 0;
+    ComponentAccessMask ComponentReads{};
+    ComponentAccessMask ComponentWrites{};
+    // Same-phase systems run in parallel only when both explicitly opt in.
+    // The graph cannot prove that an arbitrary function touches disjoint ECS
+    // data, so serial is the safe default for a public game API.
+    bool ParallelSafe = false;
+    // A parallel system that touches neither a service nor an ECS component must
+    // say so explicitly; Add() rejects an undeclared parallel system.
+    bool NoEcsAccess = false;
 };
+
+// A parallel system must declare at least one access: a service bit, a
+// component mask, or NoEcsAccess. Without that declaration the graph cannot
+// tell whether it is safe to run next to another system.
+[[nodiscard]] constexpr bool IsSystemAccessDeclared(const SystemAccess& InAccess) noexcept
+{
+    return InAccess.Reads != 0 || InAccess.Writes != 0 || InAccess.NoEcsAccess ||
+           InAccess.ComponentReads != ComponentAccessMask{} || InAccess.ComponentWrites != ComponentAccessMask{};
+}
 
 using GraphSystemFn = void (*)(SystemContext&, void*);
 
@@ -47,6 +99,18 @@ struct GraphSystem
     std::uint32_t order = 0;
     bool enabled = true;
     SystemAccess access{};
+    // Filled by Run() when timing is enabled; mutable because Run is const and
+    // the field is diagnostics, not scheduling state. Writers and readers use
+    // atomic_ref so the editor can sample it without a data race.
+    mutable std::uint64_t LastNs = 0;
+    // Set when the node throws. A faulted node is skipped on later frames so a
+    // broken system cannot flood the log or corrupt the world every tick.
+    mutable bool Faulted = false;
+
+    [[nodiscard]] std::uint64_t LastNanoseconds() const noexcept
+    {
+        return std::atomic_ref<std::uint64_t>(LastNs).load(std::memory_order_relaxed);
+    }
 };
 
 class SystemGraph
@@ -56,6 +120,10 @@ public:
                            std::uint64_t InAfter = 0, std::uint64_t InBefore = 0, SystemAccess InAccess = {})
     {
         if (MCount >= kMaxGraphSystems || InRun == nullptr || InName == nullptr)
+        {
+            return false;
+        }
+        if (InAccess.ParallelSafe && !IsSystemAccessDeclared(InAccess))
         {
             return false;
         }
@@ -71,8 +139,12 @@ public:
                            SystemAccess InAccess = {})
     {
         return Add(
-            InPhase, InName, +[](SystemContext& InContext, void*) { Function(InContext); }, nullptr, InAfter, InBefore,
-            InAccess);
+            InPhase, InName,
+            +[](SystemContext& InContext, void*)
+            {
+                Function(InContext);
+            },
+            nullptr, InAfter, InBefore, InAccess);
     }
 
     // Resolves the dependency graph. Returns false on a cycle or a dependency
@@ -105,6 +177,38 @@ public:
         return MDeterministicSimulation;
     }
 
+    void SetTimingEnabled(bool InEnabled) noexcept
+    {
+        MTimingEnabled = InEnabled;
+    }
+    [[nodiscard]] bool TimingEnabled() const noexcept
+    {
+        return MTimingEnabled;
+    }
+    // A paused graph keeps rendering but stops every simulation and
+    // presentation phase. Ui can be kept alive for an animated pause HUD.
+    void SetPaused(bool InPaused, bool InRunUiWhilePaused = false) noexcept
+    {
+        MPaused = InPaused;
+        MRunUiWhilePaused = InRunUiWhilePaused;
+    }
+    [[nodiscard]] bool Paused() const noexcept
+    {
+        return MPaused;
+    }
+    [[nodiscard]] bool RunsUiWhilePaused() const noexcept
+    {
+        return MRunUiWhilePaused;
+    }
+    [[nodiscard]] std::uint32_t LevelCount() const noexcept
+    {
+        return MLevelCount;
+    }
+    [[nodiscard]] std::uint32_t SystemLevel(std::uint32_t InIndex) const noexcept
+    {
+        return MLevels[InIndex];
+    }
+
     // Runs one phase through the JobSystem. Nodes with no dependency edge
     void Run(Phase InPhase, SystemContext& InContext) const;
 
@@ -128,5 +232,13 @@ private:
     std::uint32_t MLevelCount = 0;
     bool MBuilt = false;
     bool MDeterministicSimulation = false;
+    bool MPaused = false;
+    bool MRunUiWhilePaused = false;
+    bool MTimingEnabled =
+#if defined(FBY_ENABLE_SYSTEM_TIMING) && FBY_ENABLE_SYSTEM_TIMING
+        true;
+#else
+        false;
+#endif
 };
 }

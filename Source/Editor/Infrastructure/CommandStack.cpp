@@ -101,7 +101,7 @@ void CommandStack::Shutdown() noexcept
     MComponents = nullptr;
 }
 
-void CommandStack::Bind(entt::registry* InRegistry, const Scene::ComponentRegistry* InComponents) noexcept
+void CommandStack::Bind(Scene::Registry* InRegistry, const Scene::ComponentRegistry* InComponents) noexcept
 {
     MRegistry = InRegistry;
     MComponents = InComponents;
@@ -654,8 +654,7 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
         ForEachChangedRange(ScopedOldBytes, ScopedNewBytes,
                             [&](std::uint32_t InStart, std::uint32_t InLength)
                             {
-                                ScopedRanges[ScopedRangeIndex++] =
-                                    Range{static_cast<std::uint16_t>(InStart), static_cast<std::uint16_t>(InLength)};
+                                ScopedRanges[ScopedRangeIndex++] = Range{InStart, InLength};
                                 std::memcpy(ScopedOldRegion + ScopedCursor, ScopedOldBytes.data() + InStart, InLength);
                                 std::memcpy(ScopedNewRegion + ScopedCursor, ScopedNewBytes.data() + InStart, InLength);
                                 ScopedCursor += InLength;
@@ -791,7 +790,7 @@ bool CommandStack::ApplySpawnSnapshot(const Command& InCommand) noexcept
         // A redo target that is still alive is a stale history record
         return false;
     }
-    // EnTT's hinted create() reuses the exact identifier, including its version
+    // The hinted create() reuses the exact identifier, including its version
     const Entity ScopedCreated = MRegistry->create(InCommand.entity);
     if (!MRegistry->valid(ScopedCreated))
     {

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <exception>
+#include <limits>
 #include <string>
 
 namespace Fby
@@ -20,10 +21,10 @@ namespace
 }
 
 // Every thread the engine creates is tagged once, so debug tooling and log
-thread_local bool tls_worker = false;
+thread_local bool ThreadLocalWorker = false;
 // The storage owns the characters; the view is only a cheap read handle, so a
-thread_local std::string tls_threadNameStorage = "main";
-thread_local std::string_view tls_threadName = tls_threadNameStorage;
+thread_local std::string ThreadLocalNameStorage = "main";
+thread_local std::string_view ThreadLocalName = ThreadLocalNameStorage;
 
 // Shared state of one ParallelFor call. It lives on the caller's stack; the
 struct ParallelShared
@@ -47,8 +48,10 @@ void RunChunks(ParallelShared* InShared) noexcept
         {
             return;
         }
-        const std::uint32_t ScopedBegin = ScopedChunk * InShared->grain;
-        const std::uint32_t ScopedEnd = std::min(ScopedBegin + InShared->grain, InShared->count);
+        const std::uint32_t ScopedBegin = static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(ScopedChunk) * static_cast<std::uint64_t>(InShared->grain));
+        const std::uint32_t ScopedEnd = static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(static_cast<std::uint64_t>(ScopedBegin) + InShared->grain, InShared->count));
         InShared->function(InShared->context, ScopedBegin, ScopedEnd);
     }
 }
@@ -113,6 +116,13 @@ void JobSystem::Submit(RangeFunction InRun, void* InContext, std::uint32_t InBeg
         MPending.fetch_sub(1, std::memory_order_relaxed);
         ReportFault("job queue allocation");
         InRun(InContext, InBegin, InEnd);
+        // The inline path bypasses WorkerMain, so it owns the idle wakeup for
+        // the drained queue.
+        const std::scoped_lock ScopedIdleLock(MMutex);
+        if (MQueue.empty() && MPending.load(std::memory_order_acquire) == 0)
+        {
+            MIdle.notify_all();
+        }
         return;
     }
     MWake.notify_one();
@@ -123,7 +133,15 @@ void JobSystem::ReportFault(std::string_view InOperation) noexcept
     const bool ScopedFirst = !MFaulted.exchange(true, std::memory_order_acq_rel);
     if (ScopedFirst)
     {
-        LogError("jobs", "a job task failed on thread '{}' ({})", CurrentThreadName(), InOperation);
+        try
+        {
+            LogError("jobs", "a job task failed on thread '{}' ({})", CurrentThreadName(), InOperation);
+        }
+        catch (...)
+        {
+            // This is already the failure path; never let diagnostics terminate
+            // a noexcept fault latch.
+        }
     }
 }
 
@@ -135,20 +153,20 @@ void JobSystem::WaitIdle()
 
 bool JobSystem::IsWorkerThread() noexcept
 {
-    return tls_worker;
+    return ThreadLocalWorker;
 }
 
 std::string_view JobSystem::CurrentThreadName() noexcept
 {
-    return tls_threadName;
+    return ThreadLocalName;
 }
 
 void JobSystem::WorkerMain(std::stop_token InToken, std::uint32_t InIndex)
 {
-    tls_worker = true;
+    ThreadLocalWorker = true;
     BindThreadRole(ThreadRole::Worker);
-    tls_threadNameStorage = "worker-" + std::to_string(InIndex);
-    tls_threadName = tls_threadNameStorage;
+    ThreadLocalNameStorage = "worker-" + std::to_string(InIndex);
+    ThreadLocalName = ThreadLocalNameStorage;
 
     while (!InToken.stop_requested())
     {
@@ -201,12 +219,15 @@ void JobSystem::DispatchParallel(std::uint32_t InCount, std::uint32_t InGrain, v
 {
     FBY_ASSERT(InFunction != nullptr);
 
-    const std::uint32_t ScopedChunks = (InCount + InGrain - 1) / InGrain;
-    if (ScopedChunks <= 1)
+    const std::uint64_t ScopedChunkCount =
+        (static_cast<std::uint64_t>(InCount) + InGrain - 1u) / static_cast<std::uint64_t>(InGrain);
+    if (ScopedChunkCount <= 1u)
     {
         InFunction(InContext, 0, InCount);
         return;
     }
+    const std::uint32_t ScopedChunks = static_cast<std::uint32_t>(
+        std::min<std::uint64_t>(ScopedChunkCount, std::numeric_limits<std::uint32_t>::max()));
 
     ParallelShared ScopedShared;
     ScopedShared.chunks = ScopedChunks;
@@ -245,13 +266,28 @@ void JobSystem::DispatchParallel(std::uint32_t InCount, std::uint32_t InGrain, v
     }
 
     const std::uint64_t ScopedDispatchStart = NowNanoseconds();
-    RunChunks(&ScopedShared);
+    // The caller owns one chunk. If its body throws, the helper tasks are still
+    // running and reference the stack state above, so drain the wave before the
+    // exception leaves this frame.
+    std::exception_ptr ScopedCallerError;
+    try
+    {
+        RunChunks(&ScopedShared);
+    }
+    catch (...)
+    {
+        ScopedCallerError = std::current_exception();
+    }
     AddBusy(0, NowNanoseconds() - ScopedDispatchStart);
     MCounters[0].taskCount.fetch_add(1, std::memory_order_relaxed);
 
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedHelpers; ++ScopedI)
     {
         ScopedCompleted.acquire();
+    }
+    if (ScopedCallerError != nullptr)
+    {
+        std::rethrow_exception(ScopedCallerError);
     }
 }
 

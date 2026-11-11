@@ -1,5 +1,6 @@
 // FemboyEngine2D - input packet codec and transport/session bridge tests.
 #include "Engine/Network/NetProtocol.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Snapshot.hpp"
@@ -92,7 +93,7 @@ void TestPacketRoundTrip()
 
 struct SessionFixture
 {
-    entt::registry Registry;
+    Fby::Scene::Registry Registry;
     std::array<std::byte, 32768> Arena{};
     Fby::Net::NetRollbackSession Session;
 

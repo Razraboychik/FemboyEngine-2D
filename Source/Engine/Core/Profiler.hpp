@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace Fby::Core
@@ -47,6 +49,7 @@ public:
         : MCapacity(std::max(InCapacity, 1u)), MBaseNanoseconds(NowNanoseconds())
     {
         MSamples.resize(MCapacity);
+        MScratch.reserve(MCapacity);
         std::fill(MHeader.begin(), MHeader.end(), 0u);
     }
 
@@ -59,8 +62,13 @@ public:
 
     void Record(std::uint32_t InCategory, double InMilliseconds) noexcept
     {
+        constexpr double kMaxMilliseconds = static_cast<double>(std::numeric_limits<std::uint64_t>::max()) / 1000000.0;
+        const double ScopedMilliseconds =
+            std::isfinite(InMilliseconds) && InMilliseconds > 0.0 ? InMilliseconds : 0.0;
         const std::uint64_t ScopedDuration =
-            static_cast<std::uint64_t>(std::max(InMilliseconds, 0.0) * 1000000.0);
+            ScopedMilliseconds >= kMaxMilliseconds
+                ? std::numeric_limits<std::uint64_t>::max()
+                : static_cast<std::uint64_t>(ScopedMilliseconds * 1000000.0);
         const std::uint64_t ScopedNow = NowNanoseconds() - MBaseNanoseconds;
         RecordAt(InCategory, ScopedNow >= ScopedDuration ? ScopedNow - ScopedDuration : 0, ScopedDuration);
     }

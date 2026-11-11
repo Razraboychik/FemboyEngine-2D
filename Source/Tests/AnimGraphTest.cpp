@@ -120,13 +120,22 @@ void TestStateMachine()
     ScopedContext.gameplayTags = &ScopedTags;
 
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
-    auto& ScopedSkeleton = ScopedRegistry.emplace<Fby::SkeletonComponent>(ScopedEntity, MakeSkeleton());
-    auto& ScopedEntityTags = ScopedRegistry.emplace<Fby::GameplayTagsComponent>(ScopedEntity);
-    auto& ScopedState = ScopedRegistry.emplace<Fby::AnimStateComponent>(ScopedEntity);
-    auto& ScopedDefinition = ScopedRegistry.emplace<Fby::AnimGraphDefinitionComponent>(ScopedEntity);
-    auto& ScopedSpriteAnimation = ScopedRegistry.emplace<Fby::SpriteAnimationComponent>(ScopedEntity);
-    auto& ScopedGrid = ScopedRegistry.emplace<Fby::SpriteSheetComponent>(ScopedEntity);
-    auto& ScopedSprite = ScopedRegistry.emplace<Fby::Sprite2D>(ScopedEntity);
+    // Add every component before taking references: each emplace moves the
+    // entity between archetypes and invalidates earlier references.
+    (void)ScopedRegistry.emplace<Fby::SkeletonComponent>(ScopedEntity, MakeSkeleton());
+    (void)ScopedRegistry.emplace<Fby::GameplayTagsComponent>(ScopedEntity);
+    (void)ScopedRegistry.emplace<Fby::AnimStateComponent>(ScopedEntity);
+    (void)ScopedRegistry.emplace<Fby::AnimGraphDefinitionComponent>(ScopedEntity);
+    (void)ScopedRegistry.emplace<Fby::SpriteAnimationComponent>(ScopedEntity);
+    (void)ScopedRegistry.emplace<Fby::SpriteSheetComponent>(ScopedEntity);
+    (void)ScopedRegistry.emplace<Fby::Sprite2D>(ScopedEntity);
+    auto& ScopedSkeleton = ScopedRegistry.get<Fby::SkeletonComponent>(ScopedEntity);
+    auto& ScopedEntityTags = ScopedRegistry.get<Fby::GameplayTagsComponent>(ScopedEntity);
+    auto& ScopedState = ScopedRegistry.get<Fby::AnimStateComponent>(ScopedEntity);
+    auto& ScopedDefinition = ScopedRegistry.get<Fby::AnimGraphDefinitionComponent>(ScopedEntity);
+    auto& ScopedSpriteAnimation = ScopedRegistry.get<Fby::SpriteAnimationComponent>(ScopedEntity);
+    auto& ScopedGrid = ScopedRegistry.get<Fby::SpriteSheetComponent>(ScopedEntity);
+    auto& ScopedSprite = ScopedRegistry.get<Fby::Sprite2D>(ScopedEntity);
     ScopedGrid.Columns = 4;
     ScopedGrid.Rows = 1;
     ScopedGrid.Layer = 3;

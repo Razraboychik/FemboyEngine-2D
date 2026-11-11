@@ -1,5 +1,6 @@
 // FemboyEngine2D - navigation tests: A* on rect/hex maps and agent steering.
 #include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/ECS/Tilemap.hpp"
 #include "Engine/Navigation/Navigation.hpp"
 
@@ -130,7 +131,7 @@ void TestAgentSteering()
     Fby::Navigation::NavigationSystem ScopedSystem;
     ScopedSystem.SetMap(&ScopedMap);
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity, Fby::Transform2D{});
     Fby::Navigation::NavAgentSettings ScopedAgent;
@@ -182,7 +183,7 @@ void TestAgentSteering()
     Fby::Navigation::NavigationSystem ScopedBudgetSystem;
     ScopedBudgetSystem.SetMap(&ScopedMap);
     ScopedBudgetSystem.MaxRepathsPerFrame = 1;
-    entt::registry ScopedBudgetRegistry;
+    Fby::Scene::Registry ScopedBudgetRegistry;
     const Fby::Entity ScopedBudgetEntity = ScopedBudgetRegistry.create();
     ScopedBudgetRegistry.emplace<Fby::Transform2D>(ScopedBudgetEntity, Fby::Transform2D{});
     Fby::Navigation::NavAgentSettings ScopedBudgetSettings;

@@ -438,7 +438,12 @@ DecodeStatus VideoPlayer::PumpFrame()
         }
         else
         {
-            (void)MDemuxer.SeekToNs(static_cast<std::uint64_t>(ScopedSeekTarget));
+            if (!MDemuxer.SeekToNs(static_cast<std::uint64_t>(ScopedSeekTarget)))
+            {
+                PublishError("video seek is not supported by this container");
+                MFinished.store(true, std::memory_order_release);
+                return DecodeStatus::Error;
+            }
         }
         MFinished.store(false, std::memory_order_release);
     }
@@ -490,7 +495,6 @@ DecodeStatus VideoPlayer::PumpFrame()
         MAv1Scratch.insert(MAv1Scratch.end(), ScopedFrame.payload.begin(), ScopedFrame.payload.end());
         ScopedPayload = std::span<const std::byte>(MAv1Scratch.data(), MAv1Scratch.size());
     }
-    MAv1SequenceSent = true;
     if (!MBackend.decodeFrame(MBackend.user, MMainDecoder, ScopedPayload, MMainView))
     {
         const char* ScopedDetail = MBackend.lastError != nullptr ? MBackend.lastError(MBackend.user) : nullptr;
@@ -498,6 +502,9 @@ DecodeStatus VideoPlayer::PumpFrame()
         ReleaseBuffer(ScopedBufferIndex);
         return DecodeStatus::Error;
     }
+    // Only a successfully decoded frame proves that the sequence header is in the
+    // decoder; a failed attempt must prepend the AV1 configuration again.
+    MAv1SequenceSent = true;
     if (ScopedFrame.hasAlpha && MAlphaDecoder != nullptr)
     {
         if (!MBackend.decodeFrame(MBackend.user, MAlphaDecoder, ScopedFrame.alpha, MAlphaView))
@@ -605,7 +612,8 @@ void VideoPlayer::SeekToStart() noexcept
 
 bool VideoPlayer::SeekToNs(std::uint64_t InTimestampNs) noexcept
 {
-    if (!MOpen || InTimestampNs > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+    if (!MOpen || InTimestampNs > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) ||
+        MDemuxer.ClusterCount() == 0)
     {
         return false;
     }

@@ -12,6 +12,7 @@
 #include "Engine/Core/Mirror.hpp"
 
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -28,6 +29,9 @@ enum class AudioBus : std::uint8_t
     Master = 0,
     Sfx,
     Music,
+    // Gameplay/PIE sounds live on their own bus so the editor's SFX preview
+    // stays audible when a game pauses its own audio.
+    GameSfx,
     Count,
 };
 
@@ -133,6 +137,15 @@ public:
 
     void SetBusVolume(AudioBus InBus, float InVolume);
     [[nodiscard]] float BusVolume(AudioBus InBus) const noexcept;
+    // Pauses one built-in bus without losing its authored volume. Pause is
+    // combined with the component mute bit, so a later unmute does not clear a
+    // deliberate pause.
+    void SetBusPaused(AudioBus InBus, bool InPaused) noexcept;
+    [[nodiscard]] bool BusPaused(AudioBus InBus) const noexcept;
+    // Routes default Sfx playback to the gameplay bus while a PIE session runs.
+    void SetGameplayBusActive(bool InActive) noexcept;
+    [[nodiscard]] bool GameplayBusActive() const noexcept;
+    [[nodiscard]] std::uint16_t GameplayBusId() const noexcept;
 
     // AudioZoneSystem's only graph entry point. ReverbGain and the one-pole
     [[nodiscard]] bool SetBusZoneParameters(AudioBus InBus, float InReverbGain, float InLowPassHz,
@@ -224,6 +237,7 @@ private:
     [[nodiscard]] const AudioClip* FindClip(AssetId InId) const noexcept;
     [[nodiscard]] const CookedClipRecord* FindCookedClip(AssetId InId) const noexcept;
     [[nodiscard]] const OwnedPcmRecord* FindOwnedPcm(AssetId InId) const noexcept;
+    [[nodiscard]] BusId BusIdFor(AudioBus InBus) const noexcept;
     [[nodiscard]] std::uint32_t StartClip(AssetId InId, BusId InBus, float InVolume, float InPitch,
                                           bool InLoop) noexcept;
     void SyncBusComponents(Ecs::Registry& InRegistry);
@@ -254,6 +268,10 @@ private:
     // lets Update stop voices whose entity was destroyed.
     SourceRuntime MLegacySources[kMaxAudioVoices]{};
     BusRuntime MBusRuntime[kMaxBuses]{};
+    std::array<bool, kMaxBuses> MPauseMuted{};
+    std::array<bool, kMaxBuses> MComponentMuted{};
+    BusId MGameSfxBus = kSfxBus;
+    bool MGameplayBusActive = false;
     std::uint32_t MUpdateStamp = 0;
     std::uint32_t MLegacyStamp = 0;
 };
@@ -269,6 +287,5 @@ FBY_REFLECT_COMPONENT(
     Fby::AudioSourceComponent, "AudioSourceComponent", FBY_FIELD(Fby::AudioSourceComponent, Clip, UInt64),
     FBY_FIELD(Fby::AudioSourceComponent, Position, Vector2D), FBY_FIELD(Fby::AudioSourceComponent, Volume, Float),
     FBY_FIELD(Fby::AudioSourceComponent, Pitch, Float), FBY_FIELD(Fby::AudioSourceComponent, MaxDistance, Float),
-    FBY_FIELD(Fby::AudioSourceComponent, BusID, UInt32),
-    FBY_FIELD(Fby::AudioSourceComponent, Loop, Bool), FBY_FIELD(Fby::AudioSourceComponent, Playing, Bool),
-    FBY_FIELD(Fby::AudioSourceComponent, Spatial, Bool))
+    FBY_FIELD(Fby::AudioSourceComponent, BusID, UInt32), FBY_FIELD(Fby::AudioSourceComponent, Loop, Bool),
+    FBY_FIELD(Fby::AudioSourceComponent, Playing, Bool), FBY_FIELD(Fby::AudioSourceComponent, Spatial, Bool))

@@ -28,7 +28,7 @@ public:
 
     // PostUpdate. Clears the previous frame and fills one item per valid cloth
     // from the registry; the cloth system itself is the one bound by Initialize.
-    void Collect(Ecs::Registry& InRegistry) noexcept;
+    void Collect(const Ecs::Registry& InRegistry) noexcept;
 
     [[nodiscard]] std::span<const Rhi::MeshRenderItem> Items() const noexcept
     {
@@ -46,7 +46,7 @@ public:
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, ClothRenderSystem& InSystem);
 
 private:
-    static void Tick(Ecs::RenderSystemView& InView, void* InUser);
+    static void Tick(const Ecs::ConstRenderSystemView& InView, void* InUser);
 
     ClothSystem* MCloth = nullptr;
     std::array<Rhi::MeshRenderItem, kMaxClothDraws> MItems{};

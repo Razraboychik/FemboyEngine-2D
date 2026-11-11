@@ -85,7 +85,7 @@ static_assert(std::is_trivially_copyable_v<SdfConnection>);
 // push-out impulse.
 struct SdfImpact
 {
-    Entity Target = entt::null;
+    Entity Target = Fby::kNullEntity;
     Vector2D Point{};
     Vector2D Normal{0.0f, -1.0f};
     float RelativeSpeed = 0.0f;

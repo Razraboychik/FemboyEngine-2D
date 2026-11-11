@@ -3,12 +3,14 @@
 
 #include "Engine/Assets/Localization.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/SystemContext.hpp"
 #include "Engine/Text/TextFontStack.hpp"
 #include "Engine/Text/TextService.hpp"
 #include "Engine/Text/TextShapeCache.hpp"
 
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
 namespace Fby::Text
 {
@@ -24,15 +26,26 @@ struct TextShapeSystemStats
 // Runs before text extraction. A cache miss is the only place that calls the
 // shaping backend; valid handles are reused without touching HarfBuzz.
 [[nodiscard]] inline TextShapeSystemStats UpdateTextShapes(
-    entt::registry& InRegistry, const TextService& InText, ITextShaper& InShaper, TextShapeCache& InCache,
+    Ecs::Registry& InRegistry, const TextService& InText, ITextShaper& InShaper, TextShapeCache& InCache,
     std::uint32_t InFontId, float InFontSize, const TextLayoutParams& InLayoutParams,
     const LocalizationTable* InLocalization = nullptr) noexcept
 {
     TextShapeSystemStats ScopedStats;
-    auto ScopedView = InRegistry.view<TextComponent>();
-    for (const Entity ScopedEntity : ScopedView)
+    // Collect first: adding TextShapeComponent moves the entity between
+    // archetypes, so the shaping pass must not run on a live view cursor.
+    std::vector<Entity> ScopedEntities;
+    for (const Entity ScopedEntity : InRegistry.view<TextComponent>())
     {
-        const TextComponent& ScopedText = ScopedView.get<TextComponent>(ScopedEntity);
+        ScopedEntities.push_back(ScopedEntity);
+    }
+    for (const Entity ScopedEntity : ScopedEntities)
+    {
+        const TextComponent* ScopedTextPtr = InRegistry.try_get<TextComponent>(ScopedEntity);
+        if (ScopedTextPtr == nullptr)
+        {
+            continue;
+        }
+        const TextComponent& ScopedText = *ScopedTextPtr;
         std::string_view ScopedString;
         if (const auto* ScopedLocalized = InRegistry.try_get<LocalizedTextComponent>(ScopedEntity);
             ScopedLocalized != nullptr && InLocalization != nullptr && ScopedLocalized->LocalizationKey != 0)
@@ -117,7 +130,7 @@ struct ScriptBackend
 // Script-routed overload: TextShapeCache uses ShapeBidiText internally, so each
 // run reaches the backend registered for its script.
 [[nodiscard]] inline TextShapeSystemStats UpdateTextShapes(
-    entt::registry& InRegistry, const TextService& InText, std::span<const ScriptBackend> InBackends,
+    Ecs::Registry& InRegistry, const TextService& InText, std::span<const ScriptBackend> InBackends,
     TextShapeCache& InCache, std::uint32_t InFontId, float InFontSize, const TextLayoutParams& InLayoutParams,
     const LocalizationTable* InLocalization = nullptr, ITextShaper* InFallback = nullptr) noexcept
 {
@@ -137,7 +150,7 @@ struct ScriptBackend
 // Fallback-chain overload: build one ChainedShaper for the whole ECS pass.
 // The caller supplies primary and fallback backends in priority order.
 [[nodiscard]] inline TextShapeSystemStats UpdateTextShapes(
-    entt::registry& InRegistry, const TextService& InText, std::span<ITextShaper* const> InShapers,
+    Ecs::Registry& InRegistry, const TextService& InText, std::span<ITextShaper* const> InShapers,
     TextShapeCache& InCache, std::uint32_t InFontId, float InFontSize, const TextLayoutParams& InLayoutParams,
     const LocalizationTable* InLocalization = nullptr) noexcept
 {
@@ -155,7 +168,7 @@ struct ScriptBackend
 // are warmed from the cache view, which keeps the render pass page-ready without
 // shaping twice.
 [[nodiscard]] inline TextShapeSystemStats UpdateTextShapes(
-    entt::registry& InRegistry, const TextService& InText, TextFontStack& InStack, TextShapeCache& InCache,
+    Ecs::Registry& InRegistry, const TextService& InText, TextFontStack& InStack, TextShapeCache& InCache,
     std::uint32_t InFontId, float InFontSize, const TextLayoutParams& InLayoutParams,
     const LocalizationTable* InLocalization = nullptr) noexcept
 {

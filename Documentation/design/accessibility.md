@@ -14,8 +14,8 @@ POD sections:
 - `runtime` (`AccessibilitySettings`): blind, deaf, flash guard, colour vision
   and its strength;
 - `presentation`: OLED orbit, motion scale, HUD idle fade, minimum contrast;
-- `editor`: blind/deaf/high-contrast/reduce-motion/colour-vision for the editor
-  window itself.
+- `editor`: blind/deaf/high-contrast/reduce-motion for the editor window itself;
+  the editor theme and symbol colours are separate authoring settings.
 
 `DefaultAccessibilityProfile()` is the 1.0 policy: flash guard and OLED orbit on,
 no correction, full motion.
@@ -36,6 +36,34 @@ ide_*`) and adds `profile_version`, `color_vision`,
 `ProjectSettingsPanel::Apply()` calls `ApplyProfile()` once and derives the Master
 mute from the same flags; `EditorSettingsPanel` edits the `editor` section and
 applies it to the ImGui palette.
+
+## Editor themes and symbol colours
+
+The editor does not apply a colour-vision matrix to the whole window. A full
+matrix changes every panel, screenshot and asset preview at once and makes the
+authoring colours lie. The editor separates three independent controls:
+
+- **Panel theme** — surface tints only. `graphite`, `very-dark` (a near-black
+  gray, not pure black), `midnight`, `forest`, `plum`, `amber` and `crimson`;
+  the RGB variants are dark tinted workspaces, not full-editor colour masks.
+  A low-strength `panelGlow` adds a soft accent edge around panels; zero
+  disables it.
+- **Text** — sRGB colour, opacity and contrast multiplier. Text defaults to a
+  shade of white and is enforced against the selected panel background with a
+  WCAG ratio; changing the theme never silently changes the authored text.
+- **Symbol colours** — `AxisX`, `AxisY`, `Grid`, `Play`, `Pause`, `Step`, `Stop`,
+  `Rotate`, `Multiplayer` and four plot colours. This is the correct place to
+  solve a colour-vision problem: it preserves the meaning of each control while
+  leaving panel backgrounds and asset previews untouched.
+
+The palette is consumed by the viewport axes, the world grid, playback icons,
+the rotate gizmo control and the ImGui/ImPlot line colours. The settings panel
+edits every value directly and persists it in `project.femproj` and `editor.ini`.
+Colour inversion is not part of this contract. Text outline is a separate
+checkbox with colour and pixel size. It is implemented in the vendored ImGui
+text renderer (``ImGuiStyle::TextBorderSize`` / ``TextBorderColor``), so it draws
+real glyph outlines instead of a fake background strip; the patch is tracked
+under ``third_party/patches/imgui/text-outline.patch``.
 
 ## Frame path
 
@@ -94,10 +122,11 @@ exclusive with `ApplyPostFx()`.
 
 ## Render graph
 
-The render graph executes compute passes, but its graphics and post records
-(`RenderCommandRecord`) are still not executed by any backend, so `PostFxPass` is
-not reachable today. The accessibility passes run inside `Submit` and
-`RenderToTarget`, where the backend owns the images.
+The render graph executes compute passes, but its graphics and post records are
+not the shipping post-FX path. The Vulkan backend consumes `FramePacket.postFx`
+in `RecordPostFxComposite`, and that is where the accessibility effect settings
+and colour-vision correction are applied. The render-graph `PostFxPass` remains
+a separate, non-shipping path.
 
 ## Tests
 
@@ -113,3 +142,28 @@ flagged swapchain submit). The composite test skips without a Vulkan device.
 The editor's BlindMode narrates to LogBoy but does not yet speak focused-widget
 labels; hooking ImGui's nav focus would complete it. Tracked in
 [ROADMAP.md](../ROADMAP.md).
+
+## Project motion comfort and input policy
+
+Motion comfort and input accessibility are project settings, not plugins.
+
+`[comfort]` in `project.femproj`:
+
+| Key | Default | Range | Consumer |
+|---|---|---|---|
+| `camera_shake_scale` | 1 | 0..1 | `CameraStackSystem::SetComfortShakeScale` |
+| `head_bob_scale` | 1 | 0..1 | game camera policy |
+| `fov_scale` | 1 | 0.5..1.5 | game camera policy |
+| `motion_blur_scale` | 1 | 0..1 | game post-process policy |
+| `vignette_scale` | 1 | 0..1.5 | `PostFxSettings.vignetteStrength` in PIE |
+
+Input behaviour is not a project accessibility table. Hold/Tap/Pulse/Repeat,
+`Deadzone`, `Scale`, `Invert` and swizzle are already per-mapping triggers and
+modifiers in `InputSystem`. One-button mode and aim assist are authored control
+schemes or gameplay rules, not engine-wide flags, so they stay with the game.
+
+Gamepad buttons/axes are part of `InputSource` and `GamepadState`; the SDL3
+backend opens and closes gamepads. Mobile touch is part of the same input path:
+`InputState::touches`, `InputSourceKind::Touch` and `InputSourceKind::TouchAxis`.
+`WindowManager` consumes `SDL_EVENT_FINGER_*` events; touch coordinates are
+normalised client coordinates.

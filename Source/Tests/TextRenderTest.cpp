@@ -1,5 +1,6 @@
 // FemboyEngine2D - text block to render item extraction test.
 #include "Engine/Assets/Localization.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/Assets/LocalizationCompiler.hpp"
 #include "Engine/Core/AssetId.hpp"
 #include "Engine/ECS/Components.hpp"
@@ -319,7 +320,7 @@ int main()
                                      std::span<Rhi::RenderItem>(), nullptr) == 0,
           "empty output buffer reports zero items");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Entity ScopedEntity = ScopedRegistry.create();
     TextComponent ScopedComponent;
     ScopedComponent.SetRef(ScopedRef);
@@ -378,7 +379,7 @@ int main()
     Fby::LocalizationTable ScopedLocalization =
         Fby::LocalizationTable::Open(ScopedLocalizationBytes, &ScopedLocalizationError);
     Check(ScopedLocalization.IsValid(), "localization table opens");
-    entt::registry ScopedLocalizedRegistry;
+    Fby::Scene::Registry ScopedLocalizedRegistry;
     const Entity ScopedLocalizedEntity = ScopedLocalizedRegistry.create();
     ScopedLocalizedRegistry.emplace<TextComponent>(ScopedLocalizedEntity, TextComponent{});
     ScopedLocalizedRegistry.emplace<Transform2D>(
@@ -461,7 +462,7 @@ int main()
               ScopedRtlSeparatorHit.Kind == Text::TextInlineKind::Separator,
           "RTL inline hit-test mirrors the separator to the left");
 
-    entt::registry ScopedFormatRegistry;
+    Fby::Scene::Registry ScopedFormatRegistry;
     const Entity ScopedFormatEntity = ScopedFormatRegistry.create();
     const AssetId ScopedFormatAsset = AssetId::FromPath("text/format.txt", AssetKind::Text);
     Check(ScopedText->AddAsset(ScopedFormatAsset, "{0}"), "format text asset stores");
@@ -483,7 +484,7 @@ int main()
 
     const AssetId ScopedConditionAsset = AssetId::FromPath("text/condition.txt", AssetKind::Text);
     Check(ScopedText->AddMarkupAsset(ScopedConditionAsset, "A[if=0]A[/if]"), "condition markup asset stores");
-    entt::registry ScopedConditionRegistry;
+    Fby::Scene::Registry ScopedConditionRegistry;
     const Entity ScopedConditionEntity = ScopedConditionRegistry.create();
     TextComponent ScopedConditionText;
     ScopedConditionText.SetRef(ScopedText->MakeRef(ScopedConditionAsset));

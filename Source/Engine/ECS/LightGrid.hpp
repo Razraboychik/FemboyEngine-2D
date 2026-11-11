@@ -28,7 +28,7 @@ class LightGrid2D
 public:
     static constexpr std::uint32_t MaxCells = 8192u;
 
-    void Build(std::span<const LightGridInput> InLights, float InCellSize = 128.0f) noexcept
+    void Build(std::span<const LightGridInput> InLights, float InCellSize = 128.0f)
     {
         MCellOffsets.clear();
         MIndices.clear();
@@ -46,6 +46,17 @@ public:
         Vector2D ScopedMax = InLights[0].Position;
         for (const LightGridInput& ScopedLight : InLights)
         {
+            if (!std::isfinite(ScopedLight.Position.X) || !std::isfinite(ScopedLight.Position.Y) ||
+                !std::isfinite(ScopedLight.Radius))
+            {
+                MFallbackMode = true;
+                MFallback.resize(InLights.size());
+                for (std::uint32_t ScopedIndex = 0; ScopedIndex < InLights.size(); ++ScopedIndex)
+                {
+                    MFallback[ScopedIndex] = ScopedIndex;
+                }
+                return;
+            }
             const float ScopedRadius = std::max(ScopedLight.Radius, 1.0f);
             ScopedMin.X = std::min(ScopedMin.X, ScopedLight.Position.X - ScopedRadius);
             ScopedMin.Y = std::min(ScopedMin.Y, ScopedLight.Position.Y - ScopedRadius);
@@ -56,11 +67,7 @@ public:
         MMax = ScopedMax;
         const float ScopedWidth = std::max(MMax.X - MMin.X, MCellSize);
         const float ScopedHeight = std::max(MMax.Y - MMin.Y, MCellSize);
-        const std::uint32_t ScopedCellsX =
-            static_cast<std::uint32_t>(std::ceil(ScopedWidth / MCellSize)) + 1u;
-        const std::uint32_t ScopedCellsY =
-            static_cast<std::uint32_t>(std::ceil(ScopedHeight / MCellSize)) + 1u;
-        if (ScopedCellsX > MaxCells || ScopedCellsY > MaxCells || ScopedCellsX * ScopedCellsY > MaxCells)
+        if (!std::isfinite(ScopedWidth) || !std::isfinite(ScopedHeight))
         {
             MFallbackMode = true;
             MFallback.resize(InLights.size());
@@ -70,8 +77,21 @@ public:
             }
             return;
         }
-        MCellsX = ScopedCellsX;
-        MCellsY = ScopedCellsY;
+        const double ScopedCellsXDouble = std::ceil(ScopedWidth / MCellSize) + 1.0;
+        const double ScopedCellsYDouble = std::ceil(ScopedHeight / MCellSize) + 1.0;
+        if (ScopedCellsXDouble > MaxCells || ScopedCellsYDouble > MaxCells ||
+            ScopedCellsXDouble * ScopedCellsYDouble > MaxCells)
+        {
+            MFallbackMode = true;
+            MFallback.resize(InLights.size());
+            for (std::uint32_t ScopedIndex = 0; ScopedIndex < InLights.size(); ++ScopedIndex)
+            {
+                MFallback[ScopedIndex] = ScopedIndex;
+            }
+            return;
+        }
+        MCellsX = static_cast<std::uint32_t>(ScopedCellsXDouble);
+        MCellsY = static_cast<std::uint32_t>(ScopedCellsYDouble);
         const std::uint32_t ScopedCellCount = MCellsX * MCellsY;
         std::vector<std::uint32_t> ScopedCounts(ScopedCellCount, 0u);
         std::vector<std::uint32_t> ScopedRanges(InLights.size() * 2u, 0u);
@@ -148,14 +168,38 @@ public:
 private:
     [[nodiscard]] std::uint32_t CellX(float InX) const noexcept
     {
+        if (MCellsX == 0)
+        {
+            return 0;
+        }
         const float ScopedValue = (InX - MMin.X) / MCellSize;
-        return std::min(static_cast<std::uint32_t>(std::max(ScopedValue, 0.0f)), MCellsX - 1u);
+        if (!std::isfinite(ScopedValue) || ScopedValue <= 0.0f)
+        {
+            return 0;
+        }
+        if (ScopedValue >= static_cast<float>(MCellsX - 1u))
+        {
+            return MCellsX - 1u;
+        }
+        return static_cast<std::uint32_t>(ScopedValue);
     }
 
     [[nodiscard]] std::uint32_t CellY(float InY) const noexcept
     {
+        if (MCellsY == 0)
+        {
+            return 0;
+        }
         const float ScopedValue = (InY - MMin.Y) / MCellSize;
-        return std::min(static_cast<std::uint32_t>(std::max(ScopedValue, 0.0f)), MCellsY - 1u);
+        if (!std::isfinite(ScopedValue) || ScopedValue <= 0.0f)
+        {
+            return 0;
+        }
+        if (ScopedValue >= static_cast<float>(MCellsY - 1u))
+        {
+            return MCellsY - 1u;
+        }
+        return static_cast<std::uint32_t>(ScopedValue);
     }
 
     Vector2D MMin{};

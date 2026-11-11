@@ -2,6 +2,7 @@
 
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/ECS/AnimGraph.hpp"
+#include "Engine/ECS/BoneAttachment.hpp"
 #include "Engine/ECS/Lighting.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
@@ -23,6 +24,7 @@
 #include "Engine/Physics/Gravity.hpp"
 #include "Engine/Physics/PhysicsJoints.hpp"
 #include "Engine/Physics/PhysicsJointsScene.hpp"
+#include "Engine/Physics/SdfCharacter.hpp"
 #include "Engine/Physics/SdfPrimitives.hpp"
 #include "Engine/Script/ScriptSystem.hpp"
 #include "Engine/UI/Hypertext.hpp"
@@ -70,6 +72,10 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<InputUserComponent>();
     InRegistry.Register<Wheel2D>();
     InRegistry.Register<Sprite2D>();
+    InRegistry.Register<SpriteOverlay2D>();
+    // The attachment points at a runtime skeleton entity, so scene TOML keeps
+    // it out of the serialized set until entity references get stable ids.
+    InRegistry.Register<BoneAttachment2D>(false);
     InRegistry.Register<DrawOrder>();
     InRegistry.Register<Camera2D>();
     InRegistry.Register<Lifetime>();
@@ -83,6 +89,7 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<TimeScaleComponent>();
     InRegistry.Register<SleepingStaticComponent>();
     InRegistry.Register<SdfShapeComponent>();
+    InRegistry.Register<SdfCharacterComponent>(false);
     InRegistry.Register<Navigation::NavAgentSettings>();
     InRegistry.Register<Navigation::NavAgentPathSettings>();
     InRegistry.Register<LevelGravityComponent>();

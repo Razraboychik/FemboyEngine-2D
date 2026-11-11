@@ -160,11 +160,11 @@ bool VulkanRHI::CreateInstance(const DeviceDesc& InDesc)
     VkApplicationInfo ScopedApplication{};
     ScopedApplication.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     ScopedApplication.pApplicationName = "FemboyEngine";
-    ScopedApplication.applicationVersion = VK_MAKE_API_VERSION(0, 2, 0, 0);
+    ScopedApplication.applicationVersion = VK_MAKE_API_VERSION(0, 0, 4, 0);
     ScopedApplication.pEngineName = "FemboyEngine";
-    ScopedApplication.engineVersion = VK_MAKE_API_VERSION(0, 2, 0, 0);
-    ScopedApplication.apiVersion = VK_API_VERSION_1_1;
-    std::uint32_t ScopedInstanceVersion = VK_API_VERSION_1_1;
+    ScopedApplication.engineVersion = VK_MAKE_API_VERSION(0, 0, 4, 0);
+    ScopedApplication.apiVersion = VK_API_VERSION_1_4;
+    std::uint32_t ScopedInstanceVersion = VK_API_VERSION_1_4;
     if (ScopedApi.vkEnumerateInstanceVersion != nullptr)
     {
         (void)ScopedApi.vkEnumerateInstanceVersion(&ScopedInstanceVersion);
@@ -282,6 +282,15 @@ bool VulkanRHI::PickPhysicalDevice()
             {
                 continue;
             }
+            // Vulkan 1.4 is the minimum validated driver for the 0.4 alpha line.
+            if (ScopedProperties.apiVersion < VK_API_VERSION_1_4)
+            {
+                LogWarn("vulkan", "device '{}' reports Vulkan {}.{}.{}; 1.4 is required",
+                        ScopedProperties.deviceName, VK_API_VERSION_MAJOR(ScopedProperties.apiVersion),
+                        VK_API_VERSION_MINOR(ScopedProperties.apiVersion),
+                        VK_API_VERSION_PATCH(ScopedProperties.apiVersion));
+                continue;
+            }
 
             int ScopedScore = ScopedProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 1000 : 100;
             if (ScopedScore > ScopedBestScore)
@@ -310,7 +319,7 @@ bool VulkanRHI::PickPhysicalDevice()
 
     if (MPhysical == VK_NULL_HANDLE)
     {
-        LogError("vulkan", "no device with a graphics queue that can present to this surface");
+        LogError("vulkan", "no Vulkan 1.4 device with a graphics queue that can present to this surface");
         return false;
     }
     return true;

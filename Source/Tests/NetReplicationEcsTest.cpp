@@ -80,13 +80,13 @@ void TestBaselineAndDelta()
                                               &ScopedBase2Bytes));
     FBY_CHECK(Net::ApplyReplicationBaseline(
         ScopedClient, ScopedSchema, std::span<const std::byte>(ScopedBaseline.data(), ScopedBase2Bytes)));
-    Entity ScopedClientEntity = entt::null;
+    Entity ScopedClientEntity = Fby::kNullEntity;
     for (const auto ScopedHandle : ScopedClient.view<Transform2D>())
     {
         ScopedClientEntity = ScopedHandle;
         break;
     }
-    FBY_CHECK(ScopedClientEntity != entt::null);
+    FBY_CHECK(ScopedClientEntity != Fby::kNullEntity);
 
     ScopedRegistry.get<Transform2D>(ScopedEntity).Position = Vector2D{30.0f, 40.0f};
     std::size_t ScopedDelta2Bytes = 0;

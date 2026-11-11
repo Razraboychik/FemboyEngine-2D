@@ -1,9 +1,11 @@
 #include "Engine/Core/PluginHost.hpp"
 
+#include "Engine/Core/Error.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/Mirror.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <format>
 #include <new>
@@ -57,6 +59,43 @@ void* FindSymbol(LibraryHandle handle, const char* name)
     return ::dlsym(handle, name);
 }
 #endif
+
+[[nodiscard]] Core::Result<const FbyPluginInfo*> ReadPluginInfo(FbyPluginInfoFn InEntry) noexcept
+{
+    if (InEntry == nullptr)
+    {
+        return std::unexpected(Core::MakeError(Core::ErrorCode::AbiViolation));
+    }
+    try
+    {
+        const FbyPluginInfo* ScopedInfo = InEntry();
+        if (ScopedInfo == nullptr || ScopedInfo->struct_size < sizeof(FbyPluginInfo))
+        {
+            return std::unexpected(Core::MakeError(Core::ErrorCode::InvalidState));
+        }
+        return ScopedInfo;
+    }
+    catch (...)
+    {
+        return std::unexpected(Core::MakeError(Core::ErrorCode::AbiViolation));
+    }
+}
+
+void InvokePluginUnload(FbyPluginUnloadFn InUnload) noexcept
+{
+    if (InUnload == nullptr)
+    {
+        return;
+    }
+    try
+    {
+        InUnload();
+    }
+    catch (...)
+    {
+        LogWarn("plugin", "fby_plugin_unload threw");
+    }
+}
 }
 
 const ComponentType* ComponentRegistry::Find(std::string_view InName) const
@@ -115,6 +154,14 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
         return false;
     };
 
+    for (const auto& ScopedExisting : MPlugins)
+    {
+        if (ScopedExisting != nullptr && ScopedExisting->path == InPath)
+        {
+            return ScopedFail("plugin is already loaded");
+        }
+    }
+
     LibraryHandle ScopedLibrary = OpenLibrary(InPath);
     if (ScopedLibrary == nullptr)
     {
@@ -131,12 +178,13 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
         return ScopedFail(std::format("'{}' does not export the fby_plugin_* entry points", InPath));
     }
 
-    const FbyPluginInfo* ScopedInfo = ScopedInfoEntry();
-    if (ScopedInfo == nullptr || ScopedInfo->struct_size < sizeof(FbyPluginInfo))
+    const Core::Result<const FbyPluginInfo*> ScopedInfoResult = ReadPluginInfo(ScopedInfoEntry);
+    if (!ScopedInfoResult)
     {
         CloseLibrary(ScopedLibrary);
         return ScopedFail(std::format("'{}' returned an invalid plugin descriptor", InPath));
     }
+    const FbyPluginInfo* ScopedInfo = *ScopedInfoResult;
     if (ScopedInfo->abi_version != FBY_PLUGIN_ABI_VERSION)
     {
         const std::uint32_t ScopedPluginAbi = ScopedInfo->abi_version;
@@ -180,14 +228,67 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
     }
 
     MLoading = ScopedPlugin.get();
-    const int ScopedResult = ScopedLoadEntry(&MApi);
+    int ScopedResult = 1;
+    bool ScopedLoadThrew = false;
+    try
+    {
+        ScopedResult = ScopedLoadEntry(&MApi);
+    }
+    catch (...)
+    {
+        ScopedLoadThrew = true;
+    }
     MLoading = nullptr;
 
-    if (ScopedResult != 0)
+    if (ScopedLoadThrew || ScopedResult != 0)
     {
+        if (ScopedLoadThrew)
+        {
+            InvokePluginUnload(ScopedUnloadEntry);
+        }
+        if (MThemes != nullptr)
+        {
+            MThemes->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MExtensions != nullptr)
+        {
+            MExtensions->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MEffects != nullptr)
+        {
+            MEffects->RemoveOwner(ScopedPlugin.get());
+        }
         CloseLibrary(ScopedLibrary);
-        return ScopedFail(std::format("'{}' refused to load (fby_plugin_load returned {})", InPath, ScopedResult));
+        return ScopedFail(ScopedLoadThrew ? std::format("'{}' threw from fby_plugin_load", InPath)
+                                          : std::format("'{}' refused to load (fby_plugin_load returned {})", InPath,
+                                                        ScopedResult));
     }
+
+    const auto ScopedAbortLoaded = [&]()
+    {
+        if (MSystemGraph != nullptr)
+        {
+            for (PluginSystem& ScopedSystem : ScopedPlugin->systems)
+            {
+                MSystemGraph->RemoveUser(&ScopedSystem);
+            }
+            (void)RebuildGraph(nullptr);
+        }
+        InvokePluginUnload(ScopedUnloadEntry);
+        if (MThemes != nullptr)
+        {
+            MThemes->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MExtensions != nullptr)
+        {
+            MExtensions->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MEffects != nullptr)
+        {
+            MEffects->RemoveOwner(ScopedPlugin.get());
+        }
+        CloseLibrary(ScopedLibrary);
+    };
 
     // Plugins register through the C ABI during load(); now that the plugin's
     if (MSystemGraph != nullptr && !ScopedPlugin->systems.empty())
@@ -199,24 +300,14 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
             if (!MSystemGraph->Add(static_cast<Ecs::Phase>(ScopedPhaseIndex), ScopedSystem.name.c_str(),
                                    &PluginHost::PluginSystemThunk, &ScopedSystem))
             {
-                for (PluginSystem& ScopedRegistered : ScopedPlugin->systems)
-                {
-                    MSystemGraph->RemoveUser(&ScopedRegistered);
-                }
-                (void)RebuildGraph(nullptr);
-                CloseLibrary(ScopedLibrary);
+                ScopedAbortLoaded();
                 return ScopedFail(std::format("'{}': SystemGraph rejected system '{}'", InPath, ScopedSystem.name));
             }
         }
         std::string ScopedGraphError;
         if (!RebuildGraph(&ScopedGraphError))
         {
-            for (PluginSystem& ScopedRegistered : ScopedPlugin->systems)
-            {
-                MSystemGraph->RemoveUser(&ScopedRegistered);
-            }
-            (void)RebuildGraph(nullptr);
-            CloseLibrary(ScopedLibrary);
+            ScopedAbortLoaded();
             return ScopedFail(std::format("'{}': {}", InPath, ScopedGraphError));
         }
     }
@@ -225,6 +316,51 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
             ScopedPlugin->components.size(), ScopedPlugin->systems.size(), InPath);
     MPlugins.push_back(std::move(ScopedPlugin));
     return true;
+}
+
+bool PluginHost::Unload(const std::string& InPath, std::string* InError)
+{
+    for (auto ScopedIt = MPlugins.begin(); ScopedIt != MPlugins.end(); ++ScopedIt)
+    {
+        LoadedPlugin& ScopedPlugin = **ScopedIt;
+        if (ScopedPlugin.path != InPath)
+        {
+            continue;
+        }
+        if (MSystemGraph != nullptr)
+        {
+            for (PluginSystem& ScopedSystem : ScopedPlugin.systems)
+            {
+                MSystemGraph->RemoveUser(&ScopedSystem);
+            }
+        }
+        const auto ScopedUnloadEntry = reinterpret_cast<FbyPluginUnloadFn>(
+            FindSymbol(static_cast<LibraryHandle>(ScopedPlugin.handle), FBY_PLUGIN_UNLOAD_SYMBOL));
+        InvokePluginUnload(ScopedUnloadEntry);
+        if (MThemes != nullptr)
+        {
+            MThemes->RemoveOwner(&ScopedPlugin);
+        }
+        if (MExtensions != nullptr)
+        {
+            MExtensions->RemoveOwner(&ScopedPlugin);
+        }
+        if (MEffects != nullptr)
+        {
+            MEffects->RemoveOwner(&ScopedPlugin);
+        }
+        CloseLibrary(static_cast<LibraryHandle>(ScopedPlugin.handle));
+        ScopedPlugin.handle = nullptr;
+        MPlugins.erase(ScopedIt);
+        (void)RebuildGraph(nullptr);
+        LogInfo("plugin", "unloaded {}", InPath);
+        return true;
+    }
+    if (InError != nullptr)
+    {
+        *InError = "plugin is not loaded";
+    }
+    return false;
 }
 
 bool PluginHost::Reload(const std::string& InPath, std::string* InError)
@@ -245,9 +381,18 @@ bool PluginHost::Reload(const std::string& InPath, std::string* InError)
         }
         const auto ScopedUnloadEntry = reinterpret_cast<FbyPluginUnloadFn>(
             FindSymbol(static_cast<LibraryHandle>(ScopedPlugin.handle), FBY_PLUGIN_UNLOAD_SYMBOL));
-        if (ScopedUnloadEntry != nullptr)
+        InvokePluginUnload(ScopedUnloadEntry);
+        if (MThemes != nullptr)
         {
-            ScopedUnloadEntry();
+            MThemes->RemoveOwner(&ScopedPlugin);
+        }
+        if (MExtensions != nullptr)
+        {
+            MExtensions->RemoveOwner(&ScopedPlugin);
+        }
+        if (MEffects != nullptr)
+        {
+            MEffects->RemoveOwner(&ScopedPlugin);
         }
         CloseLibrary(static_cast<LibraryHandle>(ScopedPlugin.handle));
         ScopedPlugin.handle = nullptr;
@@ -278,9 +423,18 @@ void PluginHost::UnloadAll()
         }
         const auto ScopedUnloadEntry = reinterpret_cast<FbyPluginUnloadFn>(
             FindSymbol(static_cast<LibraryHandle>(ScopedPlugin->handle), FBY_PLUGIN_UNLOAD_SYMBOL));
-        if (ScopedUnloadEntry != nullptr)
+        InvokePluginUnload(ScopedUnloadEntry);
+        if (MThemes != nullptr)
         {
-            ScopedUnloadEntry();
+            MThemes->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MExtensions != nullptr)
+        {
+            MExtensions->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MEffects != nullptr)
+        {
+            MEffects->RemoveOwner(ScopedPlugin.get());
         }
         CloseLibrary(static_cast<LibraryHandle>(ScopedPlugin->handle));
         ScopedPlugin->handle = nullptr;
@@ -327,11 +481,134 @@ std::uint64_t PluginHost::HostLayoutHash(void* InUser, const char* InName)
     return InName != nullptr ? ScopedHost->MComponents.HashOf(InName) : 0;
 }
 
+int PluginHost::HostRegisterTheme(void* InUser, const FbyThemeDesc* InTheme)
+{
+    auto* ScopedHost = static_cast<PluginHost*>(InUser);
+    if (ScopedHost == nullptr || ScopedHost->MThemes == nullptr || ScopedHost->MLoading == nullptr || InTheme == nullptr ||
+        InTheme->struct_size < sizeof(FbyThemeDesc) || InTheme->id == nullptr || InTheme->display_name == nullptr)
+    {
+        return 0;
+    }
+    Ui::AccessibilityTheme ScopedTheme{};
+    std::snprintf(ScopedTheme.Id, sizeof(ScopedTheme.Id), "%s", InTheme->id);
+    std::snprintf(ScopedTheme.DisplayName, sizeof(ScopedTheme.DisplayName), "%s", InTheme->display_name);
+    for (std::size_t ScopedI = 0; ScopedI < Ui::kAccessibilityPaletteSlots; ++ScopedI)
+    {
+        ScopedTheme.Colors[ScopedI] = Color32{InTheme->colors[ScopedI]};
+    }
+    ScopedTheme.Text.Color = Color32{InTheme->text_color};
+    ScopedTheme.Text.Outline = Color32{InTheme->text_outline_color};
+    ScopedTheme.Text.Opacity = std::clamp(InTheme->text_opacity, 0.0f, 1.0f);
+    ScopedTheme.Text.Contrast = std::clamp(InTheme->text_contrast, 0.5f, 2.0f);
+    ScopedTheme.Text.OutlineSize = std::clamp(InTheme->text_outline_size, 0.0f, 4.0f);
+    ScopedTheme.Text.FontScale = std::clamp(InTheme->text_font_scale, 0.5f, 3.0f);
+    std::string ScopedError;
+    if (!ScopedHost->MThemes->Register(ScopedTheme, ScopedHost->MLoading, &ScopedError))
+    {
+        LogWarn("plugin", "theme '{}' rejected: {}", InTheme->id, ScopedError);
+        return 0;
+    }
+    return 1;
+}
+
+int PluginHost::HostRegisterExtension(void* InUser, const FbyPaletteExtensionDesc* InExtension)
+{
+    auto* ScopedHost = static_cast<PluginHost*>(InUser);
+    if (ScopedHost == nullptr || ScopedHost->MExtensions == nullptr || ScopedHost->MLoading == nullptr ||
+        InExtension == nullptr || InExtension->struct_size < sizeof(FbyPaletteExtensionDesc) ||
+        InExtension->id == nullptr || InExtension->display_name == nullptr)
+    {
+        return 0;
+    }
+    Ui::AccessibilityPaletteExtension ScopedPalette{};
+    std::snprintf(ScopedPalette.Id, sizeof(ScopedPalette.Id), "%s", InExtension->id);
+    std::snprintf(ScopedPalette.DisplayName, sizeof(ScopedPalette.DisplayName), "%s", InExtension->display_name);
+    for (std::size_t ScopedI = 0; ScopedI < Ui::kAccessibilityExtensionColors; ++ScopedI)
+    {
+        ScopedPalette.Colors[ScopedI] = Color32{InExtension->colors[ScopedI]};
+    }
+    return ScopedHost->MExtensions->Register(ScopedPalette, ScopedHost->MLoading) ? 1 : 0;
+}
+
+int PluginHost::HostRegisterEffect(void* InUser, const FbyEffectDesc* InEffect)
+{
+    auto* ScopedHost = static_cast<PluginHost*>(InUser);
+    if (ScopedHost == nullptr || ScopedHost->MEffects == nullptr || ScopedHost->MLoading == nullptr ||
+        InEffect == nullptr || InEffect->struct_size < sizeof(FbyEffectDesc) || InEffect->id == nullptr ||
+        InEffect->display_name == nullptr)
+    {
+        return 0;
+    }
+    Ui::AccessibilityEffectProfile ScopedEffect{};
+    std::snprintf(ScopedEffect.Id, sizeof(ScopedEffect.Id), "%s", InEffect->id);
+    std::snprintf(ScopedEffect.DisplayName, sizeof(ScopedEffect.DisplayName), "%s", InEffect->display_name);
+    ScopedEffect.Kind = InEffect->kind == 1   ? Ui::AccessibilityEffectKind::Thermal
+                        : InEffect->kind == 2 ? Ui::AccessibilityEffectKind::Alcohol
+                                              : Ui::AccessibilityEffectKind::Nvg;
+    ScopedEffect.Intensity = std::clamp(InEffect->intensity, 0.0f, 1.0f);
+    ScopedEffect.Blur = std::clamp(InEffect->blur, 0.0f, 16.0f);
+    ScopedEffect.Sharpness = std::clamp(InEffect->sharpness, 0.0f, 4.0f);
+    ScopedEffect.Pattern = static_cast<Ui::NvgPattern>(std::min<std::uint32_t>(InEffect->pattern, 4));
+    ScopedEffect.PatternScale = std::clamp(InEffect->pattern_scale, 0.1f, 8.0f);
+    ScopedEffect.Generation = static_cast<std::uint8_t>(std::min<std::uint32_t>(InEffect->generation, 255));
+    ScopedEffect.Tint = Color32{InEffect->tint};
+    ScopedEffect.TagCount = static_cast<std::uint8_t>(std::min<std::uint32_t>(InEffect->tag_count, Ui::kAccessibilityEffectTags));
+    for (std::size_t ScopedI = 0; ScopedI < ScopedEffect.TagCount; ++ScopedI)
+    {
+        std::snprintf(ScopedEffect.Tags[ScopedI].Tag, sizeof(ScopedEffect.Tags[ScopedI].Tag), "%s",
+                      InEffect->tags[ScopedI]);
+    }
+    ScopedEffect.AlcoholEffectCount = static_cast<std::uint8_t>(
+        std::min<std::uint32_t>(InEffect->alcohol_effect_count, Ui::kMaxAlcoholEffects));
+    for (std::size_t ScopedI = 0; ScopedI < ScopedEffect.AlcoholEffectCount; ++ScopedI)
+    {
+        ScopedEffect.AlcoholEffects[ScopedI].Effect = static_cast<Ui::AlcoholEffect>(
+            std::min<std::uint32_t>(InEffect->alcohol_effects[ScopedI].effect, 9));
+        ScopedEffect.AlcoholEffects[ScopedI].Intensity =
+            std::clamp(InEffect->alcohol_effects[ScopedI].intensity, 0.0f, 1.0f);
+        ScopedEffect.AlcoholEffects[ScopedI].Frequency =
+            std::clamp(InEffect->alcohol_effects[ScopedI].frequency, 0.1f, 8.0f);
+    }
+    for (std::size_t ScopedI = 0; ScopedI < Ui::kAccessibilityTemperatureBands; ++ScopedI)
+    {
+        std::snprintf(ScopedEffect.Temperatures[ScopedI].Tag, sizeof(ScopedEffect.Temperatures[ScopedI].Tag), "%s",
+                      InEffect->temperatures[ScopedI].tag);
+        ScopedEffect.Temperatures[ScopedI].Color = Color32{InEffect->temperatures[ScopedI].color};
+    }
+    return ScopedHost->MEffects->Register(ScopedEffect, ScopedHost->MLoading) ? 1 : 0;
+}
+
+int PluginHost::HostSetEffect(void* InUser, const char* InId)
+{
+    auto* ScopedHost = static_cast<PluginHost*>(InUser);
+    if (ScopedHost == nullptr || ScopedHost->MEffects == nullptr || InId == nullptr)
+    {
+        return 0;
+    }
+    return ScopedHost->MEffects->SetActive(InId) ? 1 : 0;
+}
+
+int PluginHost::HostSetTheme(void* InUser, const char* InId)
+{
+    auto* ScopedHost = static_cast<PluginHost*>(InUser);
+    if (ScopedHost == nullptr || ScopedHost->MThemes == nullptr || InId == nullptr)
+    {
+        return 0;
+    }
+    std::string ScopedError;
+    if (!ScopedHost->MThemes->SetActive(InId, &ScopedError))
+    {
+        LogWarn("plugin", "theme '{}' rejected: {}", InId, ScopedError);
+        return 0;
+    }
+    return 1;
+}
+
 int PluginHost::HostAddSystem(void* InUser, const char* InName, int InPhase, int InOrder,
                               void (*InTick)(void* InUser, float InDt))
 {
     auto* ScopedHost = static_cast<PluginHost*>(InUser);
-    if (ScopedHost->MLoading == nullptr || InTick == nullptr)
+    if (ScopedHost->MLoading == nullptr || InTick == nullptr || InPhase < 0 || InPhase >= FBY_PHASE_COUNT)
     {
         return 0;
     }
@@ -345,7 +622,14 @@ void PluginHost::PluginSystemThunk(Ecs::SystemContext& InContext, void* InUser)
     auto* ScopedSystem = static_cast<PluginSystem*>(InUser);
     if (ScopedSystem != nullptr && ScopedSystem->tick != nullptr)
     {
-        ScopedSystem->tick(ScopedSystem->hostUser, InContext.dt);
+        try
+        {
+            ScopedSystem->tick(ScopedSystem->hostUser, InContext.dt);
+        }
+        catch (...)
+        {
+            InContext.jobs.ReportFault("plugin tick");
+        }
     }
 }
 }

@@ -245,16 +245,20 @@ bool DocumentSystem::PageText(DocumentHandle InHandle, std::uint32_t InPage, std
     {
         return false;
     }
-    const std::uint32_t ScopedFirstLine = InPage * MLinesPerPage;
+    const std::size_t ScopedFirstLine = static_cast<std::size_t>(InPage) * MLinesPerPage;
     if (ScopedFirstLine >= ScopedSlot->Lines.size())
     {
         return false;
     }
+    const std::size_t ScopedNextLine = (static_cast<std::size_t>(InPage) + 1u) * MLinesPerPage;
     const std::uint32_t ScopedStart = ScopedSlot->Lines[ScopedFirstLine];
-    const std::uint32_t ScopedNextLine = (InPage + 1u) * MLinesPerPage;
     const std::uint32_t ScopedEnd = ScopedNextLine < ScopedSlot->Lines.size()
                                         ? ScopedSlot->Lines[ScopedNextLine]
                                         : static_cast<std::uint32_t>(ScopedSlot->Text.size());
+    if (ScopedEnd < ScopedStart)
+    {
+        return false;
+    }
     const std::uint32_t ScopedBytes = ScopedEnd - ScopedStart;
     if (OutBytes != nullptr)
     {

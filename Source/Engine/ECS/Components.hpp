@@ -9,8 +9,6 @@
 #include "Engine/ECS/CoreComponents.hpp"
 #include "Engine/Text/TextAsset.hpp"
 
-#include <entt/entt.hpp>
-
 #include <cstdint>
 #include <type_traits>
 
@@ -71,7 +69,7 @@ inline constexpr std::uint32_t kWheelFlagSteer = 1u << 1;
 
 struct Wheel2D
 {
-    Entity Chassis = entt::null;
+    Entity Chassis = Fby::kNullEntity;
     // Chassis-local suspension anchor, pixels.
     Vector2D LocalAnchor{};
     // Chassis-local suspension axis.
@@ -311,6 +309,7 @@ FBY_REFLECT_COMPONENT(Fby::CarrierMemberComponent, "CarrierMemberComponent",
                       FBY_FIELD(Fby::CarrierMemberComponent, RelativeAngularVelocity, Float))
 
 FBY_REFLECT_COMPONENT(Fby::TransportPath, "TransportPath",
+                      FBY_FIELD(Fby::TransportPath, Points, Vector2DArray),
                       FBY_FIELD(Fby::TransportPath, Count, UInt32),
                       FBY_FIELD(Fby::TransportPath, Closed, Bool))
 

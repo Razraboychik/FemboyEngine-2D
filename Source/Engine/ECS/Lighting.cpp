@@ -22,7 +22,7 @@ constexpr std::uint32_t kMaxLitSprites = 1024;
 
 struct LitEntry
 {
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     Color32 color{};
 };
 
@@ -67,7 +67,7 @@ struct OccluderSample
     Vector2D HalfExtents{};
     float Radius = 0.0f;
     std::uint32_t Flags = 0;
-    Entity Owner = entt::null;
+    Entity Owner = Fby::kNullEntity;
 };
 
 [[nodiscard]] float BoxDistance(Vector2D InPoint, Vector2D InHalfExtents) noexcept
@@ -100,7 +100,7 @@ struct CombinedField
     std::uint32_t OccluderCount = 0;
     // The sprite being lit: its own occluder must not shadow it, otherwise an
     // entity that both receives light and casts shadows would be black.
-    Entity Receiver = entt::null;
+    Entity Receiver = Fby::kNullEntity;
 
     [[nodiscard]] bool Active() const noexcept
     {
@@ -215,8 +215,7 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
     for (auto [ScopedEntity, ScopedTransform, ScopedOccluder] : ScopedOccluderView.each())
     {
         (void)ScopedEntity;
-        if ((ScopedOccluder.Flags & kLight2DOccluderFlagDisabled) != 0 ||
-            ScopedOccluderCount >= kMaxDynamicOccluders)
+        if ((ScopedOccluder.Flags & kLight2DOccluderFlagDisabled) != 0 || ScopedOccluderCount >= kMaxDynamicOccluders)
         {
             continue;
         }
@@ -309,9 +308,9 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
             float ScopedAttenuation = ScopedFalloff * ScopedFalloff * ScopedSample.intensity;
             if (ScopedHasField && InSettings.SdfShadows)
             {
-                const float ScopedShadow = SdfShadowFactor(ScopedField, ScopedTransform.Position, ScopedSample.position,
-                                                           InSettings.SdfMaxSteps, InSettings.SdfSoftness,
-                                                           &ScopedShadowSamples);
+                const float ScopedShadow =
+                    SdfShadowFactor(ScopedField, ScopedTransform.Position, ScopedSample.position,
+                                    InSettings.SdfMaxSteps, InSettings.SdfSoftness, &ScopedShadowSamples);
                 ScopedAttenuation *= ScopedShadow;
             }
             ScopedRed += ScopedSample.red * ScopedAttenuation;
@@ -320,7 +319,8 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
         }
         if (ScopedHasField && InSettings.SdfAmbientOcclusion > 0.0f)
         {
-            const float ScopedOcclusion = SdfOcclusion(ScopedField, ScopedTransform.Position, InSettings.SdfOcclusionRadius);
+            const float ScopedOcclusion =
+                SdfOcclusion(ScopedField, ScopedTransform.Position, InSettings.SdfOcclusionRadius);
             const float ScopedStrength = std::clamp(InSettings.SdfAmbientOcclusion, 0.0f, 1.0f);
             const float ScopedScale = 1.0f - (1.0f - ScopedOcclusion) * ScopedStrength;
             ScopedRed *= ScopedScale;
@@ -417,9 +417,9 @@ bool BuildSdfLightingFrame(Ecs::Registry& InRegistry, const SdfField* InField, R
         return false;
     }
     // The sun is a scene singleton; a duplicate must still resolve the same way
-    // regardless of the EnTT view order.
+    // regardless of the storage view order.
     const SdfSunComponent* ScopedSun = nullptr;
-    Entity ScopedSunOwner = entt::null;
+    Entity ScopedSunOwner = Fby::kNullEntity;
     auto ScopedSunView = InRegistry.view<SdfSunComponent>();
     for (auto [ScopedEntity, ScopedComponent] : ScopedSunView.each())
     {
@@ -427,7 +427,7 @@ bool BuildSdfLightingFrame(Ecs::Registry& InRegistry, const SdfField* InField, R
         {
             continue;
         }
-        if (ScopedSun == nullptr || entt::to_integral(ScopedEntity) < entt::to_integral(ScopedSunOwner))
+        if (ScopedSun == nullptr || Fby::ToIntegral(ScopedEntity) < Fby::ToIntegral(ScopedSunOwner))
         {
             ScopedSunOwner = ScopedEntity;
             ScopedSun = &ScopedComponent;
@@ -463,8 +463,7 @@ bool BuildSdfLightingFrame(Ecs::Registry& InRegistry, const SdfField* InField, R
     for (auto [ScopedEntity, ScopedTransform, ScopedOccluder] : ScopedOccluderView.each())
     {
         (void)ScopedEntity;
-        if ((ScopedOccluder.Flags & kLight2DOccluderFlagDisabled) != 0 ||
-            ScopedCount >= Rhi::kMaxSdfGpuOccluders)
+        if ((ScopedOccluder.Flags & kLight2DOccluderFlagDisabled) != 0 || ScopedCount >= Rhi::kMaxSdfGpuOccluders)
         {
             continue;
         }
@@ -472,8 +471,8 @@ bool BuildSdfLightingFrame(Ecs::Registry& InRegistry, const SdfField* InField, R
         Rhi::SdfLightingOccluder& ScopedGpu = OutFrame->occluders[ScopedCount++];
         ScopedGpu.Shape = Vector4D{ScopedTransform.Position.X, ScopedTransform.Position.Y,
                                    ScopedBox ? 0.0f : std::max(ScopedOccluder.Radius, 0.0f), 0.0f};
-        ScopedGpu.Extents = Vector4D{ScopedOccluder.HalfExtents.X, ScopedOccluder.HalfExtents.Y, ScopedBox ? 1.0f : 0.0f,
-                                     0.0f};
+        ScopedGpu.Extents =
+            Vector4D{ScopedOccluder.HalfExtents.X, ScopedOccluder.HalfExtents.Y, ScopedBox ? 1.0f : 0.0f, 0.0f};
     }
     OutFrame->occluderCount = ScopedCount;
     OutFrame->enabled = true;
@@ -493,7 +492,13 @@ void LightingSystem::Tick(Ecs::RenderSystemView& InView, void* InUser)
 
 bool LightingSystem::Register(Ecs::SystemGraph& InGraph, LightingSystem& InSystem)
 {
-    return InGraph.Add(Ecs::Phase::PostUpdate, "LightingSystem",
-                       Ecs::BindRenderSystem<&LightingSystem::Tick>(), &InSystem);
+    Ecs::SystemAccess ScopedAccess;
+    ScopedAccess.ComponentReads =
+        Ecs::MakeComponentAccessMask<Transform2D, Sprite2D, Light2DComponent, LightSourceComponent,
+                                     Light2DOccluderComponent, Light2DTargetComponent, SdfSunComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<Light2DResultComponent>();
+    ScopedAccess.Writes = Ecs::kServiceRenderer;
+    return InGraph.Add(Ecs::Phase::PostUpdate, "LightingSystem", Ecs::BindRenderSystem<&LightingSystem::Tick>(),
+                       &InSystem, 0, 0, ScopedAccess);
 }
 }

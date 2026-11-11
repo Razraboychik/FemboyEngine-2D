@@ -112,7 +112,7 @@ void TestDecode()
           "a short payload is rejected");
     Check(!Fby::DecodeCarveCommand(std::span<const std::byte>(ScopedBytes, sizeof(ScopedOp)), nullptr),
           "a null output is rejected");
-    Check(!Fby::ReplayCarveCommand(nullptr, entt::null, {}), "a null context is rejected");
+    Check(!Fby::ReplayCarveCommand(nullptr, Fby::kNullEntity, {}), "a null context is rejected");
 }
 }
 

@@ -89,7 +89,7 @@ TestTagIds& TestTags() noexcept
 
 struct TestWorld
 {
-    std::array<Entity, 2> players{entt::null, entt::null};
+    std::array<Entity, 2> players{Fby::kNullEntity, Fby::kNullEntity};
 };
 
 Entity CreatePlayer(Registry& InRegistry, Vector2D InPosition)
@@ -386,7 +386,7 @@ void TestEntityMap()
     Check(!ScopedMap.Register(NetEntityId{8}, ScopedFirst), "conflicting net id rejected");
     Check(!ScopedMap.Register(NetEntityId{9}, ScopedFirst), "conflicting local entity rejected");
     ScopedMap.UnregisterNet(NetEntityId{7});
-    Check(ScopedMap.Resolve(NetEntityId{7}) == entt::null, "unregister removes net mapping");
+    Check(ScopedMap.Resolve(NetEntityId{7}) == Fby::kNullEntity, "unregister removes net mapping");
     Check(!ScopedMap.IdOf(ScopedFirst).IsValid(), "unregister removes local mapping");
     Check(ScopedMap.Register(NetEntityId{7}, ScopedFirst), "a freed net id can be reused");
 }

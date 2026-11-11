@@ -2,6 +2,7 @@
 #include "Engine/Script/ScriptSystem.hpp"
 
 #include "Engine/Core/Log.hpp"
+#include "Engine/Audio/Audio.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/Physics/Physics.hpp"
 #include "Engine/RHI/CameraStack.hpp"
@@ -61,7 +62,7 @@ void NativeSpawnPrefab(Script::ScriptVm& InVm, Script::VmContext& InContext, std
 {
     if (InContext.spawn == nullptr)
     {
-        InVm.SetU(InBase, static_cast<std::uint32_t>(entt::null));
+        InVm.SetU(InBase, static_cast<std::uint32_t>(Fby::kNullEntity));
         return;
     }
     const std::uint32_t ScopedSpawned = InContext.spawn(InContext, InVm.U(InBase));
@@ -275,11 +276,15 @@ void NativeCameraSetMotionScale(Script::ScriptVm& InVm, Script::VmContext& InCon
     InVm.SetF(InBase, 1.0f);
 }
 
-void NativePlaySound(Script::ScriptVm& InVm, Script::VmContext&, std::uint8_t InBase)
+void NativePlaySound(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
 {
-    // Audio bus routing is the audio module's business; the script layer only
-    (void)InVm;
-    (void)InBase;
+    if (InContext.audio == nullptr)
+    {
+        InVm.SetU(InBase, 0xFFFFFFFFu);
+        return;
+    }
+    const AssetId ScopedAsset{static_cast<std::uint32_t>(InVm.F(InBase))};
+    InVm.SetU(InBase, InContext.audio->Play(ScopedAsset));
 }
 
 void NativeGetDeltaTime(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
@@ -931,6 +936,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     ScopedVmContext.transport = InRuntime.TransportGroups();
     ScopedVmContext.physics = InRuntime.Physics();
     ScopedVmContext.camera = InRuntime.CameraStack();
+    ScopedVmContext.audio = InContext.audio;
 
     // Reused across entities: one string construction per tick, not per script.
     std::string ScopedAotError;

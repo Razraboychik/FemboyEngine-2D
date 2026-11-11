@@ -162,6 +162,11 @@ private:
                                         std::uint8_t& InLacing, std::span<const std::byte>& InPayload) const;
     [[nodiscard]] bool ParseBlockGroup(const Element& InGroup, WebmFrame& InFrame, bool& InIsVideoTrack,
                                        std::string* InError);
+    // Splits one laced audio block into the fixed packet queue. Xiph, EBML and
+    // fixed lacing are supported; video blocks stay unlaced by contract.
+    [[nodiscard]] bool SplitLacedAudio(std::span<const std::byte> InData, std::uint8_t InLacing,
+                                       std::uint64_t InTimestampNs, std::string* InError);
+    void ClearLacedAudio() noexcept;
 
     // Applies the video-track checks to a codec id; this is where VP8/AV1/H.264
     [[nodiscard]] bool ValidateVideoCodec(std::string_view InCodecId, std::string* InError);
@@ -169,7 +174,7 @@ private:
     [[nodiscard]] bool RangeInside(std::uint64_t InOffset, std::uint64_t InSize) const noexcept;
     [[nodiscard]] std::uint64_t TimestampToNs(std::uint64_t InTicks) const noexcept;
     void BuildClusterIndex() noexcept;
-    [[nodiscard]] std::uint64_t ReadClusterTimestampTicks(const Element& InCluster) const noexcept;
+    [[nodiscard]] bool ReadClusterTimestampTicks(const Element& InCluster, std::uint64_t& OutTicks) const noexcept;
 
     std::span<const std::byte> MBytes{};
     // First byte of Segment payload
@@ -193,6 +198,15 @@ private:
     std::uint64_t MAudioClusterTimestampTicks = 0;
     bool MAudioInCluster = false;
     bool MAudioFinished = false;
+    struct LacedAudioPacket
+    {
+        std::span<const std::byte> Payload{};
+        std::uint64_t TimestampNs = 0;
+    };
+    static constexpr std::uint32_t kMaxLacedAudioPackets = 64;
+    std::array<LacedAudioPacket, kMaxLacedAudioPackets> MAudioLaced{};
+    std::uint32_t MAudioLacedRead = 0;
+    std::uint32_t MAudioLacedCount = 0;
     struct ClusterIndexEntry
     {
         std::size_t Offset = 0;

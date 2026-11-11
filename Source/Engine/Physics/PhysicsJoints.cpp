@@ -37,7 +37,7 @@ namespace
 // stored as one so a null pointer never maps to a valid entity.
 [[nodiscard]] void* BodyUserData(Entity InEntity) noexcept
 {
-    return reinterpret_cast<void*>(static_cast<std::uintptr_t>(entt::to_integral(InEntity)) + 1u);
+    return reinterpret_cast<void*>(static_cast<std::uintptr_t>(Fby::ToIntegral(InEntity)) + 1u);
 }
 
 [[nodiscard]] bool BodyIsLive(std::uint64_t InPacked) noexcept
@@ -488,7 +488,7 @@ void PhysicsJointSystem::RefreshLinkFlags(Ecs::Registry& InRegistry, std::uint32
             return nullptr;
         }
         const Entity ScopedEntity = ScopedChain.Links[InLink];
-        if (ScopedEntity == entt::null || !InRegistry.valid(ScopedEntity))
+        if (ScopedEntity == Fby::kNullEntity || !InRegistry.valid(ScopedEntity))
         {
             return nullptr;
         }
@@ -609,10 +609,10 @@ void PhysicsJointSystem::DestroyRuntime(Ecs::Registry& InRegistry, ChainRuntime&
             b2DestroyBody(b2LoadBodyId(ScopedPacked));
         }
         const Entity ScopedEntity = InChain.Links[ScopedI];
-        if (ScopedEntity != entt::null && InRegistry.valid(ScopedEntity))
+        if (ScopedEntity != Fby::kNullEntity && InRegistry.valid(ScopedEntity))
         {
             const auto* ScopedMarker = InRegistry.try_get<JointLinkComponent>(ScopedEntity);
-            // Only destroy an entity that still belongs to this chain. EnTT
+            // Only destroy an entity that still belongs to this chain.
             if (ScopedMarker != nullptr && ScopedMarker->ChainSlot == InChain.Index &&
                 ScopedMarker->ChainGeneration == InChain.Generation)
             {
@@ -1269,7 +1269,7 @@ JointConnectionHandle PhysicsJointSystem::TieChains(Ecs::Registry& InRegistry, J
     }
     const Entity ScopedEntityA = ScopedChainA->Links[InLinkA];
     const Entity ScopedEntityB = ScopedChainB->Links[InLinkB];
-    if (ScopedEntityA == entt::null || ScopedEntityB == entt::null || !InRegistry.valid(ScopedEntityA) ||
+    if (ScopedEntityA == Fby::kNullEntity || ScopedEntityB == Fby::kNullEntity || !InRegistry.valid(ScopedEntityA) ||
         !InRegistry.valid(ScopedEntityB))
     {
         return ScopedFail(ChainError::AnchorBodyMissing);
@@ -1314,7 +1314,7 @@ JointConnectionHandle PhysicsJointSystem::TieBodies(Ecs::Registry& InRegistry, E
     {
         *InError = ChainError::None;
     }
-    if (InEntityA == entt::null || InEntityB == entt::null || InEntityA == InEntityB)
+    if (InEntityA == Fby::kNullEntity || InEntityB == Fby::kNullEntity || InEntityA == InEntityB)
     {
         return ScopedFail(ChainError::InvalidDesc);
     }
@@ -1642,7 +1642,7 @@ JointChainHandle PhysicsJointSystem::CreateChainInternal(Ecs::Registry& InRegist
 
     b2BodyId ScopedAnchorA = b2_nullBodyId;
     b2BodyId ScopedAnchorB = b2_nullBodyId;
-    if (InDesc.AnchorA != entt::null)
+    if (InDesc.AnchorA != Fby::kNullEntity)
     {
         const auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InDesc.AnchorA);
         if (ScopedBody == nullptr || !BodyIsLive(ScopedBody->Body))
@@ -1651,7 +1651,7 @@ JointChainHandle PhysicsJointSystem::CreateChainInternal(Ecs::Registry& InRegist
         }
         ScopedAnchorA = b2LoadBodyId(ScopedBody->Body);
     }
-    if (InDesc.AnchorB != entt::null)
+    if (InDesc.AnchorB != Fby::kNullEntity)
     {
         const auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InDesc.AnchorB);
         if (ScopedBody == nullptr || !BodyIsLive(ScopedBody->Body))
@@ -1830,14 +1830,14 @@ JointChainHandle PhysicsJointSystem::CreateChainInternal(Ecs::Registry& InRegist
         {
             // An anchor has no ECS entity; ownership tracking is the only way a
             // shutdown or a scene clear can find and destroy it.
-            MPhysics->TrackBody(entt::null, b2StoreBodyId(ScopedAnchor));
+            MPhysics->TrackBody(Fby::kNullEntity, b2StoreBodyId(ScopedAnchor));
         }
         return ScopedAnchor;
     };
 
     Vector2D ScopedStartWorld = ScopedPoints[0];
     Vector2D ScopedEndWorld = ScopedPoints[ScopedPointCount - 1];
-    if (InDesc.AnchorA != entt::null)
+    if (InDesc.AnchorA != Fby::kNullEntity)
     {
         ScopedStartWorld = ToPixels(b2Body_GetPosition(ScopedAnchorA), ScopedPixelsPerMeter);
     }
@@ -1851,7 +1851,7 @@ JointChainHandle PhysicsJointSystem::CreateChainInternal(Ecs::Registry& InRegist
         }
         ScopedStaged.OwnsAnchorBodyA = true;
     }
-    if (InDesc.AnchorB != entt::null)
+    if (InDesc.AnchorB != Fby::kNullEntity)
     {
         ScopedEndWorld = ToPixels(b2Body_GetPosition(ScopedAnchorB), ScopedPixelsPerMeter);
     }
@@ -2227,7 +2227,7 @@ bool PhysicsJointSystem::LinkTransform(Ecs::Registry& InRegistry, JointChainHand
         return false;
     }
     const Entity ScopedEntity = ScopedChain->Links[InLink];
-    if (ScopedEntity == entt::null || !InRegistry.valid(ScopedEntity))
+    if (ScopedEntity == Fby::kNullEntity || !InRegistry.valid(ScopedEntity))
     {
         return false;
     }

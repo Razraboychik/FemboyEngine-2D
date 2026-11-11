@@ -56,6 +56,47 @@ produces `bin/fby_editor`; Build & Pack Game invokes `bin/tools/fby_fempak` on
 all three systems. See
 [platform support](platform-support.md) for the verification status.
 
+## Choosing a compiler
+
+The 0.4 alpha line validates four compilers. The minimum versions are the
+releases validated for this line, not older compatibility targets.
+
+| Compiler | Platform | Minimum | Best for |
+|---|---|---|---|
+| clang-cl | Windows | 23.1.4 | primary Windows build, PDB and Visual Studio debugging |
+| MSVC (`cl.exe`) | Windows | 19.44 | teams standardized on the Microsoft toolchain |
+| clang++ | Linux/macOS/Windows | 23.1.4 | cross-platform parity, primary Unix build |
+| GCC | Linux/MinGW | 16.2.0 | second-opinion compiler and portability checks |
+| AppleClang | macOS | 21.0 (Xcode 26.4) | native macOS/Metal build |
+
+- **Windows:** use clang-cl for the reference build. Use MSVC when the project
+  must build inside a Visual Studio-native toolchain. Both use the Windows SDK
+  and the MSVC standard library.
+- **Linux:** clang++ is the reference build; GCC 16.2.0 is the second opinion.
+- **macOS:** AppleClang 21+ with the Metal backend.
+- **One compiler everywhere:** Clang. It is the only frontend that covers
+  Windows (clang-cl or clang++), Linux and macOS.
+
+MSVC manual configure:
+
+```bat
+cmake -S . -B build-msvc -G Ninja ^
+      -DCMAKE_C_COMPILER=cl ^
+      -DCMAKE_CXX_COMPILER=cl ^
+      -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
+      -DFBY_BUILD_TESTS=ON ^
+      -DFBY_WITH_RNNOISE=OFF
+cmake --build build-msvc --parallel 8
+ctest --test-dir build-msvc --output-on-failure
+```
+
+RNNoise stays disabled on MSVC because its vendored C sources use variable-length
+arrays, which the Microsoft C frontend does not implement. The spectral denoise
+tier remains the fallback; Clang, GCC and clang-cl keep the neural tier.
+
+The build requires Vulkan 1.4 on Windows and Linux; macOS uses Metal. See
+[system requirements](system-requirements.md) for the editor hardware targets.
+
 Quick optimization gate:
 
 ```bat

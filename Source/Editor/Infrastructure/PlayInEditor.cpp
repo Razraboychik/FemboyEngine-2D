@@ -34,6 +34,22 @@ namespace Fby::Editor
 {
 namespace
 {
+// PIE gameplay sounds use their own bus so the editor's preview SFX stays
+// audible when a paused game mutes its own audio.
+void RoutePieAudio(Ecs::Registry& InWorld, AudioSystem* InAudio) noexcept
+{
+    if (InAudio == nullptr)
+    {
+        return;
+    }
+    const std::uint16_t ScopedGameBus = InAudio->GameplayBusId();
+    auto ScopedSources = InWorld.view<AudioSourceComponent>();
+    for (auto [ScopedEntity, ScopedSource] : ScopedSources.each())
+    {
+        (void)ScopedEntity;
+        ScopedSource.BusID = ScopedGameBus;
+    }
+}
 // Launches the sandbox client without waiting for it: the session talks to it
 // over UDP and terminates it on Stop. `InArguments` is a plain command line
 // built from ports only, so no quoting is involved.
@@ -223,6 +239,7 @@ PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs
     MServices = CaptureServices(InServices);
     // Systems must use the PIE world, never the editor's PhysicsSystem.
     MServices.physics = &MPiePhysics;
+    RoutePieAudio(MWorld, MServices.audio);
     // The editor's CommandBuffer contains authoring transactions against the
     MServices.commands = nullptr;
     MActive = true;
@@ -248,6 +265,7 @@ PlayInEditor::Result PlayInEditor::StartMultiplayer(Ecs::Registry& InEditorWorld
         Stop();
         return Result::RestoreFailed;
     }
+    RoutePieAudio(MClientWorld, MServices.audio);
     MClientDelta.assign(MMaxSnapshotBytes, std::byte{0});
     MClientCount = InClientCount == 0 ? 1 : InClientCount;
     MPieBaselineTick = InTick;
@@ -269,51 +287,60 @@ PlayInEditor::Result PlayInEditor::StartMultiplayer(Ecs::Registry& InEditorWorld
     std::memcpy(ScopedClientConfig.LocalName, "pie-client", 11);
     const Net::NetLink ScopedHostLink = MPieHostEndpoint.Link();
     const Net::NetLink ScopedClientLink = MPieClientEndpoint.Link();
-    if (MPieHostSession.Start(ScopedHostLink, ScopedHostConfig) &&
-        MPieClientSession.Start(ScopedClientLink, ScopedClientConfig))
+    if (!MPieHostSession.Start(ScopedHostLink, ScopedHostConfig) ||
+        !MPieClientSession.Start(ScopedClientLink, ScopedClientConfig))
     {
-        for (std::uint32_t ScopedStep = 0; ScopedStep < 240; ++ScopedStep)
+        Stop();
+        return Result::NetworkFailed;
+    }
+    for (std::uint32_t ScopedStep = 0; ScopedStep < 240; ++ScopedStep)
+    {
+        MPieNetwork.AdvanceTick();
+        MPieHostSession.Pump();
+        MPieClientSession.Pump();
+        MPieHostSession.Advance(0.01f);
+        MPieClientSession.Advance(0.01f);
+        if (MPieClientSession.PlayerCount() > 0)
+        {
+            break;
+        }
+    }
+    Net::SnapshotSenderConfig ScopedSenderConfig{};
+    Net::SnapshotReceiverConfig ScopedReceiverConfig{};
+    MPieNetworkUp = MPieSender.Start(MPieReplicationHostEndpoint.Link(), MPieReplicationClientEndpoint.Address(),
+                                     ScopedSenderConfig) &&
+                    MPieReceiver.Start(MPieReplicationClientEndpoint.Link(), MPieReplicationHostEndpoint.Address(),
+                                       ScopedReceiverConfig, &PlayInEditor::ApplyPieState, this);
+    if (MPieNetworkUp)
+    {
+        MPieSender.Tick(0);
+        if (!MPieSender.PublishBaseline(MPieBaselineTick, MSnapshot, 0))
+        {
+            LogError("pie", "replication baseline publish failed; the client cannot start from tick {}",
+                     MPieBaselineTick);
+            MPieNetworkUp = false;
+        }
+        for (std::uint32_t ScopedStep = 0; ScopedStep < 128 && !MPieReceiver.HasState(); ++ScopedStep)
         {
             MPieNetwork.AdvanceTick();
             MPieHostSession.Pump();
             MPieClientSession.Pump();
-            MPieHostSession.Advance(0.01f);
-            MPieClientSession.Advance(0.01f);
-            if (MPieClientSession.PlayerCount() > 0)
-            {
-                break;
-            }
-        }
-        Net::SnapshotSenderConfig ScopedSenderConfig{};
-        Net::SnapshotReceiverConfig ScopedReceiverConfig{};
-        MPieNetworkUp = MPieSender.Start(MPieReplicationHostEndpoint.Link(), MPieReplicationClientEndpoint.Address(),
-                                         ScopedSenderConfig) &&
-                        MPieReceiver.Start(MPieReplicationClientEndpoint.Link(), MPieReplicationHostEndpoint.Address(),
-                                           ScopedReceiverConfig, &PlayInEditor::ApplyPieState, this);
-        if (MPieNetworkUp)
-        {
-            MPieSender.Tick(0);
-            if (!MPieSender.PublishBaseline(MPieBaselineTick, MSnapshot, 0))
-            {
-                LogError("pie", "replication baseline publish failed; the client cannot start from tick {}",
-                         MPieBaselineTick);
-                MPieNetworkUp = false;
-            }
-            for (std::uint32_t ScopedStep = 0; ScopedStep < 128 && !MPieReceiver.HasState(); ++ScopedStep)
-            {
-                MPieNetwork.AdvanceTick();
-                MPieHostSession.Pump();
-                MPieClientSession.Pump();
-                MPieHostSession.Advance(0.005f);
-                MPieClientSession.Advance(0.005f);
-                MPieSender.Tick(ScopedStep);
-                MPieReceiver.Tick(ScopedStep);
-            }
+            MPieHostSession.Advance(0.005f);
+            MPieClientSession.Advance(0.005f);
+            MPieSender.Tick(ScopedStep);
+            MPieReceiver.Tick(ScopedStep);
         }
     }
     MMultiplayer = true;
     // Voice is best-effort: a failure must not reject a working PIE session.
-    (void)StartVoice();
+    try
+    {
+        (void)StartVoice();
+    }
+    catch (...)
+    {
+        LogWarn("pie", "PIE voice initialization failed");
+    }
     if (InExternal != nullptr && !InExternal->executable.empty())
     {
         // A failed launch is a fallback, not a session failure: the local client
@@ -476,7 +503,7 @@ void PlayInEditor::StopExternalClient() noexcept
     MExternalLastDeltaBytes = 0;
 }
 
-bool PlayInEditor::StartVoice() noexcept
+bool PlayInEditor::StartVoice()
 {
     if (MPieVoiceUp)
     {
@@ -737,6 +764,10 @@ bool PlayInEditor::Step(Ecs::SystemGraph& InGraph, float InDeltaSeconds, float I
     {
         return false;
     }
+    if (MServices.audio != nullptr)
+    {
+        MServices.audio->SetGameplayBusActive(true);
+    }
     // PIE is the authoritative simulation: never fan fixed phases across worker
     // threads, so DOD physics/SDF stay on the deterministic main-thread path.
     InGraph.SetDeterministicSimulation(true);
@@ -768,6 +799,10 @@ bool PlayInEditor::Step(Ecs::SystemGraph& InGraph, float InDeltaSeconds, float I
     }
     MTick += 1;
     MElapsed += InDeltaSeconds;
+    if (MServices.audio != nullptr)
+    {
+        MServices.audio->SetGameplayBusActive(false);
+    }
     return true;
 }
 

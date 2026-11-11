@@ -59,7 +59,7 @@ Color32 ViewportPresenter::CollisionOverlayColor(const Ecs::Registry& InRegistry
     return CollisionModeColor(static_cast<std::uint32_t>(CollisionMode::NoCollision));
 }
 
-std::uint32_t ViewportPresenter::CountReachingLights(Ecs::Registry& InRegistry, Entity InEntity,
+std::uint32_t ViewportPresenter::CountReachingLights(const Ecs::Registry& InRegistry, Entity InEntity,
                                                      Vector2D InPosition) const noexcept
 {
     std::uint32_t ScopedCount = 0;
@@ -93,8 +93,8 @@ std::uint32_t ViewportPresenter::CountReachingLights(Ecs::Registry& InRegistry, 
             const Vector2D ScopedDirection{std::cos(ScopedTransform->Rotation), std::sin(ScopedTransform->Rotation)};
             const float ScopedCross = ScopedDirection.X * ScopedToTarget.Y - ScopedDirection.Y * ScopedToTarget.X;
             const float ScopedDot = ScopedDirection.X * ScopedToTarget.X + ScopedDirection.Y * ScopedToTarget.Y;
-            if (LightConeAttenuation(std::atan2(ScopedCross, ScopedDot), ScopedSource.Aperture(), ScopedSource.ConeSoftness) <=
-                0.0f)
+            if (LightConeAttenuation(std::atan2(ScopedCross, ScopedDot), ScopedSource.Aperture(),
+                                     ScopedSource.ConeSoftness) <= 0.0f)
             {
                 continue;
             }
@@ -125,7 +125,7 @@ std::uint32_t ViewportPresenter::CountReachingLights(Ecs::Registry& InRegistry, 
     return ScopedCount;
 }
 
-void ViewportPresenter::Prepare(Ecs::Registry& InRegistry) noexcept
+void ViewportPresenter::Prepare(const Ecs::Registry& InRegistry) noexcept
 {
     MStats = ViewportPresenterStats{};
     MTintCount = 0;
@@ -245,7 +245,7 @@ void ViewportPresenter::Prepare(Ecs::Registry& InRegistry) noexcept
 
 bool ViewportPresenter::TintForEntity(Entity InEntity, std::uint32_t* OutColor) const noexcept
 {
-    if (OutColor == nullptr)
+    if (OutColor == nullptr || MMode == ViewportMode::Standard || MMode == ViewportMode::UnlitWireframe)
     {
         return false;
     }

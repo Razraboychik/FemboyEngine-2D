@@ -4,17 +4,13 @@
 #include "Engine/Core/Definitions.hpp"
 #include "Engine/Core/Mirror.hpp"
 #include "Engine/Core/Types.hpp"
-
-#include <entt/entt.hpp>
+#include "Engine/ECS/Entity.hpp"
 
 #include <cstdint>
 #include <type_traits>
 
 namespace Fby
 {
-
-// The entity id is EnTT's, exposed under the engine's name so gameplay code
-using Entity = entt::entity;
 
 // The transform the renderer and the game both use. Rotation is radians,
 struct Transform2D
@@ -38,7 +34,7 @@ struct LocalTransform2D
 
 struct Parent2D
 {
-    Entity Parent = entt::null;
+    Entity Parent = Fby::kNullEntity;
 };
 
 // Linear motion, integrated by the movement system on the fixed step.
@@ -60,6 +56,23 @@ struct Sprite2D
     Color32 Color = Color32::White();
     // Rhi::RenderFlags
     std::uint32_t Flags = 0;
+};
+
+// A second sprite layer over the base Sprite2D. A directional flipbook
+// crossfade puts the outgoing frame in Sprite2D and the incoming frame here
+// with Weight as its alpha, so both cells are drawn from one entity.
+struct SpriteOverlay2D
+{
+    Vector2D UVMin{0.0f, 0.0f};
+    Vector2D UVMax{1.0f, 1.0f};
+    std::uint32_t Layer = 0;
+    Color32 Color = Color32::White();
+    // Rhi::RenderFlags
+    std::uint32_t Flags = 0;
+    // Multiplies the authored alpha; zero skips the layer
+    float Weight = 1.0f;
+    // Keeps the overlay behind the base sprite at equal depth keys
+    float DepthBias = 0.0001f;
 };
 
 // Sorting bucket. A scene sets this once; the extract copies it into the key.
@@ -115,6 +128,8 @@ static_assert(sizeof(Transform2D) == 20, "Transform2D is Vec2 + Vec2 + float, ti
 
 static_assert(std::is_trivially_copyable_v<Sprite2D>);
 static_assert(std::is_standard_layout_v<Sprite2D>);
+static_assert(std::is_trivially_copyable_v<SpriteOverlay2D>);
+static_assert(std::is_standard_layout_v<SpriteOverlay2D>);
 static_assert(std::is_trivially_copyable_v<Velocity>);
 static_assert(std::is_trivially_copyable_v<Camera2D>);
 }
@@ -129,6 +144,11 @@ FBY_REFLECT_COMPONENT(Fby::Sprite2D, "Sprite2D", FBY_FIELD(Fby::Sprite2D, Size, 
                       FBY_FIELD(Fby::Sprite2D, UVMin, Vector2D), FBY_FIELD(Fby::Sprite2D, UVMax, Vector2D),
                       FBY_FIELD(Fby::Sprite2D, Layer, UInt32), FBY_FIELD(Fby::Sprite2D, Color, Color32),
                       FBY_FIELD(Fby::Sprite2D, Flags, UInt32))
+
+FBY_REFLECT_COMPONENT(Fby::SpriteOverlay2D, "SpriteOverlay2D", FBY_FIELD(Fby::SpriteOverlay2D, UVMin, Vector2D),
+                      FBY_FIELD(Fby::SpriteOverlay2D, UVMax, Vector2D), FBY_FIELD(Fby::SpriteOverlay2D, Layer, UInt32),
+                      FBY_FIELD(Fby::SpriteOverlay2D, Color, Color32), FBY_FIELD(Fby::SpriteOverlay2D, Flags, UInt32),
+                      FBY_FIELD(Fby::SpriteOverlay2D, Weight, Float), FBY_FIELD(Fby::SpriteOverlay2D, DepthBias, Float))
 
 FBY_REFLECT_COMPONENT(Fby::DrawOrder, "DrawOrder", FBY_FIELD(Fby::DrawOrder, Layer, UInt32),
                       FBY_FIELD(Fby::DrawOrder, Depth, Float), FBY_FIELD(Fby::DrawOrder, MaterialBucket, UInt32))

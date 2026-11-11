@@ -1,7 +1,7 @@
 # FemboyEngine2D — Multimedia & Animation Ecosystem
 
 This document describes the modules added on top of the fixed core (SDL3 window,
-Vulkan RHI, EnTT ECS, FrameArena/CommandBuffer, deterministic rollback, plugin
+Vulkan RHI, FCS ECS, FrameArena/CommandBuffer, deterministic rollback, plugin
 ABI, ImGui editor). It is written to be read next to the headers: every claim
 below names the file that owns it.
 
@@ -196,7 +196,7 @@ End-to-end checks performed on this machine (clang-cl, Ninja, Windows):
 * AOT path: `script_aot_test` dumps a half-velocity program and its generated
   C++ (`FBY_AOT_DUMP_DIR`), the C++ compiles with `clang-cl -O2 -LD` into a
   DLL, and `fby_script_aot_test.exe` with `FBY_AOT_DLL=<dll>` loads it through
-  `AotModule` and observes the native update halving an EnTT `Velocity` — no VM
+  `AotModule` and observes the native update halving an FCS `Velocity` — no VM
   involved.
 
 ## 9. Backlog

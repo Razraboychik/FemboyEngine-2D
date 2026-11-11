@@ -103,7 +103,7 @@ struct ClothInfo
     std::uint32_t Rows = 0;
     std::uint32_t Particles = 0;
     std::uint32_t Constraints = 0;
-    Entity Entity = entt::null;
+    Entity Entity = Fby::kNullEntity;
 };
 
 // ClothSystem

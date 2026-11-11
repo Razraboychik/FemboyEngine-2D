@@ -31,7 +31,9 @@
 namespace Fby
 {
 
-// Stable type identity
+// Process-local type identity. Reflected and FBY_TYPE_NAME-pinned types hash a
+// stable name; other types hash the compiler signature and must not cross an
+// ABI or serialized boundary.
 using TypeId = std::uint64_t;
 
 inline constexpr TypeId kInvalidTypeId = 0;
@@ -58,7 +60,7 @@ namespace TypeDetail
 
 template <typename T> [[nodiscard]] constexpr std::string_view CompilerTypeName() noexcept
 {
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
     return __FUNCSIG__;
 #else
     return __PRETTY_FUNCTION__;
@@ -242,7 +244,7 @@ template <typename To, typename From> [[nodiscard]] FORCEINLINE const To& Cast(c
     return *ScopedResult;
 }
 
-// Type-safe component lookup. This is the ECS spelling of a cast: EnTT proves
+// Type-safe component lookup. This is the ECS spelling of a cast: the type system proves
 template <typename To, typename Registry, typename Entity>
 [[nodiscard]] FORCEINLINE To* CastComponent(Registry& InRegistry, Entity InEntity) noexcept
 {

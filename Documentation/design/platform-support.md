@@ -14,9 +14,9 @@ natively on that OS. The project contract is in
 
 | Platform | Toolchain | RHI | Editor | Game cook | CI |
 |---|---|---|---|---|---|
-| Windows 10/11 x64 | clang-cl 23.1.4 + MSVC headers/libraries | Vulkan | `windows-release` | editor Build & Pack Game | authoritative |
-| Linux x64 | clang++ 19+ / GCC 16+ | Vulkan | `linux-release` | editor Build & Pack Game | advisory until green |
-| macOS 14+ x86_64 | Homebrew Clang 19+ | Metal | `macos-release` | editor Build & Pack Game | focused gate green |
+| Windows 10/11 x64 | clang-cl 23.1.4 / Clang 23.1.4 / MSVC 19.44 / GCC 16.2.0 | Vulkan | `windows-release` | editor Build & Pack Game | authoritative |
+| Linux x64 | clang++ 23.1.4+ / GCC 16.2.0+ | Vulkan | `linux-release` | editor Build & Pack Game | advisory until green |
+| macOS 14+ x86_64 | Homebrew Clang 23.1.4+ | Metal | `macos-release` | editor Build & Pack Game | focused gate green |
 
 The presets configure `FBY_BUILD_EDITOR=ON`, `FBY_BUILD_TESTS=ON` and
 `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. The generated build trees are

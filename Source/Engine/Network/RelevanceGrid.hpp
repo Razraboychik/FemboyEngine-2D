@@ -195,7 +195,7 @@ private:
     struct SortableEntity
     {
         std::uint32_t id = kInvalidNetEntityId;
-        Entity local = entt::null;
+        Entity local = Fby::kNullEntity;
     };
 
     [[nodiscard]] RelevanceCell& CellRef(std::uint32_t InX, std::uint32_t InY) noexcept

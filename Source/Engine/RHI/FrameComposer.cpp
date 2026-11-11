@@ -7,22 +7,35 @@
 #include "Engine/ECS/Lighting.hpp"
 #include "Engine/ECS/Presentation.hpp"
 #include "Engine/ECS/Skeleton.hpp"
+#include "Engine/Physics/SdfCharacter.hpp"
 #include "Engine/Physics/SdfCollision.hpp"
 #include "Engine/RHI/SkinningBridge.hpp"
+#include "Engine/Core/JobSystem.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <numeric>
 
 namespace Fby::Rhi
 {
 namespace
 {
+[[nodiscard]] std::uint64_t NextSceneId() noexcept
+{
+    static std::atomic<std::uint64_t> Counter{1};
+    return Counter.fetch_add(1, std::memory_order_relaxed);
+}
+}
+namespace
+{
 // Conservative rotated AABB test. It rejects whole sprites before they reach
 // the sort, the instance upload and the GPU.
-[[nodiscard]] bool IsSpriteVisible(const Transform2D& InTransform, const Sprite2D& InSprite,
-                                   const Vector2D& InViewMin, const Vector2D& InViewMax) noexcept
+[[nodiscard]] bool IsSpriteVisible(const Transform2D& InTransform, const Sprite2D& InSprite, const Vector2D& InViewMin,
+                                   const Vector2D& InViewMax) noexcept
 {
     const Vector2D ScopedHalf{std::fabs(InSprite.Size.X * InTransform.Scale.X) * 0.5f,
                               std::fabs(InSprite.Size.Y * InTransform.Scale.Y) * 0.5f};
@@ -50,22 +63,88 @@ namespace
 void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::CameraData& InCamera, Color32 InClear,
                                      std::uint32_t InTextureArray,
                                      std::span<const Rhi::MeshRenderItem> InExtraMeshItems,
-                                     std::span<const TileQuad> InTileQuads, const Rhi::PostFxSettings& InPostFx)
+                                     std::span<const TileQuad> InTileQuads, const Rhi::PostFxSettings& InPostFx,
+                                     std::span<const SdfCharacterMeshData> InSdfCharacterMeshes)
 {
     const auto ScopedStart = std::chrono::steady_clock::now();
+#if !defined(NDEBUG)
+    // A FrameComposer owns mutable scratch buffers; concurrent builds would race
+    // even when the job pool itself is thread-safe.
+    const std::thread::id ScopedBuildThread = std::this_thread::get_id();
+    if (MBuildThread == std::thread::id{})
+    {
+        MBuildThread = ScopedBuildThread;
+    }
+    assert(MBuildThread == ScopedBuildThread && "FrameComposer must be built from one thread");
+#endif
+    if (MSceneId == 0)
+    {
+        MSceneId = NextSceneId();
+    }
     MStats = FrameComposerStats{};
+    const bool ScopedFastCamera = MHasLastCamera && MLastCamera.center.X == InCamera.center.X &&
+                                  MLastCamera.center.Y == InCamera.center.Y &&
+                                  MLastCamera.viewport.X == InCamera.viewport.X &&
+                                  MLastCamera.viewport.Y == InCamera.viewport.Y && MLastCamera.zoom == InCamera.zoom;
+    const bool ScopedFastMode = MViewportPresenter.Mode() == MLastViewportMode;
+    const Ecs::Registry& ScopedRegistry = InRegistry;
+    const bool ScopedFastScene = MHasLastFrame && ScopedRegistry.Data().Revision() == MLastSceneRevision &&
+                                 ScopedRegistry.Data().ModificationRevision() == MLastModificationRevision &&
+                                 InTextureArray == MLastTextureArray && ScopedFastCamera && ScopedFastMode &&
+                                 InExtraMeshItems.empty() && InTileQuads.empty() && InSdfCharacterMeshes.empty() &&
+                                 !MTemporalEnabled && MSdfField == nullptr && MSdfGiVolume == nullptr;
+    if (ScopedFastScene)
+    {
+        // Nothing the extract reads changed and the camera is identical. Reuse
+        // the previous item/key/batch arrays and tell the RHI that no instance
+        // range is dirty; the previous slice is already valid for this scene.
+        MPacket.camera = InCamera;
+        MPacket.clear = InClear;
+        MPacket.textureArray = InTextureArray;
+        MPacket.postFx = InPostFx;
+        MPacket.postFxEnabled = InPostFx.flags != Rhi::PostFxNone;
+        MPacket.sceneId = MSceneId;
+        MPacket.sceneStatic = true;
+        return;
+    }
     MViewportPresenter.SetSdfField(MSdfField);
-    MViewportPresenter.Prepare(InRegistry);
+    const bool ScopedCameraJump = MHasLastCamera && (std::abs(InCamera.center.X - MLastCamera.center.X) > 256.0f ||
+                                                     std::abs(InCamera.center.Y - MLastCamera.center.Y) > 256.0f ||
+                                                     std::abs(InCamera.zoom - MLastCamera.zoom) > 0.25f);
+    if (MResetTemporalHistory || ScopedCameraJump)
+    {
+        // Reset before the extract walk: clearing after it would discard the
+        // history that the next frame needs for its motion vectors.
+        MMotionHistory.Clear();
+        ++MHistoryGeneration;
+        MResetTemporalHistory = false;
+    }
+    const Rhi::ViewportMode ScopedMode = MViewportPresenter.Mode();
+    if (ScopedMode != Rhi::ViewportMode::Standard && ScopedMode != Rhi::ViewportMode::UnlitWireframe)
+    {
+        MViewportPresenter.Prepare(ScopedRegistry);
+    }
     const bool ScopedUnlit = Rhi::ViewportModeNeedsUnlit(MViewportPresenter.Mode());
     const float ScopedZoom = std::max(InCamera.zoom, 0.0001f);
-    const bool ScopedCull = InCamera.viewport.X > 0.0f && InCamera.viewport.Y > 0.0f;
-    const Vector2D ScopedViewHalf{InCamera.viewport.X * 0.5f / ScopedZoom,
-                                  InCamera.viewport.Y * 0.5f / ScopedZoom};
+    const Vector2D ScopedViewHalf{InCamera.viewport.X * 0.5f / ScopedZoom, InCamera.viewport.Y * 0.5f / ScopedZoom};
     const Vector2D ScopedViewMin = InCamera.center - ScopedViewHalf;
     const Vector2D ScopedViewMax = InCamera.center + ScopedViewHalf;
-    auto ScopedView = InRegistry.view<Transform2D, Sprite2D, DrawOrder>();
-    auto ScopedSkinView = InRegistry.view<SkeletonComponent, SkinComponent, SkinnedSprite>();
-    const std::size_t ScopedCount = ScopedView.size_hint() + InTileQuads.size();
+    const bool ScopedViewCoversWorld = MHasWorldBounds && ScopedViewMin.X <= MWorldMin.X &&
+                                       ScopedViewMin.Y <= MWorldMin.Y && ScopedViewMax.X >= MWorldMax.X &&
+                                       ScopedViewMax.Y >= MWorldMax.Y;
+    const bool ScopedCull = !ScopedViewCoversWorld && InCamera.viewport.X > 0.0f && InCamera.viewport.Y > 0.0f;
+    auto ScopedView = ScopedRegistry.view<Transform2D, Sprite2D, DrawOrder>();
+    auto ScopedSkinView = ScopedRegistry.view<SkeletonComponent, SkinComponent, SkinnedSprite>();
+    // Most scenes have none of these optional filters. Checking the archetype
+    // once avoids four per-sprite component lookups in the hot loop.
+    const bool ScopedHasRenderMask = !ScopedRegistry.view<RenderMaskComponent>().empty();
+    const bool ScopedHasHidden = !ScopedRegistry.view<Hidden>().empty();
+    const bool ScopedHasLightResult = !ScopedRegistry.view<Light2DResultComponent>().empty();
+    const bool ScopedHasOverlay = !ScopedRegistry.view<SpriteOverlay2D>().empty();
+    // Every sprite may emit a crossfade overlay, so the item arrays reserve two
+    // slots per entity before the tile quads.
+    const std::size_t ScopedSpriteCount = ScopedView.size_hint();
+    const std::size_t ScopedCount = ScopedSpriteCount * (ScopedHasOverlay ? 2u : 1u) + InTileQuads.size();
     MItems.resize(ScopedCount);
     MKeys.resize(ScopedCount);
     MOrder.resize(ScopedCount);
@@ -74,108 +153,423 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     MMotionItems.clear();
     if (MTemporalEnabled)
     {
-        MMotionItems.reserve(ScopedCount);
-        // Give every sprite entity a history record before the extract walk. The
-        // walk itself only reads and updates the record, so the hot loop performs
-        // no structural registry change and no hashing.
-        for (const Entity ScopedEntity : ScopedView)
+        MMotionItems.reserve(ScopedSpriteCount);
+        const std::size_t ScopedRecords = ScopedRegistry.Data().RecordCount();
+        if (MMotionHistory.Size() < ScopedRecords)
         {
-            (void)InRegistry.get_or_emplace<MotionHistory2D>(ScopedEntity);
+            MMotionHistory.Resize(ScopedRecords);
         }
     }
 
     // GPU-skinning path: bind vertices plus one final Mat4 palette per skinned
     // sprite. Both arrays are sized for the worst case, then trimmed by count.
-    MMeshVertices.resize(ScopedSkinView.size_hint() * kMaxSkinVertices);
-    MMeshPalette.resize(ScopedSkinView.size_hint() * kMaxBones);
-    MMeshItems.resize(ScopedSkinView.size_hint() + InExtraMeshItems.size());
+    const std::size_t ScopedSkinCount = ScopedSkinView.size_hint();
+    MMeshVertices.resize(ScopedSkinCount * kMaxSkinVertices);
+    MMeshItems.resize(ScopedSkinCount + InExtraMeshItems.size() + InSdfCharacterMeshes.size());
+    MMeshPalette.resize(MMeshItems.size() * kMaxBones);
     std::size_t ScopedMeshIndex = 0;
 
     std::size_t ScopedIndex = 0;
-    for (auto [ScopedEntity, ScopedTransform, ScopedSprite, ScopedOrder] : ScopedView.each())
+    const bool ScopedParallelEligible = MJobs != nullptr && MJobs->ThreadCount() > 0 && ScopedSpriteCount >= 4096 &&
+                                        ScopedMode == Rhi::ViewportMode::Standard;
+    if (ScopedParallelEligible)
     {
-        if (!EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassSprites) ||
-            InRegistry.all_of<Hidden>(ScopedEntity))
+        Fcs::Signature ScopedMask;
+        (ScopedMask.set(Fcs::Detail::ComponentIdOf<Transform2D>()),
+         ScopedMask.set(Fcs::Detail::ComponentIdOf<Sprite2D>()),
+         ScopedMask.set(Fcs::Detail::ComponentIdOf<DrawOrder>()));
+        Fcs::Signature ScopedHiddenMask;
+        ScopedHiddenMask.set(Fcs::Detail::ComponentIdOf<Hidden>());
+        Fcs::Signature ScopedRenderMaskMask;
+        ScopedRenderMaskMask.set(Fcs::Detail::ComponentIdOf<RenderMaskComponent>());
+        Fcs::Signature ScopedLightResultMask;
+        ScopedLightResultMask.set(Fcs::Detail::ComponentIdOf<Light2DResultComponent>());
+        Fcs::Signature ScopedOverlayMask;
+        ScopedOverlayMask.set(Fcs::Detail::ComponentIdOf<SpriteOverlay2D>());
+        const Fcs::World& ScopedWorld = ScopedRegistry.Data();
+        MParallelChunks.clear();
+        MParallelChunks.reserve(ScopedWorld.ArchetypeCount());
+        for (std::uint32_t ScopedArchetype = 0; ScopedArchetype < ScopedWorld.ArchetypeCount(); ++ScopedArchetype)
         {
-            continue;
-        }
-        if (ScopedCull && !IsSpriteVisible(ScopedTransform, ScopedSprite, ScopedViewMin, ScopedViewMax))
-        {
-            ++MStats.CulledSprites;
-            continue;
-        }
-        // The lighting system writes its own result component; the extract
-        // composes it with the authored sprite colour.
-        std::uint32_t ScopedColor = ScopedSprite.Color.rgba;
-        if (!ScopedUnlit && !MGpuLighting)
-        {
-            if (const auto* ScopedLight = InRegistry.try_get<Light2DResultComponent>(ScopedEntity))
+            const Fcs::World::Archetype& ScopedType = ScopedWorld.ArchetypeAt(ScopedArchetype);
+            if ((ScopedType.Type & ScopedMask) != ScopedMask)
             {
-                ScopedColor = LightingSystem::Compose(ScopedSprite.Color, ScopedLight->Color).rgba;
+                continue;
+            }
+            for (std::uint32_t ScopedChunk = 0; ScopedChunk < ScopedType.Chunks.size(); ++ScopedChunk)
+            {
+                if (ScopedType.Chunks[ScopedChunk].Count > 0)
+                {
+                    MParallelChunks.push_back(ParallelChunkRef{ScopedArchetype, ScopedChunk});
+                }
             }
         }
-        std::uint32_t ScopedTint = ScopedColor;
-        if (MViewportPresenter.TintForEntity(ScopedEntity, &ScopedTint))
+
+        MParallelOffsets.assign(MParallelChunks.size() + 1, 0);
+        std::uint32_t ScopedCulled = 0;
+        std::uint32_t ScopedOit = 0;
+        for (std::size_t ScopedChunkIndex = 0; ScopedChunkIndex < MParallelChunks.size(); ++ScopedChunkIndex)
         {
-            ScopedColor = ScopedTint;
+            const ParallelChunkRef& ScopedRef = MParallelChunks[ScopedChunkIndex];
+            const Fcs::World::Archetype& ScopedType = ScopedWorld.ArchetypeAt(ScopedRef.Archetype);
+            const Fcs::World::Chunk& ScopedChunk = ScopedType.Chunks[ScopedRef.Chunk];
+            if ((ScopedType.Type & ScopedHiddenMask) == ScopedHiddenMask)
+            {
+                continue;
+            }
+            const bool ScopedChunkHasRenderMask = (ScopedType.Type & ScopedRenderMaskMask) == ScopedRenderMaskMask;
+            const bool ScopedChunkHasOverlay = (ScopedType.Type & ScopedOverlayMask) == ScopedOverlayMask;
+            for (std::uint32_t ScopedRow = 0; ScopedRow < ScopedChunk.Count; ++ScopedRow)
+            {
+                const Transform2D* ScopedTransform =
+                    ScopedWorld.ComponentAt<Transform2D>(ScopedRef.Archetype, ScopedRef.Chunk, ScopedRow);
+                const Sprite2D* ScopedSprite =
+                    ScopedWorld.ComponentAt<Sprite2D>(ScopedRef.Archetype, ScopedRef.Chunk, ScopedRow);
+                const Entity ScopedEntity = Fcs::ToEngineEntity(ScopedChunk.Entities[ScopedRow]);
+                if (ScopedHasRenderMask && ScopedChunkHasRenderMask &&
+                    !EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassSprites))
+                {
+                    continue;
+                }
+                if (ScopedCull && !IsSpriteVisible(*ScopedTransform, *ScopedSprite, ScopedViewMin, ScopedViewMax))
+                {
+                    ++ScopedCulled;
+                    continue;
+                }
+                if ((ScopedSprite->Flags & static_cast<std::uint32_t>(Rhi::RenderFlags::Oit)) != 0u)
+                {
+                    ++ScopedOit;
+                }
+                ++MParallelOffsets[ScopedChunkIndex + 1];
+                if (ScopedHasOverlay && ScopedChunkHasOverlay)
+                {
+                    if (const auto* ScopedOverlay = ScopedRegistry.try_get<SpriteOverlay2D>(ScopedEntity);
+                        ScopedOverlay != nullptr && ScopedOverlay->Weight > 0.0f)
+                    {
+                        ++MParallelOffsets[ScopedChunkIndex + 1];
+                    }
+                }
+            }
         }
-        const std::uint32_t ScopedBlendBits =
-            static_cast<std::uint32_t>(Rhi::RenderFlags::Additive) |
-            static_cast<std::uint32_t>(Rhi::RenderFlags::Premultiplied);
-        const bool ScopedOpaque =
-            ScopedSprite.Color.A() == 255u && (ScopedSprite.Flags & ScopedBlendBits) == 0u;
-        if ((ScopedSprite.Flags & static_cast<std::uint32_t>(Rhi::RenderFlags::Oit)) != 0u)
+        for (std::size_t ScopedI = 1; ScopedI < MParallelOffsets.size(); ++ScopedI)
         {
-            ++MStats.OitItems;
+            MParallelOffsets[ScopedI] += MParallelOffsets[ScopedI - 1];
         }
-        MItems[ScopedIndex] =
-            Rhi::RenderItem{ScopedTransform.Position, ScopedSprite.Size * ScopedTransform.Scale,
-                            ScopedSprite.UVMin,       ScopedSprite.UVMax,
-                            ScopedSprite.Layer,       ScopedColor,
-                            ScopedTransform.Rotation,
-                            Rhi::EncodeDepth(ScopedSprite.Flags, ScopedOrder.Depth, ScopedOpaque)};
+        const std::size_t ScopedTotal = MParallelOffsets.back();
+        MItems.resize(ScopedTotal + InTileQuads.size());
+        MKeys.resize(ScopedTotal + InTileQuads.size());
         if (MTemporalEnabled)
         {
-            MotionHistory2D& ScopedHistory = InRegistry.get<MotionHistory2D>(ScopedEntity);
-            if (ScopedHistory.Epoch == MMotionEpoch)
+            MMotionItems.resize(ScopedTotal);
+            if (MMotionStamp.size() < ScopedTotal)
             {
-                Rhi::MotionVectorItem ScopedMotion;
-                ScopedMotion.position = ScopedTransform.Position;
-                ScopedMotion.size = ScopedSprite.Size * ScopedTransform.Scale;
-                ScopedMotion.previousPosition = ScopedHistory.Position;
-                ScopedMotion.previousSize = ScopedHistory.Size;
-                ScopedMotion.rotation = ScopedTransform.Rotation;
-                ScopedMotion.previousRotation = ScopedHistory.Rotation;
-                ScopedMotion.screenDelta = (ScopedTransform.Position - ScopedHistory.Position) * ScopedZoom;
-                ScopedMotion.flags = ScopedSprite.Flags;
-                MMotionItems.push_back(ScopedMotion);
+                MMotionStamp.resize(ScopedTotal);
             }
-            ScopedHistory.Position = ScopedTransform.Position;
-            ScopedHistory.Size = ScopedSprite.Size * ScopedTransform.Scale;
-            ScopedHistory.Rotation = ScopedTransform.Rotation;
-            ScopedHistory.Epoch = MMotionEpoch;
+            ++MMotionStampValue;
+            if (MMotionStampValue == 0)
+            {
+                std::fill(MMotionStamp.begin(), MMotionStamp.end(), 0);
+                MMotionStampValue = 1;
+            }
         }
-        const std::uint32_t ScopedBucket =
-            MMaterialPipelines.empty()
-                ? 0u
-                : std::min(ScopedOrder.MaterialBucket, Rhi::kMaxMaterialBuckets - 1u);
-        MKeys[ScopedIndex] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket), ScopedOrder.Layer,
-                                                        ScopedOrder.Depth);
-        ++ScopedIndex;
+        MStats.CulledSprites += ScopedCulled;
+        MStats.OitItems += ScopedOit;
+
+        MJobs->ParallelFor(
+            static_cast<std::uint32_t>(MParallelChunks.size()), 1,
+            [&](std::uint32_t InBegin, std::uint32_t InEnd)
+            {
+                for (std::uint32_t ScopedChunkIndex = InBegin; ScopedChunkIndex < InEnd; ++ScopedChunkIndex)
+                {
+                    const ParallelChunkRef& ScopedRef = MParallelChunks[ScopedChunkIndex];
+                    const Fcs::World::Archetype& ScopedType = ScopedWorld.ArchetypeAt(ScopedRef.Archetype);
+                    const Fcs::World::Chunk& ScopedChunk = ScopedType.Chunks[ScopedRef.Chunk];
+                    if ((ScopedType.Type & ScopedHiddenMask) == ScopedHiddenMask)
+                    {
+                        continue;
+                    }
+                    const bool ScopedChunkHasRenderMask =
+                        (ScopedType.Type & ScopedRenderMaskMask) == ScopedRenderMaskMask;
+                    const bool ScopedChunkHasLightResult =
+                        (ScopedType.Type & ScopedLightResultMask) == ScopedLightResultMask;
+                    const bool ScopedChunkHasOverlay = (ScopedType.Type & ScopedOverlayMask) == ScopedOverlayMask;
+                    std::size_t ScopedWrite = MParallelOffsets[ScopedChunkIndex];
+                    for (std::uint32_t ScopedRow = 0; ScopedRow < ScopedChunk.Count; ++ScopedRow)
+                    {
+                        const Transform2D* ScopedTransform =
+                            ScopedWorld.ComponentAt<Transform2D>(ScopedRef.Archetype, ScopedRef.Chunk, ScopedRow);
+                        const Sprite2D* ScopedSprite =
+                            ScopedWorld.ComponentAt<Sprite2D>(ScopedRef.Archetype, ScopedRef.Chunk, ScopedRow);
+                        const DrawOrder* ScopedOrder =
+                            ScopedWorld.ComponentAt<DrawOrder>(ScopedRef.Archetype, ScopedRef.Chunk, ScopedRow);
+                        const Entity ScopedEntity = Fcs::ToEngineEntity(ScopedChunk.Entities[ScopedRow]);
+                        if (ScopedHasRenderMask && ScopedChunkHasRenderMask &&
+                            !EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassSprites))
+                        {
+                            continue;
+                        }
+                        if (ScopedCull &&
+                            !IsSpriteVisible(*ScopedTransform, *ScopedSprite, ScopedViewMin, ScopedViewMax))
+                        {
+                            continue;
+                        }
+                        std::uint32_t ScopedColor = ScopedSprite->Color.rgba;
+                        if (!ScopedUnlit && !MGpuLighting && ScopedHasLightResult && ScopedChunkHasLightResult)
+                        {
+                            if (const auto* ScopedLight = ScopedRegistry.try_get<Light2DResultComponent>(ScopedEntity))
+                            {
+                                ScopedColor = LightingSystem::Compose(ScopedSprite->Color, ScopedLight->Color).rgba;
+                            }
+                        }
+                        const std::uint32_t ScopedBlendBits =
+                            static_cast<std::uint32_t>(Rhi::RenderFlags::Additive) |
+                            static_cast<std::uint32_t>(Rhi::RenderFlags::Premultiplied);
+                        const bool ScopedOpaque =
+                            ScopedSprite->Color.A() == 255u && (ScopedSprite->Flags & ScopedBlendBits) == 0u;
+                        const std::uint32_t ScopedBucket =
+                            MMaterialPipelines.empty()
+                                ? 0u
+                                : std::min(ScopedOrder->MaterialBucket, Rhi::kMaxMaterialBuckets - 1u);
+                        MItems[ScopedWrite] =
+                            Rhi::RenderItem{ScopedTransform->Position,
+                                            ScopedSprite->Size * ScopedTransform->Scale,
+                                            ScopedSprite->UVMin,
+                                            ScopedSprite->UVMax,
+                                            ScopedSprite->Layer,
+                                            ScopedColor,
+                                            ScopedTransform->Rotation,
+                                            Rhi::EncodeDepth(ScopedSprite->Flags, ScopedOrder->Depth, ScopedOpaque)};
+                        MKeys[ScopedWrite] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
+                                                                        ScopedOrder->Layer, ScopedOrder->Depth);
+                        if (MTemporalEnabled)
+                        {
+                            const std::size_t ScopedHistoryIndex = static_cast<std::size_t>(
+                                Fby::ToIntegral(ScopedEntity) & ((std::uint32_t{1} << 20u) - 1u));
+                            if (ScopedHistoryIndex < MMotionHistory.Size())
+                            {
+                                const Vector2D ScopedSize = ScopedSprite->Size * ScopedTransform->Scale;
+                                const std::uint32_t ScopedGeneration = Fby::ToIntegral(ScopedEntity) >> 20u;
+                                if (MMotionHistory.Epoch[ScopedHistoryIndex] == MMotionEpoch &&
+                                    MMotionHistory.Generation[ScopedHistoryIndex] == ScopedGeneration)
+                                {
+                                    Rhi::MotionVectorItem ScopedVector;
+                                    ScopedVector.position = ScopedTransform->Position;
+                                    ScopedVector.size = ScopedSize;
+                                    ScopedVector.previousPosition =
+                                        Vector2D{MMotionHistory.PositionX[ScopedHistoryIndex],
+                                                 MMotionHistory.PositionY[ScopedHistoryIndex]};
+                                    ScopedVector.previousSize = Vector2D{MMotionHistory.SizeX[ScopedHistoryIndex],
+                                                                         MMotionHistory.SizeY[ScopedHistoryIndex]};
+                                    ScopedVector.rotation = ScopedTransform->Rotation;
+                                    ScopedVector.previousRotation = MMotionHistory.Rotation[ScopedHistoryIndex];
+                                    ScopedVector.screenDelta =
+                                        (ScopedTransform->Position - ScopedVector.previousPosition) * ScopedZoom;
+                                    ScopedVector.flags = ScopedSprite->Flags;
+                                    MMotionItems[ScopedWrite] = ScopedVector;
+                                    MMotionStamp[ScopedWrite] = MMotionStampValue;
+                                }
+                                MMotionHistory.PositionX[ScopedHistoryIndex] = ScopedTransform->Position.X;
+                                MMotionHistory.PositionY[ScopedHistoryIndex] = ScopedTransform->Position.Y;
+                                MMotionHistory.SizeX[ScopedHistoryIndex] = ScopedSize.X;
+                                MMotionHistory.SizeY[ScopedHistoryIndex] = ScopedSize.Y;
+                                MMotionHistory.Rotation[ScopedHistoryIndex] = ScopedTransform->Rotation;
+                                MMotionHistory.Epoch[ScopedHistoryIndex] = MMotionEpoch;
+                                MMotionHistory.Generation[ScopedHistoryIndex] = ScopedGeneration;
+                            }
+                        }
+                        const auto* ScopedOverlay = ScopedHasOverlay && ScopedChunkHasOverlay
+                                                        ? ScopedRegistry.try_get<SpriteOverlay2D>(ScopedEntity)
+                                                        : nullptr;
+                        if (ScopedOverlay != nullptr && ScopedOverlay->Weight > 0.0f)
+                        {
+                            const float ScopedWeight = std::clamp(ScopedOverlay->Weight, 0.0f, 1.0f);
+                            Color32 ScopedOverlayColor = ScopedOverlay->Color;
+                            const std::uint8_t ScopedAlpha = static_cast<std::uint8_t>(std::clamp(
+                                static_cast<float>(ScopedOverlayColor.A()) * ScopedWeight + 0.5f, 0.0f, 255.0f));
+                            ScopedOverlayColor = Color32::FromBytes(ScopedOverlayColor.R(), ScopedOverlayColor.G(),
+                                                                    ScopedOverlayColor.B(), ScopedAlpha);
+                            std::uint32_t ScopedOverlayPacked = ScopedOverlayColor.rgba;
+                            if (!ScopedUnlit && !MGpuLighting && ScopedHasLightResult && ScopedChunkHasLightResult)
+                            {
+                                if (const auto* ScopedLight =
+                                        ScopedRegistry.try_get<Light2DResultComponent>(ScopedEntity))
+                                {
+                                    ScopedOverlayPacked =
+                                        LightingSystem::Compose(ScopedOverlayColor, ScopedLight->Color).rgba;
+                                }
+                            }
+                            ++ScopedWrite;
+                            const float ScopedOverlayDepth = ScopedOrder->Depth + ScopedOverlay->DepthBias;
+                            MItems[ScopedWrite] =
+                                Rhi::RenderItem{ScopedTransform->Position,
+                                                ScopedSprite->Size * ScopedTransform->Scale,
+                                                ScopedOverlay->UVMin,
+                                                ScopedOverlay->UVMax,
+                                                ScopedOverlay->Layer,
+                                                ScopedOverlayPacked,
+                                                ScopedTransform->Rotation,
+                                                Rhi::EncodeDepth(ScopedOverlay->Flags, ScopedOverlayDepth, false)};
+                            MKeys[ScopedWrite] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
+                                                                            ScopedOrder->Layer, ScopedOverlayDepth);
+                        }
+                        ++ScopedWrite;
+                    }
+                    assert(ScopedWrite == MParallelOffsets[ScopedChunkIndex + 1] &&
+                           "parallel chunk count disagrees with its prefix offset");
+                }
+            });
+        if (MTemporalEnabled)
+        {
+            std::size_t ScopedMotionWrite = 0;
+            for (std::size_t ScopedI = 0; ScopedI < ScopedTotal; ++ScopedI)
+            {
+                if (MMotionStamp[ScopedI] == MMotionStampValue)
+                {
+                    if (ScopedMotionWrite != ScopedI)
+                    {
+                        MMotionItems[ScopedMotionWrite] = MMotionItems[ScopedI];
+                    }
+                    ++ScopedMotionWrite;
+                }
+            }
+            MMotionItems.resize(ScopedMotionWrite);
+        }
+        ScopedIndex = ScopedTotal;
+    }
+    else
+    {
+        for (auto [ScopedEntity, ScopedTransform, ScopedSprite, ScopedOrder] : ScopedView.each())
+        {
+            if ((ScopedHasRenderMask && !EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassSprites)) ||
+                (ScopedHasHidden && ScopedRegistry.all_of<Hidden>(ScopedEntity)))
+            {
+                continue;
+            }
+            if (ScopedCull && !IsSpriteVisible(ScopedTransform, ScopedSprite, ScopedViewMin, ScopedViewMax))
+            {
+                ++MStats.CulledSprites;
+                continue;
+            }
+            // The lighting system writes its own result component; the extract
+            // composes it with the authored sprite colour.
+            std::uint32_t ScopedColor = ScopedSprite.Color.rgba;
+            if (!ScopedUnlit && !MGpuLighting && ScopedHasLightResult)
+            {
+                if (const auto* ScopedLight = ScopedRegistry.try_get<Light2DResultComponent>(ScopedEntity))
+                {
+                    ScopedColor = LightingSystem::Compose(ScopedSprite.Color, ScopedLight->Color).rgba;
+                }
+            }
+            std::uint32_t ScopedTint = ScopedColor;
+            if (MViewportPresenter.TintForEntity(ScopedEntity, &ScopedTint))
+            {
+                ScopedColor = ScopedTint;
+            }
+            const std::uint32_t ScopedBlendBits = static_cast<std::uint32_t>(Rhi::RenderFlags::Additive) |
+                                                  static_cast<std::uint32_t>(Rhi::RenderFlags::Premultiplied);
+            const bool ScopedOpaque = ScopedSprite.Color.A() == 255u && (ScopedSprite.Flags & ScopedBlendBits) == 0u;
+            if ((ScopedSprite.Flags & static_cast<std::uint32_t>(Rhi::RenderFlags::Oit)) != 0u)
+            {
+                ++MStats.OitItems;
+            }
+            MItems[ScopedIndex] = Rhi::RenderItem{
+                ScopedTransform.Position, ScopedSprite.Size * ScopedTransform.Scale,
+                ScopedSprite.UVMin,       ScopedSprite.UVMax,
+                ScopedSprite.Layer,       ScopedColor,
+                ScopedTransform.Rotation, Rhi::EncodeDepth(ScopedSprite.Flags, ScopedOrder.Depth, ScopedOpaque)};
+            if (MTemporalEnabled)
+            {
+                const std::size_t ScopedHistoryIndex =
+                    static_cast<std::size_t>(Fby::ToIntegral(ScopedEntity) & ((std::uint32_t{1} << 20u) - 1u));
+                if (ScopedHistoryIndex < MMotionHistory.Size())
+                {
+                    const Vector2D ScopedSize = ScopedSprite.Size * ScopedTransform.Scale;
+                    const std::uint32_t ScopedGeneration = Fby::ToIntegral(ScopedEntity) >> 20u;
+                    if (MMotionHistory.Epoch[ScopedHistoryIndex] == MMotionEpoch &&
+                        MMotionHistory.Generation[ScopedHistoryIndex] == ScopedGeneration)
+                    {
+                        Rhi::MotionVectorItem ScopedMotion;
+                        ScopedMotion.position = ScopedTransform.Position;
+                        ScopedMotion.size = ScopedSize;
+                        ScopedMotion.previousPosition = Vector2D{MMotionHistory.PositionX[ScopedHistoryIndex],
+                                                                 MMotionHistory.PositionY[ScopedHistoryIndex]};
+                        ScopedMotion.previousSize = Vector2D{MMotionHistory.SizeX[ScopedHistoryIndex],
+                                                             MMotionHistory.SizeY[ScopedHistoryIndex]};
+                        ScopedMotion.rotation = ScopedTransform.Rotation;
+                        ScopedMotion.previousRotation = MMotionHistory.Rotation[ScopedHistoryIndex];
+                        ScopedMotion.screenDelta =
+                            (ScopedTransform.Position - ScopedMotion.previousPosition) * ScopedZoom;
+                        ScopedMotion.flags = ScopedSprite.Flags;
+                        MMotionItems.push_back(ScopedMotion);
+                    }
+                    MMotionHistory.PositionX[ScopedHistoryIndex] = ScopedTransform.Position.X;
+                    MMotionHistory.PositionY[ScopedHistoryIndex] = ScopedTransform.Position.Y;
+                    MMotionHistory.SizeX[ScopedHistoryIndex] = ScopedSize.X;
+                    MMotionHistory.SizeY[ScopedHistoryIndex] = ScopedSize.Y;
+                    MMotionHistory.Rotation[ScopedHistoryIndex] = ScopedTransform.Rotation;
+                    MMotionHistory.Epoch[ScopedHistoryIndex] = MMotionEpoch;
+                    MMotionHistory.Generation[ScopedHistoryIndex] = ScopedGeneration;
+                }
+            }
+            const std::uint32_t ScopedBucket =
+                MMaterialPipelines.empty() ? 0u : std::min(ScopedOrder.MaterialBucket, Rhi::kMaxMaterialBuckets - 1u);
+            MKeys[ScopedIndex] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket), ScopedOrder.Layer,
+                                                            ScopedOrder.Depth);
+            ++ScopedIndex;
+
+            // The overlay shares the base transform and size; only the atlas cell
+            // and the alpha differ, so a flipbook crossfade stays one entity.
+            const auto* ScopedOverlay =
+                ScopedHasOverlay ? ScopedRegistry.try_get<SpriteOverlay2D>(ScopedEntity) : nullptr;
+            if (ScopedOverlay != nullptr && ScopedOverlay->Weight > 0.0f)
+            {
+                if (ScopedIndex < MItems.size())
+                {
+                    const float ScopedWeight = std::clamp(ScopedOverlay->Weight, 0.0f, 1.0f);
+                    Color32 ScopedOverlayColor = ScopedOverlay->Color;
+                    const std::uint8_t ScopedAlpha = static_cast<std::uint8_t>(
+                        std::clamp(static_cast<float>(ScopedOverlayColor.A()) * ScopedWeight + 0.5f, 0.0f, 255.0f));
+                    ScopedOverlayColor = Color32::FromBytes(ScopedOverlayColor.R(), ScopedOverlayColor.G(),
+                                                            ScopedOverlayColor.B(), ScopedAlpha);
+                    std::uint32_t ScopedOverlayPacked = ScopedOverlayColor.rgba;
+                    if (!ScopedUnlit && !MGpuLighting && ScopedHasLightResult)
+                    {
+                        if (const auto* ScopedLight = ScopedRegistry.try_get<Light2DResultComponent>(ScopedEntity))
+                        {
+                            ScopedOverlayPacked = LightingSystem::Compose(ScopedOverlayColor, ScopedLight->Color).rgba;
+                        }
+                    }
+                    std::uint32_t ScopedOverlayTint = ScopedOverlayPacked;
+                    if (MViewportPresenter.TintForEntity(ScopedEntity, &ScopedOverlayTint))
+                    {
+                        ScopedOverlayPacked = ScopedOverlayTint;
+                    }
+                    const float ScopedOverlayDepth = ScopedOrder.Depth + ScopedOverlay->DepthBias;
+                    MItems[ScopedIndex] = Rhi::RenderItem{
+                        ScopedTransform.Position, ScopedSprite.Size * ScopedTransform.Scale,
+                        ScopedOverlay->UVMin,     ScopedOverlay->UVMax,
+                        ScopedOverlay->Layer,     ScopedOverlayPacked,
+                        ScopedTransform.Rotation, Rhi::EncodeDepth(ScopedOverlay->Flags, ScopedOverlayDepth, false)};
+                    MKeys[ScopedIndex] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
+                                                                    ScopedOrder.Layer, ScopedOverlayDepth);
+                    ++ScopedIndex;
+                }
+            }
+        }
     }
     static constexpr std::uint16_t ScopedSkeletalQuadIndices[6] = {0, 1, 2, 0, 2, 3};
     for (auto [ScopedEntity, ScopedSkeleton, ScopedSkin, ScopedSprite] : ScopedSkinView.each())
     {
         if (ScopedSkin.VertexCount < 4 ||
-            !EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassSprites) ||
-            InRegistry.all_of<Hidden>(ScopedEntity))
+            (ScopedHasRenderMask && !EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassSprites)) ||
+            (ScopedHasHidden && ScopedRegistry.all_of<Hidden>(ScopedEntity)))
         {
             continue;
         }
         std::uint32_t ScopedSkinColor = ScopedSprite.Color.rgba;
-        if (!ScopedUnlit)
+        if (!ScopedUnlit && ScopedHasLightResult)
         {
-            if (const auto* ScopedLight = InRegistry.try_get<Light2DResultComponent>(ScopedEntity))
+            if (const auto* ScopedLight = ScopedRegistry.try_get<Light2DResultComponent>(ScopedEntity))
             {
                 ScopedSkinColor = LightingSystem::Compose(ScopedSprite.Color, ScopedLight->Color).rgba;
             }
@@ -227,6 +621,60 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         ScopedItem.flags |= Rhi::MeshItemUnskinned;
         MMeshItems[ScopedMeshIndex++] = ScopedItem;
     }
+
+    // SDF character mesh bridge: the caller baked the field, this composer owns
+    // the copied vertex/index storage the packet points into. There is no
+    // distance LOD: every part uses the same field resolution.
+    MSdfCharacterVertices.clear();
+    MSdfCharacterIndices.clear();
+    if (!InSdfCharacterMeshes.empty())
+    {
+        std::size_t ScopedTotalVertices = 0;
+        std::size_t ScopedTotalIndices = 0;
+        for (const SdfCharacterMeshData& ScopedMesh : InSdfCharacterMeshes)
+        {
+            ScopedTotalVertices += ScopedMesh.Positions.size();
+            ScopedTotalIndices += ScopedMesh.Indices.size();
+        }
+        MSdfCharacterVertices.reserve(ScopedTotalVertices);
+        MSdfCharacterIndices.reserve(ScopedTotalIndices);
+        std::vector<std::uint32_t> ScopedOffsets;
+        ScopedOffsets.reserve(InSdfCharacterMeshes.size());
+        for (const SdfCharacterMeshData& ScopedMesh : InSdfCharacterMeshes)
+        {
+            ScopedOffsets.push_back(static_cast<std::uint32_t>(MSdfCharacterVertices.size()));
+            const std::uint16_t ScopedBase = static_cast<std::uint16_t>(MSdfCharacterVertices.size());
+            for (const Vector2D ScopedPosition : ScopedMesh.Positions)
+            {
+                Rhi::MeshVertex ScopedVertex;
+                ScopedVertex.position = ScopedPosition;
+                ScopedVertex.color = 0xFFFFFFFFu;
+                MSdfCharacterVertices.push_back(ScopedVertex);
+            }
+            for (const std::uint16_t ScopedIndex : ScopedMesh.Indices)
+            {
+                MSdfCharacterIndices.push_back(static_cast<std::uint16_t>(ScopedBase + ScopedIndex));
+            }
+        }
+        for (std::size_t ScopedMeshIndex2 = 0; ScopedMeshIndex2 < InSdfCharacterMeshes.size(); ++ScopedMeshIndex2)
+        {
+            if (ScopedMeshIndex >= MMeshItems.size())
+            {
+                break;
+            }
+            const SdfCharacterMeshData& ScopedMesh = InSdfCharacterMeshes[ScopedMeshIndex2];
+            Rhi::MeshRenderItem ScopedItem;
+            ScopedItem.vertices = std::span<const Rhi::MeshVertex>(
+                MSdfCharacterVertices.data() + ScopedOffsets[ScopedMeshIndex2], ScopedMesh.Positions.size());
+            ScopedItem.indices = std::span<const std::uint16_t>(
+                MSdfCharacterIndices.data() + ScopedOffsets[ScopedMeshIndex2], ScopedMesh.Indices.size());
+            ScopedItem.textureArray = InTextureArray;
+            ScopedItem.color = Color32::White();
+            ScopedItem.model = Mat4::Identity();
+            ScopedItem.flags = Rhi::MeshItemUnskinned;
+            MMeshItems[ScopedMeshIndex++] = ScopedItem;
+        }
+    }
     // Tilemap quads: one item per visible tile, already keyed by the isometric
     // depth the tilemap system computed.
     for (const TileQuad& ScopedQuad : InTileQuads)
@@ -253,19 +701,16 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     const bool ScopedSameKeys =
         ScopedSameCount && (MCount == 0u || std::equal(MKeys.begin(), MKeys.begin() + MCount, MLastKeys.begin()));
     const bool ScopedSameItems =
-        ScopedSameCount && (MCount == 0u ||
-                            std::memcmp(MItems.data(), MLastItems.data(),
-                                        static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderItem)) == 0);
+        ScopedSameCount &&
+        (MCount == 0u || std::memcmp(MItems.data(), MLastItems.data(),
+                                     static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderItem)) == 0);
     // The OIT and opaque splits depend only on the gathered order and flags, so
     // an unchanged frame reuses the arrays instead of copying every item again.
     const bool ScopedOutputsReusable = MHasLastFrame && ScopedSameKeys && ScopedSameItems;
 
     if (!ScopedSameKeys)
     {
-        for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
-        {
-            MOrder[ScopedI] = ScopedI;
-        }
+        std::iota(MOrder.begin(), MOrder.begin() + MCount, 0u);
         MSorter.Sort(std::span<const Rhi::RenderKey>(MKeys.data(), MCount),
                      std::span<std::uint32_t>(MOrder.data(), MCount));
         MBatches.clear();
@@ -273,7 +718,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
         {
             if (ScopedI > 0 && (MKeys[MOrder[ScopedI]] >> Rhi::kMaterialKeyShift) !=
-                                  (MKeys[MOrder[ScopedI - 1]] >> Rhi::kMaterialKeyShift))
+                                   (MKeys[MOrder[ScopedI - 1]] >> Rhi::kMaterialKeyShift))
             {
                 const std::uint32_t ScopedBucket =
                     static_cast<std::uint32_t>((MKeys[MOrder[ScopedI - 1]] >> Rhi::kMaterialKeyShift) & 0xFFu);
@@ -303,8 +748,10 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             MSorted[ScopedI] = MItems[MOrder[ScopedI]];
             MSortedKeys[ScopedI] = MKeys[MOrder[ScopedI]];
         }
-        MLastItems.assign(MItems.begin(), MItems.begin() + MCount);
-        MLastKeys.assign(MKeys.begin(), MKeys.begin() + MCount);
+        MLastItems.resize(MCount);
+        MLastKeys.resize(MCount);
+        std::memcpy(MLastItems.data(), MItems.data(), static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderItem));
+        std::memcpy(MLastKeys.data(), MKeys.data(), static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderKey));
     }
 
     MStats.GatherMilliseconds =
@@ -321,9 +768,8 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         {
             const std::uint32_t ScopedLayer = MSorted[ScopedI].layer;
             const bool ScopedLayerCutout =
-                MForceOpaqueCutout ||
-                (static_cast<std::size_t>(ScopedLayer) < MOpaqueLayerModes.size() &&
-                 MOpaqueLayerModes[ScopedLayer] != Assets::TextureAlphaMode::Blend);
+                MForceOpaqueCutout || (static_cast<std::size_t>(ScopedLayer) < MOpaqueLayerModes.size() &&
+                                       MOpaqueLayerModes[ScopedLayer] != Assets::TextureAlphaMode::Blend);
             if (!ScopedLayerCutout || (MSorted[ScopedI].flags & Rhi::DepthWriteMask) == 0u)
             {
                 ScopedAllOpaque = false;
@@ -349,8 +795,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             {
                 const float ScopedRatio =
                     MCount > 1u ? static_cast<float>(ScopedI) / static_cast<float>(MCount - 1u) : 0.0f;
-                MSorted[ScopedI].flags =
-                    Rhi::EncodeDepth(MSorted[ScopedI].flags, 0.01f + 0.98f * ScopedRatio, true);
+                MSorted[ScopedI].flags = Rhi::EncodeDepth(MSorted[ScopedI].flags, 0.01f + 0.98f * ScopedRatio, true);
             }
             MBatches[0].firstItem = 0;
             MBatches[0].itemCount = MCount;
@@ -395,8 +840,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     const bool ScopedCameraSame = MHasLastCamera && MLastCamera.center.X == InCamera.center.X &&
                                   MLastCamera.center.Y == InCamera.center.Y &&
                                   MLastCamera.viewport.X == InCamera.viewport.X &&
-                                  MLastCamera.viewport.Y == InCamera.viewport.Y &&
-                                  MLastCamera.zoom == InCamera.zoom;
+                                  MLastCamera.viewport.Y == InCamera.viewport.Y && MLastCamera.zoom == InCamera.zoom;
     const bool ScopedSceneStatic = MHasLastFrame && ScopedSameKeys && ScopedSameItems && ScopedCameraSame;
     if (!ScopedSceneStatic)
     {
@@ -453,25 +897,24 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         return InCamera.viewport.Y * 0.5f - (InY - InCamera.center.Y) * ScopedZoom;
     };
     const auto ScopedPushLight = [this](const Transform2D& InTransform, Color32 InColor, float InRadius,
-                                        float InIntensity, std::uint32_t InType, float InOuterCone,
-                                        float InInnerCone)
+                                        float InIntensity, std::uint32_t InType, float InOuterCone, float InInnerCone)
     {
         if (MLights.size() >= 1024u)
         {
             return;
         }
         Rhi::GpuLight ScopedLight{};
-        ScopedLight.PositionAndRadius = Vector4D{InTransform.Position.X, InTransform.Position.Y, InRadius,
-                                                 static_cast<float>(InType)};
-        ScopedLight.ColorAndIntensity = Vector4D{static_cast<float>(InColor.R()) / 255.0f,
-                                                 static_cast<float>(InColor.G()) / 255.0f,
-                                                 static_cast<float>(InColor.B()) / 255.0f, InIntensity};
+        ScopedLight.PositionAndRadius =
+            Vector4D{InTransform.Position.X, InTransform.Position.Y, InRadius, static_cast<float>(InType)};
+        ScopedLight.ColorAndIntensity =
+            Vector4D{static_cast<float>(InColor.R()) / 255.0f, static_cast<float>(InColor.G()) / 255.0f,
+                     static_cast<float>(InColor.B()) / 255.0f, InIntensity};
         ScopedLight.DirectionAndCone =
             Vector4D{std::cos(InTransform.Rotation), -std::sin(InTransform.Rotation), InOuterCone, InInnerCone};
         ScopedLight.Type = InType;
         MLights.push_back(ScopedLight);
     };
-    auto ScopedLightView = InRegistry.view<Transform2D, Light2DComponent>();
+    auto ScopedLightView = ScopedRegistry.view<Transform2D, Light2DComponent>();
     for (auto [ScopedEntity, ScopedTransform, ScopedComponent] : ScopedLightView.each())
     {
         (void)ScopedEntity;
@@ -482,7 +925,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         ScopedPushLight(ScopedTransform, ScopedComponent.Color, ScopedComponent.Radius, ScopedComponent.Intensity, 1u,
                         -1.0f, -1.0f);
     }
-    auto ScopedSourceView = InRegistry.view<Transform2D, LightSourceComponent>();
+    auto ScopedSourceView = ScopedRegistry.view<Transform2D, LightSourceComponent>();
     for (auto [ScopedEntity, ScopedTransform, ScopedComponent] : ScopedSourceView.each())
     {
         (void)ScopedEntity;
@@ -492,9 +935,8 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         }
         const float ScopedHalfCone = ScopedComponent.ConeAngle * 0.5f;
         const float ScopedOuter = ScopedHalfCone <= 0.0f ? -1.0f : std::cos(ScopedHalfCone);
-        const float ScopedInner = ScopedHalfCone <= 0.0f
-                                      ? -1.0f
-                                      : std::cos(std::max(ScopedHalfCone - ScopedComponent.ConeSoftness, 0.0f));
+        const float ScopedInner =
+            ScopedHalfCone <= 0.0f ? -1.0f : std::cos(std::max(ScopedHalfCone - ScopedComponent.ConeSoftness, 0.0f));
         ScopedPushLight(ScopedTransform, ScopedComponent.Color, ScopedComponent.Radius, ScopedComponent.Intensity,
                         ScopedComponent.Type, ScopedOuter, ScopedInner);
     }
@@ -507,10 +949,9 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         ScopedLight.PositionAndRadius.Z *= ScopedZoom;
     }
     MStats.PackedLights = static_cast<std::uint32_t>(MLights.size());
-    const bool ScopedLightsChanged =
-        MLights.size() != MLastLights.size() ||
-        (!MLights.empty() &&
-         std::memcmp(MLights.data(), MLastLights.data(), MLights.size() * sizeof(Rhi::GpuLight)) != 0);
+    const bool ScopedLightsChanged = MLights.size() != MLastLights.size() ||
+                                     (!MLights.empty() && std::memcmp(MLights.data(), MLastLights.data(),
+                                                                      MLights.size() * sizeof(Rhi::GpuLight)) != 0);
     if (ScopedLightsChanged)
     {
         ++MLightVersion;
@@ -519,6 +960,45 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
 
     MPacket = Rhi::FramePacket{};
     MPacket.opaqueFrontToBack = MOpaqueFrontToBack;
+    if (MInstanceDeltasEnabled)
+    {
+        const bool ScopedSameOrder =
+            MHasLastSorted && MLastSorted.size() == MCount && MLastSortedKeys.size() == MCount &&
+            (MCount == 0u || std::equal(MSortedKeys.begin(), MSortedKeys.begin() + MCount, MLastSortedKeys.begin()));
+        if (ScopedSameOrder)
+        {
+            MDirtyRanges.clear();
+            std::uint32_t ScopedRunFirst = 0;
+            std::uint32_t ScopedRunCount = 0;
+            for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+            {
+                const bool ScopedChanged =
+                    std::memcmp(&MSorted[ScopedI], &MLastSorted[ScopedI], sizeof(Rhi::RenderItem)) != 0;
+                if (ScopedChanged)
+                {
+                    if (ScopedRunCount == 0)
+                    {
+                        ScopedRunFirst = ScopedI;
+                    }
+                    ++ScopedRunCount;
+                }
+                else if (ScopedRunCount != 0)
+                {
+                    MDirtyRanges.push_back(Rhi::DirtyRange{ScopedRunFirst, ScopedRunCount});
+                    ScopedRunCount = 0;
+                }
+            }
+            if (ScopedRunCount != 0)
+            {
+                MDirtyRanges.push_back(Rhi::DirtyRange{ScopedRunFirst, ScopedRunCount});
+            }
+            MPacket.instanceRanges = std::span<const Rhi::DirtyRange>(MDirtyRanges.data(), MDirtyRanges.size());
+            MPacket.instanceRangesAreDeltas = true;
+        }
+        MLastSorted.assign(MSorted.begin(), MSorted.begin() + MCount);
+        MLastSortedKeys.assign(MSortedKeys.begin(), MSortedKeys.begin() + MCount);
+        MHasLastSorted = true;
+    }
     MPacket.items = std::span<const Rhi::RenderItem>(MSorted.data(), MCount);
     MPacket.motionItems = std::span<const Rhi::MotionVectorItem>(MMotionItems.data(), MMotionItems.size());
     MPacket.keys = std::span<const Rhi::RenderKey>(MSortedKeys.data(), MCount);
@@ -541,20 +1021,19 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         }
         ++ScopedCulledBatches;
     }
-    MPacket.gpuCulledBatchCount =
-        MBatches.size() <= 64u ? ScopedCulledBatches : 0u;
+    MPacket.gpuCulledBatchCount = MBatches.size() <= 64u ? ScopedCulledBatches : 0u;
     MPacket.gpuOpaqueMain = MPacket.gpuCulledBatchCount > 0u;
     MPacket.sceneStatic = ScopedSceneStatic && !ScopedLightsChanged;
+    MPacket.sceneId = MSceneId;
     MPacket.sceneVersion = MSceneVersion;
     MPacket.lightVersion = MLightVersion;
     if (MSdfGiVolume != nullptr && MSdfGiVolume->PackGpu(MGiProbes))
     {
-        MGiHeader.OriginAndCell =
-            Vector4D{MSdfGiVolume->Origin().X, MSdfGiVolume->Origin().Y, MSdfGiVolume->CellSize().X,
-                     MSdfGiVolume->CellSize().Y};
-        MGiHeader.Extent = Vector4D{static_cast<float>(MSdfGiVolume->Width()),
-                                    static_cast<float>(MSdfGiVolume->Height()),
-                                    MSdfGiVolume->MaxDistance(), std::clamp(MSdfGiStrength, 0.0f, 1.0f)};
+        MGiHeader.OriginAndCell = Vector4D{MSdfGiVolume->Origin().X, MSdfGiVolume->Origin().Y,
+                                           MSdfGiVolume->CellSize().X, MSdfGiVolume->CellSize().Y};
+        MGiHeader.Extent =
+            Vector4D{static_cast<float>(MSdfGiVolume->Width()), static_cast<float>(MSdfGiVolume->Height()),
+                     MSdfGiVolume->MaxDistance(), std::clamp(MSdfGiStrength, 0.0f, 1.0f)};
         MPacket.giProbes = std::span<const Rhi::GpuGiProbe>(MGiProbes.data(), MGiProbes.size());
         MPacket.giHeader = MGiHeader;
     }
@@ -565,8 +1044,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         MPacket.giHeader = {};
     }
     const bool ScopedGiChanged =
-        MGiProbes.size() != MLastGiProbes.size() ||
-        std::memcmp(&MGiHeader, &MLastGiHeader, sizeof(MGiHeader)) != 0 ||
+        MGiProbes.size() != MLastGiProbes.size() || std::memcmp(&MGiHeader, &MLastGiHeader, sizeof(MGiHeader)) != 0 ||
         (!MGiProbes.empty() &&
          std::memcmp(MGiProbes.data(), MLastGiProbes.data(), MGiProbes.size() * sizeof(Rhi::GpuGiProbe)) != 0);
     if (ScopedGiChanged)
@@ -581,15 +1059,6 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     }
     MPacket.giVersion = MGiVersion;
     Rhi::CameraData ScopedPacketCamera = InCamera;
-    const bool ScopedCameraJump = ScopedPreviousCameraValid &&
-        (std::abs(InCamera.center.X - ScopedPreviousCamera.center.X) > 256.0f ||
-         std::abs(InCamera.center.Y - ScopedPreviousCamera.center.Y) > 256.0f ||
-         std::abs(InCamera.zoom - ScopedPreviousCamera.zoom) > 0.25f);
-    if (MResetTemporalHistory || ScopedCameraJump)
-    {
-        ++MHistoryGeneration;
-        MResetTemporalHistory = false;
-    }
     MPacket.historyValid = MTemporalEnabled && ScopedPreviousCameraValid && !ScopedCameraJump;
     MPacket.historyGeneration = MHistoryGeneration;
     MPacket.jitterX = 0.0f;
@@ -662,8 +1131,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             }
             if (!MOpaqueItems.empty())
             {
-                MOpaqueBatches.push_back(
-                    Rhi::DrawBatch{0, static_cast<std::uint32_t>(MOpaqueItems.size()), 0, 0});
+                MOpaqueBatches.push_back(Rhi::DrawBatch{0, static_cast<std::uint32_t>(MOpaqueItems.size()), 0, 0});
             }
         }
         MPacket.items = std::span<const Rhi::RenderItem>(MOpaqueItems.data(), MOpaqueItems.size());
@@ -674,6 +1142,10 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     }
     MHasLastCamera = true;
     MLastCamera = InCamera;
+    MLastSceneRevision = ScopedRegistry.Data().Revision();
+    MLastModificationRevision = ScopedRegistry.Data().ModificationRevision();
+    MLastTextureArray = InTextureArray;
+    MLastViewportMode = MViewportPresenter.Mode();
     MPreviousJitterX = MPacket.jitterX;
     MPreviousJitterY = MPacket.jitterY;
 }

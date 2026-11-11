@@ -38,7 +38,7 @@ bool CommandLog::CanAppend(std::uint32_t InTotalBytes) const noexcept
 bool CommandLog::BeginRecord(CommandType InType, Entity InEntity, std::uint32_t InPayloadBytes,
                              std::uint64_t InTick) noexcept
 {
-    if (!CanAppend(sizeof(CommandRecord) + InPayloadBytes) || InTick < MLastTick || InEntity == entt::null)
+    if (!CanAppend(sizeof(CommandRecord) + InPayloadBytes) || InTick < MLastTick || InEntity == Fby::kNullEntity)
     {
         return false;
     }
@@ -260,7 +260,7 @@ bool CommandLog::ApplyUntil(Registry& InRegistry, const SnapshotSchema& InSchema
         }
         const std::size_t ScopedRecordOffset = ScopedOffset;
         ScopedOffset += sizeof(ScopedRecord);
-        if (ScopedOffset + ScopedRecord.payloadBytes > ScopedView.payload.size() || ScopedRecord.entity == entt::null)
+        if (ScopedOffset + ScopedRecord.payloadBytes > ScopedView.payload.size() || ScopedRecord.entity == Fby::kNullEntity)
         {
             return false;
         }

@@ -1,5 +1,6 @@
 // FemboyEngine2D - AI State Tree canvas tests.
 #include "Editor/Infrastructure/CommandStack.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Editor/Panels/AIStateTreeCanvasPanel.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Scene.hpp"
@@ -336,7 +337,7 @@ void TestPIEActivePath()
         }
     }
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::EditorSelected>(ScopedEntity);
     Fby::StateTreeComponent& ScopedState = ScopedRegistry.emplace<Fby::StateTreeComponent>(ScopedEntity);

@@ -3,6 +3,7 @@
 
 #include "Engine/Core/Mirror.hpp"
 #include "Engine/Core/Types.hpp"
+#include "Engine/ECS/DirectionalBlend.hpp"
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/ECS/Skeleton.hpp"
 #include "Engine/ECS/SpriteAnimation.hpp"
@@ -118,8 +119,15 @@ struct AnimGraphDefinitionComponent
     // Authored transitions, evaluated in array order, first match wins
     std::array<AnimTransition, kMaxAnimTransitions> Transitions{};
     std::array<AnimClip, kMaxAnimClips> Clips{};
+    // Directional state: while CurrentState equals DirectionalState, the baked
+    // table replaces the two-pose crossfade. DirectionalStates maps an anchor's
+    // authored ClipId to the clip state it selects.
+    Animation::DirectionalBlendTable Directional{};
+    std::array<std::uint64_t, kMaxAnimClips> DirectionalStates{};
+    std::uint64_t DirectionalState = 0;
     std::uint32_t TransitionCount = 0;
     std::uint32_t ClipCount = 0;
+    bool HasDirectional = false;
 };
 
 static_assert(std::is_trivially_copyable_v<AnimGraphDefinitionComponent>);
@@ -181,6 +189,14 @@ void AnimGraphApplySpriteClip(const AnimStateComponent& InState, const AnimGraph
                               SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid,
                               Sprite2D* InSprite) noexcept;
 
+// Resolves the directional state into a pose state: the dominant anchor's clip
+// state becomes CurrentState and the second anchor becomes PreviousState with
+// its normalized weight. Returns false outside the directional state or when
+// the winning anchor has no clip mapped.
+[[nodiscard]] bool AnimGraphResolveDirectional(const AnimGraphDefinitionComponent& InDefinition,
+                                               const AnimStateComponent& InState, Vector2D InDirection,
+                                               AnimStateComponent* OutPoseState) noexcept;
+
 // System
 class AnimGraphSystem
 {
@@ -210,31 +226,23 @@ void RegisterAnimGraphSystem(Ecs::SystemGraph& InGraph);
 }
 
 // Mirror registration
-FBY_REFLECT_COMPONENT(Fby::AnimStateComponent, "AnimStateComponent",
-                      FBY_FIELD(Fby::AnimStateComponent, CurrentState, UInt64),
-                      FBY_FIELD(Fby::AnimStateComponent, PreviousState, UInt64),
-                      FBY_FIELD(Fby::AnimStateComponent, StateTime, Float),
-                      FBY_FIELD(Fby::AnimStateComponent, BlendDuration, Float),
-                      FBY_FIELD(Fby::AnimStateComponent, BlendTime, Float),
-                      FBY_FIELD(Fby::AnimStateComponent, BlendWeight, Float),
-                      FBY_FIELD(Fby::AnimStateComponent, TransitionCount, UInt32))
+FBY_REFLECT_COMPONENT(
+    Fby::AnimStateComponent, "AnimStateComponent", FBY_FIELD(Fby::AnimStateComponent, CurrentState, UInt64),
+    FBY_FIELD(Fby::AnimStateComponent, PreviousState, UInt64), FBY_FIELD(Fby::AnimStateComponent, StateTime, Float),
+    FBY_FIELD(Fby::AnimStateComponent, BlendDuration, Float), FBY_FIELD(Fby::AnimStateComponent, BlendTime, Float),
+    FBY_FIELD(Fby::AnimStateComponent, BlendWeight, Float), FBY_FIELD(Fby::AnimStateComponent, TransitionCount, UInt32))
 
 // Authoring-side tables. These types are not components, but the animation
-FBY_REFLECT_COMPONENT(Fby::AnimTransition, "AnimTransition",
-                      FBY_FIELD(Fby::AnimTransition, FromState, UInt64),
+FBY_REFLECT_COMPONENT(Fby::AnimTransition, "AnimTransition", FBY_FIELD(Fby::AnimTransition, FromState, UInt64),
                       FBY_FIELD(Fby::AnimTransition, ToState, UInt64),
                       FBY_FIELD(Fby::AnimTransition, StateTimeThreshold, Float),
                       FBY_FIELD(Fby::AnimTransition, FloatThreshold, Float),
                       FBY_FIELD(Fby::AnimTransition, BlendDuration, Float),
                       FBY_FIELD(Fby::AnimTransition, FloatParam, UInt32),
-                      FBY_FIELD(Fby::AnimTransition, Conditions, UInt32),
-                      FBY_FIELD(Fby::AnimTransition, Enabled, Bool))
+                      FBY_FIELD(Fby::AnimTransition, Conditions, UInt32), FBY_FIELD(Fby::AnimTransition, Enabled, Bool))
 
-FBY_REFLECT_COMPONENT(Fby::AnimClip, "AnimClip",
-                      FBY_FIELD(Fby::AnimClip, State, UInt64),
+FBY_REFLECT_COMPONENT(Fby::AnimClip, "AnimClip", FBY_FIELD(Fby::AnimClip, State, UInt64),
                       FBY_FIELD(Fby::AnimClip, SpriteStartFrame, UInt32),
                       FBY_FIELD(Fby::AnimClip, SpriteFrameCount, UInt32),
-                      FBY_FIELD(Fby::AnimClip, SpriteFrameDuration, Float),
-                      FBY_FIELD(Fby::AnimClip, KeyCount, UInt32),
-                      FBY_FIELD(Fby::AnimClip, SpriteLooping, Bool),
-                      FBY_FIELD(Fby::AnimClip, SpritePlaying, Bool))
+                      FBY_FIELD(Fby::AnimClip, SpriteFrameDuration, Float), FBY_FIELD(Fby::AnimClip, KeyCount, UInt32),
+                      FBY_FIELD(Fby::AnimClip, SpriteLooping, Bool), FBY_FIELD(Fby::AnimClip, SpritePlaying, Bool))

@@ -398,7 +398,8 @@ public:
     }
 
     virtual TextureArrayHandle CreateTextureArray(const TextureArrayDesc& InDesc,
-                                                  std::span<const std::byte> InPixels) = 0;    virtual void DestroyTextureArray(TextureArrayHandle InHandle) = 0;
+                                                  std::span<const std::byte> InPixels) = 0;
+    virtual void DestroyTextureArray(TextureArrayHandle InHandle) = 0;
 
     // Virtual texturing. The page array stores one pageSize x pageSize page per
     // layer; pages are uploaded per tile and the table is uploaded per frame.

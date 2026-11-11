@@ -5,7 +5,6 @@
 #include "Engine/Physics/Physics.hpp"
 
 #include <span>
-#include <unordered_map>
 #include <vector>
 
 namespace Fby
@@ -88,12 +87,14 @@ private:
 
     void PruneDeadBodies(Ecs::Registry& InRegistry);
     [[nodiscard]] std::uint32_t FindBody(Entity InEntity) const noexcept;
+    void StoreBodyIndex(Entity InEntity, std::uint32_t InIndex);
+    void ClearBodyIndex(Entity InEntity) noexcept;
     // Returns the body index for `InEntity`, synchronizing bodies first only when
     // the entity is not registered yet. The setters call this instead of a full
     // EnsureBodies scan on every impulse.
     [[nodiscard]] std::uint32_t EnsureBodyIndex(Ecs::Registry& InRegistry, Entity InEntity);
     // Takes a free slot or appends a new one and resets every column of that slot.
-    [[nodiscard]] std::uint32_t AcquireBodySlot() noexcept;
+    [[nodiscard]] std::uint32_t AcquireBodySlot();
     void ResetBodySlot(std::uint32_t InIndex) noexcept;
     void ClearColumns() noexcept;
     [[nodiscard]] std::uint32_t BodyCount() const noexcept
@@ -110,7 +111,7 @@ private:
     [[nodiscard]] bool Overlaps(std::uint32_t InA, std::uint32_t InB) const noexcept;
     void Resolve(std::uint32_t InA, std::uint32_t InB) noexcept;
     void EmitContact(Entity InA, Entity InB, Vector2D InPoint, Vector2D InNormal, float InSpeed,
-                     PhysicsEventType InType) noexcept;
+                     PhysicsEventType InType);
 
     PhysicsDesc MDesc{};
     BodyColumns MColumns{};
@@ -136,7 +137,10 @@ private:
     std::vector<ContactRecord> MCurrentContacts{};
     std::vector<std::uint64_t> MPreviousPairKeys{};
     std::vector<PhysicsContactEvent> MEvents{};
-    std::unordered_map<Entity, std::uint32_t> MEntityToIndex{};
+    // Entity index -> body slot + 1 (0 means absent). The entity handle carries
+    // the 20-bit wire index, so a flat table removes the per-body node and hash
+    // probe from the impulse/setter path.
+    std::vector<std::uint32_t> MEntityToIndex{};
     std::uint32_t MEventCount = 0;
     std::uint32_t MSequence = 0;
     // Live records only. The columns also hold freed slots waiting for reuse, so

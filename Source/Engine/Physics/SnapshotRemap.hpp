@@ -16,7 +16,7 @@ inline constexpr std::uint32_t kMaxPhysicsRemapEntries = 16384;
 
 struct PhysicsBodyRemapEntry
 {
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     std::uint64_t serializedBody = 0;
     std::uint64_t liveBody = 0;
 };

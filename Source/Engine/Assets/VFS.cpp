@@ -36,6 +36,30 @@ using Assets::PakEntry;
 using Assets::PakHeader;
 
 // One definition of the format, shared with the cooker. VFS only ever reads it.
+[[nodiscard]] std::byte* EmptyByte() noexcept
+{
+    alignas(64) static std::byte ScopedEmpty{};
+    return &ScopedEmpty;
+}
+
+// Project paths are UTF-8 on every platform. Constructing a std::filesystem
+// path from a narrow std::string on Windows would use the ANSI code page and
+// mangle non-ASCII asset names, so route the bytes through char8_t there.
+[[nodiscard]] std::filesystem::path Utf8Path(std::string_view InPath)
+{
+#if defined(_WIN32)
+    const auto* ScopedBegin = reinterpret_cast<const char8_t*>(InPath.data());
+    return std::filesystem::path(std::u8string(ScopedBegin, ScopedBegin + InPath.size()));
+#else
+    return std::filesystem::path(std::string(InPath));
+#endif
+}
+
+[[nodiscard]] std::string Utf8String(const std::filesystem::path& InPath)
+{
+    const std::u8string ScopedUtf8 = InPath.u8string();
+    return std::string(reinterpret_cast<const char*>(ScopedUtf8.data()), ScopedUtf8.size());
+}
 
 // A writable overlay must not escape its mount root. Normalize() intentionally
 [[nodiscard]] bool HasParentTraversal(std::string_view InPath) noexcept
@@ -80,6 +104,7 @@ MappedFile& MappedFile::operator=(MappedFile&& InOther) noexcept
     Close();
     MData = std::exchange(InOther.MData, nullptr);
     MSize = std::exchange(InOther.MSize, 0);
+    MEmpty = std::exchange(InOther.MEmpty, false);
 #if defined(_WIN32)
     MFile = std::exchange(InOther.MFile, nullptr);
     MMapping = std::exchange(InOther.MMapping, nullptr);
@@ -92,7 +117,7 @@ MappedFile& MappedFile::operator=(MappedFile&& InOther) noexcept
 void MappedFile::Close() noexcept
 {
 #if defined(_WIN32)
-    if (MData != nullptr)
+    if (MData != nullptr && !MEmpty)
     {
         ::UnmapViewOfFile(MData);
     }
@@ -108,8 +133,9 @@ void MappedFile::Close() noexcept
     MMapping = nullptr;
     MFile = nullptr;
     MSize = 0;
+    MEmpty = false;
 #else
-    if (MData != nullptr)
+    if (MData != nullptr && !MEmpty)
     {
         ::munmap(MData, MSize);
     }
@@ -120,6 +146,7 @@ void MappedFile::Close() noexcept
     MData = nullptr;
     MFileDescriptor = -1;
     MSize = 0;
+    MEmpty = false;
 #endif
 }
 
@@ -135,7 +162,7 @@ std::unique_ptr<MappedFile> MappedFile::Open(std::string_view InPath, std::strin
     };
 
     auto ScopedFile = std::make_unique<MappedFile>();
-    const std::filesystem::path ScopedFilePath{std::string(InPath)};
+    const std::filesystem::path ScopedFilePath = Utf8Path(InPath);
 
 #if defined(_WIN32)
     // Loose assets are hot-reload inputs: an editor, a compiler or a cook must
@@ -147,10 +174,17 @@ std::unique_ptr<MappedFile> MappedFile::Open(std::string_view InPath, std::strin
         return ScopedFail("cannot open " + std::string(InPath));
     }
     LARGE_INTEGER ScopedSize{};
-    if (!::GetFileSizeEx(ScopedHandle, &ScopedSize) || ScopedSize.QuadPart <= 0)
+    if (!::GetFileSizeEx(ScopedHandle, &ScopedSize) || ScopedSize.QuadPart < 0)
     {
         ::CloseHandle(ScopedHandle);
-        return ScopedFail("empty or unreadable file: " + std::string(InPath));
+        return ScopedFail("unreadable file: " + std::string(InPath));
+    }
+    if (ScopedSize.QuadPart == 0)
+    {
+        ::CloseHandle(ScopedHandle);
+        ScopedFile->MData = EmptyByte();
+        ScopedFile->MEmpty = true;
+        return ScopedFile;
     }
     const HANDLE ScopedMapping = ::CreateFileMappingW(ScopedHandle, nullptr, PAGE_READONLY, 0, 0, nullptr);
     if (ScopedMapping == nullptr)
@@ -176,10 +210,17 @@ std::unique_ptr<MappedFile> MappedFile::Open(std::string_view InPath, std::strin
         return ScopedFail("cannot open " + std::string(InPath));
     }
     struct stat status{};
-    if (::fstat(descriptor, &status) != 0 || status.st_size <= 0)
+    if (::fstat(descriptor, &status) != 0 || status.st_size < 0)
     {
         ::close(descriptor);
-        return ScopedFail("empty or unreadable file: " + std::string(InPath));
+        return ScopedFail("unreadable file: " + std::string(InPath));
+    }
+    if (status.st_size == 0)
+    {
+        ::close(descriptor);
+        ScopedFile->MData = EmptyByte();
+        ScopedFile->MEmpty = true;
+        return ScopedFile;
     }
     void* view = ::mmap(nullptr, static_cast<std::size_t>(status.st_size), PROT_READ, MAP_PRIVATE, descriptor, 0);
     if (view == MAP_FAILED)
@@ -204,29 +245,100 @@ std::string VirtualFileSystem::Normalize(std::string_view InPath)
     return Assets::NormalizePakPath(InPath);
 }
 
-bool VirtualFileSystem::AddEntry(std::string InPath, VfsEntry InEntry, std::string* InError)
+bool VirtualFileSystem::MountExists(std::uint32_t InMount) const noexcept
 {
-    const auto ScopedExisting = MEntries.find(InPath);
-    if (ScopedExisting != MEntries.end())
+    for (const std::unique_ptr<MountRecord>& ScopedMount : MMounts)
     {
-        // Higher priority wins; on a tie the later mount wins (mods load after
-        if (ScopedExisting->second.priority > InEntry.priority)
+        if (ScopedMount->id == InMount)
         {
             return true;
         }
+    }
+    return false;
+}
+
+void VirtualFileSystem::RememberShadow(const std::string& InPath, const VfsEntry& InEntry)
+{
+    std::vector<VfsEntry>& ScopedList = MShadowed[InPath];
+    for (VfsEntry& ScopedEntry : ScopedList)
+    {
+        if (ScopedEntry.mount == InEntry.mount)
+        {
+            ScopedEntry = InEntry;
+            return;
+        }
+    }
+    ScopedList.push_back(InEntry);
+}
+
+void VirtualFileSystem::RestoreShadow(const std::string& InPath, std::uint32_t InExcludedMount)
+{
+    const auto ScopedShadow = MShadowed.find(InPath);
+    if (ScopedShadow == MShadowed.end())
+    {
+        MEntries.erase(InPath);
+        return;
+    }
+    std::vector<VfsEntry>& ScopedList = ScopedShadow->second;
+    std::erase_if(ScopedList,
+                  [this, InExcludedMount](const VfsEntry& InEntry)
+                  { return InEntry.mount == InExcludedMount || !MountExists(InEntry.mount); });
+    if (ScopedList.empty())
+    {
+        MShadowed.erase(InPath);
+        MEntries.erase(InPath);
+        return;
+    }
+    const auto ScopedBest = std::max_element(
+        ScopedList.begin(), ScopedList.end(),
+        [](const VfsEntry& InLeft, const VfsEntry& InRight)
+        {
+            return InLeft.priority != InRight.priority ? InLeft.priority < InRight.priority
+                                                       : InLeft.mount < InRight.mount;
+        });
+    MEntries.insert_or_assign(InPath, *ScopedBest);
+    ScopedList.erase(ScopedBest);
+    if (ScopedList.empty())
+    {
+        MShadowed.erase(InPath);
+    }
+}
+
+bool VirtualFileSystem::AddEntry(std::string InPath, VfsEntry InEntry, std::string* InError)
+{
+    const auto ScopedExisting = MEntries.find(InPath);
+    if (ScopedExisting == MEntries.end())
+    {
+        MEntries.insert_or_assign(std::move(InPath), InEntry);
+        (void)InError;
+        return true;
+    }
+    if (ScopedExisting->second.mount == InEntry.mount)
+    {
+        // A refresh of the same mount replaces its own row in place.
         ScopedExisting->second = InEntry;
         return true;
     }
-    MEntries.insert_or_assign(std::move(InPath), InEntry);
-    (void)InError;
+    // Higher priority wins; on a tie the later mount wins (mods load after the
+    // base project). The loser stays in the shadow table so unmounting or
+    // refreshing the winner can promote it again.
+    if (ScopedExisting->second.priority > InEntry.priority ||
+        (ScopedExisting->second.priority == InEntry.priority && ScopedExisting->second.mount > InEntry.mount))
+    {
+        RememberShadow(InPath, InEntry);
+        return true;
+    }
+    RememberShadow(InPath, ScopedExisting->second);
+    ScopedExisting->second = InEntry;
     return true;
 }
 
 bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, std::string* InError)
 {
+    const std::scoped_lock ScopedLock(MMutex);
     namespace fs = std::filesystem;
     std::error_code ScopedCode;
-    const fs::path ScopedRootPath{std::string(InRoot)};
+    const fs::path ScopedRootPath = Utf8Path(InRoot);
     if (!fs::is_directory(ScopedRootPath, ScopedCode))
     {
         if (InError != nullptr)
@@ -278,6 +390,7 @@ bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, 
 
 void VirtualFileSystem::RefreshDirectoryMounts()
 {
+    const std::scoped_lock ScopedLock(MMutex);
     namespace fs = std::filesystem;
     for (const std::unique_ptr<MountRecord>& ScopedMount : MMounts)
     {
@@ -297,6 +410,9 @@ void VirtualFileSystem::RefreshDirectoryMounts()
         {
             MLazyMappings.erase(ScopedPath);
             MEntries.erase(ScopedPath);
+            // The path may also exist in a lower-priority mount; promote it
+            // until the rescanned files are re-added below.
+            RestoreShadow(ScopedPath, ScopedMount->id);
         }
         std::error_code ScopedCode;
         std::vector<std::string> ScopedKeys;
@@ -325,6 +441,7 @@ void VirtualFileSystem::RefreshDirectoryMounts()
 
 bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std::string* InError)
 {
+    const std::scoped_lock ScopedLock(MMutex);
     const auto ScopedFail = [InError](std::string InMessage)
     {
         if (InError != nullptr)
@@ -423,13 +540,14 @@ const VirtualFileSystem::MountRecord* VirtualFileSystem::FindWritableMount() con
 
 std::optional<std::string> VirtualFileSystem::ResolveWritablePath(std::string_view InPath) const
 {
+    const std::scoped_lock ScopedLock(MMutex);
     const MountRecord* ScopedMount = FindWritableMount();
     if (ScopedMount == nullptr)
     {
         return std::nullopt;
     }
     const std::string ScopedKey = Normalize(InPath);
-    const std::filesystem::path ScopedRelative(ScopedKey);
+    const std::filesystem::path ScopedRelative = Utf8Path(ScopedKey);
     if (ScopedKey.empty() || HasParentTraversal(ScopedKey) || ScopedRelative.is_absolute() ||
         ScopedRelative.has_root_name())
     {
@@ -441,6 +559,7 @@ std::optional<std::string> VirtualFileSystem::ResolveWritablePath(std::string_vi
 
 bool VirtualFileSystem::WriteFile(std::string_view InPath, std::span<const std::byte> InBytes, std::string* InError)
 {
+    const std::scoped_lock ScopedLock(MMutex);
     const auto ScopedFail = [InError](std::string InMessage)
     {
         if (InError != nullptr)
@@ -466,7 +585,7 @@ bool VirtualFileSystem::WriteFile(std::string_view InPath, std::span<const std::
     }
 
     namespace fs = std::filesystem;
-    const fs::path ScopedRelative(ScopedKey);
+    const fs::path ScopedRelative = Utf8Path(ScopedKey);
     if (ScopedRelative.is_absolute() || ScopedRelative.has_root_name())
     {
         return ScopedFail("refusing to write an absolute VFS path: " + ScopedKey);
@@ -506,10 +625,13 @@ bool VirtualFileSystem::WriteFile(std::string_view InPath, std::span<const std::
         MLazyMappings.erase(ScopedKey);
     }
     MEntries.erase(ScopedKey);
+    // A lower-priority mount may own the same path (an overlay write over a
+    // pak). Promote it first; the new file is added after the rename succeeds.
+    RestoreShadow(ScopedKey);
 
     const auto ScopedRestoreOldFile = [&]()
     {
-        std::shared_ptr<MappedFile> ScopedOldMapping = MappedFile::Open(ScopedPhysical.string(), nullptr);
+        std::shared_ptr<MappedFile> ScopedOldMapping = MappedFile::Open(Utf8String(ScopedPhysical), nullptr);
         if (!ScopedOldMapping)
         {
             return;
@@ -539,7 +661,7 @@ bool VirtualFileSystem::WriteFile(std::string_view InPath, std::span<const std::
     }
 #endif
 
-    std::shared_ptr<MappedFile> ScopedFreshMapping = MappedFile::Open(ScopedPhysical.string(), nullptr);
+    std::shared_ptr<MappedFile> ScopedFreshMapping = MappedFile::Open(Utf8String(ScopedPhysical), nullptr);
     if (!ScopedFreshMapping)
     {
         ScopedRestoreOldFile();
@@ -554,6 +676,7 @@ bool VirtualFileSystem::WriteFile(std::string_view InPath, std::span<const std::
 
 bool VirtualFileSystem::ReloadFile(std::string_view InPath, std::string* InError)
 {
+    const std::scoped_lock ScopedLock(MMutex);
     const auto ScopedFail = [InError](std::string InMessage)
     {
         if (InError != nullptr)
@@ -577,7 +700,7 @@ bool VirtualFileSystem::ReloadFile(std::string_view InPath, std::string* InError
     {
         return ScopedFail("refusing to reload a VFS path with a '..' segment: " + ScopedKey);
     }
-    const std::filesystem::path ScopedRelative(ScopedKey);
+    const std::filesystem::path ScopedRelative = Utf8Path(ScopedKey);
     if (ScopedRelative.is_absolute() || ScopedRelative.has_root_name())
     {
         return ScopedFail("refusing to reload an absolute VFS path: " + ScopedKey);
@@ -591,7 +714,7 @@ bool VirtualFileSystem::ReloadFile(std::string_view InPath, std::string* InError
     }
 
     // Open the replacement before touching the old mapping. If the new file is
-    std::shared_ptr<MappedFile> ScopedFreshMapping = MappedFile::Open(ScopedPhysical.string(), InError);
+    std::shared_ptr<MappedFile> ScopedFreshMapping = MappedFile::Open(Utf8String(ScopedPhysical), InError);
     if (!ScopedFreshMapping)
     {
         return false;
@@ -607,6 +730,7 @@ bool VirtualFileSystem::ReloadFile(std::string_view InPath, std::string* InError
 
 void VirtualFileSystem::Unmount(std::uint32_t InMount)
 {
+    const std::scoped_lock ScopedLock(MMutex);
     // Collect first: erasing while iterating a sorted vector invalidates the
     std::vector<std::string> ScopedDoomed;
     for (const auto& [ScopedPath, ScopedEntry] : MEntries)
@@ -623,13 +747,32 @@ void VirtualFileSystem::Unmount(std::uint32_t InMount)
             MLazyMappings.erase(ScopedPath);
         }
         MEntries.erase(ScopedPath);
+        RestoreShadow(ScopedPath, InMount);
     }
 
     std::erase_if(MMounts, [InMount](const std::unique_ptr<MountRecord>& InRecord) { return InRecord->id == InMount; });
+
+    // Drop the unmounted mount from every shadow list and promote paths whose
+    // visible entry depended on it through another mount's shadow.
+    std::vector<std::string> ScopedEmptied;
+    for (auto& [ScopedPath, ScopedEntries] : MShadowed)
+    {
+        std::erase_if(ScopedEntries,
+                      [InMount](const VfsEntry& InEntry) { return InEntry.mount == InMount; });
+        if (ScopedEntries.empty())
+        {
+            ScopedEmptied.push_back(ScopedPath);
+        }
+    }
+    for (const std::string& ScopedPath : ScopedEmptied)
+    {
+        MShadowed.erase(ScopedPath);
+    }
 }
 
 std::optional<VfsEntry> VirtualFileSystem::Materialize(std::string_view InPath) const
 {
+    const std::scoped_lock ScopedLock(MMutex);
     const std::string ScopedKey = Normalize(InPath);
     auto ScopedIt = MEntries.find(ScopedKey);
     if (ScopedIt == MEntries.end())
@@ -655,8 +798,8 @@ std::optional<VfsEntry> VirtualFileSystem::Materialize(std::string_view InPath) 
         return ScopedIt->second;
     }
     const std::filesystem::path ScopedPhysical =
-        std::filesystem::path(ScopedOwner->root) / std::filesystem::path(ScopedKey);
-    std::shared_ptr<MappedFile> ScopedMapping = MappedFile::Open(ScopedPhysical.string(), nullptr);
+        std::filesystem::path(ScopedOwner->root) / Utf8Path(ScopedKey);
+    std::shared_ptr<MappedFile> ScopedMapping = MappedFile::Open(Utf8String(ScopedPhysical), nullptr);
     if (!ScopedMapping)
     {
         return std::nullopt;
@@ -669,11 +812,13 @@ std::optional<VfsEntry> VirtualFileSystem::Materialize(std::string_view InPath) 
 
 std::optional<VfsEntry> VirtualFileSystem::Find(std::string_view InPath) const
 {
+    const std::scoped_lock ScopedLock(MMutex);
     return Materialize(InPath);
 }
 
 bool VirtualFileSystem::InvalidateFile(std::string_view InPath)
 {
+    const std::scoped_lock ScopedLock(MMutex);
     const std::string ScopedKey = Normalize(InPath);
     bool ScopedExisted = false;
     if (MLazyMappings.contains(ScopedKey))
@@ -701,6 +846,7 @@ bool VirtualFileSystem::InvalidateFile(std::string_view InPath)
             return false;
         }
         MEntries.erase(ScopedKey);
+        RestoreShadow(ScopedKey);
         ScopedExisted = true;
     }
     return ScopedExisted;
@@ -708,11 +854,13 @@ bool VirtualFileSystem::InvalidateFile(std::string_view InPath)
 
 bool VirtualFileSystem::Exists(std::string_view InPath) const
 {
+    const std::scoped_lock ScopedLock(MMutex);
     return MEntries.contains(Normalize(InPath));
 }
 
 std::optional<std::span<const std::byte>> VirtualFileSystem::Read(std::string_view InPath) const
 {
+    const std::scoped_lock ScopedLock(MMutex);
     const auto ScopedEntry = Find(InPath);
     if (!ScopedEntry.has_value())
     {
@@ -723,6 +871,7 @@ std::optional<std::span<const std::byte>> VirtualFileSystem::Read(std::string_vi
 
 std::optional<PinnedFile> VirtualFileSystem::Pin(std::string_view InPath) const
 {
+    const std::scoped_lock ScopedLock(MMutex);
     // Materialize() indexes the path and, for a directory mount, opens the lazy
     const auto ScopedEntry = Find(InPath);
     if (!ScopedEntry.has_value() || ScopedEntry->data.empty())
@@ -758,6 +907,7 @@ std::optional<PinnedFile> VirtualFileSystem::Pin(std::string_view InPath) const
 
 std::vector<std::string_view> VirtualFileSystem::List(std::string_view InDirectory) const
 {
+    const std::scoped_lock ScopedLock(MMutex);
     std::vector<std::string_view> ScopedResult;
     std::string ScopedPrefix = Normalize(InDirectory);
     if (!ScopedPrefix.empty() && ScopedPrefix.back() != '/')

@@ -4,8 +4,7 @@
 #if defined(FBY_HAS_VULKAN_HEADERS)
 namespace Fby::Rhi::Impl
 {
-void VulkanRHI::WriteTimestamp(VkCommandBuffer InCommandBuffer, std::uint32_t InIndex,
-                               VkPipelineStageFlagBits InStage)
+void VulkanRHI::WriteTimestamp(VkCommandBuffer InCommandBuffer, std::uint32_t InIndex, VkPipelineStageFlagBits InStage)
 {
     if (MTimestampsReady && MFrameIndex < MTimestampPools.size() && MTimestampPools[MFrameIndex] != VK_NULL_HANDLE &&
         InIndex < TimestampCount)
@@ -42,11 +41,10 @@ void VulkanRHI::RecordOitResolve(VkCommandBuffer InCommandBuffer, VkRenderPass I
         {
             ScopedResolvePipeline = ScopedFound->second;
         }
-        else if (CreateGraphicsPipelineForPass(InRenderPass, MOitResolveLayout, Shaders::fullscreen_vert.data(),
-                                               Shaders::fullscreen_vert.size() * sizeof(std::uint32_t),
-                                               Shaders::oit_resolve.data(),
-                                               Shaders::oit_resolve.size() * sizeof(std::uint32_t),
-                                               &ScopedResolvePipeline))
+        else if (CreateGraphicsPipelineForPass(
+                     InRenderPass, MOitResolveLayout, Shaders::fullscreen_vert.data(),
+                     Shaders::fullscreen_vert.size() * sizeof(std::uint32_t), Shaders::oit_resolve.data(),
+                     Shaders::oit_resolve.size() * sizeof(std::uint32_t), &ScopedResolvePipeline))
         {
             MOitResolvePipelines.emplace(InRenderPass, ScopedResolvePipeline);
         }
@@ -142,8 +140,8 @@ void VulkanRHI::RecordClusters(VkCommandBuffer InCommandBuffer, const FramePacke
     ScopedBarrier(ScopedComputeBarrier);
     ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MClusterFillPipeline);
     ScopedApi.vkCmdDispatch(InCommandBuffer, (ScopedClusterCount + 63u) / 64u, 1, 1);
-    const VkMemoryBarrier ScopedGraphicsBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr,
-                                                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT};
+    const VkMemoryBarrier ScopedGraphicsBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT,
+                                                VK_ACCESS_SHADER_READ_BIT};
     ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                    VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, 0, 1, &ScopedGraphicsBarrier, 0, nullptr, 0,
                                    nullptr);
@@ -283,7 +281,7 @@ void VulkanRHI::WriteSdfDescriptors(VkDescriptorSet InSet) const
     ScopedFinalWrites[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     ScopedFinalWrites[7].pImageInfo = &ScopedSdfAtlasInfo;
     ScopedApi.vkUpdateDescriptorSets(MDevice, static_cast<std::uint32_t>(ScopedFinalWrites.size()),
-                                    ScopedFinalWrites.data(), 0, nullptr);
+                                     ScopedFinalWrites.data(), 0, nullptr);
 }
 
 void VulkanRHI::UploadSdfField()
@@ -316,8 +314,7 @@ void VulkanRHI::UploadSdfAtlas()
         MSdfAtlasUploadPending = false;
         return;
     }
-    std::memcpy(MSdfFieldStagingMapped[MFrameIndex], MSdfAtlasTexels.data(),
-                MSdfAtlasTexels.size() * sizeof(float));
+    std::memcpy(MSdfFieldStagingMapped[MFrameIndex], MSdfAtlasTexels.data(), MSdfAtlasTexels.size() * sizeof(float));
     const VkCommandBuffer ScopedCommand = MCommandBuffers[MFrameIndex];
     TransitionImage(ScopedCommand, MSdfAtlasImage,
                     MSdfAtlasInitialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
@@ -363,13 +360,13 @@ std::uint32_t VulkanRHI::ApplySdfLighting(const SdfLightingFrame& InFrame)
     ScopedBlock.sun = Vector4D{ScopedDirectionX, ScopedDirectionY, std::max(InFrame.softness, 1.0e-3f),
                                std::clamp(InFrame.ambient, 0.0f, 1.0f)};
     const std::uint32_t ScopedOccluderCount = std::min(InFrame.occluderCount, kMaxSdfGpuOccluders);
-    ScopedBlock.params = Vector4D{static_cast<float>(std::clamp(InFrame.steps, 1u, 64u)),
-                                  static_cast<float>(ScopedOccluderCount), std::max(InFrame.occlusionRadius, 1.0f),
-                                  std::clamp(InFrame.occlusionStrength, 0.0f, 1.0f)};
-    const bool ScopedEnabled = InFrame.enabled && InFrame.field != nullptr && InFrame.width > 1 &&
-                               InFrame.height > 1 && ScopedExtentX > 0.0f && ScopedExtentY > 0.0f;
-    const bool ScopedMaskActive = ScopedEnabled && ScopedSlot < MSdfMaskPublished.size() &&
-                                  MSdfMaskPublished[ScopedSlot];
+    ScopedBlock.params =
+        Vector4D{static_cast<float>(std::clamp(InFrame.steps, 1u, 64u)), static_cast<float>(ScopedOccluderCount),
+                 std::max(InFrame.occlusionRadius, 1.0f), std::clamp(InFrame.occlusionStrength, 0.0f, 1.0f)};
+    const bool ScopedEnabled = InFrame.enabled && InFrame.field != nullptr && InFrame.width > 1 && InFrame.height > 1 &&
+                               ScopedExtentX > 0.0f && ScopedExtentY > 0.0f;
+    const bool ScopedMaskActive =
+        ScopedEnabled && ScopedSlot < MSdfMaskPublished.size() && MSdfMaskPublished[ScopedSlot];
     ScopedBlock.flags = Vector4D{kSdfEncodeScale, ScopedEnabled ? 1.0f : 0.0f, ScopedMaskActive ? 1.0f : 0.0f, 0.0f};
     float ScopedHistoryLayer = 0.0f;
     float ScopedHistoryValid = 0.0f;
@@ -386,19 +383,17 @@ std::uint32_t VulkanRHI::ApplySdfLighting(const SdfLightingFrame& InFrame)
     // not configured reports zero bricks, which the shader treats as "no atlas".
     ScopedBlock.fieldGrid = Vector4D{InFrame.origin.X, InFrame.origin.Y, InFrame.cellSize.X, InFrame.cellSize.Y};
     const std::uint32_t ScopedBrickSize = 16;
-    ScopedBlock.brickMeta =
-        Vector4D{static_cast<float>(ScopedBrickSize),
-                 static_cast<float>((InFrame.width + ScopedBrickSize - 1u) / ScopedBrickSize),
-                 static_cast<float>((InFrame.height + ScopedBrickSize - 1u) / ScopedBrickSize),
-                 static_cast<float>(InFrame.atlasColumns)};
+    ScopedBlock.brickMeta = Vector4D{static_cast<float>(ScopedBrickSize),
+                                     static_cast<float>((InFrame.width + ScopedBrickSize - 1u) / ScopedBrickSize),
+                                     static_cast<float>((InFrame.height + ScopedBrickSize - 1u) / ScopedBrickSize),
+                                     static_cast<float>(InFrame.atlasColumns)};
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedOccluderCount; ++ScopedI)
     {
         ScopedBlock.occluders[ScopedI * 2] = InFrame.occluders[ScopedI].Shape;
         ScopedBlock.occluders[ScopedI * 2 + 1] = InFrame.occluders[ScopedI].Extents;
     }
     auto* ScopedBlocks = static_cast<std::byte*>(MSdfBlockMapped);
-    *reinterpret_cast<SdfGpuBlock*>(ScopedBlocks + static_cast<std::size_t>(ScopedSlot) * SdfBlockStride) =
-        ScopedBlock;
+    *reinterpret_cast<SdfGpuBlock*>(ScopedBlocks + static_cast<std::size_t>(ScopedSlot) * SdfBlockStride) = ScopedBlock;
     MSdfEnabled = ScopedEnabled;
 
     if (ScopedEnabled && InFrame.fieldVersion != MSdfFieldVersion)
@@ -411,8 +406,8 @@ std::uint32_t VulkanRHI::ApplySdfLighting(const SdfLightingFrame& InFrame)
             for (std::uint32_t ScopedX = 0; ScopedX < kSdfFieldSize; ++ScopedX)
             {
                 const std::uint32_t ScopedSourceX = ScopedX * InFrame.width / kSdfFieldSize;
-                const float ScopedDistance = InFrame.field[static_cast<std::size_t>(ScopedSourceY) * InFrame.width +
-                                                          ScopedSourceX];
+                const float ScopedDistance =
+                    InFrame.field[static_cast<std::size_t>(ScopedSourceY) * InFrame.width + ScopedSourceX];
                 MSdfFieldTexels[static_cast<std::size_t>(ScopedY) * kSdfFieldSize + ScopedX] = ScopedDistance;
             }
         }
@@ -785,10 +780,10 @@ bool VulkanRHI::UploadVirtualTexturePage(VirtualTextureHandle InHandle, std::uin
         return false;
     }
     const std::uint32_t ScopedTilesPerAxis = ScopedTexture->pageSize / ScopedTexture->tileSize;
-    const bool ScopedValid = InLayer < ScopedTexture->layerCount && InSlotX < ScopedTilesPerAxis &&
-                             InSlotY < ScopedTilesPerAxis && InWidth > 0 && InHeight > 0 &&
-                             InWidth <= ScopedTexture->tileSize && InHeight <= ScopedTexture->tileSize &&
-                             InRowPitch >= InWidth * 4u && InPixels.size() >= static_cast<std::size_t>(InRowPitch) * InHeight;
+    const bool ScopedValid =
+        InLayer < ScopedTexture->layerCount && InSlotX < ScopedTilesPerAxis && InSlotY < ScopedTilesPerAxis &&
+        InWidth > 0 && InHeight > 0 && InWidth <= ScopedTexture->tileSize && InHeight <= ScopedTexture->tileSize &&
+        InRowPitch >= InWidth * 4u && InPixels.size() >= static_cast<std::size_t>(InRowPitch) * InHeight;
     if (!ScopedValid)
     {
         return false;
@@ -835,7 +830,8 @@ bool VulkanRHI::UploadVirtualTexturePage(VirtualTextureHandle InHandle, std::uin
 
 std::uint32_t VulkanRHI::ReadVirtualTextureFeedback(std::span<std::uint32_t> OutTiles)
 {
-    const std::uint32_t ScopedCount = std::min<std::uint32_t>(MVtFeedbackCount, static_cast<std::uint32_t>(OutTiles.size()));
+    const std::uint32_t ScopedCount =
+        std::min<std::uint32_t>(MVtFeedbackCount, static_cast<std::uint32_t>(OutTiles.size()));
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
     {
         OutTiles[ScopedI] = MVtFeedbackTiles[ScopedI];
@@ -850,8 +846,7 @@ void VulkanRHI::ParseVtFeedback(std::uint32_t InSlot) noexcept
     {
         return;
     }
-    const std::size_t ScopedTexels =
-        static_cast<std::size_t>(MVtFeedbackExtent.width) * MVtFeedbackExtent.height;
+    const std::size_t ScopedTexels = static_cast<std::size_t>(MVtFeedbackExtent.width) * MVtFeedbackExtent.height;
     const std::span<const std::uint32_t> ScopedSource(static_cast<const std::uint32_t*>(MVtFeedbackMapped[InSlot]),
                                                       ScopedTexels);
     MVtFeedbackCount = DeduplicateVirtualTextureFeedback(ScopedSource, MVtFeedbackTiles);
@@ -944,8 +939,8 @@ bool VulkanRHI::EnsureVtFeedback(Extent2D InExtent)
         ScopedInfo.arrayLayers = 1;
         ScopedInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         ScopedInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        ScopedInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                            VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        ScopedInfo.usage =
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         ScopedInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         if (ScopedApi.vkCreateImage(MDevice, &ScopedInfo, nullptr, &MVtFeedbackImages[ScopedI]) != VK_SUCCESS)
         {
@@ -1119,8 +1114,7 @@ bool VulkanRHI::CreateUpscaleResources()
     ScopedSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     ScopedSetLayoutInfo.bindingCount = 1;
     ScopedSetLayoutInfo.pBindings = &ScopedBinding;
-    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MUpscaleSetLayout) !=
-        VK_SUCCESS)
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MUpscaleSetLayout) != VK_SUCCESS)
     {
         return false;
     }
@@ -1256,8 +1250,7 @@ bool VulkanRHI::CreateMotionResources()
     ScopedSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     ScopedSetLayoutInfo.bindingCount = 1;
     ScopedSetLayoutInfo.pBindings = &ScopedBinding;
-    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MMotionSetLayout) !=
-        VK_SUCCESS)
+    if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetLayoutInfo, nullptr, &MMotionSetLayout) != VK_SUCCESS)
     {
         return false;
     }
@@ -1565,11 +1558,10 @@ bool VulkanRHI::CreateInstanceRing()
 {
     MInstanceCapacity = std::max(1u, MDesc.maxItemsPerFrame);
     const VkDeviceSize ScopedSliceBytes = static_cast<VkDeviceSize>(MInstanceCapacity) * sizeof(RenderItem);
-    const VkDeviceSize ScopedTotalBytes = ScopedSliceBytes * MFramesInFlight;
+    const VkDeviceSize ScopedTotalBytes = ScopedSliceBytes * (MFramesInFlight * 2u);
 
-    const VkBufferUsageFlags ScopedDeviceUsage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                                                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                                                 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    const VkBufferUsageFlags ScopedDeviceUsage =
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     if (!CreateBuffer(ScopedTotalBytes, ScopedDeviceUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &MInstanceBuffer,
                       &MInstanceMemory) ||
         !CreateBuffer(ScopedTotalBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1583,6 +1575,10 @@ bool VulkanRHI::CreateInstanceRing()
 
     MTransientCapacity = static_cast<std::size_t>(ScopedSliceBytes);
     MInstanceSliceValid.fill(false);
+    MStaticInstanceSliceValid.fill(false);
+    MStaticSceneId.fill(0);
+    MStaticSceneVersion.fill(0);
+    MStaticItemCount.fill(0);
     LogInfo("vulkan", "instance ring: {} items/frame x {} frames = {:.1f} MB device-local + staging", MInstanceCapacity,
             MFramesInFlight, static_cast<double>(ScopedTotalBytes) / (1024.0 * 1024.0));
     return true;
@@ -1831,7 +1827,9 @@ void VulkanRHI::FreeStaticRange(std::vector<MeshArenaRange>& InFreeList, std::ui
     MeshArenaRange ScopedReleased{InOffset, InCount};
     const auto ScopedPosition = std::lower_bound(InFreeList.begin(), InFreeList.end(), ScopedReleased,
                                                  [](const MeshArenaRange& InLeft, const MeshArenaRange& InRight)
-                                                 { return InLeft.offset < InRight.offset; });
+                                                 {
+                                                     return InLeft.offset < InRight.offset;
+                                                 });
     InFreeList.insert(ScopedPosition, ScopedReleased);
     // Coalesce neighbours so a load/unload/load cycle does not fragment the
     for (std::size_t ScopedI = 1; ScopedI < InFreeList.size();)
@@ -2231,15 +2229,15 @@ bool VulkanRHI::CreateOffscreenRenderPass()
     VkSubpassDependency ScopedDependency{};
     ScopedDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     ScopedDependency.dstSubpass = 0;
-    ScopedDependency.srcStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    ScopedDependency.dstStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    ScopedDependency.dstAccessMask =
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    ScopedDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    ScopedDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    ScopedDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                                     VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                                     VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 
     VkAttachmentDescription ScopedAttachments[] = {ScopedColor, ScopedDepth};
     VkRenderPassCreateInfo ScopedCreateInfo{};
@@ -2356,11 +2354,10 @@ bool VulkanRHI::CreateAccessibilityCompositeResources()
         (void)ScopedApi.vkCreateShaderModule(MDevice, &ScopedCreateInfo, nullptr, &ScopedModule);
         return ScopedModule;
     };
-    const VkShaderModule ScopedVertex = ScopedMakeModule(Shaders::fullscreen_vert.data(),
-                                                         Shaders::fullscreen_vert.size() * sizeof(std::uint32_t));
-    const VkShaderModule ScopedFragment =
-        ScopedMakeModule(Shaders::accessibility_composite.data(),
-                         Shaders::accessibility_composite.size() * sizeof(std::uint32_t));
+    const VkShaderModule ScopedVertex =
+        ScopedMakeModule(Shaders::fullscreen_vert.data(), Shaders::fullscreen_vert.size() * sizeof(std::uint32_t));
+    const VkShaderModule ScopedFragment = ScopedMakeModule(
+        Shaders::accessibility_composite.data(), Shaders::accessibility_composite.size() * sizeof(std::uint32_t));
     if (ScopedVertex == VK_NULL_HANDLE || ScopedFragment == VK_NULL_HANDLE)
     {
         ScopedApi.vkDestroyShaderModule(MDevice, ScopedVertex, nullptr);
@@ -2428,7 +2425,7 @@ bool VulkanRHI::CreateAccessibilityCompositeResources()
     ScopedPipelineInfo.renderPass = MOffscreenRenderPass;
     ScopedPipelineInfo.subpass = 0;
     const VkResult ScopedResult = ScopedApi.vkCreateGraphicsPipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedPipelineInfo,
-                                                                     nullptr, &MAccessibilityPipeline);
+                                                                      nullptr, &MAccessibilityPipeline);
     ScopedApi.vkDestroyShaderModule(MDevice, ScopedVertex, nullptr);
     ScopedApi.vkDestroyShaderModule(MDevice, ScopedFragment, nullptr);
     if (ScopedResult != VK_SUCCESS)
@@ -2464,13 +2461,12 @@ void VulkanRHI::RecordFlashGuard(VkCommandBuffer InCommandBuffer, VkImage InColo
     ScopedBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
-                                   &ScopedBarrier);
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ScopedBarrier);
 
     const float ScopedParams[4] = {InAccessibility.flashThreshold, InAccessibility.flashGain, 1.0f, 0.0f};
     ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MAccessibilityFlashPipeline);
-    (void)ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                            MAccessibilityFlashLayout, 0, 1, &InSet, 0, nullptr);
+    (void)ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, MAccessibilityFlashLayout,
+                                            0, 1, &InSet, 0, nullptr);
     ScopedApi.vkCmdPushConstants(InCommandBuffer, MAccessibilityFlashLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                  sizeof(ScopedParams), ScopedParams);
     ScopedApi.vkCmdDispatch(InCommandBuffer, (InExtent.width + 7u) / 8u, (InExtent.height + 7u) / 8u, 1);
@@ -2480,8 +2476,7 @@ void VulkanRHI::RecordFlashGuard(VkCommandBuffer InCommandBuffer, VkImage InColo
     ScopedBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
-                                   &ScopedBarrier);
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ScopedBarrier);
 }
 
 bool VulkanRHI::CreateAccessibilitySwapchainResources()
@@ -2595,11 +2590,10 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
         (void)ScopedApi.vkCreateShaderModule(MDevice, &ScopedCreateInfo, nullptr, &ScopedModule);
         return ScopedModule;
     };
-    const VkShaderModule ScopedVertex = ScopedMakeModule(Shaders::fullscreen_vert.data(),
-                                                         Shaders::fullscreen_vert.size() * sizeof(std::uint32_t));
-    const VkShaderModule ScopedFragment =
-        ScopedMakeModule(Shaders::accessibility_composite.data(),
-                         Shaders::accessibility_composite.size() * sizeof(std::uint32_t));
+    const VkShaderModule ScopedVertex =
+        ScopedMakeModule(Shaders::fullscreen_vert.data(), Shaders::fullscreen_vert.size() * sizeof(std::uint32_t));
+    const VkShaderModule ScopedFragment = ScopedMakeModule(
+        Shaders::accessibility_composite.data(), Shaders::accessibility_composite.size() * sizeof(std::uint32_t));
     if (ScopedVertex == VK_NULL_HANDLE || ScopedFragment == VK_NULL_HANDLE)
     {
         ScopedApi.vkDestroyShaderModule(MDevice, ScopedVertex, nullptr);
@@ -2672,7 +2666,7 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
     ScopedPipelineInfo.renderPass = MRenderPass;
     ScopedPipelineInfo.subpass = 0;
     const VkResult ScopedResult = ScopedApi.vkCreateGraphicsPipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedPipelineInfo,
-                                                                     nullptr, &MAccessibilitySwapPipeline);
+                                                                      nullptr, &MAccessibilitySwapPipeline);
     ScopedApi.vkDestroyShaderModule(MDevice, ScopedVertex, nullptr);
     ScopedApi.vkDestroyShaderModule(MDevice, ScopedFragment, nullptr);
     if (ScopedResult != VK_SUCCESS)
@@ -2734,9 +2728,8 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
             VkMemoryRequirements ScopedFlashRequirements{};
             ScopedApi.vkGetImageMemoryRequirements(MDevice, MAccessibilitySwapFlashImage, &ScopedFlashRequirements);
             ScopedFlashAllocate.allocationSize = ScopedFlashRequirements.size;
-            ScopedFlashAllocate.memoryTypeIndex = FindMemoryType(MMemoryProperties,
-                                                                 ScopedFlashRequirements.memoryTypeBits,
-                                                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            ScopedFlashAllocate.memoryTypeIndex = FindMemoryType(
+                MMemoryProperties, ScopedFlashRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             ScopedFlashView.image = MAccessibilitySwapFlashImage;
         }
         const bool ScopedFlashOk =
@@ -2745,8 +2738,7 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
                 VK_SUCCESS &&
             ScopedApi.vkBindImageMemory(MDevice, MAccessibilitySwapFlashImage, MAccessibilitySwapFlashMemory, 0) ==
                 VK_SUCCESS &&
-            ScopedApi.vkCreateImageView(MDevice, &ScopedFlashView, nullptr,
-                                        &MAccessibilitySwapFlashView) == VK_SUCCESS;
+            ScopedApi.vkCreateImageView(MDevice, &ScopedFlashView, nullptr, &MAccessibilitySwapFlashView) == VK_SUCCESS;
         if (ScopedFlashOk)
         {
             InitImageLayout(MAccessibilitySwapFlashImage, VK_IMAGE_LAYOUT_GENERAL);
@@ -2782,7 +2774,7 @@ bool VulkanRHI::CreatePostFxResources()
     }
     Vk::Api& ScopedApi = Vk::GetApi();
 
-    VkDescriptorSetLayoutBinding ScopedBindings[2]{};
+    VkDescriptorSetLayoutBinding ScopedBindings[3]{};
     for (std::uint32_t ScopedI = 0; ScopedI < 2; ++ScopedI)
     {
         ScopedBindings[ScopedI].binding = ScopedI;
@@ -2790,9 +2782,13 @@ bool VulkanRHI::CreatePostFxResources()
         ScopedBindings[ScopedI].descriptorCount = 1;
         ScopedBindings[ScopedI].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     }
+    ScopedBindings[2].binding = 2;
+    ScopedBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedBindings[2].descriptorCount = 1;
+    ScopedBindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     VkDescriptorSetLayoutCreateInfo ScopedSetInfo{};
     ScopedSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    ScopedSetInfo.bindingCount = 2;
+    ScopedSetInfo.bindingCount = 3;
     ScopedSetInfo.pBindings = ScopedBindings;
     if (ScopedApi.vkCreateDescriptorSetLayout(MDevice, &ScopedSetInfo, nullptr, &MPostFxSetLayout) != VK_SUCCESS)
     {
@@ -2800,32 +2796,56 @@ bool VulkanRHI::CreatePostFxResources()
         return false;
     }
 
-    VkPushConstantRange ScopedPushRange{};
-    ScopedPushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    ScopedPushRange.size = sizeof(PostFxBlock);
     VkPipelineLayoutCreateInfo ScopedLayoutInfo{};
     ScopedLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     ScopedLayoutInfo.setLayoutCount = 1;
     ScopedLayoutInfo.pSetLayouts = &MPostFxSetLayout;
-    ScopedLayoutInfo.pushConstantRangeCount = 1;
-    ScopedLayoutInfo.pPushConstantRanges = &ScopedPushRange;
+    ScopedLayoutInfo.pushConstantRangeCount = 0;
+    ScopedLayoutInfo.pPushConstantRanges = nullptr;
     if (ScopedApi.vkCreatePipelineLayout(MDevice, &ScopedLayoutInfo, nullptr, &MPostFxLayout) != VK_SUCCESS)
     {
         LogWarn("vulkan", "postfx composite: pipeline layout creation failed");
         return false;
     }
 
-    VkDescriptorPoolSize ScopedPoolSize{};
-    ScopedPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    ScopedPoolSize.descriptorCount = 2;
+    VkDescriptorPoolSize ScopedPoolSizes[2]{};
+    ScopedPoolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    ScopedPoolSizes[0].descriptorCount = 2;
+    ScopedPoolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedPoolSizes[1].descriptorCount = 1;
     VkDescriptorPoolCreateInfo ScopedPoolInfo{};
     ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     ScopedPoolInfo.maxSets = 1;
-    ScopedPoolInfo.poolSizeCount = 1;
-    ScopedPoolInfo.pPoolSizes = &ScopedPoolSize;
+    ScopedPoolInfo.poolSizeCount = 2;
+    ScopedPoolInfo.pPoolSizes = ScopedPoolSizes;
     if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MPostFxPool) != VK_SUCCESS)
     {
         LogWarn("vulkan", "postfx composite: descriptor pool creation failed");
+        return false;
+    }
+
+    VkBufferCreateInfo ScopedBufferInfo{};
+    ScopedBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    ScopedBufferInfo.size = sizeof(PostFxBlock);
+    ScopedBufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    ScopedBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (ScopedApi.vkCreateBuffer(MDevice, &ScopedBufferInfo, nullptr, &MPostFxUniformBuffer) != VK_SUCCESS)
+    {
+        LogWarn("vulkan", "postfx composite: uniform buffer creation failed");
+        return false;
+    }
+    VkMemoryRequirements ScopedBufferRequirements{};
+    ScopedApi.vkGetBufferMemoryRequirements(MDevice, MPostFxUniformBuffer, &ScopedBufferRequirements);
+    VkMemoryAllocateInfo ScopedBufferAllocate{};
+    ScopedBufferAllocate.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ScopedBufferAllocate.allocationSize = ScopedBufferRequirements.size;
+    ScopedBufferAllocate.memoryTypeIndex =
+        FindMemoryType(MMemoryProperties, ScopedBufferRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (ScopedBufferAllocate.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
+        ScopedApi.vkAllocateMemory(MDevice, &ScopedBufferAllocate, nullptr, &MPostFxUniformMemory) != VK_SUCCESS ||
+        ScopedApi.vkBindBufferMemory(MDevice, MPostFxUniformBuffer, MPostFxUniformMemory, 0) != VK_SUCCESS)
+    {
+        LogWarn("vulkan", "postfx composite: uniform buffer memory failed");
         return false;
     }
 
@@ -2839,8 +2859,8 @@ bool VulkanRHI::CreatePostFxResources()
         (void)ScopedApi.vkCreateShaderModule(MDevice, &ScopedCreateInfo, nullptr, &ScopedModule);
         return ScopedModule;
     };
-    const VkShaderModule ScopedVertex = ScopedMakeModule(Shaders::fullscreen_vert.data(),
-                                                         Shaders::fullscreen_vert.size() * sizeof(std::uint32_t));
+    const VkShaderModule ScopedVertex =
+        ScopedMakeModule(Shaders::fullscreen_vert.data(), Shaders::fullscreen_vert.size() * sizeof(std::uint32_t));
     const VkShaderModule ScopedFragment =
         ScopedMakeModule(Shaders::postfx_composite.data(), Shaders::postfx_composite.size() * sizeof(std::uint32_t));
     if (ScopedVertex == VK_NULL_HANDLE || ScopedFragment == VK_NULL_HANDLE)
@@ -2912,8 +2932,8 @@ bool VulkanRHI::CreatePostFxResources()
     ScopedPipelineInfo.layout = MPostFxLayout;
     ScopedPipelineInfo.renderPass = MRenderPass;
     ScopedPipelineInfo.subpass = 0;
-    const VkResult ScopedResult = ScopedApi.vkCreateGraphicsPipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedPipelineInfo,
-                                                                     nullptr, &MPostFxPipeline);
+    const VkResult ScopedResult =
+        ScopedApi.vkCreateGraphicsPipelines(MDevice, VK_NULL_HANDLE, 1, &ScopedPipelineInfo, nullptr, &MPostFxPipeline);
     ScopedApi.vkDestroyShaderModule(MDevice, ScopedVertex, nullptr);
     ScopedApi.vkDestroyShaderModule(MDevice, ScopedFragment, nullptr);
     if (ScopedResult != VK_SUCCESS)
@@ -2936,7 +2956,11 @@ bool VulkanRHI::CreatePostFxResources()
     ScopedImage.sampler = MAccessibilitySampler;
     ScopedImage.imageView = MAccessibilitySwapView;
     ScopedImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    VkWriteDescriptorSet ScopedWrites[2]{};
+    VkDescriptorBufferInfo ScopedUniform{};
+    ScopedUniform.buffer = MPostFxUniformBuffer;
+    ScopedUniform.offset = 0;
+    ScopedUniform.range = sizeof(PostFxBlock);
+    VkWriteDescriptorSet ScopedWrites[3]{};
     for (std::uint32_t ScopedI = 0; ScopedI < 2; ++ScopedI)
     {
         ScopedWrites[ScopedI].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2946,7 +2970,13 @@ bool VulkanRHI::CreatePostFxResources()
         ScopedWrites[ScopedI].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         ScopedWrites[ScopedI].pImageInfo = &ScopedImage;
     }
-    ScopedApi.vkUpdateDescriptorSets(MDevice, 2, ScopedWrites, 0, nullptr);
+    ScopedWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ScopedWrites[2].dstSet = MPostFxSet;
+    ScopedWrites[2].dstBinding = 2;
+    ScopedWrites[2].descriptorCount = 1;
+    ScopedWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ScopedWrites[2].pBufferInfo = &ScopedUniform;
+    ScopedApi.vkUpdateDescriptorSets(MDevice, 3, ScopedWrites, 0, nullptr);
     MPostFxReady = true;
     return true;
 }
@@ -2965,8 +2995,21 @@ void VulkanRHI::RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const Pos
     ScopedBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     ScopedBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
-                                   &ScopedBarrier);
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ScopedBarrier);
+
+    ScopedApi.vkCmdUpdateBuffer(InCommandBuffer, MPostFxUniformBuffer, 0, sizeof(InBlock), &InBlock);
+    VkBufferMemoryBarrier ScopedUniformBarrier{};
+    ScopedUniformBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    ScopedUniformBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ScopedUniformBarrier.dstAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
+    ScopedUniformBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedUniformBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ScopedUniformBarrier.buffer = MPostFxUniformBuffer;
+    ScopedUniformBarrier.offset = 0;
+    ScopedUniformBarrier.size = sizeof(InBlock);
+    ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &ScopedUniformBarrier, 0,
+                                   nullptr);
 
     VkClearValue ScopedClearValues[2]{};
     ScopedClearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
@@ -2991,8 +3034,6 @@ void VulkanRHI::RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const Pos
     ScopedApi.vkCmdBindPipeline(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPostFxPipeline);
     ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPostFxLayout, 0, 1,
                                       &MPostFxSet, 0, nullptr);
-    ScopedApi.vkCmdPushConstants(InCommandBuffer, MPostFxLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(InBlock),
-                                 &InBlock);
     ScopedApi.vkCmdDraw(InCommandBuffer, 3, 1, 0, 0);
     ScopedApi.vkCmdEndRenderPass(InCommandBuffer);
 }
@@ -3010,12 +3051,35 @@ void VulkanRHI::RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const Pos
                                             InSettings.bloomIntensity, InSettings.exposure};
     ScopedBlock.exposureAndChromatic = Vector4D{InSettings.chromaticAberration, InSettings.filmGrain,
                                                 InSettings.flashGuardGain, InSettings.colorVisionStrength};
-    ScopedBlock.grainAndFlash = Vector4D{static_cast<float>(MFrameCounter % 997u), 60.0f, 0.0f, 0.0f};
-    const ColorMatrix3 ScopedMatrix = ColorVisionMatrix(static_cast<ColorVisionDeficiency>(
-        std::min<std::uint32_t>(InSettings.colorVision, 3u)));
+    ScopedBlock.grainAndFlash = Vector4D{static_cast<float>(InExtent.width), static_cast<float>(InExtent.height), 0.0f,
+                                         0.0f};
+    const ColorMatrix3 ScopedMatrix =
+        ColorVisionMatrix(static_cast<ColorVisionDeficiency>(std::min<std::uint32_t>(InSettings.colorVision, 3u)));
     ScopedBlock.colorRow0 = Vector4D{ScopedMatrix.m[0], ScopedMatrix.m[1], ScopedMatrix.m[2], 0.0f};
     ScopedBlock.colorRow1 = Vector4D{ScopedMatrix.m[3], ScopedMatrix.m[4], ScopedMatrix.m[5], 0.0f};
     ScopedBlock.colorRow2 = Vector4D{ScopedMatrix.m[6], ScopedMatrix.m[7], ScopedMatrix.m[8], 0.0f};
+    const auto ScopedEffectColor = [](std::uint32_t InColor)
+    {
+        return Vector4D{static_cast<float>(InColor & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 8u) & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 16u) & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 24u) & 0xFFu) / 255.0f};
+    };
+    const PostFxAccessibilityEffect& ScopedEffect = InSettings.accessibility;
+    ScopedBlock.effect0 = Vector4D{static_cast<float>(ScopedEffect.kind), ScopedEffect.intensity,
+                                   static_cast<float>(ScopedEffect.pattern), ScopedEffect.patternScale};
+    const Vector4D ScopedTint = ScopedEffectColor(ScopedEffect.tint);
+    ScopedBlock.effect1 = Vector4D{ScopedTint.X, ScopedTint.Y, ScopedTint.Z, ScopedEffect.blur};
+    ScopedBlock.effect2 = Vector4D{ScopedEffect.sharpness, ScopedEffect.doubleVision, ScopedEffect.wobble,
+                                   ScopedEffect.wobbleFrequency};
+    ScopedBlock.effect3 = Vector4D{ScopedEffect.chromatic, ScopedEffect.vignette, ScopedEffect.desaturation,
+                                   ScopedEffect.afterimage};
+    ScopedBlock.effect4 = Vector4D{ScopedEffect.pulse, ScopedEffect.sway, ScopedEffect.scaleBreathing, 0.0f};
+    ScopedBlock.palette0 = ScopedEffectColor(ScopedEffect.palette[0]);
+    ScopedBlock.palette1 = ScopedEffectColor(ScopedEffect.palette[1]);
+    ScopedBlock.palette2 = ScopedEffectColor(ScopedEffect.palette[2]);
+    ScopedBlock.palette3 = ScopedEffectColor(ScopedEffect.palette[3]);
+    ScopedBlock.palette4 = ScopedEffectColor(ScopedEffect.palette[4]);
     RecordPostFxComposite(InCommandBuffer, ScopedBlock, InExtent);
 }
 
@@ -3048,8 +3112,7 @@ void VulkanRHI::DestroyAccessibilitySwapchainResources() noexcept
         {
             ScopedApi.vkDestroyFramebuffer(MDevice, MAccessibilitySwapFramebuffer, nullptr);
         }
-        DestroyDepthImage(&MAccessibilitySwapDepthImage, &MAccessibilitySwapDepthMemory,
-                          &MAccessibilitySwapDepthView);
+        DestroyDepthImage(&MAccessibilitySwapDepthImage, &MAccessibilitySwapDepthMemory, &MAccessibilitySwapDepthView);
         if (MAccessibilitySwapView != VK_NULL_HANDLE)
         {
             ScopedApi.vkDestroyImageView(MDevice, MAccessibilitySwapView, nullptr);
@@ -3090,6 +3153,16 @@ void VulkanRHI::DestroyAccessibilitySwapchainResources() noexcept
     {
         ScopedApi.vkDestroyDescriptorPool(MDevice, MPostFxPool, nullptr);
         MPostFxPool = VK_NULL_HANDLE;
+    }
+    if (MPostFxUniformBuffer != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkDestroyBuffer(MDevice, MPostFxUniformBuffer, nullptr);
+        MPostFxUniformBuffer = VK_NULL_HANDLE;
+    }
+    if (MPostFxUniformMemory != VK_NULL_HANDLE)
+    {
+        ScopedApi.vkFreeMemory(MDevice, MPostFxUniformMemory, nullptr);
+        MPostFxUniformMemory = VK_NULL_HANDLE;
     }
     if (MPostFxSetLayout != VK_NULL_HANDLE)
     {
@@ -3143,23 +3216,21 @@ bool VulkanRHI::AccessibilityCompositeWanted(const FramePacket& InPacket) const 
         return false;
     }
     const std::uint32_t ScopedFlags = InPacket.accessibility.flags;
-    const bool ScopedCvd =
-        (ScopedFlags & AccessibilityColorVision) != 0 && InPacket.accessibility.colorVision != 0;
-    const bool ScopedGain =
-        (ScopedFlags & AccessibilityFlashGuard) != 0 && InPacket.accessibility.flashGain < 0.999f;
+    const bool ScopedCvd = (ScopedFlags & AccessibilityColorVision) != 0 && InPacket.accessibility.colorVision != 0;
+    const bool ScopedGain = (ScopedFlags & AccessibilityFlashGuard) != 0 && InPacket.accessibility.flashGain < 0.999f;
     return ScopedCvd || ScopedGain;
 }
 
 void VulkanRHI::RecordAccessibilityComposite(VkCommandBuffer InCommandBuffer, VkRenderPass InRenderPass,
-                                             VkFramebuffer InFramebuffer, VkPipeline InPipeline,
-                                             VkDescriptorSet InSet, Extent2D InExtent,
-                                             const FrameAccessibility& InAccessibility, bool InHasDepth) noexcept
+                                             VkFramebuffer InFramebuffer, VkPipeline InPipeline, VkDescriptorSet InSet,
+                                             Extent2D InExtent, const FrameAccessibility& InAccessibility,
+                                             bool InHasDepth) noexcept
 {
     Vk::Api& ScopedApi = Vk::GetApi();
     const std::uint32_t ScopedFlags = InAccessibility.flags;
     AccessibilityCompositePush ScopedPush{};
-    const ColorMatrix3 ScopedMatrix = ColorVisionMatrix(static_cast<ColorVisionDeficiency>(
-        std::min<std::uint32_t>(InAccessibility.colorVision, 3u)));
+    const ColorMatrix3 ScopedMatrix =
+        ColorVisionMatrix(static_cast<ColorVisionDeficiency>(std::min<std::uint32_t>(InAccessibility.colorVision, 3u)));
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < 9; ++ScopedIndex)
     {
         const std::uint32_t ScopedColumn = ScopedIndex / 3u;

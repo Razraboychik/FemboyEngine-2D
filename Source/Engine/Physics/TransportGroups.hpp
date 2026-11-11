@@ -42,7 +42,7 @@ struct TransportGroupState
 {
     bool Active = false;
     bool Processed = false;
-    Entity Root = entt::null;
+    Entity Root = Fby::kNullEntity;
     std::uint32_t GroupId = 0;
     std::uint32_t ParentGroupId = 0;
     std::uint32_t RotationPolicy = kTransportRotationFixed;

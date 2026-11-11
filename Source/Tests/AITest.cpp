@@ -212,11 +212,13 @@ void TestAIPipeline()
     FBY_CHECK(Near(ScopedTransform.Position.X, 200.0f, 10.0f));
 
     // Action is data. The controller leaves the command intact; a game-owned
-    // ECS system builds its own action infrastructure over it.
-    ScopedCommand.Kind = static_cast<std::uint32_t>(AICommandKind::Action);
-    ScopedCommand.ActionId = 77;
-    ScopedCommand.Target = ScopedTarget;
-    ScopedCommand.Sequence = 2;
+    // ECS system builds its own action infrastructure over it. Re-fetch the
+    // component: the controller added runtime components and moved the entity.
+    auto& ScopedCommandAfter = ScopedRegistry.get<AICommandComponent>(ScopedAgent);
+    ScopedCommandAfter.Kind = static_cast<std::uint32_t>(AICommandKind::Action);
+    ScopedCommandAfter.ActionId = 77;
+    ScopedCommandAfter.Target = ScopedTarget;
+    ScopedCommandAfter.Sequence = 2;
     ScopedAI.Update(ScopedRegistry, 0.05f);
     int ScopedActionCount = 0;
     auto ScopedCommandView = ScopedRegistry.view<AICommandComponent>();
@@ -243,10 +245,11 @@ void TestAIPipeline()
     FBY_CHECK(ScopedSkills.AddDef(ScopedSkill));
     FBY_CHECK(ScopedSkills.SetSlot(ScopedRegistry, ScopedAgent, 0, 7));
     ScopedAI.SetSkillSystem(&ScopedSkills);
-    ScopedCommand.Kind = static_cast<std::uint32_t>(AICommandKind::ActivateSkill);
-    ScopedCommand.Target = ScopedTarget;
-    ScopedCommand.Flags = 0;
-    ScopedCommand.Sequence = 3;
+    auto& ScopedSkillCommand = ScopedRegistry.get<AICommandComponent>(ScopedAgent);
+    ScopedSkillCommand.Kind = static_cast<std::uint32_t>(AICommandKind::ActivateSkill);
+    ScopedSkillCommand.Target = ScopedTarget;
+    ScopedSkillCommand.Flags = 0;
+    ScopedSkillCommand.Sequence = 3;
     ScopedAI.Update(ScopedRegistry, 0.05f);
     FBY_CHECK(!ScopedSkills.Events().empty());
 
@@ -323,7 +326,7 @@ void TestStateTreeToNavigation()
     ScopedNavSettings.RepathDistance = 1.0f;
     const Entity ScopedTarget = ScopedRegistry.create();
     ScopedRegistry.emplace<Transform2D>(ScopedTarget, Transform2D{Vector2D{200.0f, 8.0f}});
-    ScopedTreeState.Target = ScopedTarget;
+    ScopedRegistry.get<StateTreeComponent>(ScopedAgent).Target = ScopedTarget;
 
     AI::AIControllerSystem ScopedAI;
     Navigation::NavigationSystem ScopedNavigation;

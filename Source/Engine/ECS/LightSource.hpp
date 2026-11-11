@@ -233,7 +233,7 @@ private:
     // One target's pre-tonemap static contribution, cached across frames.
     struct CachedTarget
     {
-        Entity Owner = entt::null;
+        Entity Owner = Fby::kNullEntity;
         float Red = 0.0f;
         float Green = 0.0f;
         float Blue = 0.0f;
@@ -243,7 +243,7 @@ private:
     // the cache, so a hit does not scan every cached target.
     struct TargetIndexEntry
     {
-        Entity Owner = entt::null;
+        Entity Owner = Fby::kNullEntity;
         std::uint32_t Slot = 0;
     };
 

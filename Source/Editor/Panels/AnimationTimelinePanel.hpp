@@ -28,7 +28,7 @@ struct TimelinePanelContext
     AudioSystem* audio = nullptr;
     ScriptRuntime* scripts = nullptr;
     CommandStack* commands = nullptr;
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
 };
 
 class AnimationTimelinePanel

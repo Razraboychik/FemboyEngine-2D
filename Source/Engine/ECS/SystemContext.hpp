@@ -2,8 +2,7 @@
 #pragma once
 
 #include "Engine/Core/JobSystem.hpp"
-
-#include <entt/entt.hpp>
+#include "Engine/ECS/FCS/Registry.hpp"
 
 #include <cstdint>
 
@@ -49,7 +48,7 @@ namespace Fby::Ecs
 
 class CommandBuffer;
 
-using Registry = entt::registry;
+using Registry = Fby::Fcs::Registry;
 
 // Engine-wide scratch services every system may use. They are grouped apart from
 // the domain bundles because they do not belong to one subsystem.
@@ -114,8 +113,10 @@ struct GameplayServices
 };
 
 struct CoreSystemView;
+struct ConstCoreSystemView;
 struct PhysicsSystemView;
 struct RenderSystemView;
+struct ConstRenderSystemView;
 struct GameplaySystemView;
 struct AudioSystemView;
 struct UiSystemView;
@@ -137,19 +138,23 @@ struct SystemContext : CoreServices,
     Registry& registry;
     JobSystem& jobs;
     float dt = 0.0f;
+    float uiDt = 0.0f;
     std::uint64_t frameIndex = 0;
     float interpolationAlpha = 1.0f;
 
-    SystemContext(Registry& InRegistry, JobSystem& InJobs, float InDeltaSeconds = 0.0f,
-                  std::uint64_t InFrameIndex = 0, float InInterpolationAlpha = 1.0f) noexcept
-        : registry(InRegistry), jobs(InJobs), dt(InDeltaSeconds), frameIndex(InFrameIndex),
+    SystemContext(Registry& InRegistry, JobSystem& InJobs, float InDeltaSeconds = 0.0f, std::uint64_t InFrameIndex = 0,
+                  float InInterpolationAlpha = 1.0f, float InUiDeltaSeconds = -1.0f) noexcept
+        : registry(InRegistry), jobs(InJobs), dt(InDeltaSeconds),
+          uiDt(InUiDeltaSeconds >= 0.0f ? InUiDeltaSeconds : InDeltaSeconds), frameIndex(InFrameIndex),
           interpolationAlpha(InInterpolationAlpha)
     {
     }
 
     [[nodiscard]] CoreSystemView CoreView() noexcept;
+    [[nodiscard]] ConstCoreSystemView ConstCoreView() noexcept;
     [[nodiscard]] PhysicsSystemView PhysicsView() noexcept;
     [[nodiscard]] RenderSystemView RenderView() noexcept;
+    [[nodiscard]] ConstRenderSystemView ConstRenderView() noexcept;
     [[nodiscard]] GameplaySystemView GameplayView() noexcept;
     [[nodiscard]] AudioSystemView AudioView() noexcept;
     [[nodiscard]] UiSystemView UiView() noexcept;
@@ -172,12 +177,35 @@ struct CoreSystemView
 
 using CoreSystemFunction = void (*)(const CoreSystemView&, void*);
 
-template <CoreSystemFunction InFunction>
-[[nodiscard]] SystemFunction BindCoreSystem() noexcept
+template <CoreSystemFunction InFunction> [[nodiscard]] SystemFunction BindCoreSystem() noexcept
 {
     return +[](SystemContext& InContext, void* InUser)
     {
         CoreSystemView ScopedView = InContext.CoreView();
+        InFunction(ScopedView, InUser);
+    };
+}
+
+// Read-only core view: the registry is const, so every component view yields
+// const references. A system that only inspects the world takes this view and
+// cannot create, destroy or write through the ECS.
+struct ConstCoreSystemView
+{
+    const Registry& registry;
+    JobSystem& jobs;
+    const CoreServices& core;
+    float dt = 0.0f;
+    std::uint64_t frameIndex = 0;
+    float interpolationAlpha = 1.0f;
+};
+
+using ConstCoreSystemFunction = void (*)(const ConstCoreSystemView&, void*);
+
+template <ConstCoreSystemFunction InFunction> [[nodiscard]] SystemFunction BindConstCoreSystem() noexcept
+{
+    return +[](SystemContext& InContext, void* InUser)
+    {
+        ConstCoreSystemView ScopedView = InContext.ConstCoreView();
         InFunction(ScopedView, InUser);
     };
 }
@@ -196,8 +224,7 @@ struct PhysicsSystemView
 
 using PhysicsSystemFunction = void (*)(PhysicsSystemView&, void*);
 
-template <PhysicsSystemFunction InFunction>
-[[nodiscard]] SystemFunction BindPhysicsSystem() noexcept
+template <PhysicsSystemFunction InFunction> [[nodiscard]] SystemFunction BindPhysicsSystem() noexcept
 {
     return +[](SystemContext& InContext, void* InUser)
     {
@@ -221,12 +248,33 @@ struct RenderSystemView
 
 using RenderSystemFunction = void (*)(RenderSystemView&, void*);
 
-template <RenderSystemFunction InFunction>
-[[nodiscard]] SystemFunction BindRenderSystem() noexcept
+template <RenderSystemFunction InFunction> [[nodiscard]] SystemFunction BindRenderSystem() noexcept
 {
     return +[](SystemContext& InContext, void* InUser)
     {
         RenderSystemView ScopedView = InContext.RenderView();
+        InFunction(ScopedView, InUser);
+    };
+}
+
+// Read-only render view for extraction passes that must not touch ECS state.
+struct ConstRenderSystemView
+{
+    const Registry& registry;
+    JobSystem& jobs;
+    const RenderServices& services;
+    const AccessibilityServices& accessibilityServices;
+    float dt = 0.0f;
+    float interpolationAlpha = 1.0f;
+};
+
+using ConstRenderSystemFunction = void (*)(const ConstRenderSystemView&, void*);
+
+template <ConstRenderSystemFunction InFunction> [[nodiscard]] SystemFunction BindConstRenderSystem() noexcept
+{
+    return +[](SystemContext& InContext, void* InUser)
+    {
+        ConstRenderSystemView ScopedView = InContext.ConstRenderView();
         InFunction(ScopedView, InUser);
     };
 }
@@ -245,8 +293,7 @@ struct GameplaySystemView
 
 using GameplaySystemFunction = void (*)(const GameplaySystemView&, void*);
 
-template <GameplaySystemFunction InFunction>
-[[nodiscard]] SystemFunction BindGameplaySystem() noexcept
+template <GameplaySystemFunction InFunction> [[nodiscard]] SystemFunction BindGameplaySystem() noexcept
 {
     return +[](SystemContext& InContext, void* InUser)
     {
@@ -265,8 +312,7 @@ struct AudioSystemView
 
 using AudioSystemFunction = void (*)(const AudioSystemView&, void*);
 
-template <AudioSystemFunction InFunction>
-[[nodiscard]] SystemFunction BindAudioSystem() noexcept
+template <AudioSystemFunction InFunction> [[nodiscard]] SystemFunction BindAudioSystem() noexcept
 {
     return +[](SystemContext& InContext, void* InUser)
     {
@@ -285,13 +331,13 @@ struct UiSystemView
     AccessibilityServices& accessibilityServices;
     TextServices& text;
     float dt = 0.0f;
+    float uiDt = 0.0f;
     std::uint64_t frameIndex = 0;
 };
 
 using UiSystemFunction = void (*)(UiSystemView&, void*);
 
-template <UiSystemFunction InFunction>
-[[nodiscard]] SystemFunction BindUiSystem() noexcept
+template <UiSystemFunction InFunction> [[nodiscard]] SystemFunction BindUiSystem() noexcept
 {
     return +[](SystemContext& InContext, void* InUser)
     {
@@ -313,8 +359,7 @@ struct AccessibilitySystemView
 
 using AccessibilitySystemFunction = void (*)(const AccessibilitySystemView&, void*);
 
-template <AccessibilitySystemFunction InFunction>
-[[nodiscard]] SystemFunction BindAccessibilitySystem() noexcept
+template <AccessibilitySystemFunction InFunction> [[nodiscard]] SystemFunction BindAccessibilitySystem() noexcept
 {
     return +[](SystemContext& InContext, void* InUser)
     {
@@ -328,12 +373,22 @@ inline CoreSystemView SystemContext::CoreView() noexcept
     return {registry, jobs, *this, dt, frameIndex, interpolationAlpha};
 }
 
+inline ConstCoreSystemView SystemContext::ConstCoreView() noexcept
+{
+    return {registry, jobs, *this, dt, frameIndex, interpolationAlpha};
+}
+
 inline PhysicsSystemView SystemContext::PhysicsView() noexcept
 {
     return {registry, *this, dt, frameIndex, interpolationAlpha};
 }
 
 inline RenderSystemView SystemContext::RenderView() noexcept
+{
+    return {registry, jobs, *this, *this, dt, interpolationAlpha};
+}
+
+inline ConstRenderSystemView SystemContext::ConstRenderView() noexcept
 {
     return {registry, jobs, *this, *this, dt, interpolationAlpha};
 }
@@ -350,7 +405,7 @@ inline AudioSystemView SystemContext::AudioView() noexcept
 
 inline UiSystemView SystemContext::UiView() noexcept
 {
-    return {registry, jobs, *this, *this, *this, dt, frameIndex};
+    return {registry, jobs, *this, *this, *this, dt, uiDt, frameIndex};
 }
 
 inline AccessibilitySystemView SystemContext::AccessibilityView() noexcept

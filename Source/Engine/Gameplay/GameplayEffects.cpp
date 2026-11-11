@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace Fby
 {
@@ -225,10 +226,53 @@ void GameplayEffectSystem::Update(Registry& InRegistry, float InDt) noexcept
     {
         return;
     }
-    auto ScopedView = InRegistry.view<GameplayEffectsComponent>();
-    for (const Entity ScopedEntity : ScopedView)
+    // Structural preprocessing first: components that RebuildEntity would add
+    // must not be emplaced while the effect view is alive. Collect the entities,
+    // create the components they will need, then process without structural
+    // mutations.
+    std::vector<Entity> ScopedEffectEntities;
+    for (const Entity ScopedEntity : InRegistry.view<GameplayEffectsComponent>())
     {
-        GameplayEffectsComponent& ScopedEffects = ScopedView.get<GameplayEffectsComponent>(ScopedEntity);
+        ScopedEffectEntities.push_back(ScopedEntity);
+    }
+    for (const Entity ScopedEntity : ScopedEffectEntities)
+    {
+        auto* ScopedEffects = InRegistry.try_get<GameplayEffectsComponent>(ScopedEntity);
+        if (ScopedEffects == nullptr)
+        {
+            continue;
+        }
+        bool ScopedNeedsAttributes = false;
+        bool ScopedNeedsTags = false;
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedEffects->Count; ++ScopedI)
+        {
+            const GameplayEffectDef* ScopedDef = FindDef(ScopedEffects->Active[ScopedI].DefId);
+            if (ScopedDef == nullptr)
+            {
+                continue;
+            }
+            ScopedNeedsAttributes = ScopedNeedsAttributes || ScopedDef->ModifierCount > 0;
+            ScopedNeedsTags = ScopedNeedsTags || ScopedDef->GrantedTagCount > 0;
+        }
+        if (ScopedNeedsAttributes && InRegistry.try_get<GameplayAttributesComponent>(ScopedEntity) == nullptr)
+        {
+            (void)InRegistry.emplace<GameplayAttributesComponent>(ScopedEntity);
+        }
+        if (ScopedNeedsTags && InRegistry.try_get<GameplayTagsComponent>(ScopedEntity) == nullptr)
+        {
+            (void)InRegistry.emplace<GameplayTagsComponent>(ScopedEntity);
+        }
+    }
+
+    std::vector<Entity> ScopedRebuildEntities;
+    for (const Entity ScopedEntity : ScopedEffectEntities)
+    {
+        auto* ScopedEffectsPtr = InRegistry.try_get<GameplayEffectsComponent>(ScopedEntity);
+        if (ScopedEffectsPtr == nullptr)
+        {
+            continue;
+        }
+        GameplayEffectsComponent& ScopedEffects = *ScopedEffectsPtr;
         bool ScopedChanged = false;
         std::uint32_t ScopedWrite = 0;
         for (std::uint32_t ScopedI = 0; ScopedI < ScopedEffects.Count; ++ScopedI)
@@ -293,8 +337,14 @@ void GameplayEffectSystem::Update(Registry& InRegistry, float InDt) noexcept
         if (ScopedChanged)
         {
             ++ScopedEffects.Revision;
-            RebuildEntity(InRegistry, ScopedEntity);
+            ScopedRebuildEntities.push_back(ScopedEntity);
         }
+    }
+    // Rebuilding can still add attributes/tags; do it after the effect view is
+    // gone so the FCS archetype storage is not mutated mid-iteration.
+    for (const Entity ScopedEntity : ScopedRebuildEntities)
+    {
+        RebuildEntity(InRegistry, ScopedEntity);
     }
 }
 

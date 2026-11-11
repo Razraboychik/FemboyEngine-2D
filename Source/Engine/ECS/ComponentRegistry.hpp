@@ -3,6 +3,7 @@
 
 #include "Engine/Core/FlatMap.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/FCS/Registry.hpp"
 #include "Engine/Core/Mirror.hpp"
 
 #include <cstddef>
@@ -18,7 +19,19 @@
 namespace Fby::Scene
 {
 
-using Registry = entt::registry;
+using Registry = Fby::Fcs::Registry;
+
+// Scene capture and the cleanup hook share this one accessor; FCS owns the
+// entity records and exposes them as a stable storage view.
+template <typename RegistryType> [[nodiscard]] auto& GetEntityStorage(RegistryType& InRegistry)
+{
+    return InRegistry.template storage<Entity>();
+}
+
+template <typename RegistryType> [[nodiscard]] const auto& GetEntityStorage(const RegistryType& InRegistry)
+{
+    return InRegistry.template storage<Entity>();
+}
 
 // Optional TOML codec for fixed arrays that Mirror cannot express. The capture
 // hook returns ready-to-append TOML lines; the restore hook receives one key
@@ -37,7 +50,7 @@ struct ComponentOps
     std::span<const Reflect::FieldDesc> fields;
     // Editor-only markers (selection, hover, ...) must not be written to disk.
     bool serializable = true;
-    // A marker component (Hidden, ...) has no storage EnTT can hand out a
+    // A marker component (Hidden, ...) has no storage to hand out a
     bool empty = false;
 
     void (*emplaceDefault)(Registry&, Entity) = nullptr;

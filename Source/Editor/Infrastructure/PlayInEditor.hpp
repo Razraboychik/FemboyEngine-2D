@@ -55,6 +55,8 @@ public:
         RestoreFailed,
         // The isolated PIE physics world could not be created.
         PhysicsFailed,
+        // The loopback host/client sessions or their transport could not start.
+        NetworkFailed,
     };
 
     [[nodiscard]] static constexpr const char* ResultName(Result InResult) noexcept
@@ -77,6 +79,8 @@ public:
                 return "RestoreFailed";
             case Result::PhysicsFailed:
                 return "PhysicsFailed";
+            case Result::NetworkFailed:
+                return "NetworkFailed";
         }
         return "?";
     }
@@ -248,14 +252,14 @@ private:
     void PumpExternalClient(std::span<const std::byte> InDelta, std::uint64_t InNowMs, float InDeltaSeconds) noexcept;
     void StopExternalClient() noexcept;
 
-    [[nodiscard]] bool StartVoice() noexcept;
+    [[nodiscard]] bool StartVoice();
     void TickVoice(float InDeltaSeconds) noexcept;
     void StopVoice() noexcept;
 
     Ecs::SnapshotSchema MSchema{};
     FrameArena MArena{};
     std::span<std::byte> MStorage{};
-    entt::registry MWorld{};
+    Ecs::Registry MWorld{};
     // The play world gets its own Box2D world. Sharing the editor's
     PhysicsSystem MPiePhysics{};
     bool MPhysicsOwned = false;

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -42,6 +43,11 @@ constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 [[nodiscard]] bool Aligned(std::uint32_t InOffset, std::size_t InAlignment) noexcept
 {
     return InAlignment == 0 || (static_cast<std::uint64_t>(InOffset) % InAlignment) == 0;
+}
+
+[[nodiscard]] bool AlignedAddress(const void* InPointer, std::size_t InAlignment) noexcept
+{
+    return InAlignment == 0 || (reinterpret_cast<std::uintptr_t>(InPointer) % InAlignment) == 0;
 }
 
 [[nodiscard]] bool SectionInside(std::span<const std::byte> InBytes, std::uint32_t InOffset, std::size_t InSize,
@@ -151,6 +157,10 @@ std::expected<SkeletonAssetView, std::string> DecodeSkeletonAsset(std::span<cons
     if (InBytes.size() > kFesklMaxBytes)
     {
         return ScopedReject("skeleton asset is larger than the 64 KiB format limit");
+    }
+    if (!AlignedAddress(InBytes.data(), alignof(std::uint64_t)))
+    {
+        return ScopedReject("skeleton asset buffer is not aligned for its 64-bit sections");
     }
 
     FesklHeader ScopedHeader{};

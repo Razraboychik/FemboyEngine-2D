@@ -392,7 +392,7 @@ void EditorFonts::ApplyUiScale() const
     MIO->FontGlobalScale = ScopedScale;
 }
 
-void EditorFonts::SetSpec(const EditorFontSpec& InSpec) noexcept
+void EditorFonts::SetSpec(const EditorFontSpec& InSpec)
 {
     MSpec = InSpec;
     MSpecUiScale = ClampUiScale(InSpec.uiScale);

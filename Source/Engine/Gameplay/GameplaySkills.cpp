@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace Fby
 {
@@ -71,7 +72,7 @@ bool GameplaySkillSystem::SetSlot(Registry& InRegistry, Entity InCaster, std::ui
     ScopedSlot.SkillId = InSkillId;
     ScopedSlot.CooldownRemaining = 0.0f;
     ScopedSlot.CastRemaining = 0.0f;
-    ScopedSlot.Target = entt::null;
+    ScopedSlot.Target = Fby::kNullEntity;
     ScopedSlot.State = GameplaySkillState::Ready;
     ++ScopedSkills->Revision;
     return true;
@@ -131,7 +132,7 @@ void GameplaySkillSystem::CompleteCast(Registry& InRegistry, Entity InCaster, Ga
         {
             (void)MEffects->Apply(InRegistry, InCaster, InDef.SelfEffectIds[ScopedI], InCaster);
         }
-        if (ScopedTarget != entt::null && InRegistry.valid(ScopedTarget))
+        if (ScopedTarget != Fby::kNullEntity && InRegistry.valid(ScopedTarget))
         {
             for (std::uint32_t ScopedI = 0; ScopedI < InDef.TargetEffectCount; ++ScopedI)
             {
@@ -139,9 +140,18 @@ void GameplaySkillSystem::CompleteCast(Registry& InRegistry, Entity InCaster, Ga
             }
         }
     }
-    InSlot.State = GameplaySkillState::Ready;
-    InSlot.CastRemaining = 0.0f;
-    InSlot.Target = entt::null;
+    // Effects add components to the caster and move its archetype, so the slot
+    // reference captured by the caller is stale after Apply(). Re-fetch it by
+    // index before writing the completed state.
+    if (GameplaySkillsComponent* ScopedSkills = InRegistry.try_get<GameplaySkillsComponent>(InCaster);
+        ScopedSkills != nullptr)
+    {
+        GameplaySkillSlot& ScopedCompleted = ScopedSkills->Slots[InSlotIndex];
+        ScopedCompleted.State = GameplaySkillState::Ready;
+        ScopedCompleted.CastRemaining = 0.0f;
+        ScopedCompleted.Target = Fby::kNullEntity;
+    }
+    (void)InSlot;
     PushEvent(InCaster, ScopedTarget, InDef.Id, InSlotIndex, GameplaySkillEventType::Completed,
               GameplaySkillFailReason::None);
 }
@@ -192,7 +202,7 @@ bool GameplaySkillSystem::TryActivate(Registry& InRegistry, Entity InCaster, std
         return false;
     }
     if (ScopedDef->TargetKind == GameplaySkillTargetKind::TargetEntity &&
-        (InTarget == entt::null || !InRegistry.valid(InTarget)))
+        (InTarget == Fby::kNullEntity || !InRegistry.valid(InTarget)))
     {
         PushEvent(InCaster, InTarget, ScopedDef->Id, static_cast<std::uint16_t>(InSlot), GameplaySkillEventType::Failed,
                   GameplaySkillFailReason::Target);
@@ -204,19 +214,27 @@ bool GameplaySkillSystem::TryActivate(Registry& InRegistry, Entity InCaster, std
                   GameplaySkillFailReason::Cost);
         return false;
     }
-    ScopedSlot.CooldownRemaining = ScopedDef->Cooldown;
-    ScopedSlot.Target =
+    // PayCost may rebuild effects and move the caster; re-fetch the component
+    // before writing the cooldown and cast state.
+    ScopedSkills = InRegistry.try_get<GameplaySkillsComponent>(InCaster);
+    if (ScopedSkills == nullptr)
+    {
+        return false;
+    }
+    GameplaySkillSlot& ScopedSlotAfter = ScopedSkills->Slots[InSlot];
+    ScopedSlotAfter.CooldownRemaining = ScopedDef->Cooldown;
+    ScopedSlotAfter.Target =
         ScopedDef->TargetKind == GameplaySkillTargetKind::Self ? InCaster : InTarget;
     ++ScopedSkills->Revision;
     PushEvent(InCaster, InTarget, ScopedDef->Id, static_cast<std::uint16_t>(InSlot), GameplaySkillEventType::Activated,
               GameplaySkillFailReason::None);
     if (ScopedDef->CastTime > 0.0f)
     {
-        ScopedSlot.State = GameplaySkillState::Casting;
-        ScopedSlot.CastRemaining = ScopedDef->CastTime;
+        ScopedSlotAfter.State = GameplaySkillState::Casting;
+        ScopedSlotAfter.CastRemaining = ScopedDef->CastTime;
         return true;
     }
-    CompleteCast(InRegistry, InCaster, ScopedSlot, *ScopedDef, static_cast<std::uint16_t>(InSlot));
+    CompleteCast(InRegistry, InCaster, ScopedSlotAfter, *ScopedDef, static_cast<std::uint16_t>(InSlot));
     return true;
 }
 
@@ -236,7 +254,7 @@ bool GameplaySkillSystem::Cancel(Registry& InRegistry, Entity InCaster, std::uin
               GameplaySkillEventType::Cancelled, GameplaySkillFailReason::None);
     ScopedSlot.State = GameplaySkillState::Ready;
     ScopedSlot.CastRemaining = 0.0f;
-    ScopedSlot.Target = entt::null;
+    ScopedSlot.Target = Fby::kNullEntity;
     ++ScopedSkills->Revision;
     return true;
 }
@@ -247,14 +265,25 @@ void GameplaySkillSystem::Update(Registry& InRegistry, float InDt) noexcept
     {
         return;
     }
-    auto ScopedView = InRegistry.view<GameplaySkillsComponent>();
-    for (const Entity ScopedCaster : ScopedView)
+    // CompleteCast applies effects, which may add components and move the
+    // caster between archetypes. Collect the casters first and re-fetch the
+    // component after every potentially structural call.
+    std::vector<Entity> ScopedCasters;
+    for (const Entity ScopedCaster : InRegistry.view<GameplaySkillsComponent>())
     {
-        GameplaySkillsComponent& ScopedSkills = ScopedView.get<GameplaySkillsComponent>(ScopedCaster);
+        ScopedCasters.push_back(ScopedCaster);
+    }
+    for (const Entity ScopedCaster : ScopedCasters)
+    {
         bool ScopedChanged = false;
         for (std::uint32_t ScopedI = 0; ScopedI < kMaxGameplaySkillSlots; ++ScopedI)
         {
-            GameplaySkillSlot& ScopedSlot = ScopedSkills.Slots[ScopedI];
+            GameplaySkillsComponent* ScopedSkills = InRegistry.try_get<GameplaySkillsComponent>(ScopedCaster);
+            if (ScopedSkills == nullptr)
+            {
+                break;
+            }
+            GameplaySkillSlot& ScopedSlot = ScopedSkills->Slots[ScopedI];
             if (ScopedSlot.CooldownRemaining > 0.0f)
             {
                 ScopedSlot.CooldownRemaining = std::max(ScopedSlot.CooldownRemaining - InDt, 0.0f);
@@ -276,7 +305,7 @@ void GameplaySkillSystem::Update(Registry& InRegistry, float InDt) noexcept
                           GameplaySkillEventType::Cancelled, GameplaySkillFailReason::Tags);
                 ScopedSlot.State = GameplaySkillState::Ready;
                 ScopedSlot.CastRemaining = 0.0f;
-                ScopedSlot.Target = entt::null;
+                ScopedSlot.Target = Fby::kNullEntity;
                 ScopedChanged = true;
                 continue;
             }
@@ -289,7 +318,11 @@ void GameplaySkillSystem::Update(Registry& InRegistry, float InDt) noexcept
         }
         if (ScopedChanged)
         {
-            ++ScopedSkills.Revision;
+            if (GameplaySkillsComponent* ScopedSkills = InRegistry.try_get<GameplaySkillsComponent>(ScopedCaster);
+                ScopedSkills != nullptr)
+            {
+                ++ScopedSkills->Revision;
+            }
         }
     }
 }

@@ -37,27 +37,72 @@ static_assert(sizeof(PakEntry) == 24, ".fempak entry is fixed at 24 bytes");
 // The canonical path used by the cooker, the VFS and every tool. Public so all
 [[nodiscard]] inline std::string NormalizePakPath(std::string_view InPath)
 {
-    std::string ScopedResult;
-    ScopedResult.reserve(InPath.size());
+    std::string ScopedNormalized;
+    ScopedNormalized.reserve(InPath.size());
     for (const char ScopedCharacter : InPath)
     {
         if (ScopedCharacter == '\\')
         {
-            ScopedResult.push_back('/');
+            ScopedNormalized.push_back('/');
         }
         else if (ScopedCharacter != '\0')
         {
-            ScopedResult.push_back(ScopedCharacter);
+            ScopedNormalized.push_back(ScopedCharacter);
         }
     }
-    // Strip a leading "./" and any leading slashes; a path inside a pack is
-    while (ScopedResult.size() >= 2 && ScopedResult[0] == '.' && ScopedResult[1] == '/')
+    if (ScopedNormalized.size() >= 2 &&
+        ((ScopedNormalized[0] >= 'A' && ScopedNormalized[0] <= 'Z') ||
+         (ScopedNormalized[0] >= 'a' && ScopedNormalized[0] <= 'z')) &&
+        ScopedNormalized[1] == ':')
     {
-        ScopedResult.erase(0, 2);
+        return {};
     }
-    while (!ScopedResult.empty() && ScopedResult.front() == '/')
+    if (ScopedNormalized.starts_with("//"))
     {
-        ScopedResult.erase(ScopedResult.begin());
+        return {};
+    }
+
+    std::string ScopedResult;
+    ScopedResult.reserve(ScopedNormalized.size());
+    std::size_t ScopedRead = 0;
+    while (ScopedRead < ScopedNormalized.size() && ScopedNormalized[ScopedRead] == '/')
+    {
+        ++ScopedRead;
+    }
+    while (ScopedRead < ScopedNormalized.size())
+    {
+        const std::size_t ScopedEnd = ScopedNormalized.find('/', ScopedRead);
+        const std::size_t ScopedStop = ScopedEnd == std::string::npos ? ScopedNormalized.size() : ScopedEnd;
+        const std::string_view ScopedComponent(ScopedNormalized.data() + ScopedRead, ScopedStop - ScopedRead);
+        if (ScopedComponent == "..")
+        {
+            if (ScopedResult.empty())
+            {
+                return {};
+            }
+            const std::size_t ScopedSlash = ScopedResult.rfind('/');
+            if (ScopedSlash == std::string::npos)
+            {
+                ScopedResult.clear();
+            }
+            else
+            {
+                ScopedResult.resize(ScopedSlash);
+            }
+        }
+        else if (!ScopedComponent.empty() && ScopedComponent != ".")
+        {
+            if (!ScopedResult.empty())
+            {
+                ScopedResult.push_back('/');
+            }
+            ScopedResult.append(ScopedComponent);
+        }
+        if (ScopedEnd == std::string::npos)
+        {
+            break;
+        }
+        ScopedRead = ScopedEnd + 1;
     }
     return ScopedResult;
 }

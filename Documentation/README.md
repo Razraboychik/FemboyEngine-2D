@@ -3,7 +3,7 @@
 [English](README.md) | [Русский перевод](README_RU.md)
 
 This directory is the entry point to the FemboyEngine2D documentation set. The
-current public line is **0.3.0-alpha.1**. The engine is a C++26, data-oriented 2D
+current public line is **0.4.0-alpha.1**. The engine is a C++26, data-oriented 2D
 runtime: fixed-capacity ECS storage, explicit systems, an SDL3 window, a Vulkan or
 null render hardware interface, Box2D v3 physics and deterministic rollback.
 
@@ -12,7 +12,7 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 
 ## What the engine covers
 
-- **Runtime and ECS** — EnTT registry, declarative `SystemGraph`, snapshot and
+- **Runtime and ECS** — FCS registry, declarative `SystemGraph`, snapshot and
   rollback contracts, frame arena and command buffers.
 - **Rendering** — Vulkan and null RHI, sprite and mesh paths, 2D lighting with SDF
   shadows, OIT, static layer baking, virtual texturing, draw-call batching,
@@ -46,6 +46,11 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 |---|---|
 | Build the engine and open the editor | [Getting Started](md/en/FemboyEngineGettingStarted_EN.md) |
 | Set up VS Code, clangd and manual builds | [Build Workflow](design/build-workflow.md) |
+| Check editor hardware targets | [Editor system requirements](design/system-requirements.md) |
+| Build and ship a game, Steam/EOS/GOG | [Game distribution](design/game-distribution.md) |
+| Understand the FCS chunked storage | [FCS](design/fcs.md) |
+| Deformable SDF characters | [SDF characters](design/sdf-characters.md) |
+| SystemGraph access and exception contract | [SystemGraph safety](design/system-graph.md) |
 | Learn the engine by building a game | [Application Guide](md/en/FemboyEngineApplicationGuide_EN.md) |
 | Look up a type, a function or a payload field | [API Reference](md/en/FemboyEngineAPIReference_EN.md) |
 | Understand the architecture | [Architecture Specification](md/en/FemboyEngineArchitecture_EN.md) |
@@ -54,9 +59,10 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Author transport groups, elevators and trains | [Physics: transport groups](md/en/Physics_EN.md), [transport physics](design/transport-physics.md) |
 | Add vehicle suspension, drive or brakes | [Vehicle wheels](design/vehicle-wheels.md) |
 | Tune camera motion and distortion | [Camera effects](design/camera-effects.md) |
+| Add radiation screen noise | [Radiation effect](design/radiation.md) |
 | Add actions, contexts, gamepads and rebinding | [Input system](design/input-system.md) |
 | Build authoritative input and replication | [Application Guide: replication](md/en/FemboyEngineApplicationGuide_EN.md#51-deterministic-input-and-replication-while-building-the-game) |
-| Use FemboyScript, LogicGraph or StateTree | [FemboyScript](md/en/FemboyScript_EN.md) |
+| Use FemboyScript, LogicGraph or StateTree | [FemboyScript](md/en/FemboyScript_EN.md), [LogicGraph values and AOT](design/scripting.md) |
 | Review FSR/DLSS upscaling and frame generation | [Frame Generation](md/en/FemboyEngineFrameGeneration_EN.md) |
 | Show formatted books and manuals | [Streaming books](design/books.md), [TXT documents](design/documents.md) |
 | Move a project between Windows, Linux and macOS | [Desktop portability](design/desktop-portability.md) |
@@ -69,6 +75,8 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Tune gravity, fields, ropes and chains | [Gravity and ropes](design/gravity-and-ropes.md) |
 | Build text chat and voice chat, including effects and conditions | [Chat and voice effects](design/chat.md) |
 | Review transport security | [Security](design/security.md) |
+| Plan plugins and accessibility packs | [Plugin architecture](design/plugins.md) |
+| Understand excluded CodeQL vendor alerts | [CodeQL unused alerts](md/en/CodeQLUnusedAlerts_EN.md) |
 | Work on voice, lighting, text, PIE or networking | [Design documents](design) |
 
 ## Languages and formats

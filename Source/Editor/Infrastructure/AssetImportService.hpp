@@ -54,14 +54,40 @@ public:
 
     struct Stats
     {
-        std::uint32_t queued = 0;
-        std::uint32_t cooked = 0;
-        std::uint32_t committed = 0;
-        std::uint32_t textureLayersUpdated = 0;
-        std::uint32_t failed = 0;
-        std::uint32_t dropped = 0;
+        // Worker threads and the editor thread update different counters, so the
+        // counters are atomic and copies load each field once.
+        std::atomic<std::uint32_t> queued{0};
+        std::atomic<std::uint32_t> cooked{0};
+        std::atomic<std::uint32_t> committed{0};
+        std::atomic<std::uint32_t> textureLayersUpdated{0};
+        std::atomic<std::uint32_t> failed{0};
+        std::atomic<std::uint32_t> dropped{0};
         // Times the worker waited for the editor to drain the completed ring.
-        std::uint32_t blocked = 0;
+        std::atomic<std::uint32_t> blocked{0};
+
+        Stats() = default;
+        Stats(const Stats& InOther)
+            : queued(InOther.queued.load(std::memory_order_relaxed)),
+              cooked(InOther.cooked.load(std::memory_order_relaxed)),
+              committed(InOther.committed.load(std::memory_order_relaxed)),
+              textureLayersUpdated(InOther.textureLayersUpdated.load(std::memory_order_relaxed)),
+              failed(InOther.failed.load(std::memory_order_relaxed)),
+              dropped(InOther.dropped.load(std::memory_order_relaxed)),
+              blocked(InOther.blocked.load(std::memory_order_relaxed))
+        {
+        }
+        Stats& operator=(const Stats& InOther)
+        {
+            queued.store(InOther.queued.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            cooked.store(InOther.cooked.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            committed.store(InOther.committed.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            textureLayersUpdated.store(InOther.textureLayersUpdated.load(std::memory_order_relaxed),
+                                       std::memory_order_relaxed);
+            failed.store(InOther.failed.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            dropped.store(InOther.dropped.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            blocked.store(InOther.blocked.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            return *this;
+        }
     };
 
     AssetImportService() = default;
@@ -84,7 +110,7 @@ public:
 
     // Enqueues a re-cook. Called by AssetDatabaseWatchSystem::Callbacks.
     [[nodiscard]] bool ScheduleCook(std::string_view InSourcePath, Assets::AssetHandle InHandle,
-                                    std::string* InError = nullptr) noexcept;
+                                    std::string* InError = nullptr);
 
     // Editor-frame entry point. Drains finished cooks, commits the asset
     std::uint32_t Tick(std::string* InError = nullptr);

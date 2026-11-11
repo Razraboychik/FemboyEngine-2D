@@ -70,6 +70,11 @@ struct CookProgressRecord
     {
         return total == 0 ? 0.0f : static_cast<float>(completed) / static_cast<float>(total);
     }
+
+    // The record is written with padding; a field-wise comparison is the stable
+    // definition of "the same progress snapshot".
+    [[nodiscard]] friend constexpr bool operator==(const CookProgressRecord&,
+                                                   const CookProgressRecord&) = default;
 };
 
 static_assert(std::is_trivially_copyable_v<CookProgressRecord>);

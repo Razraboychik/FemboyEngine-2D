@@ -212,19 +212,28 @@ void AesEncryptBlockPortable(const Aes256Key& InKey, const std::byte* InInput, s
 void AesEncryptBlock(const Aes256Key& InKey, const std::byte* InInput, std::byte* OutOutput) noexcept
 {
 #if FBY_CRYPTO_HAS_AESNI
-    __m128i ScopedBlock = _mm_loadu_si128(reinterpret_cast<const __m128i*>(InInput));
-    ScopedBlock = _mm_xor_si128(ScopedBlock, _mm_loadu_si128(reinterpret_cast<const __m128i*>(InKey.roundKeys.data())));
-    for (std::uint32_t ScopedRound = 1; ScopedRound < 14; ++ScopedRound)
+    // The compiler only proves that the instruction is available, not that the
+    // running CPU implements it. Gate the accelerated block on CPUID so an
+    // AES-NI-enabled build still runs on older x86 hardware.
+    static const bool ScopedAesNi = HardwareAesAvailable();
+    if (ScopedAesNi)
     {
-        ScopedBlock = _mm_aesenc_si128(
-            ScopedBlock, _mm_loadu_si128(reinterpret_cast<const __m128i*>(InKey.roundKeys.data() + ScopedRound * 16)));
+        __m128i ScopedBlock = _mm_loadu_si128(reinterpret_cast<const __m128i*>(InInput));
+        ScopedBlock =
+            _mm_xor_si128(ScopedBlock, _mm_loadu_si128(reinterpret_cast<const __m128i*>(InKey.roundKeys.data())));
+        for (std::uint32_t ScopedRound = 1; ScopedRound < 14; ++ScopedRound)
+        {
+            ScopedBlock = _mm_aesenc_si128(
+                ScopedBlock,
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(InKey.roundKeys.data() + ScopedRound * 16)));
+        }
+        ScopedBlock = _mm_aesenclast_si128(
+            ScopedBlock, _mm_loadu_si128(reinterpret_cast<const __m128i*>(InKey.roundKeys.data() + 14 * 16)));
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(OutOutput), ScopedBlock);
+        return;
     }
-    ScopedBlock = _mm_aesenclast_si128(
-        ScopedBlock, _mm_loadu_si128(reinterpret_cast<const __m128i*>(InKey.roundKeys.data() + 14 * 16)));
-    _mm_storeu_si128(reinterpret_cast<__m128i*>(OutOutput), ScopedBlock);
-#else
-    AesEncryptBlockPortable(InKey, InInput, OutOutput);
 #endif
+    AesEncryptBlockPortable(InKey, InInput, OutOutput);
 }
 
 // GHASH / GCM
@@ -618,11 +627,9 @@ std::uint64_t AeadNonce::Counter() const noexcept
 
 void AeadNonce::SetCounter(std::uint64_t InCounter) noexcept
 {
-    // The first four nonce bytes stay free for a per-archive random prefix; the
-    bytes[0] = std::byte{0};
-    bytes[1] = std::byte{0};
-    bytes[2] = std::byte{0};
-    bytes[3] = std::byte{0};
+    // The first four nonce bytes are a caller-owned prefix (for archive
+    // encryption); only the 64-bit counter occupies bytes 4..11. Preserving the
+    // prefix is required so two archives never reuse a nonce under one key.
     Store64Le(bytes.data() + 4, InCounter);
 }
 
@@ -796,7 +803,20 @@ std::uint64_t Crc64Ecma(std::span<const std::byte> InBytes, std::uint64_t InSeed
 
 bool HardwareAesAvailable() noexcept
 {
-    return FBY_CRYPTO_HAS_AESNI != 0;
+#if FBY_CRYPTO_HAS_AESNI
+#if defined(__GNUC__) || defined(__clang__)
+    static const bool ScopedAvailable = []
+    {
+        __builtin_cpu_init();
+        return __builtin_cpu_supports("aes") != 0;
+    }();
+    return ScopedAvailable;
+#else
+    return false;
+#endif
+#else
+    return false;
+#endif
 }
 
 void SecureZero(std::span<std::byte> InBytes) noexcept

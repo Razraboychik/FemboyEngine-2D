@@ -13,6 +13,12 @@
 #include <system_error>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 #if defined(_WIN32)
 #if !defined(WIN32_LEAN_AND_MEAN)
 #define WIN32_LEAN_AND_MEAN
@@ -277,12 +283,37 @@ bool SaveIdentity(const NetIdentity& InIdentity, const std::filesystem::path& In
     Detail::StoreU32(ScopedHeader + 8, static_cast<std::uint32_t>(ScopedPayload.size()));
     std::memcpy(ScopedFile.data() + kIdentityStorageHeaderBytes, ScopedPayload.data(), ScopedPayload.size());
 
+#if defined(_WIN32)
     std::FILE* ScopedOutput = std::fopen(InPath.string().c_str(), "wb");
     if (ScopedOutput == nullptr)
     {
         SetError(InError, "identity: cannot open the target file for writing");
         return false;
     }
+#else
+    const int ScopedDescriptor =
+        ::open(InPath.string().c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (ScopedDescriptor < 0)
+    {
+        SetError(InError, "identity: cannot open the target file for writing");
+        return false;
+    }
+    if (::fchmod(ScopedDescriptor, S_IRUSR | S_IWUSR) != 0)
+    {
+        (void)::close(ScopedDescriptor);
+        std::error_code ScopedRemoveError;
+        std::filesystem::remove(InPath, ScopedRemoveError);
+        SetError(InError, "identity: cannot restrict the target file permissions");
+        return false;
+    }
+    std::FILE* ScopedOutput = ::fdopen(ScopedDescriptor, "wb");
+    if (ScopedOutput == nullptr)
+    {
+        (void)::close(ScopedDescriptor);
+        SetError(InError, "identity: cannot open the target file stream");
+        return false;
+    }
+#endif
     const std::size_t ScopedWritten = std::fwrite(ScopedFile.data(), 1, ScopedFile.size(), ScopedOutput);
     const bool ScopedClosed = std::fclose(ScopedOutput) == 0;
     if (ScopedWritten != ScopedFile.size() || !ScopedClosed)

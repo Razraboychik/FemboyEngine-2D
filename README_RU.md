@@ -8,33 +8,30 @@
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.3.0-alpha.1](https://img.shields.io/badge/status-0.3.0--alpha.1-blue.svg)]()
+[![Status: 0.4.0-alpha.1](https://img.shields.io/badge/status-0.4.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D — компактный, детерминированный движок для 2D-игр: собственный
-RHI на Vulkan/Metal, ECS на EnTT, декларативный параллельный `SystemGraph`,
-физика Box2D v3, rollback-сеть, транзакционный ассет-пайплайн, полноценный
-редактор и генератор чистых проектов.
+RHI на Vulkan/Metal, chunked-хранилище FCS, декларативный `SystemGraph` с
+opt-in параллельным выполнением, физика Box2D v3, rollback-сеть, транзакционный
+ассет-пайплайн, полноценный редактор и генератор чистых проектов.
 
 В рантайме нет `std::function` на кадровом пути, нет аллокаций на кадровом пути,
 нет JSON в поставляемом рантайме и нет скрытого объектного графа. Компоненты —
 тривиально копируемые данные; системы — свободные функции; кадр — плоский массив
 `RenderItem`, отправляемый одним RHI-пакетом.
 
-**Статус: 0.3.0-alpha.1.** Это текущая публичная alpha-линия. В дереве есть
-рабочий отладчик FemboyScript (spans, breakpoints, stepping, locals, self-поля),
-изометрические и тайловые карты с редактором, скелетный IK, retargeting и сжатие
-клипов (`.fanim`), навигация по сетке, 2D-освещение, UDP-транспорт с надёжностью
-и MTU-фрагментацией, живой пространственный звук, превью текстур в редакторе и
-backpressure при импорте. Публичные CMake-цели и
+**Статус: 0.4.0-alpha.1.** FemboyEngine2D находится в публичной alpha-линии
+0.4. Runtime включает отладчик FemboyScript (spans, breakpoints, stepping,
+locals и self-поля), изометрические и тайловые карты с редактором, скелетный
+IK, retargeting и сжатие клипов (`.fanim`), навигацию по сетке, 2D-освещение,
+UDP-транспорт с надёжностью и MTU-фрагментацией, живой пространственный звук,
+превью текстур в редакторе и backpressure при импорте. Публичные CMake-цели и
 C++-пространства имён — PascalCase (`FemboyEngine2D::Engine`, `Fby::Ecs`,
-`Fby::Rhi`); legacy-алиасов нет. Текущий гейт проходит полный CTest с Clang
-23.1.4 на Windows и Clang на Linux; MSVC не поддерживается как компилятор.
-Style gate проходит, сгенерированный Clean Slate проект собирается и
-запускается с null RHI. Текущая линия также включает гибридное SDF-разрушение,
-транспортные группы для лифтов, поездов и движущихся платформ, апскейлинг
-класса FSR/DLSS и генерацию кадров, а также голосовые эффекты с условиями.
-Движок строго 2D: в нём нет 3D-рендерера, 3D-физики и 3D-формата сцен.
+`Fby::Rhi`). Гибридное SDF-разрушение, транспортные группы для лифтов, поездов и
+движущихся платформ, апскейлинг класса FSR/DLSS, генерация кадров и голосовые
+эффекты с условиями входят в тот же runtime. Движок строго 2D: в нём нет
+3D-рендерера, 3D-физики и 3D-формата сцен.
 
 ---
 
@@ -102,7 +99,7 @@ FemboyEngine2D построен вокруг трёх идей: **ECS** отве
 |---|---|---|
 | Core | `Definitions.hpp`, `FemCast<>`, проверяемый `Cast<>`, `FORCEINLINE`, векторы, Mirror-рефлексия, jobs, платформа SDL3, plugin ABI | Значимые типы, проверяемые cast’ы исчезают при компиляции, без RTTI в горячих путях, пул воркеров с защёлкой отказа задач |
 | RHI | Постоянные кольца кадров, 48-байтный `RenderItem`, 64-битные ключи, движковый `Rhi::FrameComposer`, Vulkan indirect MDI, один compute dispatch для LBS, Metal и null backends, контракты апскейлинга класса FSR/DLSS и генерации кадров | Один плоский пакет на кадр, явное время жизни кадра, без аллокаций на элемент, bindless-ключи |
-| ECS | EnTT registry, тривиально копируемые компоненты, четырёхфазный schedule, параллельный `SystemGraph` с семафорами на вызов и объявленными конфликтами доступа к сервисам, Snapshot v4 | Archetype-хранилище, системы берут span’ы, а не владеют объектами, снапшоты — явные копии |
+| ECS | FCS chunked registry, тривиально копируемые компоненты, четырёхфазный schedule, `SystemGraph` с opt-in параллельными волнами и объявленным доступом к сервисам/компонентам, Snapshot v5 | Archetype/chunk-хранилище, системы берут span’ы, а не владеют объектами, снапшоты — явные копии; v4 отвергается |
 | Ввод | Фиксированный `InputSystem`: действия/контексты/модификаторы/триггеры, состояние по пользователям, тики и timestamps событий, hotplug и dead zone для SDL3-геймпадов; без руля | Без heap в input-пути; ограниченные таблицы событий и маппингов; детерминированная выборка на тик |
 | Геймплей | База игровых тегов в Project Settings, иерархические `GameplayTags`, реестр атрибутов, data-driven instant/duration/periodic эффекты со стаками, навыки со стоимостью/кастом/кулдауном | Таблицы данных и фиксированные layout’ы компонентов; эффекты идут через command buffer, а не через скрытый граф объектов |
 | ИИ | `StateTree` → command buffer → `AIController` → восприятие, навигация и навыки; `ActionId` как данные для игровых ECS-систем, цели по тегам, grid и convex navmesh, пути raw/LOS/Chaikin/Catmull-Rom, детерминированная рандомизация маршрутов | Ограниченные state tree, бюджет repath на кадр, без фоновых аллокаций из AI-тика |
@@ -142,10 +139,12 @@ FemboyEngine2D построен вокруг трёх идей: **ECS** отве
 потому что намеренно связывают все домены.
 
 Schedule состоит из четырёх фаз: `PreUpdate`, `FixedUpdate`, `PostUpdate` и
-`Render`. `SystemGraph` запускает независимые системы параллельно с семафорами
-на вызов. Система может объявить, какие сервисы движка она читает и пишет; две
-системы одной фазы с конфликтом по сервису упорядочиваются по регистрации, а не
-запускаются вместе. Система, которая меняет компонент, регистрируется по
+`Render`. `SystemGraph` строит зависимости по стабильным именам, доступу к
+сервисам и маскам чтения/записи компонентов. Системы одной фазы по умолчанию
+идут последовательно; система включает параллельные волны через
+`ParallelSafe`, и даже тогда объявленный конфликт сервиса или компонента
+сохраняет порядок. Безопасный путь — default, явные параллельные батчи
+остаются доступны. Система, которая меняет компонент, регистрируется по
 стабильному имени, поэтому детерминизм и replay не зависят от порядка
 объявления. Загрузка, перезагрузка или выгрузка плагина пересобирает
 скомпилированный порядок до следующего кадра.
@@ -184,10 +183,15 @@ general-purpose-солвером и не смешиваются с детерм�
 
 Signed distance fields — слой геометрии, независимый от разрешения. Одно и то
 же поле управляет коллизиями, CSG-разрезами и разрушением, экранной
-SDF-маской теней и процедурными SDF-примитивами PinkUI. Статические поля загружаются один раз на
-версию; движущиеся occluder’ы — небольшой ограниченный буфер; sparse brick
+SDF-маской теней и процедурными SDF-примитивами PinkUI. Статические поля
+запекаются в фиксированном разрешении и загружаются один раз на версию;
+движущиеся occluder’ы используют небольшой ограниченный буфер; sparse brick
 atlas делает большие поля практичными. Поле можно вычислять на CPU для
 геймплея и сэмплировать на GPU для освещения без перестройки сцены.
+Деформируемые персонажи используют SDF-части, привязанные к костям, с
+полиномиальным smooth union; разрешённое поле запекается в render mesh bridge
+для GPU и сэмплируется тем же collision path на CPU. Силуэт и коллизии следуют
+за скелетом на любом зуме, без переключения distance LOD.
 
 ### Почему это важно для высокого разрешения
 
@@ -247,22 +251,18 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 ## Сборка
 
-Требования: CMake 3.28+, Ninja, Clang 19+ (clang-cl на Windows, clang++ на
-Unix) или GCC 16+. На Windows запускайте из оболочки, которая предоставляет
-заголовки и библиотеки Windows SDK; сам компилятор MSVC не поддерживается.
-Скрипты установки ставят оба семейства компиляторов: clang-cl / clang++ для
-проверенной сборки и GCC 16+ (MinGW-w64 UCRT на Windows, Homebrew или пакет
-дистрибутива в остальных случаях) для второго мнения. На Windows `SetupScripts/Windows/SetupCpp.bat`
-скачивает официальный MSI **LLVM 23.1.4** и проверяет версию `clang-cl`.
-Unix-скрипты ставят Clang из пакетного менеджера (19+); CI закрепляет LLVM
-23.1.4 для авторитетного Windows-гейта.
+Требования: CMake 3.28+, Ninja и один из компиляторов: **MSVC 19.44+**,
+**Clang 23.1.4+** (clang-cl на Windows, clang++ на Unix), **AppleClang 21+**
+или **GCC 16.2.0+**. На Windows запускайте из оболочки, которая предоставляет
+заголовки и библиотеки Windows SDK. Скрипты установки ставят clang-cl / clang++
+как эталонный тулчейн и GCC 16.2.0 (MinGW-w64 UCRT) как второй компилятор. На
+Windows `SetupScripts/Windows/SetupCpp.bat` скачивает официальный MSI
+**LLVM 23.1.4** и проверяет версию `clang-cl`.
 
 Проверенная сборка использует **clang-cl 23.1.4 на Windows и clang++ на других
-платформах**; именно её запускают CI и release gate. GCC 16.2.0 (MinGW-W64 UCRT)
-устанавливается `SetupScripts/Windows/SetupCpp.bat` и записывается в dependency lock; smoke-программа
-`-std=c++2c` и проверка синтаксиса заголовков движка проходят, но полный гейт
-под GCC пока не запускался. Честный статус этой версии — `GCC not run` для
-полной сборки, пока в CI не появится Linux GCC-runner.
+платформах**; именно её запускают CI и release gate. **MSVC 19.44+**,
+**GCC 16.2.0** и **AppleClang 21+** поддерживаются как альтернативы; матрица
+выбора компилятора — в [build-workflow_RU.md](Documentation/design/build-workflow_RU.md).
 
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
@@ -438,30 +438,19 @@ file>` (нажать Open на панели после `FBY_EDITOR_SMOKE_DASHBOA
 
 Документация доступна на английском и в русском переводе, с независимыми
 изданиями Markdown, Word, PDF и DjVu. Начните с
-[Documentation](Documentation/README.md); русский перевод этого README —
-[README_RU.md](README_RU.md).
+[Documentation](Documentation/README.md); английская версия этого README —
+[README.md](README.md).
 
-- [Архитектура (EN)](Documentation/md/en/FemboyEngineArchitecture_EN.md)
 - [Архитектура (RU)](Documentation/md/ru/FemboyEngineArchitecture_RU.md)
-- [Практическое руководство (EN)](Documentation/md/en/FemboyEngineApplicationGuide_EN.md)
 - [Практическое руководство (RU)](Documentation/md/ru/FemboyEngineApplicationGuide_RU.md)
-- [API Reference (EN)](Documentation/md/en/FemboyEngineAPIReference_EN.md)
 - [API Reference (RU)](Documentation/md/ru/FemboyEngineAPIReference_RU.md)
-- [Полное руководство (EN)](Documentation/md/en/FemboyEngineCompleteReference_EN.md)
 - [Полное руководство (RU)](Documentation/md/ru/FemboyEngineCompleteReference_RU.md)
-- [CMake и управление движком (EN)](Documentation/md/en/CMakeProjectManagement_EN.md)
 - [CMake и управление движком (RU)](Documentation/md/ru/CMakeProjectManagement_RU.md)
-- [Руководство FemboyScript (EN)](Documentation/md/en/FemboyScript_EN.md)
 - [Руководство FemboyScript (RU)](Documentation/md/ru/FemboyScript_RU.md)
-- [Физика, SDF-разрушение и транспортные группы (EN)](Documentation/md/en/Physics_EN.md)
 - [Физика, SDF-разрушение и транспортные группы (RU)](Documentation/md/ru/Physics_RU.md)
-- [Генерация кадров и апскейлинг (EN)](Documentation/md/en/FemboyEngineFrameGeneration_EN.md)
 - [Генерация кадров и апскейлинг (RU)](Documentation/md/ru/FemboyEngineFrameGeneration_RU.md)
-- [Режимы отображения вьюпорта (EN)](Documentation/md/en/ViewportModes_EN.md)
 - [Режимы отображения вьюпорта (RU)](Documentation/md/ru/ViewportModes_RU.md)
-- [Справочник настроек редактора (EN)](Documentation/md/en/EditorSettingsReference_EN.md)
 - [Справочник настроек редактора (RU)](Documentation/md/ru/EditorSettingsReference_RU.md)
-- [Рекомендации по настройкам проекта (EN)](Documentation/md/en/ProjectSettingsRecommendations_EN.md)
 - [Рекомендации по настройкам проекта (RU)](Documentation/md/ru/ProjectSettingsRecommendations_RU.md)
 - [Стиль кода](Documentation/style/CodeStyle.md)
 - [Соглашения об именовании](Documentation/style/NAMING.md)
@@ -535,23 +524,20 @@ FemboyEngine2D распространяется по **Mozilla Public License 2.
 - [SECURITY.md](.github/SECURITY.md)
 - [CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md)
 
-Линия 0.2 alpha — текущий пакет фич поверх первого публичного baseline. Она
-развивается с учётом отзывов сообщества; версия 1.0 зарезервирована для перехода
-на собственные библиотеки.
-
 ---
 
 ## Железо
 
 Это требования к машине разработчика для редактора и debug/release-сборки, а не
 требования к готовой игре: собранная 2D-игра может быть намного легче
-инструментов, которыми её делали.
+инструментов, которыми её делали. Измеренная таблица редактора и методика
+пробника — в [системных требованиях](Documentation/design/system-requirements_RU.md).
 
 | Компонент | Маленькая 2D-игра (минимум) | Средняя 2D-игра (рекомендуется) |
 |---|---|---|
 | CPU | 4 ядра / 8 потоков, например Ryzen 3 3100 или Core i3-10100 | 8 ядер / 16 потоков, например Ryzen 7 5800X или Core i7-12700 |
-| RAM | 8 ГБ — абсолютный минимум, 16 ГБ — комфортно | 32 ГБ |
-| GPU | Драйвер с Vulkan 1.4 или Metal 2, 2 ГБ VRAM, например GTX 1050, RX 560, Iris Xe | Vulkan 1.4 или Metal 3, 6-8 ГБ VRAM, например RTX 3060, RX 6600, Apple M1 Pro |
+| RAM | 8 ГБ — абсолютный минимум, 16 ГБ — комфортно | 16 ГБ (32 ГБ для больших проектов) |
+| GPU | Драйвер с Vulkan 1.4 или Metal 2, 2 ГБ VRAM, например GTX 1050, RX 560, Iris Xe | Vulkan 1.4 или Metal 3, 6 ГБ VRAM, например RTX 3060, RX 6600, Apple M1 Pro |
 | Диск | 10 ГБ свободно на SSD | 25 ГБ свободно на NVMe |
 | Монитор | 1920x1080 | 2560x1440 |
 | ОС | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 14+ | Windows 11, Ubuntu 24.04, macOS 14+ на Apple Silicon |
@@ -568,6 +554,7 @@ multiplayer PIE и редактор на 1440p. Для редактора дис
 версию Vulkan, которую предлагает загрузчик, с потолком 1.4, и включает
 возможности 1.2/1.3 только если устройство их предоставляет; **минимальный
 поддерживаемый драйвер — Vulkan 1.4**. Машина на уровне рекомендованной колонки
-запускает редактор и полный набор CTest без аппаратных обходных путей. На
-Windows/Linux используется Vulkan, на macOS — Metal; null RHI оставляет
-headless CI-машины рабочими.
+запускает редактор и полный набор CTest без аппаратных обходных путей. Smoke-прогон
+0.4 alpha на RTX 4060 Laptop (Vulkan 1.4.341) прошёл mesh/SDF-путь в 2560x1600
+с тремя кадрами в полёте. На Windows/Linux используется Vulkan, на macOS — Metal;
+null RHI оставляет headless CI-машины рабочими.

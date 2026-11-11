@@ -56,6 +56,48 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 всех трёх системах. Статус проверки — в
 [platform support](platform-support.md).
 
+## Выбор компилятора
+
+0.4 alpha проверяет четыре компилятора. Минимальные версии — это проверенные
+релизы текущей линии, а не старые compatibility-цели.
+
+| Компилятор | Платформа | Минимум | Для чего |
+|---|---|---|---|
+| clang-cl | Windows | 23.1.4 | основной Windows-билд, PDB и отладка Visual Studio |
+| MSVC (`cl.exe`) | Windows | 19.44 | команды, стандартизированные на Microsoft-тулчейне |
+| clang++ | Linux/macOS/Windows | 23.1.4 | кросс-платформенный паритет, основной Unix-билд |
+| GCC | Linux/MinGW | 16.2.0 | второй компилятор и проверка переносимости |
+| AppleClang | macOS | 21.0 (Xcode 26.4) | нативная macOS/Metal-сборка |
+
+- **Windows:** clang-cl для эталонной сборки. MSVC — если проект должен
+  собираться в нативном Visual Studio-тулчейне. Оба используют Windows SDK и
+  стандартную библиотеку MSVC.
+- **Linux:** clang++ — эталон; GCC 16.2.0 — второе мнение.
+- **macOS:** AppleClang 21+ с Metal-бэкендом.
+- **Один компилятор везде:** Clang. Только он покрывает Windows (clang-cl или
+  clang++), Linux и macOS одним фронтендом.
+
+Ручная конфигурация MSVC:
+
+```bat
+cmake -S . -B build-msvc -G Ninja ^
+      -DCMAKE_C_COMPILER=cl ^
+      -DCMAKE_CXX_COMPILER=cl ^
+      -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
+      -DFBY_BUILD_TESTS=ON ^
+      -DFBY_WITH_RNNOISE=OFF
+cmake --build build-msvc --parallel 8
+ctest --test-dir build-msvc --output-on-failure
+```
+
+RNNoise отключён для MSVC: его C-исходники используют variable-length arrays,
+которых нет во фронтенде Microsoft. Остаётся spectral-denoise fallback; Clang,
+GCC и clang-cl сохраняют neural tier.
+
+Сборка требует Vulkan 1.4 на Windows и Linux; на macOS используется Metal.
+Требования к редактору — в
+[системных требованиях](system-requirements_RU.md).
+
 Быстрый профильный gate:
 
 ```bat

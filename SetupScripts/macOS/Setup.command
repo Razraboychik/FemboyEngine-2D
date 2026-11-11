@@ -5,12 +5,12 @@
 #   ./Setup.command
 #
 # Installs Homebrew packages (CMake, Ninja, glslang, MoltenVK, p7zip) and the
-# pinned sources (Monocypher 4.0.2 among them) into third_party/. Xcode Command
+# pinned sources (Monocypher 4.0.3 among them) into third_party/. Xcode Command
 # Line Tools are required for clang++ and the Metal framework headers.
 #
 # Vendor SDKs:     ./Setup.command --with-vendor-sdks --accept-vendor-licenses
 #
-# HarfBuzz 15.0.0 and SheenBidi 3.0.0 ship inside third_party/ and are not
+# HarfBuzz 15.1.0 and SheenBidi 3.0.0 ship inside third_party/ and are not
 # downloaded here.
 set -euo pipefail
 
@@ -51,7 +51,7 @@ fi
 if [[ "${SKIP_SYSTEM:-0}" -eq 0 ]]; then
     echo "==> Homebrew packages"
     brew update
-    # Xcode provides clang++; LLVM and GCC 15+ are installed as the pinned
+    # Xcode provides clang++; LLVM 23.1.4+ and GCC 16.2+ are installed as the pinned
     # second-opinion toolchains.
     brew install cmake ninja git p7zip glslang vulkan-headers vulkan-loader molten-vk llvm gcc
 fi
@@ -120,15 +120,15 @@ cp -r "${CACHE}/rnnoise/rnnoise-0.1.1/include" "${THIRD}/rnnoise/"
 cp -f "${CACHE}/rnnoise/rnnoise-0.1.1/COPYING" "${THIRD}/rnnoise/"
 echo "rnnoise = 0.1.1" >> "${THIRD}/dependencies.lock"
 
-echo "==> Monocypher 4.0.2"
-monocypher_archive="$(download "https://github.com/LoupVaillant/Monocypher/archive/refs/tags/4.0.2.tar.gz" monocypher.tar.gz)"
+echo "==> Monocypher 4.0.3"
+monocypher_archive="$(download "https://github.com/LoupVaillant/Monocypher/archive/refs/tags/4.0.3.tar.gz" monocypher.tar.gz)"
 rm -rf "${CACHE}/monocypher"
 mkdir -p "${CACHE}/monocypher" "${THIRD}/monocypher"
 tar -xzf "${monocypher_archive}" -C "${CACHE}/monocypher"
-cp -f "${CACHE}/monocypher/Monocypher-4.0.2/src/monocypher.h" "${THIRD}/monocypher/"
-cp -f "${CACHE}/monocypher/Monocypher-4.0.2/src/monocypher.c" "${THIRD}/monocypher/"
-cp -f "${CACHE}/monocypher/Monocypher-4.0.2/LICENCE.md" "${THIRD}/monocypher/"
-echo "monocypher = 4.0.2" >> "${THIRD}/dependencies.lock"
+cp -f "${CACHE}/monocypher/Monocypher-4.0.3/src/monocypher.h" "${THIRD}/monocypher/"
+cp -f "${CACHE}/monocypher/Monocypher-4.0.3/src/monocypher.c" "${THIRD}/monocypher/"
+cp -f "${CACHE}/monocypher/Monocypher-4.0.3/LICENCE.md" "${THIRD}/monocypher/"
+echo "monocypher = 4.0.3" >> "${THIRD}/dependencies.lock"
 
 echo "==> LZMA SDK 25.01"
 if command -v 7z >/dev/null 2>&1; then

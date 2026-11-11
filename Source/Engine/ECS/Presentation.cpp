@@ -86,7 +86,7 @@ std::uint32_t WakeSleepingStaticFromContacts(Ecs::Registry& InRegistry,
         }
         for (const Entity ScopedEntity : {ScopedEvent.a, ScopedEvent.b})
         {
-            if (ScopedEntity == entt::null || !InRegistry.valid(ScopedEntity))
+            if (ScopedEntity == Fby::kNullEntity || !InRegistry.valid(ScopedEntity))
             {
                 continue;
             }

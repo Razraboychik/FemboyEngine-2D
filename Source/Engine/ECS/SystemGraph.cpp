@@ -1,5 +1,10 @@
 #include "Engine/ECS/SystemGraph.hpp"
 
+#include "Engine/ECS/FCS/AccessValidation.hpp"
+
+#include <atomic>
+#include <chrono>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -17,19 +22,60 @@ struct GraphInvocation
     const char* name = nullptr;
     SystemContext* context = nullptr;
     std::counting_semaphore<kMaxGraphSystems>* completed = nullptr;
+    const SystemAccess* access = nullptr;
+    const GraphSystem* system = nullptr;
+    bool timing = false;
 };
+
+[[nodiscard]] std::uint64_t ElapsedNs(std::chrono::steady_clock::time_point InStart) noexcept
+{
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - InStart).count());
+}
+
+void RunTimed(const GraphInvocation& InInvocation, SystemContext& InContext)
+{
+    if (!InInvocation.timing)
+    {
+        InInvocation.run(InContext, InInvocation.user);
+        return;
+    }
+    const auto ScopedStart = std::chrono::steady_clock::now();
+    InInvocation.run(InContext, InInvocation.user);
+    if (InInvocation.system != nullptr)
+    {
+        std::atomic_ref<std::uint64_t>(InInvocation.system->LastNs).store(ElapsedNs(ScopedStart),
+                                                                          std::memory_order_relaxed);
+    }
+}
+
+[[nodiscard]] const std::uint64_t* AccessReads(const SystemAccess* InAccess) noexcept
+{
+    return InAccess != nullptr && IsSystemAccessDeclared(*InAccess) ? InAccess->ComponentReads.data() : nullptr;
+}
+
+[[nodiscard]] const std::uint64_t* AccessWrites(const SystemAccess* InAccess) noexcept
+{
+    return InAccess != nullptr && IsSystemAccessDeclared(*InAccess) ? InAccess->ComponentWrites.data() : nullptr;
+}
 
 void InvokeGraphNode(void* InRaw, std::uint32_t, std::uint32_t) noexcept
 {
     auto* ScopedInvocation = static_cast<GraphInvocation*>(InRaw);
+    const Fcs::Detail::ScopedAccess ScopedAccessCheck(AccessReads(ScopedInvocation->access),
+                                                      AccessWrites(ScopedInvocation->access));
     // The calling Run blocks until this release, so a throwing node is contained
     // here instead of escaping into the worker loop with the semaphore unreleased.
     try
     {
-        ScopedInvocation->run(*ScopedInvocation->context, ScopedInvocation->user);
+        RunTimed(*ScopedInvocation, *ScopedInvocation->context);
     }
     catch (...)
     {
+        if (ScopedInvocation->system != nullptr)
+        {
+            ScopedInvocation->system->Faulted = true;
+        }
         ScopedInvocation->context->jobs.ReportFault(ScopedInvocation->name != nullptr ? ScopedInvocation->name
                                                                                       : "system node");
     }
@@ -107,10 +153,15 @@ bool SystemGraph::Build()
             }
             const SystemAccess& ScopedLeft = MSystems[ScopedFirst].access;
             const SystemAccess& ScopedRight = MSystems[ScopedSecond].access;
-            const bool ScopedConflict =
-                (ScopedLeft.Writes & (ScopedRight.Reads | ScopedRight.Writes)) != 0u ||
-                (ScopedLeft.Reads & ScopedRight.Writes) != 0u;
-            if (ScopedConflict)
+            const bool ScopedServiceConflict = (ScopedLeft.Writes & (ScopedRight.Reads | ScopedRight.Writes)) != 0u ||
+                                               (ScopedLeft.Reads & ScopedRight.Writes) != 0u;
+            const bool ScopedComponentConflict =
+                ComponentAccessMasksConflict(ScopedLeft.ComponentReads, ScopedLeft.ComponentWrites,
+                                             ScopedRight.ComponentReads, ScopedRight.ComponentWrites);
+            // Parallel execution is opt-in: a system that did not declare its
+            // ECS contract is serialized against every same-phase peer.
+            const bool ScopedNotParallelSafe = !ScopedLeft.ParallelSafe || !ScopedRight.ParallelSafe;
+            if (ScopedServiceConflict || ScopedComponentConflict || ScopedNotParallelSafe)
             {
                 ScopedDependencies[ScopedSecond] |= (1ull << ScopedFirst);
             }
@@ -200,11 +251,25 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
     {
         return;
     }
-
-    const auto ScopedRunNode = [&InContext](const GraphSystem& InSystem)
+    if (MPaused && InPhase != Phase::Render && !(MRunUiWhilePaused && InPhase == Phase::Ui))
     {
-        if (InSystem.enabled && InSystem.run != nullptr)
+        return;
+    }
+
+    const auto ScopedRunNode = [&InContext, this](const GraphSystem& InSystem)
+    {
+        if (InSystem.enabled && !InSystem.Faulted && InSystem.run != nullptr)
         {
+            const Fcs::Detail::ScopedAccess ScopedAccessCheck(AccessReads(&InSystem.access),
+                                                              AccessWrites(&InSystem.access));
+            if (MTimingEnabled)
+            {
+                const auto ScopedStart = std::chrono::steady_clock::now();
+                InSystem.run(InContext, InSystem.user);
+                std::atomic_ref<std::uint64_t>(InSystem.LastNs).store(ElapsedNs(ScopedStart),
+                                                                      std::memory_order_relaxed);
+                return;
+            }
             InSystem.run(InContext, InSystem.user);
         }
     };
@@ -235,12 +300,14 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
         {
             const std::uint32_t ScopedNode = MOrder[ScopedI];
             const GraphSystem& ScopedSystem = MSystems[ScopedNode];
-            if (!ScopedSystem.enabled || ScopedSystem.phase != InPhase || MLevels[ScopedNode] != ScopedLevel)
+            if (!ScopedSystem.enabled || ScopedSystem.Faulted || ScopedSystem.phase != InPhase ||
+                MLevels[ScopedNode] != ScopedLevel)
             {
                 continue;
             }
             ScopedInvocations[ScopedWaveSize] =
-                GraphInvocation{ScopedSystem.run, ScopedSystem.user, ScopedSystem.name, &InContext, nullptr};
+                GraphInvocation{ScopedSystem.run, ScopedSystem.user,    ScopedSystem.name, &InContext,
+                                nullptr,          &ScopedSystem.access, &ScopedSystem,     MTimingEnabled};
             ++ScopedWaveSize;
         }
         if (ScopedWaveSize == 0)
@@ -249,7 +316,9 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
         }
         if (ScopedWaveSize == 1)
         {
-            ScopedInvocations[0].run(InContext, ScopedInvocations[0].user);
+            const Fcs::Detail::ScopedAccess ScopedAccessCheck(AccessReads(ScopedInvocations[0].access),
+                                                              AccessWrites(ScopedInvocations[0].access));
+            RunTimed(ScopedInvocations[0], InContext);
             continue;
         }
 
@@ -262,7 +331,20 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
             InContext.jobs.Submit(&InvokeGraphNode, &ScopedInvocations[ScopedI], 0, 0);
             ++ScopedSubmitted;
         }
-        ScopedInvocations[0].run(InContext, ScopedInvocations[0].user);
+        // The caller thread owns one node too. A throw here must not unwind while
+        // submitted workers still reference ScopedInvocations and ScopedCompleted;
+        // report the fault, then drain the wave before returning.
+        try
+        {
+            const Fcs::Detail::ScopedAccess ScopedAccessCheck(AccessReads(ScopedInvocations[0].access),
+                                                              AccessWrites(ScopedInvocations[0].access));
+            RunTimed(ScopedInvocations[0], InContext);
+        }
+        catch (...)
+        {
+            InContext.jobs.ReportFault(ScopedInvocations[0].name != nullptr ? ScopedInvocations[0].name
+                                                                            : "system node");
+        }
         for (std::uint32_t ScopedI = 0; ScopedI < ScopedSubmitted; ++ScopedI)
         {
             ScopedCompleted.acquire();

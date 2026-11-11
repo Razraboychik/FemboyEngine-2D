@@ -42,8 +42,7 @@ namespace
 
 [[nodiscard]] std::uint16_t AlignUtf8Offset(std::string_view InText, std::uint16_t InOffset) noexcept
 {
-    std::uint16_t ScopedOffset =
-        InOffset > InText.size() ? static_cast<std::uint16_t>(InText.size()) : InOffset;
+    std::uint16_t ScopedOffset = InOffset > InText.size() ? static_cast<std::uint16_t>(InText.size()) : InOffset;
     while (ScopedOffset > 0 && ScopedOffset < InText.size() && IsUtf8Continuation(InText[ScopedOffset]))
     {
         --ScopedOffset;
@@ -365,8 +364,7 @@ struct QuadWriter
 
     // Returns false for a degenerate quad so the caller only advances a key
     [[nodiscard]] bool Write(const WidgetCanvas& InCanvas, Rect InLocal, std::uint32_t InLayer, std::uint32_t InColor,
-                             Vector2D InUvMin, Vector2D InUvMax, float InScale,
-                             float InRotationOffset = 0.0f) noexcept
+                             Vector2D InUvMin, Vector2D InUvMax, float InScale, float InRotationOffset = 0.0f) noexcept
     {
         const Vector2D ScopedLocalSize = InLocal.Size();
         if (ScopedLocalSize.X <= 0.0f || ScopedLocalSize.Y <= 0.0f)
@@ -406,8 +404,8 @@ struct QuadEmitState
     float Opacity = 1.0f;
     Vector2D Offset{};
 
-    bool operator()(Rect InLocal, std::uint32_t InLayer, std::uint32_t InColor, Vector2D InUvMin,
-                    Vector2D InUvMax, float InRotation = 0.0f) const noexcept
+    bool operator()(Rect InLocal, std::uint32_t InLayer, std::uint32_t InColor, Vector2D InUvMin, Vector2D InUvMax,
+                    float InRotation = 0.0f) const noexcept
     {
         if (!(Opacity > 0.001f))
         {
@@ -571,9 +569,9 @@ bool EmitCustomQuad(void* InState, Rect InLocal, std::uint32_t InLayer, std::uin
         if (InCanvas.kinds[ScopedParentSlot] == WidgetKind::Switcher)
         {
             const WidgetHandle ScopedActive = InCanvas.switcherActive[ScopedParentSlot];
-            const bool ScopedActiveSet =
-                IsHandleSet(ScopedActive) && ScopedActive.Generation == InCanvas.Generation &&
-                ScopedActive.Widget >= 0 && static_cast<std::uint32_t>(ScopedActive.Widget) < InCanvas.widgetCount;
+            const bool ScopedActiveSet = IsHandleSet(ScopedActive) && ScopedActive.Generation == InCanvas.Generation &&
+                                         ScopedActive.Widget >= 0 &&
+                                         static_cast<std::uint32_t>(ScopedActive.Widget) < InCanvas.widgetCount;
             if (ScopedActiveSet)
             {
                 if (ScopedActive.Widget != static_cast<std::int32_t>(ScopedSlot))
@@ -756,10 +754,8 @@ bool EmitCustomQuad(void* InState, Rect InLocal, std::uint32_t InLayer, std::uin
     const float ScopedV0 = (ScopedMinY - InRect.min.Y) / ScopedHeight;
     const float ScopedV1 = (ScopedMaxY - InRect.min.Y) / ScopedHeight;
     OutRect = Rect{Vector2D{ScopedMinX, ScopedMinY}, Vector2D{ScopedMaxX, ScopedMaxY}};
-    OutUvMin = Vector2D{InUvMin.X + (InUvMax.X - InUvMin.X) * ScopedU0,
-                        InUvMin.Y + (InUvMax.Y - InUvMin.Y) * ScopedV0};
-    OutUvMax = Vector2D{InUvMin.X + (InUvMax.X - InUvMin.X) * ScopedU1,
-                        InUvMin.Y + (InUvMax.Y - InUvMin.Y) * ScopedV1};
+    OutUvMin = Vector2D{InUvMin.X + (InUvMax.X - InUvMin.X) * ScopedU0, InUvMin.Y + (InUvMax.Y - InUvMin.Y) * ScopedV0};
+    OutUvMax = Vector2D{InUvMin.X + (InUvMax.X - InUvMin.X) * ScopedU1, InUvMin.Y + (InUvMax.Y - InUvMin.Y) * ScopedV1};
     return true;
 }
 
@@ -1208,12 +1204,11 @@ std::int32_t WidgetCanvas::AddWidget(const WidgetDesc& InDesc) noexcept
     tabIndices[ScopedSlot] = InDesc.tabIndex;
     focusGroups[ScopedSlot] = InDesc.focusGroup;
     const std::uint32_t ScopedFocusMask = static_cast<std::uint32_t>(WidgetFlags::Focusable);
-    flags[ScopedSlot] =
-        ScopedPolicy == FocusPolicy::None ? (flags[ScopedSlot] & ~ScopedFocusMask) : (flags[ScopedSlot] | ScopedFocusMask);
-    childOrdinals[ScopedSlot] = InDesc.parent == kNoWidget
-                                    ? 0
-                                    : static_cast<std::uint16_t>(
-                                          childCounts[static_cast<std::uint32_t>(InDesc.parent)]);
+    flags[ScopedSlot] = ScopedPolicy == FocusPolicy::None ? (flags[ScopedSlot] & ~ScopedFocusMask)
+                                                          : (flags[ScopedSlot] | ScopedFocusMask);
+    childOrdinals[ScopedSlot] =
+        InDesc.parent == kNoWidget ? 0
+                                   : static_cast<std::uint16_t>(childCounts[static_cast<std::uint32_t>(InDesc.parent)]);
     switcherActive[ScopedSlot] = WidgetHandle{};
     customPaints[ScopedSlot] = InDesc.customPaint;
     customUsers[ScopedSlot] = InDesc.customUser;
@@ -1809,8 +1804,7 @@ void WidgetCanvas::AdvanceTransitions(float InDt) noexcept
         const Vector2D ScopedOffset = visualOffsets[ScopedWidget];
         const Vector2D ScopedOffsetTarget = visualOffsetTargets[ScopedWidget];
         const Vector2D ScopedDelta{ScopedOffsetTarget.X - ScopedOffset.X, ScopedOffsetTarget.Y - ScopedOffset.Y};
-        const float ScopedLength =
-            std::sqrt(ScopedDelta.X * ScopedDelta.X + ScopedDelta.Y * ScopedDelta.Y);
+        const float ScopedLength = std::sqrt(ScopedDelta.X * ScopedDelta.X + ScopedDelta.Y * ScopedDelta.Y);
         if (ScopedLength <= 1.0e-5f)
         {
             visualOffsets[ScopedWidget] = ScopedOffsetTarget;
@@ -1838,8 +1832,7 @@ void WidgetCanvas::SetChecked(std::int32_t InWidget, bool InChecked) noexcept
     const std::uint32_t ScopedMask = static_cast<std::uint32_t>(WidgetFlags::Checked);
     flags[ScopedSlot] = InChecked ? (flags[ScopedSlot] | ScopedMask) : (flags[ScopedSlot] & ~ScopedMask);
     // A RadioButton clears its siblings in the same non-empty group.
-    if (InChecked && kinds[ScopedSlot] == WidgetKind::RadioButton &&
-        radioGroups[ScopedSlot] != kNoFocusGroup)
+    if (InChecked && kinds[ScopedSlot] == WidgetKind::RadioButton && radioGroups[ScopedSlot] != kNoFocusGroup)
     {
         for (std::uint32_t ScopedOther = 0; ScopedOther < widgetCount; ++ScopedOther)
         {
@@ -1898,8 +1891,7 @@ void WidgetCanvas::SetOffsets(std::int32_t InWidget, Vector2D InMin, Vector2D In
     InvalidateLayout();
 }
 
-void ScrollView::Bind(WidgetCanvas& InCanvas, WidgetHandle InPanel, WidgetHandle InContent,
-                      WidgetHandle InScrollbar)
+void ScrollView::Bind(WidgetCanvas& InCanvas, WidgetHandle InPanel, WidgetHandle InContent, WidgetHandle InScrollbar)
 {
     if (!IsHandleSet(InPanel) || !IsHandleSet(InContent))
     {
@@ -2060,7 +2052,8 @@ void Dropdown::SetOpen(WidgetCanvas& InCanvas, bool InOpen)
 }
 
 bool Dropdown::HandleClick(WidgetCanvas& InCanvas, std::int32_t InPressedWidget)
-{    if (!bound)
+{
+    if (!bound)
     {
         return false;
     }
@@ -2078,8 +2071,7 @@ bool Dropdown::HandleClick(WidgetCanvas& InCanvas, std::int32_t InPressedWidget)
         selected = ScopedItem;
         for (std::uint32_t ScopedOther = 0; ScopedOther < itemCount; ++ScopedOther)
         {
-            InCanvas.SetTint(items[ScopedOther],
-                             ScopedOther == ScopedItem ? activeTint : baseTints[ScopedOther]);
+            InCanvas.SetTint(items[ScopedOther], ScopedOther == ScopedItem ? activeTint : baseTints[ScopedOther]);
         }
         // The trigger caption mirrors the selected row, as a ComboBox does.
         const std::string_view ScopedLabel = InCanvas.Text(items[ScopedItem]);
@@ -2148,9 +2140,9 @@ void ListView::Update(WidgetCanvas& InCanvas, float InWheelDelta)
     {
         offset = ScopedMax > 0.0f ? ScopedMax : 0.0f;
     }
-    InCanvas.SetOffsets(content, Vector2D{0.0f, 0.0f},
-                        Vector2D{ScopedWidth, ScopedContentHeight > ScopedViewportHeight ? ScopedContentHeight
-                                                                                        : ScopedViewportHeight});
+    InCanvas.SetOffsets(
+        content, Vector2D{0.0f, 0.0f},
+        Vector2D{ScopedWidth, ScopedContentHeight > ScopedViewportHeight ? ScopedContentHeight : ScopedViewportHeight});
     const auto ScopedFirst = static_cast<std::uint32_t>(offset / rowHeight);
     for (std::uint32_t ScopedRow = 0; ScopedRow < rowPool; ++ScopedRow)
     {
@@ -2162,8 +2154,7 @@ void ListView::Update(WidgetCanvas& InCanvas, float InWheelDelta)
             continue;
         }
         const float ScopedTop = static_cast<float>(ScopedItem) * rowHeight - offset;
-        InCanvas.SetOffsets(rows[ScopedRow], Vector2D{0.0f, ScopedTop},
-                            Vector2D{ScopedWidth, ScopedTop + rowHeight});
+        InCanvas.SetOffsets(rows[ScopedRow], Vector2D{0.0f, ScopedTop}, Vector2D{ScopedWidth, ScopedTop + rowHeight});
     }
 }
 
@@ -2184,7 +2175,8 @@ std::int32_t ListView::RowWidget(std::uint32_t InRow) const noexcept
 
 void RadialProgress::Paint(WidgetPaintContext& InContext) noexcept
 {
-    const float ScopedProgress = InContext.Params.X < 0.0f ? 0.0f : (InContext.Params.X > 1.0f ? 1.0f : InContext.Params.X);
+    const float ScopedProgress =
+        InContext.Params.X < 0.0f ? 0.0f : (InContext.Params.X > 1.0f ? 1.0f : InContext.Params.X);
     const float ScopedRatio = InContext.Params.Y > 0.0f && InContext.Params.Y < 1.0f ? InContext.Params.Y : 0.22f;
     std::uint32_t ScopedSegments = static_cast<std::uint32_t>(InContext.Params.Z);
     if (ScopedSegments < 4)
@@ -2198,10 +2190,9 @@ void RadialProgress::Paint(WidgetPaintContext& InContext) noexcept
     const float ScopedStart = InContext.Params.W;
     const Vector2D ScopedCenter{(InContext.LocalRect.min.X + InContext.LocalRect.max.X) * 0.5f,
                                 (InContext.LocalRect.min.Y + InContext.LocalRect.max.Y) * 0.5f};
-    const float ScopedRadius =
-        std::min(InContext.LocalRect.max.X - InContext.LocalRect.min.X,
-                 InContext.LocalRect.max.Y - InContext.LocalRect.min.Y) *
-        0.5f;
+    const float ScopedRadius = std::min(InContext.LocalRect.max.X - InContext.LocalRect.min.X,
+                                        InContext.LocalRect.max.Y - InContext.LocalRect.min.Y) *
+                               0.5f;
     if (ScopedRadius <= 0.0f)
     {
         return;
@@ -2217,15 +2208,15 @@ void RadialProgress::Paint(WidgetPaintContext& InContext) noexcept
                                  ScopedCenter.Y + ScopedDirection.Y * (ScopedRadius - ScopedThickness * 0.5f)};
         const Rect ScopedQuad{Vector2D{ScopedMid.X - ScopedThickness * 0.5f, ScopedMid.Y - ScopedChord * 0.5f},
                               Vector2D{ScopedMid.X + ScopedThickness * 0.5f, ScopedMid.Y + ScopedChord * 0.5f}};
-        const bool ScopedFilled = (static_cast<float>(ScopedSegment) + 0.5f) / static_cast<float>(ScopedSegments) <=
-                                  ScopedProgress;
+        const bool ScopedFilled =
+            (static_cast<float>(ScopedSegment) + 0.5f) / static_cast<float>(ScopedSegments) <= ScopedProgress;
         (void)InContext.Quad(ScopedQuad, ScopedFilled ? InContext.Fill : InContext.Tint, Vector2D{0.0f, 0.0f},
                              Vector2D{1.0f, 1.0f}, ScopedAngle);
     }
 }
 
-void RadialProgress::Configure(WidgetCanvas& InCanvas, WidgetHandle InWidget, float InProgress,
-                               float InThicknessRatio, std::uint32_t InSegments, float InStartAngle)
+void RadialProgress::Configure(WidgetCanvas& InCanvas, WidgetHandle InWidget, float InProgress, float InThicknessRatio,
+                               std::uint32_t InSegments, float InStartAngle)
 {
     if (!IsHandleSet(InWidget))
     {
@@ -2298,8 +2289,7 @@ void TooltipPlacer::Place(WidgetCanvas& InCanvas)
     {
         ScopedY = ScopedMaxY > 0.0f ? ScopedMaxY : 0.0f;
     }
-    InCanvas.SetOffsets(tooltip, Vector2D{ScopedX, ScopedY},
-                        Vector2D{ScopedX + ScopedWidth, ScopedY + ScopedHeight});
+    InCanvas.SetOffsets(tooltip, Vector2D{ScopedX, ScopedY}, Vector2D{ScopedX + ScopedWidth, ScopedY + ScopedHeight});
 }
 
 bool WidgetCanvas::SetZOrder(std::int32_t InWidget, std::int32_t InValue) noexcept
@@ -2355,10 +2345,9 @@ float WidgetCanvas::SliderValueAt(std::int32_t InWidget, Vector2D InCanvasPoint)
     }
     const bool ScopedVertical = HasFlag(flags[ScopedSlot], WidgetFlags::Vertical);
     const float ScopedAxis = ScopedVertical ? ScopedExtent.Y : ScopedExtent.X;
-    const float ScopedHandle =
-        kinds[ScopedSlot] == WidgetKind::Scrollbar
-            ? ScrollThumbLength(*this, ScopedSlot, ScopedAxis)
-            : SliderKnobLength(*this, ScopedSlot, ScopedExtent, ScopedVertical);
+    const float ScopedHandle = kinds[ScopedSlot] == WidgetKind::Scrollbar
+                                   ? ScrollThumbLength(*this, ScopedSlot, ScopedAxis)
+                                   : SliderKnobLength(*this, ScopedSlot, ScopedExtent, ScopedVertical);
     const float ScopedTravel = ScopedAxis - ScopedHandle;
     if (!(ScopedTravel > 0.0f))
     {
@@ -2824,8 +2813,8 @@ std::int32_t PointerMove(WidgetCanvas& InCanvas, Vector2D InCanvasPoint) noexcep
     return InCanvas.dragIndex;
 }
 
-bool SetCaretFromPoint(WidgetCanvas& InCanvas, std::int32_t InWidget, Vector2D InCanvasPoint,
-                       const FontAtlas* InAtlas, bool InSelect) noexcept
+bool SetCaretFromPoint(WidgetCanvas& InCanvas, std::int32_t InWidget, Vector2D InCanvasPoint, const FontAtlas* InAtlas,
+                       bool InSelect) noexcept
 {
     if (!InCanvas.ValidWidget(InWidget))
     {
@@ -2900,8 +2889,7 @@ std::uint32_t BuildTextClusterOffsets(std::string_view InText, Text::ITextShaper
         ScopedClusters[ScopedUsed++] = static_cast<std::uint16_t>(InText.size());
     }
     std::sort(ScopedClusters.begin(), ScopedClusters.begin() + ScopedUsed);
-    ScopedUsed = static_cast<std::uint32_t>(std::unique(ScopedClusters.begin(),
-                                                        ScopedClusters.begin() + ScopedUsed) -
+    ScopedUsed = static_cast<std::uint32_t>(std::unique(ScopedClusters.begin(), ScopedClusters.begin() + ScopedUsed) -
                                             ScopedClusters.begin());
     const std::uint32_t ScopedWritten =
         std::min<std::uint32_t>(ScopedUsed, static_cast<std::uint32_t>(OutOffsets.size()));
@@ -2934,18 +2922,17 @@ namespace
 bool MoveCaretClusters(WidgetCanvas& InCanvas, std::int32_t InWidget, std::int32_t InDeltaClusters, bool InSelect,
                        std::span<const std::uint16_t> InClusterOffsets) noexcept
 {
-    if (InClusterOffsets.empty() || !InCanvas.ValidWidget(InWidget) ||
-        InCanvas.Kind(InWidget) != WidgetKind::TextInput)
+    if (InClusterOffsets.empty() || !InCanvas.ValidWidget(InWidget) || InCanvas.Kind(InWidget) != WidgetKind::TextInput)
     {
         return false;
     }
     const std::uint32_t ScopedIndex = FindClusterIndex(InClusterOffsets, InCanvas.Caret(InWidget));
     const auto ScopedTarget = static_cast<std::int32_t>(ScopedIndex) + InDeltaClusters;
-    const std::int32_t ScopedClamped =
-        ScopedTarget < 0 ? 0
-                         : (ScopedTarget >= static_cast<std::int32_t>(InClusterOffsets.size())
-                                ? static_cast<std::int32_t>(InClusterOffsets.size()) - 1
-                                : ScopedTarget);
+    const std::int32_t ScopedClamped = ScopedTarget < 0
+                                           ? 0
+                                           : (ScopedTarget >= static_cast<std::int32_t>(InClusterOffsets.size())
+                                                  ? static_cast<std::int32_t>(InClusterOffsets.size()) - 1
+                                                  : ScopedTarget);
     return InCanvas.SetCaret(InWidget, InClusterOffsets[static_cast<std::uint32_t>(ScopedClamped)], InSelect);
 }
 
@@ -2953,8 +2940,7 @@ bool BackspaceCluster(WidgetCanvas& InCanvas, std::int32_t InWidget,
                       std::span<const std::uint16_t> InClusterOffsets) noexcept
 {
     if (InClusterOffsets.empty() || !InCanvas.ValidWidget(InWidget) ||
-        InCanvas.Kind(InWidget) != WidgetKind::TextInput ||
-        HasFlag(InCanvas.Flags(InWidget), WidgetFlags::ReadOnly))
+        InCanvas.Kind(InWidget) != WidgetKind::TextInput || HasFlag(InCanvas.Flags(InWidget), WidgetFlags::ReadOnly))
     {
         return false;
     }
@@ -2977,8 +2963,7 @@ bool DeleteForwardCluster(WidgetCanvas& InCanvas, std::int32_t InWidget,
                           std::span<const std::uint16_t> InClusterOffsets) noexcept
 {
     if (InClusterOffsets.empty() || !InCanvas.ValidWidget(InWidget) ||
-        InCanvas.Kind(InWidget) != WidgetKind::TextInput ||
-        HasFlag(InCanvas.Flags(InWidget), WidgetFlags::ReadOnly))
+        InCanvas.Kind(InWidget) != WidgetKind::TextInput || HasFlag(InCanvas.Flags(InWidget), WidgetFlags::ReadOnly))
     {
         return false;
     }
@@ -3035,9 +3020,9 @@ std::int32_t FocusNext(WidgetCanvas& InCanvas, bool InBackwards) noexcept
     }
     const std::int32_t ScopedScope = EffectiveFocusScope(InCanvas);
     const std::uint16_t ScopedFilter = InCanvas.focusGroupFilter;
-    const bool ScopedHasCurrent = InCanvas.ValidWidget(InCanvas.focusIndex) &&
-                                  FocusCandidate(InCanvas, static_cast<std::uint32_t>(InCanvas.focusIndex), ScopedFilter,
-                                                 ScopedScope);
+    const bool ScopedHasCurrent =
+        InCanvas.ValidWidget(InCanvas.focusIndex) &&
+        FocusCandidate(InCanvas, static_cast<std::uint32_t>(InCanvas.focusIndex), ScopedFilter, ScopedScope);
     std::int32_t ScopedNext = kNoWidget;
     std::int32_t ScopedExtreme = kNoWidget;
     for (std::uint32_t ScopedWidget = 0; ScopedWidget < InCanvas.widgetCount; ++ScopedWidget)
@@ -3053,11 +3038,11 @@ std::int32_t FocusNext(WidgetCanvas& InCanvas, bool InBackwards) noexcept
         else
         {
             const auto ScopedExtremeSlot = static_cast<std::uint32_t>(ScopedExtreme);
-            const bool ScopedBetter =
-                InBackwards ? FocusKeyLess(InCanvas.tabIndices[ScopedExtremeSlot], ScopedExtremeSlot,
-                                           InCanvas.tabIndices[ScopedWidget], ScopedWidget)
-                            : FocusKeyLess(InCanvas.tabIndices[ScopedWidget], ScopedWidget,
-                                           InCanvas.tabIndices[ScopedExtremeSlot], ScopedExtremeSlot);
+            const bool ScopedBetter = InBackwards
+                                          ? FocusKeyLess(InCanvas.tabIndices[ScopedExtremeSlot], ScopedExtremeSlot,
+                                                         InCanvas.tabIndices[ScopedWidget], ScopedWidget)
+                                          : FocusKeyLess(InCanvas.tabIndices[ScopedWidget], ScopedWidget,
+                                                         InCanvas.tabIndices[ScopedExtremeSlot], ScopedExtremeSlot);
             if (ScopedBetter)
             {
                 ScopedExtreme = static_cast<std::int32_t>(ScopedWidget);
@@ -3068,11 +3053,10 @@ std::int32_t FocusNext(WidgetCanvas& InCanvas, bool InBackwards) noexcept
             continue;
         }
         const auto ScopedCurrentSlot = static_cast<std::uint32_t>(InCanvas.focusIndex);
-        const bool ScopedAfter =
-            InBackwards ? FocusKeyLess(InCanvas.tabIndices[ScopedWidget], ScopedWidget,
-                                       InCanvas.tabIndices[ScopedCurrentSlot], ScopedCurrentSlot)
-                        : FocusKeyLess(InCanvas.tabIndices[ScopedCurrentSlot], ScopedCurrentSlot,
-                                       InCanvas.tabIndices[ScopedWidget], ScopedWidget);
+        const bool ScopedAfter = InBackwards ? FocusKeyLess(InCanvas.tabIndices[ScopedWidget], ScopedWidget,
+                                                            InCanvas.tabIndices[ScopedCurrentSlot], ScopedCurrentSlot)
+                                             : FocusKeyLess(InCanvas.tabIndices[ScopedCurrentSlot], ScopedCurrentSlot,
+                                                            InCanvas.tabIndices[ScopedWidget], ScopedWidget);
         if (!ScopedAfter)
         {
             continue;
@@ -3084,11 +3068,10 @@ std::int32_t FocusNext(WidgetCanvas& InCanvas, bool InBackwards) noexcept
         else
         {
             const auto ScopedNextSlot = static_cast<std::uint32_t>(ScopedNext);
-            const bool ScopedBetter =
-                InBackwards ? FocusKeyLess(InCanvas.tabIndices[ScopedNextSlot], ScopedNextSlot,
-                                           InCanvas.tabIndices[ScopedWidget], ScopedWidget)
-                            : FocusKeyLess(InCanvas.tabIndices[ScopedWidget], ScopedWidget,
-                                           InCanvas.tabIndices[ScopedNextSlot], ScopedNextSlot);
+            const bool ScopedBetter = InBackwards ? FocusKeyLess(InCanvas.tabIndices[ScopedNextSlot], ScopedNextSlot,
+                                                                 InCanvas.tabIndices[ScopedWidget], ScopedWidget)
+                                                  : FocusKeyLess(InCanvas.tabIndices[ScopedWidget], ScopedWidget,
+                                                                 InCanvas.tabIndices[ScopedNextSlot], ScopedNextSlot);
             if (ScopedBetter)
             {
                 ScopedNext = static_cast<std::int32_t>(ScopedWidget);
@@ -3124,7 +3107,8 @@ std::int32_t FocusMove(WidgetCanvas& InCanvas, FocusDirection InDirection) noexc
     float ScopedBestScore = 0.0f;
     for (std::uint32_t ScopedWidget = 0; ScopedWidget < InCanvas.widgetCount; ++ScopedWidget)
     {
-        if (ScopedWidget == ScopedCurrentSlot || !FocusCandidate(InCanvas, ScopedWidget, ScopedFilter, ScopedScope, false))
+        if (ScopedWidget == ScopedCurrentSlot ||
+            !FocusCandidate(InCanvas, ScopedWidget, ScopedFilter, ScopedScope, false))
         {
             continue;
         }
@@ -3323,10 +3307,10 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
             ScopedKey.FontId = ScopedBase->FontId();
             ScopedKey.TextLength = static_cast<std::uint32_t>(ScopedBlockText.size());
             ScopedKey.PixelSize = ScopedRenderParams.FontSize;
-            ScopedKey.Direction = ScopedLayoutParams.Vertical
-                                      ? Text::TextDirection::TopToBottom
-                                      : (ScopedLayoutParams.RightToLeft ? Text::TextDirection::RightToLeft
-                                                                        : Text::TextDirection::Auto);
+            ScopedKey.Direction =
+                ScopedLayoutParams.Vertical
+                    ? Text::TextDirection::TopToBottom
+                    : (ScopedLayoutParams.RightToLeft ? Text::TextDirection::RightToLeft : Text::TextDirection::Auto);
             ScopedKey.MaxWidth = ScopedLayoutParams.MaxWidth;
             ScopedKey.Vertical = ScopedLayoutParams.Vertical;
             ScopedKey.InlineHash = Text::TextShapeCache::HashInlines(ScopedLayoutParams.Inlines);
@@ -3334,7 +3318,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
             if (!ScopedHandle.IsValid())
             {
                 ScopedHandle = InView.text.textShapes->Insert(*InView.text.textShaper, ScopedBlockText, ScopedKey,
-                                                            ScopedLayoutParams);
+                                                              ScopedLayoutParams);
             }
             if (ScopedHandle.IsValid())
             {
@@ -3350,8 +3334,8 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                         {
                             return 0;
                         }
-                        const std::size_t ScopedVisible = std::min<std::size_t>(
-                            ScopedLineCount, ScopedLines.size() - ScopedFirstLine);
+                        const std::size_t ScopedVisible =
+                            std::min<std::size_t>(ScopedLineCount, ScopedLines.size() - ScopedFirstLine);
                         ScopedLines = ScopedLines.subspan(ScopedFirstLine, ScopedVisible);
                     }
                     Text::TextRenderStats ScopedShapedStats;
@@ -3382,8 +3366,8 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
             }
             ScopedWindow.Count = ScopedVisible;
             Text::TextRenderStats ScopedWindowStats;
-            return Text::BuildTextRenderItems(ScopedBlockText, ScopedWindow, InRect.min, ScopedRenderParams,
-                                              OutItems, &ScopedWindowStats);
+            return Text::BuildTextRenderItems(ScopedBlockText, ScopedWindow, InRect.min, ScopedRenderParams, OutItems,
+                                              &ScopedWindowStats);
         }
         Text::TextRenderStats ScopedStats;
         return Text::BuildTextRenderItems(ScopedBlockText, *ScopedLayout, InRect.min, ScopedRenderParams, OutItems,
@@ -3460,9 +3444,9 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                 if (ScopedCount > 0)
                 {
                     ScopedHasText = true;
-                    const FontAtlas* ScopedAtlas =
-                        InView.text.fonts != nullptr ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
-                                                   : nullptr;
+                    const FontAtlas* ScopedAtlas = InView.text.fonts != nullptr
+                                                       ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
+                                                       : nullptr;
                     if (ScopedAtlas == nullptr || !ScopedAtlas->IsOpen())
                     {
                         ScopedMissingFontAtlas = true;
@@ -3487,9 +3471,9 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                 {
                     ScopedHasText = true;
                     // A label is drawable only through the mounted font array. Any
-                    const FontAtlas* ScopedAtlas =
-                        InView.text.fonts != nullptr ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
-                                                   : nullptr;
+                    const FontAtlas* ScopedAtlas = InView.text.fonts != nullptr
+                                                       ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
+                                                       : nullptr;
                     if (ScopedAtlas == nullptr || !ScopedAtlas->IsOpen())
                     {
                         ScopedMissingFontAtlas = true;
@@ -3528,22 +3512,22 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
             case WidgetKind::TextBlock:
             {
                 const Text::TextAssetRef ScopedRef = InCanvas.textRefs[ScopedWidget];
-                const std::string_view ScopedBlock =
-                    InView.text.text != nullptr && ScopedRef.IsValid() ? InView.text.text->Block(ScopedRef)
-                                                                     : std::string_view{};
+                const std::string_view ScopedBlock = InView.text.text != nullptr && ScopedRef.IsValid()
+                                                         ? InView.text.text->Block(ScopedRef)
+                                                         : std::string_view{};
                 if (!ScopedBlock.empty())
                 {
                     ScopedHasText = true;
-                    const FontAtlas* ScopedBase =
-                        InView.text.fonts != nullptr ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
-                                                   : nullptr;
+                    const FontAtlas* ScopedBase = InView.text.fonts != nullptr
+                                                      ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
+                                                      : nullptr;
                     if (ScopedBase == nullptr || !ScopedBase->IsOpen())
                     {
                         ScopedMissingFontAtlas = true;
                     }
                 }
-                const std::uint32_t ScopedCount = ScopedRenderTextBlock(
-                    ScopedWidget, ScopedRect, std::span<Rhi::RenderItem>(ScopedTextBlockItems));
+                const std::uint32_t ScopedCount =
+                    ScopedRenderTextBlock(ScopedWidget, ScopedRect, std::span<Rhi::RenderItem>(ScopedTextBlockItems));
                 ScopedTextBlockCounts[ScopedWidget] = static_cast<std::uint16_t>(
                     std::min<std::uint32_t>(ScopedCount, static_cast<std::uint32_t>(ScopedTextBlockItems.size())));
                 ScopedRequired += ScopedCount;
@@ -3585,9 +3569,9 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                 if (ScopedCount > 0)
                 {
                     ScopedHasText = true;
-                    const FontAtlas* ScopedAtlas =
-                        InView.text.fonts != nullptr ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
-                                                   : nullptr;
+                    const FontAtlas* ScopedAtlas = InView.text.fonts != nullptr
+                                                       ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
+                                                       : nullptr;
                     if (ScopedAtlas == nullptr || !ScopedAtlas->IsOpen())
                     {
                         ScopedMissingFontAtlas = true;
@@ -3611,15 +3595,14 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                 }
                 const Text::TextShapeView ScopedShape = ScopedShapeTextInput(ScopedWidget, ScopedRect);
                 const std::uint32_t ScopedCount =
-                    !ScopedShape.Glyphs.empty()
-                        ? static_cast<std::uint32_t>(ScopedShape.Glyphs.size())
-                        : CountGlyphs(InCanvas.Text(static_cast<std::int32_t>(ScopedWidget)));
+                    !ScopedShape.Glyphs.empty() ? static_cast<std::uint32_t>(ScopedShape.Glyphs.size())
+                                                : CountGlyphs(InCanvas.Text(static_cast<std::int32_t>(ScopedWidget)));
                 if (ScopedCount > 0)
                 {
                     ScopedHasText = true;
-                    const FontAtlas* ScopedAtlas =
-                        InView.text.fonts != nullptr ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
-                                                   : nullptr;
+                    const FontAtlas* ScopedAtlas = InView.text.fonts != nullptr
+                                                       ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
+                                                       : nullptr;
                     if (ScopedAtlas == nullptr || !ScopedAtlas->IsOpen())
                     {
                         ScopedMissingFontAtlas = true;
@@ -3749,8 +3732,15 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
 
         const float ScopedDepth = WidgetDepth(InCanvas, ScopedSlot);
         std::uint8_t ScopedSequence = 0;
-        QuadEmitState ScopedEmit{&ScopedWriter, &InCanvas, ScopedDisplayScale, Output.keys.data(), InCanvas.sortLayer,
-                                 ScopedDepth, &ScopedSequence, {}, false};
+        QuadEmitState ScopedEmit{&ScopedWriter,
+                                 &InCanvas,
+                                 ScopedDisplayScale,
+                                 Output.keys.data(),
+                                 InCanvas.sortLayer,
+                                 ScopedDepth,
+                                 &ScopedSequence,
+                                 {},
+                                 false};
         ScopedEmit.HasClip = ClipForWidget(InCanvas, ScopedSlot, ScopedEmit.Clip);
         ScopedEmit.Opacity = EffectiveOpacity(InCanvas, ScopedSlot);
         ScopedEmit.Offset = EffectiveVisualOffset(InCanvas, ScopedSlot);
@@ -3920,12 +3910,12 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                         // Honest miss: the cooked atlas has no record for this codepoint
                         continue;
                     }
-                    const Vector2D ScopedGlyphMin{
-                        ScopedPenX + ScopedGlyph->bearingX * ScopedScale,
-                        ScopedPenY + (ScopedAtlas->Ascent() - ScopedGlyph->bearingY) * ScopedScale};
-                    const Rect ScopedGlyphRect{
-                        ScopedGlyphMin, Vector2D{ScopedGlyphMin.X + ScopedGlyph->width * ScopedScale,
-                                                 ScopedGlyphMin.Y + ScopedGlyph->height * ScopedScale}};
+                    const Vector2D ScopedGlyphMin{ScopedPenX + ScopedGlyph->bearingX * ScopedScale,
+                                                  ScopedPenY +
+                                                      (ScopedAtlas->Ascent() - ScopedGlyph->bearingY) * ScopedScale};
+                    const Rect ScopedGlyphRect{ScopedGlyphMin,
+                                               Vector2D{ScopedGlyphMin.X + ScopedGlyph->width * ScopedScale,
+                                                        ScopedGlyphMin.Y + ScopedGlyph->height * ScopedScale}};
                     if (ScopedEmit(ScopedGlyphRect, ScopedGlyphLayer, InColor,
                                    Vector2D{ScopedGlyph->u0, ScopedGlyph->v0},
                                    Vector2D{ScopedGlyph->u1, ScopedGlyph->v1}))
@@ -3944,8 +3934,8 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
         };
 
         // A rotated bar. The Checkbox mark is two of them.
-        const auto ScopedEmitBar = [&](Vector2D InFrom, Vector2D InTo, float InThickness,
-                                       std::uint32_t InColor) noexcept
+        const auto ScopedEmitBar =
+            [&](Vector2D InFrom, Vector2D InTo, float InThickness, std::uint32_t InColor) noexcept
         {
             const Vector2D ScopedDelta{InTo.X - InFrom.X, InTo.Y - InFrom.Y};
             const float ScopedLength = std::sqrt(ScopedDelta.X * ScopedDelta.X + ScopedDelta.Y * ScopedDelta.Y);
@@ -4051,15 +4041,16 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                     const float ScopedFillHeight = ScopedHandleStart + ScopedKnob * 0.5f;
                     if (InCanvas.progresses[ScopedSlot] > 0.0f)
                     {
-                        ScopedEmit(Rect{Vector2D{ScopedRect.min.X, ScopedRect.max.Y - ScopedFillHeight},
-                                        ScopedRect.max},
-                                   kWhiteLayer, ScopedFillColor, Vector2D{0.0f, 0.0f}, Vector2D{1.0f, 1.0f});
+                        ScopedEmit(
+                            Rect{Vector2D{ScopedRect.min.X, ScopedRect.max.Y - ScopedFillHeight}, ScopedRect.max},
+                            kWhiteLayer, ScopedFillColor, Vector2D{0.0f, 0.0f}, Vector2D{1.0f, 1.0f});
                     }
                 }
                 else
                 {
-                    ScopedKnobRect = Rect{Vector2D{ScopedRect.min.X + ScopedHandleStart, ScopedRect.min.Y},
-                                          Vector2D{ScopedRect.min.X + ScopedHandleStart + ScopedKnob, ScopedRect.max.Y}};
+                    ScopedKnobRect =
+                        Rect{Vector2D{ScopedRect.min.X + ScopedHandleStart, ScopedRect.min.Y},
+                             Vector2D{ScopedRect.min.X + ScopedHandleStart + ScopedKnob, ScopedRect.max.Y}};
                     const float ScopedFillWidth = ScopedHandleStart + ScopedKnob * 0.5f;
                     if (InCanvas.progresses[ScopedSlot] > 0.0f)
                     {
@@ -4078,8 +4069,10 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                 {
                     const float ScopedSize = std::min(ScopedExtent.X, ScopedExtent.Y);
                     const Vector2D ScopedCenter = ScopedRect.Center();
-                    const Vector2D ScopedFirst{ScopedCenter.X - ScopedSize * 0.30f, ScopedCenter.Y - ScopedSize * 0.02f};
-                    const Vector2D ScopedCorner{ScopedCenter.X - ScopedSize * 0.06f, ScopedCenter.Y + ScopedSize * 0.24f};
+                    const Vector2D ScopedFirst{ScopedCenter.X - ScopedSize * 0.30f,
+                                               ScopedCenter.Y - ScopedSize * 0.02f};
+                    const Vector2D ScopedCorner{ScopedCenter.X - ScopedSize * 0.06f,
+                                                ScopedCenter.Y + ScopedSize * 0.24f};
                     const Vector2D ScopedLast{ScopedCenter.X + ScopedSize * 0.34f, ScopedCenter.Y - ScopedSize * 0.30f};
                     const float ScopedThickness = std::max(1.0f, ScopedSize * 0.10f);
                     const std::uint32_t ScopedMarkColor = FillColor(InCanvas, ScopedSlot);
@@ -4134,16 +4127,18 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                     {
                         const Rect ScopedQuad{Vector2D{ScopedXs[ScopedColumn], ScopedYs[ScopedRow]},
                                               Vector2D{ScopedXs[ScopedColumn + 1], ScopedYs[ScopedRow + 1]}};
-                        const Vector2D ScopedUvMin{
-                            InCanvas.uvMins[ScopedSlot].X + (InCanvas.uvMaxs[ScopedSlot].X - InCanvas.uvMins[ScopedSlot].X) *
-                                                                ScopedUs[ScopedColumn],
-                            InCanvas.uvMins[ScopedSlot].Y + (InCanvas.uvMaxs[ScopedSlot].Y - InCanvas.uvMins[ScopedSlot].Y) *
-                                                                ScopedVs[ScopedRow]};
-                        const Vector2D ScopedUvMax{
-                            InCanvas.uvMins[ScopedSlot].X + (InCanvas.uvMaxs[ScopedSlot].X - InCanvas.uvMins[ScopedSlot].X) *
-                                                                ScopedUs[ScopedColumn + 1],
-                            InCanvas.uvMins[ScopedSlot].Y + (InCanvas.uvMaxs[ScopedSlot].Y - InCanvas.uvMins[ScopedSlot].Y) *
-                                                                ScopedVs[ScopedRow + 1]};
+                        const Vector2D ScopedUvMin{InCanvas.uvMins[ScopedSlot].X +
+                                                       (InCanvas.uvMaxs[ScopedSlot].X - InCanvas.uvMins[ScopedSlot].X) *
+                                                           ScopedUs[ScopedColumn],
+                                                   InCanvas.uvMins[ScopedSlot].Y +
+                                                       (InCanvas.uvMaxs[ScopedSlot].Y - InCanvas.uvMins[ScopedSlot].Y) *
+                                                           ScopedVs[ScopedRow]};
+                        const Vector2D ScopedUvMax{InCanvas.uvMins[ScopedSlot].X +
+                                                       (InCanvas.uvMaxs[ScopedSlot].X - InCanvas.uvMins[ScopedSlot].X) *
+                                                           ScopedUs[ScopedColumn + 1],
+                                                   InCanvas.uvMins[ScopedSlot].Y +
+                                                       (InCanvas.uvMaxs[ScopedSlot].Y - InCanvas.uvMins[ScopedSlot].Y) *
+                                                           ScopedVs[ScopedRow + 1]};
                         ScopedEmit(ScopedQuad, InCanvas.layers[ScopedSlot], ScopedTint.rgba, ScopedUvMin, ScopedUvMax);
                     }
                 }
@@ -4182,8 +4177,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
             case WidgetKind::Hypertext:
                 ScopedEmitText(ScopedRect, WidgetTint(InCanvas, ScopedSlot).rgba, InCanvas.fontSizes[ScopedSlot],
                                InCanvas.fontAtlasIndices[ScopedSlot],
-                               InCanvas.Text(static_cast<std::int32_t>(ScopedWidget)),
-                               InCanvas.textFlags[ScopedSlot]);
+                               InCanvas.Text(static_cast<std::int32_t>(ScopedWidget)), InCanvas.textFlags[ScopedSlot]);
                 break;
             case WidgetKind::Overlay:
                 ScopedEmit(ScopedRect, kWhiteLayer, WidgetTint(InCanvas, ScopedSlot).rgba, Vector2D{0.0f, 0.0f},
@@ -4218,8 +4212,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                     break;
                 }
                 const std::uint32_t ScopedWritten = ScopedRenderTextBlock(
-                    ScopedWidget, ScopedRect,
-                    std::span<Rhi::RenderItem>(ScopedTextBlockItems).first(ScopedQuota));
+                    ScopedWidget, ScopedRect, std::span<Rhi::RenderItem>(ScopedTextBlockItems).first(ScopedQuota));
                 const std::uint32_t ScopedCount = std::min(ScopedWritten, ScopedQuota);
                 const float ScopedOffsetX = ScopedEmit.Offset.X;
                 const float ScopedOffsetY = ScopedEmit.Offset.Y;
@@ -4258,8 +4251,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                     const std::uint32_t ScopedSlotIndex = ScopedWriter.cursor++;
                     Output.items[ScopedSlotIndex] = ScopedItem;
                     Output.keys[ScopedSlotIndex] = Rhi::MakeRenderKey(
-                        InCanvas.sortLayer,
-                        ScopedDepth + static_cast<float>(ScopedItemIndex >> 8) * (1.0f / 256.0f),
+                        InCanvas.sortLayer, ScopedDepth + static_cast<float>(ScopedItemIndex >> 8) * (1.0f / 256.0f),
                         static_cast<std::uint8_t>(ScopedItemIndex & 0xFFu));
                     ++ScopedEmittedGlyphs;
                 }
@@ -4288,13 +4280,13 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                 const std::uint16_t ScopedCaret = InCanvas.caretOffsets[ScopedInputSlot];
                 const std::uint16_t ScopedAnchor = InCanvas.selectionAnchors[ScopedInputSlot];
                 const float ScopedGlyphSize =
-                    std::max(1.0f, std::round(static_cast<float>(InCanvas.fontSizes[ScopedInputSlot]) *
-                                              ScopedDisplayScale)) /
+                    std::max(1.0f,
+                             std::round(static_cast<float>(InCanvas.fontSizes[ScopedInputSlot]) * ScopedDisplayScale)) /
                     ScopedDisplayScale;
                 const float ScopedLineHeight = ScopedGlyphSize * kTextLineHeightRatio;
-                const FontAtlas* ScopedAtlas =
-                    InView.text.fonts != nullptr ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedInputSlot])
-                                               : nullptr;
+                const FontAtlas* ScopedAtlas = InView.text.fonts != nullptr
+                                                   ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedInputSlot])
+                                                   : nullptr;
                 float ScopedGlyphScale = 1.0f;
                 if (ScopedAtlas != nullptr && ScopedAtlas->IsOpen() && ScopedAtlas->LineHeight() > 0.0f)
                 {
@@ -4309,8 +4301,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                     {
                         ScopedTotalAdvance += ScopedShapedGlyph.AdvanceX;
                     }
-                    const float ScopedOriginX =
-                        ScopedRtl ? ScopedRect.max.X - ScopedTotalAdvance : ScopedRect.min.X;
+                    const float ScopedOriginX = ScopedRtl ? ScopedRect.max.X - ScopedTotalAdvance : ScopedRect.min.X;
                     const auto ScopedShapedX = [&](std::uint16_t InOffset) noexcept
                     {
                         float ScopedPen = 0.0f;
@@ -4361,28 +4352,24 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                             ScopedPenX += ScopedShapedGlyph.AdvanceX;
                             continue;
                         }
-                        const float ScopedRecordScale =
-                            ScopedGlyphAtlas->LineHeight() > 0.0f
-                                ? ScopedGlyphSize / ScopedGlyphAtlas->LineHeight()
-                                : 1.0f;
+                        const float ScopedRecordScale = ScopedGlyphAtlas->LineHeight() > 0.0f
+                                                            ? ScopedGlyphSize / ScopedGlyphAtlas->LineHeight()
+                                                            : 1.0f;
                         const Vector2D ScopedCenter{
                             ScopedPenX + ScopedShapedGlyph.OffsetX +
                                 (ScopedRecord->bearingX + ScopedRecord->width * 0.5f) * ScopedRecordScale,
                             ScopedRect.min.Y + ScopedShapedGlyph.OffsetY +
-                                (ScopedGlyphAtlas->Ascent() - ScopedRecord->bearingY +
-                                 ScopedRecord->height * 0.5f) *
+                                (ScopedGlyphAtlas->Ascent() - ScopedRecord->bearingY + ScopedRecord->height * 0.5f) *
                                     ScopedRecordScale};
-                        ScopedEmit(Rect::FromCenter(
-                                       ScopedCenter, Vector2D{ScopedRecord->width * ScopedRecordScale,
-                                                              ScopedRecord->height * ScopedRecordScale}),
+                        ScopedEmit(Rect::FromCenter(ScopedCenter, Vector2D{ScopedRecord->width * ScopedRecordScale,
+                                                                           ScopedRecord->height * ScopedRecordScale}),
                                    InView.text.fonts->LayerForAtlas(ScopedGlyphAtlas), ScopedTextColor,
                                    Vector2D{ScopedRecord->u0, ScopedRecord->v0},
                                    Vector2D{ScopedRecord->u1, ScopedRecord->v1});
                         ++ScopedEmittedGlyphs;
                         ScopedPenX += ScopedShapedGlyph.AdvanceX;
                     }
-                    if (InCanvas.focusIndex == static_cast<std::int32_t>(ScopedWidget) &&
-                        CaretBlinkOn(InCanvas.uiTime))
+                    if (InCanvas.focusIndex == static_cast<std::int32_t>(ScopedWidget) && CaretBlinkOn(InCanvas.uiTime))
                     {
                         const float ScopedCaretX = ScopedOriginX + ScopedShapedX(ScopedCaret);
                         ScopedEmit(Rect{Vector2D{ScopedCaretX - 0.75f, ScopedRect.min.Y},
@@ -4452,15 +4439,21 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
     if (ScopedFocusRing)
     {
         const auto ScopedRingSlot = static_cast<std::uint32_t>(InCanvas.focusIndex);
-        const Rect ScopedRingRect{InCanvas.layout.localMins[ScopedRingSlot],
-                                  InCanvas.layout.localMaxs[ScopedRingSlot]};
+        const Rect ScopedRingRect{InCanvas.layout.localMins[ScopedRingSlot], InCanvas.layout.localMaxs[ScopedRingSlot]};
         const float ScopedRingWidth =
             std::min(InCanvas.focusRingWidth, std::min(ScopedRingRect.Size().X, ScopedRingRect.Size().Y) * 0.45f);
         if (ScopedRingWidth > 0.0f)
         {
             std::uint8_t ScopedRingSequence = 0;
-            QuadEmitState ScopedRingEmit{&ScopedWriter, &InCanvas, ScopedDisplayScale, Output.keys.data(),
-                                         InCanvas.sortLayer, 32767.0f, &ScopedRingSequence, {}, false};
+            QuadEmitState ScopedRingEmit{&ScopedWriter,
+                                         &InCanvas,
+                                         ScopedDisplayScale,
+                                         Output.keys.data(),
+                                         InCanvas.sortLayer,
+                                         32767.0f,
+                                         &ScopedRingSequence,
+                                         {},
+                                         false};
             ScopedRingEmit.HasClip = ClipForWidget(InCanvas, ScopedRingSlot, ScopedRingEmit.Clip);
             ScopedRingEmit.Opacity = EffectiveOpacity(InCanvas, ScopedRingSlot);
             ScopedRingEmit.Offset = EffectiveVisualOffset(InCanvas, ScopedRingSlot);
@@ -4522,7 +4515,7 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
             continue;
         }
         WidgetCanvas& ScopedCanvas = InCanvases[ScopedComponent.CanvasID];
-        const std::uint32_t ScopedRaw = static_cast<std::uint32_t>(entt::to_integral(ScopedEntity));
+        const std::uint32_t ScopedRaw = static_cast<std::uint32_t>(Fby::ToIntegral(ScopedEntity));
         if (ScopedCanvas.ownerFrameStamp != ScopedFrame || ScopedRaw < ScopedCanvas.ownerEntityRaw)
         {
             ScopedCanvas.ownerFrameStamp = ScopedFrame;
@@ -4543,17 +4536,17 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
             continue;
         }
         WidgetCanvas& ScopedCanvas = InCanvases[ScopedComponent.CanvasID];
-        const std::uint32_t ScopedRawEntity = static_cast<std::uint32_t>(entt::to_integral(ScopedEntity));
+        const std::uint32_t ScopedRawEntity = static_cast<std::uint32_t>(Fby::ToIntegral(ScopedEntity));
         if (ScopedCanvas.ownerFrameStamp != ScopedFrame || ScopedCanvas.ownerEntityRaw != ScopedRawEntity ||
             ScopedCanvas.processedFrame == ScopedFrame)
         {
             continue;
         }
         ScopedCanvas.processedFrame = ScopedFrame;
-        ScopedCanvas.AdvanceOledShift(InView.dt);
-        ScopedCanvas.AdvanceHover(InView.dt);
-        ScopedCanvas.AdvanceTime(InView.dt);
-        ScopedCanvas.AdvanceTransitions(InView.dt);
+        ScopedCanvas.AdvanceOledShift(InView.uiDt);
+        ScopedCanvas.AdvanceHover(InView.uiDt);
+        ScopedCanvas.AdvanceTime(InView.uiDt);
+        ScopedCanvas.AdvanceTransitions(InView.uiDt);
         float ScopedDisplayScale = ScopedCanvas.displayScale;
         if (InView.render.cameraStack != nullptr)
         {

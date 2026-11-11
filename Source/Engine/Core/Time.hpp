@@ -28,8 +28,7 @@ inline constexpr double kNanosecondsPerSecond = 1.0e9;
 class Clock
 {
 public:
-    Clock() noexcept
-        : Clock(NowTicks())
+    Clock() noexcept : Clock(NowTicks())
     {
     }
 
@@ -42,8 +41,7 @@ public:
     // meaningful relative to another reading from the same process.
     [[nodiscard]] static std::int64_t NowTicks() noexcept
     {
-        return std::chrono::duration_cast<std::chrono::nanoseconds>(
-                   std::chrono::steady_clock::now().time_since_epoch())
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
             .count();
     }
     [[nodiscard]] static double NowSeconds() noexcept
@@ -54,8 +52,7 @@ public:
     // consumer: gameplay and timers stay on the steady clock.
     [[nodiscard]] static std::int64_t UnixSeconds() noexcept
     {
-        return std::chrono::duration_cast<std::chrono::seconds>(
-                   std::chrono::system_clock::now().time_since_epoch())
+        return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
             .count();
     }
     [[nodiscard]] static double UnixSecondsDouble() noexcept
@@ -87,6 +84,7 @@ public:
         const std::int64_t ScopedTicks = InTicks > MLastTicks ? InTicks : MLastTicks;
         const double ScopedRaw = static_cast<double>(ScopedTicks - MLastTicks) / kNanosecondsPerSecond;
         MLastTicks = ScopedTicks;
+        MRawDelta = ScopedRaw;
         ++MFrame;
         if (MPaused)
         {
@@ -115,6 +113,7 @@ public:
         MLastTicks = InStartTicks;
         MElapsed = 0.0;
         MDelta = 0.0;
+        MRawDelta = 0.0;
         MFrame = 0;
     }
 
@@ -128,6 +127,12 @@ public:
     [[nodiscard]] double Delta() const noexcept
     {
         return MDelta;
+    }
+    // Unscaled, unpaused wall-clock delta of the last Tick. HUD animation uses
+    // it when the game is paused but the interface is allowed to keep moving.
+    [[nodiscard]] double RealDelta() const noexcept
+    {
+        return MRawDelta;
     }
     [[nodiscard]] double Elapsed() const noexcept
     {
@@ -198,6 +203,7 @@ private:
     std::int64_t MLastTicks = 0;
     double MElapsed = 0.0;
     double MDelta = 0.0;
+    double MRawDelta = 0.0;
     double MTimeScale = 1.0;
     double MMaxDelta = 0.25;
     std::uint64_t MFrame = 0;
@@ -262,8 +268,7 @@ struct TimerFired
 // Fixed-capacity pool of countdown and repeating timers. The storage is
 // structure-of-arrays and iteration only touches the active slot list, so a pool
 // with a few live timers costs a few iterations per frame.
-template <std::uint32_t Capacity = 64>
-class TimerPool
+template <std::uint32_t Capacity = 64> class TimerPool
 {
 public:
     [[nodiscard]] TimerHandle Create(double InSeconds, bool InRepeating = false) noexcept
@@ -380,8 +385,8 @@ public:
             MFires[ScopedSlot] += ScopedFires;
             if (ScopedWritten < OutFired.size())
             {
-                OutFired[ScopedWritten++] = TimerFired{TimerHandle{ScopedSlot, MGeneration[ScopedSlot]}, ScopedFires,
-                                                       ScopedOverrun};
+                OutFired[ScopedWritten++] =
+                    TimerFired{TimerHandle{ScopedSlot, MGeneration[ScopedSlot]}, ScopedFires, ScopedOverrun};
             }
             if (MRepeating[ScopedSlot] != 0)
             {
@@ -437,7 +442,8 @@ public:
         MActiveCount = 0;
         MFreeCount = 0;
         MHighWater = 0;
-        MNextGeneration = 1;
+        // Keep the generation counter monotonic. Resetting it would make a
+        // handle saved before Clear() match a freshly created timer.
     }
 
 private:
@@ -499,8 +505,7 @@ private:
 
 // Rolling frame statistics over a fixed number of samples. Push is O(1); the
 // min, max and average walk a small ring only when a caller asks for them.
-template <std::uint32_t Capacity = 120>
-struct FrameTimer
+template <std::uint32_t Capacity = 120> struct FrameTimer
 {
     std::array<double, Capacity> Samples{};
     std::uint32_t Count = 0;
@@ -605,10 +610,20 @@ inline void SleepMicroseconds(double InMicroseconds) noexcept
 [[nodiscard]] inline std::int32_t LocalOffsetMinutes() noexcept
 {
 #if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 201907
-    if (const std::chrono::time_zone* ScopedZone = std::chrono::current_zone(); ScopedZone != nullptr)
+    // current_zone()/get_info() may throw when the time-zone database is not
+    // available (common in minimal containers). UTC is the safe fallback and
+    // keeps this noexcept helper from terminating the process.
+    try
     {
-        const auto ScopedInfo = ScopedZone->get_info(std::chrono::system_clock::now());
-        return static_cast<std::int32_t>(ScopedInfo.offset.count() / 60);
+        if (const std::chrono::time_zone* ScopedZone = std::chrono::current_zone(); ScopedZone != nullptr)
+        {
+            const auto ScopedInfo = ScopedZone->get_info(std::chrono::system_clock::now());
+            return static_cast<std::int32_t>(ScopedInfo.offset.count() / 60);
+        }
+    }
+    catch (...)
+    {
+        return 0;
     }
 #endif
     return 0;

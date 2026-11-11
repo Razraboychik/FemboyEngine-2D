@@ -768,6 +768,50 @@ private:
                 MBuilder.Emit(OpCode::CallNative, 0, 0, ScopedNative);
                 break;
             }
+            case LogicNodeKind::GetFrameIndex:
+            {
+                const std::uint8_t ScopedValue = Alloc();
+                if (ScopedValue == kNoRegister)
+                {
+                    return false;
+                }
+                const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::GetFrameIndex);
+                MBuilder.Emit(OpCode::CallNative, ScopedValue, 0, ScopedNative);
+                break;
+            }
+            case LogicNodeKind::RandomRange:
+            {
+                const std::uint8_t ScopedValue = Alloc();
+                if (ScopedValue == kNoRegister || !CompileInput(InNodeIndex, 0, ScopedValue))
+                {
+                    return false;
+                }
+                const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::RandomRange);
+                MBuilder.Emit(OpCode::CallNative, ScopedValue, 0, ScopedNative);
+                break;
+            }
+            case LogicNodeKind::PlaySound:
+            {
+                const std::uint8_t ScopedAsset = Alloc();
+                if (ScopedAsset == kNoRegister || !CompileInput(InNodeIndex, 1, ScopedAsset))
+                {
+                    return false;
+                }
+                const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::PlaySound);
+                MBuilder.Emit(OpCode::CallNative, ScopedAsset, 0, ScopedNative);
+                break;
+            }
+            case LogicNodeKind::LogVec2:
+            {
+                const std::uint8_t ScopedValue = Alloc2();
+                if (ScopedValue == kNoRegister || !CompileInput(InNodeIndex, 1, ScopedValue))
+                {
+                    return false;
+                }
+                const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::LogVec2);
+                MBuilder.Emit(OpCode::CallNative, ScopedValue, 0, ScopedNative);
+                break;
+            }
             case LogicNodeKind::LogValue:
             {
                 const std::uint8_t ScopedValue = Alloc();

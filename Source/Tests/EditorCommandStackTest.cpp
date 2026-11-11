@@ -1,5 +1,6 @@
 // FemboyEngine2D - CommandStack (undo/redo) + Play-In-Editor tests.
 #include "Editor/Infrastructure/CommandStack.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/PlayInEditor.hpp"
 
@@ -118,7 +119,7 @@ void TestFieldUndoRedo()
 {
     Fby::Editor::CommandStack ScopedStack;
     Check(ScopedStack.Initialize(), "command stack initializes");
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     ScopedStack.Bind(&ScopedRegistry, nullptr);
     const std::uint16_t ScopedVelocityCodec = ScopedStack.RegisterComponent<Fby::Velocity>("Velocity");
     const std::uint16_t ScopedTransformCodec = ScopedStack.RegisterComponent<Fby::Transform2D>("Transform2D");
@@ -177,7 +178,7 @@ void TestLargeComponentDelta()
 {
     Fby::Editor::CommandStack ScopedStack;
     Check(ScopedStack.Initialize(), "stack initializes for skeleton test");
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     ScopedStack.Bind(&ScopedRegistry, nullptr);
     const std::uint16_t ScopedCodec = ScopedStack.RegisterComponent<Fby::SkeletonComponent>("SkeletonComponent");
     Check(ScopedCodec != 0xFFFF, "skeleton component codec registered");
@@ -217,7 +218,7 @@ void TestInteractionTransaction()
 
     CommandStack ScopedStack;
     Check(ScopedStack.Initialize(), "transaction stack initializes");
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     ScopedStack.Bind(&ScopedRegistry, nullptr);
     const std::uint16_t ScopedTransformCodec = ScopedStack.RegisterComponent<Fby::Transform2D>("Transform2D");
     Check(ScopedTransformCodec != 0xFFFF, "transaction transform codec registered");
@@ -371,7 +372,7 @@ void TestPlayInEditor()
     Fby::Editor::PlayInEditor ScopedPie;
     Check(ScopedPie.Initialize(ScopedArenaStorage, ScopedSchema, ScopedArenaStorage.size()), "PIE initializes");
 
-    entt::registry ScopedEditorWorld;
+    Fby::Scene::Registry ScopedEditorWorld;
     const Fby::Entity ScopedEntity = ScopedEditorWorld.create();
     ScopedEditorWorld.emplace<Fby::Transform2D>(
         ScopedEntity, Fby::Transform2D{Fby::Vector2D{0.0f, 0.0f}, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
@@ -417,9 +418,10 @@ void TestPlayInEditor()
     bool ScopedLifecycleStable = true;
     for (std::uint32_t ScopedIteration = 0; ScopedIteration < 16; ++ScopedIteration)
     {
-        if (ScopedPie.Start(ScopedEditorWorld, ScopedSchema, ScopedServices, 1, nullptr) !=
-                Fby::Editor::PlayInEditor::Result::Ok ||
-            !ScopedPie.Step(ScopedGraph, 0.1f, 0.1f) || ScopedPie.Physics().LiveBodyCount() != 1)
+        const Fby::Editor::PlayInEditor::Result ScopedStartResult =
+            ScopedPie.Start(ScopedEditorWorld, ScopedSchema, ScopedServices, 1, nullptr);
+        if (ScopedStartResult != Fby::Editor::PlayInEditor::Result::Ok || !ScopedPie.Step(ScopedGraph, 0.1f, 0.1f) ||
+            ScopedPie.Physics().LiveBodyCount() != 1)
         {
             ScopedLifecycleStable = false;
             break;
@@ -448,13 +450,19 @@ void TestSystemGraphParallel()
     GDependencyOrderOk.store(false);
 
     Fby::Ecs::SystemGraph ScopedGraph;
+    Fby::Ecs::SystemAccess ScopedParallel;
+    ScopedParallel.ParallelSafe = true;
+    ScopedParallel.NoEcsAccess = true;
     Check(ScopedGraph.Add<&DependencyA>(Fby::Ecs::Phase::PreUpdate, "dependency_a"), "independent root registered");
     // Bit 0 is dependency_a: this node must run in a later wave.
-    Check(ScopedGraph.Add<&DependencyB>(Fby::Ecs::Phase::PreUpdate, "dependency_b", 1ull << 0),
+    Check(ScopedGraph.Add<&DependencyB>(Fby::Ecs::Phase::PreUpdate, "dependency_b", 1ull << 0, 0, ScopedParallel),
           "dependent node registered");
-    Check(ScopedGraph.Add<&ParallelProbeA>(Fby::Ecs::Phase::PreUpdate, "probe_a", 1ull << 0), "probe a registered");
-    Check(ScopedGraph.Add<&ParallelProbeB>(Fby::Ecs::Phase::PreUpdate, "probe_b", 1ull << 0), "probe b registered");
-    Check(ScopedGraph.Add<&ParallelProbeC>(Fby::Ecs::Phase::PreUpdate, "probe_c", 1ull << 0), "probe c registered");
+    Check(ScopedGraph.Add<&ParallelProbeA>(Fby::Ecs::Phase::PreUpdate, "probe_a", 1ull << 0, 0, ScopedParallel),
+          "probe a registered");
+    Check(ScopedGraph.Add<&ParallelProbeB>(Fby::Ecs::Phase::PreUpdate, "probe_b", 1ull << 0, 0, ScopedParallel),
+          "probe b registered");
+    Check(ScopedGraph.Add<&ParallelProbeC>(Fby::Ecs::Phase::PreUpdate, "probe_c", 1ull << 0, 0, ScopedParallel),
+          "probe c registered");
     Check(ScopedGraph.Build(), "parallel graph builds");
 
     ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);

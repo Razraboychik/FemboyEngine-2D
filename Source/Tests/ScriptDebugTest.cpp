@@ -111,7 +111,7 @@ void TestBreakpointsAndResume()
         return;
     }
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
@@ -173,7 +173,7 @@ void TestStepping()
     {
         return;
     }
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
@@ -274,7 +274,7 @@ void TestFieldAccess()
     {
         return;
     }
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
     ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation = 0.25f;

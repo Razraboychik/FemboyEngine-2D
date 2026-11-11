@@ -44,6 +44,8 @@ namespace
             return InField.size == sizeof(BigNum::Int128);
         case Reflect::FieldKind::Decimal:
             return InField.size == sizeof(BigNum::Decimal128);
+        case Reflect::FieldKind::Vector2DArray:
+            return InField.size > 0 && InField.size % sizeof(Vector2D) == 0;
     }
     return false;
 }
@@ -212,7 +214,7 @@ Entity EntityRemap::Resolve(std::uint32_t InSerializedIndex) const noexcept
 {
     if (InSerializedIndex == kInvalidEntityIndex || InSerializedIndex >= entities.size())
     {
-        return entt::null;
+        return Fby::kNullEntity;
     }
     return entities[InSerializedIndex];
 }
@@ -226,16 +228,13 @@ std::uint32_t EntityRemap::IndexOf(Entity InEntity) const noexcept
 SceneData CaptureScene(const Registry& InRegistry, const ComponentRegistry& InComponents, SceneMeta InMeta)
 {
     std::vector<Entity> ScopedEntities;
-    const auto* ScopedStorage = InRegistry.storage<Entity>();
-    if (ScopedStorage != nullptr)
+    const auto& ScopedStorage = GetEntityStorage(InRegistry);
+    for (const Entity ScopedEntity : ScopedStorage)
     {
-        for (const Entity ScopedEntity : *ScopedStorage)
-        {
-            ScopedEntities.push_back(ScopedEntity);
-        }
+        ScopedEntities.push_back(ScopedEntity);
     }
     std::sort(ScopedEntities.begin(), ScopedEntities.end(),
-              [](Entity InLeft, Entity InRight) { return entt::to_integral(InLeft) < entt::to_integral(InRight); });
+              [](Entity InLeft, Entity InRight) { return Fby::ToIntegral(InLeft) < Fby::ToIntegral(InRight); });
 
     std::unordered_map<Entity, std::uint32_t> ScopedIndices;
     ScopedIndices.reserve(ScopedEntities.size());

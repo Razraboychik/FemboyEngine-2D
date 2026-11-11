@@ -6,6 +6,7 @@
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/RHI/PostProcess.hpp"
 #include "Engine/RHI/RenderItem.hpp"
+#include "Engine/UI/AccessibilityEffects.hpp"
 #include "Engine/UI/NarrativeTree.hpp"
 #include "Engine/UI/SoundCues.hpp"
 
@@ -83,7 +84,7 @@ inline constexpr std::uint32_t kNarrativeTextBytes = 160;
 struct NarrativeEvent
 {
     std::uint64_t frame = 0;
-    Entity entity = entt::null;
+    Entity entity = Fby::kNullEntity;
     Vector2D position{};
     std::uint32_t code = 0;
     std::uint32_t sequence = 0;
@@ -128,7 +129,7 @@ inline constexpr std::uint32_t kSubtitleCapacity = 8;
 struct SoundTrigger
 {
     std::uint32_t cueId = 0;
-    Entity source = entt::null;
+    Entity source = Fby::kNullEntity;
     Vector2D position{};
     float duration = 3.0f;
     std::uint32_t priority = 0;
@@ -139,7 +140,7 @@ struct SoundTrigger
 struct SubtitleLine
 {
     std::uint32_t cueId = 0;
-    Entity source = entt::null;
+    Entity source = Fby::kNullEntity;
     Vector2D position{};
     float remaining = 0.0f;
     std::uint32_t priority = 0;
@@ -324,6 +325,12 @@ public:
     }
     void SetFlashGuard(bool InEnabled, float InThreshold = 0.20f, float InGain = 0.35f) noexcept;
     void SetColorVision(ColorVisionDeficiency InDeficiency, float InStrength = 1.0f) noexcept;
+    // Optional runtime effect catalog. The registry is owned by the game/editor;
+    // ApplyPostFx consumes its active profile into the frame settings.
+    void SetEffectRegistry(const Ui::AccessibilityEffectRegistry* InEffects) noexcept
+    {
+        MEffects = InEffects;
+    }
 
     [[nodiscard]] const AccessibilitySettings& Settings() const noexcept
     {
@@ -416,7 +423,7 @@ public:
 private:
     struct StateTrack
     {
-        Entity entity = entt::null;
+        Entity entity = Fby::kNullEntity;
         GameplayTagMask tags{};
     };
 
@@ -450,6 +457,7 @@ private:
     std::string_view (*MCueTextResolver)(void*, std::uint32_t) noexcept = nullptr;
     void* MCueTextUser = nullptr;
     const VoiceCaptionProvider* MVoiceCaptionProvider = nullptr;
+    const Ui::AccessibilityEffectRegistry* MEffects = nullptr;
     float MCaptionClockMs = 0.0f;
 };
 }

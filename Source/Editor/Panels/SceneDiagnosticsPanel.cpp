@@ -9,6 +9,7 @@
 #include "Engine/Physics/Physics.hpp"
 
 #include <imgui.h>
+#include "Editor/Infrastructure/EditorTheme.hpp"
 #include <implot.h>
 
 #include <algorithm>
@@ -321,6 +322,16 @@ void SceneDiagnosticsPanel::DrawSummary()
     ImGui::Checkbox("Occupancy heatmap", &MShowHeatmap);
 }
 
+namespace
+{
+[[nodiscard]] ImPlotSpec PlotSpec(std::uint32_t InIndex)
+{
+    ImPlotSpec ScopedSpec;
+    ScopedSpec.LineColor = PlotColor(InIndex);
+    return ScopedSpec;
+}
+}
+
 void SceneDiagnosticsPanel::DrawFrameTimePlot()
 {
     if (MHistoryCount == 0)
@@ -333,8 +344,8 @@ void SceneDiagnosticsPanel::DrawFrameTimePlot()
     {
         ImPlot::SetupAxes("frame", "us", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
         ImPlot::SetupLegend(ImPlotLocation_NorthEast);
-        ImPlot::PlotLine("simulation us", MSimulationMicroseconds.data() + ScopedOffset, ScopedCount);
-        ImPlot::PlotLine("frame us", MFrameMicroseconds.data() + ScopedOffset, ScopedCount);
+        ImPlot::PlotLine("simulation us", MSimulationMicroseconds.data() + ScopedOffset, ScopedCount, 1.0, 0.0, PlotSpec(0));
+        ImPlot::PlotLine("frame us", MFrameMicroseconds.data() + ScopedOffset, ScopedCount, 1.0, 0.0, PlotSpec(1));
         ImPlot::EndPlot();
     }
 }
@@ -380,8 +391,8 @@ void SceneDiagnosticsPanel::DrawMemoryPlot()
     {
         ImPlot::SetupAxes("frame", "KiB", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
         ImPlot::SetupLegend(ImPlotLocation_NorthEast);
-        ImPlot::PlotLine("used KiB", MArenaKilobytes.data() + ScopedOffset, ScopedCount);
-        ImPlot::PlotLine("used %", MArenaPercent.data() + ScopedOffset, ScopedCount);
+        ImPlot::PlotLine("used KiB", MArenaKilobytes.data() + ScopedOffset, ScopedCount, 1.0, 0.0, PlotSpec(0));
+        ImPlot::PlotLine("used %", MArenaPercent.data() + ScopedOffset, ScopedCount, 1.0, 0.0, PlotSpec(1));
         ImPlot::EndPlot();
     }
 }
@@ -398,9 +409,9 @@ void SceneDiagnosticsPanel::DrawRenderPlot()
     {
         ImPlot::SetupAxes("frame", "count", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
         ImPlot::SetupLegend(ImPlotLocation_NorthEast);
-        ImPlot::PlotLine("MeshRenderItem", MMeshItems.data() + ScopedOffset, ScopedCount);
-        ImPlot::PlotLine("indirect draws", MIndirectDraws.data() + ScopedOffset, ScopedCount);
-        ImPlot::PlotLine("draw calls", MDrawCalls.data() + ScopedOffset, ScopedCount);
+        ImPlot::PlotLine("MeshRenderItem", MMeshItems.data() + ScopedOffset, ScopedCount, 1.0, 0.0, PlotSpec(0));
+        ImPlot::PlotLine("indirect draws", MIndirectDraws.data() + ScopedOffset, ScopedCount, 1.0, 0.0, PlotSpec(1));
+        ImPlot::PlotLine("draw calls", MDrawCalls.data() + ScopedOffset, ScopedCount, 1.0, 0.0, PlotSpec(2));
         ImPlot::EndPlot();
     }
 }

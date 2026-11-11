@@ -459,7 +459,7 @@ bool NetLobbyClient::ApplyToSessionConfig(NetSessionConfig* OutConfig) const noe
     OutConfig->Remote = MServer;
     OutConfig->HostRequested = MTicket.Role == kTicketRoleHost;
     std::memcpy(OutConfig->LocalName, MTicket.PlayerName, kSessionNameBytes);
-    OutConfig->LocalName[kSessionNameBytes - 1] = ' ';
+    OutConfig->LocalName[kSessionNameBytes - 1] = 0;
     return true;
 }
 

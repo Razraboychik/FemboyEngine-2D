@@ -1,0 +1,16 @@
+# CodeQL configuration for FemboyEngine2D.
+#
+# Keep third_party/** visible by default. Only generated copies, upstream tests
+# and demo/tool programs that the engine never links are excluded. If one of
+# these files becomes a real build input, remove its pattern and triage it.
+name: FemboyEngine2D
+paths-ignore:
+  - third_party/miniaudio-master/miniaudio-master/extras/miniaudio_split/**
+  - third_party/opus-master/opus-main/tests/**
+  - third_party/opus-master/opus-main/celt/tests/**
+  - third_party/opus-master/opus-main/celt/opus_custom_demo.c
+  - third_party/opus-master/opus-main/src/opus_compare.c
+  - third_party/opus-master/opus-main/dnn/adaconvtest.c
+  - third_party/opus-master/opus-main/dnn/parse_lpcnet_weights.c
+  - third_party/opus-master/opus-main/dnn/dump_data.c
+  - third_party/flatbuffers-master/flatbuffers-master/tests/**

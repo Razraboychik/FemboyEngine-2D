@@ -97,8 +97,8 @@ in `Poll()` on the editor thread. `InjectChange()` is the test seam.
 
 ### PIE
 
-`PlayInEditor` captures the editor registry with Snapshot v2 into a fixed
-FrameArena, restores it into a **second** `entt::registry`, and steps the same
+`PlayInEditor` captures the editor registry with Snapshot v5 into a fixed
+FrameArena, restores it into a **second** `Fby::Scene::Registry`, and steps the same
 `SystemGraph` against the clone. Stop discards the clone; the editor world was
 never modified. `CaptureDelta()` exposes the rollback delta of the play world for
 debug/rewind. Derived components (Skeleton/Skin matrices) are rebuilt by their
@@ -152,7 +152,7 @@ each file with its database row (AssetId/GUID/type/generation) and hides cooked
 artifacts. Dragging a texture or `.toml` prefab to the Viewport produces a
 `FBY_CONTENT_ASSET` payload; `SpawnAsset()` wraps the new entity set in a
 `SpawnTransaction`, so one drop is one undo step. Undo destroys the entities and
-redo recreates them with their original EnTT identifiers.
+redo recreates them with their original entity identifiers.
 
 ### Settings panels
 
@@ -223,7 +223,7 @@ Release cooking uses the same bytecode as the single artifact boundary:
 `TranspileLogicGraphToCpp` compiles the graph, parses the bytes and emits one
 flat C++26 function per event. `AotBuilder` writes that file, then invokes the
 system compiler (`clang++`/`g++` with `-std=c++26 -O3 -shared -fPIC` on POSIX;
-the MSVC-driver form for `clang-cl`/`cl`) on a worker `jthread`, redirects the
+the `clang-cl` driver form on Windows) on a worker `jthread`, redirects the
 compiler log to `<module>.log`, and publishes a revision. On Windows the child
 environment is repaired (`TMP`/`TEMP` from a POSIX shell) and
 `CreateProcessW` is used instead of a shell. The generated plugin is validated

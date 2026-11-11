@@ -150,8 +150,12 @@ void TestSystem()
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     auto& ScopedSelfTransform = ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
     ScopedSelfTransform.Position = Fby::Vector2D{0.0f, 0.0f};
-    auto& ScopedTags = ScopedRegistry.emplace<Fby::GameplayTagsComponent>(ScopedEntity);
+    (void)ScopedRegistry.emplace<Fby::GameplayTagsComponent>(ScopedEntity);
+    // Pre-add the command component so a deferred command replaces it in place
+    // instead of moving the entity and invalidating ScopedState below.
+    (void)ScopedRegistry.emplace<Fby::AICommandComponent>(ScopedEntity);
     auto& ScopedState = ScopedRegistry.emplace<Fby::StateTreeComponent>(ScopedEntity);
+    auto& ScopedTags = ScopedRegistry.get<Fby::GameplayTagsComponent>(ScopedEntity);
     ScopedState.TreeId = 7;
     ScopedState.Target = ScopedTarget;
 

@@ -1,6 +1,9 @@
 // FemboyEngine2D - plugin load/unload hot reload while jobs run.
 #include "Engine/Core/JobSystem.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/Core/PluginHost.hpp"
+#include "Engine/UI/AccessibilityTheme.hpp"
+#include "Engine/UI/AccessibilityEffects.hpp"
 #include "Engine/ECS/Components.hpp"
 
 #include <atomic>
@@ -30,14 +33,33 @@ int main()
     Plugin::ComponentRegistry ScopedComponents;
     ScopedComponents.Register<Transform2D>("Transform2D");
     ScopedComponents.Register<Velocity>("Velocity");
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
+    Ui::AccessibilityThemeRegistry ScopedThemes;
+    Ui::AccessibilityExtensionRegistry ScopedAccessibilityExtensions;
+    Ui::AccessibilityEffectRegistry ScopedAccessibilityEffects;
     Plugin::PluginHost ScopedHost(ScopedComponents, &ScopedRegistry);
+    ScopedHost.BindAccessibilityThemes(&ScopedThemes);
+    ScopedHost.BindAccessibilityEffects(&ScopedAccessibilityExtensions, &ScopedAccessibilityEffects);
 
     std::string ScopedError;
     Check(ScopedHost.Load(FBY_TEST_PLUGIN_PATH, &ScopedError), "the fixture plugin loads");
     Check(ScopedHost.Plugins().size() == 1, "one plugin is registered");
+    bool ScopedSawFixedTick = false;
+    bool ScopedSawUiTick = false;
+    for (const auto& ScopedPlugin : ScopedHost.Plugins())
+    {
+        for (const Plugin::PluginSystem& ScopedSystem : ScopedPlugin->systems)
+        {
+            ScopedSawFixedTick = ScopedSawFixedTick || ScopedSystem.phase == FBY_PHASE_FIXED_UPDATE;
+            ScopedSawUiTick = ScopedSawUiTick || ScopedSystem.phase == FBY_PHASE_UI;
+        }
+    }
+    Check(ScopedSawFixedTick, "the fixture registers a FixedUpdate system");
+    Check(ScopedSawUiTick, "the fixture registers a UI system");
+    Check(ScopedThemes.Find("Hello.Theme") != nullptr, "the plugin registered an accessibility theme");
     ScopedHost.UnloadAll();
     Check(ScopedHost.Plugins().empty(), "unload clears the plugin list");
+    Check(ScopedThemes.Count() == 0, "unload removes plugin-owned themes");
 
     // Reload the shared object ten times while four workers run.
     JobSystem ScopedJobs(4);
@@ -90,6 +112,36 @@ int main()
         Check(false, "the bad-layout plugin must not load");
         ScopedHost.UnloadAll();
     }
+
+#if defined(FBY_TEST_RAINBOW_PALETTE_PATH)
+    ScopedThemes.Clear();
+    Check(ScopedHost.Load(FBY_TEST_RAINBOW_PALETTE_PATH, &ScopedError), "Rainbow Palette plugin loads");
+    const Ui::AccessibilityPaletteExtension* ScopedPalette = ScopedAccessibilityExtensions.Find("Rainbow.Palette80");
+    Check(ScopedPalette != nullptr, "Rainbow Palette registers 80 colours");
+    Check(ScopedPalette != nullptr && ScopedPalette->Colors[79].A() != 0, "palette extension ends with a visible colour");
+    ScopedHost.UnloadAll();
+    Check(ScopedAccessibilityExtensions.Count() == 0, "Rainbow Palette unload removes its extension");
+
+    ScopedThemes.Clear();
+    Check(ScopedHost.Load(FBY_TEST_NVG_PATH, &ScopedError), "NVG plugin loads");
+    Check(ScopedAccessibilityEffects.Find("Nvg.Gen1.Scanlines") != nullptr, "NVG registers generation profiles");
+    ScopedHost.UnloadAll();
+
+    Check(ScopedHost.Load(FBY_TEST_THERMAL_PATH, &ScopedError), "Thermal plugin loads");
+    const Ui::AccessibilityEffectProfile* ScopedThermal = ScopedAccessibilityEffects.Find("Thermal.Standard");
+    Check(ScopedThermal != nullptr, "Thermal registers standard palette");
+    Check(ScopedThermal != nullptr && ScopedThermal->Temperatures[0].Tag[0] != '\0',
+          "Thermal maps five temperature tags");
+    ScopedHost.UnloadAll();
+    Check(ScopedAccessibilityEffects.Count() == 0, "Thermal unload removes effect profiles");
+
+    Check(ScopedHost.Load(FBY_TEST_ALCOHOL_PATH, &ScopedError), "Alcohol plugin loads");
+    const Ui::AccessibilityEffectProfile* ScopedAlcohol = ScopedAccessibilityEffects.Find("Alcohol.Drunk");
+    Check(ScopedAlcohol != nullptr, "Alcohol registers drunk profile");
+    Check(ScopedAlcohol != nullptr && ScopedAlcohol->AlcoholEffectCount >= 7, "Alcohol profile has an effect pool");
+    ScopedHost.UnloadAll();
+    Check(ScopedAccessibilityEffects.Count() == 0, "Alcohol unload removes effect profiles");
+#endif
 
     if (GFailures == 0)
     {

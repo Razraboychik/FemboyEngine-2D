@@ -438,6 +438,27 @@ TransportPeer* NetTransport::FindOrCreatePeer(const NetAddress& InAddress) noexc
             ScopedPeer = TransportPeer{};
             ScopedPeer.Active = true;
             ScopedPeer.Address = InAddress;
+            ScopedPeer.LastActivity = MNow;
+            return &ScopedPeer;
+        }
+    }
+    // The fixed table is full. Reclaim an address that has been silent for a
+    // while and has no retransmit or fragment state; a spoofed source must not
+    // lock out legitimate clients indefinitely.
+    constexpr float kIdlePeerSeconds = 10.0f;
+    for (std::uint32_t ScopedI = 0; ScopedI < kMaxPeers; ++ScopedI)
+    {
+        TransportPeer& ScopedPeer = MPeers[ScopedI];
+        const bool ScopedHasOutstanding =
+            ScopedPeer.Fragment.Active ||
+            std::any_of(ScopedPeer.Outbox.begin(), ScopedPeer.Outbox.end(),
+                        [](const TransportPeer::Outstanding& InSlot) { return InSlot.Used; });
+        if (!ScopedHasOutstanding && MNow - ScopedPeer.LastActivity >= kIdlePeerSeconds)
+        {
+            ScopedPeer = TransportPeer{};
+            ScopedPeer.Active = true;
+            ScopedPeer.Address = InAddress;
+            ScopedPeer.LastActivity = MNow;
             return &ScopedPeer;
         }
     }
@@ -600,7 +621,8 @@ bool NetTransport::Send(const NetAddress& InTo, std::span<const std::byte> InPay
         if (!SendDatagram(*ScopedPeer, ScopedSeq, 1, 0, 1, ScopedSeq, static_cast<std::uint16_t>(InPayload.size()),
                           InPayload))
         {
-            ScopedSlot->Used = false;
+            // Keep the slot queued: a transient socket error must not drop a
+            // reliable message. Tick() retries it after the normal timeout.
             return false;
         }
         return true;
@@ -653,9 +675,11 @@ void NetTransport::UpdateReceiveState(TransportPeer& InPeer, std::uint16_t InSeq
     {
         return;
     }
-    if (InSeq > InPeer.RxLatest)
+    // RFC 1982 serial arithmetic: the distance is computed in 16-bit space so
+    // the 65535 -> 0 rollover is a normal newer sequence, not a huge difference.
+    const std::uint32_t ScopedShift = static_cast<std::uint16_t>(InSeq - InPeer.RxLatest);
+    if (ScopedShift != 0 && ScopedShift < 32768u)
     {
-        const std::uint32_t ScopedShift = static_cast<std::uint32_t>(InSeq) - InPeer.RxLatest;
         if (ScopedShift >= 32)
         {
             InPeer.RxBits = 0;
@@ -671,8 +695,12 @@ void NetTransport::UpdateReceiveState(TransportPeer& InPeer, std::uint16_t InSeq
         }
         return;
     }
-    const std::uint32_t ScopedDiff = static_cast<std::uint32_t>(InPeer.RxLatest) - InSeq;
-    if (ScopedDiff > 32)
+    if (ScopedShift == 0)
+    {
+        return;
+    }
+    const std::uint32_t ScopedDiff = static_cast<std::uint16_t>(InPeer.RxLatest - InSeq);
+    if (ScopedDiff == 0 || ScopedDiff > 32)
     {
         return;
     }
@@ -696,7 +724,7 @@ void NetTransport::Acknowledge(TransportPeer& InPeer, std::uint16_t InAck, std::
         {
             continue;
         }
-        const std::uint32_t ScopedDiff = static_cast<std::uint32_t>(InAck - ScopedSlot.Seq);
+        const std::uint32_t ScopedDiff = static_cast<std::uint16_t>(InAck - ScopedSlot.Seq);
         bool ScopedAcked = false;
         if (ScopedDiff == 0)
         {
@@ -754,6 +782,7 @@ void NetTransport::HandleDatagram(const NetAddress& InFrom, std::span<const std:
         ++MStats.Rejected;
         return;
     }
+    ScopedPeer->LastActivity = MNow;
     const std::uint16_t ScopedSeq = ReadU16(InDatagram.data() + 2);
     const std::uint16_t ScopedAck = ReadU16(InDatagram.data() + 4);
     const std::uint32_t ScopedAckBits = ReadU32(InDatagram.data() + 6);
@@ -764,7 +793,8 @@ void NetTransport::HandleDatagram(const NetAddress& InFrom, std::span<const std:
     const std::uint16_t ScopedMsgBytes = ReadU16(InDatagram.data() + 16);
     const std::uint16_t ScopedPayloadBytes = ReadU16(InDatagram.data() + 18);
 
-    if (ScopedChannel > 1 || ScopedFragCount == 0 || ScopedFragIndex >= ScopedFragCount)
+    if (ScopedChannel > 1 || ScopedFragCount == 0 || ScopedFragCount > kMaxFragments ||
+        ScopedFragIndex >= ScopedFragCount)
     {
         ++MStats.Rejected;
         return;
@@ -773,6 +803,31 @@ void NetTransport::HandleDatagram(const NetAddress& InFrom, std::span<const std:
     {
         ++MStats.Rejected;
         return;
+    }
+    if (ScopedFragCount > 1)
+    {
+        const std::uint32_t ScopedMinimumBytes =
+            static_cast<std::uint32_t>(ScopedFragCount - 1u) * kMaxPayload;
+        if (ScopedMsgBytes == 0 || ScopedMsgBytes > TransportPeer::kMaxReassemblyBytes ||
+            ScopedMsgBytes <= ScopedMinimumBytes)
+        {
+            ++MStats.Rejected;
+            return;
+        }
+        const std::size_t ScopedValidationOffset = static_cast<std::size_t>(ScopedFragIndex) * kMaxPayload;
+        if (ScopedValidationOffset >= ScopedMsgBytes ||
+            ScopedPayloadBytes > ScopedMsgBytes - ScopedValidationOffset)
+        {
+            ++MStats.Rejected;
+            return;
+        }
+        const bool ScopedLastFragment = static_cast<std::uint32_t>(ScopedFragIndex) + 1u == ScopedFragCount;
+        if ((!ScopedLastFragment && ScopedPayloadBytes != kMaxPayload) ||
+            (ScopedLastFragment && ScopedValidationOffset + ScopedPayloadBytes != ScopedMsgBytes))
+        {
+            ++MStats.Rejected;
+            return;
+        }
     }
 
     Acknowledge(*ScopedPeer, ScopedAck, ScopedAckBits);
@@ -813,7 +868,7 @@ void NetTransport::HandleDatagram(const NetAddress& InFrom, std::span<const std:
         ++MStats.ReassemblyFailures;
         return;
     }
-    const std::uint64_t ScopedMask = 1ull << (ScopedFragIndex & 63u);
+    const std::uint64_t ScopedMask = 1ull << static_cast<std::uint32_t>(ScopedFragIndex);
     if ((ScopedFragment.Mask & ScopedMask) == 0)
     {
         std::memcpy(ScopedFragment.Data.data() + ScopedOffset, ScopedPayload.data(), ScopedPayloadBytes);

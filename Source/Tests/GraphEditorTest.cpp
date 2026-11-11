@@ -1,5 +1,6 @@
 // FemboyEngine2D - graph editor tests.
 #include "Editor/Infrastructure/CommandStack.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Editor/Panels/MaterialGraphPanel.hpp"
 #include "Editor/Panels/VisualScriptPanel.hpp"
 #include "Engine/ECS/Components.hpp"
@@ -194,7 +195,7 @@ void TestLogicFieldNodes()
     FBY_CHECK(ScopedRuntime.Initialize());
     const std::uint16_t ScopedProgram = ScopedRuntime.LoadProgram(ScopedCompiled.program);
     FBY_CHECK(ScopedProgram != Fby::kScriptNoProgram);
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(
         ScopedEntity, Fby::Transform2D{Fby::Vector2D{3.0f, 4.0f}, Fby::Vector2D{1.0f, 1.0f}, 0.5f});
@@ -245,7 +246,7 @@ void TestLogicConditionAndSpawn()
     FBY_CHECK(ScopedRuntime.Initialize());
     const std::uint16_t ScopedProgram = ScopedRuntime.LoadProgram(ScopedSpawnCompiled.program);
     FBY_CHECK(ScopedProgram != Fby::kScriptNoProgram);
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     VmContext ScopedContext{ScopedRegistry};
     ScopedContext.rng = &ScopedRuntime.Rng();
@@ -276,15 +277,15 @@ void TestSparseGraphUndo()
 
     std::array<std::byte, sizeof(MaterialGraph)> ScopedOldBytes{};
     std::array<std::byte, sizeof(MaterialGraph)> ScopedNewBytes{};
-    FBY_CHECK(ScopedCommands.CaptureComponent(entt::null, ScopedCodec, ScopedOldBytes) ==
+    FBY_CHECK(ScopedCommands.CaptureComponent(Fby::kNullEntity, ScopedCodec, ScopedOldBytes) ==
               Fby::Editor::CommandStack::Result::Ok);
     const Fby::Vector2D ScopedOriginal = ScopedGraph.Node(1).uiPosition;
     ScopedGraph.Node(1).uiPosition = Fby::Vector2D{512.0f, 256.0f};
-    FBY_CHECK(ScopedCommands.CaptureComponent(entt::null, ScopedCodec, ScopedNewBytes) ==
+    FBY_CHECK(ScopedCommands.CaptureComponent(Fby::kNullEntity, ScopedCodec, ScopedNewBytes) ==
               Fby::Editor::CommandStack::Result::Ok);
 
     FBY_CHECK(ScopedCommands.BeginTransaction("Move material node") == Fby::Editor::CommandStack::Result::Ok);
-    FBY_CHECK(ScopedCommands.Record(entt::null, ScopedCodec, ScopedOldBytes, ScopedNewBytes) ==
+    FBY_CHECK(ScopedCommands.Record(Fby::kNullEntity, ScopedCodec, ScopedOldBytes, ScopedNewBytes) ==
               Fby::Editor::CommandStack::Result::Ok);
     FBY_CHECK(ScopedCommands.CommitTransaction() == Fby::Editor::CommandStack::Result::Ok);
     FBY_CHECK(ScopedCommands.CanUndo());
@@ -373,7 +374,7 @@ void TestAotNativeBuildIfRequested()
         std::fprintf(stderr, "AOT module load: %s\n", ScopedError.c_str());
         return;
     }
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(
         ScopedEntity, Fby::Transform2D{Fby::Vector2D{9.0f, 7.0f}, Fby::Vector2D{1.0f, 1.0f}, 0.0f});

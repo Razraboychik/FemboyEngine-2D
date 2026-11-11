@@ -6,12 +6,14 @@
 #include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/ECS/RenderEcs.hpp"
 #include "Engine/ECS/Tilemap.hpp"
+#include "Engine/Physics/SdfCharacter.hpp"
 #include "Engine/RHI/RenderItem.hpp"
 #include "Engine/RHI/Sort.hpp"
 #include "Engine/RHI/ViewportPresenter.hpp"
 
 #include <cstdint>
 #include <span>
+#include <thread>
 #include <type_traits>
 #include <vector>
 
@@ -19,26 +21,59 @@ namespace Fby
 {
 struct SdfField;
 class SdfGiVolume;
+class JobSystem;
 }
 
 namespace Fby::Rhi
 {
 
-// Previous-frame transform of one sprite. This is derived render state that feeds
-// motion vectors for temporal upscalers and frame generation; it is never
-// serialized and never leaves the registry.
+// Previous-frame transform of one sprite, stored as structure-of-arrays. The
+// values are derived render state for temporal upscalers and frame generation;
+// they are never serialized and never leave the composer.
 struct MotionHistory2D
 {
-    Vector2D Position{};
-    Vector2D Size{};
-    float Rotation = 0.0f;
-    // History generation. A record from an older generation is treated as missing.
-    std::uint32_t Epoch = 0;
-    std::uint32_t Reserved = 0;
-};
+    std::vector<float> PositionX;
+    std::vector<float> PositionY;
+    std::vector<float> SizeX;
+    std::vector<float> SizeY;
+    std::vector<float> Rotation;
+    // A record from an older generation is treated as missing.
+    std::vector<std::uint32_t> Epoch;
+    // Entity generation at the slot; index reuse must not inherit the old
+    // entity's previous transform.
+    std::vector<std::uint32_t> Generation;
 
-static_assert(std::is_trivially_copyable_v<MotionHistory2D>, "MotionHistory2D must stay trivially copyable");
-static_assert(sizeof(MotionHistory2D) == 28, "MotionHistory2D must stay 28 bytes");
+    void Resize(std::size_t InCount)
+    {
+        if (PositionX.size() >= InCount)
+        {
+            return;
+        }
+        PositionX.resize(InCount);
+        PositionY.resize(InCount);
+        SizeX.resize(InCount);
+        SizeY.resize(InCount);
+        Rotation.resize(InCount);
+        Epoch.resize(InCount);
+        Generation.resize(InCount);
+    }
+
+    void Clear() noexcept
+    {
+        PositionX.clear();
+        PositionY.clear();
+        SizeX.clear();
+        SizeY.clear();
+        Rotation.clear();
+        Epoch.clear();
+        Generation.clear();
+    }
+
+    [[nodiscard]] std::size_t Size() const noexcept
+    {
+        return PositionX.size();
+    }
+};
 
 // CPU-side extract/sort/gather cost of the last composed frame. The timings are
 // wall-clock and intended for the editor diagnostics panel, not for budgeting.
@@ -64,13 +99,44 @@ struct FrameComposerStats
 class FrameComposer
 {
 public:
+    // The packet's spans point into this composer's vectors, so a copy would
+    // leave them pointing at the source object. A viewport owns exactly one
+    // composer for its lifetime.
+    FrameComposer() = default;
+    FrameComposer(const FrameComposer&) = delete;
+    FrameComposer& operator=(const FrameComposer&) = delete;
+    FrameComposer(FrameComposer&&) = delete;
+    FrameComposer& operator=(FrameComposer&&) = delete;
+
     // `InExtraMeshItems` (cloth) and `InTileQuads` are copied into the
     // composer's storage and appended after the registry's own sprites.
     void BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::CameraData& InCamera, Color32 InClear,
-                          std::uint32_t InTextureArray,
-                          std::span<const Rhi::MeshRenderItem> InExtraMeshItems = {},
+                          std::uint32_t InTextureArray, std::span<const Rhi::MeshRenderItem> InExtraMeshItems = {},
                           std::span<const TileQuad> InTileQuads = {},
-                          const Rhi::PostFxSettings& InPostFx = Rhi::PostFxDisabled());
+                          const Rhi::PostFxSettings& InPostFx = Rhi::PostFxDisabled(),
+                          std::span<const SdfCharacterMeshData> InSdfCharacterMeshes = {});
+
+    // Optional job pool for the deterministic chunk-prefix sprite extract. The
+    // pool must outlive this composer and belongs to the same thread that calls
+    // BuildFramePacket.
+    void SetJobSystem(JobSystem* InJobs) noexcept
+    {
+        MJobs = InJobs;
+    }
+    [[nodiscard]] JobSystem* Jobs() const noexcept
+    {
+        return MJobs;
+    }
+
+    // Emits per-frame instance ranges. The RHI only consumes them when the
+    // swapchain has a single frame in flight, where the staging slice still
+    // contains the previous frame.
+    void SetInstanceDeltasEnabled(bool InEnabled) noexcept
+    {
+        MInstanceDeltasEnabled = InEnabled;
+        MHasLastFrame = false;
+        MHasLastSorted = false;
+    }
 
     // Reserves the compose buffers once so a growing scene does not allocate on
     // the first heavy frame. `InMaxItems` is the frame contract's item cap.
@@ -215,8 +281,34 @@ public:
         MSdfField = InField;
     }
 
+    // Optional conservative world bounds. When the camera view fully contains
+    // them, the extractor can skip per-sprite visibility tests. Callers must
+    // include every renderable sprite in the bounds.
+    void SetWorldBounds(Vector2D InMin, Vector2D InMax) noexcept
+    {
+        MWorldMin = InMin;
+        MWorldMax = InMax;
+        MHasWorldBounds = true;
+        MHasLastFrame = false;
+    }
+    void ClearWorldBounds() noexcept
+    {
+        MHasWorldBounds = false;
+        MHasLastFrame = false;
+    }
+
 private:
+    struct ParallelChunkRef
+    {
+        std::uint32_t Archetype = 0;
+        std::uint32_t Chunk = 0;
+    };
+
     std::vector<Rhi::RenderItem> MItems;
+    // Reused parallel-extract scratch. Keeping it on the composer avoids
+    // per-frame vector construction on a steady scene.
+    std::vector<ParallelChunkRef> MParallelChunks;
+    std::vector<std::size_t> MParallelOffsets;
     std::vector<Rhi::RenderItem> MSorted;
     std::vector<Rhi::RenderKey> MKeys;
     std::vector<Rhi::RenderKey> MSortedKeys;
@@ -226,8 +318,15 @@ private:
     std::vector<Rhi::MeshRenderItem> MMeshItems;
     std::vector<Rhi::MeshVertex> MMeshVertices;
     std::vector<Mat4> MMeshPalette;
+    std::vector<Rhi::MeshVertex> MSdfCharacterVertices;
+    std::vector<std::uint16_t> MSdfCharacterIndices;
     std::vector<Rhi::RenderItem> MLastItems;
     std::vector<Rhi::RenderKey> MLastKeys;
+    std::vector<Rhi::RenderItem> MLastSorted;
+    std::vector<Rhi::RenderKey> MLastSortedKeys;
+    std::vector<Rhi::DirtyRange> MDirtyRanges;
+    bool MHasLastSorted = false;
+    bool MInstanceDeltasEnabled = false;
     std::vector<Rhi::RenderItem> MOitItems;
     std::vector<Rhi::RenderKey> MOitKeys;
     std::vector<Rhi::DrawBatch> MOitBatches;
@@ -259,14 +358,32 @@ private:
     Rhi::ViewportPresenter MViewportPresenter{};
     FrameComposerStats MStats{};
     const SdfField* MSdfField = nullptr;
+    Vector2D MWorldMin{-1.0e9f, -1.0e9f};
+    Vector2D MWorldMax{1.0e9f, 1.0e9f};
+    bool MHasWorldBounds = false;
     std::uint32_t MCount = 0;
     std::uint32_t MLastCount = 0;
     bool MHasLastFrame = false;
+    std::uint64_t MLastSceneRevision = 0;
+    std::uint64_t MLastModificationRevision = 0;
+    std::uint32_t MLastTextureArray = 0xFFFFFFFFu;
+    Rhi::ViewportMode MLastViewportMode{};
     bool MHasLastCamera = false;
     // History generation. Bumping it invalidates every MotionHistory2D record
     // without touching the registry.
     std::uint32_t MMotionEpoch = 1;
     std::vector<Rhi::MotionVectorItem> MMotionItems;
+    // Previous transform per entity index, stored as SoA columns. This used to
+    // be an ECS component, which forced two hash lookups per sprite on the
+    // temporal path; the composer owns the derived state now.
+    MotionHistory2D MMotionHistory;
+    // Per-item generation stamp for parallel motion output. A slot is valid
+    // only when its stamp equals the current generation, so the vector never
+    // needs a per-frame clear or fill.
+    std::vector<std::uint32_t> MMotionStamp;
+    std::uint32_t MMotionStampValue = 0;
+    JobSystem* MJobs = nullptr;
+    std::thread::id MBuildThread{};
     bool MTemporalEnabled = false;
     bool MResetTemporalHistory = true;
     std::uint64_t MFrameIndex = 0;
@@ -274,6 +391,7 @@ private:
     float MPreviousJitterX = 0.0f;
     float MPreviousJitterY = 0.0f;
     std::uint32_t MSceneVersion = 0;
+    std::uint64_t MSceneId = 0;
     Rhi::CameraData MLastCamera{};
 };
 }

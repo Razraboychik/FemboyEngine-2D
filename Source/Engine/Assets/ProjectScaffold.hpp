@@ -115,9 +115,15 @@ constexpr float kFixedStep = 1.0f / 120.0f;
 constexpr int kMaxFixedStepsPerFrame = 8;
 constexpr float kMaxFrameTime = 0.25f;
 
-// Fixed-size render-extract storage: the frame path never allocates. A project
-constexpr std::uint32_t kMaxRenderItems = 2048;
+// Fixed-size render-extract storage: the frame path never allocates. The
+// generated project can raise the item budget at compile time; overflow is
+// reported by Push() and counted instead of being silently swallowed.
+#ifndef FBY_PROJECT_MAX_RENDER_ITEMS
+#define FBY_PROJECT_MAX_RENDER_ITEMS 16384
+#endif
+constexpr std::uint32_t kMaxRenderItems = FBY_PROJECT_MAX_RENDER_ITEMS;
 constexpr std::uint32_t kMaxDrawBatches = 64;
+static_assert(kMaxRenderItems > 0, "the project render-extract budget must be positive");
 
 #ifndef FBY_PROJECT_ASSETS
 #define FBY_PROJECT_ASSETS "assets"
@@ -132,19 +138,32 @@ public:
         MCamera = InCamera;
         MItemCount = 0;
         MBatchCount = 0;
+        MOverflowCount = 0;
     }
 
-    void Push(const Fby::Rhi::RenderItem& InItem, std::uint16_t InLayer, float InDepth) noexcept
+    [[nodiscard]] bool Push(const Fby::Rhi::RenderItem& InItem, std::uint16_t InLayer, float InDepth) noexcept
     {
         if (MItemCount >= kMaxRenderItems)
         {
-            return;
+            ++MOverflowCount;
+            return false;
         }
         const std::uint32_t ScopedIndex = MItemCount;
         MItems[ScopedIndex] = InItem;
         MKeys[ScopedIndex] = Fby::Rhi::MakeRenderKey(InLayer, InDepth, static_cast<std::uint8_t>(ScopedIndex & 0xFFu));
         MOrder[ScopedIndex] = ScopedIndex;
         ++MItemCount;
+        return true;
+    }
+
+    [[nodiscard]] bool Overflowed() const noexcept
+    {
+        return MOverflowCount != 0;
+    }
+
+    [[nodiscard]] std::uint32_t OverflowCount() const noexcept
+    {
+        return MOverflowCount;
     }
 
     void Finish() noexcept
@@ -188,6 +207,7 @@ private:
     Fby::Rhi::CameraData MCamera{};
     std::uint32_t MItemCount = 0;
     std::uint32_t MBatchCount = 0;
+    std::uint32_t MOverflowCount = 0;
 };
 
 // Render-phase system: it only resets the extract with the current drawable

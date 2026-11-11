@@ -82,12 +82,47 @@ bool DrawCookFormatCombo(Assets::TextureFormat* InFormat)
     return false;
 }
 
+bool EditSymbolColor(const char* InLabel, std::uint32_t* InColor)
+{
+    float ScopedRgb[3] = {static_cast<float>((*InColor >> 16u) & 0xFFu) / 255.0f,
+                          static_cast<float>((*InColor >> 8u) & 0xFFu) / 255.0f,
+                          static_cast<float>(*InColor & 0xFFu) / 255.0f};
+    if (!ImGui::ColorEdit3(InLabel, ScopedRgb, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar))
+    {
+        return false;
+    }
+    const auto ScopedByte = [](float InValue)
+    {
+        return static_cast<std::uint32_t>(std::lround(std::clamp(InValue, 0.0f, 1.0f) * 255.0f));
+    };
+    *InColor = (ScopedByte(ScopedRgb[0]) << 16u) | (ScopedByte(ScopedRgb[1]) << 8u) | ScopedByte(ScopedRgb[2]);
+    return true;
+}
+
+void SeedSymbolColors(EditorSettings& InSettings, const EditorPalette& InPalette)
+{
+    InSettings.symbolColors.AxisX = InPalette.AxisX;
+    InSettings.symbolColors.AxisY = InPalette.AxisY;
+    InSettings.symbolColors.Grid = InPalette.Grid;
+    InSettings.symbolColors.Play = InPalette.Play;
+    InSettings.symbolColors.Pause = InPalette.Pause;
+    InSettings.symbolColors.Step = InPalette.Step;
+    InSettings.symbolColors.Stop = InPalette.Stop;
+    InSettings.symbolColors.Rotate = InPalette.Rotate;
+    InSettings.symbolColors.Multiplayer = InPalette.Multiplayer;
+    for (std::size_t ScopedI = 0; ScopedI < InSettings.symbolColors.Plot.size(); ++ScopedI)
+    {
+        InSettings.symbolColors.Plot[ScopedI] = InPalette.Plot[ScopedI];
+    }
+}
+
 // IDE accessibility
 struct IdePalette
 {
     std::array<ImVec4, ImGuiCol_COUNT> base{};
     FlashGuard flash{};
     bool captured = false;
+    std::uint64_t generation = 0;
 };
 
 IdePalette& Palette()
@@ -146,7 +181,8 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
 {
     ImGuiStyle& ScopedStyle = ImGui::GetStyle();
     IdePalette& ScopedPalette = Palette();
-    if (!ScopedPalette.captured)
+    const std::uint64_t ScopedGeneration = EditorThemeGeneration();
+    if (!ScopedPalette.captured || ScopedPalette.generation != ScopedGeneration)
     {
         for (int ScopedIndex = 0; ScopedIndex < ImGuiCol_COUNT; ++ScopedIndex)
         {
@@ -154,6 +190,7 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
                 ScopedStyle.Colors[static_cast<std::size_t>(ScopedIndex)];
         }
         ScopedPalette.captured = true;
+        ScopedPalette.generation = ScopedGeneration;
     }
 
     // Always start from the authored palette.
@@ -186,19 +223,6 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
         ScopedStyle.Colors[ImGuiCol_NavCursor] = HexColor(kThemeAccentActive, 1.0f);
         ScopedStyle.Colors[ImGuiCol_Header] = HexColor(kThemeHeaderActive, 1.0f);
-    }
-
-    const std::uint8_t ScopedDeficiency = std::min<std::uint8_t>(InSettings.colorVision, 3);
-    if (ScopedDeficiency != 0)
-    {
-        const ColorMatrix3 ScopedMatrix = ColorVisionMatrix(static_cast<ColorVisionDeficiency>(ScopedDeficiency));
-        const float ScopedStrength = std::clamp(InSettings.colorVisionStrength, 0.0f, 1.0f);
-        for (int ScopedIndex = 0; ScopedIndex < ImGuiCol_COUNT; ++ScopedIndex)
-        {
-            const Color32 ScopedCorrected = ApplyColorVision(
-                ToColor32(ScopedStyle.Colors[static_cast<std::size_t>(ScopedIndex)]), ScopedMatrix, ScopedStrength);
-            ScopedStyle.Colors[static_cast<std::size_t>(ScopedIndex)] = ToLinear(ScopedCorrected);
-        }
     }
 
     if (InSettings.flashGuard)
@@ -258,7 +282,7 @@ void ProjectSettingsPanel::BeginOrRecord(Ecs::SystemContext& InContext,
         return;
     }
     std::array<std::byte, sizeof(ProjectSettings)> ScopedCurrent{};
-    if (MCommands->CaptureComponent(entt::null, MCodec, ScopedCurrent) != CommandStack::Result::Ok)
+    if (MCommands->CaptureComponent(Fby::kNullEntity, MCodec, ScopedCurrent) != CommandStack::Result::Ok)
     {
         return;
     }
@@ -273,7 +297,7 @@ void ProjectSettingsPanel::BeginOrRecord(Ecs::SystemContext& InContext,
     }
     if (!MTransaction.Active())
     {
-        (void)MTransaction.BeginWithSnapshot(*MCommands, entt::null, MCodec, "Project settings",
+        (void)MTransaction.BeginWithSnapshot(*MCommands, Fby::kNullEntity, MCodec, "Project settings",
                                              InteractionTransaction::Source::Settings,
                                              std::span<const std::byte>(InBefore.data(), InBefore.size()));
     }
@@ -321,7 +345,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     std::array<std::byte, sizeof(ProjectSettings)> ScopedBefore{};
     const bool ScopedTrackable =
         MCommands != nullptr && MCodec != 0xFFFFu &&
-        MCommands->CaptureComponent(entt::null, MCodec, ScopedBefore) == CommandStack::Result::Ok;
+        MCommands->CaptureComponent(Fby::kNullEntity, MCodec, ScopedBefore) == CommandStack::Result::Ok;
 
     ImGui::TextDisabled("Game-facing settings. Commits are one undo step and rewrite project.femproj atomically.");
     ImGui::Separator();
@@ -562,6 +586,14 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::BeginDisabled(ScopedGameVision == 0);
     ImGui::SliderFloat("Colour vision strength", &ScopedProfile.runtime.colorVisionStrength, 0.0f, 1.0f, "%.2f");
     ImGui::EndDisabled();
+
+    ImGui::SeparatorText("Motion comfort (project)");
+    ImGui::SliderFloat("Camera shake", &ScopedValues.motionComfort.cameraShakeScale, 0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Head bob", &ScopedValues.motionComfort.headBobScale, 0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("FOV comfort", &ScopedValues.motionComfort.fovScale, 0.5f, 1.5f, "%.2f");
+    ImGui::SliderFloat("Motion blur", &ScopedValues.motionComfort.motionBlurScale, 0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Soft vignette", &ScopedValues.motionComfort.vignetteScale, 0.0f, 1.5f, "%.2f");
+    ImGui::TextDisabled("Project policy read by the camera and composite pass; no plugin required.");
 
     ImGui::SeparatorText("OLED safety");
     ImGui::Checkbox("Minute OLED Pixel Shifter", &ScopedProfile.presentation.oledPixelShift);
@@ -1009,7 +1041,7 @@ void EditorSettingsPanel::BeginOrRecord(Ecs::SystemContext& InContext,
         return;
     }
     std::array<std::byte, sizeof(EditorSettings)> ScopedCurrent{};
-    if (MCommands->CaptureComponent(entt::null, MCodec, ScopedCurrent) != CommandStack::Result::Ok)
+    if (MCommands->CaptureComponent(Fby::kNullEntity, MCodec, ScopedCurrent) != CommandStack::Result::Ok)
     {
         return;
     }
@@ -1024,7 +1056,7 @@ void EditorSettingsPanel::BeginOrRecord(Ecs::SystemContext& InContext,
     }
     if (!MTransaction.Active())
     {
-        (void)MTransaction.BeginWithSnapshot(*MCommands, entt::null, MCodec, "Editor settings",
+        (void)MTransaction.BeginWithSnapshot(*MCommands, Fby::kNullEntity, MCodec, "Editor settings",
                                              InteractionTransaction::Source::Settings,
                                              std::span<const std::byte>(InBefore.data(), InBefore.size()));
     }
@@ -1071,7 +1103,7 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     std::array<std::byte, sizeof(EditorSettings)> ScopedBefore{};
     const bool ScopedTrackable =
         MCommands != nullptr && MCodec != 0xFFFFu &&
-        MCommands->CaptureComponent(entt::null, MCodec, ScopedBefore) == CommandStack::Result::Ok;
+        MCommands->CaptureComponent(Fby::kNullEntity, MCodec, ScopedBefore) == CommandStack::Result::Ok;
 
     ImGui::TextDisabled("Environment settings. Persisted to project.femproj and editor.ini.");
     ImGui::Separator();
@@ -1136,8 +1168,11 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::SliderFloat("Script input pins", &ScopedValues.fontScriptPinInput, 16.0f, 28.0f, "%.0f px");
     ImGui::SliderFloat("Script output pins", &ScopedValues.fontScriptPinOutput, 16.0f, 28.0f, "%.0f px");
     ImGui::SliderFloat("Scene text", &ScopedValues.fontSceneText, 16.0f, 40.0f, "%.0f px");
-    ImGui::TextDisabled("Font sizes are logical px; the window content scale multiplies them. The atlas reloads on "
-                        "the next frame.");
+    ImGui::SliderFloat("Line spacing", &ScopedValues.textLineSpacing, -4.0f, 24.0f, "%.0f px");
+    ImGui::SliderFloat("Letter spacing", &ScopedValues.textLetterSpacing, -2.0f, 12.0f, "%.1f px");
+    ImGui::SliderFloat("Word spacing", &ScopedValues.textWordSpacing, -4.0f, 24.0f, "%.1f px");
+    ImGui::TextDisabled("Font sizes are logical px; line/letter/word spacing is added per line and glyph. The atlas "
+                        "reloads on the next frame when a font size changes.");
 
     ImGui::SeparatorText("Logs");
     int ScopedLogFiles = static_cast<int>(std::min<std::uint32_t>(ScopedValues.logMaxFiles, 512u));
@@ -1174,6 +1209,64 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::Checkbox("Save editor.ini on commit", &ScopedValues.saveEditorIniOnCommit);
     ImGui::Checkbox("ImGui demo window", &ScopedValues.showDemoWindow);
 
+    ImGui::SeparatorText("Editor theme and symbol colours");
+    const char* ScopedThemeIds[] = {"graphite", "very-dark", "midnight", "forest", "plum", "amber", "crimson"};
+    const char* ScopedThemeNames[] = {"Graphite", "Very dark (not black)", "Midnight RGB", "Forest RGB", "Plum RGB",
+                                      "Amber", "Crimson"};
+    int ScopedTheme = static_cast<int>(ParseEditorTheme(ScopedValues.theme));
+    if (ImGui::Combo("Panel theme", &ScopedTheme, ScopedThemeNames, 7))
+    {
+        CopyProjectField(ScopedValues.theme, sizeof(ScopedValues.theme), ScopedThemeIds[ScopedTheme]);
+    }
+    EditSymbolColor("Text colour", &ScopedValues.textColor);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Text opacity", &ScopedValues.textOpacity, 0.2f, 1.0f, "%.2f");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Text contrast", &ScopedValues.textContrast, 0.5f, 2.0f, "%.2f");
+    ImGui::Checkbox("Text outline", &ScopedValues.textOutline);
+    ImGui::BeginDisabled(!ScopedValues.textOutline);
+    EditSymbolColor("Outline colour", &ScopedValues.textOutlineColor);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Outline size", &ScopedValues.textOutlineSize, 0.5f, 4.0f, "%.1f px");
+    ImGui::EndDisabled();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Panel glow", &ScopedValues.panelGlow, 0.0f, 1.0f, "%.2f");
+    ImGui::TextDisabled("Panel theme controls surface tints; text colour, opacity and contrast are independent. "
+                        "Text is authored in shades of white by default.");
+    if (ImGui::Checkbox("Fine-tune symbol colours", &ScopedValues.customSymbolColors) && ScopedValues.customSymbolColors)
+    {
+        SeedSymbolColors(ScopedValues, CurrentEditorPalette());
+    }
+    ImGui::BeginDisabled(!ScopedValues.customSymbolColors);
+    EditSymbolColor("Axis X", &ScopedValues.symbolColors.AxisX);
+    ImGui::SameLine();
+    EditSymbolColor("Axis Y", &ScopedValues.symbolColors.AxisY);
+    ImGui::SameLine();
+    EditSymbolColor("Grid", &ScopedValues.symbolColors.Grid);
+    EditSymbolColor("Play", &ScopedValues.symbolColors.Play);
+    ImGui::SameLine();
+    EditSymbolColor("Pause", &ScopedValues.symbolColors.Pause);
+    ImGui::SameLine();
+    EditSymbolColor("Step", &ScopedValues.symbolColors.Step);
+    ImGui::SameLine();
+    EditSymbolColor("Stop", &ScopedValues.symbolColors.Stop);
+    EditSymbolColor("Rotate", &ScopedValues.symbolColors.Rotate);
+    ImGui::SameLine();
+    EditSymbolColor("Multiplayer", &ScopedValues.symbolColors.Multiplayer);
+    const char* ScopedPlotLabels[] = {"Plot 1", "Plot 2", "Plot 3", "Plot 4"};
+    for (std::size_t ScopedI = 0; ScopedI < ScopedValues.symbolColors.Plot.size(); ++ScopedI)
+    {
+        EditSymbolColor(ScopedPlotLabels[ScopedI], &ScopedValues.symbolColors.Plot[ScopedI]);
+        if (ScopedI != ScopedValues.symbolColors.Plot.size() - 1)
+        {
+            ImGui::SameLine();
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("Theme changes the semantic colours directly; no full-editor colour matrix is applied.");
+
     // IDE accessibility. These switches apply the engine's accessibility
     ImGui::SeparatorText("Accessibility (editor window)");
     AccessibilityEditorSettings& ScopedIde = MStore->Project().accessibility.editor;
@@ -1187,16 +1280,7 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::SliderFloat("Max luminance change / frame", &ScopedIde.flashThreshold, 0.02f, 0.45f, "%.3f");
     ImGui::EndDisabled();
 
-    const char* ScopedColorVisionNames[] = {"None", "Protanopia", "Deuteranopia", "Tritanopia"};
-    int ScopedColorVision = static_cast<int>(std::min<std::uint8_t>(ScopedIde.colorVision, 3));
-    if (ImGui::Combo("Colour vision correction", &ScopedColorVision, ScopedColorVisionNames, 4))
-    {
-        ScopedIde.colorVision = static_cast<std::uint8_t>(ScopedColorVision);
-    }
-    ImGui::BeginDisabled(ScopedIde.colorVision == 0);
-    ImGui::SliderFloat("Correction strength", &ScopedIde.colorVisionStrength, 0.0f, 1.0f, "%.2f");
-    ImGui::EndDisabled();
-    ImGui::TextDisabled("Machado 2009 matrices are shared with the game display-safety shader.");
+    ImGui::TextDisabled("Colour-vision support is selected above as a theme; it changes semantic colours, not the whole editor.");
     if (ScopedIde.blindMode)
     {
         ImGui::TextWrapped("LogBoy records installed by this mode are fixed-size PODs; a screen reader can drain "
@@ -1251,6 +1335,20 @@ void EditorSettingsPanel::Apply(Ecs::SystemContext& InContext)
     ScopedRetention.MaxLinesPerFile = ScopedValues.logMaxLinesPerFile;
     SetLogRetention(ScopedRetention);
     ApplyIdeAccessibility(MStore->Project().accessibility.editor);
+    const bool ScopedThemeChanged =
+        !MAppliedValid || std::strcmp(MApplied.theme, ScopedValues.theme) != 0 ||
+        MApplied.textColor != ScopedValues.textColor || MApplied.textOpacity != ScopedValues.textOpacity ||
+        MApplied.textContrast != ScopedValues.textContrast || MApplied.textOutline != ScopedValues.textOutline ||
+        MApplied.textOutlineColor != ScopedValues.textOutlineColor ||
+        MApplied.textOutlineSize != ScopedValues.textOutlineSize ||
+        MApplied.panelGlow != ScopedValues.panelGlow ||
+        MApplied.customSymbolColors != ScopedValues.customSymbolColors ||
+        MApplied.symbolColors != ScopedValues.symbolColors;
+    if (ScopedThemeChanged)
+    {
+        ApplyEditorTheme(ScopedValues);
+        Palette().captured = false;
+    }
     MApplied = ScopedValues;
     MAppliedValid = true;
 }

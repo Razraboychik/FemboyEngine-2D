@@ -1,5 +1,6 @@
 // FemboyEngine2D - AOT transpiler / loader tests.
 #include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/Script/AotAbi.hpp"
 #include "Engine/Script/AotModule.hpp"
 #include "Engine/Script/AotTranspiler.hpp"
@@ -142,7 +143,7 @@ bool TestHostBridge()
     std::string ScopedError;
     Check(Fby::Script::ValidateAotModule(ScopedModule, ScopedBridge, &ScopedError), "module validates");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Velocity>(ScopedEntity, Fby::Velocity{Fby::Vector2D{2.0f, 4.0f}});
 
@@ -235,7 +236,7 @@ bool TestOptionalEndToEnd()
     Check(ScopedModule.Loaded(), "compiled AOT plugin loads");
     Check(ScopedModule.GraphHash() != 0, "plugin exposes its graph hash");
 
-    entt::registry ScopedRegistry;
+    Fby::Scene::Registry ScopedRegistry;
     const Fby::Entity ScopedEntity = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Velocity>(ScopedEntity, Fby::Velocity{Fby::Vector2D{2.0f, 4.0f}});
     Fby::Script::VmContext ScopedContext{ScopedRegistry};
