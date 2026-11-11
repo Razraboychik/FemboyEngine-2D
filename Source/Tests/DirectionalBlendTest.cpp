@@ -298,7 +298,13 @@ void TestDeterminismAndSelfContainedTable()
     DirectionalBlendSample ScopedB;
     EvaluateDirectionalBlend(ScopedFirst, {0.3f, 0.9f}, &ScopedA);
     EvaluateDirectionalBlend(ScopedFirst, {0.3f, 0.9f}, &ScopedB);
-    Check(std::memcmp(&ScopedA, &ScopedB, sizeof(DirectionalBlendSample)) == 0, "evaluation is repeatable");
+    bool ScopedRepeatable = ScopedA.Count == ScopedB.Count;
+    for (std::uint8_t ScopedIndex = 0; ScopedIndex < ScopedA.Count && ScopedRepeatable; ++ScopedIndex)
+    {
+        ScopedRepeatable = ScopedA.Weights[ScopedIndex].ClipId == ScopedB.Weights[ScopedIndex].ClipId &&
+                           ScopedA.Weights[ScopedIndex].Weight == ScopedB.Weights[ScopedIndex].Weight;
+    }
+    Check(ScopedRepeatable, "evaluation is repeatable");
 
     // The table copies its anchors: editing the document afterwards cannot
     // change an already baked runtime image.
