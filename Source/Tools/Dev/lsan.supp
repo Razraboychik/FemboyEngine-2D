@@ -1,0 +1,9 @@
+# LeakSanitizer suppressions for the platform window backend.
+# SDL and the X11 client libraries allocate process-global display and input
+# state that outlives SDL_Quit on the headless CI runner. The engine-owned
+# allocations remain checked.
+leak:libX11.so
+leak:libxcb.so
+leak:libwayland-client.so
+leak:SDL_x11
+leak:X11_

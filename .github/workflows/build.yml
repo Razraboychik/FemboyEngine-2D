@@ -164,12 +164,12 @@ jobs:
       - name: Text stack under ASan and LSan
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
-          LSAN_OPTIONS: detect_leaks=1:report_objects=1
+          LSAN_OPTIONS: detect_leaks=1:report_objects=1:suppressions=${{ github.workspace }}/Source/Tools/Dev/lsan.supp
         run: xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$"
       - name: Full suite under ASan and LSan
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
-          LSAN_OPTIONS: detect_leaks=1:report_objects=1
+          LSAN_OPTIONS: detect_leaks=1:report_objects=1:suppressions=${{ github.workspace }}/Source/Tools/Dev/lsan.supp
         run: xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300
 
   linux-ubsan:
