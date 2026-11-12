@@ -1,0 +1,127 @@
+# FemboyEngine2D - PixelFX status particle pack.
+# Load with LoadParticlePresetFile("assets/particles/pixel_fx_status.fbyparticle", registry).
+
+[pack]
+id = "PixelFX.Status"
+name = "Pixel FX Status"
+version = "1.0.0"
+
+[[presets]]
+id = "PixelFX.Status.Poison"
+name = "Poison"
+category = "Status"
+shape = "Bubble"
+emission_shape = "Circle"
+emission_extents = [8.0, 8.0]
+max_particles = 256
+seed = 32401
+direction = [0.0, -1.0]
+gravity = [0.0, -10.0]
+spread = 1.0
+speed = [10.0, 40.0]
+lifetime = [1.0, 2.0]
+size = [4.0, 1.0]
+rotation = [0.0, 0.5]
+turbulence = 25.0
+rate = 22.0
+colors = ["#80E040C0", "#20601000"]
+
+[[presets]]
+id = "PixelFX.Status.Frost"
+name = "Frost"
+category = "Status"
+shape = "Diamond"
+emission_shape = "Box"
+emission_extents = [12.0, 6.0]
+max_particles = 256
+seed = 32402
+direction = [0.0, -1.0]
+gravity = [0.0, 30.0]
+spread = 0.9
+speed = [20.0, 50.0]
+lifetime = [0.80, 1.50]
+size = [3.0, 1.0]
+rotation = [0.0, 2.0]
+rate = 40.0
+colors = ["#C0F0FFE0", "#5090C000"]
+
+[[presets]]
+id = "PixelFX.Status.Burn"
+name = "Burn"
+category = "Status"
+shape = "Glow"
+emission_shape = "Circle"
+emission_extents = [6.0, 6.0]
+max_particles = 256
+seed = 32403
+direction = [0.0, -1.0]
+gravity = [0.0, -60.0]
+spread = 0.7
+speed = [20.0, 70.0]
+lifetime = [0.50, 1.10]
+size = [6.0, 2.0]
+rotation = [0.0, 0.5]
+rate = 60.0
+additive = true
+colors = ["#FFB040FF", "#E0301000"]
+
+[[presets]]
+id = "PixelFX.Status.Shock"
+name = "Shock"
+category = "Status"
+shape = "Spark"
+emission_shape = "Point"
+max_particles = 128
+seed = 32404
+direction = [0.0, -1.0]
+gravity = [0.0, 0.0]
+spread = 3.14159
+speed = [60.0, 180.0]
+lifetime = [0.15, 0.35]
+size = [3.0, 0.0]
+rate = 0.0
+burst_count = 30
+burst_interval = 0.15
+additive = true
+colors = ["#A0E0FFFF", "#4080FF00"]
+
+[[presets]]
+id = "PixelFX.Status.LowOxygen"
+name = "Low Oxygen"
+category = "Status"
+shape = "Ring"
+emission_shape = "Circle"
+emission_extents = [20.0, 20.0]
+max_particles = 128
+seed = 32405
+direction = [0.0, -1.0]
+gravity = [0.0, 0.0]
+spread = 1.57
+speed = [5.0, 20.0]
+lifetime = [1.50, 3.0]
+size = [8.0, 16.0]
+rotation = [0.0, 0.5]
+turbulence = 5.0
+rate = 12.0
+colors = ["#80C0FF60", "#20408000"]
+
+[[presets]]
+id = "PixelFX.Status.Radiation"
+name = "Radiation"
+category = "Status"
+shape = "Glow"
+emission_shape = "Circle"
+emission_extents = [10.0, 10.0]
+max_particles = 256
+seed = 32406
+direction = [0.0, -1.0]
+gravity = [0.0, 0.0]
+spread = 1.57
+speed = [10.0, 40.0]
+lifetime = [0.80, 1.80]
+size = [4.0, 1.0]
+rotation = [0.0, 0.5]
+turbulence = 10.0
+rate = 30.0
+additive = true
+colors = ["#80FFA0C0", "#20603000"]

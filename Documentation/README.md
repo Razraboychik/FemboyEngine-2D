@@ -69,6 +69,8 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Tune camera motion and distortion | [Camera effects](design/camera-effects.md) |
 | Add radiation screen noise | [Radiation effect](design/radiation.md) |
 | Add ready-made voice effects, moderation mumble and voice SFX | [Voice presets](design/voice-presets.md), [Voice](design/voice.md) |
+| Add configurable particle effects | [Particle effects](design/particle-effects.md) |
+| Add ready-made particle presets as data packs | [Particle presets](design/particle-presets.md) |
 | Add actions, contexts, gamepads and rebinding | [Input system](design/input-system.md) |
 | Build authoritative input and replication | [Application Guide: replication](md/en/FemboyEngineApplicationGuide_EN.md#51-deterministic-input-and-replication-while-building-the-game) |
 | Use FemboyScript, LogicGraph or StateTree | [FemboyScript](md/en/FemboyScript_EN.md), [LogicGraph values and AOT](design/scripting.md) |

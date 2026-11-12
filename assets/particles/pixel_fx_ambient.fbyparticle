@@ -1,0 +1,131 @@
+# FemboyEngine2D - PixelFX ambient particle pack.
+# Load with LoadParticlePresetFile("assets/particles/pixel_fx_ambient.fbyparticle", registry).
+
+[pack]
+id = "PixelFX.Ambient"
+name = "Pixel FX Ambient"
+version = "1.0.0"
+
+[[presets]]
+id = "PixelFX.Ambient.Fireflies"
+name = "Fireflies"
+category = "Ambient"
+shape = "Glow"
+emission_shape = "Circle"
+emission_extents = [24.0, 24.0]
+max_particles = 256
+seed = 31301
+direction = [0.0, -1.0]
+gravity = [0.0, -5.0]
+wind = [8.0, 0.0]
+spread = 1.57
+speed = [5.0, 20.0]
+lifetime = [2.0, 5.0]
+size = [1.0, 3.0]
+rotation = [0.0, 0.5]
+turbulence = 8.0
+swirl = 5.0
+rate = 8.0
+additive = true
+colors = ["#E0FF80FF", "#80FF4000"]
+
+[[presets]]
+id = "PixelFX.Ambient.Leaves"
+name = "Leaves"
+category = "Ambient"
+shape = "Leaf"
+emission_shape = "Box"
+emission_extents = [64.0, 8.0]
+max_particles = 256
+seed = 31302
+direction = [0.0, -1.0]
+gravity = [0.0, 40.0]
+wind = [25.0, 0.0]
+spread = 1.0
+speed = [20.0, 60.0]
+lifetime = [2.0, 4.0]
+size = [4.0, 3.0]
+rotation = [0.0, 3.0]
+swirl = 30.0
+rate = 12.0
+colors = ["#D0A030FF", "#60401000"]
+
+[[presets]]
+id = "PixelFX.Ambient.Snow"
+name = "Snow"
+category = "Ambient"
+shape = "Snowflake"
+emission_shape = "Box"
+emission_extents = [240.0, 16.0]
+max_particles = 512
+seed = 31303
+direction = [0.0, -1.0]
+gravity = [0.0, 15.0]
+wind = [10.0, 0.0]
+spread = 1.4
+speed = [8.0, 25.0]
+lifetime = [3.0, 6.0]
+size = [2.0, 3.0]
+rotation = [0.0, 1.0]
+rate = 25.0
+colors = ["#F0F8FFFF", "#C0D8FF00"]
+
+[[presets]]
+id = "PixelFX.Ambient.Rain"
+name = "Rain"
+category = "Ambient"
+shape = "Square"
+emission_shape = "Box"
+emission_extents = [240.0, 8.0]
+max_particles = 1024
+seed = 31304
+direction = [0.0, -1.0]
+gravity = [0.0, 700.0]
+spread = 0.1
+speed = [300.0, 420.0]
+lifetime = [0.50, 0.80]
+size = [1.0, 1.0]
+rotation = [0.0, 0.0]
+rate = 240.0
+colors = ["#80B0E0B0", "#40609000"]
+
+[[presets]]
+id = "PixelFX.Ambient.FogMotes"
+name = "Fog Motes"
+category = "Ambient"
+shape = "Smoke"
+emission_shape = "Box"
+emission_extents = [160.0, 32.0]
+max_particles = 128
+seed = 31305
+direction = [0.0, -1.0]
+gravity = [0.0, -5.0]
+spread = 1.2
+speed = [5.0, 20.0]
+lifetime = [3.0, 6.0]
+size = [12.0, 28.0]
+rotation = [0.0, 0.2]
+drag = 1.0
+rate = 6.0
+colors = ["#9090A040", "#40405000"]
+
+[[presets]]
+id = "PixelFX.Ambient.Embers"
+name = "Embers"
+category = "Ambient"
+shape = "Spark"
+emission_shape = "Circle"
+emission_extents = [16.0, 16.0]
+max_particles = 256
+seed = 31306
+direction = [0.0, -1.0]
+gravity = [0.0, -20.0]
+wind = [8.0, 0.0]
+spread = 0.8
+speed = [20.0, 60.0]
+lifetime = [1.0, 2.5]
+size = [1.0, 2.0]
+rotation = [0.0, 0.5]
+rate = 40.0
+additive = true
+colors = ["#FF9030FF", "#C0200000"]

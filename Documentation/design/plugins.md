@@ -51,6 +51,9 @@ This branch now has the first slice in the engine:
     `FBY_PHASE_UI` and `FBY_PHASE_RENDER`.
 - Accessibility plugins:
   - `Source/Plugins/RainbowPalette` — 80-colour extension `Rainbow.Palette80` (8x8 hues/shades plus 8 light and 8 dark neutrals);
+  - `Source/Plugins/ThemedPalettes` — six 80-colour theme packs: `Palette.Halloween`,
+    `Palette.Winter`, `Palette.Autumn`, `Palette.Spring`, `Palette.Terminal` and
+    `Palette.Paper`; each is ten curated seed families expanded to eight shades;
   - `Source/Plugins/Nvg` — generation/pattern profiles `Nvg.Gen1.Scanlines`
     through `Nvg.Gen4.Clean`;
   - `Source/Plugins/Thermal` — standard, high-contrast, ironbow, rainbow, white-hot, black-hot and generation-1 thermal
@@ -225,6 +228,33 @@ The palettes are:
 
 Names are stable ids (`Rainbow.Nvg`, `Rainbow.Thermal`, `Rainbow.Traffic.Protan`,
 `Rainbow.Extended`), while display names are localisable.
+
+## Themed palettes
+
+The engine already owns the runtime theme model: `AccessibilityTheme` with its
+16 semantic slots (including slot 15, the highlight colour), text size, contrast
+and outline, and the `AccessibilityThemeRegistry` that plugins can write through
+`register_theme`. Material highlighting is a renderer/game concern; a plugin
+cannot add a render pass or a material.
+
+`ThemedPalettes` is therefore a palette-content plugin, not a second theme
+system. It registers six 80-colour extensions through
+`register_palette_extension`:
+
+| Id | Mood |
+|---|---|
+| `Palette.Halloween` | pumpkin, bone, blood, moss, candle, purple, rust, fog, ember, shadow |
+| `Palette.Winter` | ice, snow, pine, twilight, steel, frost, deep night, silver, aurora, black |
+| `Palette.Autumn` | amber, rust, gold, moss, chestnut, wine, wheat, olive, fog, charcoal |
+| `Palette.Spring` | blossom, leaf, sky, butter, lavender, mint, soil, rain, coral, warm white |
+| `Palette.Terminal` | phosphor, dark green, light green, amber, amber dark, cyan, gray, black, acid, red |
+| `Palette.Paper` | parchment, ink, cream, sepia, faded blue, brown, gray, gold, rose, black |
+
+Each family expands to eight shades, so every extension fills all 80 slots.
+Selecting one changes the palette the game and the particle presets resolve
+against; the semantic theme and its highlight slot stay in core. A theme pack is
+still possible as a content plugin (`register_theme` plus a matching palette),
+but it does not need new engine code and is separate from this palette pack.
 
 ## Alcohol effect pool
 

@@ -41,6 +41,7 @@
 #include "Editor/Panels/LicensesPanel.hpp"
 #include "Editor/Panels/NetworkDiagnosticsPanel.hpp"
 #include "Editor/Panels/PieClientViewport.hpp"
+#include "Editor/Panels/ParticleFxPanel.hpp"
 #include "Editor/Panels/VoiceDevicePanel.hpp"
 #include "Editor/Panels/MaterialGraphPanel.hpp"
 #include "Editor/Infrastructure/PlayInEditor.hpp"
@@ -647,6 +648,7 @@ struct EditorSystem::Impl
     Fby::Core::ProfilerPanel profilerPanel;
     const std::array<std::string_view, 5> profilerNames{"PreUpdate", "FixedUpdate", "PostUpdate", "Render", "Frame"};
     VoiceDevicePanel voiceDevices;
+    ParticleFxPanel particleFx;
     TransportGroupPanel transportGroups;
     std::unique_ptr<VoiceSystem> voiceRuntime;
     VoiceSession voiceSession;
@@ -697,6 +699,7 @@ struct EditorSystem::Impl
     bool showLicenses = false;
     bool showNetworkDiagnostics = false;
     bool showVoiceDevices = false;
+    bool showParticleFx = false;
     bool showTransportGroups = false;
     bool showMaterialGraph = true;
     bool showVisualScript = true;
@@ -4471,6 +4474,7 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("Licenses", nullptr, &showLicenses);
                 ImGui::MenuItem("Network Diagnostics", nullptr, &showNetworkDiagnostics);
                 ImGui::MenuItem("Voice Devices", nullptr, &showVoiceDevices);
+                ImGui::MenuItem("Particle FX", nullptr, &showParticleFx);
                 ImGui::MenuItem("Transport Groups", nullptr, &showTransportGroups);
                 ImGui::MenuItem("ImGui demo", nullptr, &showDemo);
                 ImGui::EndMenu();
@@ -5711,6 +5715,11 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         MImpl->voiceDevices.Draw(&MImpl->showVoiceDevices, &MImpl->projectConfig, InContext.audio,
                                  MImpl->voiceRuntime.get(), &MImpl->voiceSession, &MImpl->voicePresets,
                                  &MImpl->voiceSelection, &MImpl->voicePolicy, &MImpl->voiceSfxSettings);
+    }
+    if (MImpl->showParticleFx)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->particleFx.Draw(&MImpl->showParticleFx);
     }
     if (MImpl->showTransportGroups)
     {

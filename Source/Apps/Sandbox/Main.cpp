@@ -12,6 +12,7 @@
 #include "Engine/Core/Splash.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/Effects/ParticleScene.hpp"
 #include "Engine/ECS/ParallelForEach.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/Core/JobSystem.hpp"
@@ -228,10 +229,22 @@ void SpawnSprites(World& InWorld, std::uint32_t InCount, std::uint32_t InSeed)
     }
 }
 
+void SpawnParticleEffect(Fby::Fcs::Registry& InRegistry, const char* InPreset, Fby::Vector2D InPosition)
+{
+    const Fby::Entity ScopedEntity = InRegistry.create();
+    InRegistry.emplace<Fby::Transform2D>(ScopedEntity, Fby::Transform2D{InPosition, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+    Fby::ParticleEffectComponent ScopedComponent{};
+    if (FillParticleEffectComponent(ScopedComponent, InPreset))
+    {
+        InRegistry.emplace<Fby::ParticleEffectComponent>(ScopedEntity, ScopedComponent);
+    }
+}
+
 struct SandboxSystems
 {
     World* world = nullptr;
     RenderExtract* extract = nullptr;
+    Fby::ParticleSceneSystem* particles = nullptr;
 };
 
 void MovementSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
@@ -295,6 +308,29 @@ void RenderExtractSystem(const Fby::Ecs::ConstRenderSystemView& InView, void* In
                                     ScopedKeys[ScopedI] = Fby::Rhi::MakeRenderKey(ScopedOrder.Layer, ScopedOrder.Depth);
                                 }
                             });
+
+    std::uint32_t ScopedParticleCount = 0;
+    if (ScopedSystems.particles != nullptr)
+    {
+        static const Fby::ParticleShapeAtlas ScopedParticleAtlas = []
+        {
+            Fby::ParticleShapeAtlas ScopedAtlas = Fby::ParticleShapeAtlas::Defaults();
+            for (Fby::ParticleShapeFrame& ScopedFrame : ScopedAtlas.Frames)
+            {
+                ScopedFrame.Layer = 0;
+            }
+            return ScopedAtlas;
+        }();
+        const std::uint32_t ScopedTail =
+            static_cast<std::uint32_t>(ScopedSystems.extract->Capacity() - static_cast<std::size_t>(ScopedCount));
+        ScopedParticleCount = ScopedSystems.particles->BuildRenderItems(
+            std::span<Fby::Rhi::RenderItem>(ScopedItems + ScopedCount, ScopedTail), ScopedParticleAtlas);
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedParticleCount; ++ScopedI)
+        {
+            ScopedKeys[ScopedCount + ScopedI] = Fby::Rhi::MakeRenderKey(8, 0);
+        }
+        ScopedSystems.extract->Begin(ScopedCount + ScopedParticleCount);
+    }
 }
 
 void ExtractRegistry(const Fby::Ecs::Registry& InRegistry, RenderExtract& InExtract)
@@ -585,8 +621,13 @@ int main(int argc, char** argv)
     World ScopedWorld;
     SpawnSprites(ScopedWorld, ScopedOptions.SpriteCount, 0xC0FFEEu);
 
+    std::unique_ptr<Fby::ParticleSceneSystem> ScopedParticles = std::make_unique<Fby::ParticleSceneSystem>();
+    SpawnParticleEffect(ScopedWorld.registry, "Particle.Fire", Fby::Vector2D{2000.0f, 1200.0f});
+    SpawnParticleEffect(ScopedWorld.registry, "Particle.Snow", Fby::Vector2D{1800.0f, 900.0f});
+    SpawnParticleEffect(ScopedWorld.registry, "Particle.Bubbles", Fby::Vector2D{2200.0f, 1400.0f});
+
     RenderExtract ScopedExtract;
-    ScopedExtract.Resize(ScopedWorld.sprites.size());
+    ScopedExtract.Resize(ScopedWorld.sprites.size() + Fby::kParticleEffectMaxParticles);
 
     // Accessibility is a frame policy, not a postscript: the profile is applied
     // once and every frame receives the flags the RHI already understands.
@@ -668,7 +709,7 @@ int main(int argc, char** argv)
     {
         ScopedContext.fonts = &ScopedUiFontStack.Fonts();
     }
-    SandboxSystems ScopedSystems{&ScopedWorld, &ScopedExtract};
+    SandboxSystems ScopedSystems{&ScopedWorld, &ScopedExtract, ScopedParticles.get()};
 
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, &ScopedSystems);
     Fby::Ecs::SystemAccess ScopedExtractAccess;
@@ -831,6 +872,7 @@ int main(int argc, char** argv)
             }
 
             ScopedContext.dt = ScopedDt;
+            ScopedParticles->Update(ScopedWorld.registry, ScopedDt);
             ScopedGraph.Run(Fby::Ecs::Phase::PostUpdate, ScopedContext);
             ScopedGraph.Run(Fby::Ecs::Phase::Ui, ScopedContext);
             ScopedGraph.Run(Fby::Ecs::Phase::Render, ScopedContext);

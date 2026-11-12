@@ -1,4 +1,8 @@
-// FemboyEngine2D - GPU particle emitter data.
+// FemboyEngine2D - reserved GPU particle emitter data.
+//
+// The shipping 2D path is ParticleEffectSystem (Engine/Effects/ParticleEffects.hpp).
+// This component and particle_sim.comp are not wired to a render pipeline yet;
+// keep them as the starting point for a future high-count GPU backend.
 #pragma once
 
 #include "Engine/Core/Types.hpp"

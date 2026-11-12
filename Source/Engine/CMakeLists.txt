@@ -19,6 +19,9 @@ set(FBY_ENGINE_SOURCES
     Assets/SpriteAtlas.cpp
     Assets/VFS.cpp
     Documents/Document.cpp
+    Effects/ParticleEffects.cpp
+    Effects/ParticleScene.cpp
+    Effects/ParticlePreset.cpp
     Audio/Audio.cpp
     Audio/AudioDevices.cpp
     Audio/AudioStream.cpp

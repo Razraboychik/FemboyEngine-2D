@@ -1,0 +1,30 @@
+diff --git a/third_party/ImPlot-master/implot-master/implot_items.cpp b/third_party/ImPlot-master/implot-master/implot_items.cpp
+index 1c1fa70..d031931 100644
+--- a/third_party/ImPlot-master/implot-master/implot_items.cpp
++++ b/third_party/ImPlot-master/implot-master/implot_items.cpp
+@@ -1683,8 +1683,8 @@ struct RendererCircleFill : RendererBase {
+                 float sin_a = ImSin(angle);
+ 
+                 // Compute point in plot coordinates
+-                ImPlotPoint plot_point(p3D.x + cos_a * radius_in_plot_coords,
+-                                      p3D.y + sin_a * radius_in_plot_coords);
++                ImPlotPoint plot_point(p3D.x + static_cast<double>(cos_a) * static_cast<double>(radius_in_plot_coords),
++                                      p3D.y + static_cast<double>(sin_a) * static_cast<double>(radius_in_plot_coords));
+                 // Transform to pixel coordinates
+                 ImVec2 pixel_pos = this->Transformer(plot_point);
+ 
+@@ -1761,10 +1761,10 @@ struct RendererCircleLine : RendererBase {
+                 float angle2 = a_step * ((i + 1) % num_segments);
+ 
+                 // Compute points in plot coordinates
+-                ImPlotPoint plot_point1(p3D.x + ImCos(angle1) * radius_in_plot_coords,
+-                                       p3D.y + ImSin(angle1) * radius_in_plot_coords);
+-                ImPlotPoint plot_point2(p3D.x + ImCos(angle2) * radius_in_plot_coords,
+-                                       p3D.y + ImSin(angle2) * radius_in_plot_coords);
++                ImPlotPoint plot_point1(p3D.x + static_cast<double>(ImCos(angle1)) * static_cast<double>(radius_in_plot_coords),
++                                       p3D.y + static_cast<double>(ImSin(angle1)) * static_cast<double>(radius_in_plot_coords));
++                ImPlotPoint plot_point2(p3D.x + static_cast<double>(ImCos(angle2)) * static_cast<double>(radius_in_plot_coords),
++                                       p3D.y + static_cast<double>(ImSin(angle2)) * static_cast<double>(radius_in_plot_coords));
+ 
+                 // Transform to pixel coordinates
+                 ImVec2 p1 = this->Transformer(plot_point1);

@@ -1,6 +1,6 @@
 # FemboyEngine2D
 
-[English](README.md) | [Русский перевод](README_RU.md)
+[English](README.md) | [Русский перевод](READMEs/README_RU.md)
 
 **A data-oriented 2D game engine written from scratch in C++26.**
 
@@ -100,6 +100,7 @@ memory model.
 | Domain | Core pieces | Memory and execution contract |
 |---|---|---|
 | Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, vectors, Mirror reflection, jobs, SDL3 platform, plugin ABI | Value types, checked casts compile away, no RTTI in hot paths, worker pool with latched task-fault containment |
+| Effects | Fixed-capacity CPU particle pool, 16 editable presets, 12 white-mask shape slots, deterministic gravity/wind/drag/turbulence/swirl | One span of `RenderItem`s per frame, no allocation, the caller owns the mask atlas and palette |
 | RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, engine-side `Rhi::FrameComposer`, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts | One flat packet per frame, explicit frame lifetime, no per-item allocations, bindless-style keys |
 | ECS | FCS chunked registry, trivially copyable components, four-phase schedule, `SystemGraph` with opt-in parallel waves and declared service/component access, Snapshot v5 | Archetype/chunk storage, systems borrow spans instead of owning objects, snapshots are explicit copies; v4 snapshots are rejected |
 | Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input | No heap in the input path; bounded events and mapping tables; deterministic per-tick sampling |
@@ -443,7 +444,7 @@ are written to the log file in both cases.
 The documentation set is published as English and Russian translation, with
 independent Markdown, Word, PDF and DjVu editions. Start at
 [Documentation](Documentation/README.md); the Russian translation of this README
-is [README_RU.md](README_RU.md).
+is [the Russian README](READMEs/README_RU.md).
 
 - [Architecture specification (EN)](Documentation/md/en/FemboyEngineArchitecture_EN.md)
 - [Application guide (EN)](Documentation/md/en/FemboyEngineApplicationGuide_EN.md)
@@ -564,4 +565,4 @@ the null RHI keeps headless CI machines usable.
 
 ---
 
-[Русский перевод](README_RU.md)
+[Русский перевод](READMEs/README_RU.md)

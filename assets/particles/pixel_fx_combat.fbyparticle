@@ -1,0 +1,136 @@
+# FemboyEngine2D - PixelFX combat particle pack.
+# Load with LoadParticlePresetFile("assets/particles/pixel_fx_combat.fbyparticle", registry).
+
+[pack]
+id = "PixelFX.Combat"
+name = "Pixel FX Combat"
+version = "1.0.0"
+
+[[presets]]
+id = "PixelFX.Combat.Sparks"
+name = "Sparks"
+category = "Combat"
+shape = "Spark"
+emission_shape = "Point"
+max_particles = 512
+seed = 30201
+direction = [0.0, -1.0]
+gravity = [0.0, 300.0]
+wind = [0.0, 0.0]
+emission_extents = [0.0, 0.0]
+spread = 0.9
+speed = [120.0, 260.0]
+lifetime = [0.25, 0.60]
+size = [2.0, 0.0]
+rotation = [0.0, 1.0]
+drag = 1.5
+turbulence = 0.0
+swirl = 0.0
+rate = 160.0
+burst_count = 0
+burst_interval = 0.0
+duration = 0.0
+loop = true
+additive = true
+colors = ["#FFE060FF", "#FF602000"]
+
+[[presets]]
+id = "PixelFX.Combat.Blood"
+name = "Blood"
+category = "Combat"
+shape = "Circle"
+emission_shape = "Point"
+max_particles = 256
+seed = 30202
+direction = [0.0, -1.0]
+gravity = [0.0, 500.0]
+spread = 0.7
+speed = [60.0, 220.0]
+lifetime = [0.40, 0.90]
+size = [3.0, 1.0]
+rotation = [0.0, 2.0]
+rate = 90.0
+colors = ["#B01018FF", "#50080C00"]
+
+[[presets]]
+id = "PixelFX.Combat.Debris"
+name = "Debris"
+category = "Combat"
+shape = "Square"
+emission_shape = "Circle"
+emission_extents = [6.0, 6.0]
+max_particles = 256
+seed = 30203
+direction = [0.0, -1.0]
+gravity = [0.0, 600.0]
+spread = 1.1
+speed = [80.0, 240.0]
+lifetime = [0.50, 1.10]
+size = [3.0, 1.0]
+rotation = [0.0, 8.0]
+rate = 70.0
+colors = ["#C0A080FF", "#60504000"]
+
+[[presets]]
+id = "PixelFX.Combat.Explosion"
+name = "Explosion"
+category = "Combat"
+shape = "Glow"
+emission_shape = "Point"
+max_particles = 512
+seed = 30204
+direction = [0.0, -1.0]
+gravity = [0.0, 80.0]
+spread = 3.14159
+speed = [200.0, 420.0]
+lifetime = [0.30, 0.70]
+size = [8.0, 0.0]
+rotation = [0.0, 1.0]
+rate = 0.0
+burst_count = 120
+burst_interval = 0.0
+loop = false
+additive = true
+colors = ["#FFC060FF", "#80100000"]
+
+[[presets]]
+id = "PixelFX.Combat.HitFlash"
+name = "Hit Flash"
+category = "Combat"
+shape = "Glow"
+emission_shape = "Point"
+max_particles = 64
+seed = 30205
+direction = [0.0, -1.0]
+gravity = [0.0, 0.0]
+spread = 3.14159
+speed = [20.0, 60.0]
+lifetime = [0.08, 0.18]
+size = [12.0, 2.0]
+rate = 0.0
+burst_count = 18
+burst_interval = 0.0
+loop = false
+additive = true
+colors = ["#FFFFFFFF", "#FFE0A000"]
+
+[[presets]]
+id = "PixelFX.Combat.MuzzleFlash"
+name = "Muzzle Flash"
+category = "Combat"
+shape = "Glow"
+emission_shape = "Point"
+max_particles = 64
+seed = 30206
+direction = [1.0, 0.0]
+gravity = [0.0, 0.0]
+spread = 0.6
+speed = [80.0, 160.0]
+lifetime = [0.10, 0.20]
+size = [6.0, 0.0]
+rate = 0.0
+burst_count = 24
+burst_interval = 0.0
+loop = false
+additive = true
+colors = ["#FFF0A0FF", "#FF800000"]

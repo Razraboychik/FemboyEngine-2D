@@ -21,9 +21,14 @@ tests, demos and tools:
 | `third_party/opus-master/opus-main/dnn/dump_data.c` | Opus DNN dump utility |
 | `third_party/flatbuffers-master/flatbuffers-master/tests/**` | upstream FlatBuffers tests |
 
-The exclusion lives in `.github/codeql/codeql-config.yml`. It is deliberately
-narrow: it does not hide the Opus codec, HarfBuzz, ImGui, ImPlot, Monocypher,
-miniaudio's real header or any other compiled vendor source.
+The exclusion list lives in `.github/codeql/codeql-config.yml`. It is
+deliberately narrow: it does not hide the Opus codec, HarfBuzz, ImGui, ImPlot,
+Monocypher, miniaudio's real header or any other compiled vendor source.
+
+Default setup does **not** read this file automatically. Advanced setup and the
+`github-codeql-config-file` organization property do; this user-owned repository
+uses neither, so the current unused alerts are dismissed individually as
+`won't fix`. See the audit for the count and the branch/scan history.
 
 ## Rules for developers
 
@@ -40,16 +45,19 @@ miniaudio's real header or any other compiled vendor source.
 
 ## How to verify the exclusion
 
-The configuration is read by the CodeQL workflow that scans `main`. Inspect the
-analysis and confirm that every remaining result is in a compiled vendor file:
+Check the current analysis and confirm that every remaining result is in a
+compiled vendor file:
 
 ```text
 .github/codeql/codeql-config.yml
 Documentation/design/codeql-audit.md
 ```
 
-The audit document records the latest analysis, the rule, and the split between
-compiled and unused vendor alerts.
+The audit document records the latest analysis, the rule, the dismissal count
+and the split between compiled and unused vendor alerts. A default-setup scan
+that still reports an excluded path means the current dismissal was invalidated
+by a line change; re-check the path and dismiss it again or move the repository
+to advanced setup.
 
 ## When this policy should change
 

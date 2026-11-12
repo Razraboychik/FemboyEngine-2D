@@ -31,6 +31,7 @@ add_library(fby_editor STATIC
     Panels/PieClientViewport.cpp
     Panels/SdfCharacterPanel.cpp
     Panels/VoiceDevicePanel.cpp
+    Panels/ParticleFxPanel.cpp
     Panels/MaterialGraphPanel.cpp
     Panels/NodeCanvasPanel.cpp
     Panels/ProjectDashboard.cpp

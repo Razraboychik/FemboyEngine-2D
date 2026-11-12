@@ -1,0 +1,94 @@
+diff --git a/third_party/imgui-master/imgui-master/imgui.cpp b/third_party/imgui-master/imgui-master/imgui.cpp
+index 8a72f23..a22cd3f 100644
+--- a/third_party/imgui-master/imgui-master/imgui.cpp
++++ b/third_party/imgui-master/imgui-master/imgui.cpp
+@@ -1595,6 +1595,8 @@ ImGuiStyle::ImGuiStyle()
+     FontSizeBase                = 0.0f;             // Will default to io.Fonts->Fonts[0] on first frame.
+     FontScaleMain               = 1.0f;             // Main scale factor. May be set by application once, or exposed to end-user.
+     FontScaleDpi                = 1.0f;             // Additional scale factor from viewport/monitor contents scale. When io.ConfigDpiScaleFonts is enabled, this is automatically overwritten when changing monitor DPI.
++    TextBorderSize              = 0.0f;             // Outline radius in pixels for rendered text.
++    TextBorderColor             = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+ 
+     Alpha                       = 1.0f;             // Global alpha applies to everything in Dear ImGui.
+     DisabledAlpha               = 0.60f;            // Additional alpha multiplier applied by BeginDisabled(). Multiply over current value of Alpha.
+@@ -1737,6 +1739,7 @@ void ImGuiStyle::ScaleAllSizes(float scale_factor)
+     InputTextCursorSize = ImTrunc(InputTextCursorSize * scale_factor);
+     SeparatorSize = ImTrunc(SeparatorSize * scale_factor);
+     SeparatorTextBorderSize = ImTrunc(SeparatorTextBorderSize * scale_factor);
++    TextBorderSize = TextBorderSize * scale_factor;
+     SeparatorTextPadding = ImTrunc(SeparatorTextPadding * scale_factor);
+     DockingSeparatorSize = ImTrunc(DockingSeparatorSize * scale_factor);
+     DisplayWindowPadding = ImTrunc(DisplayWindowPadding * scale_factor);
+diff --git a/third_party/imgui-master/imgui-master/imgui.h b/third_party/imgui-master/imgui-master/imgui.h
+index 7f3a1c1..ddc9e22 100644
+--- a/third_party/imgui-master/imgui-master/imgui.h
++++ b/third_party/imgui-master/imgui-master/imgui.h
+@@ -2420,6 +2420,8 @@ struct ImGuiStyle
+     float       FontSizeBase;               // Current base font size before external global factors are applied. Use PushFont(NULL, size) to modify. Use ImGui::GetFontSize() to obtain scaled value.
+     float       FontScaleMain;              // Main global scale factor. May be set by application once, or exposed to end-user.
+     float       FontScaleDpi;               // Additional global scale factor from viewport/monitor contents scale. In docking branch: when io.ConfigDpiScaleFonts is enabled, this is automatically overwritten when changing monitor DPI.
++    float       TextBorderSize;             // Outline radius in pixels for rendered text. 0 disables the outline.
++    ImVec4      TextBorderColor;            // Outline color for rendered text.
+ 
+     float       Alpha;                      // Global alpha applies to everything in Dear ImGui.
+     float       DisabledAlpha;              // Additional alpha multiplier applied by BeginDisabled(). Multiply over current value of Alpha.
+@@ -4191,6 +4193,7 @@ struct ImFont
+     IMGUI_API const char*       CalcWordWrapPosition(float size, const char* text, const char* text_end, float wrap_width);
+     IMGUI_API void              RenderChar(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, ImWchar c, const ImVec4* cpu_fine_clip = NULL);
+     IMGUI_API void              RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width = 0.0f, ImDrawTextFlags flags = 0);
++    IMGUI_API void              RenderTextEx(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, ImDrawTextFlags flags, bool allow_outline);
+ #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+     inline const char*          CalcWordWrapPositionA(float scale, const char* text, const char* text_end, float wrap_width) { return CalcWordWrapPosition(LegacySize * scale, text, text_end, wrap_width); } // Obsoleted old name in 1.92.0. Note how `scale` was to `size`.
+ #endif
+diff --git a/third_party/imgui-master/imgui-master/imgui_draw.cpp b/third_party/imgui-master/imgui-master/imgui_draw.cpp
+index 2ddc450..24c5bd6 100644
+--- a/third_party/imgui-master/imgui-master/imgui_draw.cpp
++++ b/third_party/imgui-master/imgui-master/imgui_draw.cpp
+@@ -3729,9 +3729,9 @@ void ImTextureData::Create(ImTextureFormat format, int w, int h)
+     Height = h;
+     BytesPerPixel = ImTextureDataGetFormatBytesPerPixel(format);
+     UseColors = false;
+-    Pixels = (unsigned char*)IM_ALLOC(Width * Height * BytesPerPixel);
++    Pixels = (unsigned char*)IM_ALLOC(static_cast<size_t>(Width) * static_cast<size_t>(Height) * static_cast<size_t>(BytesPerPixel));
+     IM_ASSERT(Pixels != NULL);
+-    memset(Pixels, 0, Width * Height * BytesPerPixel);
++    memset(Pixels, 0, static_cast<size_t>(Width) * static_cast<size_t>(Height) * static_cast<size_t>(BytesPerPixel));
+     UsedRect.x = UsedRect.y = UsedRect.w = UsedRect.h = 0;
+     UpdateRect.x = UpdateRect.y = (unsigned short)~0;
+     UpdateRect.w = UpdateRect.h = 0;
+@@ -7339,8 +7339,23 @@ void ImFont::RenderChar(ImDrawList* draw_list, float size, const ImVec2& pos, Im
+ 
+ // Note: as with every ImDrawList drawing function, this expects that the font atlas texture is bound.
+ // DO NOT CALL DIRECTLY THIS WILL CHANGE WILDLY IN 2026. Use ImDrawList::AddText().
+-void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, ImDrawTextFlags flags)
++void ImFont::RenderTextEx(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, ImDrawTextFlags flags, bool allow_outline)
+ {
++
++    if (allow_outline && GImGui != nullptr && GImGui->Style.TextBorderSize > 0.0f && GImGui->Style.TextBorderColor.w > 0.0f)
++    {
++        const float ScopedRadius = ImMax(1.0f, ImTrunc(GImGui->Style.TextBorderSize));
++        const ImU32 ScopedBorder = ImGui::GetColorU32(GImGui->Style.TextBorderColor);
++        const ImVec2 ScopedOffsets[] = {
++            ImVec2(-ScopedRadius, 0.0f), ImVec2(ScopedRadius, 0.0f), ImVec2(0.0f, -ScopedRadius),
++            ImVec2(0.0f, ScopedRadius), ImVec2(-ScopedRadius, -ScopedRadius), ImVec2(ScopedRadius, -ScopedRadius),
++            ImVec2(-ScopedRadius, ScopedRadius), ImVec2(ScopedRadius, ScopedRadius)};
++        for (const ImVec2& ScopedOffset : ScopedOffsets)
++        {
++            RenderTextEx(draw_list, size, ImVec2(pos.x + ScopedOffset.x, pos.y + ScopedOffset.y), ScopedBorder,
++                         clip_rect, text_begin, text_end, wrap_width, flags, false);
++        }
++    }
+ begin:
+     // Align to be pixel perfect
+     float x = pos.x;
+@@ -8360,3 +8375,10 @@ const char* ImGui_GetDefaultCompressedFontDataProggyForever(int* out_size)
+ #endif // #if !defined(IMGUI_DISABLE_DEFAULT_FONT) && !defined(IMGUI_DISABLE_DEFAULT_FONT_VECTOR)
+ 
+ #endif // #ifndef IMGUI_DISABLE
++
++void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect,
++                        const char* text_begin, const char* text_end, float wrap_width, ImDrawTextFlags flags)
++{
++    RenderTextEx(draw_list, size, pos, col, clip_rect, text_begin, text_end, wrap_width, flags, true);
++}
++

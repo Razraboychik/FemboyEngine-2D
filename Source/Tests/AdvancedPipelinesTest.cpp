@@ -41,8 +41,11 @@ void WriteChunkFile(const std::filesystem::path& InPath, std::uint32_t InTileSiz
                     std::uint8_t InSeed)
 {
     const std::uint32_t ScopedChunkPixels = InTileSize * InChunkTiles;
+    const std::uint64_t ScopedPixelBytes =
+        static_cast<std::uint64_t>(ScopedChunkPixels) * static_cast<std::uint64_t>(ScopedChunkPixels) * 4u;
     std::vector<std::byte> ScopedBytes(sizeof(Fby::Rhi::kVirtualTextureChunkHeaderBytes) + 0, std::byte{0});
-    ScopedBytes.resize(sizeof(std::uint64_t) + 6u * sizeof(std::uint32_t) + ScopedChunkPixels * ScopedChunkPixels * 4u);
+    ScopedBytes.resize(sizeof(std::uint64_t) + 6u * sizeof(std::uint32_t) +
+                       static_cast<std::size_t>(ScopedPixelBytes));
     std::memcpy(ScopedBytes.data(), Fby::Rhi::kVirtualTextureChunkMagic, 8);
     const std::uint32_t ScopedValues[6] = {1u, InTileSize, InChunkTiles, 0u, 0u, 0u};
     std::memcpy(ScopedBytes.data() + 8, ScopedValues, sizeof(ScopedValues));

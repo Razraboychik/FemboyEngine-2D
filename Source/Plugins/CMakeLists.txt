@@ -31,6 +31,7 @@ function(fby_add_abi_plugin target output_name source_file)
 endfunction()
 
 fby_add_abi_plugin(fby_rainbow_palette fby_rainbow_palette RainbowPalette/RainbowPalette.cpp)
+fby_add_abi_plugin(fby_themed_palettes fby_themed_palettes ThemedPalettes/ThemedPalettes.cpp)
 fby_add_abi_plugin(fby_nvg fby_nvg Nvg/Nvg.cpp)
 fby_add_abi_plugin(fby_thermal fby_thermal Thermal/Thermal.cpp)
 

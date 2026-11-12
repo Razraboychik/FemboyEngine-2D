@@ -1,0 +1,16 @@
+diff --git a/third_party/imgui-master/imgui-master/imgui_draw.cpp b/third_party/imgui-master/imgui-master/imgui_draw.cpp
+index 2ddc450..5dacd50 100644
+--- a/third_party/imgui-master/imgui-master/imgui_draw.cpp
++++ b/third_party/imgui-master/imgui-master/imgui_draw.cpp
+@@ -3729,9 +3729,9 @@ void ImTextureData::Create(ImTextureFormat format, int w, int h)
+     Height = h;
+     BytesPerPixel = ImTextureDataGetFormatBytesPerPixel(format);
+     UseColors = false;
+-    Pixels = (unsigned char*)IM_ALLOC(Width * Height * BytesPerPixel);
++    Pixels = (unsigned char*)IM_ALLOC(static_cast<size_t>(Width) * static_cast<size_t>(Height) * static_cast<size_t>(BytesPerPixel));
+     IM_ASSERT(Pixels != NULL);
+-    memset(Pixels, 0, Width * Height * BytesPerPixel);
++    memset(Pixels, 0, static_cast<size_t>(Width) * static_cast<size_t>(Height) * static_cast<size_t>(BytesPerPixel));
+     UsedRect.x = UsedRect.y = UsedRect.w = UsedRect.h = 0;
+     UpdateRect.x = UpdateRect.y = (unsigned short)~0;
+     UpdateRect.w = UpdateRect.h = 0;

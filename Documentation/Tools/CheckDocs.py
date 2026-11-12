@@ -99,11 +99,12 @@ def rel(path: pathlib.Path) -> str:
 def check_links(errors: list[str]) -> None:
     sources = [
         ROOT / "README.md",
-        ROOT / "README_RU.md",
+        ROOT / "READMEs" / "README_RU.md",
         DOCS / "README.md",
         DOCS / "README_RU.md",
         DOCS / "ROADMAP.md",
     ]
+    sources.extend(sorted((ROOT / "READMEs").glob("*.md")))
     for directory in ("design", "style", "adr"):
         sources.extend(sorted((DOCS / directory).glob("*.md")))
     sources.extend(sorted(MD.rglob("*.md")))

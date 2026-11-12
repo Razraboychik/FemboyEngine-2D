@@ -1,10 +1,10 @@
 # FemboyEngine2D
 
-[English](README.md) | [Русский перевод](README_RU.md)
+[English](../README.md) | [Русский перевод](README_RU.md)
 
 **Data-oriented 2D-движок для игр, написанный с нуля на C++26.**
 
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](../LICENSE)
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
@@ -83,7 +83,7 @@ ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "my_system", &MySystem, &MyState);
 
 Не требуются `std::function`, захватывающие лямбды и аллокации в куче на кадр.
 Шаблон определён один раз в
-[`Source/Engine/Assets/ProjectScaffold.hpp`](Source/Engine/Assets/ProjectScaffold.hpp)
+[`Source/Engine/Assets/ProjectScaffold.hpp`](../Source/Engine/Assets/ProjectScaffold.hpp)
 и используется панелью проекта и `CreateProject()`.
 
 ---
@@ -98,6 +98,7 @@ FemboyEngine2D построен вокруг трёх идей: **ECS** отве
 | Домен | Ключевые части | Контракт памяти и исполнения |
 |---|---|---|
 | Core | `Definitions.hpp`, `FemCast<>`, проверяемый `Cast<>`, `FORCEINLINE`, векторы, Mirror-рефлексия, jobs, платформа SDL3, plugin ABI | Значимые типы, проверяемые cast’ы исчезают при компиляции, без RTTI в горячих путях, пул воркеров с защёлкой отказа задач |
+| Эффекты | CPU-пул частиц фиксированной ёмкости, 16 редактируемых пресетов, 12 слотов форм с белыми масками, детерминированные гравитация/ветер/drag/турбулентность/swirl | Один span `RenderItem` на кадр, без аллокаций, атлас масок и палитра принадлежат игре |
 | RHI | Постоянные кольца кадров, 48-байтный `RenderItem`, 64-битные ключи, движковый `Rhi::FrameComposer`, Vulkan indirect MDI, один compute dispatch для LBS, Metal и null backends, контракты апскейлинга класса FSR/DLSS и генерации кадров | Один плоский пакет на кадр, явное время жизни кадра, без аллокаций на элемент, bindless-ключи |
 | ECS | FCS chunked registry, тривиально копируемые компоненты, четырёхфазный schedule, `SystemGraph` с opt-in параллельными волнами и объявленным доступом к сервисам/компонентам, Snapshot v5 | Archetype/chunk-хранилище, системы берут span’ы, а не владеют объектами, снапшоты — явные копии; v4 отвергается |
 | Ввод | Фиксированный `InputSystem`: действия/контексты/модификаторы/триггеры, состояние по пользователям, тики и timestamps событий, hotplug и dead zone для SDL3-геймпадов; без руля | Без heap в input-пути; ограниченные таблицы событий и маппингов; детерминированная выборка на тик |
@@ -208,9 +209,9 @@ atlas делает большие поля практичными. Поле мо
 явные, а системы переиспользуют буферы между кадрами вместо аллокации на
 сущность или виджет.
 
-Связанные design notes: [эффекты камеры](Documentation/design/camera-effects.md),
-[физика транспорта](Documentation/design/transport-physics.md) и
-[колёса транспорта](Documentation/design/vehicle-wheels.md).
+Связанные design notes: [эффекты камеры](../Documentation/design/camera-effects.md),
+[физика транспорта](../Documentation/design/transport-physics.md) и
+[колёса транспорта](../Documentation/design/vehicle-wheels.md).
 
 ---
 
@@ -221,7 +222,7 @@ atlas делает большие поля практичными. Поле мо
 публикуются в Markdown, Word, PDF и DjVu; DjVu открывается в Okular (или любом
 DjVu-просмотрщике). Инструменты документации локальны для машины публикации и не
 являются зависимостью движка — см.
-[Documentation/README.md](Documentation/README.md).
+[Documentation/README.md](../Documentation/README.md).
 
 ```bat
 SetupScripts/Windows/Setup.bat
@@ -245,7 +246,7 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, libunibreak `6.1` и LZMA SDK
 `25.01`. Vendor SDK
 апскейлеров опциональны и не входят в архив; см.
-[Генерацию кадров](Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).
+[Генерацию кадров](../Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).
 
 ---
 
@@ -264,7 +265,7 @@ Windows `SetupScripts/Windows/SetupCpp.bat` скачивает официаль�
 Проверенная сборка использует **clang-cl 23.1.4 на Windows и clang++ на других
 платформах**; именно её запускают CI и release gate. **MSVC 19.44+**,
 **GCC 16.2.0** и **AppleClang 21+** поддерживаются как альтернативы; матрица
-выбора компилятора — в [build-workflow_RU.md](Documentation/design/build-workflow_RU.md).
+выбора компилятора — в [build-workflow_RU.md](../Documentation/design/build-workflow_RU.md).
 
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
@@ -288,7 +289,7 @@ cmake --preset macos-release && cmake --build --preset macos-release
 build/package-гейт. Физическое поведение Metal GPU на macOS пока не проверено.
 
 Статус платформ, платформенные швы и путь сборки игры описаны в
-[Platform support](Documentation/design/platform-support.md).
+[Platform support](../Documentation/design/platform-support.md).
 
 Основные исполняемые файлы:
 
@@ -307,7 +308,7 @@ build/bin/tools/fby_aotc
 `-DFBY_WITH_DLSS=ON -DFBY_DLSS_ROOT=<path>` или
 `-DFBY_WITH_FIDELITYFX=ON -DFBY_FIDELITYFX_ROOT=<path>`; переносимые FSR1/FSR2 и
 собственная генерация кадров не требуют ни одного SDK. См.
-[Генерацию кадров](Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).
+[Генерацию кадров](../Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).
 
 Приложения ищут `assets` в `FBY_ASSET_DIR`, `cwd/assets` или родительских
 каталогах исполняемого файла, поэтому запуск из `build/bin` в IDE работает без
@@ -442,44 +443,44 @@ file>` (нажать Open на панели после `FBY_EDITOR_SMOKE_DASHBOA
 
 Документация доступна на английском и в русском переводе, с независимыми
 изданиями Markdown, Word, PDF и DjVu. Начните с
-[Documentation](Documentation/README.md); английская версия этого README —
-[README.md](README.md).
+[Documentation](../Documentation/README.md); английская версия этого README —
+[README.md](../README.md).
 
-- [Архитектура (RU)](Documentation/md/ru/FemboyEngineArchitecture_RU.md)
-- [Практическое руководство (RU)](Documentation/md/ru/FemboyEngineApplicationGuide_RU.md)
-- [API Reference (RU)](Documentation/md/ru/FemboyEngineAPIReference_RU.md)
-- [Полное руководство (RU)](Documentation/md/ru/FemboyEngineCompleteReference_RU.md)
-- [CMake и управление движком (RU)](Documentation/md/ru/CMakeProjectManagement_RU.md)
-- [Руководство FemboyScript (RU)](Documentation/md/ru/FemboyScript_RU.md)
-- [Физика, SDF-разрушение и транспортные группы (RU)](Documentation/md/ru/Physics_RU.md)
-- [Генерация кадров и апскейлинг (RU)](Documentation/md/ru/FemboyEngineFrameGeneration_RU.md)
-- [Режимы отображения вьюпорта (RU)](Documentation/md/ru/ViewportModes_RU.md)
-- [Справочник настроек редактора (RU)](Documentation/md/ru/EditorSettingsReference_RU.md)
-- [Рекомендации по настройкам проекта (RU)](Documentation/md/ru/ProjectSettingsRecommendations_RU.md)
-- [Стиль кода](Documentation/style/CodeStyle.md)
-- [Соглашения об именовании](Documentation/style/NAMING.md)
-- [Roadmap](Documentation/ROADMAP.md)
-- [Контракт виртуальных текстур](Documentation/design/virtual-texturing.md)
-- [Workflow редактора и создание сцен](Documentation/design/editor-workflows.md)
-- [Play-In-Editor и viewport клиента](Documentation/design/pie-multiplayer.md)
-- [Текстовый стек](Documentation/design/text-stack.md)
-- [Движение камеры и искажения](Documentation/design/camera-effects.md)
-- [Эффекты камеры](Documentation/design/camera-effects.md)
-- [Физика транспорта](Documentation/design/transport-physics.md)
-- [Колёса транспорта](Documentation/design/vehicle-wheels.md)
-- [Система ввода](Documentation/design/input-system.md)
-- [Дизайн физических бэкендов](Documentation/design/physics-backends.md)
-- [Аудит CodeQL](Documentation/design/codeql-audit.md)
-- [Время, таймеры и даты](Documentation/design/time.md)
-- [Контракт доступности](Documentation/design/accessibility.md)
-- [Мировые системы: тайлмапы, IK и навигация](Documentation/design/world-systems.md)
-- [Освещение и SDF-тени](Documentation/design/lighting.md)
-- [Сеть: транспорт и репликация](Documentation/design/networking.md)
-- [Скрипты: отладчик и нативизация](Documentation/design/scripting.md)
-- [Голосовая подсистема: захват, DSP, AEC и сеть](Documentation/design/voice.md)
-- [Безопасность: FBY XX, привязка тикетов, rate limits](Documentation/design/security.md)
-- [Protocol v2: привязка и чек-лист завершения](Documentation/design/protocol-v2.md)
-- [ADR 0001: стандартный Noise как долгосрочный защищённый транспорт](Documentation/adr/0001-secure-transport.md)
+- [Архитектура (RU)](../Documentation/md/ru/FemboyEngineArchitecture_RU.md)
+- [Практическое руководство (RU)](../Documentation/md/ru/FemboyEngineApplicationGuide_RU.md)
+- [API Reference (RU)](../Documentation/md/ru/FemboyEngineAPIReference_RU.md)
+- [Полное руководство (RU)](../Documentation/md/ru/FemboyEngineCompleteReference_RU.md)
+- [CMake и управление движком (RU)](../Documentation/md/ru/CMakeProjectManagement_RU.md)
+- [Руководство FemboyScript (RU)](../Documentation/md/ru/FemboyScript_RU.md)
+- [Физика, SDF-разрушение и транспортные группы (RU)](../Documentation/md/ru/Physics_RU.md)
+- [Генерация кадров и апскейлинг (RU)](../Documentation/md/ru/FemboyEngineFrameGeneration_RU.md)
+- [Режимы отображения вьюпорта (RU)](../Documentation/md/ru/ViewportModes_RU.md)
+- [Справочник настроек редактора (RU)](../Documentation/md/ru/EditorSettingsReference_RU.md)
+- [Рекомендации по настройкам проекта (RU)](../Documentation/md/ru/ProjectSettingsRecommendations_RU.md)
+- [Стиль кода](../Documentation/style/CodeStyle.md)
+- [Соглашения об именовании](../Documentation/style/NAMING.md)
+- [Roadmap](../Documentation/ROADMAP.md)
+- [Контракт виртуальных текстур](../Documentation/design/virtual-texturing.md)
+- [Workflow редактора и создание сцен](../Documentation/design/editor-workflows.md)
+- [Play-In-Editor и viewport клиента](../Documentation/design/pie-multiplayer.md)
+- [Текстовый стек](../Documentation/design/text-stack.md)
+- [Движение камеры и искажения](../Documentation/design/camera-effects.md)
+- [Эффекты камеры](../Documentation/design/camera-effects.md)
+- [Физика транспорта](../Documentation/design/transport-physics.md)
+- [Колёса транспорта](../Documentation/design/vehicle-wheels.md)
+- [Система ввода](../Documentation/design/input-system.md)
+- [Дизайн физических бэкендов](../Documentation/design/physics-backends.md)
+- [Аудит CodeQL](../Documentation/design/codeql-audit.md)
+- [Время, таймеры и даты](../Documentation/design/time.md)
+- [Контракт доступности](../Documentation/design/accessibility.md)
+- [Мировые системы: тайлмапы, IK и навигация](../Documentation/design/world-systems.md)
+- [Освещение и SDF-тени](../Documentation/design/lighting.md)
+- [Сеть: транспорт и репликация](../Documentation/design/networking.md)
+- [Скрипты: отладчик и нативизация](../Documentation/design/scripting.md)
+- [Голосовая подсистема: захват, DSP, AEC и сеть](../Documentation/design/voice.md)
+- [Безопасность: FBY XX, привязка тикетов, rate limits](../Documentation/design/security.md)
+- [Protocol v2: привязка и чек-лист завершения](../Documentation/design/protocol-v2.md)
+- [ADR 0001: стандартный Noise как долгосрочный защищённый транспорт](../Documentation/adr/0001-secure-transport.md)
 
 Сгенерированные документы сохраняют исторические имена `FemboyEngine*`, чтобы
 существующие ссылки продолжали работать; внутри документов продукт называется
@@ -517,16 +518,16 @@ FemboyEngine2D/
 ## Лицензия
 
 FemboyEngine2D распространяется по **Mozilla Public License 2.0**. См.
-[LICENSE](LICENSE). Уведомления третьих сторон находятся в
+[LICENSE](../LICENSE). Уведомления третьих сторон находятся в
 `THIRD_PARTY_NOTICES.md`, где он присутствует.
 
 ---
 
 ## Участие и безопасность
 
-- [CONTRIBUTING.md](.github/CONTRIBUTING.md)
-- [SECURITY.md](.github/SECURITY.md)
-- [CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md)
+- [CONTRIBUTING.md](../.github/CONTRIBUTING.md)
+- [SECURITY.md](../.github/SECURITY.md)
+- [CODE_OF_CONDUCT.md](../.github/CODE_OF_CONDUCT.md)
 
 ---
 
@@ -535,7 +536,7 @@ FemboyEngine2D распространяется по **Mozilla Public License 2.
 Это требования к машине разработчика для редактора и debug/release-сборки, а не
 требования к готовой игре: собранная 2D-игра может быть намного легче
 инструментов, которыми её делали. Измеренная таблица редактора и методика
-пробника — в [системных требованиях](Documentation/design/system-requirements_RU.md).
+пробника — в [системных требованиях](../Documentation/design/system-requirements_RU.md).
 
 | Компонент | Маленькая 2D-игра (минимум) | Средняя 2D-игра (рекомендуется) |
 |---|---|---|

@@ -1,5 +1,9 @@
 # CodeQL configuration for FemboyEngine2D.
 #
+# This file is read by advanced setup and by the github-codeql-config-file
+# repository property. Default setup does NOT read it automatically; see
+# Documentation/design/codeql-audit.md.
+#
 # Keep third_party/** visible by default. Only generated copies, upstream tests
 # and demo/tool programs that the engine never links are excluded. If one of
 # these files becomes a real build input, remove its pattern and triage it.

@@ -70,6 +70,8 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 | Добавить подвеску, привод или тормоза транспорта | [Колёса транспорта](design/vehicle-wheels.md) |
 | Настроить движение и искажения камеры | [Эффекты камеры](design/camera-effects.md) |
 | Добавить готовые голосовые эффекты, mumble для модерации и SFX | [Пресеты голоса](design/voice-presets.md), [Голос](design/voice.md) |
+| Добавить настраиваемые эффекты частиц | [Эффекты частиц](design/particle-effects.md) |
+| Добавить готовые пресеты частиц как data-паки | [Пресеты частиц](design/particle-presets.md) |
 | Добавить действия, контексты, геймпады и ремап | [Система ввода](design/input-system.md) |
 | Построить авторитетный ввод и репликацию | [Практическое руководство: репликация](md/ru/FemboyEngineApplicationGuide_RU.md#51-детерминированный-ввод-и-репликация-при-создании-игры) |
 | Использовать FemboyScript, LogicGraph или StateTree | [FemboyScript](md/ru/FemboyScript_RU.md), [значения LogicGraph и AOT](design/scripting.md) |

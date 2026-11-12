@@ -161,6 +161,15 @@ int main()
     Check(ScopedAlcohol != nullptr && ScopedAlcohol->AlcoholEffectCount >= 7, "Alcohol profile has an effect pool");
     ScopedHost.UnloadAll();
     Check(ScopedAccessibilityEffects.Count() == 0, "Alcohol unload removes effect profiles");
+
+    Check(ScopedHost.Load(FBY_TEST_THEMED_PALETTES_PATH, &ScopedError), "Themed Palettes plugin loads");
+    Check(ScopedAccessibilityExtensions.Count() == 6, "Themed Palettes registers six palettes");
+    const Ui::AccessibilityPaletteExtension* ScopedHalloween = ScopedAccessibilityExtensions.Find("Palette.Halloween");
+    Check(ScopedHalloween != nullptr, "Themed Palettes registers Halloween");
+    Check(ScopedHalloween != nullptr && ScopedHalloween->Colors[79].A() != 0, "themed palette fills all 80 colours");
+    Check(ScopedAccessibilityExtensions.Find("Palette.Terminal") != nullptr, "Themed Palettes registers Terminal");
+    ScopedHost.UnloadAll();
+    Check(ScopedAccessibilityExtensions.Count() == 0, "Themed Palettes unload removes its extensions");
 #endif
 
     if (GFailures == 0)

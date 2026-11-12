@@ -1,0 +1,171 @@
+diff --git a/third_party/opus-master/opus-main/celt/celt_encoder.c b/third_party/opus-master/opus-main/celt/celt_encoder.c
+index 613a234..1c19c1e 100644
+--- a/third_party/opus-master/opus-main/celt/celt_encoder.c
++++ b/third_party/opus-master/opus-main/celt/celt_encoder.c
+@@ -165,7 +165,7 @@ OPUS_CUSTOM_NOSTATIC int opus_custom_encoder_get_size(const CELTMode *mode, int
+    size = sizeof(struct CELTEncoder)
+          + (channels*mode->overlap-1)*sizeof(celt_sig)    /* celt_sig in_mem[channels*mode->overlap]; */
+          + channels*QEXT_SCALE(COMBFILTER_MAXPERIOD)*sizeof(celt_sig) /* celt_sig prefilter_mem[channels*COMBFILTER_MAXPERIOD]; */
+-         + 4*(size_t)channels*mode->nbEBands*sizeof(celt_glog)    /* celt_glog oldBandE[channels*mode->nbEBands]; */
++         + 4u*(size_t)channels*(size_t)mode->nbEBands*sizeof(celt_glog)    /* celt_glog oldBandE[channels*mode->nbEBands]; */
+                                                           /* celt_glog oldLogE[channels*mode->nbEBands]; */
+                                                           /* celt_glog oldLogE2[channels*mode->nbEBands]; */
+                                                           /* celt_glog energyError[channels*mode->nbEBands]; */
+@@ -428,7 +428,7 @@ static int transient_analysis(const opus_val32 * OPUS_RESTRICT in, int len, int
+ #ifdef FIXED_POINT
+          id = MAX32(0,MIN32(127,MULT16_32_Q15(tmp[i]+EPSILON,norm))); /* Do not round to nearest */
+ #else
+-         id = (int)MAX32(0,MIN32(127,floor(64*(double)norm*(tmp[i]+EPSILON)))); /* Do not round to nearest */
++         id = (int)MAX32(0,MIN32(127,floor(64.0*(double)norm*(double)(tmp[i]+EPSILON)))); /* Do not round to nearest */
+ #endif
+          unmask += inv_table[id];
+       }
+diff --git a/third_party/opus-master/opus-main/celt/quant_bands.c b/third_party/opus-master/opus-main/celt/quant_bands.c
+index 070b720..1a6b5d5 100644
+--- a/third_party/opus-master/opus-main/celt/quant_bands.c
++++ b/third_party/opus-master/opus-main/celt/quant_bands.c
+@@ -377,7 +377,7 @@ void quant_fine_energy(const CELTMode *m, int start, int end, celt_glog *oldEBan
+          /* Has to be without rounding */
+          q2 = VSHR32(ADD32(error[i+c*m->nbEBands], SHR32(GCONST(.5f), prev)), DB_SHIFT-extra_quant[i]-prev);
+ #else
+-         q2 = (int)floor(((double)error[i+c*m->nbEBands]*(1<<prev)+.5f)*extra);
++         q2 = (int)floor(((double)error[i+c*m->nbEBands]*(double)(1<<prev)+.5f)*(double)extra);
+ #endif
+          if (q2 > extra-1)
+             q2 = extra-1;
+diff --git a/third_party/opus-master/opus-main/celt/vq.c b/third_party/opus-master/opus-main/celt/vq.c
+index d19c342..e619d5c 100644
+--- a/third_party/opus-master/opus-main/celt/vq.c
++++ b/third_party/opus-master/opus-main/celt/vq.c
+@@ -271,7 +271,7 @@ opus_val16 op_pvq_search_c(celt_norm *X, int *iy, int K, int N, int arch)
+          /* It's really important to round *towards zero* here */
+          iy[j] = MULT16_16_Q15(X[j],rcp);
+ #else
+-         iy[j] = (int)floor((double)rcp*X[j]);
++         iy[j] = (int)floor((double)rcp*(double)X[j]);
+ #endif
+          y[j] = (celt_norm)iy[j];
+          yy = MAC16_16(yy, y[j],y[j]);
+diff --git a/third_party/opus-master/opus-main/dnn/burg.c b/third_party/opus-master/opus-main/dnn/burg.c
+index a55581e..5b208e1 100644
+--- a/third_party/opus-master/opus-main/dnn/burg.c
++++ b/third_party/opus-master/opus-main/dnn/burg.c
+@@ -138,8 +138,8 @@ float silk_burg_analysis(              /* O    returns residual energy
+             tmp1 = x_ptr[ n ];
+             tmp2 = x_ptr[ subfr_length - n - 1 ];
+             for( k = 0; k < n; k++ ) {
+-                C_first_row[ k ] -= (double)x_ptr[ n ] * x_ptr[ n - k - 1 ];
+-                C_last_row[ k ]  -= (double)x_ptr[ subfr_length - n - 1 ] * x_ptr[ subfr_length - n + k ];
++                C_first_row[ k ] -= (double)x_ptr[ n ] * (double)x_ptr[ n - k - 1 ];
++                C_last_row[ k ]  -= (double)x_ptr[ subfr_length - n - 1 ] * (double)x_ptr[ subfr_length - n + k ];
+                 Atmp = Af[ k ];
+                 tmp1 += x_ptr[ n - k - 1 ] * Atmp;
+                 tmp2 += x_ptr[ subfr_length - n + k ] * Atmp;
+diff --git a/third_party/opus-master/opus-main/silk/CNG.c b/third_party/opus-master/opus-main/silk/CNG.c
+index 6fc426a..74fe528 100644
+--- a/third_party/opus-master/opus-main/silk/CNG.c
++++ b/third_party/opus-master/opus-main/silk/CNG.c
+@@ -112,7 +112,7 @@ void silk_CNG(
+             }
+         }
+         /* Update CNG excitation buffer with excitation from this subframe */
+-        silk_memmove( &psCNG->CNG_exc_buf_Q14[ psDec->subfr_length ], psCNG->CNG_exc_buf_Q14, (size_t)( psDec->nb_subfr - 1 ) * psDec->subfr_length * sizeof( opus_int32 ) );
++        silk_memmove( &psCNG->CNG_exc_buf_Q14[ psDec->subfr_length ], psCNG->CNG_exc_buf_Q14, (size_t)( psDec->nb_subfr - 1 ) * (size_t)psDec->subfr_length * sizeof( opus_int32 ) );
+         silk_memcpy(   psCNG->CNG_exc_buf_Q14, &psDec->exc_Q14[ subfr * psDec->subfr_length ], psDec->subfr_length * sizeof( opus_int32 ) );
+ 
+         /* Smooth gains */
+diff --git a/third_party/opus-master/opus-main/silk/float/burg_modified_FLP.c b/third_party/opus-master/opus-main/silk/float/burg_modified_FLP.c
+index ee5ed24..63a3421 100644
+--- a/third_party/opus-master/opus-main/silk/float/burg_modified_FLP.c
++++ b/third_party/opus-master/opus-main/silk/float/burg_modified_FLP.c
+@@ -80,8 +80,8 @@ silk_float silk_burg_modified_FLP(          /* O    returns residual energy
+             tmp1 = x_ptr[ n ];
+             tmp2 = x_ptr[ subfr_length - n - 1 ];
+             for( k = 0; k < n; k++ ) {
+-                C_first_row[ k ] -= (double)x_ptr[ n ] * x_ptr[ n - k - 1 ];
+-                C_last_row[ k ]  -= (double)x_ptr[ subfr_length - n - 1 ] * x_ptr[ subfr_length - n + k ];
++                C_first_row[ k ] -= (double)x_ptr[ n ] * (double)x_ptr[ n - k - 1 ];
++                C_last_row[ k ]  -= (double)x_ptr[ subfr_length - n - 1 ] * (double)x_ptr[ subfr_length - n + k ];
+                 Atmp = Af[ k ];
+                 tmp1 += x_ptr[ n - k - 1 ] * Atmp;
+                 tmp2 += x_ptr[ subfr_length - n + k ] * Atmp;
+diff --git a/third_party/opus-master/opus-main/silk/float/residual_energy_FLP.c b/third_party/opus-master/opus-main/silk/float/residual_energy_FLP.c
+index 2fc8ae8..0304a8e 100644
+--- a/third_party/opus-master/opus-main/silk/float/residual_energy_FLP.c
++++ b/third_party/opus-master/opus-main/silk/float/residual_energy_FLP.c
+@@ -106,12 +106,12 @@ void silk_residual_energy_FLP(
+ 
+     /* Filter input to create the LPC residual for each frame half, and measure subframe energies */
+     silk_LPC_analysis_filter_FLP( LPC_res, a[ 0 ], x + 0 * shift, 2 * shift, LPC_order );
+-    nrgs[ 0 ] = ( silk_float )( (double)gains[ 0 ] * gains[ 0 ] * silk_energy_FLP( LPC_res_ptr + 0 * shift, subfr_length ) );
+-    nrgs[ 1 ] = ( silk_float )( (double)gains[ 1 ] * gains[ 1 ] * silk_energy_FLP( LPC_res_ptr + 1 * shift, subfr_length ) );
++    nrgs[ 0 ] = ( silk_float )( (double)gains[ 0 ] * (double)gains[ 0 ] * (double)silk_energy_FLP( LPC_res_ptr + 0 * shift, subfr_length ) );
++    nrgs[ 1 ] = ( silk_float )( (double)gains[ 1 ] * (double)gains[ 1 ] * (double)silk_energy_FLP( LPC_res_ptr + 1 * shift, subfr_length ) );
+ 
+     if( nb_subfr == MAX_NB_SUBFR ) {
+         silk_LPC_analysis_filter_FLP( LPC_res, a[ 1 ], x + 2 * shift, 2 * shift, LPC_order );
+-        nrgs[ 2 ] = ( silk_float )( (double)gains[ 2 ] * gains[ 2 ] * silk_energy_FLP( LPC_res_ptr + 0 * shift, subfr_length ) );
+-        nrgs[ 3 ] = ( silk_float )( (double)gains[ 3 ] * gains[ 3 ] * silk_energy_FLP( LPC_res_ptr + 1 * shift, subfr_length ) );
++        nrgs[ 2 ] = ( silk_float )( (double)gains[ 2 ] * (double)gains[ 2 ] * (double)silk_energy_FLP( LPC_res_ptr + 0 * shift, subfr_length ) );
++        nrgs[ 3 ] = ( silk_float )( (double)gains[ 3 ] * (double)gains[ 3 ] * (double)silk_energy_FLP( LPC_res_ptr + 1 * shift, subfr_length ) );
+     }
+ }
+diff --git a/third_party/opus-master/opus-main/src/mapping_matrix.c b/third_party/opus-master/opus-main/src/mapping_matrix.c
+index 620d032..f82ed3d 100644
+--- a/third_party/opus-master/opus-main/src/mapping_matrix.c
++++ b/third_party/opus-master/opus-main/src/mapping_matrix.c
+@@ -47,7 +47,7 @@ opus_int32 mapping_matrix_get_size(int rows, int cols)
+    */
+   if (rows > 255 || cols > 255)
+       return 0;
+-  size = (opus_int32)rows * (opus_int32)cols * (opus_int32)sizeof(opus_int16);
++  size = (opus_int32)((opus_int64)rows * cols * (opus_int64)sizeof(opus_int16));
+   if (size > 65004)
+     return 0;
+ 
+@@ -69,7 +69,7 @@ void mapping_matrix_init(MappingMatrix * const matrix,
+ #if !defined(ENABLE_ASSERTIONS)
+   (void)data_size;
+ #endif
+-  celt_assert(align(data_size) == align((opus_int32)rows * cols * (opus_int32)sizeof(opus_int16)));
++  celt_assert(align(data_size) == align((opus_int32)((opus_int64)rows * cols * (opus_int64)sizeof(opus_int16))));
+ 
+   matrix->rows = rows;
+   matrix->cols = cols;
+diff --git a/third_party/opus-master/opus-main/src/opus_projection_decoder.c b/third_party/opus-master/opus-main/src/opus_projection_decoder.c
+index 8c54fd2..8a8348a 100644
+--- a/third_party/opus-master/opus-main/src/opus_projection_decoder.c
++++ b/third_party/opus-master/opus-main/src/opus_projection_decoder.c
+@@ -156,7 +156,7 @@ int opus_projection_decoder_init(OpusProjectionDecoder *st, opus_int32 Fs,
+ 
+   /* Verify supplied matrix size. */
+   nb_input_streams = streams + coupled_streams;
+-  expected_matrix_size = (opus_int32)nb_input_streams * channels * (opus_int32)sizeof(opus_int16);
++  expected_matrix_size = (opus_int32)((opus_int64)nb_input_streams * channels * (opus_int64)sizeof(opus_int16));
+   if (expected_matrix_size != demixing_matrix_size)
+   {
+     RESTORE_STACK;
+diff --git a/third_party/opus-master/opus-main/src/opus_projection_encoder.c b/third_party/opus-master/opus-main/src/opus_projection_encoder.c
+index 761b8b6..1ff9ebd 100644
+--- a/third_party/opus-master/opus-main/src/opus_projection_encoder.c
++++ b/third_party/opus-master/opus-main/src/opus_projection_encoder.c
+@@ -452,8 +452,8 @@ int opus_projection_encoder_ctl(OpusProjectionEncoder *st, int request, ...)
+       goto bad_arg;
+     }
+     *value =
+-      (opus_int32)ms_encoder->layout.nb_channels * (ms_encoder->layout.nb_streams
+-      + ms_encoder->layout.nb_coupled_streams) * (opus_int32)sizeof(opus_int16);
++      (opus_int32)((opus_int64)ms_encoder->layout.nb_channels * (ms_encoder->layout.nb_streams
++      + ms_encoder->layout.nb_coupled_streams) * (opus_int64)sizeof(opus_int16));
+   }
+   break;
+   case OPUS_PROJECTION_GET_DEMIXING_MATRIX_GAIN_REQUEST:
+@@ -488,7 +488,7 @@ int opus_projection_encoder_ctl(OpusProjectionEncoder *st, int request, ...)
+       goto bad_arg;
+     }
+     internal_short = mapping_matrix_get_data(demixing_matrix);
+-    internal_size = (opus_int32)nb_input_streams * nb_output_streams * (opus_int32)sizeof(opus_int16);
++    internal_size = (opus_int32)((opus_int64)nb_input_streams * nb_output_streams * (opus_int64)sizeof(opus_int16));
+     if (external_size != internal_size)
+     {
+       goto bad_arg;

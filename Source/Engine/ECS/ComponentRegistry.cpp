@@ -13,6 +13,7 @@
 #include "Engine/ECS/StateTree.hpp"
 #include "Engine/ECS/SpriteAnimation.hpp"
 #include "Engine/Physics/Particles.hpp"
+#include "Engine/Effects/ParticleScene.hpp"
 #include "Engine/Physics/Cloth.hpp"
 #include "Engine/Physics/Fluid.hpp"
 #include "Engine/Physics/Physics.hpp"
@@ -140,6 +141,7 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<ClothComponent>(false);
     InRegistry.Register<FluidInteractorComponent>();
     InRegistry.Register<ParticleEmitterComponent>();
+    InRegistry.Register<ParticleEffectComponent>();
     InRegistry.Register<Ui::HypertextComponent>();
 
     // High-level gameplay authoring. The animation state graph and the State

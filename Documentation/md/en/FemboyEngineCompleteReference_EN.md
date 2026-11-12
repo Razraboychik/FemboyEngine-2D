@@ -1844,7 +1844,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VisualScriptPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 70 |
 | `WindowManager` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 16 |
 
-### Editor/Panels (89)
+### Editor/Panels (90)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -1892,6 +1892,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `NetSession` | Panels | `Source/Editor/Panels/NetworkDiagnosticsPanel.hpp` | 6 |
 | `NetworkDiagnosticsPanel` | Panels | `Source/Editor/Panels/NetworkDiagnosticsPanel.hpp` | 15 |
 | `NodeCanvasPanel` | Panels | `Source/Editor/Panels/NodeCanvasPanel.hpp` | 54 |
+| `ParticleFxPanel` | Panels | `Source/Editor/Panels/ParticleFxPanel.hpp` | 16 |
 | `PIEAnimFrame` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 110 |
 | `PieClientViewport` | Panels | `Source/Editor/Panels/PieClientViewport.hpp` | 15 |
 | `PIEFrameSlot` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 302 |
@@ -2569,6 +2570,27 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `WorldMemoryStats` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 241 |
 | `WorldSnapshotV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 86 |
 
+### Engine/Effects (16)
+
+| Symbol | Kind | Header | Line |
+|---|---|---|---|
+| `Binding` | Effects | `Source/Engine/Effects/ParticleScene.hpp` | 93 |
+| `EmitterState` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 174 |
+| `ParticleEffectComponent` | Effects | `Source/Engine/Effects/ParticleScene.hpp` | 24 |
+| `ParticleEffectComponentFlags` | Effects | `Source/Engine/Effects/ParticleScene.hpp` | 17 |
+| `ParticleEffectPreset` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 120 |
+| `ParticleEffectSettings` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 70 |
+| `ParticleEffectSystem` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 140 |
+| `ParticleEmissionShape` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 42 |
+| `ParticlePresetDesc` | Effects | `Source/Engine/Effects/ParticlePreset.hpp` | 26 |
+| `ParticlePresetFlags` | Effects | `Source/Engine/Effects/ParticlePreset.hpp` | 20 |
+| `ParticlePresetRegistry` | Effects | `Source/Engine/Effects/ParticlePreset.hpp` | 38 |
+| `ParticleSceneSystem` | Effects | `Source/Engine/Effects/ParticleScene.hpp` | 74 |
+| `ParticleShape` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 23 |
+| `ParticleShapeAtlas` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 58 |
+| `ParticleShapeFrame` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 51 |
+| `ParticleState` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 187 |
+
 ### Engine/Gameplay (32)
 
 | Symbol | Kind | Header | Line |
@@ -2807,11 +2829,11 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `JointTieDesc` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 328 |
 | `JointTieSave` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 351 |
 | `LevelGravityComponent` | Physics | `Source/Engine/Physics/Gravity.hpp` | 55 |
-| `ParticleEmitterComponent` | Physics | `Source/Engine/Physics/Particles.hpp` | 30 |
-| `ParticleEmitterFlags` | Physics | `Source/Engine/Physics/Particles.hpp` | 14 |
-| `ParticleEmitterGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 65 |
-| `ParticleSeedPush` | Physics | `Source/Engine/Physics/Particles.hpp` | 88 |
-| `ParticleStateGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 96 |
+| `ParticleEmitterComponent` | Physics | `Source/Engine/Physics/Particles.hpp` | 34 |
+| `ParticleEmitterFlags` | Physics | `Source/Engine/Physics/Particles.hpp` | 18 |
+| `ParticleEmitterGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 69 |
+| `ParticleSeedPush` | Physics | `Source/Engine/Physics/Particles.hpp` | 92 |
+| `ParticleStateGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 100 |
 | `PhysicsBackendKind` | Physics | `Source/Engine/Physics/Physics.hpp` | 32 |
 | `PhysicsBodyRemapEntry` | Physics | `Source/Engine/Physics/SnapshotRemap.hpp` | 17 |
 | `PhysicsBodyRemapTable` | Physics | `Source/Engine/Physics/SnapshotRemap.hpp` | 24 |
