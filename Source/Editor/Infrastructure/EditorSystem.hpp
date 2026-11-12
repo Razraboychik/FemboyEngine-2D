@@ -133,6 +133,9 @@ public:
     // Runtime plugin host owned by the app. Plugins are project-scoped; the
     // editor only displays and loads paths from the current project.
     void SetPluginHost(Plugin::PluginHost* InHost) noexcept;
+    // Directory scanned for loadable plugin files. The list is an engine-side
+    // discovery result; the editor only binds a selected file to the project.
+    void SetPluginDirectory(const std::filesystem::path& InDirectory) noexcept;
     // Runtime accessibility effect catalog consumed by the PIE frame.
     void SetEffectRegistry(Ui::AccessibilityEffectRegistry* InEffects) noexcept;
     // Reloads only the current project's plugin list. The host is unloaded

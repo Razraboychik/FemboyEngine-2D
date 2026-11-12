@@ -21,6 +21,8 @@ jobs:
           python-version: "3.12"
       - name: CheckStyle
         run: python Source/Tools/Dev/CheckStyle.py
+      - name: Version consistency
+        run: python Source/Tools/Dev/CheckVersion.py
       - name: Third-party notices
         run: python Documentation/Tools/GenerateThirdPartyNotices.py --check
       - name: Documentation set

@@ -41,6 +41,7 @@
 #include "Engine/Script/ScriptSystem.hpp"
 #include "Engine/RHI/SkinningBridge.hpp"
 #include "Editor/Infrastructure/EditorSystem.hpp"
+#include "Editor/Infrastructure/PiePresentation.hpp"
 #include "Editor/Panels/AIStateTreeCanvasPanel.hpp"
 #include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/RHI/Fsr2Pass.hpp"
@@ -1095,6 +1096,7 @@ int main(int argc, char** argv)
                                                           : std::filesystem::path(".");
     const std::filesystem::path ScopedPluginsDir = ScopedExecutableDir / "plugins";
     Fby::LogInfo("editor_app", "plugin directory: {}", ScopedPluginsDir.string());
+    ScopedEditor.SetPluginDirectory(ScopedPluginsDir);
 
     if (std::getenv("FBY_PLUGIN_SELFTEST") != nullptr)
     {
@@ -1381,6 +1383,7 @@ int main(int argc, char** argv)
         ScopedPieExtract.SetGpuLighting(true);
     }
     Fby::Vector4D ScopedSdfPreviousCamera{};
+    Fby::Vector4D ScopedPieSdfPreviousCamera{};
     // PIE is the shipped frame in the editor: captions compose into it and the
     // accessibility profile is applied exactly like a game applies it.
     Fby::AccessibilityOverlay ScopedPieOverlay;
@@ -1832,6 +1835,16 @@ int main(int argc, char** argv)
                 ScopedPiePacket.virtualTextureParams = ScopedEditorPacket.virtualTextureParams;
                 ScopedPiePacket.virtualTextureLayout = ScopedEditorPacket.virtualTextureLayout;
                 ScopedPiePacket.virtualTextureDebugMode = ScopedEditorPacket.virtualTextureDebugMode;
+                // The client world has its own dynamic SDF casters; the static
+                // field and atlas are shared with the authoring pass.
+                Fby::Rhi::SdfLightingFrame ScopedPieSdfFrame;
+                if (Fby::Editor::BuildPieClientSdfFrame(*ScopedPieWorld, &ScopedSdf, ScopedSdfAtlas,
+                                                        ScopedPieState.center, ScopedPieState.zoom,
+                                                        ScopedPieViewport, &ScopedPieSdfPreviousCamera,
+                                                        &ScopedPieSdfFrame))
+                {
+                    ScopedPiePacket.sdf = ScopedPieSdfFrame;
+                }
                 if (ScopedContext.accessibility != nullptr)
                 {
                     Fby::AccessibilityKernel& ScopedKernel = *ScopedContext.accessibility;
@@ -1987,11 +2000,15 @@ int main(int argc, char** argv)
                             ScopedEditor.ViewportRenderSize().height, ScopedEditor.ViewportSize().width,
                             ScopedEditor.ViewportSize().height))
                     {
+                        const Fby::Rhi::Fsr2QualityMode ScopedFsr2Quality =
+                            Fby::Rhi::Fsr2QualityForExtent(
+                                ScopedEditor.ViewportRenderSize().width, ScopedEditor.ViewportRenderSize().height,
+                                ScopedEditor.ViewportSize().width, ScopedEditor.ViewportSize().height);
                         ScopedFsr2VendorUsed = ScopedEditorFsr2Vendor.Dispatch(
                             ScopedGpu->CurrentCommandBuffer(), ScopedColorView.view, ScopedDepthView.view,
                             ScopedMotionView.view, nullptr, ScopedOutputView.view,
                             ScopedEditor.ViewportRenderSize().width, ScopedEditor.ViewportRenderSize().height,
-                            ScopedEditor.ViewportSize().width, ScopedEditor.ViewportSize().height,
+                            ScopedEditor.ViewportSize().width, ScopedEditor.ViewportSize().height, ScopedFsr2Quality,
                             ScopedExtract.Packet().jitterX, ScopedExtract.Packet().jitterY,
                             !ScopedExtract.Packet().historyValid);
                     }

@@ -66,6 +66,31 @@ int main()
                 ScopedGpu->Info().upscalers.fsr1 ? 1 : 0, ScopedGpu->Info().upscalers.fsr2 ? 1 : 0,
                 ScopedGpu->Info().upscalers.motionVectors ? 1 : 0,
                 ScopedGpu->Info().upscalers.frameGeneration ? 1 : 0);
+    if (std::getenv("FBY_GPU_MOTION_ONLY") != nullptr)
+    {
+        std::array<Fby::Rhi::MotionVectorItem, 2> ScopedMotionItems{};
+        ScopedMotionItems[0].position = {10.0f, 0.0f};
+        ScopedMotionItems[1].position = {20.0f, 0.0f};
+        const Fby::Rhi::RenderTargetHandle ScopedMotionTarget =
+            ScopedGpu->CreateMotionVectorTarget({320, 180});
+        bool ScopedMotionRendered = false;
+        if (ScopedMotionTarget.IsValid() && ScopedGpu->UploadMotionVectors(ScopedMotionItems) &&
+            ScopedGpu->BeginFrame())
+        {
+            ScopedMotionRendered = ScopedGpu->RenderMotionVectors(
+                ScopedMotionTarget, 2, {0.0f, 0.0f}, {0.0f, 0.0f}, 1.0f, 1.0f, {0.0f, 0.0f},
+                {0.0f, 0.0f}, {320.0f, 180.0f});
+            ScopedGpu->EndFrame();
+            ScopedGpu->WaitIdle();
+        }
+        std::printf("static_bake_gpu: RG16 motion target=%d pass=%d\n", ScopedMotionTarget.IsValid() ? 1 : 0,
+                    ScopedMotionRendered ? 1 : 0);
+        if (ScopedMotionTarget.IsValid())
+        {
+            ScopedGpu->DestroyRenderTarget(ScopedMotionTarget);
+        }
+        return ScopedMotionRendered ? 0 : 1;
+    }
     if (!ScopedGpu->Info().upscalers.motionVectors || !ScopedGpu->Info().upscalers.fsr2 ||
         !ScopedGpu->Info().upscalers.frameGeneration)
     {

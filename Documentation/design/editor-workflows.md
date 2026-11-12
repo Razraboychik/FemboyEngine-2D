@@ -3,8 +3,8 @@
 This document records the editor contracts that are not obvious from the panels:
 project resolution, scene lifecycle, shell behaviour, authoring commands and the
 dirty/autosave rules. The task walkthrough stays in
-[Authoring.md](authoring.md); the forward plan is in
-[ROADMAP.md](../ROADMAP.md).
+[Authoring.md](authoring.md); the forward plan lives in the project issue
+tracker.
 
 ## Project resolution and opening
 
@@ -163,11 +163,12 @@ fixed-step path as the normal play loop.
 
 ## Known limits
 
-- No parent-child transform hierarchy: there is no local/world transform split or
-  propagation system yet (engine-level, tracked in [ROADMAP.md](../ROADMAP.md)).
+- The transform hierarchy is opt-in: drag an entity onto another in the Hierarchy
+  to parent it (world transform preserved), and use **Clear parent** to detach.
+  `UpdateHierarchy` runs after the fixed step in the sandbox and PIE, and once
+  per editor frame. Reparenting is not yet part of the undo stack.
 - No prefab instances with overrides: only "spawn a prefab" exists.
 - Material/scene creation wizards are limited to the empty TOML scene template.
 - Content Browser rename/delete dialogs and the prefab save dialog are
   UI-driven; automation covers only the VFS index and the scene round trip
-  (`editor_infrastructure`). They stay on the manual verification list in
-  [ROADMAP.md](../ROADMAP.md).
+  (`editor_infrastructure`). They stay on the manual verification list.

@@ -62,6 +62,8 @@ bool ComponentRegistry::SetTomlCodec(std::string_view InName, TomlCapture InCapt
 void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
 {
     InRegistry.Register<Transform2D>();
+    InRegistry.Register<LocalTransform2D>();
+    InRegistry.Register<Parent2D>();
     InRegistry.Register<NameComponent>();
     InRegistry.Register<Velocity>();
     InRegistry.Register<TransportGroupComponent>();

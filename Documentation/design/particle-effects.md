@@ -1,6 +1,6 @@
 # Particle effects
 
-Status: 0.4.0-alpha.1 tree. `ParticleEffectSystem` is the CPU, deterministic
+Status: 0.5.0 tree. `ParticleEffectSystem` is the CPU, deterministic
 particle path for gameplay effects: sparks, blood, dust, smoke, fire, embers,
 bubbles, splashes, snow, rain, leaves, confetti, magic, explosions, poison and
 frost. It is data-oriented and allocation-free after construction.

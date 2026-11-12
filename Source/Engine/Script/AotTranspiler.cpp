@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Fby::Script
@@ -62,8 +63,16 @@ void AppendFormat(std::string& Out, const char* InFormat, ...)
                               : "std::numeric_limits<float>::infinity()";
     }
     char ScopedBuffer[64] = {};
-    std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "%.9gf", static_cast<double>(InValue));
-    return ScopedBuffer;
+    std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "%.9g", static_cast<double>(InValue));
+    std::string ScopedText = ScopedBuffer;
+    // "2" alone is an integer literal; a float literal needs a decimal point or
+    // an exponent before the suffix.
+    if (ScopedText.find_first_of(".eE") == std::string::npos)
+    {
+        ScopedText += ".0";
+    }
+    ScopedText += "f";
+    return ScopedText;
 }
 
 [[nodiscard]] std::string U32Literal(std::uint32_t InValue)
@@ -71,6 +80,91 @@ void AppendFormat(std::string& Out, const char* InFormat, ...)
     char ScopedBuffer[32] = {};
     std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "%uull", InValue);
     return ScopedBuffer;
+}
+
+// Opcodes that always write a numeric payload, so their result tag is reset.
+[[nodiscard]] constexpr bool WritesNumericResult(OpCode InOp) noexcept
+{
+    switch (InOp)
+    {
+        case OpCode::LoadF32:
+        case OpCode::LoadI32:
+        case OpCode::AddF:
+        case OpCode::SubF:
+        case OpCode::MulF:
+        case OpCode::DivF:
+        case OpCode::AddI:
+        case OpCode::SubI:
+        case OpCode::MulI:
+        case OpCode::DivI:
+        case OpCode::ModI:
+        case OpCode::NegF:
+        case OpCode::NegI:
+        case OpCode::AndI:
+        case OpCode::OrI:
+        case OpCode::NotI:
+        case OpCode::LtF:
+        case OpCode::LeF:
+        case OpCode::GtF:
+        case OpCode::GeF:
+        case OpCode::EqF:
+        case OpCode::NeF:
+        case OpCode::LtI:
+        case OpCode::LeI:
+        case OpCode::GtI:
+        case OpCode::GeI:
+        case OpCode::EqI:
+        case OpCode::NeI:
+        case OpCode::LoadSelf:
+        case OpCode::LoadFieldF:
+        case OpCode::LoadFieldI:
+        case OpCode::LoadFieldVec2:
+        case OpCode::SpawnPrefab:
+        case OpCode::DespawnEntity:
+        case OpCode::RandomF:
+        case OpCode::RandomRangeF:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] constexpr bool IsHeapNative(NativeId InNative) noexcept
+{
+    switch (InNative)
+    {
+        case NativeId::ArrayNew:
+        case NativeId::ArrayPush:
+        case NativeId::ArraySet:
+        case NativeId::ArrayGet:
+        case NativeId::ArrayLength:
+        case NativeId::MapNew:
+        case NativeId::MapSet:
+        case NativeId::MapGet:
+        case NativeId::MapHas:
+        case NativeId::MapLength:
+        case NativeId::StringConcat:
+        case NativeId::StringLength:
+        case NativeId::StringEquals:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Every byte is emitted as a hex escape; the next escape always starts with a
+// backslash, so adjacent escapes cannot merge into one longer hex sequence.
+[[nodiscard]] std::string EscapeStringLiteral(std::string_view InText)
+{
+    std::string ScopedLiteral = "\"";
+    for (const unsigned char ScopedCharacter : InText)
+    {
+        char ScopedBuffer[8] = {};
+        std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "\\x%02X", ScopedCharacter);
+        ScopedLiteral += ScopedBuffer;
+    }
+    ScopedLiteral += "\"";
+    return ScopedLiteral;
 }
 
 [[nodiscard]] const char* EntryName(ScriptEvent InEvent) noexcept
@@ -96,7 +190,7 @@ public:
     {
     }
 
-    [[nodiscard]] bool Emit(const FunctionEntry& InFunction, std::string* InError)
+    [[nodiscard]] bool Emit(const FunctionEntry& InFunction, std::uint32_t InIndex, std::string* InError)
     {
         const auto& ScopedCode = MProgram.code;
         if (InFunction.codeOffset >= ScopedCode.size())
@@ -104,28 +198,25 @@ public:
             *InError = "function entry points past the end of the code";
             return false;
         }
+        const bool ScopedUserFunction = (InFunction.event & kUserFunctionFlag) != 0;
 
-        // Find the end of this function: the matching Halt. The compiler emits
+        // Events end at Halt; a user function ends at Return.
         std::uint32_t ScopedEnd = InFunction.codeOffset;
         for (; ScopedEnd < ScopedCode.size(); ++ScopedEnd)
         {
-            if (ScopedCode[ScopedEnd].Code() == OpCode::Halt)
+            const OpCode ScopedOp = ScopedCode[ScopedEnd].Code();
+            if ((ScopedUserFunction && ScopedOp == OpCode::Return) || (!ScopedUserFunction && ScopedOp == OpCode::Halt))
             {
                 break;
             }
         }
         if (ScopedEnd >= ScopedCode.size())
         {
-            *InError = "event function has no Halt";
+            *InError = ScopedUserFunction ? "user function has no Return" : "event function has no Halt";
             return false;
         }
 
-        const char* ScopedName = EntryName(static_cast<ScriptEvent>(InFunction.event));
-        if (ScopedName == nullptr)
-        {
-            *InError = "unknown script event id";
-            return false;
-        }
+        MCurrentBase = InFunction.registerHighWater;
 
         MUsedComponents.assign(MProgram.components.size(), false);
         for (std::uint32_t ScopedPc = InFunction.codeOffset; ScopedPc <= ScopedEnd; ++ScopedPc)
@@ -145,9 +236,22 @@ public:
             }
         }
 
-        AppendFormat(MOut, "void fby_entry_%s(::Fby::Script::Aot::Context& ctx) noexcept\n{\n", ScopedName);
-        MOut += "    Registers r{};\n";
-        MOut += "    (void)r;\n";
+        if (ScopedUserFunction)
+        {
+            AppendFormat(MOut, "void fby_fn_%u(::Fby::Script::Aot::Context& ctx, Registers& r) noexcept\n{\n", InIndex);
+        }
+        else
+        {
+            const char* ScopedName = EntryName(static_cast<ScriptEvent>(InFunction.event));
+            if (ScopedName == nullptr)
+            {
+                *InError = "unknown script event id";
+                return false;
+            }
+            AppendFormat(MOut, "void fby_entry_%s(::Fby::Script::Aot::Context& ctx) noexcept\n{\n", ScopedName);
+            MOut += "    Registers r{};\n";
+            MOut += "    (void)r;\n";
+        }
         for (std::uint32_t ScopedComponent = 0; ScopedComponent < MUsedComponents.size(); ++ScopedComponent)
         {
             if (!MUsedComponents[ScopedComponent])
@@ -201,6 +305,15 @@ private:
         const auto ScopedS = static_cast<std::uint32_t>(InInstruction.src);
         const auto ScopedO = static_cast<std::uint32_t>(InInstruction.operand);
 
+        if (WritesNumericResult(ScopedOp))
+        {
+            AppendFormat(MOut, "    r.tag[%u] = ::Fby::Script::Aot::Tag::Float;\n", ScopedD);
+            if (ScopedOp == OpCode::LoadFieldVec2 && ScopedD + 1 < 128)
+            {
+                AppendFormat(MOut, "    r.tag[%u] = ::Fby::Script::Aot::Tag::Float;\n", ScopedD + 1);
+            }
+        }
+
         switch (ScopedOp)
         {
             case OpCode::Nop:
@@ -218,11 +331,29 @@ private:
                 AppendFormat(MOut, "    r.i[%u] = %d;\n", ScopedD,
                              static_cast<int>(static_cast<std::int16_t>(InInstruction.operand)));
                 return true;
+            case OpCode::LoadString:
+            {
+                std::string_view ScopedText;
+                if (!MProgram.StringAt(InInstruction.operand, &ScopedText))
+                {
+                    *InError = "LoadString references a missing string";
+                    return false;
+                }
+                AppendFormat(MOut, "    r.u[%u] = ctx.InternString(%s, %u);\n", ScopedD,
+                             EscapeStringLiteral(ScopedText).c_str(), static_cast<std::uint32_t>(ScopedText.size()));
+                AppendFormat(MOut,
+                             "    if (r.u[%u] == 0xFFFFFFFFu) { ctx.Fault(%u, %u); return; }\n", ScopedD,
+                             Aot::FaultCode::HeapFull, InPc);
+                AppendFormat(MOut, "    r.tag[%u] = ::Fby::Script::Aot::Tag::String;\n", ScopedD);
+                return true;
+            }
             case OpCode::MoveF:
                 AppendFormat(MOut, "    r.f[%u] = r.f[%u];\n", ScopedD, ScopedS);
+                AppendFormat(MOut, "    r.tag[%u] = r.tag[%u];\n", ScopedD, ScopedS);
                 return true;
             case OpCode::MoveI:
                 AppendFormat(MOut, "    r.u[%u] = r.u[%u];\n", ScopedD, ScopedS);
+                AppendFormat(MOut, "    r.tag[%u] = r.tag[%u];\n", ScopedD, ScopedS);
                 return true;
             case OpCode::AddF:
                 AppendFormat(MOut, "    r.f[%u] = r.f[%u] + r.f[%u];\n", ScopedD, ScopedS, ScopedO);
@@ -434,6 +565,10 @@ private:
                     return false;
                 }
                 const auto ScopedNative = static_cast<NativeId>(MProgram.natives[InInstruction.operand]);
+                if (!IsHeapNative(ScopedNative))
+                {
+                    AppendFormat(MOut, "    r.tag[%u] = ::Fby::Script::Aot::Tag::Float;\n", ScopedD);
+                }
                 switch (ScopedNative)
                 {
                     case NativeId::LogFloat:
@@ -618,6 +753,106 @@ private:
                         AppendFormat(MOut, "    ctx.CameraSetMotion(r.f[%u]);\n", ScopedD);
                         AppendFormat(MOut, "    r.f[%u] = 1.0f;\n", ScopedD);
                         break;
+                    case NativeId::ArrayNew:
+                        AppendFormat(MOut, "    r.u[%u] = ctx.ArrayNew();\n", ScopedD);
+                        AppendFormat(MOut,
+                                     "    if (r.u[%u] == 0xFFFFFFFFu) { ctx.Fault(%u, %u); return; }\n", ScopedD,
+                                     Aot::FaultCode::HeapFull, InPc);
+                        AppendFormat(MOut, "    r.tag[%u] = ::Fby::Script::Aot::Tag::Array;\n", ScopedD);
+                        break;
+                    case NativeId::ArrayPush:
+                        AppendFormat(MOut,
+                                     "    if (!ctx.ArrayPush(r.u[%u], r.u[%u], r.tag[%u])) { ctx.Fault(%u, %u); "
+                                     "return; }\n",
+                                     ScopedD, ScopedD + 1, ScopedD + 1, Aot::FaultCode::BadCollection, InPc);
+                        AppendFormat(MOut, "    r.u[%u] = 1; r.tag[%u] = ::Fby::Script::Aot::Tag::Int;\n", ScopedD,
+                                     ScopedD);
+                        break;
+                    case NativeId::ArraySet:
+                        AppendFormat(MOut,
+                                     "    if (!ctx.ArraySet(r.u[%u], r.u[%u], r.u[%u], r.tag[%u])) { ctx.Fault(%u, "
+                                     "%u); return; }\n",
+                                     ScopedD, ScopedD + 1, ScopedD + 2, ScopedD + 2, Aot::FaultCode::OutOfRange,
+                                     InPc);
+                        AppendFormat(MOut, "    r.u[%u] = 1; r.tag[%u] = ::Fby::Script::Aot::Tag::Int;\n", ScopedD,
+                                     ScopedD);
+                        break;
+                    case NativeId::ArrayGet:
+                        AppendFormat(MOut,
+                                     "    { std::uint32_t b%u = 0; std::uint32_t t%u = 0; if "
+                                     "(!ctx.ArrayGet(r.u[%u], r.u[%u], &b%u, &t%u)) { ctx.Fault(%u, %u); "
+                                     "return; } r.u[%u] = b%u; r.tag[%u] = t%u; }\n",
+                                     InPc, InPc, ScopedD, ScopedD + 1, InPc, InPc, Aot::FaultCode::OutOfRange, InPc,
+                                     ScopedD, InPc, ScopedD, InPc);
+                        break;
+                    case NativeId::ArrayLength:
+                        AppendFormat(MOut,
+                                     "    { const std::uint32_t l%u = ctx.ArrayLength(r.u[%u]); if (l%u == "
+                                     "0xFFFFFFFFu) { ctx.Fault(%u, %u); return; } r.u[%u] = l%u; r.tag[%u] = "
+                                     "::Fby::Script::Aot::Tag::Int; }\n",
+                                     InPc, ScopedD, InPc, Aot::FaultCode::BadCollection, InPc, ScopedD, InPc,
+                                     ScopedD);
+                        break;
+                    case NativeId::MapNew:
+                        AppendFormat(MOut, "    r.u[%u] = ctx.MapNew();\n", ScopedD);
+                        AppendFormat(MOut,
+                                     "    if (r.u[%u] == 0xFFFFFFFFu) { ctx.Fault(%u, %u); return; }\n", ScopedD,
+                                     Aot::FaultCode::HeapFull, InPc);
+                        AppendFormat(MOut, "    r.tag[%u] = ::Fby::Script::Aot::Tag::Map;\n", ScopedD);
+                        break;
+                    case NativeId::MapSet:
+                        AppendFormat(MOut,
+                                     "    if (!ctx.MapSet(r.u[%u], r.u[%u], r.tag[%u], r.u[%u], r.tag[%u])) { "
+                                     "ctx.Fault(%u, %u); return; }\n",
+                                     ScopedD, ScopedD + 1, ScopedD + 1, ScopedD + 2, ScopedD + 2,
+                                     Aot::FaultCode::BadCollection, InPc);
+                        AppendFormat(MOut, "    r.u[%u] = 1; r.tag[%u] = ::Fby::Script::Aot::Tag::Int;\n", ScopedD,
+                                     ScopedD);
+                        break;
+                    case NativeId::MapGet:
+                        AppendFormat(MOut,
+                                     "    { std::uint32_t b%u = 0; std::uint32_t t%u = 0; if "
+                                     "(!ctx.MapGet(r.u[%u], r.u[%u], r.tag[%u], &b%u, &t%u)) { ctx.Fault(%u, "
+                                     "%u); return; } r.u[%u] = b%u; r.tag[%u] = t%u; }\n",
+                                     InPc, InPc, ScopedD, ScopedD + 1, ScopedD + 1, InPc, InPc,
+                                     Aot::FaultCode::MissingKey, InPc, ScopedD, InPc, ScopedD, InPc);
+                        break;
+                    case NativeId::MapHas:
+                        AppendFormat(MOut,
+                                     "    r.u[%u] = ctx.MapHas(r.u[%u], r.u[%u], r.tag[%u]) ? 1u : 0u; "
+                                     "r.tag[%u] = ::Fby::Script::Aot::Tag::Int;\n",
+                                     ScopedD, ScopedD, ScopedD + 1, ScopedD + 1, ScopedD);
+                        break;
+                    case NativeId::MapLength:
+                        AppendFormat(MOut,
+                                     "    { const std::uint32_t l%u = ctx.MapLength(r.u[%u]); if (l%u == "
+                                     "0xFFFFFFFFu) { ctx.Fault(%u, %u); return; } r.u[%u] = l%u; r.tag[%u] = "
+                                     "::Fby::Script::Aot::Tag::Int; }\n",
+                                     InPc, ScopedD, InPc, Aot::FaultCode::BadCollection, InPc, ScopedD, InPc,
+                                     ScopedD);
+                        break;
+                    case NativeId::StringConcat:
+                        AppendFormat(MOut,
+                                     "    r.u[%u] = ctx.StringConcat(r.u[%u], r.u[%u]);\n", ScopedD, ScopedD,
+                                     ScopedD + 1);
+                        AppendFormat(MOut,
+                                     "    if (r.u[%u] == 0xFFFFFFFFu) { ctx.Fault(%u, %u); return; }\n", ScopedD,
+                                     Aot::FaultCode::BadString, InPc);
+                        AppendFormat(MOut, "    r.tag[%u] = ::Fby::Script::Aot::Tag::String;\n", ScopedD);
+                        break;
+                    case NativeId::StringLength:
+                        AppendFormat(MOut,
+                                     "    { const std::uint32_t l%u = ctx.StringLength(r.u[%u]); if (l%u == "
+                                     "0xFFFFFFFFu) { ctx.Fault(%u, %u); return; } r.u[%u] = l%u; r.tag[%u] = "
+                                     "::Fby::Script::Aot::Tag::Int; }\n",
+                                     InPc, ScopedD, InPc, Aot::FaultCode::BadString, InPc, ScopedD, InPc, ScopedD);
+                        break;
+                    case NativeId::StringEquals:
+                        AppendFormat(MOut,
+                                     "    r.u[%u] = ctx.StringEquals(r.u[%u], r.u[%u]) ? 1u : 0u; r.tag[%u] = "
+                                     "::Fby::Script::Aot::Tag::Int;\n",
+                                     ScopedD, ScopedD, ScopedD + 1, ScopedD);
+                        break;
                     case NativeId::Count:
                     default:
                         *InError = "native call uses an unknown NativeId";
@@ -643,6 +878,31 @@ private:
                              ScopedS, FloatLiteral(MProgram.constants[InInstruction.operand]).c_str(), ScopedD);
                 return true;
 
+            case OpCode::CallFunction:
+            {
+                if (ScopedO >= MProgram.functions.size() ||
+                    (MProgram.functions[ScopedO].event & kUserFunctionFlag) == 0)
+                {
+                    *InError = "CallFunction references a non-user entry";
+                    return false;
+                }
+                const std::uint32_t ScopedBase = MProgram.functions[ScopedO].registerHighWater;
+                AppendFormat(MOut,
+                             "    if (ctx.callDepth >= %u) { ctx.Fault(%u, %u); return; }\n", kMaxCallDepth,
+                             Aot::FaultCode::Recursion, InPc);
+                MOut += "    ++ctx.callDepth;\n";
+                AppendFormat(MOut, "    fby_fn_%u(ctx, r);\n", ScopedO);
+                MOut += "    --ctx.callDepth;\n";
+                AppendFormat(MOut, "    r.u[%u] = r.u[%u]; r.tag[%u] = r.tag[%u];\n", ScopedD, ScopedBase, ScopedD,
+                             ScopedBase);
+                return true;
+            }
+            case OpCode::Return:
+                AppendFormat(MOut, "    r.u[%u] = r.u[%u]; r.tag[%u] = r.tag[%u];\n", MCurrentBase, ScopedS,
+                             MCurrentBase, ScopedS);
+                MOut += "    return;\n";
+                return true;
+
             case OpCode::Count:
             default:
                 *InError = "unsupported opcode at instruction " + std::to_string(InPc);
@@ -653,6 +913,7 @@ private:
     const CompiledProgram& MProgram;
     std::string& MOut;
     std::vector<bool> MUsedComponents{};
+    std::uint32_t MCurrentBase = 0;
 };
 }
 
@@ -691,16 +952,35 @@ bool TranspileProgramToCpp(const CompiledProgram& InProgram, const AotTranspileO
     ScopedOut += "#include <limits>\n\n";
     ScopedOut += "namespace\n{\n";
     ScopedOut += "struct Registers\n{\n";
-    ScopedOut += "    float f[128]{};\n";
-    ScopedOut += "    std::uint32_t u[128]{};\n";
+    ScopedOut += "    union\n    {\n";
+    ScopedOut += "        float f[128];\n";
+    ScopedOut += "        std::uint32_t u[128];\n";
+    ScopedOut += "        std::int32_t i[128];\n";
+    ScopedOut += "    };\n";
+    ScopedOut += "    std::uint32_t tag[128]{};\n";
     ScopedOut += "};\n\n";
 
     bool ScopedAnyFunction = false;
     FunctionEmitter ScopedEmitter(InProgram, ScopedOut);
-    for (const FunctionEntry& ScopedFunction : InProgram.functions)
+    // User functions can call each other in any order once every prototype is
+    // visible; the text compiler still rejects forward calls.
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InProgram.functions.size(); ++ScopedIndex)
     {
+        if ((InProgram.functions[ScopedIndex].event & kUserFunctionFlag) != 0)
+        {
+            AppendFormat(ScopedOut, "void fby_fn_%u(::Fby::Script::Aot::Context& ctx, Registers& r) noexcept;\n",
+                         ScopedIndex);
+        }
+    }
+    if (!InProgram.functions.empty())
+    {
+        ScopedOut += "\n";
+    }
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InProgram.functions.size(); ++ScopedIndex)
+    {
+        const FunctionEntry& ScopedFunction = InProgram.functions[ScopedIndex];
         std::string ScopedFunctionError;
-        if (!ScopedEmitter.Emit(ScopedFunction, &ScopedFunctionError))
+        if (!ScopedEmitter.Emit(ScopedFunction, ScopedIndex, &ScopedFunctionError))
         {
             if (InError != nullptr)
             {

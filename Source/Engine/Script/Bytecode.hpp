@@ -62,6 +62,21 @@ enum class NativeId : std::uint16_t
     CameraRoll,
     CameraClearEffects,
     CameraSetMotionScale,
+    // Collection value heap. Ids are appended so version 1 programs keep their
+    // native numbers; the AOT backend emits the matching host callbacks.
+    ArrayNew,
+    ArrayPush,
+    ArraySet,
+    ArrayGet,
+    ArrayLength,
+    MapNew,
+    MapSet,
+    MapGet,
+    MapHas,
+    MapLength,
+    StringConcat,
+    StringLength,
+    StringEquals,
     Count,
 };
 
@@ -99,6 +114,22 @@ inline constexpr std::uint32_t kNativeFunctionCount = static_cast<std::uint32_t>
         case NativeId::CameraAddTrauma:
         case NativeId::CameraSetMotionScale:
             return 2;
+        case NativeId::ArrayNew:
+        case NativeId::ArrayLength:
+        case NativeId::MapNew:
+        case NativeId::MapLength:
+        case NativeId::StringLength:
+            return 1;
+        case NativeId::ArrayPush:
+        case NativeId::ArrayGet:
+        case NativeId::MapGet:
+        case NativeId::MapHas:
+        case NativeId::StringConcat:
+        case NativeId::StringEquals:
+            return 2;
+        case NativeId::ArraySet:
+        case NativeId::MapSet:
+            return 3;
         case NativeId::CameraOffset:
             return 3;
         case NativeId::CameraZoom:
@@ -136,7 +167,10 @@ inline constexpr std::uint32_t kNativeFunctionCount = static_cast<std::uint32_t>
 
 // "FSBK" little-endian
 inline constexpr std::uint32_t kProgramMagic = 0x4B425346u;
-inline constexpr std::uint16_t kProgramVersion = 1;
+// Version 2 adds the UTF-8 string table and the LoadString opcode. Version 1
+// programs still parse, so a previously cooked build keeps loading.
+inline constexpr std::uint16_t kProgramVersion = 2;
+inline constexpr std::uint16_t kMinProgramVersion = 1;
 
 // Optional debug data appended after the program tables. The flag keeps old
 // programs loadable and lets a reader skip the section without parsing it.
@@ -199,7 +233,17 @@ inline constexpr std::uint32_t kMaxComponentBindings = 32;
 inline constexpr std::uint32_t kMaxFieldBindings = 256;
 inline constexpr std::uint32_t kMaxFunctions = 16;
 inline constexpr std::uint32_t kMaxProgramNatives = 32;
+inline constexpr std::uint32_t kMaxProgramStrings = 256;
+inline constexpr std::uint32_t kMaxProgramStringBytes = 64u * 1024u;
 inline constexpr std::uint32_t kMaxStepsPerRun = 16384;
+// User functions share the 128-register file with the event entry points. The
+// compiler reserves 0..63 for events and eight 8-register windows for functions.
+inline constexpr std::uint16_t kUserFunctionFlag = 0x8000u;
+inline constexpr std::uint16_t kUserFunctionParamMask = 0x7FFFu;
+inline constexpr std::uint32_t kEventRegisterLimit = 64;
+inline constexpr std::uint32_t kUserFunctionRegisters = 8;
+inline constexpr std::uint32_t kMaxUserFunctions = 8;
+inline constexpr std::uint32_t kMaxCallDepth = 16;
 
 // A program entry point. Visual graphs compile to these; text scripts compile
 enum class ScriptEvent : std::uint16_t
@@ -307,6 +351,15 @@ enum class OpCode : std::uint8_t
     // Dst = [src, constants[operand])
     RandomRangeF,
 
+    // Dst = interned string handle from Program::strings[operand]
+    LoadString,
+
+    // Dst = call result; operand indexes Program::functions. Arguments are
+    // already in the callee's fixed register window.
+    CallFunction,
+    // Returns from a user function; src is the result register.
+    Return,
+
     Count
 };
 
@@ -408,6 +461,12 @@ enum class OpCode : std::uint8_t
             return "random.f";
         case OpCode::RandomRangeF:
             return "random.range";
+        case OpCode::LoadString:
+            return "load.string";
+        case OpCode::CallFunction:
+            return "call.function";
+        case OpCode::Return:
+            return "return";
         case OpCode::Count:
             break;
     }
@@ -479,10 +538,12 @@ struct ProgramHeader
     std::uint32_t functionCount = 0;
     std::uint32_t nativeCount = 0;
     std::uint32_t registerHighWater = 0;
-    std::uint32_t reserved = 0;
+    // Version 1 stores zero here (the field was reserved).
+    std::uint32_t stringCount = 0;
     std::uint64_t sourceHash = 0;
     std::uint64_t graphHash = 0;
-    std::uint64_t reserved2 = 0;
+    // Version 1 stores zero here (the field was reserved).
+    std::uint64_t stringByteCount = 0;
 };
 
 static_assert(sizeof(ProgramHeader) == 64, "the program header is one cache line");
@@ -514,14 +575,42 @@ struct CompiledProgram
     std::span<const ComponentBinding> components{};
     std::span<const FunctionEntry> functions{};
     std::span<const std::uint16_t> natives{};
+    // String offsets are relative to the start of the UTF-8 byte table.
+    std::span<const std::uint32_t> stringOffsets{};
+    std::span<const char> stringBytes{};
     std::span<const std::byte> storage{};
     CompiledDebug debug{};
     bool valid = false;
+
+    [[nodiscard]] bool StringAt(std::uint32_t InIndex, std::string_view* OutText) const noexcept
+    {
+        if (InIndex >= stringOffsets.size())
+        {
+            return false;
+        }
+        const std::uint32_t ScopedBegin = stringOffsets[InIndex];
+        const std::uint32_t ScopedEnd =
+            InIndex + 1 < stringOffsets.size() ? stringOffsets[InIndex + 1]
+                                               : static_cast<std::uint32_t>(stringBytes.size());
+        if (ScopedBegin > ScopedEnd || ScopedEnd > stringBytes.size())
+        {
+            return false;
+        }
+        if (OutText != nullptr)
+        {
+            *OutText = std::string_view(stringBytes.data() + ScopedBegin, ScopedEnd - ScopedBegin);
+        }
+        return true;
+    }
 
     [[nodiscard]] const FunctionEntry* FindFunction(ScriptEvent InEvent) const noexcept
     {
         for (const FunctionEntry& ScopedFunction : functions)
         {
+            if ((ScopedFunction.event & kUserFunctionFlag) != 0)
+            {
+                continue;
+            }
             if (ScopedFunction.event == static_cast<std::uint16_t>(InEvent))
             {
                 return &ScopedFunction;
@@ -543,11 +632,21 @@ public:
     [[nodiscard]] std::uint16_t AddField(std::uint16_t InComponent, Reflect::FieldKind InKind, std::uint32_t InOffset,
                                          std::uint32_t InFieldSize);
     [[nodiscard]] std::uint16_t AddConstant(float InValue);
+    [[nodiscard]] std::uint16_t AddString(std::string_view InText);
     [[nodiscard]] std::uint16_t AddNative(NativeId InNative);
     std::uint32_t Emit(OpCode InOp, std::uint8_t InDst = 0, std::uint8_t InSrc = 0, std::uint16_t InOperand = 0,
                        std::uint8_t InFlags = 0);
     void PatchJump(std::uint32_t InInstructionIndex, std::uint32_t InTarget);
     [[nodiscard]] std::uint16_t AddFunction(ScriptEvent InEvent, std::uint32_t InCodeOffset);
+    // Adds a user function entry. `InBaseRegister` is the start of its fixed
+    // register window; the low bits of the entry event store the parameter
+    // count. Returns the function-table index used by CallFunction.
+    [[nodiscard]] std::uint16_t AddUserFunction(std::uint16_t InParamCount, std::uint16_t InBaseRegister,
+                                                std::uint32_t InCodeOffset);
+    [[nodiscard]] std::uint32_t FunctionCount() const noexcept
+    {
+        return static_cast<std::uint32_t>(MFunctions.size());
+    }
 
     // Debug information. Optional; when absent the program is byte-identical to
     // a debug-free build apart from the header flag.
@@ -581,6 +680,7 @@ private:
 
     std::vector<Instruction> MCode;
     std::vector<float> MConstants;
+    std::vector<std::string> MStrings;
     std::vector<PendingField> MFields;
     std::vector<ComponentBinding> MComponents;
     std::vector<std::uint16_t> MNatives;

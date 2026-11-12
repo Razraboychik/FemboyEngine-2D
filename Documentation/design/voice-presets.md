@@ -1,6 +1,6 @@
 # Voice presets, moderation policy and reactive SFX
 
-Status: 0.4.0-alpha.1 tree. This document describes the voice preset registry,
+Status: 0.5.0 tree. This document describes the voice preset registry,
 the listener-side policy that applies it, the append-only plugin table that lets a
 pack register presets, and the reactive SFX layer. The DSP itself is described in
 [voice.md](voice.md); the chat contract is in [chat.md](chat.md).

@@ -1,6 +1,7 @@
 #include "Editor/Infrastructure/EditorSystem.hpp"
 
 #include "Engine/RHI/CameraStack.hpp"
+#include "Engine/RHI/Fsr2Adapter.hpp"
 
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Audio/VoicePreset.hpp"
@@ -15,6 +16,7 @@
 #include "Engine/Core/Profiler.hpp"
 #include "Engine/Core/ProfilerPanel.hpp"
 #include "Engine/ECS/Skeleton.hpp"
+#include "Engine/ECS/Hierarchy.hpp"
 #include "Engine/ECS/Lighting.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
@@ -47,6 +49,7 @@
 #include "Editor/Infrastructure/PlayInEditor.hpp"
 #include "Editor/Infrastructure/PhysicsDebugDraw.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
+#include "Editor/Infrastructure/ProjectPlugins.hpp"
 #include "Editor/Infrastructure/UserSettings.hpp"
 #include "Editor/Infrastructure/ResolvedRenderSettings.hpp"
 #include "Editor/Panels/UserSettingsPanel.hpp"
@@ -680,6 +683,10 @@ struct EditorSystem::Impl
     Ui::AccessibilityEffectRegistry* effectRegistry = nullptr;
     std::array<char, 192> pluginPath{};
     std::string pluginStatus;
+    std::filesystem::path pluginDirectory;
+    std::vector<std::filesystem::path> availablePlugins;
+    std::uint32_t selectedPlugin = 0;
+    bool pluginDirectoryScanned = false;
     bool showUserSettings = false;
 
     bool showHierarchy = true;
@@ -851,6 +858,23 @@ struct EditorSystem::Impl
             consoleLines.erase(consoleLines.begin(), consoleLines.begin() + 128);
         }
         consoleScrollToBottom = true;
+    }
+
+    void ScanPluginDirectory()
+    {
+        availablePlugins.clear();
+        for (const std::filesystem::path& ScopedPath : Plugin::DiscoverPluginFiles(pluginDirectory))
+        {
+            // The ABI fixtures exist to test load failures; they are not packs a
+            // project should connect.
+            if (ScopedPath.filename().string().starts_with("fby_hello_mod"))
+            {
+                continue;
+            }
+            availablePlugins.push_back(ScopedPath);
+        }
+        selectedPlugin = 0;
+        pluginDirectoryScanned = true;
     }
 
     // Fonts live in the .fempak. The VFS returns spans into an mmap.
@@ -1273,7 +1297,18 @@ struct EditorSystem::Impl
             std::clamp(static_cast<std::uint32_t>(std::lround(InWidth)), 1u, 4096u);
         const std::uint32_t ScopedDisplayHeight =
             std::clamp(static_cast<std::uint32_t>(std::lround(InHeight)), 1u, 4096u);
-        const float ScopedScale = std::clamp(userSettings.renderScale, 0.25f, 1.0f);
+        const UpscalePolicy ScopedUpscalePolicy = userSettings.upscalePolicy == UpscalePolicy::Auto
+                                                       ? projectConfig.Project().upscalePolicy
+                                                       : userSettings.upscalePolicy;
+        const bool ScopedAutoPicksFsr2 =
+            ScopedUpscalePolicy == UpscalePolicy::Auto && !backendCaps.Dlss;
+        const bool ScopedFsr2Selected =
+            backendCaps.Fsr2 && ScopedUpscalePolicy != UpscalePolicy::Off &&
+            (userSettings.upscaleMode == UpscaleMode::Fsr2 ||
+             userSettings.upscalerBackend == UpscalerBackendSetting::Fsr2 ||
+             ScopedUpscalePolicy == UpscalePolicy::Universal || ScopedAutoPicksFsr2);
+        const float ScopedScale =
+            ScopedFsr2Selected ? Rhi::Fsr2RenderScale(userSettings.fsr2Quality) : userSettings.renderScale;
         const std::uint32_t ScopedPixelWidth =
             std::max(1u, static_cast<std::uint32_t>(std::lround(static_cast<float>(ScopedDisplayWidth) * ScopedScale)));
         const std::uint32_t ScopedPixelHeight = std::max(
@@ -1917,6 +1952,16 @@ struct EditorSystem::Impl
         ImGui::PopID();
     }
 
+    void ReparentEntity(Ecs::Registry& InRegistry, Entity InChild, Entity InParent)
+    {
+        if (!Ecs::SetParent(InRegistry, InChild, InParent))
+        {
+            SetStatus("reparent rejected: invalid entity or a parent chain cycle");
+            return;
+        }
+        SetStatus(InParent == Fby::kNullEntity ? "parent cleared" : "reparented");
+    }
+
     void DrawHierarchy(Ecs::SystemContext& InContext)
     {
         if (!showHierarchy)
@@ -2053,6 +2098,29 @@ struct EditorSystem::Impl
             if (ScopedIsSelected)
             {
                 ImGui::SetItemDefaultFocus();
+            }
+            if (ImGui::BeginDragDropSource())
+            {
+                ImGui::SetDragDropPayload("FBY_HIERARCHY_ENTITY", &ScopedEntity, sizeof(Entity));
+                ImGui::TextUnformatted(ScopedLabel.c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* ScopedPayload = ImGui::AcceptDragDropPayload("FBY_HIERARCHY_ENTITY"))
+                {
+                    const Entity ScopedDropped = *static_cast<const Entity*>(ScopedPayload->Data);
+                    ReparentEntity(ScopedRegistry, ScopedDropped, ScopedEntity);
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (ImGui::BeginPopupContextItem())
+            {
+                if (ImGui::MenuItem("Clear parent", nullptr, false, ScopedRegistry.all_of<Parent2D>(ScopedEntity)))
+                {
+                    ReparentEntity(ScopedRegistry, ScopedEntity, Fby::kNullEntity);
+                }
+                ImGui::EndPopup();
             }
 
             if (const auto* ScopedSkeleton = ScopedRegistry.try_get<SkeletonComponent>(ScopedEntity))
@@ -5057,6 +5125,9 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             MImpl->SetStatus("prefab failed: " + ScopedPrefabError);
         }
     }
+    // Compose the opt-in local/world transform hierarchy after the authoring
+    // edits, so the viewport and the inspector see the resolved world transform.
+    (void)Ecs::UpdateHierarchy(InContext.registry);
     // Dirty marker and autosave. The marker is derived from the command stack, so
     // undoing back to the saved state clears it again.
     const CommandStack::Stats ScopedCommandStats = MImpl->commands.GetStats();
@@ -5543,6 +5614,82 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             Fby::Editor::ProjectSettings& ScopedProjectSettings = MImpl->projectConfig.Config().project;
             const bool ScopedProjectOpen = MImpl->projectConfig.Loaded() && !MImpl->projectConfig.Paths().root.empty();
             ImGui::BeginDisabled(!ScopedProjectOpen);
+            if (MImpl->availablePlugins.empty())
+            {
+                if (MImpl->pluginDirectory.empty())
+                {
+                    ImGui::TextDisabled("No plugin directory configured.");
+                }
+                else
+                {
+                    ImGui::TextDisabled("No plugin files in %s", MImpl->pluginDirectory.string().c_str());
+                }
+            }
+            else
+            {
+                if (MImpl->selectedPlugin >= MImpl->availablePlugins.size())
+                {
+                    MImpl->selectedPlugin = 0;
+                }
+                const std::string ScopedChoice = MImpl->availablePlugins[MImpl->selectedPlugin].filename().string();
+                ImGui::SetNextItemWidth(420.0f);
+                if (ImGui::BeginCombo("##plugin_choice", ScopedChoice.c_str()))
+                {
+                    for (std::uint32_t ScopedI = 0; ScopedI < MImpl->availablePlugins.size(); ++ScopedI)
+                    {
+                        const std::string ScopedName = MImpl->availablePlugins[ScopedI].filename().string();
+                        const bool ScopedSelected = ScopedI == MImpl->selectedPlugin;
+                        if (ImGui::Selectable(ScopedName.c_str(), ScopedSelected))
+                        {
+                            MImpl->selectedPlugin = ScopedI;
+                        }
+                        if (ScopedSelected)
+                        {
+                            ImGui::SetItemDefaultFocus();
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Connect & load") && MImpl->pluginHost != nullptr && ScopedProjectOpen)
+                {
+                    const std::filesystem::path ScopedSource = MImpl->availablePlugins[MImpl->selectedPlugin];
+                    const std::filesystem::path ScopedRoot = MImpl->projectConfig.Paths().root;
+                    std::string ScopedRelative;
+                    std::string ScopedConnectError;
+                    if (!ConnectProjectPlugin(ScopedRoot, ScopedSource, ScopedProjectSettings, &ScopedRelative,
+                                              &ScopedConnectError))
+                    {
+                        MImpl->pluginStatus = "connect failed: " + ScopedConnectError;
+                    }
+                    else
+                    {
+                        const std::string ScopedTarget = (ScopedRoot / ScopedRelative).string();
+                        bool ScopedLoaded = false;
+                        for (const auto& ScopedPlugin : MImpl->pluginHost->Plugins())
+                        {
+                            ScopedLoaded = ScopedLoaded || ScopedPlugin->path == ScopedTarget;
+                        }
+                        std::string ScopedLoadError;
+                        if (!ScopedLoaded && !MImpl->pluginHost->Load(ScopedTarget, &ScopedLoadError))
+                        {
+                            MImpl->pluginStatus = "load failed: " + ScopedLoadError;
+                        }
+                        else
+                        {
+                            std::string ScopedPersistError;
+                            (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                            MImpl->pluginStatus = "connected and saved to project: " + ScopedRelative;
+                        }
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Refresh"))
+                {
+                    MImpl->ScanPluginDirectory();
+                }
+            }
+            ImGui::SeparatorText("Or add from a project path");
             ImGui::SetNextItemWidth(420.0f);
             ImGui::InputText("##plugin_path", MImpl->pluginPath.data(), MImpl->pluginPath.size());
             ImGui::SameLine();
@@ -5595,27 +5742,67 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             {
                 Fby::Editor::ProjectPluginEntry& ScopedEntry = ScopedProjectSettings.plugins[ScopedI];
                 ImGui::PushID(static_cast<int>(ScopedI));
-                ImGui::TextUnformatted(ScopedEntry.Path);
+                bool ScopedEnabled = ScopedEntry.Enabled;
+                if (ImGui::Checkbox("##plugin_enabled", &ScopedEnabled))
+                {
+                    ScopedEntry.Enabled = ScopedEnabled;
+                    if (MImpl->pluginHost != nullptr)
+                    {
+                        const std::string ScopedFull = (MImpl->projectConfig.Paths().root / ScopedEntry.Path).string();
+                        std::string ScopedError;
+                        if (ScopedEnabled)
+                        {
+                            (void)MImpl->pluginHost->Load(ScopedFull, &ScopedError);
+                        }
+                        else
+                        {
+                            (void)MImpl->pluginHost->Unload(ScopedFull, &ScopedError);
+                        }
+                    }
+                    std::string ScopedPersistError;
+                    (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                }
+                ImGui::SameLine();
+                ImGui::Text("%s%s", ScopedEntry.Path, ScopedEntry.Enabled ? "" : " (disabled)");
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Load") && MImpl->pluginHost != nullptr)
                 {
                     std::string ScopedLoadError;
                     const std::string ScopedFull = (MImpl->projectConfig.Paths().root / ScopedEntry.Path).string();
-                    MImpl->pluginStatus = MImpl->pluginHost->Load(ScopedFull, &ScopedLoadError)
-                                              ? "loaded " + std::string(ScopedEntry.Path)
-                                              : "load failed: " + ScopedLoadError;
+                    if (MImpl->pluginHost->Load(ScopedFull, &ScopedLoadError))
+                    {
+                        ScopedEntry.Enabled = true;
+                        std::string ScopedPersistError;
+                        (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                        MImpl->pluginStatus = "loaded " + std::string(ScopedEntry.Path);
+                    }
+                    else
+                    {
+                        MImpl->pluginStatus = "load failed: " + ScopedLoadError;
+                    }
                 }
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Forget"))
                 {
-                    for (std::uint32_t ScopedMove = ScopedI + 1; ScopedMove < ScopedProjectSettings.pluginCount;
-                         ++ScopedMove)
+                    const std::string ScopedPath = ScopedEntry.Path;
+                    if (MImpl->pluginHost != nullptr)
                     {
-                        ScopedProjectSettings.plugins[ScopedMove - 1] = ScopedProjectSettings.plugins[ScopedMove];
+                        std::string ScopedUnloadError;
+                        const std::string ScopedFull = (MImpl->projectConfig.Paths().root / ScopedPath).string();
+                        (void)MImpl->pluginHost->Unload(ScopedFull, &ScopedUnloadError);
                     }
-                    --ScopedProjectSettings.pluginCount;
-                    std::string ScopedPersistError;
-                    (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                    std::string ScopedRemoveError;
+                    if (!RemoveProjectPlugin(MImpl->projectConfig.Paths().root, ScopedProjectSettings, ScopedI,
+                                             &ScopedRemoveError))
+                    {
+                        MImpl->pluginStatus = "remove failed: " + ScopedRemoveError;
+                    }
+                    else
+                    {
+                        std::string ScopedPersistError;
+                        (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                        MImpl->pluginStatus = "removed " + ScopedPath;
+                    }
                     ImGui::PopID();
                     break;
                 }
@@ -5839,10 +6026,15 @@ void EditorSystem::SetEffectRegistry(Ui::AccessibilityEffectRegistry* InEffects)
     }
 }
 
+void EditorSystem::SetPluginDirectory(const std::filesystem::path& InDirectory) noexcept
+{
+    MImpl->pluginDirectory = InDirectory;
+    MImpl->ScanPluginDirectory();
+}
+
 void EditorSystem::SetPluginHost(Plugin::PluginHost* InHost) noexcept
 {
-    MImpl->pluginHost = InHost;
-    if (MImpl->initialized && MImpl->projectConfig.Loaded())
+    MImpl->pluginHost = InHost;    if (MImpl->initialized && MImpl->projectConfig.Loaded())
     {
         try
         {

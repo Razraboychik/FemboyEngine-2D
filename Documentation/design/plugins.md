@@ -61,15 +61,29 @@ This branch now has the first slice in the engine:
   - `Source/Plugins/Alcohol` — tipsy/drunk/wasted/stalker profiles built from a
     layered effect pool (double vision, wobble, blur, chromatic aberration,
     vignette, desaturation, afterimage, pulse, sway, scale breathing);
+  - `Source/Plugins/Radiation` — `Radiation.Low`, `Radiation.High` and
+    `Radiation.Critical` screen-noise profiles with `Vision.Radiation`,
+    `Accessibility.Vision.Radiation` and `State.Radiation` tags;
 - Voice preset packs:
   - `Source/Plugins/VoicePack` — helium, swamp and cursed-mumble presets
     registered through `FbyVoiceApi`; the pack is data-only, unloads cleanly and
     stays inactive on a host without a voice registry;
 - Editor:
-  - **View > Plugin Manager** lists only the open project's plugins;
+  - **View > Plugin Manager** lists the plugin files next to the editor
+    executable and only the open project's loaded plugins;
+  - **Connect & load** copies the selected file into `<project>/plugins/`, loads
+    it and records the project-relative path in `project.femproj`;
+  - the per-entry checkbox enables or disables a plugin without removing it;
+    **Forget** unloads the plugin and deletes the copied file;
   - paths are relative to the project root and validated before loading;
   - `[[plugins]]` entries in `project.femproj` carry `path` and `enabled`;
   a new project starts with no plugin entries (all packs are opt-in);
+- Engine:
+  - `Fby::Plugin::DiscoverPluginFiles()` lists the loadable libraries in a
+    directory and `PluginHost::LoadDirectory()` loads all of them, so a game
+    can bring up its packs without an editor or a project descriptor;
+  - the editor uses the same discovery result and adds the project binding on
+    top of it.
   - opening another project unloads the previous project's plugins.
 
 The visual consumer is now wired:

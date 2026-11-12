@@ -77,6 +77,21 @@
       }
     },
     {
+      "name": "msvc-dev",
+      "displayName": "Debug MSVC (optional)",
+      "description": "Ninja debug build with the optional Microsoft toolchain; run it from a Developer Prompt.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-msvc",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FBY_BUILD_TESTS": "ON",
+        "FBY_WITH_RNNOISE": "OFF",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
       "name": "linux-dev",
       "displayName": "Debug Clang (Linux)",
       "generator": "Ninja",

@@ -1,5 +1,6 @@
 // FemboyEngine2D - PIE client viewport: target lifetime and client frame composition.
 #include "Engine/RHI/FrameComposer.hpp"
+#include "Editor/Infrastructure/PiePresentation.hpp"
 #include "Editor/Infrastructure/PlayInEditor.hpp"
 #include "Editor/Panels/PieClientViewport.hpp"
 
@@ -7,6 +8,7 @@
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -119,6 +121,55 @@ private:
 };
 }
 
+void TestPieClientSdfFrame()
+{
+    using namespace Fby;
+
+    std::array<float, 64> ScopedSamples{};
+    SdfField ScopedField;
+    ScopedField.samples = ScopedSamples.data();
+    ScopedField.width = 8;
+    ScopedField.height = 8;
+    ScopedField.origin = Vector2D{0.0f, 0.0f};
+    ScopedField.cellSize = Vector2D{16.0f, 16.0f};
+
+    Ecs::Registry ScopedWorld;
+    const Entity ScopedSun = ScopedWorld.create();
+    SdfSunComponent ScopedSunComponent;
+    ScopedSunComponent.Direction = Vector2D{0.0f, -1.0f};
+    ScopedSunComponent.Steps = 16;
+    ScopedWorld.emplace<SdfSunComponent>(ScopedSun, ScopedSunComponent);
+    const Entity ScopedCaster = ScopedWorld.create();
+    ScopedWorld.emplace<Transform2D>(ScopedCaster,
+                                     Transform2D{Vector2D{32.0f, 48.0f}, Vector2D{1.0f, 1.0f}, 0.0f});
+    Light2DOccluderComponent ScopedOccluder;
+    ScopedOccluder.HalfExtents = Vector2D{10.0f, 20.0f};
+    ScopedOccluder.Flags = kLight2DOccluderFlagBox;
+    ScopedWorld.emplace<Light2DOccluderComponent>(ScopedCaster, ScopedOccluder);
+
+    SdfAtlasImage ScopedAtlas;
+    Vector4D ScopedPreviousCamera{};
+    Rhi::SdfLightingFrame ScopedFrame;
+    FBY_CHECK(Editor::BuildPieClientSdfFrame(ScopedWorld, &ScopedField, ScopedAtlas, Vector2D{100.0f, 50.0f},
+                                             2.0f, Rhi::Extent2D{800, 450}, &ScopedPreviousCamera, &ScopedFrame));
+    FBY_CHECK(ScopedFrame.enabled);
+    FBY_CHECK(ScopedFrame.occluderCount == 1);
+    FBY_CHECK(ScopedFrame.camera.X == 100.0f && ScopedFrame.camera.Y == 50.0f && ScopedFrame.camera.Z == 2.0f);
+    FBY_CHECK(ScopedFrame.viewport.X == 800.0f && ScopedFrame.viewport.Y == 450.0f);
+    FBY_CHECK(ScopedFrame.temporal);
+    FBY_CHECK(ScopedPreviousCamera.X == 100.0f && ScopedPreviousCamera.Y == 50.0f);
+
+    // The next frame carries the previous camera for temporal reprojection.
+    FBY_CHECK(Editor::BuildPieClientSdfFrame(ScopedWorld, &ScopedField, ScopedAtlas, Vector2D{120.0f, 60.0f},
+                                             2.0f, Rhi::Extent2D{800, 450}, &ScopedPreviousCamera, &ScopedFrame));
+    FBY_CHECK(ScopedFrame.previousCamera.X == 100.0f && ScopedFrame.previousCamera.Y == 50.0f);
+
+    // Without a sun the client packet keeps the SDF path off.
+    ScopedWorld.get<SdfSunComponent>(ScopedSun).Flags = kSdfSunFlagDisabled;
+    FBY_CHECK(!Editor::BuildPieClientSdfFrame(ScopedWorld, &ScopedField, ScopedAtlas, Vector2D{}, 1.0f,
+                                              Rhi::Extent2D{800, 450}, &ScopedPreviousCamera, &ScopedFrame));
+}
+
 int main()
 {
     using namespace Fby;
@@ -205,6 +256,8 @@ int main()
     FBY_CHECK(ScopedRhi.destroyed == 1);
     FBY_CHECK(ScopedRhi.destroyedId.id == ScopedRhi.createdId.id);
     FBY_CHECK(ScopedRhi.waits > 0);
+
+    TestPieClientSdfFrame();
 
     if (GFailures == 0)
     {

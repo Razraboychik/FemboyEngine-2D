@@ -13,8 +13,10 @@ add_library(fby_editor STATIC
     Infrastructure/EditorWidgets.cpp
     Infrastructure/MaterialGraphRuntime.cpp
     Infrastructure/PhysicsDebugDraw.cpp
+    Infrastructure/PiePresentation.cpp
     Infrastructure/PlayInEditor.cpp
     Infrastructure/ProjectConfig.cpp
+    Infrastructure/ProjectPlugins.cpp
     Infrastructure/UserSettings.cpp
     Infrastructure/ReleaseCooker.cpp
     Infrastructure/TextureThumbnails.cpp

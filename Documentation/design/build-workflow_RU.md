@@ -58,7 +58,7 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 
 ## Выбор компилятора
 
-0.4 alpha поддерживает Clang, AppleClang, GCC и MSVC. clang-cl — эталонный
+0.5.0 поддерживает Clang, AppleClang, GCC и MSVC. clang-cl — эталонный
 тулчейн и release gate; CI также прогоняет clang, GCC и AppleClang. MSVC собирает
 то же дерево для локальной разработки, но не входит в CI-гейт. Любой компилятор —
 поддерживаемая альтернатива, но никогда не обязанность. Минимальные версии — это
@@ -80,7 +80,9 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 - **Один компилятор везде:** Clang. Только он покрывает Windows (clang-cl или
   clang++), Linux и macOS одним фронтендом.
 
-Опциональная конфигурация MSVC:
+Опциональная конфигурация MSVC. Тулчейн Microsoft доступен, но никогда не
+является эталонным гейтом. Из Developer Prompt `cmake --preset msvc-dev`
+использует ту же конфигурацию:
 
 ```bat
 cmake -S . -B build-msvc -G Ninja ^

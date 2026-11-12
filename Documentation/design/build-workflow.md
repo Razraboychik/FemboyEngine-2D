@@ -58,7 +58,7 @@ all three systems. See
 
 ## Choosing a compiler
 
-The 0.4 alpha line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
+The 0.5.0 line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
 reference toolchain and the release gate; CI also runs clang, GCC and AppleClang.
 MSVC builds the same tree for local development but is not part of the CI gate.
 Every compiler is a supported alternative, never an obligation. The minimum
@@ -81,7 +81,9 @@ targets.
 - **One compiler everywhere:** Clang. It is the only frontend that covers
   Windows (clang-cl or clang++), Linux and macOS.
 
-Optional MSVC configure:
+Optional MSVC configure. The Microsoft toolchain stays available, but it is
+never the reference gate. From a Developer Prompt, `cmake --preset msvc-dev`
+uses the same configuration:
 
 ```bat
 cmake -S . -B build-msvc -G Ninja ^

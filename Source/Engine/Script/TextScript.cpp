@@ -21,6 +21,7 @@ enum class TokenKind : std::uint8_t
     End,
     Identifier,
     Number,
+    String,
     Punctuation,
 };
 
@@ -91,13 +92,36 @@ public:
             std::string ScopedText;
             while (MOffset < MSource.size() && MSource[MOffset] != '"')
             {
-                ScopedText.push_back(MSource[MOffset++]);
+                char ScopedNext = MSource[MOffset++];
+                if (ScopedNext == '\\' && MOffset < MSource.size())
+                {
+                    const char ScopedEscape = MSource[MOffset++];
+                    switch (ScopedEscape)
+                    {
+                        case 'n':
+                            ScopedNext = '\n';
+                            break;
+                        case 't':
+                            ScopedNext = '\t';
+                            break;
+                        case 'r':
+                            ScopedNext = '\r';
+                            break;
+                        case '0':
+                            ScopedNext = '\0';
+                            break;
+                        default:
+                            ScopedNext = ScopedEscape;
+                            break;
+                    }
+                }
+                ScopedText.push_back(ScopedNext);
             }
             if (MOffset < MSource.size())
             {
                 ++MOffset;
             }
-            return MakeToken(TokenKind::Identifier, ScopedText, ScopedStart);
+            return MakeToken(TokenKind::String, ScopedText, ScopedStart);
         }
         const std::size_t ScopedStart = MOffset;
         ++MOffset;
@@ -174,6 +198,14 @@ public:
         MToken = MLexer.Next();
         while (!MFailed && MToken.kind != TokenKind::End)
         {
+            if (MToken.text == "function")
+            {
+                if (!ParseFunction())
+                {
+                    break;
+                }
+                continue;
+            }
             if (!Expect("event"))
             {
                 break;
@@ -189,6 +221,11 @@ public:
                 Fail("unknown event '" + ScopedEventName + "'");
                 break;
             }
+            MNextRegister = 0;
+            MRegisterLimit = kEventRegisterLimit;
+            MLastRegister = 0;
+            MEntityRegister = 0xFF;
+            MVariables.clear();
             const std::uint32_t ScopedOffset = static_cast<std::uint32_t>(MBuilder.CodeSize());
             if (!ParseBlock())
             {
@@ -418,6 +455,58 @@ private:
         {
             return NativeId::DecimalRelease;
         }
+        if (InName == "array_new")
+        {
+            return NativeId::ArrayNew;
+        }
+        if (InName == "array_push")
+        {
+            return NativeId::ArrayPush;
+        }
+        if (InName == "array_set")
+        {
+            return NativeId::ArraySet;
+        }
+        if (InName == "array_get")
+        {
+            return NativeId::ArrayGet;
+        }
+        if (InName == "array_length")
+        {
+            return NativeId::ArrayLength;
+        }
+        if (InName == "map_new")
+        {
+            return NativeId::MapNew;
+        }
+        if (InName == "map_set")
+        {
+            return NativeId::MapSet;
+        }
+        if (InName == "map_get")
+        {
+            return NativeId::MapGet;
+        }
+        if (InName == "map_has")
+        {
+            return NativeId::MapHas;
+        }
+        if (InName == "map_length")
+        {
+            return NativeId::MapLength;
+        }
+        if (InName == "string_concat")
+        {
+            return NativeId::StringConcat;
+        }
+        if (InName == "string_length")
+        {
+            return NativeId::StringLength;
+        }
+        if (InName == "string_equals")
+        {
+            return NativeId::StringEquals;
+        }
         return NativeId::Count;
     }
 
@@ -445,8 +534,142 @@ private:
         return ScopedPc;
     }
 
+    struct FunctionInfo
+    {
+        std::uint16_t Index = 0;
+        std::uint8_t Base = 0;
+        std::uint8_t Params = 0;
+    };
+
+    [[nodiscard]] bool ParseFunction()
+    {
+        if (!Expect("function") || MToken.kind != TokenKind::Identifier)
+        {
+            Fail("expected a function name");
+            return false;
+        }
+        const std::string ScopedName = MToken.text;
+        if (!ExpectIdentifier() || !Expect("("))
+        {
+            return false;
+        }
+        std::vector<std::string> ScopedParams;
+        if (!Accept(")"))
+        {
+            for (;;)
+            {
+                ScopedParams.push_back(MToken.text);
+                if (!ExpectIdentifier())
+                {
+                    return false;
+                }
+                if (Accept(")"))
+                {
+                    break;
+                }
+                if (!Expect(","))
+                {
+                    return false;
+                }
+            }
+        }
+        if (MUserFunctions.find(ScopedName) != MUserFunctions.end())
+        {
+            Fail("duplicate function '" + ScopedName + "'");
+            return false;
+        }
+        if (ScopedParams.size() >= kUserFunctionRegisters || MUserFunctionCount >= kMaxUserFunctions)
+        {
+            Fail("too many user functions or parameters");
+            return false;
+        }
+        const auto ScopedBase =
+            static_cast<std::uint8_t>(kEventRegisterLimit + MUserFunctionCount * kUserFunctionRegisters);
+        if (static_cast<std::uint32_t>(ScopedBase) + kUserFunctionRegisters > kMaxVmRegisters)
+        {
+            Fail("user function register window exceeds the register file");
+            return false;
+        }
+        const std::uint32_t ScopedOffset = MBuilder.CodeSize();
+        const std::uint16_t ScopedIndex =
+            MBuilder.AddUserFunction(static_cast<std::uint16_t>(ScopedParams.size()), ScopedBase, ScopedOffset);
+        MUserFunctions[ScopedName] = FunctionInfo{ScopedIndex, ScopedBase,
+                                                  static_cast<std::uint8_t>(ScopedParams.size())};
+        ++MUserFunctionCount;
+
+        const auto ScopedSavedVariables = MVariables;
+        const std::uint32_t ScopedSavedNext = MNextRegister;
+        const std::uint32_t ScopedSavedLimit = MRegisterLimit;
+        const std::uint32_t ScopedSavedLast = MLastRegister;
+        const std::uint8_t ScopedSavedEntity = MEntityRegister;
+        MVariables.clear();
+        MNextRegister = ScopedBase;
+        MRegisterLimit = static_cast<std::uint32_t>(ScopedBase) + kUserFunctionRegisters;
+        MLastRegister = ScopedBase;
+        MEntityRegister = 0xFF;
+        for (const std::string& ScopedParam : ScopedParams)
+        {
+            const std::uint8_t ScopedRegister = Allocate();
+            MVariables[ScopedParam] = ScopedRegister;
+        }
+        const bool ScopedOk = ParseBlock();
+        if (ScopedOk)
+        {
+            Emit(OpCode::LoadI32, ScopedBase, 0, 0);
+            Emit(OpCode::Return, 0, ScopedBase);
+        }
+        MVariables = ScopedSavedVariables;
+        MNextRegister = ScopedSavedNext;
+        MRegisterLimit = ScopedSavedLimit;
+        MLastRegister = ScopedSavedLast;
+        MEntityRegister = ScopedSavedEntity;
+        return ScopedOk;
+    }
+
+    [[nodiscard]] bool CompileUserCall(const FunctionInfo& InFunction)
+    {
+        const std::uint8_t ScopedDestination = Allocate();
+        std::uint32_t ScopedArgument = 0;
+        while (!MFailed && !Accept(")"))
+        {
+            if (ScopedArgument > 0 && !Expect(","))
+            {
+                return false;
+            }
+            if (!ParseExpression(nullptr))
+            {
+                return false;
+            }
+            if (ScopedArgument >= InFunction.Params)
+            {
+                Fail("too many arguments to '" + std::to_string(InFunction.Index) + "'");
+                return false;
+            }
+            Emit(OpCode::MoveF, static_cast<std::uint8_t>(InFunction.Base + ScopedArgument),
+                 static_cast<std::uint8_t>(MLastRegister));
+            ++ScopedArgument;
+        }
+        if (ScopedArgument != InFunction.Params)
+        {
+            Fail("wrong number of function arguments");
+            return false;
+        }
+        Emit(OpCode::CallFunction, ScopedDestination, 0, InFunction.Index);
+        MLastRegister = ScopedDestination;
+        return true;
+    }
+
     [[nodiscard]] bool ParseStatement()
     {
+        if (Accept("return"))
+        {
+            if (!ParseExpression(nullptr))
+            {
+                return false;
+            }
+            Emit(OpCode::Return, 0, static_cast<std::uint8_t>(MLastRegister));
+            return Expect(";");
+        }
         if (Accept("let"))
         {
             const std::string ScopedName = MToken.text;
@@ -550,6 +773,15 @@ private:
             }
             if (Accept("("))
             {
+                const auto ScopedFunction = MUserFunctions.find(ScopedName);
+                if (ScopedFunction != MUserFunctions.end())
+                {
+                    if (!CompileUserCall(ScopedFunction->second))
+                    {
+                        return false;
+                    }
+                    return Expect(";");
+                }
                 const NativeId ScopedNative = NativeFromName(ScopedName);
                 if (ScopedNative == NativeId::Count)
                 {
@@ -760,6 +992,15 @@ private:
             MLastRegister = ScopedDestination;
             return true;
         }
+        if (MToken.kind == TokenKind::String)
+        {
+            const std::uint16_t ScopedString = MBuilder.AddString(MToken.text);
+            MToken = MLexer.Next();
+            const std::uint8_t ScopedDestination = Allocate();
+            Emit(OpCode::LoadString, ScopedDestination, 0, ScopedString);
+            MLastRegister = ScopedDestination;
+            return true;
+        }
         if (MToken.text == "true" || MToken.text == "false")
         {
             const bool ScopedValue = MToken.text == "true";
@@ -840,6 +1081,11 @@ private:
             {
                 MLastRegister = ScopedVariable->second;
                 return true;
+            }
+            const auto ScopedFunction = MUserFunctions.find(ScopedName);
+            if (ScopedFunction != MUserFunctions.end() && Accept("("))
+            {
+                return CompileUserCall(ScopedFunction->second);
             }
             const NativeId ScopedNative = NativeFromName(ScopedName);
             if (ScopedNative == NativeId::Count || !Accept("("))
@@ -929,9 +1175,9 @@ private:
 
     [[nodiscard]] std::uint8_t Allocate()
     {
-        if (MNextRegister >= kMaxVmRegisters)
+        if (MNextRegister >= MRegisterLimit)
         {
-            Fail("text script exceeds the 128-register file");
+            Fail("text script exceeds its register window");
             return 0;
         }
         return static_cast<std::uint8_t>(MNextRegister++);
@@ -1004,11 +1250,14 @@ private:
     ProgramBuilder MBuilder;
     Token MToken;
     std::unordered_map<std::string, std::uint8_t> MVariables;
+    std::unordered_map<std::string, FunctionInfo> MUserFunctions;
     std::unordered_map<std::string, std::uint16_t> MComponentCache;
     std::unordered_map<std::string, std::uint32_t> MFieldCache;
     std::vector<FieldBinding> MFieldBindings;
     std::uint32_t MNextRegister = 0;
+    std::uint32_t MRegisterLimit = kEventRegisterLimit;
     std::uint32_t MLastRegister = 0;
+    std::uint32_t MUserFunctionCount = 0;
     std::uint8_t MEntityRegister = 0xFF;
     bool MFailed = false;
 };

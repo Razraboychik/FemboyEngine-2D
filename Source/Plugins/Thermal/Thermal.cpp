@@ -8,7 +8,6 @@
 
 namespace
 {
-FbyHostApi* GHost = nullptr;
 
 void SetTag(char (&InTag)[64], const char* InText)
 {
@@ -47,7 +46,7 @@ FbyEffectDesc MakeThermal(const char* InId, const char* InName, float InBlur, fl
 FBY_PLUGIN_ENTRY const FbyPluginInfo* fby_plugin_info()
 {
     static const FbyPluginInfo ScopedInfo{static_cast<std::uint32_t>(sizeof(FbyPluginInfo)), FBY_PLUGIN_ABI_VERSION,
-                                          "Thermal", "0.4.0-alpha.1", "FemboyEngine2D contributors", 0, nullptr,
+                                          "Thermal", FBY_ENGINE_VERSION, "FemboyEngine2D contributors", 0, nullptr,
                                           "Thermal palettes, five temperature tags and device blur"};
     return &ScopedInfo;
 }
@@ -58,7 +57,6 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
     {
         return 1;
     }
-    GHost = InHost;
     if (InHost->accessibility == nullptr || InHost->accessibility->register_effect == nullptr)
     {
         return 0;
@@ -95,5 +93,4 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
 
 FBY_PLUGIN_ENTRY void fby_plugin_unload()
 {
-    GHost = nullptr;
 }

@@ -7,6 +7,7 @@
 #include "Engine/ECS/CommandBuffer.hpp"
 #include "Engine/Script/Bytecode.hpp"
 #include "Engine/Script/EcsBridge.hpp"
+#include "Engine/Script/ScriptHeap.hpp"
 
 #include <array>
 #include <cstdint>
@@ -46,6 +47,14 @@ struct VmFault
         CommandBufferFull,
         SpawnUnavailable,
         UnknownOpcode,
+        NoHeap,
+        HeapFull,
+        BadString,
+        BadCollection,
+        OutOfRange,
+        MissingKey,
+        BadCall,
+        Recursion,
     };
 
     Code code = Code::None;
@@ -89,6 +98,22 @@ struct VmFault
                 return "spawn-unavailable";
             case Code::UnknownOpcode:
                 return "unknown-opcode";
+            case Code::NoHeap:
+                return "no-heap";
+            case Code::HeapFull:
+                return "heap-full";
+            case Code::BadString:
+                return "bad-string";
+            case Code::BadCollection:
+                return "bad-collection";
+            case Code::OutOfRange:
+                return "out-of-range";
+            case Code::MissingKey:
+                return "missing-key";
+            case Code::BadCall:
+                return "bad-call";
+            case Code::Recursion:
+                return "recursion";
         }
         return "?";
     }
@@ -116,6 +141,9 @@ struct VmContext
     void* user = nullptr;
     // Prefab spawn is a host hook because prefab instantiation lives.
     std::uint32_t (*spawn)(VmContext& InContext, std::uint32_t InPrefabId) noexcept = nullptr;
+    // Bounded value heap for strings, arrays and maps. A host that runs a script
+    // without collections may leave it null; collection natives then fault.
+    ScriptHeap* heap = nullptr;
 };
 
 class ScriptVm;
@@ -305,6 +333,24 @@ public:
             MRegisters[InIndex].u = InValue;
         }
     }
+    [[nodiscard]] ValueTag Tag(std::uint8_t InIndex) const noexcept
+    {
+        return InIndex < kMaxVmRegisters ? MTags[InIndex] : ValueTag::Float;
+    }
+    void SetTag(std::uint8_t InIndex, ValueTag InTag) noexcept
+    {
+        if (InIndex < kMaxVmRegisters)
+        {
+            MTags[InIndex] = InTag;
+        }
+    }
+    // A native reports a recoverable script fault; the VM turns it into the same
+    // VmFault stop a bytecode fault produces.
+    void RaiseFault(VmFault::Code InCode, std::uint32_t InDetail = 0) noexcept
+    {
+        MPendingFault = InCode;
+        MPendingFaultDetail = InDetail;
+    }
 
     [[nodiscard]] std::uint64_t InstructionsExecuted() const noexcept
     {
@@ -328,7 +374,19 @@ private:
                                      VmContext& InContext, VmFault* InFault, VmDebugState* InDebug) noexcept;
 
     std::array<Register, kMaxVmRegisters> MRegisters{};
+    std::array<ValueTag, kMaxVmRegisters> MTags{};
     std::array<NativeFn, kMaxNatives> MNatives{};
+    struct CallFrame
+    {
+        std::uint32_t ReturnPc = 0;
+        std::uint8_t ResultDst = 0;
+        std::uint16_t Function = 0;
+        std::uint16_t Base = 0;
+    };
+    std::array<CallFrame, kMaxCallDepth> MCalls{};
+    std::uint32_t MCallDepth = 0;
+    VmFault::Code MPendingFault = VmFault::Code::None;
+    std::uint32_t MPendingFaultDetail = 0;
     std::uint64_t MExecuted = 0;
 };
 }

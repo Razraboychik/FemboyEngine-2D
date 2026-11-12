@@ -1396,8 +1396,8 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "Open work is tracked in Documentation/ROADMAP.md.",
-                    "Открытая работа отслеживается в Documentation/ROADMAP.md.",
+                    "Open work is tracked in the project issue tracker.",
+                    "Открытая работа отслеживается в трекере задач проекта.",
                 ),
             },
         ],

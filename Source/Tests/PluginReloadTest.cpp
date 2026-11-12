@@ -9,7 +9,9 @@
 
 #include <atomic>
 #include <cstdio>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -114,6 +116,18 @@ int main()
         ScopedHost.UnloadAll();
     }
 
+#if defined(FBY_TEST_PLUGIN_DIR)
+    const std::vector<std::filesystem::path> ScopedDiscovered =
+        Plugin::DiscoverPluginFiles(FBY_TEST_PLUGIN_DIR);
+    Check(!ScopedDiscovered.empty(), "plugin discovery finds the built fixtures");
+    bool ScopedFoundFixture = false;
+    for (const std::filesystem::path& ScopedPath : ScopedDiscovered)
+    {
+        ScopedFoundFixture = ScopedFoundFixture || ScopedPath.filename().string().starts_with("fby_hello_mod");
+    }
+    Check(ScopedFoundFixture, "plugin discovery lists the fixture library");
+#endif
+
 #if defined(FBY_TEST_VOICE_PACK_PATH)
     VoicePresetRegistry ScopedVoicePresets;
     ScopedVoicePresets.RegisterBuiltIns();
@@ -162,6 +176,15 @@ int main()
     ScopedHost.UnloadAll();
     Check(ScopedAccessibilityEffects.Count() == 0, "Alcohol unload removes effect profiles");
 
+    Check(ScopedHost.Load(FBY_TEST_RADIATION_PATH, &ScopedError), "Radiation plugin loads");
+    const Ui::AccessibilityEffectProfile* ScopedRadiationLow = ScopedAccessibilityEffects.Find("Radiation.Low");
+    Check(ScopedRadiationLow != nullptr, "Radiation registers the low dose");
+    Check(ScopedRadiationLow != nullptr && ScopedRadiationLow->TagCount == 3, "Radiation tags the low dose");
+    Check(ScopedAccessibilityEffects.Find("Radiation.High") != nullptr, "Radiation registers the high dose");
+    Check(ScopedAccessibilityEffects.Find("Radiation.Critical") != nullptr, "Radiation registers the critical dose");
+    ScopedHost.UnloadAll();
+    Check(ScopedAccessibilityEffects.Count() == 0, "Radiation unload removes effect profiles");
+
     Check(ScopedHost.Load(FBY_TEST_THEMED_PALETTES_PATH, &ScopedError), "Themed Palettes plugin loads");
     Check(ScopedAccessibilityExtensions.Count() == 6, "Themed Palettes registers six palettes");
     const Ui::AccessibilityPaletteExtension* ScopedHalloween = ScopedAccessibilityExtensions.Find("Palette.Halloween");
@@ -170,6 +193,13 @@ int main()
     Check(ScopedAccessibilityExtensions.Find("Palette.Terminal") != nullptr, "Themed Palettes registers Terminal");
     ScopedHost.UnloadAll();
     Check(ScopedAccessibilityExtensions.Count() == 0, "Themed Palettes unload removes its extensions");
+#endif
+
+#if defined(FBY_TEST_PLUGIN_DIR)
+    const std::uint32_t ScopedDirectoryLoaded = ScopedHost.LoadDirectory(FBY_TEST_PLUGIN_DIR);
+    Check(ScopedDirectoryLoaded >= 3, "the host loads a plugin directory");
+    ScopedHost.UnloadAll();
+    Check(ScopedHost.Plugins().empty(), "directory unload clears the host");
 #endif
 
     if (GFailures == 0)

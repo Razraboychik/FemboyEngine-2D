@@ -576,6 +576,169 @@ void HostFault(void* InUser, std::uint32_t InCode, std::uint32_t InPc) noexcept
     LogWarn("aot", "script fault code {} at pc {}", InCode, InPc);
 }
 
+// The heap is owned by the script runtime and passed through `heapUser`, so the
+// plugin never allocates and the VM/AOT paths share one bounded pool.
+ScriptHeap* HeapOf(void* InHeapUser) noexcept
+{
+    return static_cast<ScriptHeap*>(InHeapUser);
+}
+
+std::uint32_t HostHeapArrayNew(void* InHeapUser) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    return ScopedHeap != nullptr ? ScopedHeap->NewArray() : ScriptHeap::kInvalidHandle;
+}
+
+std::uint32_t HostHeapArrayPush(void* InHeapUser, std::uint32_t InArray, std::uint32_t InBits,
+                                std::uint32_t InTag) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    return ScopedHeap != nullptr &&
+                   ScopedHeap->ArrayPush(InArray, ScriptValue{InBits, static_cast<ValueTag>(InTag)})
+               ? 1u
+               : 0u;
+}
+
+std::uint32_t HostHeapArraySet(void* InHeapUser, std::uint32_t InArray, std::uint32_t InIndex, std::uint32_t InBits,
+                               std::uint32_t InTag) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    return ScopedHeap != nullptr &&
+                   ScopedHeap->ArraySet(InArray, InIndex, ScriptValue{InBits, static_cast<ValueTag>(InTag)})
+               ? 1u
+               : 0u;
+}
+
+std::uint32_t HostHeapArrayGet(void* InHeapUser, std::uint32_t InArray, std::uint32_t InIndex,
+                               std::uint32_t* OutBits, std::uint32_t* OutTag) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    if (ScopedHeap == nullptr || OutBits == nullptr || OutTag == nullptr)
+    {
+        return 0u;
+    }
+    ScriptValue ScopedValue;
+    if (!ScopedHeap->ArrayGet(InArray, InIndex, &ScopedValue))
+    {
+        return 0u;
+    }
+    *OutBits = ScopedValue.Bits;
+    *OutTag = static_cast<std::uint32_t>(ScopedValue.Tag);
+    return 1u;
+}
+
+std::uint32_t HostHeapArrayLength(void* InHeapUser, std::uint32_t InArray) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    std::uint32_t ScopedLength = 0;
+    if (ScopedHeap == nullptr || !ScopedHeap->ArrayLength(InArray, &ScopedLength))
+    {
+        return 0xFFFFFFFFu;
+    }
+    return ScopedLength;
+}
+
+std::uint32_t HostHeapMapNew(void* InHeapUser) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    return ScopedHeap != nullptr ? ScopedHeap->NewMap() : ScriptHeap::kInvalidHandle;
+}
+
+std::uint32_t HostHeapMapSet(void* InHeapUser, std::uint32_t InMap, std::uint32_t InKeyBits, std::uint32_t InKeyTag,
+                             std::uint32_t InValueBits, std::uint32_t InValueTag) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    return ScopedHeap != nullptr &&
+                   ScopedHeap->MapSet(InMap, ScriptValue{InKeyBits, static_cast<ValueTag>(InKeyTag)},
+                                      ScriptValue{InValueBits, static_cast<ValueTag>(InValueTag)})
+               ? 1u
+               : 0u;
+}
+
+std::uint32_t HostHeapMapGet(void* InHeapUser, std::uint32_t InMap, std::uint32_t InKeyBits,
+                             std::uint32_t InKeyTag, std::uint32_t* OutBits, std::uint32_t* OutTag) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    if (ScopedHeap == nullptr || OutBits == nullptr || OutTag == nullptr)
+    {
+        return 0u;
+    }
+    ScriptValue ScopedValue;
+    if (!ScopedHeap->MapGet(InMap, ScriptValue{InKeyBits, static_cast<ValueTag>(InKeyTag)}, &ScopedValue))
+    {
+        return 0u;
+    }
+    *OutBits = ScopedValue.Bits;
+    *OutTag = static_cast<std::uint32_t>(ScopedValue.Tag);
+    return 1u;
+}
+
+std::uint32_t HostHeapMapHas(void* InHeapUser, std::uint32_t InMap, std::uint32_t InKeyBits,
+                             std::uint32_t InKeyTag) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    return ScopedHeap != nullptr &&
+                   ScopedHeap->MapHas(InMap, ScriptValue{InKeyBits, static_cast<ValueTag>(InKeyTag)})
+               ? 1u
+               : 0u;
+}
+
+std::uint32_t HostHeapMapLength(void* InHeapUser, std::uint32_t InMap) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    std::uint32_t ScopedLength = 0;
+    if (ScopedHeap == nullptr || !ScopedHeap->MapLength(InMap, &ScopedLength))
+    {
+        return 0xFFFFFFFFu;
+    }
+    return ScopedLength;
+}
+
+std::uint32_t HostHeapStringIntern(void* InHeapUser, const char* InText, std::uint32_t InLength) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    if (ScopedHeap == nullptr || InText == nullptr)
+    {
+        return ScriptHeap::kInvalidHandle;
+    }
+    return ScopedHeap->InternString(std::string_view(InText, InLength));
+}
+
+std::uint32_t HostHeapStringConcat(void* InHeapUser, std::uint32_t InLeft, std::uint32_t InRight) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    std::uint32_t ScopedHandle = ScriptHeap::kInvalidHandle;
+    if (ScopedHeap == nullptr || !ScopedHeap->ConcatStrings(InLeft, InRight, &ScopedHandle))
+    {
+        return ScriptHeap::kInvalidHandle;
+    }
+    return ScopedHandle;
+}
+
+std::uint32_t HostHeapStringLength(void* InHeapUser, std::uint32_t InString) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    std::string_view ScopedText;
+    if (ScopedHeap == nullptr || !ScopedHeap->StringView(InString, &ScopedText))
+    {
+        return 0xFFFFFFFFu;
+    }
+    return static_cast<std::uint32_t>(ScopedText.size());
+}
+
+std::uint32_t HostHeapStringEquals(void* InHeapUser, std::uint32_t InLeft, std::uint32_t InRight) noexcept
+{
+    ScriptHeap* ScopedHeap = HeapOf(InHeapUser);
+    std::string_view ScopedLeft;
+    std::string_view ScopedRight;
+    if (ScopedHeap == nullptr || !ScopedHeap->StringView(InLeft, &ScopedLeft) ||
+        !ScopedHeap->StringView(InRight, &ScopedRight))
+    {
+        return 0u;
+    }
+    return ScopedLeft == ScopedRight ? 1u : 0u;
+}
+
 // The generated code and the interpreter must agree on the numbers a plugin
 // reports, otherwise telemetry cannot merge VM and AOT faults.
 static_assert(Aot::FaultCode::MissingComponent == static_cast<std::uint32_t>(VmFault::Code::MissingComponent),
@@ -584,6 +747,27 @@ static_assert(Aot::FaultCode::BadField == static_cast<std::uint32_t>(VmFault::Co
               "AOT fault code must mirror VmFault::Code");
 static_assert(Aot::FaultCode::DivisionByZero == static_cast<std::uint32_t>(VmFault::Code::DivisionByZero),
               "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::FaultCode::NoHeap == static_cast<std::uint32_t>(VmFault::Code::NoHeap),
+              "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::FaultCode::HeapFull == static_cast<std::uint32_t>(VmFault::Code::HeapFull),
+              "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::FaultCode::BadString == static_cast<std::uint32_t>(VmFault::Code::BadString),
+              "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::FaultCode::BadCollection == static_cast<std::uint32_t>(VmFault::Code::BadCollection),
+              "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::FaultCode::OutOfRange == static_cast<std::uint32_t>(VmFault::Code::OutOfRange),
+              "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::FaultCode::MissingKey == static_cast<std::uint32_t>(VmFault::Code::MissingKey),
+              "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::FaultCode::BadCall == static_cast<std::uint32_t>(VmFault::Code::BadCall),
+              "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::FaultCode::Recursion == static_cast<std::uint32_t>(VmFault::Code::Recursion),
+              "AOT fault code must mirror VmFault::Code");
+static_assert(Aot::Tag::Float == static_cast<std::uint32_t>(ValueTag::Float) &&
+                  Aot::Tag::String == static_cast<std::uint32_t>(ValueTag::String) &&
+                  Aot::Tag::Array == static_cast<std::uint32_t>(ValueTag::Array) &&
+                  Aot::Tag::Map == static_cast<std::uint32_t>(ValueTag::Map),
+              "AOT register tags must mirror ValueTag");
 }
 
 bool ValidateAotModule(const Aot::Module& InModule, const EcsBridge& InBridge, std::string* InError)
@@ -701,6 +885,21 @@ bool RunAotModule(const Aot::Module& InModule, ScriptEvent InEvent, Entity InSel
     ScopedHost.cameraClear = &HostCameraClear;
     ScopedHost.cameraSetMotion = &HostCameraSetMotion;
     ScopedHost.fault = &HostFault;
+    ScopedHost.heapUser = InContext.heap;
+    ScopedHost.heapArrayNew = &HostHeapArrayNew;
+    ScopedHost.heapArrayPush = &HostHeapArrayPush;
+    ScopedHost.heapArraySet = &HostHeapArraySet;
+    ScopedHost.heapArrayGet = &HostHeapArrayGet;
+    ScopedHost.heapArrayLength = &HostHeapArrayLength;
+    ScopedHost.heapMapNew = &HostHeapMapNew;
+    ScopedHost.heapMapSet = &HostHeapMapSet;
+    ScopedHost.heapMapGet = &HostHeapMapGet;
+    ScopedHost.heapMapHas = &HostHeapMapHas;
+    ScopedHost.heapMapLength = &HostHeapMapLength;
+    ScopedHost.heapStringIntern = &HostHeapStringIntern;
+    ScopedHost.heapStringConcat = &HostHeapStringConcat;
+    ScopedHost.heapStringLength = &HostHeapStringLength;
+    ScopedHost.heapStringEquals = &HostHeapStringEquals;
 
     Aot::Context ScopedAotContext;
     ScopedAotContext.host = &ScopedHost;

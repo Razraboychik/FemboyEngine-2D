@@ -8,7 +8,7 @@
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.4.0-alpha.1](https://img.shields.io/badge/status-0.4.0--alpha.1-blue.svg)]()
+[![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D is a compact, deterministic, data-oriented engine for 2D games:
@@ -22,7 +22,7 @@ path, no JSON in the shipped runtime and no hidden object graph. Components are
 trivially copyable data; systems are free functions; the frame is a flat
 `RenderItem` array submitted through one RHI packet.
 
-**Status: 0.4.0-alpha.1.** FemboyEngine2D is in the public 0.4 alpha line. Its
+**Status: 0.5.0.** FemboyEngine2D is in the public 0.5 release line. Its
 runtime includes the FemboyScript debugger (source spans, breakpoints, stepping,
 locals and self fields), isometric and tile-based maps with a map editor,
 skeletal IK, retargeting and clip compression (`.fanim`), grid navigation, 2D
@@ -350,10 +350,11 @@ count that changes with every package.
 ctest --test-dir build --output-on-failure
 ```
 
-The style gate is machine-checked:
+The style and version gates are machine-checked:
 
 ```bash
 python Source/Tools/Dev/CheckStyle.py
+python Source/Tools/Dev/CheckVersion.py
 ```
 
 ---
@@ -459,7 +460,6 @@ is [the Russian README](READMEs/README_RU.md).
 - [Project settings recommendations (EN)](Documentation/md/en/ProjectSettingsRecommendations_EN.md)
 - [Code style](Documentation/style/CodeStyle.md)
 - [Naming conventions](Documentation/style/NAMING.md)
-- [Roadmap](Documentation/ROADMAP.md)
 - [Virtual texturing contract](Documentation/design/virtual-texturing.md)
 - [Editor workflows and scene authoring](Documentation/design/editor-workflows.md)
 - [Play-In-Editor and the client viewport](Documentation/design/pie-multiplayer.md)
@@ -492,6 +492,7 @@ FemboyEngine2D.
 ```text
 FemboyEngine2D/
 ├─ CMakeLists.txt, cmake/        build configuration and dependency pins
+├─ Version.txt                   single source of the engine version
 ├─ Source/
 │  ├─ Engine/                    Core, RHI, ECS, Physics, Audio, Network,
 │  │                             Assets, Script, Text, UI, Video, Weather

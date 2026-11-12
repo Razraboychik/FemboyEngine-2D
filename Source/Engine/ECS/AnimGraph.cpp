@@ -445,9 +445,13 @@ void RegisterAnimGraphSystem(Ecs::SystemGraph& InGraph)
     Ecs::SystemAccess ScopedAccess;
     ScopedAccess.ComponentReads =
         Ecs::MakeComponentAccessMask<AnimGraphDefinitionComponent, AnimStateComponent, GameplayTagsComponent,
-                                     SkeletonComponent, SpriteAnimationComponent, SpriteSheetComponent>();
+                                     SkeletonComponent, SpriteAnimationComponent, SpriteSheetComponent, Facing2D,
+                                     Sprite2D>();
     ScopedAccess.ComponentWrites =
-        Ecs::MakeComponentAccessMask<AnimStateComponent, SkeletonComponent, SpriteAnimationComponent>();
+        Ecs::MakeComponentAccessMask<AnimStateComponent, SkeletonComponent, SpriteAnimationComponent, Sprite2D>();
+    // No services and no structural changes; the thunk constructs its own
+    // AnimGraphSystem and the tag registry is read-only.
+    ScopedAccess.ParallelSafe = true;
     (void)InGraph.Add(Ecs::Phase::FixedUpdate, "anim_graph", Ecs::BindGameplaySystem<&AnimGraphSystemThunk>(), nullptr,
                       0, 0, ScopedAccess);
 }

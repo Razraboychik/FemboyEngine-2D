@@ -241,4 +241,4 @@ PNG -> BC7 cook and settings undo.
 
 ## 7. Backlog
 
-Open work is tracked in [ROADMAP.md](../ROADMAP.md).
+Open work is tracked in the project issue tracker.

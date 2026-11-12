@@ -1,4 +1,4 @@
-# FemboyEngine 0.4.0-alpha.1 — getting started
+# FemboyEngine 0.5.0 — getting started
 
 This document lists what to install and which files must sit next to the engine to run the editor, the runtime and the development tools on Windows, Linux and macOS.
 

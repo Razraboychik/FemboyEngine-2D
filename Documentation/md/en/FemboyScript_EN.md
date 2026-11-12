@@ -7,10 +7,10 @@ It has two authoring surfaces and two execution backends:
 - a compact register bytecode executed by the editor VM;
 - a cook-time C++26 AOT backend that produces a native plugin for builds.
 
-This document describes the 0.4.0-alpha.1 behavior. FemboyScript 2.0 is the bytecode and
-graph format; the engine version is 0.4.0-alpha.1.
+This document describes the 0.5.0 behavior. FemboyScript 2.0 is the bytecode and
+graph format; the engine version is 0.5.0.
 
-## What exists in 0.4.0-alpha.1
+## What exists in 0.5.0
 
 | Layer | Status |
 |---|---|
@@ -21,7 +21,23 @@ graph format; the engine version is 0.4.0-alpha.1.
 | AOT transpiler | Bytecode to C++26, then a native plugin |
 | Runtime AOT loader | `AotModule` validates ABI and component hashes |
 | Standalone textual `.fbs` parser | `CompileTextScript()` text subset |
-| Arrays, strings, maps, user functions, coroutines | Not present in 0.4.0-alpha.1 |
+| Arrays, strings, maps | Collection natives (`array_new`, `array_push`, `array_get`, `array_length`, `map_new`, `map_set`, `map_get`, `map_has`, `map_length`, `string_concat`, `string_length`, `string_equals`) over a bounded heap |
+| User functions | Textual `function name(a, b) { ... }` with fixed 8-register windows and depth-limited calls |
+| Coroutines | Not present in 0.5.0 |
+
+Collections live in a fixed-capacity `ScriptHeap` owned by the script runtime.
+Handles are 32-bit register payloads tagged as strings, arrays or maps; the VM
+and the nativized AOT path share the same heap through host callbacks, so a
+cooked build and the editor observe identical values. There is no reference
+counting: the heap resets with the script world, and an allocation past a
+capacity reports a script fault instead of growing.
+
+User functions are declared before the events that call them: `function add(a, b)
+{ return a + b; }`. Each function owns an 8-register window above the event
+registers, so nested calls do not clobber the caller; arguments move into the
+callee window and the return value moves back into the caller's destination
+register. Calls are depth-limited and may not recurse. LogicGraph nodes for user
+functions are not part of 0.5.0.
 
 The visual graph is the default authoring surface for designers. The textual
 front-end is an optional power surface for version control, CI, mods and dense
@@ -242,7 +258,7 @@ of failing silently.
    a state tree.
 2. Compile the graph and inspect the reported node/instruction/register counts.
 3. Save the StateTree block to the scene TOML; the LogicGraph is an editor asset
-   payload in 0.4.0-alpha.1.
+   payload in 0.5.0.
 4. Assign a `ScriptComponent` program handle to the entity.
 5. Run PIE; faults appear in the Console/LogBoy panel with program, entity and
    pc.

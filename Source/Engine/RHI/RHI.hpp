@@ -194,15 +194,35 @@ enum class RenderBlendMode : std::uint8_t
     Reveal = 2
 };
 
+// Explicit colour formats for targets that are not plain RGBA8. Motion vectors
+// need RG16F so FSR2 receives signed pixel deltas without a 0..1 bias.
+enum class RenderTargetFormat : std::uint8_t
+{
+    Auto = 0,
+    Rgba8Unorm,
+    Rgba8Srgb,
+    Rg16Float
+};
+
 struct RenderTargetDesc
 {
     Extent2D size{};
     bool srgb = false;
     RenderBlendMode blend = RenderBlendMode::Opaque;
+    RenderTargetFormat format = RenderTargetFormat::Auto;
     // Use the swapchain format so the target's render pass stays compatible with
     // pipelines created for the main pass (the HUD is drawn by the same UI pipeline).
     bool matchSwapchainFormat = false;
 };
+
+[[nodiscard]] constexpr RenderTargetDesc MotionVectorTargetDesc(Extent2D InSize) noexcept
+{
+    RenderTargetDesc ScopedDesc;
+    ScopedDesc.size = InSize;
+    ScopedDesc.srgb = false;
+    ScopedDesc.format = RenderTargetFormat::Rg16Float;
+    return ScopedDesc;
+}
 
 struct RenderTargetHandle
 {
@@ -652,13 +672,10 @@ public:
         return CreateRenderTarget(ScopedDesc);
     }
 
-    // A non-sRGB target reserved for screen-space motion vectors.
+    // A signed RG16 target for screen-space motion vectors.
     virtual RenderTargetHandle CreateMotionVectorTarget(Extent2D InSize)
     {
-        RenderTargetDesc ScopedDesc;
-        ScopedDesc.size = InSize;
-        ScopedDesc.srgb = false;
-        return CreateRenderTarget(ScopedDesc);
+        return CreateRenderTarget(MotionVectorTargetDesc(InSize));
     }
 
     // Spatial upscale from a completed source target into a display target.

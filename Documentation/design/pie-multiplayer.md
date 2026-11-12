@@ -29,7 +29,8 @@ own composer, so a second world never overwrites the first packet mid-frame.
   keeps the main viewport the last writer of the shared virtual-texture feedback
   image.
 - Test: `pie_viewport` (target creation and reuse, a client-world packet with
-  three sprites, recorded draw into the target, release on Stop through
+  three sprites, recorded draw into the target, a client SDF frame with
+  previous-camera history, release on Stop through
   `PieClientViewport::SyncSession`).
 
 ## External client process
@@ -82,15 +83,16 @@ own composer, so a second world never overwrites the first packet mid-frame.
 
 ## Known limits
 
-- PIE voice starts no microphone capture on its own: the link and gating work,
-  but the real microphone path is still the editor voice runtime. Wiring that
-  capture into the PIE host `VoiceSystem` is a follow-up; the PIE graphs already
-  run AEC and the project denoise tier.
-- One replication state is capped at 4096 bytes (`kReplicationMaxStateBytes`,
-  16 chunks of 448 bytes). A larger snapshot cannot be published, so a large PIE
+- PIE voice starts microphone capture on the host when an input device is
+  available; the simulated client is headless, so the host is not played back
+  into the same speakers. A machine without an input device runs loopback-only.
+- One replication state is capped at 16384 bytes (`kReplicationMaxStateBytes`,
+  48 x 448-byte chunks). A larger snapshot cannot be published, so a large PIE
   world keeps only the local client world and the spawned sandbox exits after
   its first-state timeout; the editor status line states the reason.
-- The PIE client packet sets no virtual-texture handle and no SDF lighting of its
-  own. VT/SDF are frame-global today, so the client draws with the editor's last
-  state rather than a client-specific one; a client-side pass is a follow-up.
-- These three limits are tracked in [ROADMAP.md](../ROADMAP.md) (P5).
+- The PIE client packet carries its own SDF lighting: dynamic casters are built
+  from the client world and the static field/atlas are shared with the authoring
+  pass. The virtual-texture handle, params and debug mode travel in the packet
+  too; the diagnostic VT self-test shares its page table with the PIE client
+  because the client world is a clone. A separate residency set per client is an
+  optimization for diverged cameras, not a correctness requirement.

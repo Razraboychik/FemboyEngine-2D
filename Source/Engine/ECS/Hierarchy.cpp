@@ -3,6 +3,7 @@
 
 #include "Engine/Core/SimMath.hpp"
 
+#include <cmath>
 #include <unordered_map>
 #include <vector>
 
@@ -137,5 +138,67 @@ bool UpdateHierarchy(Registry& InRegistry) noexcept
         *ScopedTarget = *ScopedWorld;
     }
     return ScopedOk;
+}
+
+bool SetParent(Registry& InRegistry, Entity InChild, Entity InParent) noexcept
+{
+    if (InChild == Fby::kNullEntity || !InRegistry.valid(InChild) ||
+        (InParent != Fby::kNullEntity && !InRegistry.valid(InParent)))
+    {
+        return false;
+    }
+    Entity ScopedCursor = InParent;
+    for (std::uint32_t ScopedDepth = 0; ScopedCursor != Fby::kNullEntity; ++ScopedDepth)
+    {
+        if (ScopedCursor == InChild || ScopedDepth >= kMaxHierarchyDepth)
+        {
+            return false;
+        }
+        const Parent2D* ScopedParent = InRegistry.try_get<Parent2D>(ScopedCursor);
+        ScopedCursor = ScopedParent != nullptr ? ScopedParent->Parent : Fby::kNullEntity;
+    }
+    (void)UpdateHierarchy(InRegistry);
+    const Transform2D ScopedWorld = InRegistry.try_get<Transform2D>(InChild) != nullptr
+                                        ? InRegistry.get<Transform2D>(InChild)
+                                        : Transform2D{};
+    if (InParent == Fby::kNullEntity)
+    {
+        LocalTransform2D* ScopedLocal = InRegistry.try_get<LocalTransform2D>(InChild);
+        if (ScopedLocal == nullptr)
+        {
+            ScopedLocal = &InRegistry.emplace<LocalTransform2D>(InChild);
+        }
+        *ScopedLocal = LocalTransform2D{ScopedWorld.Position, ScopedWorld.Scale, ScopedWorld.Rotation};
+        (void)InRegistry.remove<Parent2D>(InChild);
+        (void)UpdateHierarchy(InRegistry);
+        return true;
+    }
+    const Transform2D ScopedParentWorld = InRegistry.try_get<Transform2D>(InParent) != nullptr
+                                              ? InRegistry.get<Transform2D>(InParent)
+                                              : Transform2D{};
+    const Vector2D ScopedDelta{ScopedWorld.Position.X - ScopedParentWorld.Position.X,
+                               ScopedWorld.Position.Y - ScopedParentWorld.Position.Y};
+    const float ScopedCos = Sim::Cos(-ScopedParentWorld.Rotation);
+    const float ScopedSin = Sim::Sin(-ScopedParentWorld.Rotation);
+    const Vector2D ScopedRotated{ScopedDelta.X * ScopedCos - ScopedDelta.Y * ScopedSin,
+                                 ScopedDelta.X * ScopedSin + ScopedDelta.Y * ScopedCos};
+    const float ScopedScaleX = std::fabs(ScopedParentWorld.Scale.X) > 1e-6f ? ScopedParentWorld.Scale.X : 1.0f;
+    const float ScopedScaleY = std::fabs(ScopedParentWorld.Scale.Y) > 1e-6f ? ScopedParentWorld.Scale.Y : 1.0f;
+    LocalTransform2D* ScopedLocal = InRegistry.try_get<LocalTransform2D>(InChild);
+    if (ScopedLocal == nullptr)
+    {
+        ScopedLocal = &InRegistry.emplace<LocalTransform2D>(InChild);
+    }
+    ScopedLocal->Position = Vector2D{ScopedRotated.X / ScopedScaleX, ScopedRotated.Y / ScopedScaleY};
+    ScopedLocal->Scale = Vector2D{ScopedWorld.Scale.X / ScopedScaleX, ScopedWorld.Scale.Y / ScopedScaleY};
+    ScopedLocal->Rotation = ScopedWorld.Rotation - ScopedParentWorld.Rotation;
+    Parent2D* ScopedParent = InRegistry.try_get<Parent2D>(InChild);
+    if (ScopedParent == nullptr)
+    {
+        ScopedParent = &InRegistry.emplace<Parent2D>(InChild);
+    }
+    ScopedParent->Parent = InParent;
+    (void)UpdateHierarchy(InRegistry);
+    return true;
 }
 }

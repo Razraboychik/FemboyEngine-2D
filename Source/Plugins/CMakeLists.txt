@@ -4,7 +4,8 @@ function(fby_add_test_plugin target output_name definition)
     add_library(${target} MODULE "${CMAKE_CURRENT_SOURCE_DIR}/HelloMod/HelloMod.cpp")
     target_link_libraries(${target}
         PRIVATE
-            fby::compiler_flags)
+            fby::compiler_flags
+            fby_version)
     target_include_directories(${target} PRIVATE
         "${FBY_SOURCE_ROOT}")
     target_compile_definitions(${target} PRIVATE ${definition})
@@ -21,7 +22,7 @@ fby_add_test_plugin(fby_hello_mod_bad fby_hello_mod_bad FBY_PLUGIN_BAD_LAYOUT)
 
 function(fby_add_abi_plugin target output_name source_file)
     add_library(${target} MODULE "${CMAKE_CURRENT_SOURCE_DIR}/${source_file}")
-    target_link_libraries(${target} PRIVATE fby::compiler_flags)
+    target_link_libraries(${target} PRIVATE fby::compiler_flags fby_version)
     target_include_directories(${target} PRIVATE "${FBY_SOURCE_ROOT}")
     set_target_properties(${target} PROPERTIES
         PREFIX ""
@@ -34,6 +35,7 @@ fby_add_abi_plugin(fby_rainbow_palette fby_rainbow_palette RainbowPalette/Rainbo
 fby_add_abi_plugin(fby_themed_palettes fby_themed_palettes ThemedPalettes/ThemedPalettes.cpp)
 fby_add_abi_plugin(fby_nvg fby_nvg Nvg/Nvg.cpp)
 fby_add_abi_plugin(fby_thermal fby_thermal Thermal/Thermal.cpp)
+fby_add_abi_plugin(fby_radiation fby_radiation Radiation/Radiation.cpp)
 
 fby_add_abi_plugin(fby_alcohol fby_alcohol Alcohol/Alcohol.cpp)
 

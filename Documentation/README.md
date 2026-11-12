@@ -3,7 +3,7 @@
 [English](README.md) | [Русский перевод](README_RU.md)
 
 This directory is the entry point to the FemboyEngine2D documentation set. The
-current public line is **0.4.0-alpha.1**. The engine is a C++26, data-oriented 2D
+current public line is **0.5.0**. The engine is a C++26, data-oriented 2D
 runtime: fixed-capacity ECS storage, explicit systems, an SDL3 window, a Vulkan or
 null render hardware interface, Box2D v3 physics and deterministic rollback.
 
@@ -80,7 +80,7 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Tune project or editor settings | [Project Settings](md/en/ProjectSettingsRecommendations_EN.md), [Editor Settings](md/en/EditorSettingsReference_EN.md) |
 | Choose a viewport diagnostic mode | [Viewport Modes](md/en/ViewportModes_EN.md) |
 | Follow the C++ style contract | [Code Style](style/CodeStyle.md) |
-| Plan future work | [Roadmap](ROADMAP.md) |
+| Report a bug or request a feature | [Issue tracker](https://github.com/Razraboychik/FemboyEngine-2D/issues) |
 | Design gameplay tags, effects and skills | [Skills design](design/skills.md) |
 | Configure AI, navmesh and path shaping | [AI and navigation](design/ai-navigation.md) |
 | Tune gravity, fields, ropes and chains | [Gravity and ropes](design/gravity-and-ropes.md) |

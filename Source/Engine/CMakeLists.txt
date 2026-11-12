@@ -169,6 +169,7 @@ set(FBY_ENGINE_SOURCES
     Script/Bytecode.cpp
     Script/EcsBridge.cpp
     Script/GraphCompiler.cpp
+    Script/ScriptHeap.cpp
     Script/TextScript.cpp
     Text/BookAsset.cpp
     Text/BookCook.cpp
@@ -460,6 +461,7 @@ target_include_directories(fby_engine
 target_link_libraries(fby_engine
     PUBLIC
         fby::compiler_flags
+        fby_version
         fby::toml
     PRIVATE
         ${FBY_SDL_TARGET}
@@ -608,7 +610,6 @@ if (FBY_WITH_DLSS)
 endif()
 
 target_compile_definitions(fby_engine PUBLIC
-    FBY_ENGINE_VERSION="${FBY_VERSION_STRING}"
     FBY_PLATFORM_NAME="${CMAKE_SYSTEM_NAME}")
 
 # Test-only conformance hooks (transport key export) are compiled only for test

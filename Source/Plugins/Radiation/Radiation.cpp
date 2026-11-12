@@ -8,7 +8,6 @@
 
 namespace
 {
-FbyHostApi* GHost = nullptr;
 
 FbyEffectDesc Make(const char* InId, const char* InName, float InIntensity, float InNoiseScale, float InScanline,
                    std::uint32_t InTint)
@@ -33,7 +32,7 @@ FbyEffectDesc Make(const char* InId, const char* InName, float InIntensity, floa
 FBY_PLUGIN_ENTRY const FbyPluginInfo* fby_plugin_info()
 {
     static const FbyPluginInfo ScopedInfo{static_cast<std::uint32_t>(sizeof(FbyPluginInfo)), FBY_PLUGIN_ABI_VERSION,
-                                          "Radiation", "0.4.0-alpha.1", "FemboyEngine2D contributors", 0, nullptr,
+                                          "Radiation", FBY_ENGINE_VERSION, "FemboyEngine2D contributors", 0, nullptr,
                                           "Radiation noise and scanline presets"};
     return &ScopedInfo;
 }
@@ -44,7 +43,6 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
     {
         return 1;
     }
-    GHost = InHost;
     if (InHost->accessibility == nullptr || InHost->accessibility->register_effect == nullptr)
     {
         return 0;
@@ -63,5 +61,4 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
 
 FBY_PLUGIN_ENTRY void fby_plugin_unload()
 {
-    GHost = nullptr;
 }

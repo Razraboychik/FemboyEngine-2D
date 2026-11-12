@@ -5,10 +5,12 @@
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/Script/EcsBridge.hpp"
 #include "Engine/Script/ScriptComponent.hpp"
+#include "Engine/Script/ScriptHeap.hpp"
 #include "Engine/Script/Vm.hpp"
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 
@@ -81,6 +83,11 @@ public:
     [[nodiscard]] Script::DecimalPool& Decimals() noexcept
     {
         return MDecimals;
+    }
+    // Strings, arrays and maps live for the whole script world, not one event.
+    [[nodiscard]] Script::ScriptHeap& Heap() noexcept
+    {
+        return *MHeap;
     }
     // Script values are event-local. Clearing at the event boundary keeps the
     // token pools bounded even when a script creates numbers in a loop.
@@ -166,6 +173,8 @@ private:
     Script::ScriptVm MVm{};
     Script::BigNumberPool MBigNumbers{};
     Script::DecimalPool MDecimals{};
+    // The heap is a megabyte-scale fixed buffer; keep it off the call stack.
+    std::unique_ptr<Script::ScriptHeap> MHeap = std::make_unique<Script::ScriptHeap>();
     DeterministicRng MRng{};
     std::uint32_t MProgramCount = 0;
     std::uint64_t MAotRunCount = 0;

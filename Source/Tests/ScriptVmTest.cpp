@@ -4,6 +4,7 @@
 #include "Engine/Script/Bytecode.hpp"
 #include "Engine/Script/EcsBridge.hpp"
 #include "Engine/Script/GraphCompiler.hpp"
+#include "Engine/Script/ScriptHeap.hpp"
 #include "Engine/Script/ScriptSystem.hpp"
 #include "Engine/Script/TextScript.hpp"
 #include "Engine/Script/Vm.hpp"
@@ -498,6 +499,150 @@ void operator delete(void* InMemory, std::size_t) noexcept
     std::free(InMemory);
 }
 
+void TestCollections()
+{
+    using namespace Fby::Script;
+
+    ProgramBuilder ScopedBuilder;
+    const std::uint16_t ScopedHello = ScopedBuilder.AddString("hello");
+    const std::uint16_t ScopedWorld = ScopedBuilder.AddString("world");
+    const std::uint16_t ScopedJoined = ScopedBuilder.AddString("helloworld");
+
+    ScopedBuilder.Emit(OpCode::LoadString, 0, 0, ScopedHello);
+    ScopedBuilder.Emit(OpCode::LoadString, 1, 0, ScopedWorld);
+    ScopedBuilder.Emit(OpCode::MoveF, 2, 0);
+    ScopedBuilder.Emit(OpCode::MoveF, 3, 1);
+    ScopedBuilder.Emit(OpCode::CallNative, 2, 0, ScopedBuilder.AddNative(NativeId::StringConcat));
+    ScopedBuilder.Emit(OpCode::LoadString, 4, 0, ScopedJoined);
+    ScopedBuilder.Emit(OpCode::MoveF, 5, 2);
+    ScopedBuilder.Emit(OpCode::MoveF, 6, 4);
+    ScopedBuilder.Emit(OpCode::CallNative, 5, 0, ScopedBuilder.AddNative(NativeId::StringEquals));
+
+    ScopedBuilder.Emit(OpCode::CallNative, 7, 0, ScopedBuilder.AddNative(NativeId::ArrayNew));
+    ScopedBuilder.Emit(OpCode::LoadF32, 8, 0, ScopedBuilder.AddConstant(42.0f));
+    ScopedBuilder.Emit(OpCode::MoveF, 9, 7);
+    ScopedBuilder.Emit(OpCode::MoveF, 10, 8);
+    ScopedBuilder.Emit(OpCode::CallNative, 9, 0, ScopedBuilder.AddNative(NativeId::ArrayPush));
+    ScopedBuilder.Emit(OpCode::MoveF, 11, 7);
+    ScopedBuilder.Emit(OpCode::LoadI32, 12, 0, 0);
+    ScopedBuilder.Emit(OpCode::CallNative, 11, 0, ScopedBuilder.AddNative(NativeId::ArrayGet));
+
+    ScopedBuilder.Emit(OpCode::CallNative, 13, 0, ScopedBuilder.AddNative(NativeId::MapNew));
+    ScopedBuilder.Emit(OpCode::MoveF, 14, 13);
+    ScopedBuilder.Emit(OpCode::MoveF, 15, 0);
+    ScopedBuilder.Emit(OpCode::LoadF32, 16, 0, ScopedBuilder.AddConstant(7.0f));
+    ScopedBuilder.Emit(OpCode::MoveF, 17, 16);
+    ScopedBuilder.Emit(OpCode::CallNative, 14, 0, ScopedBuilder.AddNative(NativeId::MapSet));
+    ScopedBuilder.Emit(OpCode::MoveF, 18, 13);
+    ScopedBuilder.Emit(OpCode::MoveF, 19, 0);
+    ScopedBuilder.Emit(OpCode::CallNative, 18, 0, ScopedBuilder.AddNative(NativeId::MapGet));
+    ScopedBuilder.Emit(OpCode::Halt);
+    (void)ScopedBuilder.AddFunction(ScriptEvent::Update, 0);
+
+    std::string ScopedError;
+    const std::vector<std::byte> ScopedBytes = ScopedBuilder.Build(0, 0, &ScopedError);
+    Check(!ScopedBytes.empty(), "collections program builds");
+    CompiledProgram ScopedParsed;
+    Check(ParseProgram(ScopedBytes, &ScopedParsed, &ScopedError), "collections program parses");
+
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "the script runtime initializes for collections");
+    BoundProgram ScopedBound;
+    Check(BindProgram(ScopedParsed, ScopedRuntime.Bridge(), &ScopedBound, &ScopedError),
+          "collections program binds");
+
+    Fby::Scene::Registry ScopedRegistry;
+    VmContext ScopedContext{ScopedRegistry};
+    ScopedContext.heap = &ScopedRuntime.Heap();
+    Check(ScopedRuntime.Vm().Run(ScopedBound, ScriptEvent::Update, ScopedRegistry.create(), ScopedContext),
+          "collections program runs");
+    Check(ScopedRuntime.Vm().I(5) == 1, "strings compare equal after concatenation");
+    Check(ScopedRuntime.Vm().F(11) == 42.0f, "an array element reads back");
+    Check(ScopedRuntime.Vm().F(18) == 7.0f, "a map value reads back");
+}
+
+bool TestTextCollections()
+{
+    using namespace Fby::Script;
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    constexpr std::string_view ScopedSource = R"FBY(
+event update {
+    let s = "hello";
+    let a = array_new();
+    array_push(a, s);
+    array_push(a, 7.0);
+    let n = array_length(a);
+    log_int(n);
+}
+)FBY";
+    std::string ScopedError;
+    std::vector<std::byte> ScopedProgram;
+    Check(CompileTextScript(ScopedSource, ScopedComponents, {}, &ScopedProgram, &ScopedError),
+          "collection text script compiles");
+    if (ScopedProgram.empty())
+    {
+        std::printf("collection text compile error: %s\n", ScopedError.c_str());
+        return false;
+    }
+
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "collection text runtime initializes");
+    const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
+    Check(ScopedHandle != Fby::kScriptNoProgram, "collection text program loads");
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    VmContext ScopedContext{ScopedRegistry};
+    ScopedContext.heap = &ScopedRuntime.Heap();
+    Check(Fby::RunScriptOnce(ScopedRuntime, ScopedHandle, ScopedEntity, ScriptEvent::Update, ScopedContext),
+          "collection text program runs");
+    Check(ScopedRuntime.Heap().ObjectCount() >= 2, "the text program created a string and an array");
+    Check(ScopedRuntime.Heap().StringBytes() >= 5, "the string literal reached the heap");
+    return true;
+}
+
+bool TestTextUserFunctions()
+{
+    using namespace Fby::Script;
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    constexpr std::string_view ScopedSource = R"FBY(
+function add(a, b) {
+    return a + b;
+}
+function twice(x) {
+    return add(x, x);
+}
+event update {
+    let result = twice(21.0);
+    self.Transform2D.Rotation = result;
+}
+)FBY";
+    std::string ScopedError;
+    std::vector<std::byte> ScopedProgram;
+    Check(CompileTextScript(ScopedSource, ScopedComponents, {}, &ScopedProgram, &ScopedError),
+          "user function text script compiles");
+    if (ScopedProgram.empty())
+    {
+        std::printf("user function compile error: %s\n", ScopedError.c_str());
+        return false;
+    }
+
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "user function runtime initializes");
+    const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
+    Check(ScopedHandle != Fby::kScriptNoProgram, "user function program loads");
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
+    VmContext ScopedContext{ScopedRegistry};
+    Check(Fby::RunScriptOnce(ScopedRuntime, ScopedHandle, ScopedEntity, ScriptEvent::Update, ScopedContext),
+          "user function program runs");
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 42.0f,
+          "two nested user functions return the right value");
+    return true;
+}
+
 int main()
 {
     TestArithmetic();
@@ -513,6 +658,9 @@ int main()
     TestLayoutHashMismatchRejected();
     TestMissingComponentFault();
     TestNoAllocationInHotPath();
+    TestCollections();
+    TestTextCollections();
+    TestTextUserFunctions();
 
     if (GFailures != 0)
     {

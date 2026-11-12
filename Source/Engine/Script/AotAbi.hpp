@@ -13,8 +13,21 @@ inline constexpr std::uint32_t kMagic = 0x544F4146u;
 // Bumped when HostApi gains callbacks. Generated plugins and the loader must
 // agree, so a stale .dll is rejected with "ABI version mismatch" instead of
 // calling through a short function table.
-inline constexpr std::uint16_t kAbiVersion = 7;
+inline constexpr std::uint16_t kAbiVersion = 8;
 inline constexpr std::uint32_t kMaxModuleComponents = 32;
+
+// Register tags mirror Fby::Script::ValueTag. They are duplicated here so the
+// generated plugin depends only on this header, not on the engine heap.
+namespace Tag
+{
+inline constexpr std::uint32_t Float = 0;
+inline constexpr std::uint32_t Int = 1;
+inline constexpr std::uint32_t Bool = 2;
+inline constexpr std::uint32_t Entity = 3;
+inline constexpr std::uint32_t String = 4;
+inline constexpr std::uint32_t Array = 5;
+inline constexpr std::uint32_t Map = 6;
+}
 
 // Fault codes mirror VmFault::Code so the VM and an AOT plugin report the same
 // number for the same failure (AotModule static_asserts the mapping).
@@ -23,6 +36,14 @@ namespace FaultCode
 inline constexpr std::uint32_t MissingComponent = 2;
 inline constexpr std::uint32_t BadField = 5;
 inline constexpr std::uint32_t DivisionByZero = 8;
+inline constexpr std::uint32_t NoHeap = 14;
+inline constexpr std::uint32_t HeapFull = 15;
+inline constexpr std::uint32_t BadString = 16;
+inline constexpr std::uint32_t BadCollection = 17;
+inline constexpr std::uint32_t OutOfRange = 18;
+inline constexpr std::uint32_t MissingKey = 19;
+inline constexpr std::uint32_t BadCall = 20;
+inline constexpr std::uint32_t Recursion = 21;
 }
 
 struct Vector2D
@@ -107,6 +128,28 @@ struct HostApi
     void (*cameraSetMotion)(void* InUser, float InScale) noexcept = nullptr;
     // Raised by generated code when the interpreter would report a VmFault.
     void (*fault)(void* InUser, std::uint32_t InCode, std::uint32_t InPc) noexcept = nullptr;
+    // Bounded script value heap. The host owns it; the plugin sees only handles.
+    void* heapUser = nullptr;
+    std::uint32_t (*heapArrayNew)(void* InUser) noexcept = nullptr;
+    std::uint32_t (*heapArrayPush)(void* InUser, std::uint32_t InArray, std::uint32_t InBits,
+                                   std::uint32_t InTag) noexcept = nullptr;
+    std::uint32_t (*heapArraySet)(void* InUser, std::uint32_t InArray, std::uint32_t InIndex, std::uint32_t InBits,
+                                  std::uint32_t InTag) noexcept = nullptr;
+    std::uint32_t (*heapArrayGet)(void* InUser, std::uint32_t InArray, std::uint32_t InIndex,
+                                  std::uint32_t* OutBits, std::uint32_t* OutTag) noexcept = nullptr;
+    std::uint32_t (*heapArrayLength)(void* InUser, std::uint32_t InArray) noexcept = nullptr;
+    std::uint32_t (*heapMapNew)(void* InUser) noexcept = nullptr;
+    std::uint32_t (*heapMapSet)(void* InUser, std::uint32_t InMap, std::uint32_t InKeyBits, std::uint32_t InKeyTag,
+                                std::uint32_t InValueBits, std::uint32_t InValueTag) noexcept = nullptr;
+    std::uint32_t (*heapMapGet)(void* InUser, std::uint32_t InMap, std::uint32_t InKeyBits, std::uint32_t InKeyTag,
+                                std::uint32_t* OutBits, std::uint32_t* OutTag) noexcept = nullptr;
+    std::uint32_t (*heapMapHas)(void* InUser, std::uint32_t InMap, std::uint32_t InKeyBits,
+                                std::uint32_t InKeyTag) noexcept = nullptr;
+    std::uint32_t (*heapMapLength)(void* InUser, std::uint32_t InMap) noexcept = nullptr;
+    std::uint32_t (*heapStringIntern)(void* InUser, const char* InText, std::uint32_t InLength) noexcept = nullptr;
+    std::uint32_t (*heapStringConcat)(void* InUser, std::uint32_t InLeft, std::uint32_t InRight) noexcept = nullptr;
+    std::uint32_t (*heapStringLength)(void* InUser, std::uint32_t InString) noexcept = nullptr;
+    std::uint32_t (*heapStringEquals)(void* InUser, std::uint32_t InLeft, std::uint32_t InRight) noexcept = nullptr;
 };
 
 struct Context
@@ -118,6 +161,8 @@ struct Context
     std::uint64_t frameIndex = 0;
     std::uint32_t self = 0;
     std::uint32_t reserved = 0;
+    // Bounded user-function call depth shared by every generated entry point.
+    std::uint32_t callDepth = 0;
 
     [[nodiscard]] std::byte* Component(std::uint64_t InLayoutHash) const noexcept
     {
@@ -372,6 +417,84 @@ struct Context
         {
             host->decimalRelease(user, InHandle);
         }
+    }
+
+    [[nodiscard]] bool HasHeap() const noexcept
+    {
+        return host != nullptr && host->heapUser != nullptr && host->heapArrayNew != nullptr;
+    }
+    [[nodiscard]] std::uint32_t ArrayNew() const noexcept
+    {
+        return HasHeap() ? host->heapArrayNew(host->heapUser) : 0xFFFFFFFFu;
+    }
+    [[nodiscard]] bool ArrayPush(std::uint32_t InArray, std::uint32_t InBits, std::uint32_t InTag) const noexcept
+    {
+        return HasHeap() && host->heapArrayPush != nullptr &&
+               host->heapArrayPush(host->heapUser, InArray, InBits, InTag) != 0;
+    }
+    [[nodiscard]] bool ArraySet(std::uint32_t InArray, std::uint32_t InIndex, std::uint32_t InBits,
+                                std::uint32_t InTag) const noexcept
+    {
+        return HasHeap() && host->heapArraySet != nullptr &&
+               host->heapArraySet(host->heapUser, InArray, InIndex, InBits, InTag) != 0;
+    }
+    [[nodiscard]] bool ArrayGet(std::uint32_t InArray, std::uint32_t InIndex, std::uint32_t* OutBits,
+                                std::uint32_t* OutTag) const noexcept
+    {
+        return HasHeap() && host->heapArrayGet != nullptr &&
+               host->heapArrayGet(host->heapUser, InArray, InIndex, OutBits, OutTag) != 0;
+    }
+    [[nodiscard]] std::uint32_t ArrayLength(std::uint32_t InArray) const noexcept
+    {
+        return HasHeap() && host->heapArrayLength != nullptr ? host->heapArrayLength(host->heapUser, InArray)
+                                                             : 0xFFFFFFFFu;
+    }
+    [[nodiscard]] std::uint32_t MapNew() const noexcept
+    {
+        return HasHeap() && host->heapMapNew != nullptr ? host->heapMapNew(host->heapUser) : 0xFFFFFFFFu;
+    }
+    [[nodiscard]] bool MapSet(std::uint32_t InMap, std::uint32_t InKeyBits, std::uint32_t InKeyTag,
+                              std::uint32_t InValueBits, std::uint32_t InValueTag) const noexcept
+    {
+        return HasHeap() && host->heapMapSet != nullptr &&
+               host->heapMapSet(host->heapUser, InMap, InKeyBits, InKeyTag, InValueBits, InValueTag) != 0;
+    }
+    [[nodiscard]] bool MapGet(std::uint32_t InMap, std::uint32_t InKeyBits, std::uint32_t InKeyTag,
+                              std::uint32_t* OutBits, std::uint32_t* OutTag) const noexcept
+    {
+        return HasHeap() && host->heapMapGet != nullptr &&
+               host->heapMapGet(host->heapUser, InMap, InKeyBits, InKeyTag, OutBits, OutTag) != 0;
+    }
+    [[nodiscard]] bool MapHas(std::uint32_t InMap, std::uint32_t InKeyBits, std::uint32_t InKeyTag) const noexcept
+    {
+        return HasHeap() && host->heapMapHas != nullptr &&
+               host->heapMapHas(host->heapUser, InMap, InKeyBits, InKeyTag) != 0;
+    }
+    [[nodiscard]] std::uint32_t MapLength(std::uint32_t InMap) const noexcept
+    {
+        return HasHeap() && host->heapMapLength != nullptr ? host->heapMapLength(host->heapUser, InMap) : 0xFFFFFFFFu;
+    }
+    [[nodiscard]] std::uint32_t InternString(const char* InText, std::uint32_t InLength) const noexcept
+    {
+        return HasHeap() && host->heapStringIntern != nullptr
+                   ? host->heapStringIntern(host->heapUser, InText, InLength)
+                   : 0xFFFFFFFFu;
+    }
+    [[nodiscard]] std::uint32_t StringConcat(std::uint32_t InLeft, std::uint32_t InRight) const noexcept
+    {
+        return HasHeap() && host->heapStringConcat != nullptr
+                   ? host->heapStringConcat(host->heapUser, InLeft, InRight)
+                   : 0xFFFFFFFFu;
+    }
+    [[nodiscard]] std::uint32_t StringLength(std::uint32_t InString) const noexcept
+    {
+        return HasHeap() && host->heapStringLength != nullptr ? host->heapStringLength(host->heapUser, InString)
+                                                              : 0xFFFFFFFFu;
+    }
+    [[nodiscard]] bool StringEquals(std::uint32_t InLeft, std::uint32_t InRight) const noexcept
+    {
+        return HasHeap() && host->heapStringEquals != nullptr &&
+               host->heapStringEquals(host->heapUser, InLeft, InRight) != 0;
     }
 };
 

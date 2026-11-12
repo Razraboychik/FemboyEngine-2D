@@ -200,6 +200,9 @@ void RegisterSpriteAnimationSystem(Ecs::SystemGraph& InGraph)
     ScopedAccess.ComponentReads =
         Ecs::MakeComponentAccessMask<SpriteAnimationComponent, Sprite2D, SpriteSheetComponent>();
     ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<SpriteAnimationComponent, Sprite2D>();
+    // Per-entity state only; the graph registration passes no event queue and the
+    // system keeps no static or shared mutable data.
+    ScopedAccess.ParallelSafe = true;
     (void)InGraph.Add(Ecs::Phase::FixedUpdate, "spriteAnimation", Ecs::BindCoreSystem<&SpriteAnimationSystemThunk>(),
                       nullptr, 0, 0, ScopedAccess);
 }

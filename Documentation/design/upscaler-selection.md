@@ -75,6 +75,8 @@ User settings:
 upscale_policy = "auto"
 frame_generation_policy = "auto"
 fsr1_sharpness = 0.35
+# 0 quality, 1 balanced, 2 performance, 3 ultra performance
+fsr2_quality = 0
 ```
 
 The in-game menu shows only modes allowed by the project and confirmed by the

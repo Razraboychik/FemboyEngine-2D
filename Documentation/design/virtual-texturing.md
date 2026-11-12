@@ -149,9 +149,9 @@ editor infrastructure test (panel clamp).
 - VT and SDF are frame-global state: `ApplyVirtualTexture` early-returns for the
   same id and `ApplySdfLighting` overwrites one mapped block, so the PIE client
   and the editor draw in one frame share the last writer. The PIE packet does not
-  set its own VT/SDF; a client-specific pass is tracked in
-  [ROADMAP.md](../ROADMAP.md).
+  set its own VT/SDF; a client-specific pass is tracked in the project issue
+  tracker.
 - Feedback image recreation can happen mid-frame without waiting for the device,
   so a live resize can free images still referenced by in-flight command
-  buffers (tracked in ROADMAP.md).
+  buffers (tracked in the project issue tracker).
 - VT stays opt-in: the editor creates a resource only under `FBY_VT_SELFTEST=1`.

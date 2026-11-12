@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
 
 namespace Fby::Rhi
 {
@@ -30,6 +31,58 @@ enum class Fsr2QualityMode : std::uint8_t
     return 1.0f;
 }
 
+// The nearest standard FSR2 mode for the render/upscale extents. Used to forward
+// an explicit quality choice and to validate that Dispatch receives sane sizes.
+[[nodiscard]] constexpr Fsr2QualityMode Fsr2QualityForExtent(std::uint32_t InRenderWidth,
+                                                             std::uint32_t InRenderHeight,
+                                                             std::uint32_t InOutputWidth,
+                                                             std::uint32_t InOutputHeight) noexcept
+{
+    if (InOutputWidth == 0 || InOutputHeight == 0)
+    {
+        return Fsr2QualityMode::Quality;
+    }
+    const float ScopedRatio =
+        (static_cast<float>(InRenderWidth) / static_cast<float>(InOutputWidth) +
+         static_cast<float>(InRenderHeight) / static_cast<float>(InOutputHeight)) *
+        0.5f;
+    float ScopedBest = 1.0f;
+    Fsr2QualityMode ScopedMode = Fsr2QualityMode::Quality;
+    for (const Fsr2QualityMode ScopedCandidate : {Fsr2QualityMode::Quality, Fsr2QualityMode::Balanced,
+                                                  Fsr2QualityMode::Performance, Fsr2QualityMode::UltraPerformance})
+    {
+        const float ScopedDelta = ScopedRatio - Fsr2RenderScale(ScopedCandidate);
+        const float ScopedDistance = ScopedDelta < 0.0f ? -ScopedDelta : ScopedDelta;
+        if (ScopedDistance < ScopedBest)
+        {
+            ScopedBest = ScopedDistance;
+            ScopedMode = ScopedCandidate;
+        }
+    }
+    return ScopedMode;
+}
+
+// Tolerance absorbs rounding of odd extents (for example 1919 * 0.67).
+[[nodiscard]] constexpr bool Fsr2RenderSizeMatches(Fsr2QualityMode InMode, std::uint32_t InRenderWidth,
+                                                   std::uint32_t InRenderHeight, std::uint32_t InOutputWidth,
+                                                   std::uint32_t InOutputHeight,
+                                                   std::uint32_t InTolerance = 2) noexcept
+{
+    if (InRenderWidth == 0 || InRenderHeight == 0 || InOutputWidth == 0 || InOutputHeight == 0 ||
+        InRenderWidth > InOutputWidth || InRenderHeight > InOutputHeight)
+    {
+        return false;
+    }
+    const float ScopedScale = Fsr2RenderScale(InMode);
+    const float ScopedDeltaWidth =
+        static_cast<float>(InRenderWidth) - static_cast<float>(InOutputWidth) * ScopedScale;
+    const float ScopedDeltaHeight =
+        static_cast<float>(InRenderHeight) - static_cast<float>(InOutputHeight) * ScopedScale;
+    const float ScopedTolerance = static_cast<float>(InTolerance);
+    return (ScopedDeltaWidth < 0.0f ? -ScopedDeltaWidth : ScopedDeltaWidth) <= ScopedTolerance &&
+           (ScopedDeltaHeight < 0.0f ? -ScopedDeltaHeight : ScopedDeltaHeight) <= ScopedTolerance;
+}
+
 class Fsr2Adapter
 {
 public:
@@ -41,8 +94,9 @@ public:
         return MAvailable;
     }
     [[nodiscard]] bool Dispatch(void* InCommandBuffer, void* InColor, void* InDepth, void* InMotion,
-                                void* InReactive, void* InOutput, std::uint32_t InRenderWidth, std::uint32_t InRenderHeight,
-                                std::uint32_t InOutputWidth, std::uint32_t InOutputHeight, float InJitterX,
+                                void* InReactive, void* InOutput, std::uint32_t InRenderWidth,
+                                std::uint32_t InRenderHeight, std::uint32_t InOutputWidth,
+                                std::uint32_t InOutputHeight, Fsr2QualityMode InQuality, float InJitterX,
                                 float InJitterY, bool InReset);
     void Shutdown() noexcept;
 

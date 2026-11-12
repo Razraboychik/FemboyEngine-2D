@@ -43,6 +43,8 @@ UserSettings ClampUserSettings(UserSettings InSettings) noexcept
     InSettings.temporalUpscale = static_cast<TemporalUpscaleMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.temporalUpscale), std::uint8_t{0}, std::uint8_t{3}));
     InSettings.fsr1Sharpness = std::clamp(InSettings.fsr1Sharpness, 0.0f, 1.0f);
+    InSettings.fsr2Quality = static_cast<Rhi::Fsr2QualityMode>(
+        std::clamp(static_cast<std::uint8_t>(InSettings.fsr2Quality), std::uint8_t{0}, std::uint8_t{3}));
     InSettings.hudRenderScale = std::clamp(InSettings.hudRenderScale, 0.25f, 1.0f);
     InSettings.hudUpscale = static_cast<UpscaleMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.hudUpscale), std::uint8_t{0}, std::uint8_t{1}));
@@ -99,6 +101,8 @@ bool LoadUserSettings(std::string_view InPath, UserSettings* OutSettings, std::s
         ScopedSettings.oitEnabled = ValueField<bool>(*ScopedGraphics, "oit_enabled", ScopedSettings.oitEnabled);
         ScopedSettings.fsr1Sharpness =
             static_cast<float>(ValueField<double>(*ScopedGraphics, "fsr1_sharpness", ScopedSettings.fsr1Sharpness));
+        ScopedSettings.fsr2Quality = static_cast<Rhi::Fsr2QualityMode>(ValueField<std::int64_t>(
+            *ScopedGraphics, "fsr2_quality", static_cast<std::int64_t>(ScopedSettings.fsr2Quality)));
         if (const toml::table* ScopedHud = ScopedTable["hud"].as_table())
         {
             ScopedSettings.hudRenderScale =
@@ -172,6 +176,7 @@ bool SaveUserSettings(std::string_view InPath, const UserSettings& InSettings, s
         ScopedGraphics.insert("temporal_upscale", static_cast<std::int64_t>(ScopedSettings.temporalUpscale));
         ScopedGraphics.insert("oit_enabled", ScopedSettings.oitEnabled);
         ScopedGraphics.insert("fsr1_sharpness", static_cast<double>(ScopedSettings.fsr1Sharpness));
+        ScopedGraphics.insert("fsr2_quality", static_cast<std::int64_t>(ScopedSettings.fsr2Quality));
         toml::table ScopedHud;
         ScopedHud.insert("render_scale", static_cast<double>(ScopedSettings.hudRenderScale));
         ScopedHud.insert("upscale", static_cast<std::int64_t>(ScopedSettings.hudUpscale));

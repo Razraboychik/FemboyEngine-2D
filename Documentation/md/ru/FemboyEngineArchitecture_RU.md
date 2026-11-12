@@ -2,8 +2,8 @@
 
 **Языковой раздел:** Русский
 
-**Version:** 0.4.0-alpha.1
-**Status:** Alpha
+**Version:** 0.5.0
+**Status:** Release
 **Date:** 2026-11-12
 **Document:** FBY-ARCH-0.1
 

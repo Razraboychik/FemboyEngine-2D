@@ -46,11 +46,26 @@ public:
         }
         Tooltip("fsr1_sharpness");
 
-        if (ImGui::SliderFloat("Render scale", &InSettings.renderScale, 0.25f, 1.0f, "%.2f"))
+        const bool ScopedFsr2Selected = InSettings.upscaleMode == UpscaleMode::Fsr2;
+        if (ScopedFsr2Selected)
         {
-            ScopedChanged = true;
+            int ScopedFsr2Quality = static_cast<int>(InSettings.fsr2Quality);
+            const char* ScopedFsr2Qualities[4] = {"Quality", "Balanced", "Performance", "Ultra Performance"};
+            if (ImGui::Combo("FSR2 quality", &ScopedFsr2Quality, ScopedFsr2Qualities, 4))
+            {
+                InSettings.fsr2Quality = static_cast<Rhi::Fsr2QualityMode>(ScopedFsr2Quality);
+                InSettings.renderScale = Rhi::Fsr2RenderScale(InSettings.fsr2Quality);
+                ScopedChanged = true;
+            }
         }
-        Tooltip("render_scale");
+        else
+        {
+            if (ImGui::SliderFloat("Render scale", &InSettings.renderScale, 0.25f, 1.0f, "%.2f"))
+            {
+                ScopedChanged = true;
+            }
+            Tooltip("render_scale");
+        }
 
         int ScopedPolicy = static_cast<int>(InSettings.upscalePolicy);
         const char* ScopedPolicies[3] = {"Auto", "Universal (FSR)", "Off"};

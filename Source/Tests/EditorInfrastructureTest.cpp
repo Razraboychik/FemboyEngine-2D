@@ -10,6 +10,7 @@
 #include "Editor/Panels/ContentBrowserPanel.hpp"
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
+#include "Editor/Infrastructure/ProjectPlugins.hpp"
 #include "Editor/Panels/VirtualTexturePanel.hpp"
 #include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/ECS/RegistryOps.hpp"
@@ -810,6 +811,44 @@ void TestVfsPinnedFileLifetime()
     Check(ScopedFresh.has_value() && ScopedFresh->size() == 8 && std::memcmp(ScopedFresh->data(), "NEW-DATA", 8) == 0,
           "a fresh read sees the hot-swapped bytes");
 }
+
+void TestProjectPlugins()
+{
+    const std::filesystem::path ScopedRoot = TestRoot("_editor_infra_plugins");
+    std::error_code ScopedCode;
+    std::filesystem::remove_all(ScopedRoot, ScopedCode);
+    Fby::Editor::ProjectPaths ScopedPaths;
+    Fby::Editor::ProjectConfig ScopedConfig;
+    Check(Fby::Editor::CreateProject(ScopedRoot, "PluginProject", &ScopedPaths, &ScopedConfig),
+          "create plugin project");
+
+    const std::filesystem::path ScopedSourceDir = ScopedRoot / "source";
+    std::filesystem::create_directories(ScopedSourceDir, ScopedCode);
+    const std::filesystem::path ScopedSource = ScopedSourceDir / "fby_test_pack.dll";
+    {
+        std::ofstream ScopedFile(ScopedSource, std::ios::binary);
+        ScopedFile << "plugin";
+    }
+    Fby::Editor::ProjectSettings ScopedSettings;
+    std::string ScopedRelative;
+    std::string ScopedError;
+    Check(Fby::Editor::ConnectProjectPlugin(ScopedRoot, ScopedSource, ScopedSettings, &ScopedRelative, &ScopedError),
+          "connect copies the plugin into the project");
+    Check(ScopedRelative == "plugins/fby_test_pack.dll", "connect records the project-relative path");
+    Check(ScopedSettings.pluginCount == 1 && ScopedSettings.plugins[0].Enabled, "connect enables the entry");
+    Check(std::filesystem::is_regular_file(ScopedRoot / ScopedRelative), "connect writes the project plugin file");
+
+    Check(Fby::Editor::ConnectProjectPlugin(ScopedRoot, ScopedSource, ScopedSettings, &ScopedRelative, &ScopedError),
+          "connecting the same plugin again succeeds");
+    Check(ScopedSettings.pluginCount == 1, "a duplicate connect does not add a second entry");
+
+    std::string ScopedRemoveError;
+    Check(Fby::Editor::RemoveProjectPlugin(ScopedRoot, ScopedSettings, 0, &ScopedRemoveError),
+          "remove drops the plugin entry");
+    Check(ScopedSettings.pluginCount == 0, "remove clears the count");
+    Check(!std::filesystem::exists(ScopedRoot / "plugins/fby_test_pack.dll"), "remove deletes the copied plugin");
+    std::filesystem::remove_all(ScopedRoot, ScopedCode);
+}
 }
 
 int main()
@@ -822,6 +861,7 @@ int main()
     TestAssetIndexRefresh();
     TestSettingsExternalTransaction();
     TestVfsPinnedFileLifetime();
+    TestProjectPlugins();
     if (GFailures != 0)
     {
         std::printf("%d editor infrastructure test(s) failed\n", GFailures);

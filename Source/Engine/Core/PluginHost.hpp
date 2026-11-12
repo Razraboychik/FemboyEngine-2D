@@ -10,6 +10,7 @@
 #include "Engine/UI/AccessibilityEffects.hpp"
 
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -32,6 +33,11 @@ struct ComponentType
     std::uint32_t alignment = 1;
     std::uint64_t layoutHash = 0;
 };
+
+// Lists the plugin shared libraries in a directory, sorted by path. Discovery is
+// a host capability: the editor offers the list for project binding, and a game
+// can load the same files without an editor or a project descriptor.
+[[nodiscard]] std::vector<std::filesystem::path> DiscoverPluginFiles(const std::filesystem::path& InDirectory);
 
 // The host side of the component contract. A game registers its components once;
 class ComponentRegistry
@@ -151,6 +157,11 @@ public:
 
     // Returns false and fills `error` when the library is missing, the ABI does
     bool Load(const std::string& InPath, std::string* InError);
+
+    // Loads every plugin file in a directory and returns the number that loaded.
+    // A game calls this for the packs that ship next to its executable; a file
+    // that fails stays unloaded instead of aborting the others.
+    std::uint32_t LoadDirectory(const std::filesystem::path& InDirectory);
 
     // Unloads the plugin that came from `path` (its systems leave the graph, its
     // unload entry runs and the library closes) and loads it again. Other plugins

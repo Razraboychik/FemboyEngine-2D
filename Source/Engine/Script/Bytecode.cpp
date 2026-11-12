@@ -108,6 +108,8 @@ struct Layout
     std::size_t componentOffset = 0;
     std::size_t functionOffset = 0;
     std::size_t nativeOffset = 0;
+    std::size_t stringOffset = 0;
+    std::size_t stringBytesOffset = 0;
     std::size_t totalSize = 0;
 };
 
@@ -129,6 +131,10 @@ struct Layout
         ScopedLayout.functionOffset + static_cast<std::size_t>(InHeader.functionCount) * sizeof(FunctionEntry);
     ScopedLayout.nativeOffset = AlignUp(ScopedCursor, alignof(std::uint16_t));
     ScopedCursor = ScopedLayout.nativeOffset + static_cast<std::size_t>(InHeader.nativeCount) * sizeof(std::uint16_t);
+    ScopedLayout.stringOffset = AlignUp(ScopedCursor, alignof(std::uint32_t));
+    ScopedCursor = ScopedLayout.stringOffset + static_cast<std::size_t>(InHeader.stringCount) * sizeof(std::uint32_t);
+    ScopedLayout.stringBytesOffset = ScopedCursor;
+    ScopedCursor += static_cast<std::size_t>(InHeader.stringByteCount);
     ScopedLayout.totalSize = AlignUp(ScopedCursor, alignof(std::max_align_t));
     return ScopedLayout;
 }
@@ -155,7 +161,7 @@ bool ParseProgram(std::span<const std::byte> InStorage, CompiledProgram* Out, st
         SetError(InError, "program has a bad magic (not a cooked FemboyScript program)");
         return false;
     }
-    if (ScopedHeader.version != kProgramVersion)
+    if (ScopedHeader.version < kMinProgramVersion || ScopedHeader.version > kProgramVersion)
     {
         SetError(InError, "program uses an unsupported bytecode version");
         return false;
@@ -163,9 +169,15 @@ bool ParseProgram(std::span<const std::byte> InStorage, CompiledProgram* Out, st
     if (ScopedHeader.codeCount == 0 || ScopedHeader.codeCount > kMaxInstructions ||
         ScopedHeader.constantCount > kMaxConstants || ScopedHeader.fieldCount > kMaxFieldBindings ||
         ScopedHeader.componentCount > kMaxComponentBindings || ScopedHeader.functionCount == 0 ||
-        ScopedHeader.functionCount > kMaxFunctions || ScopedHeader.nativeCount > kMaxProgramNatives)
+        ScopedHeader.functionCount > kMaxFunctions || ScopedHeader.nativeCount > kMaxProgramNatives ||
+        ScopedHeader.stringCount > kMaxProgramStrings || ScopedHeader.stringByteCount > kMaxProgramStringBytes)
     {
         SetError(InError, "program header table sizes are out of range");
+        return false;
+    }
+    if (ScopedHeader.version == 1 && (ScopedHeader.stringCount != 0 || ScopedHeader.stringByteCount != 0))
+    {
+        SetError(InError, "version 1 program declares a string table");
         return false;
     }
     if (ScopedHeader.registerHighWater == 0 || ScopedHeader.registerHighWater > kMaxVmRegisters)
@@ -197,6 +209,26 @@ bool ParseProgram(std::span<const std::byte> InStorage, CompiledProgram* Out, st
                                ScopedHeader.functionCount};
     ScopedProgram.natives = {reinterpret_cast<const std::uint16_t*>(InStorage.data() + ScopedLayout.nativeOffset),
                              ScopedHeader.nativeCount};
+    ScopedProgram.stringOffsets = {
+        reinterpret_cast<const std::uint32_t*>(InStorage.data() + ScopedLayout.stringOffset),
+        ScopedHeader.stringCount};
+    ScopedProgram.stringBytes = {reinterpret_cast<const char*>(InStorage.data() + ScopedLayout.stringBytesOffset),
+                                 static_cast<std::size_t>(ScopedHeader.stringByteCount)};
+    if (!ScopedProgram.stringOffsets.empty())
+    {
+        std::uint32_t ScopedPrevious = 0;
+        for (std::size_t ScopedI = 0; ScopedI < ScopedProgram.stringOffsets.size(); ++ScopedI)
+        {
+            const std::uint32_t ScopedOffset = ScopedProgram.stringOffsets[ScopedI];
+            if (ScopedOffset > ScopedProgram.stringBytes.size() ||
+                (ScopedI == 0 && ScopedOffset != 0) || (ScopedI != 0 && ScopedOffset < ScopedPrevious))
+            {
+                SetError(InError, "program string table offsets are not monotonic");
+                return false;
+            }
+            ScopedPrevious = ScopedOffset;
+        }
+    }
 
     const auto ScopedRegisters = ScopedHeader.registerHighWater;
     for (std::uint32_t ScopedPc = 0; ScopedPc < ScopedHeader.codeCount; ++ScopedPc)
@@ -236,6 +268,23 @@ bool ParseProgram(std::span<const std::byte> InStorage, CompiledProgram* Out, st
                 {
                     SetError(InError,
                              "program references a constant out of range at instruction " + std::to_string(ScopedPc));
+                    return false;
+                }
+                break;
+            case OpCode::LoadString:
+                if (ScopedInstruction.operand >= ScopedHeader.stringCount)
+                {
+                    SetError(InError,
+                             "program references a string out of range at instruction " + std::to_string(ScopedPc));
+                    return false;
+                }
+                break;
+            case OpCode::CallFunction:
+                if (ScopedInstruction.operand >= ScopedHeader.functionCount ||
+                    (ScopedProgram.functions[ScopedInstruction.operand].event & kUserFunctionFlag) == 0)
+                {
+                    SetError(InError,
+                             "program calls a non-function entry at instruction " + std::to_string(ScopedPc));
                     return false;
                 }
                 break;
@@ -393,8 +442,25 @@ bool ParseProgram(std::span<const std::byte> InStorage, CompiledProgram* Out, st
 
     for (const FunctionEntry& ScopedFunction : ScopedProgram.functions)
     {
-        if (ScopedFunction.codeOffset >= ScopedHeader.codeCount ||
-            ScopedFunction.event >= static_cast<std::uint16_t>(ScriptEvent::Count))
+        const bool ScopedUserFunction = (ScopedFunction.event & kUserFunctionFlag) != 0;
+        if (ScopedFunction.codeOffset >= ScopedHeader.codeCount)
+        {
+            SetError(InError, "program function table entry is invalid");
+            return false;
+        }
+        if (ScopedUserFunction)
+        {
+            const std::uint32_t ScopedParams =
+                static_cast<std::uint32_t>(ScopedFunction.event & kUserFunctionParamMask);
+            const std::uint32_t ScopedBase = ScopedFunction.registerHighWater;
+            if (ScopedParams >= kUserFunctionRegisters ||
+                ScopedBase + kUserFunctionRegisters > kMaxVmRegisters)
+            {
+                SetError(InError, "program user function window is invalid");
+                return false;
+            }
+        }
+        else if (ScopedFunction.event >= static_cast<std::uint16_t>(ScriptEvent::Count))
         {
             SetError(InError, "program function table entry is invalid");
             return false;
@@ -529,6 +595,20 @@ std::uint16_t ProgramBuilder::AddConstant(float InValue)
     return ScopedIndex;
 }
 
+std::uint16_t ProgramBuilder::AddString(std::string_view InText)
+{
+    for (std::uint16_t ScopedI = 0; ScopedI < MStrings.size(); ++ScopedI)
+    {
+        if (MStrings[ScopedI] == InText)
+        {
+            return ScopedI;
+        }
+    }
+    const auto ScopedIndex = static_cast<std::uint16_t>(MStrings.size());
+    MStrings.emplace_back(InText);
+    return ScopedIndex;
+}
+
 std::uint16_t ProgramBuilder::AddNative(NativeId InNative)
 {
     const std::uint16_t ScopedId = static_cast<std::uint16_t>(InNative);
@@ -571,6 +651,18 @@ std::uint16_t ProgramBuilder::AddFunction(ScriptEvent InEvent, std::uint32_t InC
     ScopedEntry.codeOffset = InCodeOffset;
     ScopedEntry.event = static_cast<std::uint16_t>(InEvent);
     ScopedEntry.registerHighWater = static_cast<std::uint16_t>(MRegisterHighWater);
+    MFunctions.push_back(ScopedEntry);
+    return static_cast<std::uint16_t>(MFunctions.size() - 1);
+}
+
+std::uint16_t ProgramBuilder::AddUserFunction(std::uint16_t InParamCount, std::uint16_t InBaseRegister,
+                                              std::uint32_t InCodeOffset)
+{
+    FunctionEntry ScopedEntry;
+    ScopedEntry.codeOffset = InCodeOffset;
+    ScopedEntry.event = static_cast<std::uint16_t>(kUserFunctionFlag |
+                                                   (InParamCount & kUserFunctionParamMask));
+    ScopedEntry.registerHighWater = InBaseRegister;
     MFunctions.push_back(ScopedEntry);
     return static_cast<std::uint16_t>(MFunctions.size() - 1);
 }
@@ -625,9 +717,19 @@ std::vector<std::byte> ProgramBuilder::Build(std::uint64_t InSourceHash, std::ui
     }
     if (MCode.size() > kMaxInstructions || MConstants.size() > kMaxConstants || MFields.size() > kMaxFieldBindings ||
         MComponents.size() > kMaxComponentBindings || MFunctions.size() > kMaxFunctions ||
-        MNatives.size() > kMaxProgramNatives)
+        MNatives.size() > kMaxProgramNatives || MStrings.size() > kMaxProgramStrings)
     {
         SetError(InError, "program exceeds a table capacity");
+        return {};
+    }
+    std::uint64_t ScopedStringBytes = 0;
+    for (const std::string& ScopedString : MStrings)
+    {
+        ScopedStringBytes += ScopedString.size();
+    }
+    if (ScopedStringBytes > kMaxProgramStringBytes)
+    {
+        SetError(InError, "program string table exceeds its byte budget");
         return {};
     }
     if (MRegisterHighWater > kMaxVmRegisters)
@@ -656,6 +758,8 @@ std::vector<std::byte> ProgramBuilder::Build(std::uint64_t InSourceHash, std::ui
     ScopedHeader.componentCount = static_cast<std::uint32_t>(MComponents.size());
     ScopedHeader.functionCount = static_cast<std::uint32_t>(MFunctions.size());
     ScopedHeader.nativeCount = static_cast<std::uint32_t>(MNatives.size());
+    ScopedHeader.stringCount = static_cast<std::uint32_t>(MStrings.size());
+    ScopedHeader.stringByteCount = ScopedStringBytes;
     ScopedHeader.registerHighWater = MRegisterHighWater;
     ScopedHeader.sourceHash = InSourceHash;
     ScopedHeader.graphHash = InGraphHash;
@@ -693,6 +797,18 @@ std::vector<std::byte> ProgramBuilder::Build(std::uint64_t InSourceHash, std::ui
     {
         std::memcpy(ScopedBytes.data() + ScopedLayout.nativeOffset, MNatives.data(),
                     MNatives.size() * sizeof(std::uint16_t));
+    }
+    std::uint32_t ScopedStringOffset = 0;
+    for (std::size_t ScopedI = 0; ScopedI < MStrings.size(); ++ScopedI)
+    {
+        std::memcpy(ScopedBytes.data() + ScopedLayout.stringOffset + ScopedI * sizeof(std::uint32_t),
+                    &ScopedStringOffset, sizeof(ScopedStringOffset));
+        if (!MStrings[ScopedI].empty())
+        {
+            std::memcpy(ScopedBytes.data() + ScopedLayout.stringBytesOffset + ScopedStringOffset,
+                        MStrings[ScopedI].data(), MStrings[ScopedI].size());
+        }
+        ScopedStringOffset += static_cast<std::uint32_t>(MStrings[ScopedI].size());
     }
 
     if ((ScopedHeader.flags & kProgramHeaderFlagDebug) != 0)

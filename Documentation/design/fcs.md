@@ -2,7 +2,7 @@
 
 [English](fcs.md) | [Русский](fcs_ru.md)
 
-FCS is the internal chunked ECS storage for the 0.4 alpha line and the only
+FCS is the internal chunked ECS storage for the 0.5.0 line and the only
 runtime ECS backend; the editor, plugin ABI and the full test suite use it. The runtime uses the engine's own 32-bit `Fby::Entity` handle, so scenes,
 snapshots and component fields keep the same layout without EnTT.
 

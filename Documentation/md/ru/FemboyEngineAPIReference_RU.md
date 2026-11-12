@@ -3,7 +3,7 @@
 **Движок на C++26 в парадигме data-oriented: полная публичная поверхность, контракты и пошаговый пример**
 
 
-Version 0.4.0-alpha.1 (Alpha) · 2026-11-12 · Russian
+Version 0.5.0 (Release) · 2026-11-12 · Russian
 
 
 ---
@@ -486,7 +486,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 
 ## 19. Открытая работа
 
-Открытая работа отслеживается в Documentation/ROADMAP.md.
+Открытая работа отслеживается в трекере задач проекта.
 
 
 ## 20. Приложение A - сгенерированный индекс символов
@@ -541,7 +541,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `HudTargetMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 148 |
 | `ImFont` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 10 |
 | `ImGuiIO` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 11 |
-| `Impl` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 241 |
+| `Impl` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 244 |
 | `InteractionTransaction` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 16 |
 | `LoadedSource` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 138 |
 | `MaterialGraphPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 62 |
@@ -608,7 +608,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `UpscalePolicy` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 115 |
 | `UpscalerBackendSetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 122 |
 | `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 69 |
-| `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 16 |
+| `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 17 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 20 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 15 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 18 |
@@ -758,7 +758,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `AtlasUv` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 41 |
 | `AudioClipHeader` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 87 |
 | `BlockExtent` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 103 |
-| `CleanRenderExtract` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 133 |
+| `CleanRenderExtract` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 134 |
 | `CookedAudioView` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 116 |
 | `CookedTexture` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 41 |
 | `CookedTextureView` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 203 |
@@ -943,8 +943,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ClockTime` | Core | `Source/Engine/Core/Calendar.hpp` | 34 |
 | `Color32` | Core | `Source/Engine/Core/Types.hpp` | 203 |
 | `ComponentDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 51 |
-| `ComponentRegistry` | Core | `Source/Engine/Core/PluginHost.hpp` | 37 |
-| `ComponentType` | Core | `Source/Engine/Core/PluginHost.hpp` | 28 |
+| `ComponentRegistry` | Core | `Source/Engine/Core/PluginHost.hpp` | 43 |
+| `ComponentType` | Core | `Source/Engine/Core/PluginHost.hpp` | 29 |
 | `DateTime` | Core | `Source/Engine/Core/Calendar.hpp` | 46 |
 | `DecimalStore` | Core | `Source/Engine/Core/DecimalStore.hpp` | 17 |
 | `DecimalT` | Core | `Source/Engine/Core/Decimal.hpp` | 34 |
@@ -969,7 +969,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Key` | Core | `Source/Engine/Core/WindowManager.hpp` | 58 |
 | `KeyLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 197 |
 | `KeyUpperLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 209 |
-| `LoadedPlugin` | Core | `Source/Engine/Core/PluginHost.hpp` | 74 |
+| `LoadedPlugin` | Core | `Source/Engine/Core/PluginHost.hpp` | 80 |
 | `LogLevel` | Core | `Source/Engine/Core/Log.hpp` | 13 |
 | `LogRetention` | Core | `Source/Engine/Core/Log.hpp` | 31 |
 | `Mat4` | Core | `Source/Engine/Core/Mat4.hpp` | 15 |
@@ -982,8 +982,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `PauseSettings` | Core | `Source/Engine/Core/Pause.hpp` | 19 |
 | `Pcg32` | Core | `Source/Engine/Core/Pcg32.hpp` | 20 |
 | `PipelineTag` | Core | `Source/Engine/Core/Types.hpp` | 303 |
-| `PluginHost` | Core | `Source/Engine/Core/PluginHost.hpp` | 86 |
-| `PluginSystem` | Core | `Source/Engine/Core/PluginHost.hpp` | 64 |
+| `PluginHost` | Core | `Source/Engine/Core/PluginHost.hpp` | 92 |
+| `PluginSystem` | Core | `Source/Engine/Core/PluginHost.hpp` | 70 |
 | `Profiler` | Core | `Source/Engine/Core/Profiler.hpp` | 45 |
 | `ProfileRow` | Core | `Source/Engine/Core/ProfilerPanel.hpp` | 26 |
 | `ProfilerPanel` | Core | `Source/Engine/Core/ProfilerPanel.hpp` | 39 |
@@ -1720,7 +1720,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `StagedSave` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 291 |
 | `SteamAchievementSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 148 |
 
-### Engine/RHI (193)
+### Engine/RHI (194)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -1777,11 +1777,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FramePacingState` | RHI | `Source/Engine/RHI/FramePacing.hpp` | 17 |
 | `FramePacket` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 387 |
 | `FrameSink` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 85 |
-| `FrameStats` | RHI | `Source/Engine/RHI/RHI.hpp` | 257 |
+| `FrameStats` | RHI | `Source/Engine/RHI/RHI.hpp` | 277 |
 | `FrameTimestampIndex` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 76 |
-| `Fsr2Adapter` | RHI | `Source/Engine/RHI/Fsr2Adapter.hpp` | 33 |
+| `Fsr2Adapter` | RHI | `Source/Engine/RHI/Fsr2Adapter.hpp` | 86 |
 | `Fsr2Pass` | RHI | `Source/Engine/RHI/Fsr2Pass.hpp` | 10 |
-| `Fsr2QualityMode` | RHI | `Source/Engine/RHI/Fsr2Adapter.hpp` | 9 |
+| `Fsr2QualityMode` | RHI | `Source/Engine/RHI/Fsr2Adapter.hpp` | 10 |
 | `Fsr3FrameGenerator` | RHI | `Source/Engine/RHI/Fsr3FrameGenerator.hpp` | 10 |
 | `GiFrame` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 960 |
 | `GpuCullingConstants` | RHI | `Source/Engine/RHI/GpuVisibility.hpp` | 28 |
@@ -1792,7 +1792,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `HashEntry` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 218 |
 | `HiZPushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 66 |
 | `IFrameGenerator` | RHI | `Source/Engine/RHI/FrameGeneration.hpp` | 27 |
-| `ImageLayout` | RHI | `Source/Engine/RHI/RHI.hpp` | 218 |
+| `ImageLayout` | RHI | `Source/Engine/RHI/RHI.hpp` | 238 |
 | `ITemporalUpscaler` | RHI | `Source/Engine/RHI/TemporalUpscaler.hpp` | 28 |
 | `JobSystem` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 24 |
 | `KeySorter` | RHI | `Source/Engine/RHI/Sort.hpp` | 14 |
@@ -1833,8 +1833,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `MeshVertex` | RHI | `Source/Engine/RHI/Mesh.hpp` | 17 |
 | `MotionHistory2D` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 33 |
 | `MotionVectorItem` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 369 |
-| `NativeDeviceHandles` | RHI | `Source/Engine/RHI/RHI.hpp` | 709 |
-| `NativeTextureView` | RHI | `Source/Engine/RHI/RHI.hpp` | 224 |
+| `NativeDeviceHandles` | RHI | `Source/Engine/RHI/RHI.hpp` | 726 |
+| `NativeTextureView` | RHI | `Source/Engine/RHI/RHI.hpp` | 244 |
 | `OitPass` | RHI | `Source/Engine/RHI/OitPass.hpp` | 11 |
 | `PageSlot` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 209 |
 | `ParallelChunkRef` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 301 |
@@ -1857,9 +1857,10 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `RenderPassKind` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 27 |
 | `RenderResourceKind` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 34 |
 | `RenderTarget` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 250 |
-| `RenderTargetDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 197 |
-| `RenderTargetHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 207 |
-| `RHI` | RHI | `Source/Engine/RHI/RHI.hpp` | 328 |
+| `RenderTargetDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 207 |
+| `RenderTargetFormat` | RHI | `Source/Engine/RHI/RHI.hpp` | 199 |
+| `RenderTargetHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 227 |
+| `RHI` | RHI | `Source/Engine/RHI/RHI.hpp` | 348 |
 | `SdfCharacterRenderCache` | RHI | `Source/Engine/RHI/SdfCharacterRender.hpp` | 17 |
 | `SdfField` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 22 |
 | `SdfGiVolume` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 23 |
@@ -1887,11 +1888,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `TemporalUpscaleInput` | RHI | `Source/Engine/RHI/TemporalUpscaler.hpp` | 11 |
 | `TextureArray` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 222 |
 | `TextureArrayDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 146 |
-| `TextureArrayHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 304 |
+| `TextureArrayHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 324 |
 | `Tile` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 90 |
 | `TintEntry` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 81 |
 | `TransientRing` | RHI | `Source/Engine/RHI/RingBuffer.hpp` | 15 |
-| `UiBackendInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 234 |
+| `UiBackendInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 254 |
 | `UpscalerBackend` | RHI | `Source/Engine/RHI/UpscalerBackend.hpp` | 9 |
 | `UpscalerCaps` | RHI | `Source/Engine/RHI/RHI.hpp` | 98 |
 | `ViewportMode` | RHI | `Source/Engine/RHI/ViewportModes.hpp` | 15 |
@@ -1907,7 +1908,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VirtualTextureHandle` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 294 |
 | `VirtualTexturePageLocation` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 11 |
 | `VirtualTextureResource` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 424 |
-| `VirtualTextureResourceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 316 |
+| `VirtualTextureResourceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 336 |
 | `VirtualTextureRhiTarget` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 118 |
 | `VirtualTextureSample` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 58 |
 | `VirtualTextureStats` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 51 |
@@ -1918,42 +1919,43 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VisibleSprite` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 87 |
 | `VulkanRHI` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 440 |
 
-### Engine/Script (69)
+### Engine/Script (76)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `ActiveScript` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 174 |
+| `ActiveScript` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 183 |
 | `AotBuilder` | Script | `Source/Engine/Script/AotBuilder.hpp` | 71 |
 | `AotBuildOptions` | Script | `Source/Engine/Script/AotBuilder.hpp` | 43 |
 | `AotBuildResult` | Script | `Source/Engine/Script/AotBuilder.hpp` | 60 |
 | `AotBuildState` | Script | `Source/Engine/Script/AotBuilder.hpp` | 19 |
 | `AotGraphTranspileOptions` | Script | `Source/Engine/Script/AotGraphCompiler.hpp` | 13 |
 | `AotHost` | Script | `Source/Engine/Script/AotHost.hpp` | 32 |
-| `AotHost` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 23 |
+| `AotHost` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 25 |
 | `AotModule` | Script | `Source/Engine/Script/AotModule.hpp` | 22 |
 | `AotProgramRef` | Script | `Source/Engine/Script/AotHost.hpp` | 22 |
 | `AotTranspileOptions` | Script | `Source/Engine/Script/AotTranspiler.hpp` | 12 |
-| `AudioSystem` | Script | `Source/Engine/Script/Vm.hpp` | 19 |
+| `AudioSystem` | Script | `Source/Engine/Script/Vm.hpp` | 20 |
 | `BoundProgram` | Script | `Source/Engine/Script/EcsBridge.hpp` | 101 |
-| `CameraStackSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 18 |
-| `CameraStackSystem` | Script | `Source/Engine/Script/Vm.hpp` | 18 |
-| `Code` | Script | `Source/Engine/Script/Vm.hpp` | 33 |
-| `CompiledDebug` | Script | `Source/Engine/Script/Bytecode.hpp` | 493 |
-| `CompiledProgram` | Script | `Source/Engine/Script/Bytecode.hpp` | 508 |
+| `CallFrame` | Script | `Source/Engine/Script/Vm.hpp` | 379 |
+| `CameraStackSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 20 |
+| `CameraStackSystem` | Script | `Source/Engine/Script/Vm.hpp` | 19 |
+| `Code` | Script | `Source/Engine/Script/Vm.hpp` | 34 |
+| `CompiledDebug` | Script | `Source/Engine/Script/Bytecode.hpp` | 554 |
+| `CompiledProgram` | Script | `Source/Engine/Script/Bytecode.hpp` | 569 |
 | `ComponentAccessor` | Script | `Source/Engine/Script/EcsBridge.hpp` | 17 |
-| `ComponentBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 437 |
-| `Context` | Script | `Source/Engine/Script/AotAbi.hpp` | 112 |
+| `ComponentBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 496 |
+| `Context` | Script | `Source/Engine/Script/AotAbi.hpp` | 155 |
 | `DebugField` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 123 |
 | `DebugFrame` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 103 |
-| `DebugSectionHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 181 |
-| `DebugSpan` | Script | `Source/Engine/Script/Bytecode.hpp` | 159 |
-| `DebugSpanFlags` | Script | `Source/Engine/Script/Bytecode.hpp` | 150 |
-| `DebugVariable` | Script | `Source/Engine/Script/Bytecode.hpp` | 172 |
+| `DebugSectionHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 215 |
+| `DebugSpan` | Script | `Source/Engine/Script/Bytecode.hpp` | 193 |
+| `DebugSpanFlags` | Script | `Source/Engine/Script/Bytecode.hpp` | 184 |
+| `DebugVariable` | Script | `Source/Engine/Script/Bytecode.hpp` | 206 |
 | `EcsBridge` | Script | `Source/Engine/Script/EcsBridge.hpp` | 26 |
-| `FieldBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 447 |
-| `FunctionEntry` | Script | `Source/Engine/Script/Bytecode.hpp` | 460 |
-| `HostApi` | Script | `Source/Engine/Script/AotAbi.hpp` | 54 |
-| `Instruction` | Script | `Source/Engine/Script/Bytecode.hpp` | 417 |
+| `FieldBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 506 |
+| `FunctionEntry` | Script | `Source/Engine/Script/Bytecode.hpp` | 519 |
+| `HostApi` | Script | `Source/Engine/Script/AotAbi.hpp` | 75 |
+| `Instruction` | Script | `Source/Engine/Script/Bytecode.hpp` | 476 |
 | `LogicCompareOp` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 22 |
 | `LogicCompileOptions` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 775 |
 | `LogicCompileResult` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 782 |
@@ -1963,34 +1965,40 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `LogicMathOp` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 56 |
 | `LogicNode` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 333 |
 | `LogicNodeKind` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 111 |
-| `Module` | Script | `Source/Engine/Script/AotAbi.hpp` | 379 |
+| `MapEntry` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 137 |
+| `Module` | Script | `Source/Engine/Script/AotAbi.hpp` | 502 |
 | `NativeId` | Script | `Source/Engine/Script/Bytecode.hpp` | 18 |
-| `OpCode` | Script | `Source/Engine/Script/Bytecode.hpp` | 235 |
-| `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 574 |
-| `PhysicsSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 17 |
-| `PhysicsSystem` | Script | `Source/Engine/Script/Vm.hpp` | 17 |
+| `Object` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 115 |
+| `ObjectKind` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 108 |
+| `OpCode` | Script | `Source/Engine/Script/Bytecode.hpp` | 279 |
+| `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 673 |
+| `PhysicsSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 19 |
+| `PhysicsSystem` | Script | `Source/Engine/Script/Vm.hpp` | 18 |
 | `PinType` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 318 |
-| `ProgramBuilder` | Script | `Source/Engine/Script/Bytecode.hpp` | 539 |
-| `ProgramHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 470 |
+| `ProgramBuilder` | Script | `Source/Engine/Script/Bytecode.hpp` | 628 |
+| `ProgramHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 529 |
 | `ResolvedComponent` | Script | `Source/Engine/Script/EcsBridge.hpp` | 93 |
 | `ScriptComponent` | Script | `Source/Engine/Script/ScriptComponent.hpp` | 16 |
-| `ScriptEvent` | Script | `Source/Engine/Script/Bytecode.hpp` | 205 |
-| `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 22 |
-| `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 26 |
-| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 121 |
-| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 235 |
+| `ScriptEvent` | Script | `Source/Engine/Script/Bytecode.hpp` | 249 |
+| `ScriptHeap` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 60 |
+| `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 24 |
+| `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 28 |
+| `ScriptValue` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 26 |
+| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 149 |
+| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 263 |
 | `Slot` | Script | `Source/Engine/Script/AotHost.hpp` | 94 |
-| `Slot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 154 |
+| `Slot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 161 |
 | `SourceLocation` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 17 |
 | `TextCompileOptions` | Script | `Source/Engine/Script/TextScript.hpp` | 14 |
-| `TransportGroupSystem` | Script | `Source/Engine/Script/Vm.hpp` | 16 |
-| `Vector2D` | Script | `Source/Engine/Script/AotAbi.hpp` | 28 |
-| `VmContext` | Script | `Source/Engine/Script/Vm.hpp` | 98 |
-| `VmDebugState` | Script | `Source/Engine/Script/Vm.hpp` | 160 |
-| `VmFault` | Script | `Source/Engine/Script/Vm.hpp` | 31 |
-| `VmHalt` | Script | `Source/Engine/Script/Vm.hpp` | 133 |
-| `VmPauseReason` | Script | `Source/Engine/Script/Vm.hpp` | 124 |
-| `VmStopInfo` | Script | `Source/Engine/Script/Vm.hpp` | 140 |
+| `TransportGroupSystem` | Script | `Source/Engine/Script/Vm.hpp` | 17 |
+| `ValueTag` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 15 |
+| `Vector2D` | Script | `Source/Engine/Script/AotAbi.hpp` | 49 |
+| `VmContext` | Script | `Source/Engine/Script/Vm.hpp` | 123 |
+| `VmDebugState` | Script | `Source/Engine/Script/Vm.hpp` | 188 |
+| `VmFault` | Script | `Source/Engine/Script/Vm.hpp` | 32 |
+| `VmHalt` | Script | `Source/Engine/Script/Vm.hpp` | 161 |
+| `VmPauseReason` | Script | `Source/Engine/Script/Vm.hpp` | 152 |
+| `VmStopInfo` | Script | `Source/Engine/Script/Vm.hpp` | 168 |
 
 ### Engine/Text (84)
 
@@ -2256,8 +2264,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | Макрос | Заголовок | Строка |
 |---|---|---|
 | `FBY_ALCOHOL_EFFECTS` | `Source/Engine/Core/PluginAPI.h` | 105 |
-| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 396 |
-| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 398 |
+| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 519 |
+| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 521 |
 | `FBY_ASSERT` | `Source/Engine/Core/Assert.hpp` | 13 |
 | `FBY_ASSERT` | `Source/Engine/Core/Assert.hpp` | 31 |
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 22 |
@@ -2293,8 +2301,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FBY_PLUGIN_INFO_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 206 |
 | `FBY_PLUGIN_LOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 207 |
 | `FBY_PLUGIN_UNLOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 208 |
-| `FBY_PROJECT_ASSETS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 129 |
-| `FBY_PROJECT_MAX_RENDER_ITEMS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 122 |
+| `FBY_PROJECT_ASSETS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 130 |
+| `FBY_PROJECT_MAX_RENDER_ITEMS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 123 |
 | `FBY_REFLECT_COMPONENT` | `Source/Engine/Core/Mirror.hpp` | 295 |
 | `FBY_REFLECT_COMPONENT_EMPTY` | `Source/Engine/Core/Mirror.hpp` | 311 |
 | `FBY_REGISTER_TYPE` | `Source/Engine/Core/Definitions.hpp` | 266 |

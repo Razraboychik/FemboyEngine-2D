@@ -5,8 +5,10 @@
 #include "Engine/Core/Mirror.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <format>
 #include <new>
 #include <string>
@@ -108,6 +110,40 @@ std::uint64_t ComponentRegistry::HashOf(std::string_view InName) const
 {
     const ComponentType* ScopedType = Find(InName);
     return ScopedType != nullptr ? ScopedType->layoutHash : 0;
+}
+
+std::vector<std::filesystem::path> DiscoverPluginFiles(const std::filesystem::path& InDirectory)
+{
+    std::vector<std::filesystem::path> ScopedFiles;
+    std::error_code ScopedError;
+    if (!std::filesystem::is_directory(InDirectory, ScopedError))
+    {
+        return ScopedFiles;
+    }
+    for (const std::filesystem::directory_entry& ScopedEntry :
+         std::filesystem::directory_iterator(InDirectory, ScopedError))
+    {
+        if (ScopedError)
+        {
+            break;
+        }
+        if (!ScopedEntry.is_regular_file(ScopedError))
+        {
+            ScopedError.clear();
+            continue;
+        }
+        // The extension comparison is case-insensitive so a Windows build that
+        // spells .DLL still shows up in the list.
+        std::string ScopedExtension = ScopedEntry.path().extension().string();
+        std::transform(ScopedExtension.begin(), ScopedExtension.end(), ScopedExtension.begin(),
+                       [](unsigned char InCharacter) { return static_cast<char>(std::tolower(InCharacter)); });
+        if (ScopedExtension == ".dll" || ScopedExtension == ".so" || ScopedExtension == ".dylib")
+        {
+            ScopedFiles.push_back(ScopedEntry.path());
+        }
+    }
+    std::sort(ScopedFiles.begin(), ScopedFiles.end());
+    return ScopedFiles;
 }
 
 PluginHost::PluginHost(ComponentRegistry& InComponents, void* InEcsRegistry)
@@ -374,6 +410,24 @@ bool PluginHost::Unload(const std::string& InPath, std::string* InError)
         *InError = "plugin is not loaded";
     }
     return false;
+}
+
+std::uint32_t PluginHost::LoadDirectory(const std::filesystem::path& InDirectory)
+{
+    std::uint32_t ScopedLoaded = 0;
+    for (const std::filesystem::path& ScopedPath : DiscoverPluginFiles(InDirectory))
+    {
+        std::string ScopedError;
+        if (Load(ScopedPath.string(), &ScopedError))
+        {
+            ++ScopedLoaded;
+        }
+        else
+        {
+            LogWarn("plugin", "directory plugin '{}' not loaded: {}", ScopedPath.filename().string(), ScopedError);
+        }
+    }
+    return ScopedLoaded;
 }
 
 bool PluginHost::Reload(const std::string& InPath, std::string* InError)

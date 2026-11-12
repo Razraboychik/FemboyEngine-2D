@@ -201,4 +201,4 @@ End-to-end checks performed on this machine (clang-cl, Ninja, Windows):
 
 ## 9. Backlog
 
-Open work is tracked in [ROADMAP.md](../ROADMAP.md).
+Open work is tracked in the project issue tracker.

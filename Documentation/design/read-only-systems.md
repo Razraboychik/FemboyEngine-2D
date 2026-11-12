@@ -59,21 +59,39 @@ scripts through a command buffer; it is not read-only.
 `NavigationSystem`, `LightingSystem`, `LightSourceSystem`, `AIControllerSystem`,
 `AIPerceptionSystem`, `AnimGraph`, `StateTree`, `PhysicsFixedStepSystem`,
 `GravitySystem`, `SdfCollisionSystem` and the platform store/achievement
-systems. Component masks document reads/writes even while `ParallelSafe` stays
-false; without that flag the graph still serializes same-phase systems.
+systems. Component masks document reads/writes; without `ParallelSafe` the graph
+still serializes same-phase systems even when the masks are disjoint.
 
 `ParallelSafe` is enabled only where the system has no engine-service side
-effects and its ECS writes are known:
+effects, no structural ECS mutation and all components it touches are declared:
 
 - `ClothRenderSystem` — reads `ClothComponent`, writes only its own draw list.
 - `CardBoardSystem` — owns board/slot/transform/draw-order data, no services.
+- `AnimGraphSystem` — per-entity animation bridges; reads `Facing2D`, `Sprite2D`
+  and `SpriteSheetComponent`, writes `AnimStateComponent`, `SkeletonComponent`,
+  `SpriteAnimationComponent` and `Sprite2D`. The graph thunk keeps no static
+  state and the tag registry is read-only. The audit added the previously
+  missing `Facing2D`/`Sprite2D` reads and the `Sprite2D` write to the mask.
+- `SpriteAnimationSystem` — advances `SpriteAnimationComponent` and `Sprite2D`,
+  reads `SpriteSheetComponent`; graph registration passes no event queue.
 - Sandbox `RenderExtractSystem` — reads sprites, writes the extract buffer. The
   Render phase is inline by design, so this is a declaration for the future.
 
-Complex systems (`AIController`, `AIPerception`, `AnimGraph`, `StateTree`,
-`PhysicsFixedStep`, `Gravity`, `SdfCollision`, Editor PIE systems) stay
-`ParallelSafe = false`: they share services, static state or a command buffer,
-or their access set is not yet audited. Do not flip the flag without that audit.
+These stay `ParallelSafe = false`:
+
+- `AIControllerSystem`, `AIPerceptionSystem` — both perform structural
+  `emplace` of settings/runtime components (`AIAgentSettings`,
+  `NavAgentSettings`, `NavAgentComponent`, `AIControllerComponent`,
+  `AIPerceptionComponent`), so a wave cannot run them beside another system.
+- `StateTreeSystem` — emplaces `GameplayTagsComponent` when a tree adds a tag.
+- `PhysicsFixedStepSystem`, `GravitySystem`, `SdfCollisionSystem` — all advance
+  the shared physics backend (`kServicePhysics` write) and must stay ordered
+  with force writers; physics ordering is a service contract, not just masks.
+- Editor PIE systems — each is a mutation boundary for the game module.
+
+Do not flip a flag without the same check: no service side effect, no
+structural mutation, and complete component masks. `parallel_safe_audit`
+asserts the contract table and the `Facing2D`/`Sprite2D` mask additions.
 
 ## Debug flags
 

@@ -29,6 +29,12 @@ bool Fsr2Adapter::Initialize(void* InDevice, void* InPhysicalDevice, void* InDev
                              std::uint32_t InMaxRenderWidth, std::uint32_t InMaxRenderHeight,
                              std::uint32_t InMaxOutputWidth, std::uint32_t InMaxOutputHeight)
 {
+    if (InMaxRenderWidth == 0 || InMaxRenderHeight == 0 || InMaxOutputWidth == 0 || InMaxOutputHeight == 0 ||
+        InMaxRenderWidth > InMaxOutputWidth || InMaxRenderHeight > InMaxOutputHeight ||
+        InMaxOutputWidth > 16384 || InMaxOutputHeight > 16384)
+    {
+        return false;
+    }
 #if defined(FBY_WITH_FIDELITYFX)
     if (InDevice == nullptr || InPhysicalDevice == nullptr)
     {
@@ -111,10 +117,18 @@ bool Fsr2Adapter::Initialize(void* InDevice, void* InPhysicalDevice, void* InDev
 }
 
 bool Fsr2Adapter::Dispatch(void* InCommandBuffer, void* InColor, void* InDepth, void* InMotion,
-                           void* InReactive, void* InOutput, std::uint32_t InRenderWidth, std::uint32_t InRenderHeight,
-                           std::uint32_t InOutputWidth, std::uint32_t InOutputHeight, float InJitterX,
+                           void* InReactive, void* InOutput, std::uint32_t InRenderWidth,
+                           std::uint32_t InRenderHeight, std::uint32_t InOutputWidth,
+                           std::uint32_t InOutputHeight, Fsr2QualityMode InQuality, float InJitterX,
                            float InJitterY, bool InReset)
 {
+    if (InCommandBuffer == nullptr || InColor == nullptr || InDepth == nullptr || InMotion == nullptr ||
+        InOutput == nullptr || InRenderWidth == 0 || InRenderHeight == 0 || InOutputWidth == 0 ||
+        InOutputHeight == 0 || InRenderWidth > InOutputWidth || InRenderHeight > InOutputHeight ||
+        !Fsr2RenderSizeMatches(InQuality, InRenderWidth, InRenderHeight, InOutputWidth, InOutputHeight))
+    {
+        return false;
+    }
 #if defined(FBY_WITH_FIDELITYFX)
     if (MContext == nullptr || GFsr2Api.Functions.Dispatch == nullptr || InCommandBuffer == nullptr)
     {
@@ -141,7 +155,7 @@ bool Fsr2Adapter::Dispatch(void* InCommandBuffer, void* InColor, void* InDepth, 
                                                                         FFX_API_SURFACE_FORMAT_R32_FLOAT),
                                               FFX_API_RESOURCE_STATE_COMPUTE_READ);
     ScopedDispatch.motionVectors = ffxApiGetResourceVK(InMotion, ScopedTextureDesc(
-        InRenderWidth, InRenderHeight, FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM), FFX_API_RESOURCE_STATE_COMPUTE_READ);
+        InRenderWidth, InRenderHeight, FFX_API_SURFACE_FORMAT_R16G16_FLOAT), FFX_API_RESOURCE_STATE_COMPUTE_READ);
     if (InReactive != nullptr)
     {
         ScopedDispatch.reactive = ffxApiGetResourceVK(
@@ -151,7 +165,8 @@ bool Fsr2Adapter::Dispatch(void* InCommandBuffer, void* InColor, void* InDepth, 
     ScopedDispatch.output = ffxApiGetResourceVK(InOutput, ScopedTextureDesc(
         InOutputWidth, InOutputHeight, FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM), FFX_API_RESOURCE_STATE_RENDER_TARGET);
     ScopedDispatch.jitterOffset = {InJitterX, InJitterY};
-    ScopedDispatch.motionVectorScale = {1.0f, 1.0f};
+    // The shader writes normalized UV deltas; FSR2 expects pixels.
+    ScopedDispatch.motionVectorScale = {static_cast<float>(InRenderWidth), static_cast<float>(InRenderHeight)};
     ScopedDispatch.renderSize = {InRenderWidth, InRenderHeight};
     ScopedDispatch.upscaleSize = {InOutputWidth, InOutputHeight};
     ScopedDispatch.enableSharpening = true;

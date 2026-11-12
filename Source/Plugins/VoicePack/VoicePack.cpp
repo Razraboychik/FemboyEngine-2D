@@ -93,7 +93,7 @@ FBY_PLUGIN_ENTRY const FbyPluginInfo* fby_plugin_info()
     static const FbyPluginInfo ScopedInfo{static_cast<std::uint32_t>(sizeof(FbyPluginInfo)),
                                           FBY_PLUGIN_ABI_VERSION,
                                           "Voice FX Pack",
-                                          "0.4.0-alpha.1",
+                                          FBY_ENGINE_VERSION,
                                           "FemboyEngine2D contributors",
                                           0,
                                           nullptr,

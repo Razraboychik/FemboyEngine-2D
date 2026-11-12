@@ -140,8 +140,8 @@ flagged swapchain submit). The composite test skips without a Vulkan device.
 ## Known limit
 
 The editor's BlindMode narrates to LogBoy but does not yet speak focused-widget
-labels; hooking ImGui's nav focus would complete it. Tracked in
-[ROADMAP.md](../ROADMAP.md).
+labels; hooking ImGui's nav focus would complete it. Tracked in the project
+issue tracker.
 
 ## Project motion comfort and input policy
 

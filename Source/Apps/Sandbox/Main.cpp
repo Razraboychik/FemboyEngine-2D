@@ -15,6 +15,7 @@
 #include "Engine/Effects/ParticleScene.hpp"
 #include "Engine/ECS/ParallelForEach.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
+#include "Engine/ECS/Hierarchy.hpp"
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/WindowManager.hpp"
 #include "Engine/RHI/RHI.hpp"
@@ -863,6 +864,7 @@ int main(int argc, char** argv)
             {
                 ScopedContext.dt = kFixedStep;
                 ScopedGraph.Run(Fby::Ecs::Phase::FixedUpdate, ScopedContext);
+                (void)Fby::Ecs::UpdateHierarchy(ScopedWorld.registry);
                 ScopedAccumulator -= kFixedStep;
                 ++ScopedSteps;
             }

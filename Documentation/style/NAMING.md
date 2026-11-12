@@ -64,7 +64,7 @@ jobs.
 
 ## Serialized component layout
 
-Component members are PascalCase in 0.4.0-alpha.1/layout v4:
+Component members are PascalCase in 0.5.0/layout v4:
 
 - `Transform2D::Position`, `Scale`, `Rotation`;
 - `Velocity::Value`;

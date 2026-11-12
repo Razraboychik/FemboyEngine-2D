@@ -4,13 +4,16 @@
 #include "Engine/Script/AotAbi.hpp"
 #include "Engine/Script/AotModule.hpp"
 #include "Engine/Script/AotTranspiler.hpp"
+#include "Engine/Script/Bytecode.hpp"
 #include "Engine/Script/EcsBridge.hpp"
 #include "Engine/Script/GraphCompiler.hpp"
 #include "Engine/Script/ScriptSystem.hpp"
+#include "Engine/Script/TextScript.hpp"
 
 #include <bit>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -339,6 +342,211 @@ bool TestTranspilerArithmeticParity()
 }
 }
 
+bool TestCollectionTranspile()
+{
+    using namespace Fby::Script;
+    ProgramBuilder ScopedBuilder;
+    ScopedBuilder.Emit(OpCode::LoadString, 0, 0, ScopedBuilder.AddString("hello"));
+    ScopedBuilder.Emit(OpCode::CallNative, 1, 0, ScopedBuilder.AddNative(NativeId::ArrayNew));
+    ScopedBuilder.Emit(OpCode::MoveF, 2, 1);
+    ScopedBuilder.Emit(OpCode::MoveF, 3, 0);
+    ScopedBuilder.Emit(OpCode::CallNative, 2, 0, ScopedBuilder.AddNative(NativeId::ArrayPush));
+    ScopedBuilder.Emit(OpCode::CallNative, 4, 0, ScopedBuilder.AddNative(NativeId::MapNew));
+    ScopedBuilder.Emit(OpCode::MoveF, 5, 4);
+    ScopedBuilder.Emit(OpCode::MoveF, 6, 0);
+    ScopedBuilder.Emit(OpCode::LoadI32, 7, 0, 1);
+    ScopedBuilder.Emit(OpCode::MoveF, 8, 7);
+    ScopedBuilder.Emit(OpCode::CallNative, 5, 0, ScopedBuilder.AddNative(NativeId::MapSet));
+    ScopedBuilder.Emit(OpCode::Halt);
+    (void)ScopedBuilder.AddFunction(ScriptEvent::Update, 0);
+
+    std::string ScopedError;
+    const std::vector<std::byte> ScopedBytes = ScopedBuilder.Build(0, 0, &ScopedError);
+    Check(!ScopedBytes.empty(), "collection program builds");
+    CompiledProgram ScopedProgram;
+    Check(ParseProgram(ScopedBytes, &ScopedProgram, &ScopedError), "collection program parses");
+
+    std::string ScopedSource;
+    Check(TranspileProgramToCpp(ScopedProgram, &ScopedSource, &ScopedError), "collection program transpiles");
+    Check(Contains(ScopedSource, "ctx.InternString("), "string literal is interned through the host");
+    Check(Contains(ScopedSource, "ctx.ArrayNew()"), "array allocation is a host callback");
+    Check(Contains(ScopedSource, "ctx.ArrayPush("), "array push is a host callback");
+    Check(Contains(ScopedSource, "ctx.MapSet("), "map set is a host callback");
+    Check(Contains(ScopedSource, "r.tag["), "register tags are part of generated code");
+
+#if defined(FBY_ENGINE_INCLUDE_DIR)
+    const char* ScopedCompiler = std::getenv("FBY_AOT_TEST_COMPILER");
+    if (ScopedCompiler != nullptr)
+    {
+        const std::filesystem::path ScopedFile = std::filesystem::current_path() / "fby_collection_aot_test.cpp";
+        {
+            std::ofstream ScopedOut(ScopedFile, std::ios::binary);
+            ScopedOut << ScopedSource;
+        }
+        const std::filesystem::path ScopedLog = std::filesystem::current_path() / "fby_collection_aot.log";
+        const std::string ScopedCommand = std::string(ScopedCompiler) + " -std=c++26 -fsyntax-only -I\"" +
+                                          std::string(FBY_ENGINE_INCLUDE_DIR) + "\" \"" + ScopedFile.string() +
+                                          "\" > \"" + ScopedLog.string() + "\" 2>&1";
+        const bool ScopedCompiled = std::system(ScopedCommand.c_str()) == 0;
+        if (!ScopedCompiled)
+        {
+            std::ifstream ScopedErrors(ScopedLog, std::ios::binary);
+            std::string ScopedText((std::istreambuf_iterator<char>(ScopedErrors)),
+                                   std::istreambuf_iterator<char>());
+            std::printf("%s\n", ScopedText.c_str());
+        }
+        Check(ScopedCompiled, "generated collection plugin compiles");
+        std::error_code ScopedCode;
+        if (ScopedCompiled)
+        {
+            std::filesystem::remove(ScopedFile, ScopedCode);
+            std::filesystem::remove(ScopedLog, ScopedCode);
+        }
+    }
+#endif
+    return true;
+}
+
+bool TestUserFunctionTranspile()
+{
+    using namespace Fby::Script;
+    ProgramBuilder ScopedBuilder;
+    const std::uint16_t ScopedTwo = ScopedBuilder.AddConstant(2.0f);
+    const std::uint32_t ScopedFunctionOffset = ScopedBuilder.CodeSize();
+    ScopedBuilder.Emit(OpCode::LoadF32, 64, 0, ScopedTwo);
+    ScopedBuilder.Emit(OpCode::MulF, 65, 64, 64);
+    ScopedBuilder.Emit(OpCode::Return, 0, 65);
+    const std::uint16_t ScopedFunction = ScopedBuilder.AddUserFunction(1, 64, ScopedFunctionOffset);
+    const std::uint32_t ScopedEventOffset = ScopedBuilder.CodeSize();
+    ScopedBuilder.Emit(OpCode::LoadF32, 0, 0, ScopedTwo);
+    ScopedBuilder.Emit(OpCode::MoveF, 64, 0);
+    ScopedBuilder.Emit(OpCode::CallFunction, 1, 0, ScopedFunction);
+    ScopedBuilder.Emit(OpCode::Halt);
+    (void)ScopedBuilder.AddFunction(ScriptEvent::Update, ScopedEventOffset);
+
+    std::string ScopedError;
+    const std::vector<std::byte> ScopedBytes = ScopedBuilder.Build(0, 0, &ScopedError);
+    Check(!ScopedBytes.empty(), "user function program builds");
+    CompiledProgram ScopedProgram;
+    Check(ParseProgram(ScopedBytes, &ScopedProgram, &ScopedError), "user function program parses");
+
+    std::string ScopedSource;
+    Check(TranspileProgramToCpp(ScopedProgram, &ScopedSource, &ScopedError), "user function program transpiles");
+    Check(Contains(ScopedSource, "void fby_fn_0("), "a user function body is emitted");
+    Check(Contains(ScopedSource, "ctx.callDepth"), "the call site guards recursion depth");
+    Check(Contains(ScopedSource, "fby_fn_0(ctx, r);"), "the call site invokes the generated function");
+
+#if defined(FBY_ENGINE_INCLUDE_DIR)
+    const char* ScopedCompiler = std::getenv("FBY_AOT_TEST_COMPILER");
+    if (ScopedCompiler != nullptr)
+    {
+        const std::filesystem::path ScopedFile = std::filesystem::current_path() / "fby_userfn_aot_test.cpp";
+        const std::filesystem::path ScopedLog = std::filesystem::current_path() / "fby_userfn_aot.log";
+        {
+            std::ofstream ScopedOut(ScopedFile, std::ios::binary);
+            ScopedOut << ScopedSource;
+        }
+        const std::string ScopedCommand = std::string(ScopedCompiler) + " -std=c++26 -fsyntax-only -I\"" +
+                                          std::string(FBY_ENGINE_INCLUDE_DIR) + "\" \"" + ScopedFile.string() +
+                                          "\" > \"" + ScopedLog.string() + "\" 2>&1";
+        const bool ScopedCompiled = std::system(ScopedCommand.c_str()) == 0;
+        if (!ScopedCompiled)
+        {
+            std::ifstream ScopedErrors(ScopedLog, std::ios::binary);
+            std::string ScopedText((std::istreambuf_iterator<char>(ScopedErrors)),
+                                   std::istreambuf_iterator<char>());
+            std::printf("%s\n", ScopedText.c_str());
+        }
+        Check(ScopedCompiled, "generated user function plugin compiles");
+        std::error_code ScopedCode;
+        if (ScopedCompiled)
+        {
+            std::filesystem::remove(ScopedFile, ScopedCode);
+            std::filesystem::remove(ScopedLog, ScopedCode);
+        }
+    }
+#endif
+    return true;
+}
+
+bool TestUserFunctionEndToEnd()
+{
+    using namespace Fby::Script;
+    const char* ScopedDumpDirectory = std::getenv("FBY_AOT_USERFN_DUMP_DIR");
+    if (ScopedDumpDirectory != nullptr)
+    {
+        Fby::Scene::ComponentRegistry ScopedComponents;
+        Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+        constexpr std::string_view ScopedText = R"FBY(
+function add(a, b) {
+    return a + b;
+}
+function twice(x) {
+    return add(x, x);
+}
+event update {
+    self.Transform2D.Rotation = twice(21.0);
+}
+)FBY";
+        TextCompileOptions ScopedOptions;
+        ScopedOptions.graphHash = 0x5A5A1234ull;
+        std::string ScopedError;
+        std::vector<std::byte> ScopedStorage;
+        if (!CompileTextScript(ScopedText, ScopedComponents, ScopedOptions, &ScopedStorage, &ScopedError))
+        {
+            std::printf("FAIL: user function E2E compile: %s\n", ScopedError.c_str());
+            ++GFailures;
+            return false;
+        }
+        CompiledProgram ScopedProgram;
+        std::string ScopedSource;
+        if (!ParseProgram(ScopedStorage, &ScopedProgram, &ScopedError) ||
+            !TranspileProgramToCpp(ScopedProgram, &ScopedSource, &ScopedError))
+        {
+            std::printf("FAIL: user function E2E transpile: %s\n", ScopedError.c_str());
+            ++GFailures;
+            return false;
+        }
+        const std::string ScopedDirectory = ScopedDumpDirectory;
+        {
+            std::ofstream ScopedBytes(ScopedDirectory + "/program.fbsc", std::ios::binary | std::ios::trunc);
+            ScopedBytes.write(reinterpret_cast<const char*>(ScopedStorage.data()),
+                              static_cast<std::streamsize>(ScopedStorage.size()));
+        }
+        {
+            std::ofstream ScopedOutput(ScopedDirectory + "/program.cpp", std::ios::binary | std::ios::trunc);
+            ScopedOutput << ScopedSource;
+        }
+    }
+
+    const char* ScopedDllPath = std::getenv("FBY_AOT_USERFN_DLL");
+    if (ScopedDllPath == nullptr)
+    {
+        return true;
+    }
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "runtime initializes for user function E2E");
+    Fby::Script::AotModule ScopedModule;
+    std::string ScopedError;
+    if (!ScopedModule.Load(ScopedDllPath, ScopedRuntime.Bridge(), &ScopedError))
+    {
+        std::printf("FAIL: user function plugin load: %s\n", ScopedError.c_str());
+        ++GFailures;
+        return false;
+    }
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
+    VmContext ScopedContext{ScopedRegistry};
+    ScopedContext.heap = &ScopedRuntime.Heap();
+    Check(ScopedModule.Run(ScriptEvent::Update, ScopedEntity, ScopedContext, &ScopedError),
+          "compiled user function plugin runs");
+    CheckFloat(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation, 42.0f,
+               "the native plugin returns through nested user functions");
+    ScopedModule.Unload();
+    return true;
+}
+
 int main()
 {
     TestTranspilerShape();
@@ -346,6 +554,9 @@ int main()
     TestHostBridge();
     TestLoaderFailurePath();
     TestOptionalEndToEnd();
+    TestCollectionTranspile();
+    TestUserFunctionTranspile();
+    TestUserFunctionEndToEnd();
 
     if (GFailures != 0)
     {

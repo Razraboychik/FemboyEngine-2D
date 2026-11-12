@@ -298,7 +298,7 @@ prefetch_tiles = 2"""),
             "VT (if enabled) shows no deferred backlog and no magenta tiles in steady state.",
         ]),
         ("h2", "Related documentation"),
-        ("p", "See ROADMAP.md for the forward plan, the Application Guide for the "
+        ("p", "See the project issue tracker for the forward plan, the Application Guide for the "
               "editor-to-release workflow and the Complete Reference for the settings architecture."),
     ]
 
@@ -562,7 +562,7 @@ prefetch_tiles = 2"""),
             "VT (если включена) не показывает отложенных запросов и магенты в установившемся режиме.",
         ]),
         ("h2", "Связанная документация"),
-        ("p", "См. ROADMAP.md с планом работ, Application Guide с процессом "
+        ("p", "См. трекер задач проекта с планом работ, Application Guide с процессом "
               "«редактор → релиз» и Complete Reference с архитектурой настроек."),
     ]
 

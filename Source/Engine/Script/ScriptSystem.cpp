@@ -651,6 +651,226 @@ void RegisterScriptableComponents(Script::EcsBridge& InBridge)
     (void)InBridge.RegisterComponent<ScriptComponent>("ScriptComponent");
 }
 
+void NativeArrayNew(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const std::uint32_t ScopedHandle = InContext.heap->NewArray();
+    if (ScopedHandle == Script::ScriptHeap::kInvalidHandle)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::HeapFull);
+        return;
+    }
+    InVm.SetU(InBase, ScopedHandle);
+    InVm.SetTag(InBase, Script::ValueTag::Array);
+}
+
+void NativeArrayPush(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedValue{InVm.U(InBase + 1), InVm.Tag(InBase + 1)};
+    if (!InContext.heap->ArrayPush(InVm.U(InBase), ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadCollection);
+        return;
+    }
+    InVm.SetU(InBase, 1);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeArraySet(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedValue{InVm.U(InBase + 2), InVm.Tag(InBase + 2)};
+    if (!InContext.heap->ArraySet(InVm.U(InBase), InVm.U(InBase + 1), ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::OutOfRange);
+        return;
+    }
+    InVm.SetU(InBase, 1);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeArrayGet(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    Script::ScriptValue ScopedValue;
+    if (!InContext.heap->ArrayGet(InVm.U(InBase), InVm.U(InBase + 1), &ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::OutOfRange);
+        return;
+    }
+    InVm.SetU(InBase, ScopedValue.Bits);
+    InVm.SetTag(InBase, ScopedValue.Tag);
+}
+
+void NativeArrayLength(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::uint32_t ScopedLength = 0;
+    if (!InContext.heap->ArrayLength(InVm.U(InBase), &ScopedLength))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadCollection);
+        return;
+    }
+    InVm.SetU(InBase, ScopedLength);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeMapNew(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const std::uint32_t ScopedHandle = InContext.heap->NewMap();
+    if (ScopedHandle == Script::ScriptHeap::kInvalidHandle)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::HeapFull);
+        return;
+    }
+    InVm.SetU(InBase, ScopedHandle);
+    InVm.SetTag(InBase, Script::ValueTag::Map);
+}
+
+void NativeMapSet(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedKey{InVm.U(InBase + 1), InVm.Tag(InBase + 1)};
+    const Script::ScriptValue ScopedValue{InVm.U(InBase + 2), InVm.Tag(InBase + 2)};
+    if (!InContext.heap->MapSet(InVm.U(InBase), ScopedKey, ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadCollection);
+        return;
+    }
+    InVm.SetU(InBase, 1);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeMapGet(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedKey{InVm.U(InBase + 1), InVm.Tag(InBase + 1)};
+    Script::ScriptValue ScopedValue;
+    if (!InContext.heap->MapGet(InVm.U(InBase), ScopedKey, &ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::MissingKey);
+        return;
+    }
+    InVm.SetU(InBase, ScopedValue.Bits);
+    InVm.SetTag(InBase, ScopedValue.Tag);
+}
+
+void NativeMapHas(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedKey{InVm.U(InBase + 1), InVm.Tag(InBase + 1)};
+    InVm.SetU(InBase, InContext.heap->MapHas(InVm.U(InBase), ScopedKey) ? 1 : 0);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeMapLength(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::uint32_t ScopedLength = 0;
+    if (!InContext.heap->MapLength(InVm.U(InBase), &ScopedLength))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadCollection);
+        return;
+    }
+    InVm.SetU(InBase, ScopedLength);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeStringConcat(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::uint32_t ScopedHandle = Script::ScriptHeap::kInvalidHandle;
+    if (!InContext.heap->ConcatStrings(InVm.U(InBase), InVm.U(InBase + 1), &ScopedHandle))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadString);
+        return;
+    }
+    InVm.SetU(InBase, ScopedHandle);
+    InVm.SetTag(InBase, Script::ValueTag::String);
+}
+
+void NativeStringLength(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::string_view ScopedText;
+    if (!InContext.heap->StringView(InVm.U(InBase), &ScopedText))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadString);
+        return;
+    }
+    InVm.SetU(InBase, static_cast<std::uint32_t>(ScopedText.size()));
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeStringEquals(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::string_view ScopedLeft;
+    std::string_view ScopedRight;
+    if (!InContext.heap->StringView(InVm.U(InBase), &ScopedLeft) ||
+        !InContext.heap->StringView(InVm.U(InBase + 1), &ScopedRight))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadString);
+        return;
+    }
+    InVm.SetU(InBase, ScopedLeft == ScopedRight ? 1 : 0);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
 void RegisterDefaultScriptNatives(ScriptRuntime& InRuntime)
 {
     InRuntime.SetNative(Script::NativeId::LogFloat, &NativeLogFloat);
@@ -698,6 +918,19 @@ void RegisterDefaultScriptNatives(ScriptRuntime& InRuntime)
     InRuntime.SetNative(Script::NativeId::CameraRoll, &NativeCameraRoll);
     InRuntime.SetNative(Script::NativeId::CameraClearEffects, &NativeCameraClearEffects);
     InRuntime.SetNative(Script::NativeId::CameraSetMotionScale, &NativeCameraSetMotionScale);
+    InRuntime.SetNative(Script::NativeId::ArrayNew, &NativeArrayNew);
+    InRuntime.SetNative(Script::NativeId::ArrayPush, &NativeArrayPush);
+    InRuntime.SetNative(Script::NativeId::ArraySet, &NativeArraySet);
+    InRuntime.SetNative(Script::NativeId::ArrayGet, &NativeArrayGet);
+    InRuntime.SetNative(Script::NativeId::ArrayLength, &NativeArrayLength);
+    InRuntime.SetNative(Script::NativeId::MapNew, &NativeMapNew);
+    InRuntime.SetNative(Script::NativeId::MapSet, &NativeMapSet);
+    InRuntime.SetNative(Script::NativeId::MapGet, &NativeMapGet);
+    InRuntime.SetNative(Script::NativeId::MapHas, &NativeMapHas);
+    InRuntime.SetNative(Script::NativeId::MapLength, &NativeMapLength);
+    InRuntime.SetNative(Script::NativeId::StringConcat, &NativeStringConcat);
+    InRuntime.SetNative(Script::NativeId::StringLength, &NativeStringLength);
+    InRuntime.SetNative(Script::NativeId::StringEquals, &NativeStringEquals);
 }
 
 bool ScriptRuntime::Initialize()
@@ -715,6 +948,7 @@ bool ScriptRuntime::Initialize()
     }
     RegisterDefaultScriptNatives(*this);
     MRng = DeterministicRng::FromSeed(0x4642334C4F4C49ull);
+    MHeap->Reset();
     MActiveScriptCount = 0;
     MActiveStamp = 0;
     MDroppedDestroyEvents = 0;
@@ -931,6 +1165,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     ScopedVmContext.rng = &InRuntime.Rng();
     ScopedVmContext.bigNumbers = &InRuntime.BigNumbers();
     ScopedVmContext.decimals = &InRuntime.Decimals();
+    ScopedVmContext.heap = &InRuntime.Heap();
     ScopedVmContext.dt = InContext.dt;
     ScopedVmContext.frameIndex = InContext.frameIndex;
     ScopedVmContext.transport = InRuntime.TransportGroups();

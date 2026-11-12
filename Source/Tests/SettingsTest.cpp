@@ -9,6 +9,7 @@
 #include "Engine/RHI/DlssAdapter.hpp"
 #include "Engine/RHI/FidelityFxRuntime.hpp"
 #include "Engine/RHI/Fsr2Adapter.hpp"
+#include "Engine/RHI/RHI.hpp"
 #include "Engine/RHI/DlssRuntime.hpp"
 #include "Engine/RHI/DlssRuntimeProbe.hpp"
 
@@ -154,6 +155,24 @@ int main()
 
     FBY_CHECK(Fby::Rhi::Fsr2RenderScale(Fby::Rhi::Fsr2QualityMode::Quality) > 0.5f);
     FBY_CHECK(Fby::Rhi::Fsr2RenderScale(Fby::Rhi::Fsr2QualityMode::UltraPerformance) < 0.5f);
+    FBY_CHECK(Fby::Rhi::Fsr2QualityForExtent(1286, 724, 1920, 1080) == Fby::Rhi::Fsr2QualityMode::Quality);
+    FBY_CHECK(Fby::Rhi::Fsr2QualityForExtent(1114, 626, 1920, 1080) == Fby::Rhi::Fsr2QualityMode::Balanced);
+    FBY_CHECK(Fby::Rhi::Fsr2QualityForExtent(960, 540, 1920, 1080) == Fby::Rhi::Fsr2QualityMode::Performance);
+    FBY_CHECK(Fby::Rhi::Fsr2QualityForExtent(634, 356, 1920, 1080) ==
+              Fby::Rhi::Fsr2QualityMode::UltraPerformance);
+    FBY_CHECK(Fby::Rhi::Fsr2RenderSizeMatches(Fby::Rhi::Fsr2QualityMode::Quality, 1286, 724, 1920, 1080));
+    FBY_CHECK(!Fby::Rhi::Fsr2RenderSizeMatches(Fby::Rhi::Fsr2QualityMode::Quality, 960, 540, 1920, 1080));
+    FBY_CHECK(!Fby::Rhi::Fsr2RenderSizeMatches(Fby::Rhi::Fsr2QualityMode::Quality, 1921, 1081, 1920, 1080));
+    const Fby::Rhi::RenderTargetDesc ScopedMotionDesc = Fby::Rhi::MotionVectorTargetDesc({640, 360});
+    FBY_CHECK(ScopedMotionDesc.format == Fby::Rhi::RenderTargetFormat::Rg16Float);
+    FBY_CHECK(!ScopedMotionDesc.srgb);
+
+    Fby::Rhi::Fsr2Adapter ScopedFsr2;
+    FBY_CHECK(!ScopedFsr2.Initialize(nullptr, nullptr, nullptr, 1280, 720, 1920, 1080));
+    FBY_CHECK(!ScopedFsr2.Initialize(nullptr, nullptr, nullptr, 1920, 1080, 1280, 720));
+    FBY_CHECK(!ScopedFsr2.IsAvailable());
+    FBY_CHECK(!ScopedFsr2.Dispatch(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 1286, 724, 1920, 1080,
+                                   Fby::Rhi::Fsr2QualityMode::Quality, 0.0f, 0.0f, true));
     FBY_CHECK(Fby::Rhi::DlssRenderScale(Fby::Rhi::DlssQualityMode::Quality) > 0.5f);
     FBY_CHECK(Fby::Rhi::DlssRenderScale(Fby::Rhi::DlssQualityMode::UltraPerformance) < 0.5f);
 
@@ -297,6 +316,9 @@ int main()
     ScopedUser.fsr1Sharpness = 2.0f;
     FBY_CHECK(ClampUserSettings(ScopedUser).fsr1Sharpness <= 1.0f);
     ScopedUser.fsr1Sharpness = 0.35f;
+    ScopedUser.fsr2Quality = static_cast<Fby::Rhi::Fsr2QualityMode>(9);
+    FBY_CHECK(static_cast<std::uint8_t>(ClampUserSettings(ScopedUser).fsr2Quality) <= 3);
+    ScopedUser.fsr2Quality = Fby::Rhi::Fsr2QualityMode::UltraPerformance;
     ScopedUser.windowWidth = 99999;
     ScopedUser.renderScale = 4.0f;
     ScopedUser.hudRenderScale = 4.0f;

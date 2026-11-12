@@ -5,6 +5,7 @@
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/CommandBuffer.hpp"
+#include "Engine/ECS/Hierarchy.hpp"
 #include "Engine/ECS/RegistryOps.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/Network/NetLink.hpp"
@@ -627,6 +628,10 @@ void PlayInEditor::StopVoice() noexcept
     }
     MPieVoiceHostEndpoint.Close();
     MPieVoiceClientEndpoint.Close();
+    if (MPieVoiceDevicesReady)
+    {
+        MPieVoiceDevices.Shutdown();
+    }
     MPieVoiceDevicesReady = false;
     MPieVoiceHostSession = VoiceSession{};
     MPieVoiceClientSession = VoiceSession{};
@@ -784,6 +789,7 @@ bool PlayInEditor::Step(Ecs::SystemGraph& InGraph, float InDeltaSeconds, float I
     {
         ScopedContext.dt = ScopedStep;
         InGraph.Run(Ecs::Phase::FixedUpdate, ScopedContext);
+        (void)Ecs::UpdateHierarchy(MWorld);
         MFixedAccumulator -= ScopedStep;
         ++ScopedIterations;
     }

@@ -1,6 +1,6 @@
 # Particle preset data packs
 
-Status: 0.4.0-alpha.1 tree. `.fbyparticle` is a TOML data pack for
+Status: 0.5.0 tree. `.fbyparticle` is a TOML data pack for
 `ParticleEffectSettings`. It adds ready-made presets without a DLL, a plugin
 ABI change or a renderer hook. The format mirrors `.fbyvoice`: engine code owns
 the registry and the loader, a pack owns the numbers.

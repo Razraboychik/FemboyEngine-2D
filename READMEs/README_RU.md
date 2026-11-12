@@ -8,7 +8,7 @@
 [![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
 [![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.4.0-alpha.1](https://img.shields.io/badge/status-0.4.0--alpha.1-blue.svg)]()
+[![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D — компактный, детерминированный движок для 2D-игр: собственный
@@ -21,8 +21,8 @@ opt-in параллельным выполнением, физика Box2D v3, r
 тривиально копируемые данные; системы — свободные функции; кадр — плоский массив
 `RenderItem`, отправляемый одним RHI-пакетом.
 
-**Статус: 0.4.0-alpha.1.** FemboyEngine2D находится в публичной alpha-линии
-0.4. Runtime включает отладчик FemboyScript (spans, breakpoints, stepping,
+**Статус: 0.5.0.** FemboyEngine2D находится в публичной линии
+0.5. Runtime включает отладчик FemboyScript (spans, breakpoints, stepping,
 locals и self-поля), изометрические и тайловые карты с редактором, скелетный
 IK, retargeting и сжатие клипов (`.fanim`), навигацию по сетке, 2D-освещение,
 UDP-транспорт с надёжностью и MTU-фрагментацией, живой пространственный звук,
@@ -348,10 +348,11 @@ device hash/raw (`device_id`) и живой выход панели (`voice_devi
 ctest --test-dir build --output-on-failure
 ```
 
-Style gate проверяется машиной:
+Style gate и контроль версии проверяются машиной:
 
 ```bash
 python Source/Tools/Dev/CheckStyle.py
+python Source/Tools/Dev/CheckVersion.py
 ```
 
 ---
@@ -459,7 +460,6 @@ file>` (нажать Open на панели после `FBY_EDITOR_SMOKE_DASHBOA
 - [Рекомендации по настройкам проекта (RU)](../Documentation/md/ru/ProjectSettingsRecommendations_RU.md)
 - [Стиль кода](../Documentation/style/CodeStyle.md)
 - [Соглашения об именовании](../Documentation/style/NAMING.md)
-- [Roadmap](../Documentation/ROADMAP.md)
 - [Контракт виртуальных текстур](../Documentation/design/virtual-texturing.md)
 - [Workflow редактора и создание сцен](../Documentation/design/editor-workflows.md)
 - [Play-In-Editor и viewport клиента](../Documentation/design/pie-multiplayer.md)
@@ -493,6 +493,7 @@ FemboyEngine2D.
 ```text
 FemboyEngine2D/
 ├─ CMakeLists.txt, cmake/        конфигурация сборки и пины зависимостей
+├─ Version.txt                   единый источник версии движка
 ├─ Source/
 │  ├─ Engine/                    Core, RHI, ECS, Physics, Audio, Network,
 │  │                             Assets, Script, Text, UI, Video, Weather

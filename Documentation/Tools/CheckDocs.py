@@ -63,7 +63,6 @@ PAIRED_DOCUMENTS = (
 ROOT_FILES = {
     "README.md",
     "README_RU.md",
-    "ROADMAP.md",
 }
 
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
@@ -102,7 +101,6 @@ def check_links(errors: list[str]) -> None:
         ROOT / "READMEs" / "README_RU.md",
         DOCS / "README.md",
         DOCS / "README_RU.md",
-        DOCS / "ROADMAP.md",
     ]
     sources.extend(sorted((ROOT / "READMEs").glob("*.md")))
     for directory in ("design", "style", "adr"):

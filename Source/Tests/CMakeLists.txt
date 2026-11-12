@@ -72,6 +72,8 @@ fby_add_engine_test(fby_sim_math_test sim_math SimMathTest.cpp)
 fby_add_engine_test(fby_job_system_test job_system JobSystemTest.cpp)
 # System graph: dependency order, cycle rejection, mask validation, removal.
 fby_add_engine_test(fby_system_graph_test system_graph SystemGraphTest.cpp)
+# ParallelSafe audit: AI/state/physics stay serial, animation opt-in and masks.
+fby_add_engine_test(fby_parallel_safe_audit_test parallel_safe_audit ParallelSafeAuditTest.cpp)
 fby_add_engine_test(fby_pause_test pause PauseTest.cpp)
 # Parser mutation sweep: input packet, .femarc and the FbyLz codec.
 fby_add_engine_test(fby_fuzz_parsers_test fuzz_parsers FuzzParsersTest.cpp)
@@ -116,7 +118,8 @@ if(TARGET fby_hello_mod)
     fby_add_engine_test(fby_plugin_reload_test plugin_reload PluginReloadTest.cpp)
     target_compile_definitions(fby_plugin_reload_test PRIVATE
         FBY_TEST_PLUGIN_PATH="$<TARGET_FILE:fby_hello_mod>"
-        FBY_TEST_BAD_PLUGIN_PATH="$<TARGET_FILE:fby_hello_mod_bad>")
+        FBY_TEST_BAD_PLUGIN_PATH="$<TARGET_FILE:fby_hello_mod_bad>"
+        FBY_TEST_PLUGIN_DIR="$<TARGET_FILE_DIR:fby_hello_mod>")
     add_dependencies(fby_plugin_reload_test fby_hello_mod fby_hello_mod_bad)
     if(TARGET fby_rainbow_palette)
         target_compile_definitions(fby_plugin_reload_test PRIVATE
@@ -124,8 +127,9 @@ if(TARGET fby_hello_mod)
             FBY_TEST_NVG_PATH="$<TARGET_FILE:fby_nvg>"
             FBY_TEST_THERMAL_PATH="$<TARGET_FILE:fby_thermal>"
             FBY_TEST_ALCOHOL_PATH="$<TARGET_FILE:fby_alcohol>"
+            FBY_TEST_RADIATION_PATH="$<TARGET_FILE:fby_radiation>"
             FBY_TEST_THEMED_PALETTES_PATH="$<TARGET_FILE:fby_themed_palettes>")
-        add_dependencies(fby_plugin_reload_test fby_rainbow_palette fby_nvg fby_thermal fby_alcohol fby_themed_palettes)
+        add_dependencies(fby_plugin_reload_test fby_rainbow_palette fby_nvg fby_thermal fby_alcohol fby_radiation fby_themed_palettes)
     endif()
     if(TARGET fby_voice_pack)
         target_compile_definitions(fby_plugin_reload_test PRIVATE
@@ -412,6 +416,9 @@ fby_add_engine_test(fby_mesh_indirect_smoke_test mesh_indirect_smoke MeshIndirec
 
 # FemboyScript 2.0: bytecode validation, the VM, the ECS bridge, the graph
 fby_add_engine_test(fby_script_vm_test script_vm ScriptVmTest.cpp)
+
+# Fixed-capacity script heap: strings, arrays and maps for the VM and AOT host.
+fby_add_engine_test(fby_script_heap_test script_heap ScriptHeapTest.cpp)
 
 # FemboyScript debug data: source spans, locals, breakpoints, stepping, fields.
 fby_add_engine_test(fby_script_debug_test script_debug ScriptDebugTest.cpp)

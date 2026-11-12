@@ -1,6 +1,8 @@
 // FemboyEngine2D - FemboyScript 2.0 interpreter.
 #include "Engine/Script/Vm.hpp"
 
+#include "Engine/Script/ScriptHeap.hpp"
+
 #include <bit>
 #include <cstring>
 #include <limits>
@@ -24,6 +26,79 @@ template <typename T> [[nodiscard]] T LoadRaw(const std::byte* InAddress) noexce
 void StoreRaw(std::byte* InAddress, const void* InValue, std::uint32_t InSize) noexcept
 {
     std::memcpy(InAddress, InValue, InSize);
+}
+
+// Opcodes that always write a numeric (or entity) payload into dst. Natives,
+// moves and LoadString manage their own tags because they can carry a heap
+// handle from an argument or from the heap.
+[[nodiscard]] constexpr bool WritesNumericResult(OpCode InOp) noexcept
+{
+    switch (InOp)
+    {
+        case OpCode::LoadF32:
+        case OpCode::LoadI32:
+        case OpCode::AddF:
+        case OpCode::SubF:
+        case OpCode::MulF:
+        case OpCode::DivF:
+        case OpCode::AddI:
+        case OpCode::SubI:
+        case OpCode::MulI:
+        case OpCode::DivI:
+        case OpCode::ModI:
+        case OpCode::NegF:
+        case OpCode::NegI:
+        case OpCode::AndI:
+        case OpCode::OrI:
+        case OpCode::NotI:
+        case OpCode::LtF:
+        case OpCode::LeF:
+        case OpCode::GtF:
+        case OpCode::GeF:
+        case OpCode::EqF:
+        case OpCode::NeF:
+        case OpCode::LtI:
+        case OpCode::LeI:
+        case OpCode::GtI:
+        case OpCode::GeI:
+        case OpCode::EqI:
+        case OpCode::NeI:
+        case OpCode::LoadSelf:
+        case OpCode::LoadFieldF:
+        case OpCode::LoadFieldI:
+        case OpCode::LoadFieldVec2:
+        case OpCode::SpawnPrefab:
+        case OpCode::DespawnEntity:
+        case OpCode::RandomF:
+        case OpCode::RandomRangeF:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Natives that read or return heap handles keep the argument tags intact.
+[[nodiscard]] constexpr bool IsHeapNative(NativeId InNative) noexcept
+{
+    switch (InNative)
+    {
+        case NativeId::ArrayNew:
+        case NativeId::ArrayPush:
+        case NativeId::ArraySet:
+        case NativeId::ArrayGet:
+        case NativeId::ArrayLength:
+        case NativeId::MapNew:
+        case NativeId::MapSet:
+        case NativeId::MapGet:
+        case NativeId::MapHas:
+        case NativeId::MapLength:
+        case NativeId::StringConcat:
+        case NativeId::StringLength:
+        case NativeId::StringEquals:
+            return true;
+        default:
+            return false;
+    }
 }
 }
 
@@ -137,12 +212,14 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
         for (std::uint32_t ScopedI = 0; ScopedI < ScopedRegisters; ++ScopedI)
         {
             MRegisters[ScopedI].u = 0;
+            MTags[ScopedI] = ValueTag::Float;
         }
     }
     if (InDebug != nullptr)
     {
         InDebug->ResumeValid = false;
     }
+    MCallDepth = 0;
 
     const auto& ScopedCode = InProgram.program.code;
     const auto& ScopedConstants = InProgram.program.constants;
@@ -203,6 +280,15 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
         const Instruction ScopedInstruction = ScopedCode[ScopedPc];
         ++MExecuted;
         std::uint32_t ScopedNext = ScopedPc + 1;
+        if (WritesNumericResult(ScopedInstruction.Code()))
+        {
+            MTags[ScopedInstruction.dst] = ValueTag::Float;
+            if (ScopedInstruction.Code() == OpCode::LoadFieldVec2 &&
+                ScopedInstruction.dst + 1 < kMaxVmRegisters)
+            {
+                MTags[ScopedInstruction.dst + 1] = ValueTag::Float;
+            }
+        }
 
         switch (ScopedInstruction.Code())
         {
@@ -231,9 +317,11 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 break;
             case OpCode::MoveF:
                 MRegisters[ScopedInstruction.dst].f = MRegisters[ScopedInstruction.src].f;
+                MTags[ScopedInstruction.dst] = MTags[ScopedInstruction.src];
                 break;
             case OpCode::MoveI:
                 MRegisters[ScopedInstruction.dst].u = MRegisters[ScopedInstruction.src].u;
+                MTags[ScopedInstruction.dst] = MTags[ScopedInstruction.src];
                 break;
 
             case OpCode::AddF:
@@ -463,7 +551,19 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 {
                     return FaultStop(InFault, VmFault::Code::BadNative, ScopedPc, ScopedId);
                 }
+                if (!IsHeapNative(static_cast<NativeId>(ScopedId)))
+                {
+                    MTags[ScopedInstruction.dst] = ValueTag::Float;
+                }
                 MNatives[ScopedId](*this, InContext, ScopedInstruction.dst);
+                if (MPendingFault != VmFault::Code::None)
+                {
+                    const VmFault::Code ScopedFault = MPendingFault;
+                    const std::uint32_t ScopedDetail = MPendingFaultDetail;
+                    MPendingFault = VmFault::Code::None;
+                    MPendingFaultDetail = 0;
+                    return FaultStop(InFault, ScopedFault, ScopedPc, ScopedDetail);
+                }
                 break;
             }
 
@@ -523,6 +623,68 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                         ScopedMinimum + (ScopedMaximum - ScopedMinimum) * InContext.rng->NextFloat();
                 }
                 break;
+
+            case OpCode::LoadString:
+            {
+                if (InContext.heap == nullptr)
+                {
+                    return FaultStop(InFault, VmFault::Code::NoHeap, ScopedPc);
+                }
+                std::string_view ScopedText;
+                if (!InProgram.program.StringAt(ScopedInstruction.operand, &ScopedText))
+                {
+                    return FaultStop(InFault, VmFault::Code::BadString, ScopedPc, ScopedInstruction.operand);
+                }
+                const std::uint32_t ScopedHandle = InContext.heap->InternString(ScopedText);
+                if (ScopedHandle == ScriptHeap::kInvalidHandle)
+                {
+                    return FaultStop(InFault, VmFault::Code::HeapFull, ScopedPc, ScopedInstruction.operand);
+                }
+                MRegisters[ScopedInstruction.dst].u = ScopedHandle;
+                MTags[ScopedInstruction.dst] = ValueTag::String;
+                break;
+            }
+
+            case OpCode::CallFunction:
+            {
+                if (ScopedInstruction.operand >= InProgram.program.functions.size())
+                {
+                    return FaultStop(InFault, VmFault::Code::BadCall, ScopedPc, ScopedInstruction.operand);
+                }
+                const FunctionEntry& ScopedTarget = InProgram.program.functions[ScopedInstruction.operand];
+                if ((ScopedTarget.event & kUserFunctionFlag) == 0 || MCallDepth >= kMaxCallDepth)
+                {
+                    return FaultStop(InFault, VmFault::Code::BadCall, ScopedPc, ScopedInstruction.operand);
+                }
+                for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+                {
+                    if (MCalls[ScopedI].Function == ScopedInstruction.operand)
+                    {
+                        return FaultStop(InFault, VmFault::Code::Recursion, ScopedPc, ScopedInstruction.operand);
+                    }
+                }
+                CallFrame& ScopedFrame = MCalls[MCallDepth++];
+                ScopedFrame.ReturnPc = ScopedNext;
+                ScopedFrame.ResultDst = ScopedInstruction.dst;
+                ScopedFrame.Function = ScopedInstruction.operand;
+                ScopedFrame.Base = ScopedTarget.registerHighWater;
+                ScopedNext = ScopedTarget.codeOffset;
+                break;
+            }
+            case OpCode::Return:
+            {
+                if (MCallDepth == 0)
+                {
+                    return FaultStop(InFault, VmFault::Code::BadCall, ScopedPc);
+                }
+                const CallFrame ScopedFrame = MCalls[--MCallDepth];
+                MRegisters[ScopedFrame.Base].u = MRegisters[ScopedInstruction.src].u;
+                MTags[ScopedFrame.Base] = MTags[ScopedInstruction.src];
+                MRegisters[ScopedFrame.ResultDst].u = MRegisters[ScopedFrame.Base].u;
+                MTags[ScopedFrame.ResultDst] = MTags[ScopedFrame.Base];
+                ScopedNext = ScopedFrame.ReturnPc;
+                break;
+            }
 
             case OpCode::Count:
             default:

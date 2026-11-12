@@ -30,9 +30,8 @@ PRESETS = {
     "linux": ("linux-release", "build-linux-release"),
     "macos": ("macos-release", "build-macos-release"),
 }
-VERSION = "0.4.0-alpha.1"
+VERSION = (ROOT / "Version.txt").read_text(encoding="utf-8").strip()
 SOURCE_URL = "https://github.com/Razraboychik/FemboyEngine-2D"
-SOURCE_REF = "v0.4.0alpha.1"
 
 
 def default_platform() -> str:

@@ -1343,8 +1343,24 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
     ScopedTarget->extent = InDesc.size;
     ScopedTarget->srgb = InDesc.srgb;
     ScopedTarget->blend = InDesc.blend;
-    ScopedTarget->format =
-        InDesc.matchSwapchainFormat ? MFormat : (InDesc.srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM);
+    switch (InDesc.format)
+    {
+    case RenderTargetFormat::Rgba8Unorm:
+        ScopedTarget->format = VK_FORMAT_R8G8B8A8_UNORM;
+        break;
+    case RenderTargetFormat::Rgba8Srgb:
+        ScopedTarget->format = VK_FORMAT_R8G8B8A8_SRGB;
+        break;
+    case RenderTargetFormat::Rg16Float:
+        ScopedTarget->format = VK_FORMAT_R16G16_SFLOAT;
+        break;
+    case RenderTargetFormat::Auto:
+    default:
+        ScopedTarget->format =
+            InDesc.matchSwapchainFormat ? MFormat
+                                        : (InDesc.srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM);
+        break;
+    }
 
     const auto ScopedCleanup = [&]()
     {
@@ -1387,7 +1403,7 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
         return {};
     }
 
-    if (!IsSrgbFormat(ScopedTarget->format) && MOffscreenRenderPass != VK_NULL_HANDLE)
+    if (ScopedTarget->format == VK_FORMAT_R8G8B8A8_UNORM && MOffscreenRenderPass != VK_NULL_HANDLE)
     {
         // Shared offscreen pass: identical attachment format and structure.
         ScopedTarget->renderPass = MOffscreenRenderPass;
@@ -3804,7 +3820,7 @@ bool VulkanRHI::ClearMotionVectors(RenderTargetHandle InTarget)
     }
     Vk::Api& ScopedApi = Vk::GetApi();
     VkClearValue ScopedClear[2]{};
-    ScopedClear[0].color = {{0.5f, 0.5f, 0.0f, 1.0f}};
+    ScopedClear[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
     ScopedClear[1].depthStencil = {1.0f, 0};
     VkRenderPassBeginInfo ScopedBegin{};
     ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -3849,7 +3865,7 @@ bool VulkanRHI::RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t I
     }
     Vk::Api& ScopedApi = Vk::GetApi();
     VkClearValue ScopedClear[2]{};
-    ScopedClear[0].color = {{0.5f, 0.5f, 0.0f, 1.0f}};
+    ScopedClear[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
     ScopedClear[1].depthStencil = {1.0f, 0};
     VkRenderPassBeginInfo ScopedBegin{};
     ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;

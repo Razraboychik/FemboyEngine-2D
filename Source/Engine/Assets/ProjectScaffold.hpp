@@ -93,6 +93,7 @@ inline constexpr std::string_view kGameMainCppTemplate = R"FBY_MAIN(
 #include "Engine/Core/WindowManager.hpp"
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/Hierarchy.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/RHI/RHI.hpp"
@@ -330,6 +331,7 @@ int main(int, char**)
         {
             ScopedContext.dt = kFixedStep;
             ScopedGraph.Run(Fby::Ecs::Phase::FixedUpdate, ScopedContext);
+            (void)Fby::Ecs::UpdateHierarchy(ScopedRegistry);
             ScopedAccumulator -= kFixedStep;
             ++ScopedSteps;
         }

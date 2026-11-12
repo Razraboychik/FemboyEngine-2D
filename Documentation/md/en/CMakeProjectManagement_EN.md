@@ -1,6 +1,6 @@
 # CMake Project and Engine Management
 
-Applies to FemboyEngine2D 0.4.0-alpha.1 and CMake 3.28 or newer.
+Applies to FemboyEngine2D 0.5.0 and CMake 3.28 or newer.
 
 ## Toolchain
 

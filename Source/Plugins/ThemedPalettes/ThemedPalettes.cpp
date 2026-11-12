@@ -8,7 +8,6 @@
 
 namespace
 {
-FbyHostApi* GHost = nullptr;
 
 [[nodiscard]] constexpr std::uint32_t PackRgb(std::uint32_t InRed, std::uint32_t InGreen, std::uint32_t InBlue) noexcept
 {
@@ -106,7 +105,7 @@ FBY_PLUGIN_ENTRY const FbyPluginInfo* fby_plugin_info()
     static const FbyPluginInfo ScopedInfo{static_cast<std::uint32_t>(sizeof(FbyPluginInfo)),
                                           FBY_PLUGIN_ABI_VERSION,
                                           "Themed Palettes",
-                                          "0.4.0-alpha.1",
+                                          FBY_ENGINE_VERSION,
                                           "FemboyEngine2D contributors",
                                           0,
                                           nullptr,
@@ -120,7 +119,6 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
     {
         return 1;
     }
-    GHost = InHost;
     if (InHost->accessibility == nullptr || InHost->accessibility->register_palette_extension == nullptr)
     {
         return 0;
@@ -136,5 +134,4 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
 
 FBY_PLUGIN_ENTRY void fby_plugin_unload()
 {
-    GHost = nullptr;
 }
