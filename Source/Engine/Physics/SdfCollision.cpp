@@ -276,7 +276,7 @@ std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem&
         if (MContactCount < kMaxContacts)
         {
             SdfContact& ScopedContact = MContacts[MContactCount++];
-            ScopedContact.Entity = ScopedEntity;
+            ScopedContact.EntityHandle = ScopedEntity;
             ScopedContact.Point = ScopedDeepest;
             ScopedContact.Normal = ScopedNormal;
             ScopedContact.Penetration = ScopedPenetration;
@@ -294,7 +294,7 @@ std::uint32_t SdfCollisionSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem&
         if (MManifoldCount < kMaxManifolds && ScopedManifoldPointsCount > 0)
         {
             SdfContactManifold& ScopedManifold = MManifolds[MManifoldCount++];
-            ScopedManifold.Entity = ScopedEntity;
+            ScopedManifold.EntityHandle = ScopedEntity;
             ScopedManifold.Count = ScopedManifoldPointsCount;
             const float ScopedPointImpulse = ScopedImpulseMagnitude / static_cast<float>(ScopedManifoldPointsCount);
             for (std::uint32_t ScopedPointIndex = 0; ScopedPointIndex < ScopedManifoldPointsCount; ++ScopedPointIndex)

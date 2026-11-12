@@ -26,15 +26,6 @@ url = "https://github.com/erincatto/box2d"
 license_file = "third_party/box2d-main/box2d-main/LICENSE"
 
 [[component]]
-name = "EnTT"
-version = "vendored"
-spdx = "MIT"
-purpose = "ECS registry and views"
-copyright = "Copyright (c) 2017-2026 Michele Caini, author of EnTT"
-url = "https://github.com/skypjack/entt"
-license_file = "third_party/entt-main/entt-main/LICENSE"
-
-[[component]]
 name = "toml++"
 version = "3.4.0"
 spdx = "MIT"
@@ -149,7 +140,7 @@ license_file = "third_party/rnnoise/COPYING"
 
 [[component]]
 name = "Monocypher"
-version = "4.0.2"
+version = "4.0.3"
 spdx = "BSD-2-Clause OR CC0-1.0"
 purpose = "BLAKE2b, X25519 and EdDSA primitives for the network layer"
 copyright = "Copyright (c) 2017-2023 Loup Vaillant and contributors"
@@ -167,12 +158,12 @@ license_file = "third_party/libunibreak/LICENCE"
 
 [[component]]
 name = "HarfBuzz"
-version = "15.0.0"
+version = "15.1.0"
 spdx = "MIT"
 purpose = "OpenType shaping for complex scripts, ligatures and mark positioning"
 copyright = "Copyright (c) 2010-2023 Google, Inc. and HarfBuzz contributors"
 url = "https://github.com/harfbuzz/harfbuzz"
-license_file = "third_party/harfbuzz-download/harfbuzz-15.0.0/COPYING"
+license_file = "third_party/harfbuzz-download/harfbuzz-15.1.0/COPYING"
 
 [[component]]
 name = "SheenBidi"

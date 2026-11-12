@@ -75,7 +75,7 @@ void ProjectileSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics,
             ScopedBody->Flags |= RigidBodyTeleport;
             ScopedBody->LinearVelocity = Vector2D{};
             InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, Vector2D{}, false);
-            RecordHit(ScopedEntity, ScopedHit.Entity, ScopedHit.Point, ScopedHit.Normal, ScopedSpeed);
+            RecordHit(ScopedEntity, ScopedHit.EntityHandle, ScopedHit.Point, ScopedHit.Normal, ScopedSpeed);
             continue;
         }
 

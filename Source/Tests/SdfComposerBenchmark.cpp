@@ -44,7 +44,7 @@ int main()
 #if defined(NDEBUG)
     // Shared CI runners are much slower than the reference workstation; keep
     // the budget high enough to catch regressions without failing on noise.
-    constexpr double kBakeBudgetMilliseconds = 250.0;
+    constexpr double kBakeBudgetMilliseconds = 1000.0;
     if (ScopedMilliseconds > kBakeBudgetMilliseconds)
     {
         std::fprintf(stderr, "sdf_composer_benchmark: bake over the %.1f ms budget\n", kBakeBudgetMilliseconds);

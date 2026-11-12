@@ -13,7 +13,6 @@ Do not edit it by hand; change the manifest and regenerate.
 |---|---|---|---|
 | SDL3 | release-3.4.18 | Zlib | Window, input, platform layer and Vulkan surface |
 | Box2D | v3.0.0 | MIT | 2D rigid-body physics |
-| EnTT | vendored | MIT | ECS registry and views |
 | toml++ | 3.4.0 | MIT | Project descriptor and scene TOML parser |
 | FlatBuffers | 25.12.19 | Apache-2.0 | Localization and scene binary schemas |
 | miniaudio | 0.11.23 | MIT-0 OR Unlicense | Audio device and mixer backend |
@@ -27,9 +26,9 @@ Do not edit it by hand; change the manifest and regenerate.
 | imnodes | vendored | MIT | Editor node graph canvas |
 | LZMA SDK | 25.01 | Public Domain | FemArchiver distribution compression |
 | RNNoise | 0.1.1 | BSD-3-Clause | Neural speech denoise tier for the voice chain |
-| Monocypher | 4.0.2 | BSD-2-Clause OR CC0-1.0 | BLAKE2b, X25519 and EdDSA primitives for the network layer |
+| Monocypher | 4.0.3 | BSD-2-Clause OR CC0-1.0 | BLAKE2b, X25519 and EdDSA primitives for the network layer |
 | libunibreak | 6.1 | Zlib | Unicode line, word and grapheme boundary algorithms (UAX #14, #29) |
-| HarfBuzz | 15.0.0 | MIT | OpenType shaping for complex scripts, ligatures and mark positioning |
+| HarfBuzz | 15.1.0 | MIT | OpenType shaping for complex scripts, ligatures and mark positioning |
 | SheenBidi | 3.0.0 | Apache-2.0 | Unicode Bidirectional Algorithm (UAX #9) runs |
 | IBM Plex Sans / IBM Plex Mono | IBM Plex 6.4.0 | OFL-1.1 | Default text family: regular, bold, italic, bold italic and mono slots |
 | Noto Sans Arabic/Devanagari/Thai/SC test fonts | Google Fonts | OFL-1.1 | Complex-script shaping and full-glyph SDF tests |
@@ -66,36 +65,6 @@ furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### EnTT vendored
-
-- SPDX: `MIT`
-- Copyright: Copyright (c) 2017-2026 Michele Caini, author of EnTT
-- Upstream: https://github.com/skypjack/entt
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2017-2026 Michele Caini, author of EnTT
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copy of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copy or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -650,7 +619,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Monocypher 4.0.2
+### Monocypher 4.0.3
 
 - SPDX: `BSD-2-Clause OR CC0-1.0`
 - Copyright: Copyright (c) 2017-2023 Loup Vaillant and contributors
@@ -862,7 +831,7 @@ freely, subject to the following restrictions:
    distribution.
 ```
 
-### HarfBuzz 15.0.0
+### HarfBuzz 15.1.0
 
 - SPDX: `MIT`
 - Copyright: Copyright (c) 2010-2023 Google, Inc. and HarfBuzz contributors

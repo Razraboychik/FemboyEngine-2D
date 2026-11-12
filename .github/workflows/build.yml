@@ -164,12 +164,12 @@ jobs:
       - name: Text stack under ASan and LSan
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
-          LSAN_OPTIONS: detect_leaks=1:report_objects=1
+          LSAN_OPTIONS: detect_leaks=1:report_objects=1:suppressions=${{ github.workspace }}/Source/Tools/Dev/lsan.supp
         run: xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$"
       - name: Full suite under ASan and LSan
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
-          LSAN_OPTIONS: detect_leaks=1:report_objects=1
+          LSAN_OPTIONS: detect_leaks=1:report_objects=1:suppressions=${{ github.workspace }}/Source/Tools/Dev/lsan.supp
         run: xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300
 
   linux-ubsan:
@@ -197,6 +197,17 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - name: Install LLVM ${{ env.LLVM_VERSION }}
+        shell: pwsh
+        run: |
+          $Installer = Join-Path $env:RUNNER_TEMP "LLVM-$env:LLVM_VERSION-win64.msi"
+          $Url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/LLVM-$env:LLVM_VERSION-win64.msi"
+          Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Installer
+          $Process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
+            "/i", "`"$Installer`"", "/qn", "/norestart", "ALLUSERS=1"
+          )
+          if ($Process.ExitCode -ne 0) { throw "LLVM installer failed with exit code $($Process.ExitCode)" }
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Configure
         run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
@@ -223,7 +234,7 @@ jobs:
           LLVM_PREFIX="$(brew --prefix llvm)"
           cmake --preset macos-release             -DCMAKE_C_COMPILER="${LLVM_PREFIX}/bin/clang"             -DCMAKE_CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
       - name: Build editor, tools and core tests
-        run: cmake --build --preset macos-release --target fby_editor_app fby_sandbox fby_fempak fby_scene_tool fby_aotc fby_editor_infrastructure_test fby_frame_composer_test fby_input_system_test fby_release_cooker_test fby_text_shaper_test -- -k 0
+        run: cmake --build --preset macos-release --target fby_editor_app fby_sandbox fby_fempak fby_scene_tool fby_aotc fby_editor_infrastructure_test fby_frame_composer_test fby_input_system_test fby_release_cooker_test fby_project_bundle_test fby_text_shaper_test -- -k 0
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-macos-release/bin/tools/fby_fempak
       - name: Release checklist

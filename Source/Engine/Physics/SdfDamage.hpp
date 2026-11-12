@@ -167,7 +167,7 @@ using SdfDamagePolicy = float (*)(void* InUser, const SdfImpact& InImpact, const
 [[nodiscard]] inline SdfImpact MakeSdfImpact(const SdfContact& InContact, float InLocalThickness = 0.0f) noexcept
 {
     SdfImpact ScopedImpact{};
-    ScopedImpact.Target = InContact.Entity;
+    ScopedImpact.Target = InContact.EntityHandle;
     ScopedImpact.Point = InContact.Point;
     ScopedImpact.Normal = InContact.Normal;
     ScopedImpact.RelativeSpeed = InContact.RelativeSpeed;

@@ -494,10 +494,12 @@ add_test(NAME texture_cook COMMAND fby_texture_cook_test)
 # Minimal PNG writer: header, IHDR, written-file signature and invalid spans.
 fby_add_engine_test(fby_png_writer_test png_writer PngWriterTest.cpp)
 
-fby_add_engine_test(fby_editor_theme_test editor_theme EditorThemeTest.cpp)
+if(FBY_BUILD_EDITOR)
+    fby_add_engine_test(fby_editor_theme_test editor_theme EditorThemeTest.cpp)
+    target_link_libraries(fby_editor_theme_test PRIVATE FemboyEngine2D::Editor)
+endif()
 fby_add_engine_test(fby_accessibility_theme_test accessibility_theme AccessibilityThemeTest.cpp)
 fby_add_engine_test(fby_accessibility_effect_consumer_test accessibility_effect_consumer AccessibilityEffectConsumerTest.cpp)
-target_link_libraries(fby_editor_theme_test PRIVATE FemboyEngine2D::Editor)
 
 # P1 authoring: .femeta metadata/transactions, animation timeline model and
 fby_add_engine_test(fby_asset_meta_test asset_meta AssetMetaTest.cpp)

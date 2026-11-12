@@ -639,7 +639,7 @@ ClothInfo ClothSystem::Info(ClothHandle InHandle) const noexcept
     ScopedInfo.Rows = ScopedCloth->rows;
     ScopedInfo.Particles = ScopedCloth->particleCount;
     ScopedInfo.Constraints = ScopedCloth->constraintCount;
-    ScopedInfo.Entity = ScopedCloth->entity;
+    ScopedInfo.EntityHandle = ScopedCloth->entity;
     return ScopedInfo;
 }
 

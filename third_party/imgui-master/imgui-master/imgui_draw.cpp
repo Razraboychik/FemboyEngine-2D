@@ -3729,9 +3729,9 @@ void ImTextureData::Create(ImTextureFormat format, int w, int h)
     Height = h;
     BytesPerPixel = ImTextureDataGetFormatBytesPerPixel(format);
     UseColors = false;
-    Pixels = (unsigned char*)IM_ALLOC(Width * Height * BytesPerPixel);
+    Pixels = (unsigned char*)IM_ALLOC(static_cast<size_t>(Width) * static_cast<size_t>(Height) * static_cast<size_t>(BytesPerPixel));
     IM_ASSERT(Pixels != NULL);
-    memset(Pixels, 0, Width * Height * BytesPerPixel);
+    memset(Pixels, 0, static_cast<size_t>(Width) * static_cast<size_t>(Height) * static_cast<size_t>(BytesPerPixel));
     UsedRect.x = UsedRect.y = UsedRect.w = UsedRect.h = 0;
     UpdateRect.x = UpdateRect.y = (unsigned short)~0;
     UpdateRect.w = UpdateRect.h = 0;
@@ -7141,6 +7141,10 @@ const char* ImFontCalcWordWrapPositionEx(ImFont* font, float size, const char* t
         else
             curr_type = ImWcharClass_Other;
 
+        char_width += (GImGui != NULL ? GImGui->Style.TextLetterSpacing : 0.0f) / scale;
+        if (curr_type == ImWcharClass_Blank && GImGui != NULL)
+            char_width += GImGui->Style.TextWordSpacing / scale;
+
         if (curr_type == ImWcharClass_Blank)
         {
             // End span: 'A ' or '. '
@@ -7205,8 +7209,9 @@ ImVec2 ImFontCalcTextSizeEx(ImFont* font, float size, float max_width, float wra
         text_end_display = text_end;
 
     ImFontBaked* baked = font->GetFontBaked(size);
-    const float line_height = size;
-    const float scale = line_height / baked->Size;
+    const ImGuiStyle& ScopedStyle = GImGui != NULL ? GImGui->Style : ImGuiStyle();
+    const float line_height = size + ScopedStyle.TextLineSpacing;
+    const float scale = size / baked->Size;
 
     ImVec2 text_size = ImVec2(0, 0);
     float line_width = 0.0f;
@@ -7263,6 +7268,9 @@ ImVec2 ImFontCalcTextSizeEx(ImFont* font, float size, float max_width, float wra
         if (char_width < 0.0f)
             char_width = BuildLoadGlyphGetAdvanceOrFallback(baked, c);
         char_width *= scale;
+        char_width += ScopedStyle.TextLetterSpacing;
+        if (c == ' ' || c == '	')
+            char_width += ScopedStyle.TextWordSpacing;
 
         if (line_width + char_width >= max_width)
         {
@@ -7339,8 +7347,23 @@ void ImFont::RenderChar(ImDrawList* draw_list, float size, const ImVec2& pos, Im
 
 // Note: as with every ImDrawList drawing function, this expects that the font atlas texture is bound.
 // DO NOT CALL DIRECTLY THIS WILL CHANGE WILDLY IN 2026. Use ImDrawList::AddText().
-void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, ImDrawTextFlags flags)
+void ImFont::RenderTextEx(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, ImDrawTextFlags flags, bool allow_outline)
 {
+
+    if (allow_outline && GImGui != nullptr && GImGui->Style.TextBorderSize > 0.0f && GImGui->Style.TextBorderColor.w > 0.0f)
+    {
+        const float ScopedRadius = ImMax(1.0f, ImTrunc(GImGui->Style.TextBorderSize));
+        const ImU32 ScopedBorder = ImGui::GetColorU32(GImGui->Style.TextBorderColor);
+        const ImVec2 ScopedOffsets[] = {
+            ImVec2(-ScopedRadius, 0.0f), ImVec2(ScopedRadius, 0.0f), ImVec2(0.0f, -ScopedRadius),
+            ImVec2(0.0f, ScopedRadius), ImVec2(-ScopedRadius, -ScopedRadius), ImVec2(ScopedRadius, -ScopedRadius),
+            ImVec2(-ScopedRadius, ScopedRadius), ImVec2(ScopedRadius, ScopedRadius)};
+        for (const ImVec2& ScopedOffset : ScopedOffsets)
+        {
+            RenderTextEx(draw_list, size, ImVec2(pos.x + ScopedOffset.x, pos.y + ScopedOffset.y), ScopedBorder,
+                         clip_rect, text_begin, text_end, wrap_width, flags, false);
+        }
+    }
 begin:
     // Align to be pixel perfect
     float x = pos.x;
@@ -7357,7 +7380,8 @@ begin:
     if (!text_end)
         text_end = text_begin + ImStrlen(text_begin); // ImGui:: functions generally already provides a valid text_end, so this is merely to handle direct calls.
 
-    const float line_height = size;
+    const ImGuiStyle& ScopedStyle = GImGui != NULL ? GImGui->Style : ImGuiStyle();
+    const float line_height = size + ScopedStyle.TextLineSpacing;
     ImFontBaked* baked = GetFontBaked(size);
 
     const float scale = size / baked->Size;
@@ -7461,7 +7485,9 @@ begin:
         //if (glyph == NULL)
         //    continue;
 
-        float char_width = glyph->AdvanceX * scale;
+        float char_width = glyph->AdvanceX * scale + ScopedStyle.TextLetterSpacing;
+        if (c == ' ' || c == '	')
+            char_width += ScopedStyle.TextWordSpacing;
         if (glyph->Visible)
         {
             // We don't do a second finer clipping test on the Y axis as we've already skipped anything before clip_rect.y and exit once we pass clip_rect.w
@@ -8360,3 +8386,10 @@ const char* ImGui_GetDefaultCompressedFontDataProggyForever(int* out_size)
 #endif // #if !defined(IMGUI_DISABLE_DEFAULT_FONT) && !defined(IMGUI_DISABLE_DEFAULT_FONT_VECTOR)
 
 #endif // #ifndef IMGUI_DISABLE
+
+void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect,
+                        const char* text_begin, const char* text_end, float wrap_width, ImDrawTextFlags flags)
+{
+    RenderTextEx(draw_list, size, pos, col, clip_rect, text_begin, text_end, wrap_width, flags, true);
+}
+
