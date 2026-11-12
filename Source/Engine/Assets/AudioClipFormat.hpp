@@ -25,7 +25,7 @@ enum class PcmFormat : std::uint32_t
     PcmS24 = 1,
     // Float32 interleaved. Used by RegisterClip() callers and by decoded music.
     PcmF32 = 2,
-    // A complete Ogg container. `frameCount` is 0: the number of frames is only
+    // A complete Ogg container.
     OggOpus = 3,
     OggVorbis = 4,
 };
@@ -36,7 +36,7 @@ inline constexpr std::uint32_t kAudioClipMaxSampleRate = 192000;
 // A single cooked block is limited to 1 GiB of payload: bigger than any sound
 inline constexpr std::uint64_t kAudioClipMaxPayloadBytes = 1ull << 30;
 
-// The source was an Ogg container: the payload must be decoded before it can be
+// The source was an Ogg container: the payload must be decoded.
 inline constexpr std::uint32_t kAudioFlagStream = 1u << 0;
 // The source declares itself loopable (a loop hint a game may override).
 inline constexpr std::uint32_t kAudioFlagLoop = 1u << 1;
@@ -112,7 +112,7 @@ static_assert(std::is_trivially_copyable_v<AudioClipHeader>);
     return static_cast<std::uint64_t>(BytesPerSample(InFormat)) * InChannels * InFrameCount;
 }
 
-// A validated, zero-copy view of a cooked clip. `samples` points into the
+// A validated, zero-copy view of a cooked clip.
 struct CookedAudioView
 {
     PcmFormat format = PcmFormat::PcmF32;
@@ -131,7 +131,7 @@ struct CookedAudioView
 [[nodiscard]] std::optional<CookedAudioView> ParseCookedAudio(std::span<const std::byte> InBytes,
                                                               std::string* InError = nullptr);
 
-// Appends header + payload for the cooker. Cook-time only (it allocates); the
+// Appends header + payload for the cooker. Cook-time only (it allocates).
 [[nodiscard]] bool AppendCookedAudio(std::vector<std::byte>& Out, PcmFormat InFormat, std::uint32_t InChannels,
                                      std::uint32_t InSampleRate, std::uint32_t InFrameCount, std::uint32_t InFlags,
                                      std::span<const std::byte> InPayload, std::string* InError = nullptr);

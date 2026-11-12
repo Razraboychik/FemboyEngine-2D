@@ -64,7 +64,7 @@ jobs.
 
 ## Serialized component layout
 
-Component members are PascalCase in 0.1.0-alpha.1/layout v4:
+Component members are PascalCase in 0.4.0-alpha.1/layout v4:
 
 - `Transform2D::Position`, `Scale`, `Rotation`;
 - `Velocity::Value`;
@@ -80,7 +80,7 @@ The 1.0 contract is:
 - member order and types define binary offsets;
 - `Fby::Reflect::LayoutHash<T>()` covers the field names;
 - scene/prefab TOML uses the same Pascal field names as keys;
-- Snapshot v4 and project format 4 record the new layout.
+- Snapshot v5 and project format 4 record the new layout.
 
 There is no legacy lowercase TOML key decoder and no old snapshot path. The
 engine is pre-release; old `.femeta` and scene files are regenerated.

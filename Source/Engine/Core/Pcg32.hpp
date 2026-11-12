@@ -16,7 +16,7 @@ struct RngState
     [[nodiscard]] friend constexpr bool operator==(const RngState&, const RngState&) = default;
 };
 
-// PCG32 (XSH-RR 64/32). A single 64-bit LCG step feeds a 32-bit xorshift and a
+// PCG32 (XSH-RR 64/32). A single 64-bit LCG step feeds a 32-bit xorshift.
 class Pcg32
 {
 public:
@@ -67,7 +67,7 @@ public:
         return static_cast<float>(NextU32() >> 8u) * (1.0f / 16777216.0f);
     }
 
-    // [0, 1) in double precision, 53 bits. Used by editors and tools where a
+    // [0, 1) in double precision, 53 bits. Used by editors and tools.
     [[nodiscard]] constexpr double NextDouble() noexcept
     {
         return static_cast<double>(NextU64() >> 11u) * (1.0 / 9007199254740992.0);
@@ -84,7 +84,7 @@ public:
         return static_cast<std::uint32_t>(ScopedProduct >> 32u);
     }
 
-    // Unbiased bounded draw (Lemire's method with rejection). Prefer this for
+    // Unbiased bounded draw (Lemire's method with rejection).
     [[nodiscard]] constexpr std::uint32_t Bounded(std::uint32_t InBound) noexcept
     {
         if (InBound == 0)
@@ -120,7 +120,7 @@ public:
         return InMinimum + (InMaximum - InMinimum) * NextFloat();
     }
 
-    // Save/restore is what makes rollback exact. The increment is part of the
+    // Save/restore is what makes rollback exact.
     [[nodiscard]] constexpr RngState Save() const noexcept
     {
         return RngState{MState, MInc};
@@ -141,7 +141,7 @@ public:
         return MInc;
     }
 
-    // A child stream for a subsystem (particles, loot, noise). The parent is
+    // A child stream for a subsystem (particles, loot, noise).
     [[nodiscard]] constexpr Pcg32 Fork() noexcept
     {
         const std::uint64_t ScopedStream = (static_cast<std::uint64_t>(NextU32()) << 32u) | NextU32();

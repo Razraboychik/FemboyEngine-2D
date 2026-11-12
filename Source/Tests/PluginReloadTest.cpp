@@ -1,6 +1,7 @@
 // FemboyEngine2D - plugin load/unload hot reload while jobs run.
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/ECS/ComponentRegistry.hpp"
+#include "Engine/Audio/VoicePreset.hpp"
 #include "Engine/Core/PluginHost.hpp"
 #include "Engine/UI/AccessibilityTheme.hpp"
 #include "Engine/UI/AccessibilityEffects.hpp"
@@ -113,12 +114,31 @@ int main()
         ScopedHost.UnloadAll();
     }
 
+#if defined(FBY_TEST_VOICE_PACK_PATH)
+    VoicePresetRegistry ScopedVoicePresets;
+    ScopedVoicePresets.RegisterBuiltIns();
+    const std::uint32_t ScopedBuiltInCount = ScopedVoicePresets.Count();
+    ScopedHost.BindVoicePresets(&ScopedVoicePresets);
+    Check(ScopedHost.Load(FBY_TEST_VOICE_PACK_PATH, &ScopedError), "Voice FX Pack loads");
+    Check(ScopedVoicePresets.Count() == ScopedBuiltInCount + 3, "Voice FX Pack registers three presets");
+    Check(ScopedVoicePresets.Find("Pack.Voice.Helium") != nullptr, "Voice FX Pack registers helium");
+    Check(ScopedVoicePresets.Find("Pack.Voice.Swamp") != nullptr, "Voice FX Pack registers swamp");
+    Check(ScopedVoicePresets.Find("Pack.Voice.CursedMumble") != nullptr, "Voice FX Pack registers cursed mumble");
+    ScopedHost.UnloadAll();
+    Check(ScopedVoicePresets.Count() == ScopedBuiltInCount, "unload removes plugin-owned voice presets");
+    ScopedHost.BindVoicePresets(nullptr);
+    Check(ScopedHost.Load(FBY_TEST_VOICE_PACK_PATH, &ScopedError), "Voice FX Pack loads without a voice registry");
+    Check(ScopedVoicePresets.Count() == ScopedBuiltInCount, "no presets register without a registry");
+    ScopedHost.UnloadAll();
+#endif
+
 #if defined(FBY_TEST_RAINBOW_PALETTE_PATH)
     ScopedThemes.Clear();
     Check(ScopedHost.Load(FBY_TEST_RAINBOW_PALETTE_PATH, &ScopedError), "Rainbow Palette plugin loads");
     const Ui::AccessibilityPaletteExtension* ScopedPalette = ScopedAccessibilityExtensions.Find("Rainbow.Palette80");
     Check(ScopedPalette != nullptr, "Rainbow Palette registers 80 colours");
-    Check(ScopedPalette != nullptr && ScopedPalette->Colors[79].A() != 0, "palette extension ends with a visible colour");
+    Check(ScopedPalette != nullptr && ScopedPalette->Colors[79].A() != 0,
+          "palette extension ends with a visible colour");
     ScopedHost.UnloadAll();
     Check(ScopedAccessibilityExtensions.Count() == 0, "Rainbow Palette unload removes its extension");
 

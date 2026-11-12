@@ -40,7 +40,7 @@ struct AIStateTreeCompiled
     std::uint32_t MaxDepth = 0;
 };
 
-// Field-wise comparison used by the inspector. Both functions read only the
+// Field-wise comparison used by the inspector.
 [[nodiscard]] bool AIStateTreeEvaluatorFieldsEqual(const StateTreeEvaluator& InA,
                                                    const StateTreeEvaluator& InB) noexcept;
 [[nodiscard]] bool AIStateTreeTaskFieldsEqual(const StateTreeTask& InA, const StateTreeTask& InB) noexcept;
@@ -69,7 +69,7 @@ public:
     AIStateTreeCanvasPanel(const AIStateTreeCanvasPanel&) = delete;
     AIStateTreeCanvasPanel& operator=(const AIStateTreeCanvasPanel&) = delete;
 
-    // Registers the document as one external CommandStack codec and builds a
+    // Registers the document as one external CommandStack codec and builds the default tree.
     [[nodiscard]] bool Initialize(CommandStack& InCommands, std::uint32_t InTreeId = 0) noexcept;
     void Shutdown() noexcept;
 
@@ -170,7 +170,7 @@ public:
         return MPieActive;
     }
 
-    // Transaction hooks, public because the host may drive an edit from a
+    // Transaction hooks, public because the host may drive an edit.
     [[nodiscard]] bool BeginEdit(const char* InLabel, EditSource InSource) noexcept;
     void RecordEdit() noexcept;
     void CommitEdit() noexcept;

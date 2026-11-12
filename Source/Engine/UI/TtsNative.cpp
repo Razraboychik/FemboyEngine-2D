@@ -25,7 +25,7 @@ AvSpeechTts& AvSpeechInstance() noexcept
 
 const TtsBackend* NativeTtsBackend() noexcept
 {
-    // The first successful call constructs the OS synthesizer (COM apartment or
+    // The first successful call constructs the OS synthesizer.
     if (!RequireMainThread("NativeTtsBackend"))
     {
         return nullptr;

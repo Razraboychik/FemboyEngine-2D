@@ -377,7 +377,7 @@ void quant_fine_energy(const CELTMode *m, int start, int end, celt_glog *oldEBan
          /* Has to be without rounding */
          q2 = VSHR32(ADD32(error[i+c*m->nbEBands], SHR32(GCONST(.5f), prev)), DB_SHIFT-extra_quant[i]-prev);
 #else
-         q2 = (int)floor((error[i+c*m->nbEBands]*(1<<prev)+.5f)*extra);
+         q2 = (int)floor(((double)error[i+c*m->nbEBands]*(1<<prev)+.5f)*extra);
 #endif
          if (q2 > extra-1)
             q2 = extra-1;

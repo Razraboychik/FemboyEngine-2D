@@ -59,7 +59,7 @@ constexpr std::int32_t kFullCrToG = 30677;
 constexpr std::int32_t kFullCbToB = 121598;
 constexpr std::int32_t kRound = 1 << 15;
 
-// Ring index arithmetic helper: kVideoRingCapacity is a power of two, so the
+// Ring index arithmetic helper: kVideoRingCapacity is a power of two.
 constexpr std::uint32_t kRingMask = kVideoRingCapacity - 1;
 constexpr std::uint32_t kPoolInvalid = 0xFFFFFFFFu;
 }
@@ -166,7 +166,7 @@ bool VideoPlayer::Open(std::span<const std::byte> InWebm, const Vp9Backend* InBa
     MAlphaView.width = MWidth;
     MAlphaView.height = MHeight;
 
-    // The RGBA pool is also the texture-array layer set: one upload target per
+    // The RGBA pool is also the texture-array layer set: one upload target.
     const std::size_t ScopedRgbaBytes = ScopedLumaBytes * 4;
     for (FrameBuffer& ScopedBuffer : MBuffers)
     {
@@ -421,7 +421,6 @@ std::uint32_t VideoPlayer::QueuedFrames() const noexcept
     return (ScopedHead - ScopedTail) & kRingMask;
 }
 
-// Decode
 DecodeStatus VideoPlayer::PumpFrame()
 {
     if (!MOpen)
@@ -460,7 +459,7 @@ DecodeStatus VideoPlayer::PumpFrame()
         MEpoch.fetch_add(1, std::memory_order_acq_rel);
     }
 
-    // Back-pressure: never spin inside the pump. The caller (thread loop or
+    // Back-pressure: never spin inside the pump.
     const std::uint32_t ScopedHead = MRingHead.load(std::memory_order_relaxed);
     if (((ScopedHead + 1) & kRingMask) == MRingTail.load(std::memory_order_acquire))
     {
@@ -516,7 +515,7 @@ DecodeStatus VideoPlayer::PumpFrame()
         }
     }
 
-    // Invisible frames exist to update the decoder's reference state; they are
+    // Invisible frames exist to update the decoder's reference state.
     if (ScopedFrame.invisible)
     {
         ReleaseBuffer(ScopedBufferIndex);
@@ -553,7 +552,7 @@ void VideoPlayer::ThreadMain(std::stop_token InStopToken)
         switch (PumpFrame())
         {
             case DecodeStatus::Decoded:
-                // Keep decoding while the pool has room: that is what keeps the
+                // Keep decoding while the pool has room: that is what keeps playback smooth.
                 continue;
             case DecodeStatus::RingFull:
             case DecodeStatus::PoolExhausted:
@@ -561,7 +560,7 @@ void VideoPlayer::ThreadMain(std::stop_token InStopToken)
                 Core::SleepMilliseconds(1.0);
                 continue;
             case DecodeStatus::End:
-                // A loop request arrives through rewindRequested_; Poll it without
+                // A loop request arrives through rewindRequested_.
                 Core::SleepMilliseconds(2.0);
                 continue;
             case DecodeStatus::Error:
@@ -683,7 +682,7 @@ void VideoPlayer::Advance(float InDtSeconds, float InSpeed, bool InPaused, bool 
         }
         if (ScopedSlot.epoch != MEpoch.load(std::memory_order_acquire))
         {
-            // A leftover frame from before a loop restart: retire it without
+            // A leftover frame from before a loop restart: retire.
             (void)PopSlot(ScopedSlot);
             ReleaseBuffer(ScopedSlot.poolIndex);
             MDropped.fetch_add(1, std::memory_order_relaxed);

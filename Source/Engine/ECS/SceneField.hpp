@@ -280,7 +280,7 @@ namespace Fby::Scene::Detail
     return true;
 }
 
-// Fixed-capacity strings: the field is char[N] or std::array<char, N>; the
+// Fixed-capacity strings: the field is char[N] or std::array<char, N>.
 [[nodiscard]] inline std::string_view ReadString(const void* InComponent, const Reflect::FieldDesc& InField)
 {
     const char* ScopedText = reinterpret_cast<const char*>(FieldAddress(InComponent, InField));
@@ -383,7 +383,7 @@ namespace Fby::Scene::Detail
     return true;
 }
 
-// Human-readable, round-trippable float. TOML requires a decimal point or an
+// Human-readable, round-trippable float. TOML requires a decimal point.
 [[nodiscard]] inline std::string FormatFloat(float InValue)
 {
     if (std::isnan(InValue))

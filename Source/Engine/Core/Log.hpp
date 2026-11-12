@@ -70,7 +70,7 @@ void Log(LogLevel InLevel, std::string_view InChannel, std::format_string<Args..
     {
         return;
     }
-    // Build the line first: std::format allocates, so it must not happen while
+    // Build the line first: std::format allocates, so it must not happen on the frame path.
     LogLine(InLevel, InChannel, std::format(InFmt, std::forward<Args>(InArgs)...));
 }
 

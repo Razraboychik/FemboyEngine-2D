@@ -104,17 +104,17 @@ private:
     std::uint32_t MSequence = 0;
 };
 
-// Pure function: no registry, no allocation, safe to call from the editor while
+// Pure function: no registry, no allocation, safe to call from the editor.
 [[nodiscard]] SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation,
                                           const SpriteSheetComponent* InGrid = nullptr) noexcept;
 
-// Writes the computed rect (and, when a grid is present, the array layer) into
+// Writes the computed rect (and, when a grid is present, the array layer).
 void ApplySpriteFrame(const SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid, Sprite2D& InSprite) noexcept;
 
 // Advances the accumulator by a fixed dt. Exposed for unit tests and for tools
 [[nodiscard]] bool AdvanceSpriteAnimation(SpriteAnimationComponent& InSpriteAnimation, float InDt) noexcept;
 
-// FixedUpdate system. Reads ctx.dt, never allocates, processes every
+// FixedUpdate system. Reads ctx.dt, never allocates, processes every entity.
 class SpriteAnimationSystem
 {
 public:

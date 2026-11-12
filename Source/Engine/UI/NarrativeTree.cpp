@@ -160,7 +160,7 @@ void AppendText(char* OutText, std::size_t InCapacity, std::uint32_t* InLength, 
     return static_cast<std::uint32_t>(Fby::ToIntegral(InEntity));
 }
 
-// Authored name, or an empty view. The component is fixed-capacity and may not
+// Authored name, or an empty view.
 [[nodiscard]] std::string_view NarrativeLabel(Ecs::Registry& InRegistry, Entity InEntity) noexcept
 {
     const auto* ScopedLabel = InRegistry.try_get<NarrativeLabelComponent>(InEntity);

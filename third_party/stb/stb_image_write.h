@@ -825,8 +825,8 @@ STBIWDEF int stbi_write_hdr(char const *filename, int x, int y, int comp, const 
 
 static void *stbiw__sbgrowf(void **arr, int increment, int itemsize)
 {
-   int m = *arr ? 2*stbiw__sbm(*arr)+increment : increment+1;
-   void *p = STBIW_REALLOC_SIZED(*arr ? stbiw__sbraw(*arr) : 0, *arr ? (stbiw__sbm(*arr)*itemsize + sizeof(int)*2) : 0, itemsize * m + sizeof(int)*2);
+   size_t m = *arr ? 2*(size_t)stbiw__sbm(*arr)+(size_t)increment : (size_t)increment+1;
+   void *p = STBIW_REALLOC_SIZED(*arr ? stbiw__sbraw(*arr) : 0, *arr ? ((size_t)stbiw__sbm(*arr)*(size_t)itemsize + sizeof(int)*2) : 0, (size_t)itemsize * m + sizeof(int)*2);
    STBIW_ASSERT(p);
    if (p) {
       if (!*arr) ((int *) p)[1] = 0;
@@ -1141,8 +1141,8 @@ STBIWDEF unsigned char *stbi_write_png_to_mem(const unsigned char *pixels, int s
       force_filter = -1;
    }
 
-   filt = (unsigned char *) STBIW_MALLOC((x*n+1) * y); if (!filt) return 0;
-   line_buffer = (signed char *) STBIW_MALLOC(x * n); if (!line_buffer) { STBIW_FREE(filt); return 0; }
+   filt = (unsigned char *) STBIW_MALLOC(((size_t)x*n+1) * y); if (!filt) return 0;
+   line_buffer = (signed char *) STBIW_MALLOC((size_t)x * n); if (!line_buffer) { STBIW_FREE(filt); return 0; }
    for (j=0; j < y; ++j) {
       int filter_type;
       if (force_filter > -1) {

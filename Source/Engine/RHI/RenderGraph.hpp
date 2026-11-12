@@ -177,7 +177,7 @@ private:
     bool MCompiled = false;
 };
 
-// Common reset helpers shared by passes. Each pass writes its constants before
+// Common reset helpers shared by passes.
 template <typename Constants>
 [[nodiscard]] RenderCommandRecord MakeComputeRecord(const char* InPipeline, const Constants& InConstants,
                                                     std::uint32_t InGroupsX, std::uint32_t InGroupsY = 1,

@@ -258,7 +258,7 @@ void TestSceneTomlRoundTrip()
     FBY_CHECK(ScopedFirstText.find("name = \"ai_canvas_test\"") != std::string::npos);
     FBY_CHECK(ScopedFirstText.find("name = \"enemy\"") != std::string::npos);
 
-    // The engine scene reader must still accept the file: the AI block is a
+    // The engine scene reader must still accept the file: the AI block is a comment.
     Fby::Scene::ComponentRegistry ScopedSceneComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedSceneComponents);
     const auto ScopedDecoded = Fby::Scene::DecodeSceneToml(ScopedFirstText, ScopedSceneComponents);

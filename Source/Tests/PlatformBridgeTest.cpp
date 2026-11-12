@@ -225,7 +225,7 @@ int main()
     PlatformCommandLog ScopedCorrupt;
     FBY_CHECK(!ScopedCorrupt.Replay(&LogSink, &ScopedProbe));
 
-    // GOG Galaxy. The systems share the binary PlatformCommandLog and the
+    // GOG Galaxy. The systems share the binary PlatformCommandLog.
     GogAchievementSystem ScopedGogAchievements;
     ScopedGogAchievements.Initialize(ScopedService, ScopedLog, 300);
     Ecs::SystemGraph ScopedGogGraph;

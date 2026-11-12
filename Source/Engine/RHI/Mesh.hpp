@@ -26,7 +26,7 @@ struct MeshVertex
     float boneWeights[2] = {0.0f, 0.0f};
 };
 
-// Output of the compute pass and the input of the mesh vertex shader. The
+// Output of the compute pass and the input of the mesh vertex shader.
 struct SkinnedVertex
 {
     // Full Mat4 LBS result
@@ -42,7 +42,7 @@ static_assert(offsetof(MeshVertex, boneWeights) == 32);
 static_assert(sizeof(SkinnedVertex) == 32, "SkinnedVertex must match std430 in mesh_skinning.comp/mesh.vert");
 static_assert(alignof(SkinnedVertex) == 4);
 
-// One palette range for a dynamic mesh. All vertices of an item share it; the
+// One palette range for a dynamic mesh. All vertices of an item share it.
 struct MeshSkinRange
 {
     std::uint32_t boneOffset = 0;
@@ -123,7 +123,7 @@ struct MeshRenderItem
     std::uint32_t layer = 0;
     Mat4 model = Mat4::Identity();
     Color32 color = Color32::White();
-    // 16-bit on purpose: this is a sprite-sort bucket, not a resource id. It is
+    // 16-bit on purpose: this is a sprite-sort bucket, not a resource id.
     std::uint16_t sortLayer = 0;
     // MeshItemFlags; MeshItemUnskinned bypasses skinning
     std::uint16_t flags = 0;
@@ -136,7 +136,7 @@ struct MeshRenderItem
 
 static_assert(std::is_trivially_copyable_v<MeshRenderItem>);
 static_assert(std::is_standard_layout_v<MeshRenderItem>);
-// The 32-bit resource ids are the contract that DrawBatch now shares. A
+// The 32-bit resource ids are the contract that DrawBatch now shares.
 static_assert(sizeof(MeshRenderItem::textureArray) == sizeof(std::uint32_t));
 static_assert(sizeof(MeshRenderItem::layer) == sizeof(std::uint32_t));
 static_assert(sizeof(MeshRenderItem::materialPipeline) == sizeof(std::uint32_t));

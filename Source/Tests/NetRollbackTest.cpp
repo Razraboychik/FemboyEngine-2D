@@ -183,7 +183,7 @@ constexpr std::uint32_t kRollbackWindow = 8;
 constexpr std::uint32_t kSnapshotBytes = 8192;
 using Arena = std::array<std::byte, kSnapshotBytes * kRollbackWindow>;
 
-// std::array<...> as a named type keeps Run addressable but not copyable; the
+// std::array<...> as a named type keeps Run addressable but not copyable.
 struct SandboxArena
 {
     Arena bytes{};
@@ -292,7 +292,7 @@ void TestInputRing()
     ScopedFrame.tick = Fby::Net::kInvalidNetTick - 1;
     Check(!ScopedRing.Push(ScopedFrame), "tick near the sentinel is rejected");
 
-    // A fresh ring establishes a window at tick 300; tick 1 is now more than a
+    // A fresh ring establishes a window at tick 300.
     ScopedRing.Reset();
     ScopedFrame.tick = 300;
     Check(ScopedRing.Push(ScopedFrame), "window anchor accepted");
@@ -413,7 +413,7 @@ void TestGameplayTagsComponent()
 
 void TestPredictionAndRollback()
 {
-    // Use one shared frame buffer type but never copy a Run: the session holds a
+    // Use one shared frame buffer type but never copy a Run: the session holds a view.
     auto ScopedLive = std::make_unique<Run>();
     auto ScopedReference = std::make_unique<Run>();
     Check(InitializeRun(*ScopedLive), "live session initializes");
@@ -459,7 +459,7 @@ void TestPredictionAndRollback()
           "duplicate retransmit accepted");
     Check(!ScopedLive->session.RollbackPending(), "duplicate retransmit does not roll back");
 
-    // Correct the remaining remote ticks. Ticks 9..12 were predictions, so the
+    // Correct the remaining remote ticks.
     for (std::uint64_t ScopedTick = 7; ScopedTick <= kTicks; ++ScopedTick)
     {
         Check(ScopedLive->session.SubmitRemoteInput(NetPlayerId{1}, MakeRemote(ScopedTick, true)) ==
@@ -554,7 +554,7 @@ void TestCommandLogRollback()
     Check(ScopedLive->registry.get<GameplayTagsComponent>(ScopedSpawned).Tags.HasExact(TestTags().frozen),
           "replayed component payload is intact");
 
-    // Correct the remaining remote ticks as well, then replay once more with the
+    // Correct the remaining remote ticks as well, then replay once more.
     for (std::uint64_t ScopedTick = 7; ScopedTick <= kTicks; ++ScopedTick)
     {
         Check(ScopedLive->session.SubmitRemoteInput(NetPlayerId{1}, MakeRemote(ScopedTick, true)) ==
@@ -614,7 +614,7 @@ void TestNoAllocationAfterStart()
     Check(ScopedAfter == ScopedBefore, "Step/Replay/SubmitRemoteInput perform zero heap allocations");
 }
 
-// A restore must destroy the native Box2D bodies of the old frame before
+// A restore must destroy the native Box2D bodies of the old frame.
 void TestPhysicsBodySweep()
 {
     Registry ScopedRegistry;

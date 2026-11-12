@@ -176,3 +176,5 @@ transport lives in [security.md](security.md).
   gain/pan/override, custom chains, decode sink).
 - The full settings reference and the text-chat service contract are in
   [chat.md](chat.md).
+- Preset data packs, the moderation policy, the plugin table and the reactive
+  SFX layer are described in [voice-presets.md](voice-presets.md).

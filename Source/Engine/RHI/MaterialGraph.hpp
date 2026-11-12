@@ -13,7 +13,7 @@
 namespace Fby::Render
 {
 
-// Capacities. A material that needs more than these is a design smell, not a
+// Capacities. A material that needs more than these is a design smell.
 inline constexpr std::uint32_t kMaxMaterialNodes = 128;
 inline constexpr std::uint32_t kMaxMaterialPins = 384;
 inline constexpr std::uint32_t kMaxMaterialParams = 64;
@@ -25,7 +25,7 @@ inline constexpr std::uint8_t kMaxMaterialInputs = 4;
 inline constexpr std::uint16_t kInvalidMaterialNode = 0xFFFFu;
 inline constexpr std::uint16_t kInvalidMaterialParam = 0xFFFFu;
 
-// Node kinds. The enumerator order is part of the cooked material format and of
+// Node kinds. The enumerator order is part of the cooked material format.
 enum class MaterialNodeKind : std::uint8_t
 {
     Output = 0,
@@ -38,7 +38,7 @@ enum class MaterialNodeKind : std::uint8_t
     Time = 3,
     // Fragment-side reconstruction or generated varying
     WorldPosition = 4,
-    // Model-space bind-pose position, generated vertex stage only
+    // Model-space bind-pose position, generated vertex stage.
     VertexPosition = 5,
 
     // Float
@@ -84,7 +84,7 @@ enum class MaterialValueType : std::uint8_t
     Count
 };
 
-// Constant payload discriminator. TextureSample needs no float payload, only
+// Constant payload discriminator. TextureSample needs no float payload.
 enum class MaterialParamKind : std::uint8_t
 {
     Scalar = 0,
@@ -95,7 +95,7 @@ enum class MaterialParamKind : std::uint8_t
     Count
 };
 
-// One constant. The members are plain floats instead of a tagged union so the
+// One constant. The members are plain floats instead of a tagged union.
 struct MaterialParam
 {
     MaterialParamKind kind = MaterialParamKind::Scalar;
@@ -107,13 +107,13 @@ struct MaterialParam
     std::uint32_t textureLayer = 0;
 };
 
-// Reserved for editor / serialization state; today no flag is defined and a
+// Reserved for editor / serialization state.
 enum MaterialNodeFlags : std::uint16_t
 {
     MaterialNodeFlagNone = 0,
 };
 
-// One node of the DAG. `firstInput`/`inputCount` delimit a contiguous range of
+// One node of the DAG.
 struct MaterialNode
 {
     MaterialNodeKind kind = MaterialNodeKind::Scalar;
@@ -538,7 +538,7 @@ struct MaterialPin
 [[nodiscard]] bool MaterialNodeInputsCompatible(MaterialNodeKind InKind,
                                                 std::span<const MaterialValueType> InInputTypes) noexcept;
 
-// What a graph needs from the stage configuration. The editor runtime uses this
+// What a graph needs from the stage configuration.
 struct MaterialGraphRequirements
 {
     // VertexPosition can only come from a varying
@@ -582,13 +582,13 @@ public:
     [[nodiscard]] std::uint16_t AddColorNode(float InRed, float InGreen, float InBlue, float InAlpha,
                                              Vector2D InUiPosition = {});
     [[nodiscard]] std::uint16_t AddTextureSampleNode(std::uint32_t InTextureLayer, Vector2D InUiPosition = {});
-    // Math helpers: Unary(kind) for Saturate/Sin/Cos/OneMinus, Binary(kind) for
+    // Math helpers: Unary(kind) for Saturate/Sin/Cos/OneMinus, Binary(kind).
     [[nodiscard]] std::uint16_t AddUnaryNode(MaterialNodeKind InKind, Vector2D InUiPosition = {});
     [[nodiscard]] std::uint16_t AddBinaryNode(MaterialNodeKind InKind, Vector2D InUiPosition = {});
     [[nodiscard]] std::uint16_t AddLerpNode(Vector2D InUiPosition = {});
     [[nodiscard]] std::uint16_t AddClampNode(Vector2D InUiPosition = {});
     [[nodiscard]] std::uint16_t AddFresnelNode(Vector2D InUiPosition = {});
-    // 2.5D tilt: `slope` is the per-unit-height UV displacement, `height` the
+    // 2.5D tilt: `slope` is the per-unit-height UV displacement.
     [[nodiscard]] std::uint16_t AddTilt25DNode(Vector2D InSlope, float InHeight, Vector2D InUiPosition = {});
     // Animated UV warp: strength in UV units, frequency in radians per UV unit.
     [[nodiscard]] std::uint16_t AddDistortionNode(float InStrength, float InFrequency, Vector2D InUiPosition = {});
@@ -629,7 +629,7 @@ public:
 
     // Full structural validation: one Output, connected required pins, no type
     [[nodiscard]] bool Validate(std::string* InError = nullptr) const;
-    // Resolves the output type of every node (Count for the Output node) in
+    // Resolves the output type of every node (Count for the Output node).
     [[nodiscard]] bool ResolveTypes(std::span<MaterialValueType> InNodeTypes, std::string* InError = nullptr) const;
     // Writes the indices of the nodes reachable from the Output in dependency
     [[nodiscard]] std::uint32_t BuildEvaluationOrder(std::span<std::uint16_t> InOrder,

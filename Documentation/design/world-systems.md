@@ -58,7 +58,7 @@ validation, `IkComponent` (up to four chains) and `IkSystem`.
   (`SaveClipFile`/`LoadClipFile`, "Save clip"/"Load clip"), so an authored curve
   becomes a `.fanim` and comes back as a playable timeline. `ScriptDebuggerPanelTest`
   covers the file round trip and a truncated-file rejection.
-- Asset format: `AnimationClipAsset.hpp/.cpp` defines `.fanim` ("FANM0001"),
+- Asset format: `Source/Engine/Assets/AnimationClipAsset.hpp/.cpp` defines `.fanim` ("FANM0001"),
   a 120-byte header, table-bounds validation and an FNV-1a content hash.
 - Tests: `grid_skeletal` (two-bone reach, out-of-reach straightening, FABRIK,
   authored `IkGoalComponent` for both solvers, invalid-goal rejection, retarget

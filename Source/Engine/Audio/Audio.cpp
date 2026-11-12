@@ -26,7 +26,7 @@ void AudioCallback(ma_device* InDevice, void* Output, const void* InInput, ma_ui
     }
 }
 
-// AudioBus was designed to mirror the three built-in graph bus ids, so the
+// AudioBus was designed to mirror the three built-in graph bus ids.
 [[nodiscard]] BusId ToBusId(AudioBus InBus) noexcept
 {
     const auto ScopedIndex = static_cast<std::uint32_t>(InBus);
@@ -62,7 +62,7 @@ bool AudioSystem::Initialize(std::uint32_t InSampleRate)
     Shutdown();
     MSampleRate = InSampleRate;
 
-    // The graph comes up even when the device does not: a headless run can still
+    // The graph comes up even when the device does not: a headless run still has a mixer.
     if (!MMixer.Initialize(InSampleRate))
     {
         return false;
@@ -73,7 +73,7 @@ bool AudioSystem::Initialize(std::uint32_t InSampleRate)
     {
         MGameSfxBus = ScopedGameSfx;
     }
-    // The limiter is part of the device boundary, not an optional effect: it
+    // The limiter is part of the device boundary, not an optional effect.
     MLimiter.Configure(InSampleRate);
 
     auto* ScopedDevice = new (std::nothrow) ma_device{};
@@ -756,7 +756,7 @@ void AudioSystem::SyncBusComponents(Ecs::Registry& InRegistry)
         const float ScopedVolume = std::clamp(ScopedBus.Volume, 0.0f, 8.0f);
         if (!ScopedRuntime.applied || ScopedVolume != ScopedRuntime.volume)
         {
-            // Component volume goes through the command ring (the ECS path is a
+            // Component volume goes through the command ring.
             AudioCommand ScopedCommand{};
             ScopedCommand.Type = AudioCommandType::SetGain;
             ScopedCommand.Bus = ScopedBus.BusID;

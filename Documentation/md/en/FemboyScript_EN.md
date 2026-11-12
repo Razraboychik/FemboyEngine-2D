@@ -7,10 +7,10 @@ It has two authoring surfaces and two execution backends:
 - a compact register bytecode executed by the editor VM;
 - a cook-time C++26 AOT backend that produces a native plugin for builds.
 
-This document describes the 0.3.0-alpha.1 behavior. FemboyScript 2.0 is the bytecode and
-graph format; the engine version is 0.3.0-alpha.1.
+This document describes the 0.4.0-alpha.1 behavior. FemboyScript 2.0 is the bytecode and
+graph format; the engine version is 0.4.0-alpha.1.
 
-## What exists in 0.3.0-alpha.1
+## What exists in 0.4.0-alpha.1
 
 | Layer | Status |
 |---|---|
@@ -21,7 +21,7 @@ graph format; the engine version is 0.3.0-alpha.1.
 | AOT transpiler | Bytecode to C++26, then a native plugin |
 | Runtime AOT loader | `AotModule` validates ABI and component hashes |
 | Standalone textual `.fbs` parser | `CompileTextScript()` text subset |
-| Arrays, strings, maps, user functions, coroutines | Not present in 0.3.0-alpha.1 |
+| Arrays, strings, maps, user functions, coroutines | Not present in 0.4.0-alpha.1 |
 
 The visual graph is the default authoring surface for designers. The textual
 front-end is an optional power surface for version control, CI, mods and dense
@@ -242,7 +242,7 @@ of failing silently.
    a state tree.
 2. Compile the graph and inspect the reported node/instruction/register counts.
 3. Save the StateTree block to the scene TOML; the LogicGraph is an editor asset
-   payload in 0.3.0-alpha.1.
+   payload in 0.4.0-alpha.1.
 4. Assign a `ScriptComponent` program handle to the entity.
 5. Run PIE; faults appear in the Console/LogBoy panel with program, entity and
    pc.

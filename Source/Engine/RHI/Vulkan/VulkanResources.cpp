@@ -1377,7 +1377,7 @@ bool VulkanRHI::CreatePipeline()
     return CreatePipelineForPass(MRenderPass, &MPipelineOpaque, true, true);
 }
 
-// One sprite pipeline per render pass. The pass is a parameter because the
+// One sprite pipeline per render pass.
 bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline, bool InDepthTest,
                                       bool InBlendless, Fby::Rhi::RenderBlendMode InBlend)
 {
@@ -1831,7 +1831,7 @@ void VulkanRHI::FreeStaticRange(std::vector<MeshArenaRange>& InFreeList, std::ui
                                                      return InLeft.offset < InRight.offset;
                                                  });
     InFreeList.insert(ScopedPosition, ScopedReleased);
-    // Coalesce neighbours so a load/unload/load cycle does not fragment the
+    // Coalesce neighbours so a load/unload/load cycle does not fragment.
     for (std::size_t ScopedI = 1; ScopedI < InFreeList.size();)
     {
         MeshArenaRange& ScopedPrevious = InFreeList[ScopedI - 1];

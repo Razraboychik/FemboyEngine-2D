@@ -768,7 +768,6 @@ void AddPhysicsCodecs(SnapshotSchema& InSchema)
 }
 }
 
-// Schema
 bool SnapshotSchema::AddCodec(const SnapshotComponent& InCodec)
 {
     // Running out of codec slots would silently stop capturing a component and
@@ -853,7 +852,7 @@ SnapshotSchema SnapshotSchema::BuiltIns()
     (void)ScopedSchema.Add<SpriteAnimationComponent>();
     (void)ScopedSchema.Add<SpriteSheetComponent>();
     (void)ScopedSchema.Add<SkeletonAssetRef>();
-    // Authoring components. Their runtime handles are stable ids or are
+    // Authoring components. Their runtime handles are stable ids.
     (void)ScopedSchema.Add<ClothComponent>();
     (void)ScopedSchema.Add<FluidInteractorComponent>();
     (void)ScopedSchema.Add<ParticleEmitterComponent>();
@@ -1086,7 +1085,6 @@ bool CaptureSnapshot(const Registry& InRegistry, const SnapshotSchema& InSchema,
     return true;
 }
 
-// Delta capture
 bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema, std::span<const std::byte> InBaseSnapshot,
                   std::span<std::byte> InDestination, std::uint64_t InTick, const DeterministicRng& InRng,
                   std::size_t* OutBytes, SnapshotExtras InExtras)
@@ -1287,7 +1285,6 @@ bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema, st
     return true;
 }
 
-// Restore
 bool RestoreSnapshot(Registry& InRegistry, const SnapshotSchema& InSchema, std::span<const std::byte> InSnapshot,
                      DeterministicRng* OutRng, SnapshotRestoreExtras InExtras)
 {

@@ -81,7 +81,7 @@ GerstnerSample GerstnerField::Sample(Vector2D InBase, float InTimeSeconds) const
             ScopedWaveNumber * ScopedWave.direction.Dot(InBase) - ScopedAngularSpeed * InTimeSeconds + ScopedWave.phase;
         const float ScopedSine = Sim::Sin(ScopedPhase);
         const float ScopedCosine = Sim::Cos(ScopedPhase);
-        // Q/k is the horizontal particle radius. Q is exposed as steepness so
+        // Q/k is the horizontal particle radius.
         const float ScopedAmplitude = ScopedWave.steepness / ScopedWaveNumber;
 
         ScopedResult.displacement.X += ScopedWave.direction.X * ScopedAmplitude * ScopedCosine;
@@ -94,7 +94,7 @@ GerstnerSample GerstnerField::Sample(Vector2D InBase, float InTimeSeconds) const
         ScopedJxy -= ScopedQ * ScopedWave.direction.X * ScopedWave.direction.Y;
     }
 
-    // The Jacobian of the horizontal displacement. A value below ~0.65 is a
+    // The Jacobian of the horizontal displacement.
     ScopedResult.jacobian = ScopedJxx * ScopedJyy - ScopedJxy * ScopedJxy;
     return ScopedResult;
 }
@@ -372,7 +372,7 @@ void FluidWaveSystem::Update(Ecs::Registry& InRegistry, float InDt) noexcept
         return;
     }
 
-    // Drop tracking for entities gameplay destroyed. Swap-remove keeps the
+    // Drop tracking for entities gameplay destroyed.
     for (std::uint32_t ScopedI = 0; ScopedI < MTrackedCount;)
     {
         if (!InRegistry.valid(MTracked[ScopedI].entity))

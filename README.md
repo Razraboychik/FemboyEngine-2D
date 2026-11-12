@@ -114,7 +114,7 @@ memory model.
 | Isometry | `Grid::ProjectionMode` side/top-down/iso-rect/iso-hex, cell/world conversion, depth keys, `TilemapComponent` with a culled render bridge and a tilemap editor | Integer grid math and packed depth keys; tile rendering uses a culled span, not per-tile objects |
 | Navigation | Cost-grid A* on rect and hex layouts, tilemap-derived maps, authored `NavAgentSettings` separated from runtime paths, per-frame repath budget | Cost grids are contiguous arrays; path storage is bounded and reused across frames |
 | Lighting | `Light2DComponent` radial lights, ambient, emissive targets, optional Reinhard tonemap, screen-space SDF shadow mask, static `SdfField` and dynamic `Light2DOccluderComponent` casters | Static SDF is uploaded once per version; dynamic casters live in a bounded UBO; the shadow pass samples textures, not scene objects |
-| Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise and uplink/downlink effects with conditions | Preallocated voices and buses, no per-frame graph construction, explicit capture buffers |
+| Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise, uplink/downlink effects with conditions, `.fbyvoice` preset packs, a plugin preset table and listener-side reaction cues | Preallocated voices and buses, no per-frame graph construction, explicit capture buffers |
 | UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, widget kit, Unicode boundaries through libunibreak, opt-in Tab/arrow focus, CPU clip rects, HarfBuzz text stack, accessibility kernel | Retained data, per-frame command spans, clipped quads and SDF primitives instead of one allocation per widget |
 | Editor | Transactional `CommandStack`, ImNodes canvases, project manager, PIE Play/Pause/Stop, Play (Multiplayer), script debugger, tilemap editor, texture thumbnails, Transport Groups panel, borderless fullscreen | Authoring commands are explicit transactions; PIE owns an isolated world and releases it on Stop |
 | Script | LogicGraph to bytecode VM and to C++26 AOT plugin, physics/capability nodes and natives, debug info, VM breakpoints and stepping, `Compile + Nativize`, AOT manifest cook gate | Fixed VM stack and register file, native modules for cooked builds, no script allocation in the fixed step |
@@ -249,8 +249,10 @@ upscaler SDKs are optional and are not part of the archive; see
 
 ## Build
 
-Requirements: CMake 3.28+, Ninja, and one of **MSVC 19.44+**, **Clang 23.1.4+**
-(clang-cl on Windows, clang++ on Unix), **AppleClang 21+** or **GCC 16.2.0+**.
+Requirements: CMake 3.28+, Ninja, and one of **Clang 23.1.4+**
+(clang-cl on Windows, clang++ on Unix), **MSVC 19.44+**, **AppleClang 21+** or
+**GCC 16.2.0+**. clang-cl is the reference toolchain; the others are supported
+alternatives, never an obligation.
 On Windows, run from a shell that provides the Windows SDK headers and
 libraries. The setup scripts install clang-cl / clang++ as the reference
 toolchain and GCC 16.2.0 (MinGW-w64 UCRT) as the second opinion. On Windows,
@@ -259,8 +261,8 @@ and verifies the `clang-cl` version.
 
 The validated build uses **clang-cl 23.1.4 on Windows and clang++ elsewhere**;
 that is what CI and the release gate run. **MSVC 19.44+**, **GCC 16.2.0** and
-**AppleClang 21+** are supported alternatives; the compiler-selection matrix is
-in [build-workflow.md](Documentation/design/build-workflow.md).
+**AppleClang 21+** are supported alternatives; the compiler-selection matrix is in
+[build-workflow.md](Documentation/design/build-workflow.md).
 
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
@@ -291,6 +293,8 @@ Main executables:
 ```text
 build/bin/fby_sandbox
 build/bin/fby_editor
+build/bin/fby_server
+build/bin/fby_lobby
 build/bin/tools/fby_fempak
 build/bin/tools/fby_scene_tool
 build/bin/tools/fby_aotc
@@ -301,6 +305,11 @@ Install the SDK locally and pass `-DFBY_WITH_DLSS=ON -DFBY_DLSS_ROOT=<path>` or
 `-DFBY_WITH_FIDELITYFX=ON -DFBY_FIDELITYFX_ROOT=<path>`; portable FSR1/FSR2 and
 custom frame generation do not require either SDK. See
 [Frame Generation](Documentation/md/en/FemboyEngineFrameGeneration_EN.md).
+
+Applications look for `assets` in `FBY_ASSET_DIR`, `cwd/assets` or the
+executable's own directory and up to three parents, so a run from `build/bin`
+works without copying files. `Saved/` (logs, config, cache) follows the working
+directory; `FBY_STORAGE_DIR` moves it.
 
 The apps resolve `assets` from `FBY_ASSET_DIR`, `cwd/assets`, or the executable's
 parent directories, so an IDE launch from `build/bin` works without copying
@@ -484,12 +493,12 @@ FemboyEngine2D/
 ├─ CMakeLists.txt, cmake/        build configuration and dependency pins
 ├─ Source/
 │  ├─ Engine/                    Core, RHI, ECS, Physics, Audio, Network,
-│  │                             Assets, Script, UI, Video, Weather
+│  │                             Assets, Script, Text, UI, Video, Weather
 │  ├─ Editor/                    Panels + Infrastructure
-│  ├─ Apps/                      Editor + Sandbox executables
+│  ├─ Apps/                      Editor, Sandbox, Server and Lobby executables
 │  ├─ Tests/                     plain CTest executables
-│  ├─ Tools/                     shader compiler, cooker, AOT, docs tools
-│  └─ Plugins/                   C-ABI fixtures and storefront providers
+│  ├─ Tools/                     shader/material/text/audio cookers, AOT compiler, dev gates
+│  └─ Plugins/                   example plugins, C-ABI fixtures and storefront providers
 ├─ Documentation/                MD/DOCX/PDF/DjVu editions, design notes, generators
 ├─ assets/                       source assets and cooked samples
 └─ third_party/                  vendored dependencies

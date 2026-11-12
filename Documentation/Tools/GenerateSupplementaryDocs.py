@@ -193,22 +193,25 @@ def render_markdown(md_path: pathlib.Path, docx_path: pathlib.Path, title: str, 
 
 def export_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, node: str, lo_cli: str) -> bool:
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    if pdf_path.exists():
-        pdf_path.unlink()
     if not pathlib.Path(lo_cli).is_file():
         print(f"pdf: LibreOffice Kit CLI not found: {lo_cli}", file=sys.stderr)
         return False
+    temporary = pdf_path.with_name(pdf_path.name + ".tmp.pdf")
+    temporary.unlink(missing_ok=True)
     completed = subprocess.run(
-        [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(pdf_path)],
+        [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(temporary)],
         check=False,
         capture_output=True,
         text=True,
     )
-    if completed.returncode != 0:
-        print(completed.stdout[-2000:], file=sys.stderr)
-        print(completed.stderr[-2000:], file=sys.stderr)
+    if completed.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
+        if completed.returncode != 0:
+            print(completed.stdout[-2000:], file=sys.stderr)
+            print(completed.stderr[-2000:], file=sys.stderr)
+        temporary.unlink(missing_ok=True)
         return False
-    return pdf_path.is_file()
+    os.replace(temporary, pdf_path)
+    return True
 
 
 def main() -> int:

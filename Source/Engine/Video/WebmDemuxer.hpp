@@ -19,7 +19,7 @@ struct WebmTrackInfo
     std::uint32_t height = 0;
     // TimestampScale in nanoseconds per timestamp tick (WebM default: 1 ms).
     std::uint64_t timestampScaleNs = 1000000ull;
-    // DefaultDuration in nanoseconds (0 = not present; the container carries no
+    // DefaultDuration in nanoseconds.
     std::uint64_t defaultDurationNs = 0;
     // Whole-stream duration in nanoseconds when the Info element carries it.
     std::uint64_t durationNs = 0;
@@ -61,7 +61,7 @@ struct WebmFrame
     std::uint64_t durationNs = 0;
     bool keyframe = false;
     bool hasAlpha = false;
-    // Matroska's "invisible" SimpleBlock flag: the frame must be decoded (it
+    // Matroska's "invisible" SimpleBlock flag: the frame must be decoded.
     bool invisible = false;
 };
 
@@ -78,13 +78,13 @@ enum class DemuxStatus : std::uint8_t
     Error,
 };
 
-// Streaming demuxer. Open() parses the EBML header, Segment/Info and
+// Streaming demuxer. Open() parses the EBML header, Segment/Info.
 class WebmDemuxer
 {
 public:
     WebmDemuxer() = default;
 
-    // Parses the container header and the video track. `bytes` must outlive the
+    // Parses the container header and the video track.
     [[nodiscard]] bool Open(std::span<const std::byte> InBytes, std::string* InError = nullptr);
     void Close() noexcept;
 
@@ -221,7 +221,7 @@ private:
     WebmAudioTrackInfo MAudioTrack{};
 };
 
-// Detects the container from the first bytes without parsing anything. Used by
+// Detects the container from the first bytes without parsing anything.
 enum class ContainerKind : std::uint8_t
 {
     Unknown = 0,

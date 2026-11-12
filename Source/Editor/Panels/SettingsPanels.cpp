@@ -218,7 +218,7 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
 
     if (InSettings.blindMode)
     {
-        // BlindMode for the window: keyboard navigation stays on, focus is
+        // BlindMode for the window: keyboard navigation stays on, focus is drawn.
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
         ScopedStyle.Colors[ImGuiCol_NavCursor] = HexColor(kThemeAccentActive, 1.0f);
@@ -247,7 +247,7 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
         ScopedPalette.flash.Reset();
     }
 
-    // Reduce motion: no blinking text caret (the single continuous animation the
+    // Reduce motion: no blinking text caret.
     ImGui::GetIO().ConfigInputTextCursorBlink = !InSettings.reduceMotion;
 }
 }
@@ -751,7 +751,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
                            "Native architecture is for local benchmarking only: the archive may trap on an older CPU.");
     }
 
-    // Collision layers. The matrix is part of ProjectSettings, so it is
+    // Collision layers. The matrix is part of ProjectSettings.
     ImGui::SeparatorText("Collision Layers");
     CollisionFilterMatrix& ScopedMatrix = ScopedValues.collision;
     if (ImGui::Button("All layers"))
@@ -1045,7 +1045,7 @@ void EditorSettingsPanel::BeginOrRecord(Ecs::SystemContext& InContext,
     {
         return;
     }
-    // Padding bytes are copied by CommandStack but must never decide whether an
+    // Padding bytes are copied by CommandStack but must never decide whether an edit happened.
     EditorSettings ScopedBeforeTyped{};
     EditorSettings ScopedCurrentTyped{};
     std::memcpy(&ScopedBeforeTyped, InBefore.data(), sizeof(EditorSettings));

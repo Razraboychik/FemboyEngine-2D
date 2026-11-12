@@ -206,7 +206,7 @@ PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs
         return Result::SnapshotTooLarge;
     }
 
-    // Isolate the physics world before the clone is materialized. The
+    // Isolate the physics world before the clone is materialized.
     const PhysicsDesc ScopedPhysicsDesc =
         InServices.physics != nullptr ? InServices.physics->Description() : PhysicsDesc{};
     if (!MPiePhysics.Initialize(ScopedPhysicsDesc))
@@ -240,7 +240,7 @@ PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs
     // Systems must use the PIE world, never the editor's PhysicsSystem.
     MServices.physics = &MPiePhysics;
     RoutePieAudio(MWorld, MServices.audio);
-    // The editor's CommandBuffer contains authoring transactions against the
+    // The editor's CommandBuffer contains authoring transactions against the old world.
     MServices.commands = nullptr;
     MActive = true;
     MTick = InTick;
@@ -711,7 +711,7 @@ void PlayInEditor::Stop() noexcept
     {
         return;
     }
-    // The clone's bodies belong to the PIE world only. Destroy them before
+    // The clone's bodies belong to the PIE world only.
     if (MPhysicsOwned)
     {
         (void)MPiePhysics.DestroyAllBodies(&MWorld);

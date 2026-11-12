@@ -48,7 +48,7 @@ public:
         MTransientBytes = static_cast<std::size_t>(InDesc.maxItemsPerFrame) * sizeof(RenderItem) +
                           static_cast<std::size_t>(InDesc.maxItemsPerFrame) * sizeof(RenderKey);
         MTransientStorage.resize(MTransientBytes * ScopedFramesInFlight);
-        // TransientRing is not assignable (it owns a mapping), so it is built in
+        // TransientRing is not assignable (it owns a mapping), so it is built.
         MRing.emplace(MTransientStorage.data(), MTransientBytes, ScopedFramesInFlight);
         LogInfo("RHI", "null backend initialised ({} frames in flight)", InDesc.framesInFlight);
         return true;

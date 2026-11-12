@@ -164,7 +164,7 @@ public:
     ReleaseCooker(const ReleaseCooker&) = delete;
     ReleaseCooker& operator=(const ReleaseCooker&) = delete;
 
-    // Builds a config from the open project. `engineRoot` and `packerPath` are
+    // Builds a config from the open project.
     [[nodiscard]] static ReleaseCookConfig FromProject(const ProjectPaths& InPaths, const ProjectSettings& InSettings,
                                                        std::string_view InEngineRoot, std::string_view InPackerPath);
 
@@ -205,7 +205,7 @@ private:
     void PollProgressFile() noexcept;
     [[nodiscard]] bool PrepareKey() noexcept;
     void WipeKey() noexcept;
-    // Copies the final archive (and plugin, when AOT ran) into
+    // Copies the final archive (and plugin, when AOT ran).
     [[nodiscard]] bool StageStoreArchives(const char* InPluginPath) noexcept;
 
     mutable std::mutex MProgressMutex{};

@@ -1,4 +1,4 @@
-# FemboyEngine 0.3.0-alpha.1 — getting started
+# FemboyEngine 0.4.0-alpha.1 — getting started
 
 This document lists what to install and which files must sit next to the engine to run the editor, the runtime and the development tools on Windows, Linux and macOS.
 
@@ -6,29 +6,30 @@ This document lists what to install and which files must sit next to the engine 
 
 | Platform | Editor | Game runtime | Toolchain |
 |---|---|---|---|
-| Windows 10/11 x64 | yes | yes | clang-cl (primary), GCC 16+ (second opinion) |
-| Linux x64 | yes | yes | Clang 19+, GCC 16+ |
-| macOS 13+ (Apple Silicon and Intel) | yes | yes | Apple Clang from Xcode, Metal backend |
+| Windows 10/11 x64 | yes | yes | clang-cl 23.1.4+ (primary), MSVC 19.44+, GCC 16.2.0+ |
+| Linux x64 | yes | yes | Clang 23.1.4+, GCC 16.2.0+ |
+| macOS 14+ (Apple Silicon and Intel) | yes | yes | AppleClang 21+ (Xcode 26.4+), Metal backend |
 
 The editor and the game runtime target the three desktop platforms above. SDL3 supplies the window, input and application lifecycle.
 
 ## Required software
 
-**MSVC (the `cl.exe` compiler) is not required.** On Windows the project builds with clang-cl from LLVM; the MSVC compiler is never invoked. Visual Studio Build Tools are needed only as the supplier of the Windows SDK and the standard library headers that clang-cl uses.
+**MSVC 19.44+ is supported as an alternative.** On Windows the project builds with clang-cl from LLVM as the reference toolchain, or with MSVC (`cl.exe`) when a team standardizes on it. Both consume the Windows SDK and the MSVC standard library; clang-cl remains what CI and the release gate run.
 
 | Tool | Minimum | Validated | Purpose |
 |---|---|---|---|
 | CMake | 3.28 | 3.31.6 | configure and build |
 | Ninja | 1.11 | 1.12.1 | build generator |
-| LLVM / clang-cl | 19 | 23.1.4 | primary Windows compiler |
-| Clang (Linux/macOS) | 19 / Xcode 16 | — | Linux and macOS compiler |
-| GCC | 15 | 16.2.0 | second compiler for portability checks |
+| LLVM / clang-cl | 23.1.4 | 23.1.4 | primary Windows compiler |
+| MSVC (`cl.exe`) | 19.44 | 19.44 | optional Visual Studio-native Windows compiler |
+| Clang (Linux) | 23.1.4 | 23.1.4 | primary Linux compiler |
+| GCC | 16.2.0 | 16.2.0 | second compiler for portability checks |
 | Python | 3.11 | 3.13 | documentation and notices generation |
 | Git | 2.40 | — | clone and version control |
 | Vulkan Loader | 1.4 | 1.4 | runtime on Windows and Linux |
 | MoltenVK | 1.2 | — | Vulkan over Metal on macOS (or the Metal backend directly) |
 | 7-Zip | 21 | 25.01 | unpack the LZMA SDK (otherwise the built-in FbyLZ is used) |
-| Xcode | 16 | — | macOS builds |
+| Xcode | 26.4 | — | macOS builds (AppleClang 21) |
 
 The language standard is C++26, so an older compiler will not work even when its CMake version matches.
 
@@ -85,11 +86,11 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 ### Windows
 
 1. Install LLVM 23.1.4 (clang-cl) and add its `bin` directory to `PATH`.
-2. Install Visual Studio Build Tools with the "C++ Build Tools" workload (Windows SDK and standard library headers). The MSVC compiler itself is not used.
+2. Install Visual Studio Build Tools with the "C++ Build Tools" workload (Windows SDK and standard library headers). The MSVC compiler itself is not used by the clang-cl build.
 3. Install CMake 3.31 and Ninja 1.12 (the Build Tools copy is fine).
 4. Install the Vulkan SDK 1.4 — it provides `vulkan-1.dll` and `VULKAN_SDK`.
 5. Install 7-Zip (optional).
-6. Download the archives the script would fetch and unpack them into the same `third_party/` directories: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.2`. HarfBuzz and SheenBidi need no download: they are already in the repository.
+6. Download the archives the script would fetch and unpack them into the same `third_party/` directories: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3`. HarfBuzz and SheenBidi need no download: they are already in the repository.
 
 ### Linux
 
@@ -97,7 +98,7 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 sudo apt install build-essential clang cmake ninja-build git pkg-config libvulkan-dev vulkan-tools p7zip-full
 ```
 
-Then lay out the same archives as on Windows. GCC 16 comes from the distribution or a separate build; Clang is enough for the primary build.
+Then lay out the same archives as on Windows. GCC 16.2 comes from the distribution or a separate build; Clang is enough for the primary build.
 
 ### macOS
 
@@ -234,24 +235,17 @@ For `cppdbg`, use gdb from MinGW/LLVM; CodeLLDB uses LLVM's lldb. Example:
 
 Use RenderDoc for GPU debugging: attach it to `fby_editor.exe` and capture a frame without embedding a debugger in the editor.
 
-## MSVC support
+## Compiler selection
 
-**No.** The project is built around Clang:
+The 0.4 alpha line supports **Clang 23.1.4+** (clang-cl on Windows, clang++ on Unix), **AppleClang 21+**, **GCC 16.2.0+** and **MSVC 19.44+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.44+ builds the same tree and is supported for local development, but it is not part of the CI gate.
 
-- C++26 and the strict flag set are validated with Clang 23.1.4;
-- clang-cl already provides the Windows ABI, Windows SDK and an MSVC-compatible driver;
-- the MSVC compiler (`cl.exe`) is not required;
-- adding MSVC means a second set of flags, warnings, STL behavior and C++26 feature support, plus a separate CI matrix.
+- **Windows, primary:** clang-cl. It is Clang with the MSVC ABI, the Windows SDK and the MSVC standard library, and it works with the Visual Studio debugger and PDBs.
+- **Windows, optional:** MSVC (`cl.exe`). Choose it when the team standardizes on the Microsoft toolchain; CMake selects `/std:c++latest` and the MSVC warning set. RNNoise falls back to the spectral tier because its vendored C sources use variable-length arrays.
+- **Linux, primary:** clang++. GCC 16.2.0 is the second compiler for portability checks.
+- **macOS:** AppleClang 21+ from Xcode 26.4 with the Metal backend.
+- **One compiler on every platform:** Clang (clang-cl on Windows, clang++ elsewhere). It is the only toolchain that covers all three desktop platforms with one frontend.
 
-That does not mean MSVC is forbidden forever. If it is needed as an **optional second compiler**, do it as a separate task:
-
-1. add a `dev-msvc` preset;
-2. verify the C++26 features used by the engine;
-3. add `FBY_COMPILER_MSVC` for flag differences;
-4. add a separate CI job;
-5. keep Clang as the primary toolchain, not a replacement.
-
-Until then, the primary and validated path is **Clang / clang-cl**. Visual Studio may be used as an IDE with the clang-cl toolchain, but not as an MSVC build replacement.
+The full matrix and the per-OS presets are in [build-workflow.md](../../design/build-workflow.md).
 
 ## Running the editor
 

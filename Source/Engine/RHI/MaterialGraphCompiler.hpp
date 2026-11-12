@@ -58,7 +58,7 @@ struct MaterialShaderProgram
 class MaterialGraphCompiler
 {
 public:
-    // Validates `graph`, then writes a NUL-terminated fragment shader into
+    // Validates `graph`, then writes a NUL-terminated fragment shader.
     [[nodiscard]] bool Compile(const MaterialGraph& InGraph, const MaterialCompileOptions& InOptions,
                                std::span<char> InVertexBuffer, std::span<char> InFragmentBuffer,
                                MaterialShaderProgram* InProgram, std::string* InError) const;

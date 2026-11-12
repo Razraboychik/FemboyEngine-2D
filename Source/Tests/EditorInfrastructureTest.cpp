@@ -287,7 +287,7 @@ void TestProjectCreationAndConfig()
     Check(ScopedIniText.find("log_max_files = 12") != std::string::npos, "editor.ini mirrors the log file count");
     Check(ScopedIniText.find("log_max_lines = 3456") != std::string::npos, "editor.ini mirrors the log line count");
 
-    // Defaulted EditorSettings::operator== compares fields, not padding. A
+    // Defaulted EditorSettings::operator== compares fields, not padding.
     Fby::Editor::EditorSettings ScopedLeft{};
     Fby::Editor::EditorSettings ScopedRight{};
     Check(ScopedLeft == ScopedRight, "default EditorSettings images compare equal");
@@ -444,7 +444,7 @@ void TestAutoImportAndBackgroundCook()
               "default cook format is BC7 sRGB");
     }
 
-    // The watcher's scheduleCook thunk queued a background job. Wait for the
+    // The watcher's scheduleCook thunk queued a background job.
     std::uint32_t ScopedCommitted = 0;
     for (int ScopedAttempt = 0; ScopedAttempt < 600 && ScopedCommitted < 2; ++ScopedAttempt)
     {

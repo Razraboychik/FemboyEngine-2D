@@ -51,7 +51,7 @@ public:
         MCount = 0;
     }
 
-    // Drops commands appended after `InCount`. PrefabSystem uses this as a
+    // Drops commands appended after `InCount`.
     void Truncate(std::uint32_t InCount) noexcept
     {
         if (InCount < MCount)

@@ -106,7 +106,7 @@ struct BlockExtent
     std::uint32_t height = 1;
 };
 
-// Texel block footprint of the format. Rgba8 is "1x1 block, 4 bytes" so the
+// Texel block footprint of the format.
 [[nodiscard]] constexpr BlockExtent FormatBlockExtent(TextureFormat InFormat) noexcept
 {
     switch (InFormat)
@@ -126,7 +126,7 @@ struct BlockExtent
     return InFormat == TextureFormat::Rgba8 ? 4u : 16u;
 }
 
-// Block-compressed textures do not mip down to 1x1: the chain stops at the
+// Block-compressed textures do not mip down to 1x1: the chain stops at the block size.
 [[nodiscard]] constexpr std::uint32_t MaxMipLevels(std::uint32_t InWidth, std::uint32_t InHeight,
                                                    TextureFormat InFormat) noexcept
 {
@@ -217,13 +217,13 @@ struct CookedTextureView
 [[nodiscard]] std::optional<CookedTextureView> ParseCookedTexture(std::span<const std::byte> InBytes,
                                                                   std::string* InError = nullptr);
 
-// Appends header + texels to `out` for the cooker. Returns false when the
+// Appends header + texels to `out` for the cooker.
 [[nodiscard]] bool AppendCookedTexture(std::vector<std::byte>& Out, TextureFormat InFormat, std::uint32_t InWidth,
                                        std::uint32_t InHeight, std::uint32_t InLayers, std::uint32_t InMipLevels,
                                        std::uint32_t InFlags, std::span<const std::byte> InTexels,
                                        std::string* InError = nullptr);
 
-// Convenience for the RHI layer: format the GPU must use, derived from the
+// Convenience for the RHI layer: format the GPU must use, derived from the block extent.
 [[nodiscard]] constexpr std::uint32_t BlockAlignedExtent(std::uint32_t InExtent, TextureFormat InFormat) noexcept
 {
     const BlockExtent ScopedBlock = FormatBlockExtent(InFormat);

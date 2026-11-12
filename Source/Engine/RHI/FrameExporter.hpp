@@ -57,7 +57,7 @@ struct FrameExportDesc
     std::uint32_t startFrame = 0;
     std::uint32_t endFrame = 0;
     std::uint32_t step = 1;
-    // Offscreen target format. Sprite captures are display-referred, so sRGB is
+    // Offscreen target format. Sprite captures are display-referred, so sRGB.
     bool srgb = false;
 };
 
@@ -89,7 +89,7 @@ struct FrameSink
                   std::string* InError) = nullptr;
 };
 
-// Default sink: VirtualFileSystem::WriteFile into the writable overlay (the
+// Default sink: VirtualFileSystem::WriteFile into the writable overlay.
 [[nodiscard]] bool WriteSequenceToVfs(void* InUser, std::string_view InPath, std::span<const std::byte> InBytes,
                                       std::string* InError);
 [[nodiscard]] FrameSink VfsFrameSink(VirtualFileSystem& InVfs) noexcept;

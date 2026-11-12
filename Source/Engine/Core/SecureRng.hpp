@@ -13,7 +13,7 @@ class SecureRng
 public:
     SecureRng() = delete;
 
-    // Fills the whole span from the OS entropy source. Returns false on any
+    // Fills the whole span from the OS entropy source.
     [[nodiscard]] static bool Fill(std::span<std::byte> InDestination) noexcept;
     [[nodiscard]] static bool Fill(void* InDestination, std::size_t InSize) noexcept;
 
@@ -23,7 +23,7 @@ public:
     // Lower-case hexadecimal token of exactly `out.size()` characters. Tokens
     [[nodiscard]] static bool TokenHex(std::span<char> Out) noexcept;
 
-    // True on platforms this build knows how to ask for OS entropy. This is a
+    // True on platforms this build knows how to ask for OS entropy.
     [[nodiscard]] static constexpr bool Supported() noexcept
     {
 #if defined(_WIN32) || defined(__unix__) || defined(__APPLE__) || defined(__ANDROID__)

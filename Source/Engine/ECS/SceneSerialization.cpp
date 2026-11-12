@@ -168,7 +168,7 @@ namespace
         }
 
         auto& ScopedSkeleton = InRegistry.emplace<SkeletonComponent>(ScopedEntity);
-        // A bone-only asset (an IK target, a procedural chain) still needs its
+        // A bone-only asset (an IK target, a procedural chain).
         const bool ScopedWantSkin = ScopedView->HasSkin() && (ScopedRef->Flags & kSkeletonAssetRefSpawnSkin) != 0;
         SkinComponent ScopedScratchSkin;
         SkinComponent& ScopedSkin =

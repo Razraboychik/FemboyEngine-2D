@@ -73,7 +73,7 @@ public:
             return false;
         }
 
-        // Exactly one event per program: the cooker compiles Start and Update as
+        // Exactly one event per program: the cooker compiles Start and Update.
         std::uint16_t ScopedEventNode = kNoNode;
         ScriptEvent ScopedEvent = ScriptEvent::Update;
         for (std::uint32_t ScopedI = 0; ScopedI < MGraph.nodeCount; ++ScopedI)
@@ -170,7 +170,7 @@ private:
         return true;
     }
 
-    // Kahn's algorithm over every link (data and exec). A VisualScript graph is a
+    // Kahn's algorithm over every link (data and exec).
     [[nodiscard]] bool CheckAcyclic() const
     {
         std::array<std::uint16_t, kMaxLogicNodes> ScopedIndegree{};
@@ -523,7 +523,7 @@ private:
                         return Fail(NodeMessage(InNodeIndex, "Condition has an invalid comparison selector"));
                 }
                 MBuilder.Emit(ScopedOp, ScopedCompare, ScopedLeft, ScopedRight);
-                // The compare opcodes write an int 1/0 into the register union, but
+                // The compare opcodes write an int 1/0 into the register union.
                 const std::uint16_t ScopedOne = MBuilder.AddConstant(1.0f);
                 const std::uint16_t ScopedZero = MBuilder.AddConstant(0.0f);
                 const std::uint32_t ScopedFalseJump = MBuilder.Emit(OpCode::JumpIfZero, ScopedCompare, 0, 0);

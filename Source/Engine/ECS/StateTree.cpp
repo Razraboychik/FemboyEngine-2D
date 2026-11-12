@@ -131,7 +131,7 @@ namespace
     return false;
 }
 
-// Descends from InNode to an enabled leaf. A group selects the first child whose
+// Descends from InNode to an enabled leaf.
 [[nodiscard]] std::uint16_t SelectLeaf(const Ecs::Registry& InRegistry, Entity InEntity,
                                        const StateTreeComponent& InState, const StateTreeDefinition& InTree,
                                        std::uint16_t InNode, std::uint32_t InDepth,
@@ -181,7 +181,7 @@ namespace
     return kStateTreeNone;
 }
 
-// Writes the root-first path into ActiveStates. The parent chain is authored and
+// Writes the root-first path into ActiveStates.
 void BuildPath(const StateTreeDefinition& InTree, std::uint16_t InLeaf, StateTreeComponent& InState) noexcept
 {
     InState.ActiveStates.fill(kStateTreeNone);
@@ -231,7 +231,7 @@ void EmitCommand(Ecs::Registry& InRegistry, Entity InEntity, Ecs::CommandBuffer*
         (void)InCommands->Emplace<AICommandComponent>(InEntity, InCommand);
         return;
     }
-    // No buffer (a headless tool or a unit test): write in place only if the
+    // No buffer (a headless tool or a unit test): write in place.
     if (auto* ScopedExisting = InRegistry.try_get<AICommandComponent>(InEntity); ScopedExisting != nullptr)
     {
         *ScopedExisting = InCommand;
@@ -465,7 +465,7 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
         }
         else
         {
-            // Only the active leaf is guarded each tick. A failing guard raises an
+            // Only the active leaf is guarded each tick.
             if (ScopedState.CurrentLeaf >= ScopedTree->NodeCount ||
                 !EvaluateCondition(InRegistry, ScopedEntity, ScopedState,
                                    ScopedTree->Nodes[ScopedState.CurrentLeaf].Evaluator, InTags))
@@ -476,7 +476,7 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
 
         if (ScopedState.Triggers != 0)
         {
-            // Change-driven: the loop only runs when at least one trigger bit is
+            // Change-driven: the loop only runs when at least one trigger bit is set.
             const std::uint16_t ScopedCount =
                 std::min<std::uint16_t>(ScopedTree->TransitionCount, kMaxStateTreeTransitions);
             for (std::uint16_t ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)

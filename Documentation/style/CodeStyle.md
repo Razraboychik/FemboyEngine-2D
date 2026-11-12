@@ -15,8 +15,10 @@ The contract has three goals:
 ## Language and toolchain
 
 - Language: C++26 as enabled by the project CMake configuration.
-- Validated compilers: Clang 19+ and GCC 16+; the current CI baseline is
-  clang-cl 23.1.x with the MSVC standard library on Windows.
+- Supported compilers: Clang 23.1.4+ (clang-cl and clang++), AppleClang 21+,
+  GCC 16.2.0+ and MSVC 19.44+. clang-cl is the reference Windows toolchain and
+  the CI baseline; clang, GCC and AppleClang are CI-covered alternatives, and
+  MSVC is a supported local alternative. None of them is an obligation.
 - Build system: CMake 3.28+ with Ninja.
 - File suffixes: `.hpp` for C++ headers, `.cpp` for C++ translation units,
   `.h` and `.c` for the C plugin ABI, `.mm` for the Objective-C++ platform
@@ -124,6 +126,13 @@ name.
 - Prefer fixed-size arrays, `Vector2D`, `Color32`, `Entity`, integer types and
   enums. Do not put `std::string`, `std::vector` or owning pointers in a
   component.
+- A component field is a value: never a raw pointer, reference, `std::string_view`
+  or `std::span`. Those types are trivially copyable but non-owning, so they
+  dangle after a scene, snapshot or prefab round trip. Use `Entity`, an asset
+  handle, an interned id or a fixed `char[N]`.
+- `std::is_trivially_copyable_v` alone does not reject pointers or views; the
+  `FBY_FIELD` field kind is the allowed vocabulary, and every serialized field
+  must appear in the reflection list.
 - Field order defines binary offsets. Do not reorder fields to make a pretty
   declaration.
 - Adding or renaming a field changes `Reflect::LayoutHash<T>()` and therefore
@@ -136,6 +145,22 @@ name.
   test that round-trips every field.
 - Unregistered helper PODs are still subject to naming rules and must not use
   underscores.
+
+## Systems, iteration and ECS access
+
+- A system must not create, destroy, emplace or remove while an ECS view is
+  being iterated. Queue the change in `CommandBuffer` and play it at the phase
+  boundary; FCS asserts on this in debug builds.
+- A system that sets `SystemAccess::ParallelSafe` must declare what it touches:
+  a service bit, a component read/write mask, or `NoEcsAccess`. The graph
+  rejects an undeclared parallel system.
+- Read-only systems should take `const` data and use the const registry views
+  where the API allows it. Prefer `ConstCoreSystemView` or
+  `ConstRenderSystemView` over a mutable view when the system never writes a
+  component; see [read-only systems](../design/read-only-systems.md).
+- SDF gameplay code edits CPU components only. The GPU upload is packed by
+  `FrameComposer` and the SDF character render cache; gameplay systems never
+  call the RHI directly.
 
 ## Formatting
 

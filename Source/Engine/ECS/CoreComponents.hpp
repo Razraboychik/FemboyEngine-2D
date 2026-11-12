@@ -43,7 +43,7 @@ struct Velocity
     Vector2D Value{};
 };
 
-// Everything needed to emit one RenderItem. Kept separate from Transform2D so a
+// Everything needed to emit one RenderItem.
 struct Sprite2D
 {
     // World-space extent before scale

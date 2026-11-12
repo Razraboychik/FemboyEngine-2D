@@ -114,7 +114,7 @@ std::string_view LocalizationTable::Find(std::uint32_t InId) const noexcept
     {
         return {};
     }
-    // flatbuffers generates this as a binary search over the sorted vector: no
+    // flatbuffers generates this as a binary search over the sorted vector.
     const Fby::Loc::StringEntry* ScopedEntry = MActive->entries()->LookupByKey(InId);
     if (ScopedEntry == nullptr || ScopedEntry->text() == nullptr)
     {

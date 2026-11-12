@@ -42,7 +42,7 @@ static_assert(sizeof(Fby::RngState) == 16);
 static_assert(sizeof(Fby::Pcg32) == 16);
 }
 
-// Count every heap allocation in the executable so the noise hot path can be
+// Count every heap allocation in the executable so the noise hot path.
 void* operator new(std::size_t InSize)
 {
     GAllocations.fetch_add(1, std::memory_order_relaxed);

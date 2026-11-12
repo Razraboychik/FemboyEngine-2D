@@ -51,7 +51,7 @@ struct ParticleEmitterComponent
     Color32 StartColor = Color32::FromBytes(0xFF, 0x4F, 0xA8, 0xFF);
     Color32 EndColor = Color32::FromBytes(0xFF, 0x4F, 0xA8, 0x00);
 
-    // 0 means "continuous"; a positive value spawns one burst and lets the
+    // 0 means "continuous"; a positive value spawns one burst and lets it die.
     float BurstInterval = 0.0f;
     float AnimationTime = 0.0f;
     // Producer-side estimate; the GPU is authoritative
@@ -61,7 +61,7 @@ struct ParticleEmitterComponent
 static_assert(std::is_trivially_copyable_v<ParticleEmitterComponent>);
 static_assert(std::is_standard_layout_v<ParticleEmitterComponent>);
 
-// std430-compatible mirror of the emitter block consumed by
+// std430-compatible mirror of the emitter block consumed.
 struct ParticleEmitterGpu
 {
     // Xy = emitter position, z = spawn radius, w = time
@@ -84,7 +84,7 @@ struct ParticleEmitterGpu
 
 static_assert(sizeof(ParticleEmitterGpu) == 16 * 8);
 
-// The only push constant. A single uint32 keeps the dispatch independent of
+// The only push constant.
 struct ParticleSeedPush
 {
     std::uint32_t seed = 0;

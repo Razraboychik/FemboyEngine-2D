@@ -94,7 +94,7 @@ struct VmFault
     }
 };
 
-// Everything a program may observe about the world. Pointers are optional so a
+// Everything a program may observe about the world.
 struct VmContext
 {
     Ecs::Registry& registry;
@@ -114,7 +114,7 @@ struct VmContext
     // Optional host service for play_sound; asset ids are script integers.
     Fby::AudioSystem* audio = nullptr;
     void* user = nullptr;
-    // Prefab spawn is a host hook because prefab instantiation lives in the
+    // Prefab spawn is a host hook because prefab instantiation lives.
     std::uint32_t (*spawn)(VmContext& InContext, std::uint32_t InPrefabId) noexcept = nullptr;
 };
 
@@ -254,7 +254,7 @@ public:
         return static_cast<std::uint32_t>(InId) < kMaxNatives ? MNatives[static_cast<std::uint32_t>(InId)] : nullptr;
     }
 
-    // Runs one event entry point for `self`. Returns false only on a fault; a
+    // Runs one event entry point for `self`. Returns false only on a fault.
     [[nodiscard]] bool Run(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
                            VmFault* InFault = nullptr) noexcept;
 

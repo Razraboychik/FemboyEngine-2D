@@ -588,11 +588,11 @@ expensive feature behind a quality tier.
 | GPU authority | Strict CPU authority: GPU output never feeds simulation. Cosmetic fields are a separately typed channel that snapshots and replay ignore | Cross-vendor float differences make GPU-driven simulation untestable, unreplayable and unfair in lockstep |
 | Hot reload | Plugin DLLs and script bytecode, editor and iteration builds only, one reload boundary | Shipping builds should not load foreign code. The boundary is the same for both kinds, so it is implemented once |
 | Hardware counters | Software counters, Chrome trace export and an optional external profiler backend; no elevated ETW or PCM path | Cache miss counters are not portable and need elevation. A trace format buys the same insight with none of the maintenance |
-| Simulation rate | 60 Hz simulation as the default, 2x substep for rigid bodies, crowd and fluids at 30-60 Hz with render interpolation | Rate is a project setting, not an engine constant. Doubling the rate doubles every subsystem for a benefit most games cannot show |
+| Simulation rate | 120 Hz in the generated project, 2x substep for rigid bodies, crowd and fluids at 30-60 Hz with render interpolation | Rate is a project setting, not an engine constant. Light projects start at 60 Hz; doubling the rate doubles every subsystem for a benefit most games cannot show |
 
 Two consequences worth stating explicitly:
 
-- **The 60 Hz default is not a downgrade.** Rigid-body stability comes from
+- **A 60 Hz setting is not a downgrade.** Rigid-body stability comes from
   substeps and a contact manifold, not from a global 120 Hz tick. A 120 Hz world
   with one-contact teleport correction is less stable than a 60 Hz world with a
   four-point manifold.

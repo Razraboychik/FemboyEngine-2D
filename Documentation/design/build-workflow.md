@@ -58,26 +58,30 @@ all three systems. See
 
 ## Choosing a compiler
 
-The 0.4 alpha line validates four compilers. The minimum versions are the
-releases validated for this line, not older compatibility targets.
+The 0.4 alpha line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
+reference toolchain and the release gate; CI also runs clang, GCC and AppleClang.
+MSVC builds the same tree for local development but is not part of the CI gate.
+Every compiler is a supported alternative, never an obligation. The minimum
+versions are the releases validated for this line, not older compatibility
+targets.
 
 | Compiler | Platform | Minimum | Best for |
 |---|---|---|---|
 | clang-cl | Windows | 23.1.4 | primary Windows build, PDB and Visual Studio debugging |
-| MSVC (`cl.exe`) | Windows | 19.44 | teams standardized on the Microsoft toolchain |
+| MSVC (`cl.exe`) | Windows | 19.44 | optional alternative for teams standardized on the Microsoft toolchain |
 | clang++ | Linux/macOS/Windows | 23.1.4 | cross-platform parity, primary Unix build |
 | GCC | Linux/MinGW | 16.2.0 | second-opinion compiler and portability checks |
 | AppleClang | macOS | 21.0 (Xcode 26.4) | native macOS/Metal build |
 
-- **Windows:** use clang-cl for the reference build. Use MSVC when the project
-  must build inside a Visual Studio-native toolchain. Both use the Windows SDK
-  and the MSVC standard library.
+- **Windows:** clang-cl is the reference build. It uses the Windows SDK and the
+  MSVC standard library, and works with the Visual Studio debugger and PDBs. MSVC
+  (`cl.exe`) is the optional alternative for a Visual Studio-native toolchain.
 - **Linux:** clang++ is the reference build; GCC 16.2.0 is the second opinion.
 - **macOS:** AppleClang 21+ with the Metal backend.
 - **One compiler everywhere:** Clang. It is the only frontend that covers
   Windows (clang-cl or clang++), Linux and macOS.
 
-MSVC manual configure:
+Optional MSVC configure:
 
 ```bat
 cmake -S . -B build-msvc -G Ninja ^
@@ -93,6 +97,7 @@ ctest --test-dir build-msvc --output-on-failure
 RNNoise stays disabled on MSVC because its vendored C sources use variable-length
 arrays, which the Microsoft C frontend does not implement. The spectral denoise
 tier remains the fallback; Clang, GCC and clang-cl keep the neural tier.
+
 
 The build requires Vulkan 1.4 on Windows and Linux; macOS uses Metal. See
 [system requirements](system-requirements.md) for the editor hardware targets.

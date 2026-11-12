@@ -52,7 +52,7 @@ struct ColorMatrix3
 // Blends towards the corrected image by `strength` (0 = untouched, 1 = full
 [[nodiscard]] Color32 ApplyColorVision(Color32 InColor, const ColorMatrix3& InMatrix, float InStrength = 1.0f) noexcept;
 
-// WCAG 2.2 relative luminance and contrast ratio. Use these when validating a
+// WCAG 2.2 relative luminance and contrast ratio.
 [[nodiscard]] float SrgbRelativeLuminance(Color32 InColor) noexcept;
 [[nodiscard]] float ContrastRatio(Color32 InForeground, Color32 InBackground) noexcept;
 
@@ -61,7 +61,7 @@ class FlashGuard
 {
 public:
     void Configure(float InThreshold = 0.20f, float InResidualGain = 0.35f) noexcept;
-    // Returns the gain to apply to the current frame. `meanLuminance` is the
+    // Returns the gain to apply to the current frame.
     [[nodiscard]] float Evaluate(float InMeanLuminance, float InDt) noexcept;
     void Reset() noexcept;
     [[nodiscard]] float CurrentGain() const noexcept
@@ -373,10 +373,10 @@ public:
     // it must not be combined with ApplyPostFx on the same frame.
     void ApplyCpuColorFallback(std::span<Rhi::RenderItem> InItems, Color32& InClear) const noexcept;
 
-    // Fixed/PostUpdate call. In blind mode it emits physics contacts and
+    // Fixed/PostUpdate call. In blind mode it emits physics contacts.
     void Update(const Ecs::AccessibilitySystemView& InView) noexcept;
 
-    // Sound timeline hook: call when an audio marker becomes audible. The
+    // Sound timeline hook: call when an audio marker becomes audible.
     void PublishSoundTrigger(const SoundTrigger& InTrigger, std::string_view InText) noexcept;
 
     // Cue-driven captions. The registry maps cueId -> locId, category, priority
@@ -395,7 +395,7 @@ public:
     void AdvanceCaptionClock(float InDeltaSeconds) noexcept;
     void PollVoiceCaptions() noexcept;
 
-    // Scans a clip timeline for cues crossed in (previousTime, currentTime] and
+    // Scans a clip timeline for cues crossed.
     void ProcessTimeline(std::span<const TimedSoundCue> InCues, float InPreviousTime, float InCurrentTime) noexcept;
     void PublishNarrative(std::uint32_t InCode, Entity InEntity, Vector2D InPosition, std::string_view InText,
                           std::uint8_t InSeverity = 0) noexcept;
@@ -414,10 +414,10 @@ public:
     void SetSpeechSink(SpeechSink InSink, void* InUser) noexcept;
     // Optional native backend (SAPI/AVSpeech). When set, FlushSpeech() routes
     void SetTtsBackend(const TtsBackend* InBackend) noexcept;
-    // Main-thread only. The editor calls this from EditorSystem::Tick(); the
+    // Main-thread only. The editor calls this from EditorSystem::Tick().
     void FlushSpeech() noexcept;
 
-    // Builds the subtitle overlay into a dedicated canvas. Returns true when at
+    // Builds the subtitle overlay into a dedicated canvas.
     bool BuildSubtitleCanvas(Ui::WidgetCanvas& InCanvas) const noexcept;
 
 private:

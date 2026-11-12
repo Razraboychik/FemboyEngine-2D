@@ -78,7 +78,7 @@ void SceneDiagnosticsPanel::Sample(Ecs::SystemContext& InContext)
     const std::uint64_t ScopedNow = NowNanoseconds();
     if (MLastSampleNanoseconds != 0 && ScopedNow > MLastSampleNanoseconds)
     {
-        // steady_clock gives nanoseconds; the sample and every series below are
+        // steady_clock gives nanoseconds; the sample and every series below.
         ScopedSample.frameMicroseconds = (ScopedNow - MLastSampleNanoseconds) / 1000;
     }
     MLastSampleNanoseconds = ScopedNow;

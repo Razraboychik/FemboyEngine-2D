@@ -74,7 +74,7 @@ struct CameraStackDesc
     float shakeDecay = 1.8f;
     std::uint32_t seed = 0xC0FFEEu;
 
-    // Per-camera post policy. A gameplay camera typically leaves CRT off while a
+    // Per-camera post policy. A gameplay camera typically leaves CRT off.
     Rhi::PostFxSettings postFx{};
 };
 
@@ -132,7 +132,7 @@ public:
     {
         return MDisplayScale;
     }
-    // Replaces the top camera's post-process policy. The render graph reads the
+    // Replaces the top camera's post-process policy.
     void SetPostFx(const Rhi::PostFxSettings& InSettings) noexcept;
     // 0 disables trauma shake, 1 keeps the authored amplitude.
     void SetComfortShakeScale(float InScale) noexcept;

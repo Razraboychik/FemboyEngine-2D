@@ -35,7 +35,7 @@ public:
     // Registers the built-in components and the default native table. Returns
     [[nodiscard]] bool Initialize();
 
-    // Registers a cooked program. `cooked` must stay alive (a .fempak mapping or
+    // Registers a cooked program.
     [[nodiscard]] std::uint16_t LoadProgram(std::span<const std::byte> InCooked, std::string* InError = nullptr);
 
     // Releases a cooked program slot so the editor can hot-reload a script
@@ -124,7 +124,7 @@ public:
         return MCamera;
     }
 
-    // Called by the system when Run() reports a fault. Logs at most once per
+    // Called by the system when Run() reports a fault.
     void ReportFault(std::uint32_t InHandle, Entity InEntity, const Script::VmFault& InFault) noexcept;
     // Cooked builds run without the VM. A program with no AOT module is a build
     // error; report it once per program instead of once per entity per tick.
@@ -189,7 +189,7 @@ private:
     bool MInitialized = false;
 };
 
-// Registers the components a script graph can touch today. New components are
+// Registers the components a script graph can touch today.
 void RegisterScriptableComponents(Script::EcsBridge& InBridge);
 
 // Installs LogFloat/LogInt/LogVec2/DespawnSelf/RandomFloat/RandomRange.

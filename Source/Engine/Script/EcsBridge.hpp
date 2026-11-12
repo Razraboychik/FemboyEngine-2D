@@ -19,7 +19,7 @@ struct ComponentAccessor
     std::uint64_t layoutHash = 0;
     std::uint32_t size = 0;
     const char* name = nullptr;
-    // Type-erased component lookup. Returns nullptr when the entity does not
+    // Type-erased component lookup. Returns nullptr when the entity has no such component.
     void* (*get)(Ecs::Registry& InRegistry, Entity InEntity) noexcept = nullptr;
 };
 
@@ -97,7 +97,7 @@ struct ResolvedComponent
     bool valid = false;
 };
 
-// A CompiledProgram plus the pointers it resolved to. Copied by value into the
+// A CompiledProgram plus the pointers it resolved to.
 struct BoundProgram
 {
     CompiledProgram program{};

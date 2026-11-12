@@ -472,7 +472,7 @@ void NodeCanvasPanel::ProcessEvents()
         }
     }
 
-    // Delete selected links first, then nodes: deleting a node rebuilds the
+    // Delete selected links first, then nodes: deleting a node rebuilds the link table.
     const bool ScopedDeletePressed =
         ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !ImGui::GetIO().WantTextInput &&
         (ImNodes::IsEditorHovered() || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));

@@ -22,7 +22,7 @@ struct TtsBackend
     bool (*speak)(void* InUser, const char* InUtf8, std::size_t InLength, TtsPriority InPriority) noexcept = nullptr;
     void (*stop)(void* InUser) noexcept = nullptr;
     void (*setRate)(void* InUser, float InRate) noexcept = nullptr;
-    // Select a voice by BCP-47 language tag ("en-US", "ru-RU"). Called from the
+    // Select a voice by BCP-47 language tag ("en-US", "ru-RU").
     void (*setVoice)(void* InUser, const char* InLanguageBCP47) noexcept = nullptr;
 };
 
@@ -56,7 +56,7 @@ private:
     std::uint32_t MThreadId = 0;
 };
 
-// macOS AVSpeechSynthesizer adapter. The Objective-C++ implementation lives in
+// macOS AVSpeechSynthesizer adapter. The Objective-C++ implementation lives.
 class AvSpeechTts
 {
 public:
@@ -86,7 +86,7 @@ private:
     float MRate = 0.0f;
 };
 
-// Process-wide backend for the current platform (SAPI on Windows, AVSpeech on
+// Process-wide backend for the current platform.
 [[nodiscard]] const TtsBackend* NativeTtsBackend() noexcept;
 void ShutdownNativeTts() noexcept;
 }

@@ -488,7 +488,7 @@ void TestSystemGraphStress()
     }
     Check(ScopedGraph.Build(), "64-node graph builds");
 
-    // 64 independent nodes force the widest wave the graph supports. Run the
+    // 64 independent nodes force the widest wave the graph supports.
     for (std::uint32_t ScopedFrame = 0; ScopedFrame < 64; ++ScopedFrame)
     {
         ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);

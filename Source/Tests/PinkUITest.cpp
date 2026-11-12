@@ -335,7 +335,7 @@ void TestDataModel()
     static_assert(offsetof(RenderItem, uvMin) == 16);
     static_assert(offsetof(RenderItem, color) == 36);
     static_assert(offsetof(RenderItem, flags) == 44);
-    // DrawBatch is four 32-bit fields and 16 bytes: no uint16 resource ids, no
+    // DrawBatch is four 32-bit fields and 16 bytes: no uint16 resource ids.
     static_assert(sizeof(DrawBatch) == 16);
     static_assert(sizeof(DrawBatch::pipeline) == 4);
     static_assert(sizeof(DrawBatch::textureArray) == 4);
@@ -397,7 +397,7 @@ void TestGridView()
     FBY_CHECK(ScopedCanvas.gridColumnCount == 3);
     FBY_CHECK(ScopedCanvas.gridRowCount == 2);
 
-    // A real 2D view: row 0 is the column tracks, row 1 the row tracks, and a
+    // A real 2D view: row 0 is the column tracks, row 1 the row tracks.
     const Fby::Ui::GridView ScopedGrid = ScopedCanvas.Grid();
     FBY_CHECK(ScopedGrid.extent(0) == 2);
     FBY_CHECK(ScopedGrid.extent(1) == WidgetCanvas::kTrackCapacity);
@@ -484,7 +484,8 @@ void TestGridLayout()
     const float ScopedAuthoredAutoRow = ScopedCanvas.Grid()[1, 1];
     FBY_CHECK_NEAR(ScopedAuthoredAutoRow, -1.0f, 0.0f);
 
-    // Cells are validated at insertion: out-of-grid, oversized span, a cell on
+    // Cells are validated at insertion: out-of-grid, oversized span, a parented cell,
+    // a half cell and a zero span are rejected.
     WidgetDesc ScopedOutOfGrid = StretchWidget();
     ScopedOutOfGrid.gridRow = 0;
     ScopedOutOfGrid.gridColumn = 3;
@@ -546,14 +547,14 @@ void TestAnchorsAndNesting()
     const std::int32_t ScopedHalfRightWidget = ScopedCanvas.AddWidget(ScopedHalfRight);
     FBY_CHECK_RECT(ScopedCanvas.LocalRect(ScopedHalfRightWidget), R(V(200.0f, 0.0f), V(400.0f, 300.0f)));
 
-    // Nested: a grandchild resolves against its parent's resolved rect, not
+    // Nested: a grandchild resolves against its parent's resolved rect.
     WidgetDesc ScopedGrandchild = WidgetAt(V(5.0f, 5.0f), V(15.0f, 10.0f));
     ScopedGrandchild.parent = ScopedFixedWidget;
     const std::int32_t ScopedGrandchildWidget = ScopedCanvas.AddWidget(ScopedGrandchild);
     FBY_CHECK(ScopedGrandchildWidget == 3);
     FBY_CHECK_RECT(ScopedCanvas.LocalRect(ScopedGrandchildWidget), R(V(15.0f, 15.0f), V(25.0f, 20.0f)));
 
-    // UGUI-style insets on a stretched anchor: negative offsetMax pulls the
+    // UGUI-style insets on a stretched anchor: a negative offsetMax pulls the max edge in.
     WidgetDesc ScopedInset = StretchWidget(WidgetKind::Panel);
     ScopedInset.parent = ScopedPanel;
     ScopedInset.offsetMin = V(5.0f, 5.0f);
@@ -714,7 +715,7 @@ void TestPointerAndFocus()
 // 7. Embedded font and text measurement
 void TestFontAndText()
 {
-    // The space glyph is blank; 'A' has ink; anything outside 32..126 maps to
+    // The space glyph is blank; 'A' has ink.
     const std::array<std::uint8_t, 8> ScopedSpace = Fby::Ui::GlyphBitmap(' ');
     std::uint32_t ScopedSpaceInk = 0;
     for (const std::uint8_t ScopedRow : ScopedSpace)
@@ -829,7 +830,7 @@ void TestBuildFramePacking(SystemContext& InContext)
     FBY_CHECK(ScopedItems[3].color == ScopedCanvas.tints[0].rgba);
     FBY_CHECK_NEAR(ScopedItems[3].rotation, 0.0f, 0.0f);
 
-    // Label: one quad per glyph, in the font atlas layer, laid out from the
+    // Label: one quad per glyph, in the font atlas layer, laid out.
     FBY_CHECK(ScopedItems[4].layer == Fby::Ui::kFontAtlasLayer);
     FBY_CHECK_VEC(ScopedItems[4].position, V(14.0f, 64.0f));
     FBY_CHECK_VEC(ScopedItems[4].size, V(8.0f, 8.0f));
@@ -866,7 +867,7 @@ void TestBuildFramePacking(SystemContext& InContext)
     FBY_CHECK_VEC(ScopedItems[14].size, V(120.0f, 40.0f));
     FBY_CHECK(ScopedItems[14].color == ScopedCanvas.tints[1].rgba);
 
-    // Canvas world placement: position/scale/rotation are baked into every
+    // Canvas world placement: position/scale/rotation are baked.
     WidgetCanvas ScopedWorldCanvas;
     ScopedWorldCanvas.SetCanvasSize(V(100.0f, 50.0f));
     (void)ScopedWorldCanvas.AddWidget(StretchWidget(WidgetKind::Panel));
@@ -1157,7 +1158,7 @@ void TestNoAllocation(SystemContext& InContext)
         FBY_CHECK(ScopedScope.Count() == 0);
     }
 
-    // Hit testing, focus changes, text measurement and grid reads are all
+    // Hit testing, focus changes, text measurement and grid reads.
     {
         const AllocationScope ScopedScope;
         const std::int32_t ScopedHit = Fby::Ui::HitTest(ScopedCanvas, V(60.0f, 20.0f));
@@ -1250,7 +1251,7 @@ void TestEcsUpdate(SystemContext& InContext)
         FBY_CHECK((ScopedKeys[ScopedIndex] >> 48) == 7);
     }
 
-    // Rotated canvas: the local centre (50, 25) rotates to (-25, 50) around the
+    // Rotated canvas: the local centre (50, 25) rotates to (-25, 50) around.
     bool ScopedFoundRotated = false;
     bool ScopedFoundPlaced = false;
     bool ScopedFoundGhost = false;
@@ -2970,7 +2971,7 @@ int main()
     Fby::JobSystem ScopedJobs;
     SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
 
-    // Strict Pink UI contract: text requires a mounted font texture array. The
+    // Strict Pink UI contract: text requires a mounted font texture array.
     Fby::Rhi::DeviceDesc ScopedGpuDesc;
     ScopedGpuDesc.backend = Fby::Rhi::Backend::Null;
     std::unique_ptr<Fby::Rhi::RHI> ScopedGpu = Fby::Rhi::RHI::Create(ScopedGpuDesc);

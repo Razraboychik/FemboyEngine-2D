@@ -307,6 +307,19 @@ world and music low-pass for the listener's zone, while `VoiceEffectRack` applie
 the per-participant voice filter and warp. They are separate because voice also
 carries spatial placement and a read-only condition snapshot for the game.
 
+Ready-made effects are data, not code. `VoicePresetRegistry` holds named
+`VoiceEffectProfile` values loaded from `.fbyvoice` packs or registered by a
+plugin; `VoiceEffectPolicy` decides what a moderated participant sounds like, and
+`VoicePresetApplier` copies the resolved value into the rack only when it
+changes. A listener-side `Mumble` policy therefore cannot be bypassed by the
+sender: the speaker's packet carries speech, not the presentation.
+
+Reactive cues such as bubbles, splashes and a muffled thump are a separate local
+layer (`VoiceReactiveSfx`). They are triggered by participant state, never by a
+remote packet, and they play on the Sfx bus at the speaker's position. They are
+deliberately not mixed into `FVOX`; see
+[voice presets](voice-presets.md) for the limit and asset rules.
+
 ### 3.3 Chain architecture
 
 A `VoiceEffectRack` is the per-stream unit. It combines:

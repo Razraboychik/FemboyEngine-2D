@@ -30,7 +30,7 @@ enum class ChangeMaskBit : ChangeMask
     Physics = 1ull << 7,
     Lifetime = 1ull << 8,
     Custom = 1ull << 9,
-    // Bits 16..63 are reserved for game-side aliases. The low 16 bits are the
+    // Bits 16..63 are reserved for game-side aliases.
     GameBitBase = 1ull << 16,
 };
 
@@ -49,7 +49,7 @@ enum class ChangeMaskBit : ChangeMask
     return InLeft | ChangeMaskOf(InRight);
 }
 
-// Stored in the registry next to Transform2D/Sprite2D. `Bits` is the only
+// Stored in the registry next to Transform2D/Sprite2D.
 struct ComponentChangeMask
 {
     ChangeMask Bits = 0;
@@ -87,7 +87,7 @@ FORCEINLINE void Mark(ComponentChangeMask& InMask, ChangeMask InBits, std::uint3
 {
     std::atomic_ref<ChangeMask> ScopedBits(InMask.Bits);
     ScopedBits.fetch_or(InBits, std::memory_order_release);
-    // LastFrame is diagnostic only. A plain store is enough; a reader that
+    // LastFrame is diagnostic only. A plain store is enough.
     InMask.LastFrame = InFrame;
 }
 
@@ -109,7 +109,7 @@ FORCEINLINE void Mark(ComponentChangeMask& InMask, ChangeMaskBit InBit, std::uin
     return ScopedBits.load(std::memory_order_acquire);
 }
 
-// Ensures the entity has a mask and marks the bits in one call. The component is
+// Ensures the entity has a mask and marks the bits in one call.
 FORCEINLINE void Mark(Ecs::Registry& InRegistry, Entity InEntity, ChangeMask InBits, std::uint32_t InFrame = 0) noexcept
 {
     ComponentChangeMask* ScopedMask = InRegistry.try_get<ComponentChangeMask>(InEntity);
@@ -150,14 +150,14 @@ FORCEINLINE void MarkDrawOrder(Ecs::Registry& InRegistry, Entity InEntity, std::
     Mark(InRegistry, InEntity, ChangeMaskBit::DrawOrder, InFrame);
 }
 
-// Attaches an empty mask. Spawners call this once; an entity without a mask is
+// Attaches an empty mask. Spawners call this once.
 FORCEINLINE ComponentChangeMask& Ensure(Ecs::Registry& InRegistry, Entity InEntity) noexcept
 {
     ComponentChangeMask* ScopedMask = InRegistry.try_get<ComponentChangeMask>(InEntity);
     return ScopedMask != nullptr ? *ScopedMask : InRegistry.emplace<ComponentChangeMask>(InEntity);
 }
 
-// Clears every mask in the registry. Used by a full render extract rebuild or by
+// Clears every mask in the registry.
 inline void ClearAll(Ecs::Registry& InRegistry) noexcept
 {
     auto ScopedView = InRegistry.view<ComponentChangeMask>();

@@ -3,6 +3,7 @@
 
 #include "Engine/Core/FlatMap.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
+#include "Engine/Audio/VoicePreset.hpp"
 #include "Engine/Core/PluginAPI.h"
 #include "Engine/Core/Mirror.hpp"
 #include "Engine/UI/AccessibilityTheme.hpp"
@@ -116,7 +117,8 @@ public:
         MAccessibilityApi.register_palette_extension = &PluginHost::HostRegisterExtension;
         MAccessibilityApi.register_effect = &PluginHost::HostRegisterEffect;
         MAccessibilityApi.set_effect = &PluginHost::HostSetEffect;
-        MApi.accessibility = (InThemes != nullptr || MExtensions != nullptr || MEffects != nullptr) ? &MAccessibilityApi : nullptr;
+        MApi.accessibility =
+            (InThemes != nullptr || MExtensions != nullptr || MEffects != nullptr) ? &MAccessibilityApi : nullptr;
     }
 
     void BindAccessibilityEffects(Ui::AccessibilityExtensionRegistry* InExtensions,
@@ -131,7 +133,20 @@ public:
         MAccessibilityApi.register_palette_extension = &PluginHost::HostRegisterExtension;
         MAccessibilityApi.register_effect = &PluginHost::HostRegisterEffect;
         MAccessibilityApi.set_effect = &PluginHost::HostSetEffect;
-        MApi.accessibility = (MThemes != nullptr || InExtensions != nullptr || InEffects != nullptr) ? &MAccessibilityApi : nullptr;
+        MApi.accessibility =
+            (MThemes != nullptr || InExtensions != nullptr || InEffects != nullptr) ? &MAccessibilityApi : nullptr;
+    }
+
+    // Optional voice preset registry. The table is exposed through the
+    // append-only `voice` pointer, so plugins built for ABI 6 keep loading and
+    // a plugin that needs voice checks FbyHostHasVoice().
+    void BindVoicePresets(VoicePresetRegistry* InPresets) noexcept
+    {
+        MVoicePresets = InPresets;
+        MVoiceApi.struct_size = static_cast<std::uint32_t>(sizeof(FbyVoiceApi));
+        MVoiceApi.abi_version = FBY_VOICE_API_VERSION;
+        MVoiceApi.register_preset = &PluginHost::HostRegisterVoicePreset;
+        MApi.voice = InPresets != nullptr ? &MVoiceApi : nullptr;
     }
 
     // Returns false and fills `error` when the library is missing, the ABI does
@@ -152,7 +167,7 @@ public:
     {
         return MPlugins;
     }
-    // The host table handed to plugins. Its `user` field is the pointer a
+    // The host table handed to plugins.
     [[nodiscard]] const FbyHostApi& Api() const noexcept
     {
         return MApi;
@@ -175,12 +190,15 @@ private:
     static int HostRegisterExtension(void* InUser, const FbyPaletteExtensionDesc* InExtension);
     static int HostRegisterEffect(void* InUser, const FbyEffectDesc* InEffect);
     static int HostSetEffect(void* InUser, const char* InId);
+    static int HostRegisterVoicePreset(void* InUser, const FbyVoicePresetDesc* InPreset);
     static void PluginSystemThunk(Ecs::SystemContext& InContext, void* InUser);
 
     ComponentRegistry& MComponents;
     void* MEcsRegistry = nullptr;
     FbyHostApi MApi{};
     FbyAccessibilityApi MAccessibilityApi{};
+    FbyVoiceApi MVoiceApi{};
+    VoicePresetRegistry* MVoicePresets = nullptr;
     Ui::AccessibilityThemeRegistry* MThemes = nullptr;
     Ui::AccessibilityExtensionRegistry* MExtensions = nullptr;
     Ui::AccessibilityEffectRegistry* MEffects = nullptr;

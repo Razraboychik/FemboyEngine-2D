@@ -1,4 +1,4 @@
-// FemboyEngine2D - VideoSystem: the fixed player-slot array and the
+// FemboyEngine2D - VideoSystem: the fixed player-slot array.
 #include "Engine/Video/VideoStream.hpp"
 
 #include "Engine/Assets/AssetDatabase.hpp"
@@ -90,7 +90,7 @@ bool VideoSystem::Open(VideoStreamComponent& InComponent, std::string_view InPat
         SetError(InError, "VideoSystem is not initialized with a VirtualFileSystem");
         return false;
     }
-    // Pin() is the owning read: if the asset watcher reloads this clip while the
+    // Pin() is the owning read: if the asset watcher reloads this clip.
     const auto ScopedPinned = MVfs->Pin(InPath);
     if (!ScopedPinned)
     {

@@ -102,7 +102,7 @@ public:
     WeatherSystem() = default;
 
     void Initialize(const WeatherDesc& InDesc = {}) noexcept;
-    // PreUpdate. Advances every WeatherContextComponent, derives the wind and
+    // PreUpdate. Advances every WeatherContextComponent, derives the wind.
     void Update(Ecs::SystemContext& InContext) noexcept;
     // Same noise field, sampled at a world point. Used by a local foilage query
     [[nodiscard]] Vector2D WindAt(Vector2D InWorld, float InTimeSeconds) const noexcept;

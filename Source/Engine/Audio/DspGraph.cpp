@@ -17,7 +17,7 @@ constexpr std::uint32_t kReverbCombBase[4] = {1116, 1188, 1277, 1356};
 constexpr std::uint32_t kReverbAllpassBase[2] = {556, 441};
 constexpr std::uint32_t kReverbBaseSampleRate = 44100;
 
-// Gain clamps match the legacy AudioSystem::SetBusVolume contract (0..8) so a
+// Gain clamps match the legacy AudioSystem::SetBusVolume contract (0..8).
 constexpr float kMaxBusGain = 8.0f;
 
 [[nodiscard]] float ClampGain(float InGain) noexcept
@@ -173,7 +173,7 @@ bool DspGraph::Initialize(std::uint32_t InSampleRate)
         return false;
     }
 
-    // Reset every slot, then create the three built-in buses. This is the only
+    // Reset every slot, then create the three built-in buses.
     for (std::uint32_t ScopedBus = 0; ScopedBus < kMaxBuses; ++ScopedBus)
     {
         ResetBusSlot(static_cast<BusId>(ScopedBus));
@@ -339,7 +339,7 @@ DspResult DspGraph::SetBusGain(BusId InBus, float InGain) noexcept
     {
         return DspResult::InvalidArgument;
     }
-    // Direct atomic write: a volume slider must not be one buffer late, and a
+    // Direct atomic write: a volume slider must not be one buffer late.
     MBusAtomics[InBus].gain.store(ClampGain(InGain), std::memory_order_relaxed);
     return DspResult::Ok;
 }
@@ -1047,7 +1047,7 @@ void DspGraph::DestroyBusOnAudioThread(BusId InBus) noexcept
     {
         RemoveChild(ScopedParent, InBus);
     }
-    // Reparent the children to the destroyed bus's parent, matching the
+    // Reparent the children to the destroyed bus's parent, matching the bus tree.
     for (std::uint8_t ScopedIndex = 0; ScopedIndex < MBuses[InBus].childCount; ++ScopedIndex)
     {
         const BusId ScopedChild = MBuses[InBus].children[ScopedIndex];
@@ -1400,7 +1400,7 @@ void DspGraph::ApplyDucking(BusId InBus, float* InBuffer, std::uint32_t InFrameC
     {
         return;
     }
-    // The sidechain detector prefers the source bus's per-frame output of this
+    // The sidechain detector prefers the source bus's per-frame output.
     const bool ScopedHaveSource = InRendered[ScopedDucking.sourceBus] && MBuses[ScopedDucking.sourceBus].active;
     const float* ScopedSource = ScopedHaveSource ? MBusOut[ScopedDucking.sourceBus] : nullptr;
     const float ScopedFallback = MLastBlockPeak[ScopedDucking.sourceBus];

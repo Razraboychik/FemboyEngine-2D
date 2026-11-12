@@ -51,7 +51,7 @@ struct PackPlan
     std::string output;
 };
 
-// Everything the cook command accepts. The texture fields are forwarded to
+// Everything the cook command accepts.
 struct CookOptions
 {
     fs::path root = "assets";
@@ -99,7 +99,7 @@ void PrintUsage()
     return ToLower(InPath.extension().string());
 }
 
-// Every format the texture recipe may see. JPEG/BMP/WebP/HDR are routed to the
+// Every format the texture recipe may see.
 [[nodiscard]] bool IsImageSource(const fs::path& InPath)
 {
     const std::string ScopedExtension = ExtensionOf(InPath);
@@ -275,7 +275,7 @@ void PrintUsage()
         {
             continue;
         }
-        // Do not ship two generations of the same asset. A cooked file next to
+        // Do not ship two generations of the same asset.
         if (ScopedPath.starts_with("loc/") && ScopedPath.ends_with(".fbin"))
         {
             continue;
@@ -818,7 +818,7 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
     return true;
 }
 
-// Inspection commands. They share the reader logic with the runtime, but do not
+// Inspection commands. They share the reader logic with the runtime.
 [[nodiscard]] std::optional<std::vector<std::byte>> ReadArchive(const char* InPath, std::string* InError)
 {
     std::vector<std::byte> ScopedBytes;
@@ -1016,7 +1016,7 @@ struct ListedEntry
     return true;
 }
 
-// Wraps one .fempak into the encrypted distribution container. This is the only
+// Wraps one .fempak into the encrypted distribution container.
 [[nodiscard]] bool ReadAeadKeyFile(const char* InPath, Fby::Crypto::AeadKey* OutKey)
 {
     if (InPath == nullptr || OutKey == nullptr)

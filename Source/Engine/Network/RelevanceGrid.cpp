@@ -238,7 +238,7 @@ bool RelevanceGrid::BuildPlan(NetPlayerId InPlayer, std::uint64_t InTick, Releva
         }
     }
 
-    // A deterministic wire order, independent of cell traversal and of the
+    // A deterministic wire order, independent of cell traversal.
     std::sort(OutPlan.items.begin(), OutPlan.items.begin() + OutPlan.count,
               [](const RelevanceEntity& InLeft, const RelevanceEntity& InRight) noexcept
               { return InLeft.id.value < InRight.id.value; });

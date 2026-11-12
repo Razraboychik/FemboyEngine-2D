@@ -48,10 +48,10 @@ template <typename Component> [[nodiscard]] constexpr FbyComponentInfo Describe(
 }
 }
 
-// Declares one component in the plugin's table. `Type` must be registered with
+// Declares one component in the plugin's table.
 #define FBY_PLUGIN_COMPONENT(Type, Name) ::Fby::Plugin::Describe<Type>(Name)
 
-// Emits the three exported entry points. `LoadBody` is the body of
+// Emits the three exported entry points.
 #define FBY_DEFINE_PLUGIN(PluginName, PluginVersion, PluginAuthor, BuildInfo, ComponentsArray, LoadBody)               \
     FBY_PLUGIN_ENTRY const FbyPluginInfo* fby_plugin_info(void)                                                        \
     {                                                                                                                  \

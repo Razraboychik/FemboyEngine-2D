@@ -30,7 +30,7 @@ inline constexpr std::uint32_t kAudioZoneBusGameSfx = 1u << 3;
 inline constexpr std::uint32_t kAudioZoneBusAll =
     kAudioZoneBusMaster | kAudioZoneBusSfx | kAudioZoneBusMusic | kAudioZoneBusGameSfx;
 
-// The authored zone. `zoneId` is a stable gameplay id (not an runtime entity id) so a
+// The authored zone. `zoneId` is a stable gameplay id (not an runtime entity id).
 struct AudioZoneComponent
 {
     Vector2D Min{-128.0f, -128.0f};
@@ -89,7 +89,7 @@ struct AudioContextComponent
 static_assert(std::is_trivially_copyable_v<AudioContextComponent>);
 static_assert(std::is_standard_layout_v<AudioContextComponent>);
 
-// PostUpdate system. The caller owns the AudioSystem and must keep it alive for
+// PostUpdate system. The caller owns the AudioSystem and must keep it alive.
 class AudioZoneSystem
 {
 public:

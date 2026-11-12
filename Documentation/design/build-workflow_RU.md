@@ -58,26 +58,29 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 
 ## Выбор компилятора
 
-0.4 alpha проверяет четыре компилятора. Минимальные версии — это проверенные
-релизы текущей линии, а не старые compatibility-цели.
+0.4 alpha поддерживает Clang, AppleClang, GCC и MSVC. clang-cl — эталонный
+тулчейн и release gate; CI также прогоняет clang, GCC и AppleClang. MSVC собирает
+то же дерево для локальной разработки, но не входит в CI-гейт. Любой компилятор —
+поддерживаемая альтернатива, но никогда не обязанность. Минимальные версии — это
+проверенные релизы текущей линии, а не старые compatibility-цели.
 
 | Компилятор | Платформа | Минимум | Для чего |
 |---|---|---|---|
 | clang-cl | Windows | 23.1.4 | основной Windows-билд, PDB и отладка Visual Studio |
-| MSVC (`cl.exe`) | Windows | 19.44 | команды, стандартизированные на Microsoft-тулчейне |
+| MSVC (`cl.exe`) | Windows | 19.44 | опциональная альтернатива для команд на Microsoft-тулчейне |
 | clang++ | Linux/macOS/Windows | 23.1.4 | кросс-платформенный паритет, основной Unix-билд |
 | GCC | Linux/MinGW | 16.2.0 | второй компилятор и проверка переносимости |
 | AppleClang | macOS | 21.0 (Xcode 26.4) | нативная macOS/Metal-сборка |
 
-- **Windows:** clang-cl для эталонной сборки. MSVC — если проект должен
-  собираться в нативном Visual Studio-тулчейне. Оба используют Windows SDK и
-  стандартную библиотеку MSVC.
+- **Windows:** clang-cl — эталонная сборка. Он использует Windows SDK и
+  стандартную библиотеку MSVC, работает с отладчиком Visual Studio и PDB. MSVC
+  (`cl.exe`) — опциональная альтернатива для нативного Visual Studio-тулчейна.
 - **Linux:** clang++ — эталон; GCC 16.2.0 — второе мнение.
 - **macOS:** AppleClang 21+ с Metal-бэкендом.
 - **Один компилятор везде:** Clang. Только он покрывает Windows (clang-cl или
   clang++), Linux и macOS одним фронтендом.
 
-Ручная конфигурация MSVC:
+Опциональная конфигурация MSVC:
 
 ```bat
 cmake -S . -B build-msvc -G Ninja ^
@@ -93,6 +96,7 @@ ctest --test-dir build-msvc --output-on-failure
 RNNoise отключён для MSVC: его C-исходники используют variable-length arrays,
 которых нет во фронтенде Microsoft. Остаётся spectral-denoise fallback; Clang,
 GCC и clang-cl сохраняют neural tier.
+
 
 Сборка требует Vulkan 1.4 на Windows и Linux; на macOS используется Metal.
 Требования к редактору — в

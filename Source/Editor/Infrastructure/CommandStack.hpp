@@ -103,7 +103,7 @@ public:
         std::uint32_t rejectedCommands = 0;
     };
 
-    // Observer runs after Undo/Redo applied a component (e.g. re-evaluate a
+    // Observer runs after Undo/Redo applied a component.
     using ApplyObserver = void (*)(void* InUser, Entity InEntity, std::uint16_t InCodec) noexcept;
 
     CommandStack() = default;
@@ -151,7 +151,7 @@ public:
         }
         else
         {
-            // Derived components (SkeletonComponent, ...) are intentionally not
+            // Derived components (SkeletonComponent, ...) are intentionally not registered here.
             ScopedOps.layoutHash = Reflect::Fnv1a(ScopedLabel);
         }
         ScopedOps.get = &Scene::Detail::ComponentOpsFor<T>::Get;
@@ -167,7 +167,7 @@ public:
 
     [[nodiscard]] std::uint16_t CodecForLayoutHash(std::uint64_t InLayoutHash) const noexcept;
     [[nodiscard]] const char* CodecName(std::uint16_t InCodec) const noexcept;
-    // Canonical byte size of a codec, or 0 for an unknown codec. The
+    // Canonical byte size of a codec, or 0 for an unknown codec.
     [[nodiscard]] std::uint32_t CodecSize(std::uint16_t InCodec) const noexcept;
 
     [[nodiscard]] Result BeginTransaction(std::string_view InLabel) noexcept;

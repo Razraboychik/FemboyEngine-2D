@@ -39,6 +39,13 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
   лобби и детерминированный роллбэк.
 - **Аудио и голос** — микшер и DSP-граф, пространственное аудио, захват, AEC,
   Opus, RNNoise и голосовые эффекты с условиями.
+- **Ввод и платформа** — `InputSystem` фиксированной ёмкости (actions, контексты,
+  модификаторы, триггеры), hotplug геймпадов SDL3 и C-ABI `PlatformService` с
+  провайдерами Steam, Epic Games Store и GOG для достижений и облачных сохранений.
+- **AI и навигация** — `StateTree` через командный буфер в `AIController`,
+  восприятие, A* по cost-grid на прямоугольных и гексагональных сетках, апдейт толпы.
+- **Видео и погода** — воспроизведение VP9, AV1 и WebM со звуком в texture-массивы
+  и GPU-пасс погоды (облака, тени облаков, туман, осадки, огонь, молнии, ветер).
 - **Ассеты и редактор** — база ассетов, `.femeta`, горячая перезагрузка, кукинг
   текстур и материалов, `.fempak`/`.femarc`, PinkUI, доступность, панели
   редактора и рабочий процесс проекта/сцены.
@@ -62,6 +69,7 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 | Собрать транспортные группы, лифты и поезда | [Физика: транспортные группы](md/ru/Physics_RU.md), [физика транспорта](design/transport-physics.md) |
 | Добавить подвеску, привод или тормоза транспорта | [Колёса транспорта](design/vehicle-wheels.md) |
 | Настроить движение и искажения камеры | [Эффекты камеры](design/camera-effects.md) |
+| Добавить готовые голосовые эффекты, mumble для модерации и SFX | [Пресеты голоса](design/voice-presets.md), [Голос](design/voice.md) |
 | Добавить действия, контексты, геймпады и ремап | [Система ввода](design/input-system.md) |
 | Построить авторитетный ввод и репликацию | [Практическое руководство: репликация](md/ru/FemboyEngineApplicationGuide_RU.md#51-детерминированный-ввод-и-репликация-при-создании-игры) |
 | Использовать FemboyScript, LogicGraph или StateTree | [FemboyScript](md/ru/FemboyScript_RU.md), [значения LogicGraph и AOT](design/scripting.md) |
@@ -139,6 +147,7 @@ Word и PDF не расходятся.
 | Настройки редактора | [EN](md/en/EditorSettingsReference_EN.md) / [RU](md/ru/EditorSettingsReference_RU.md) | [EN](docx/en/EditorSettingsReference_EN.docx) / [RU](docx/ru/EditorSettingsReference_RU.docx) | [EN](pdf/en/EditorSettingsReference_EN.pdf) / [RU](pdf/ru/EditorSettingsReference_RU.pdf) | [EN](djvu/en/EditorSettingsReference_EN.djvu) / [RU](djvu/ru/EditorSettingsReference_RU.djvu) |
 | Физика | [EN](md/en/Physics_EN.md) / [RU](md/ru/Physics_RU.md) | [EN](docx/en/Physics_EN.docx) / [RU](docx/ru/Physics_RU.docx) | [EN](pdf/en/Physics_EN.pdf) / [RU](pdf/ru/Physics_RU.pdf) | [EN](djvu/en/Physics_EN.djvu) / [RU](djvu/ru/Physics_RU.djvu) |
 | Генерация кадров | [EN](md/en/FemboyEngineFrameGeneration_EN.md) / [RU](md/ru/FemboyEngineFrameGeneration_RU.md) | [EN](docx/en/FemboyEngineFrameGeneration_EN.docx) / [RU](docx/ru/FemboyEngineFrameGeneration_RU.docx) | [EN](pdf/en/FemboyEngineFrameGeneration_EN.pdf) / [RU](pdf/ru/FemboyEngineFrameGeneration_RU.pdf) | [EN](djvu/en/FemboyEngineFrameGeneration_EN.djvu) / [RU](djvu/ru/FemboyEngineFrameGeneration_RU.djvu) |
+| Неиспользуемые алерты CodeQL | [EN](md/en/CodeQLUnusedAlerts_EN.md) / [RU](md/ru/CodeQLUnusedAlerts_RU.md) | [EN](docx/en/CodeQLUnusedAlerts_EN.docx) / [RU](docx/ru/CodeQLUnusedAlerts_RU.docx) | [EN](pdf/en/CodeQLUnusedAlerts_EN.pdf) / [RU](pdf/ru/CodeQLUnusedAlerts_RU.pdf) | [EN](djvu/en/CodeQLUnusedAlerts_EN.djvu) / [RU](djvu/ru/CodeQLUnusedAlerts_RU.djvu) |
 
 ## Перегенерация
 

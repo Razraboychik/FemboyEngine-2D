@@ -1,13 +1,13 @@
 # CMake Project and Engine Management
 
-Applies to FemboyEngine2D 0.3.0-alpha.1 and CMake 3.28 or newer.
+Applies to FemboyEngine2D 0.4.0-alpha.1 and CMake 3.28 or newer.
 
 ## Toolchain
 
 The engine requires C++26:
 
-- Windows: clang-cl 19+ with the MSVC STL.
-- Linux: Clang 19+ or GCC 16+.
+- Windows: clang-cl 23.1.4+ (reference) or MSVC 19.44+ (optional alternative), both with the MSVC STL.
+- Linux: Clang 23.1.4+ or GCC 16.2.0+.
 - macOS: Apple Clang with C++26 support.
 
 Ninja is the supported generator for the validated build. Visual Studio is used

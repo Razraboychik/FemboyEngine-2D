@@ -100,7 +100,7 @@ void TestConditionEvaluators()
     ScopedFloat.FloatThreshold = 1.0f;
     FBY_CHECK(!ScopedMatches(ScopedFloat));
 
-    // An empty condition set is inert: an unconditional transition would fire on
+    // An empty condition set is inert: an unconditional transition would fire.
     Fby::AnimTransition ScopedUnconditional;
     FBY_CHECK(!ScopedMatches(ScopedUnconditional));
 
@@ -144,7 +144,7 @@ void TestStateMachine()
     ScopedDefinition.Clips[1] = MakeClip(2, 1.25f, 8, 2);
     ScopedDefinition.ClipCount = 2;
 
-    // From rest to idle when the entity is grounded. FromState == 0 is
+    // From rest to idle when the entity is grounded.
     ScopedDefinition.Transitions[0].FromState = 0;
     ScopedDefinition.Transitions[0].ToState = 1;
     ScopedDefinition.Transitions[0].Conditions = Fby::AnimConditionTagsAny;
@@ -192,7 +192,7 @@ void TestStateMachine()
     FBY_CHECK(ScopedSprite.UVMax == ScopedRect.uvMax);
     FBY_CHECK(ScopedSprite.Layer == 3);
 
-    // At weight 0 the pose is still the rest pose; one more tick completes the
+    // At weight 0 the pose is still the rest pose.
     FBY_CHECK(std::fabs(ScopedSkeleton.LocalRotations[1]) < 1.0e-6f);
     ScopedGraph.Run(ScopedContext.GameplayView());
     FBY_CHECK(ScopedState.BlendWeight > 0.0f && ScopedState.BlendWeight < 1.0f);

@@ -40,6 +40,10 @@ This branch now has the first slice in the engine:
     generation and five temperature bands (tag path + colour).
 - Plugin ABI **6**:
   - optional `FbyAccessibilityApi` table in `FbyHostApi`;
+  - append-only `const FbyVoiceApi* voice` at the end of `FbyHostApi`; the ABI
+    version is unchanged, old plugins ignore the field and new ones detect it
+    with `FbyHostHasVoice()`; the table has its own `struct_size`/`abi_version`
+    and only registers data (`Source/Plugins/VoicePack` is the reference pack);
   - `register_theme`, `set_theme`, `register_palette_extension`,
     `register_effect` and `set_effect`;
   - plugin-owned resources are removed when the plugin is unloaded or reloaded;
@@ -54,6 +58,10 @@ This branch now has the first slice in the engine:
   - `Source/Plugins/Alcohol` — tipsy/drunk/wasted/stalker profiles built from a
     layered effect pool (double vision, wobble, blur, chromatic aberration,
     vignette, desaturation, afterimage, pulse, sway, scale breathing);
+- Voice preset packs:
+  - `Source/Plugins/VoicePack` — helium, swamp and cursed-mumble presets
+    registered through `FbyVoiceApi`; the pack is data-only, unloads cleanly and
+    stays inactive on a host without a voice registry;
 - Editor:
   - **View > Plugin Manager** lists only the open project's plugins;
   - paths are relative to the project root and validated before loading;

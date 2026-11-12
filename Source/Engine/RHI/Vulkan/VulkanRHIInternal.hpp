@@ -118,7 +118,7 @@ struct SdfGpuBlock
 static_assert(sizeof(SdfGpuBlock) == 10 * 16 + kMaxSdfGpuOccluders * 2 * 16);
 static_assert(sizeof(SdfGpuBlock) == 672);
 
-// Matches mesh.vert (first 64 bytes) and the material extension consumed by
+// Matches mesh.vert (first 64 bytes) and the material extension consumed.
 struct MeshGraphicsPush
 {
     Mat4 viewProjection = Mat4::Identity();
@@ -128,7 +128,7 @@ struct MeshGraphicsPush
 
 static_assert(sizeof(MeshGraphicsPush) == 80);
 
-// Matches mesh_skinning.comp (std430, 16 bytes): one dispatch covers the
+// Matches mesh_skinning.comp (std430, 16 bytes): one dispatch covers.
 struct MeshComputePush
 {
     std::uint32_t vertexCount = 0;
@@ -1021,7 +1021,7 @@ private:
     std::vector<StaticMeshRecord> MStaticMeshes;
     std::vector<std::uint32_t> MFreeStaticMeshIds;
 
-    // User-uploaded texture arrays. Slot 0 is a reserved sentinel for the
+    // User-uploaded texture arrays. Slot 0 is a reserved sentinel.
     static constexpr std::uint32_t kMaxTextureArrays = 64;
     std::vector<std::unique_ptr<TextureArray>> MTextureArrays;
     std::vector<std::uint32_t> MFreeTextureArrayIds;
@@ -1082,7 +1082,7 @@ private:
     // Set when a fence wait or a submit reports a device error; BeginFrame then
     // refuses to run so a reset-but-unsignalled fence can never hang the loop.
     bool MDeviceLost = false;
-    // Set from FramePacket::accessibility in Submit/RenderToTarget and reset in
+    // Set from FramePacket::accessibility in Submit/RenderToTarget and reset.
     bool MBlindFrame = false;
 
     static constexpr std::uint32_t kMaxRenderTargets = 16;
@@ -1125,7 +1125,7 @@ private:
     UiRenderCallback MUiRenderer = nullptr;
     void* MUiUser = nullptr;
 
-    // One shared offscreen render pass with the same attachment format as every
+    // One shared offscreen render pass with the same attachment format.
     VkRenderPass MOffscreenRenderPass = VK_NULL_HANDLE;
     VkRenderPass MSrgbOffscreenRenderPass = VK_NULL_HANDLE;
 

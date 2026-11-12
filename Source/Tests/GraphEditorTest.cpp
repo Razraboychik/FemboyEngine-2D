@@ -331,7 +331,7 @@ void TestAotBuilder()
     FBY_CHECK(ScopedResult.instructions > 0);
 }
 
-// Optional end-to-end native plugin test. Set FBY_AOT_TEST_COMPILER to a
+// Optional end-to-end native plugin test.
 void TestAotNativeBuildIfRequested()
 {
     const char* ScopedCompiler = std::getenv("FBY_AOT_TEST_COMPILER");

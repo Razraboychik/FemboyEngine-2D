@@ -178,7 +178,7 @@ bool WebmDemuxer::ReadId(std::size_t InPosition, std::uint32_t& InId, std::size_
     const auto ScopedFirst = static_cast<std::uint8_t>(MBytes[InPosition]);
     std::size_t ScopedLength = 0;
     std::uint8_t ScopedMask = 0x80;
-    // An EBML id is at most four bytes; a first byte with the marker below the
+    // An EBML id is at most four bytes.
     while (ScopedLength < 4 && (ScopedFirst & ScopedMask) == 0)
     {
         ScopedMask >>= 1;
@@ -858,7 +858,7 @@ bool WebmDemuxer::Open(std::span<const std::byte> InBytes, std::string* InError)
         return false;
     }
 
-    // Walk the Segment's level-1 children until the first Cluster: Info and
+    // Walk the Segment's level-1 children until the first Cluster: Info.
     bool ScopedSawTracks = false;
     MScanPosition = MSegmentStart;
     while (MScanPosition < MSegmentEnd)
@@ -1219,7 +1219,7 @@ bool WebmDemuxer::ParseBlockGroup(const Element& InGroup, WebmFrame& InFrame, bo
 
     if (!ScopedHaveBlock)
     {
-        // A BlockGroup of another track; the caller skips it
+        // A BlockGroup of another track.
         return true;
     }
 
@@ -1317,7 +1317,7 @@ WebmDemuxer::ClusterScan WebmDemuxer::ReadClusterChild(const Element& InElement,
             break;
     }
 
-    // A level-1 element after cluster children ends the cluster list. The
+    // A level-1 element after cluster children ends the cluster list.
     if (IsTopLevelId(InElement.id))
     {
         MInCluster = false;

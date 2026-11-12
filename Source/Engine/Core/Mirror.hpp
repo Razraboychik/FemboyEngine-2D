@@ -24,9 +24,9 @@ enum class FieldKind : std::uint8_t
     Color32,
     // A 32-bit entity/handle id. Serialized as an index into the scene's entity
     Entity,
-    // A fixed-capacity, NUL-terminated UTF-8 string member (char[N] or
+    // A fixed-capacity, NUL-terminated UTF-8 string member.
     String,
-    // 64-bit unsigned integer, used for stable AssetId. TOML encodes it as a
+    // 64-bit unsigned integer, used for stable AssetId.
     UInt64,
     // Fixed 128-bit signed integer, stored as two's complement.
     Int128,
@@ -206,7 +206,7 @@ namespace Detail
     return InField.offset <= InComponentSize && InField.size <= InComponentSize - InField.offset;
 }
 
-// Compares one reflected field of two component images. Never reads padding and
+// Compares one reflected field of two component images.
 [[nodiscard]] inline bool FieldBytesEqual(const FieldDesc& InField, const void* InA, const void* InB) noexcept
 {
     if (InA == nullptr || InB == nullptr || InField.size == 0)
@@ -241,7 +241,7 @@ namespace Detail
         case FieldKind::Vector2D:
             if (InField.size == sizeof(Vector2D))
             {
-                // Two floats, compared by their bit patterns so a NaN field is
+                // Two floats, compared by their bit patterns so a NaN field.
                 return Detail::LoadFieldU64(ScopedA) == Detail::LoadFieldU64(ScopedB);
             }
             break;
@@ -262,7 +262,7 @@ namespace Detail
     return Detail::ByteRangeEqual(ScopedA, ScopedB, InField.size);
 }
 
-// Compares two full component images field by field. Padding bytes and any
+// Compares two full component images field by field.
 [[nodiscard]] inline bool ComponentFieldsEqual(std::span<const FieldDesc> InFields, std::span<const std::byte> InA,
                                                std::span<const std::byte> InB) noexcept
 {
@@ -307,7 +307,7 @@ namespace Detail
     };                                                                                                                 \
     }
 
-// A marker component (`struct Hidden {};`) has no fields. std::array{...} with
+// A marker component (`struct Hidden {};`) has no fields.
 #define FBY_REFLECT_COMPONENT_EMPTY(type, displayName)                                                                 \
     namespace Fby::Reflect                                                                                             \
     {                                                                                                                  \

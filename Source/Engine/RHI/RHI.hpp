@@ -55,7 +55,7 @@ struct DeviceDesc
     bool enableValidation = false;
     // Triple buffering by default: the CPU may be one frame ahead of the GPU
     std::uint32_t framesInFlight = 3;
-    // Upper bound for one frame's instance data, in items. 1M items * 48 B is
+    // Upper bound for one frame's instance data, in items.
     std::uint32_t maxItemsPerFrame = 1u << 20;
     std::uint32_t maxTextureLayers = 256;
     // Mesh path ring capacities, per frame slice. The defaults cover ~1000
@@ -171,7 +171,7 @@ struct ShaderPipelineDesc
     // Empty: engine mesh.frag
     std::span<const std::byte> fragmentSpirv;
     const char* debugName = nullptr;
-    // Layout and vertex stage contract the pipeline is built for
+    // Layout and vertex stage contract the pipeline is built.
     ShaderPipelineDomain domain = ShaderPipelineDomain::Mesh;
 };
 
@@ -250,10 +250,10 @@ struct UiBackendInfo
     bool dynamicRendering = false;
 };
 
-// `nativeCommandBuffer` is a VkCommandBuffer on Vulkan. The callback runs while
+// `nativeCommandBuffer` is a VkCommandBuffer on Vulkan.
 using UiRenderCallback = void (*)(void* InUser, void* InNativeCommandBuffer);
 
-// Per-frame counters. The renderer exposes these instead of leaving the game to
+// Per-frame counters. The renderer exposes these instead of leaving the game.
 struct FrameStats
 {
     std::uint64_t frameIndex = 0;
@@ -300,7 +300,7 @@ struct FrameStats
 template <typename T>
 concept PodPayload = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T> && sizeof(T) <= 128;
 
-// A single texture-array handle owns `layers` slices. Items reference a layer by
+// A single texture-array handle owns `layers` slices.
 struct TextureArrayHandle
 {
     static constexpr std::uint32_t kInvalid32 = 0xFFFFFFFFu;
@@ -447,7 +447,7 @@ public:
         return false;
     }
 
-    // Streaming path for media and for editor re-cooks. Writes one layer/mip of
+    // Streaming path for media and for editor re-cooks.
     virtual bool UpdateTextureArrayLayer(TextureArrayHandle InHandle, std::uint32_t InLayer, std::uint32_t InMipLevel,
                                          std::span<const std::byte> InData)
     {
@@ -764,6 +764,6 @@ protected:
 [[nodiscard]] std::unique_ptr<RHI> CreateVulkanRHI();
 [[nodiscard]] std::unique_ptr<RHI> CreateMetalRHI();
 
-// Selects a backend for the current platform at runtime. On Windows/Linux the
+// Selects a backend for the current platform at runtime.
 [[nodiscard]] Backend SelectDefaultBackend() noexcept;
 }

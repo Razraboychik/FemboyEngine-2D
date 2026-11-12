@@ -112,7 +112,7 @@ FemboyEngine2D построен вокруг трёх идей: **ECS** отве
 | Изометрия | `Grid::ProjectionMode` side/top-down/iso-rect/iso-hex, преобразование клетка/мир, depth-ключи, `TilemapComponent` с culled render bridge и редактором тайлмапов | Целочисленная grid-математика и упакованные depth-ключи; тайлы рендерятся через culled span, а не через объект на тайл |
 | Навигация | A* по cost-grid на прямоугольных и гексагональных сетках, карты из тайлмапов, авторские `NavAgentSettings` отдельно от runtime-путей, бюджет repath на кадр | Cost-grid — непрерывные массивы; хранилище путей ограничено и переиспользуется между кадрами |
 | Освещение | Радиальные `Light2DComponent`, ambient, emissive-цели, опциональный Reinhard-тонмаппинг, экранная SDF-маска теней, статический `SdfField` и динамические `Light2DOccluderComponent` | Статический SDF загружается один раз на версию; динамические кастеры — в ограниченном UBO; shadow pass сэмплирует текстуры, а не объекты сцены |
-| Аудио | DSP-граф с шинами/ducking/reverb, зоны, лимитер, Ogg/Opus, живое пространственное усиление и панорама, захват голоса/AEC/RNNoise и uplink/downlink-эффекты с условиями | Голоса и шины предаллоцированы, граф не строится заново на кадр, capture-буферы явные |
+| Аудио | DSP-граф с шинами/ducking/reverb, зоны, лимитер, Ogg/Opus, живое пространственное усиление и панорама, захват голоса/AEC/RNNoise, uplink/downlink-эффекты с условиями, паки пресетов `.fbyvoice`, плагинная таблица пресетов и локальные реакции-звуки | Голоса и шины предаллоцированы, граф не строится заново на кадр, capture-буферы явные |
 | UI | Процедурные SDF-примитивы PinkUI, DPI-масштабирование, темы, гипертекст, widget kit, Unicode-границы через libunibreak, опциональный Tab/arrow-фокус, CPU clip rects, стек текста HarfBuzz, accessibility kernel | Retained-данные, span’ы команд на кадр, клипнутые квады и SDF-примитивы вместо аллокации на виджет |
 | Редактор | Транзакционный `CommandStack`, канвасы ImNodes, менеджер проектов, PIE Play/Pause/Stop, Play (Multiplayer), отладчик скриптов, редактор тайлмапов, превью текстур, панель Transport Groups, borderless fullscreen | Команды авторинга — явные транзакции; PIE владеет изолированным миром и освобождает его на Stop |
 | Скрипты | LogicGraph в bytecode VM и в C++26 AOT-плагин, physics/capability-узлы и нативы, debug info, breakpoints и stepping, `Compile + Nativize`, AOT manifest cook gate | Фиксированный стек и регистровый файл VM, нативные модули для cooked-сборок, без аллокаций скрипта в фиксированном шаге |
@@ -251,9 +251,11 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 ## Сборка
 
-Требования: CMake 3.28+, Ninja и один из компиляторов: **MSVC 19.44+**,
-**Clang 23.1.4+** (clang-cl на Windows, clang++ на Unix), **AppleClang 21+**
-или **GCC 16.2.0+**. На Windows запускайте из оболочки, которая предоставляет
+Требования: CMake 3.28+, Ninja и один из компиляторов: **Clang 23.1.4+**
+(clang-cl на Windows, clang++ на Unix), **MSVC 19.44+**, **AppleClang 21+** или
+**GCC 16.2.0+**. clang-cl — эталонный тулчейн, остальные поддерживаются как
+альтернативы и никогда не обязательны. На Windows запускайте из оболочки,
+которая предоставляет
 заголовки и библиотеки Windows SDK. Скрипты установки ставят clang-cl / clang++
 как эталонный тулчейн и GCC 16.2.0 (MinGW-w64 UCRT) как второй компилятор. На
 Windows `SetupScripts/Windows/SetupCpp.bat` скачивает официальный MSI
@@ -293,6 +295,8 @@ build/package-гейт. Физическое поведение Metal GPU на m
 ```text
 build/bin/fby_sandbox
 build/bin/fby_editor
+build/bin/fby_server
+build/bin/fby_lobby
 build/bin/tools/fby_fempak
 build/bin/tools/fby_scene_tool
 build/bin/tools/fby_aotc
@@ -490,12 +494,12 @@ FemboyEngine2D/
 ├─ CMakeLists.txt, cmake/        конфигурация сборки и пины зависимостей
 ├─ Source/
 │  ├─ Engine/                    Core, RHI, ECS, Physics, Audio, Network,
-│  │                             Assets, Script, UI, Video, Weather
+│  │                             Assets, Script, Text, UI, Video, Weather
 │  ├─ Editor/                    Panels + Infrastructure
-│  ├─ Apps/                      исполняемые файлы редактора и sandbox
+│  ├─ Apps/                      редактор, sandbox, server и lobby
 │  ├─ Tests/                     обычные CTest-исполняемые файлы
-│  ├─ Tools/                     компилятор шейдеров, кукер, AOT, инструменты документации
-│  └─ Plugins/                   C-ABI фикстуры и провайдеры магазинов
+│  ├─ Tools/                     кукеры шейдеров/материалов/текста/аудио, AOT, dev-гейты
+│  └─ Plugins/                   примеры плагинов, C-ABI фикстуры и провайдеры магазинов
 ├─ Documentation/                издания MD/DOCX/PDF/DjVu, заметки, генераторы
 ├─ assets/                       исходные ассеты и приготовленные примеры
 └─ third_party/                  вендоренные зависимости

@@ -63,7 +63,7 @@ public:
     [[nodiscard]] bool Load(VirtualFileSystem& InVfs, Rhi::RHI& InGpu, std::string_view InManifestPath,
                             std::string* InError = nullptr);
 
-    // Uploads a manifest that is already in memory (for embedded atlases and
+    // Uploads a manifest that is already in memory.
     [[nodiscard]] bool LoadFromManifest(VirtualFileSystem& InVfs, Rhi::RHI& InGpu,
                                         std::span<const std::byte> InManifest, std::string* InError = nullptr);
 

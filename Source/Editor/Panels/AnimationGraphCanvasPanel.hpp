@@ -56,7 +56,7 @@ struct AnimationGraphNode
     // Clip node payload.
     AnimClip Clip{};
 
-    // Blend node payload. FromState/ToState are derived from the two links at
+    // Blend node payload. FromState/ToState are derived from the two links.
     AnimTransition Blend{};
 
     // Float Parameter node payload.
@@ -79,7 +79,7 @@ struct AnimationGraphLink
     std::uint16_t ToNode = 0;
     std::uint8_t FromPin = 0;
     std::uint8_t ToPin = 0;
-    // Used by Transition links only. Blend links read their transition data from
+    // Used by Transition links only.
     AnimTransition Transition{};
 };
 
@@ -259,7 +259,7 @@ public:
         return MPieActive;
     }
 
-    // Transaction hooks are public so the host/tests can drive an edit without
+    // Transaction hooks are public so the host/tests can drive an edit.
     [[nodiscard]] bool BeginEdit(const char* InLabel, EditSource InSource) noexcept;
     void RecordEdit() noexcept;
     void CommitEdit() noexcept;
@@ -289,7 +289,7 @@ private:
     [[nodiscard]] std::uint16_t FindClipNodeByState(std::uint64_t InState) const noexcept;
     [[nodiscard]] std::uint16_t FindParameterNode(std::uint16_t InIndex) const noexcept;
 
-    // ImNodes keeps node/link handles in index-addressed pools. DeleteNode() and
+    // ImNodes keeps node/link handles in index-addressed pools.
     void PurgeCanvasSelection() noexcept;
 
     // Iterative, fixed-stack validation of the compiled transition graph. Rejects
@@ -304,7 +304,7 @@ private:
         PIEAnimFrame Frame{};
         // Even = stable, odd = writer inside the slot.
         std::atomic<std::uint64_t> Sequence{0};
-        // Pad the slot to two cache lines so Sequence never shares a line with
+        // Pad the slot to two cache lines so Sequence never shares a line.
         std::array<std::byte, 56> Pad{};
     };
     static_assert(sizeof(PIEFrameSlot) == 128);

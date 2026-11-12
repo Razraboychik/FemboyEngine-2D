@@ -88,7 +88,7 @@ struct EditorDesc
     bool showProjectDashboard = true;
     // OS watcher + background importer. The editor still works with it off.
     bool watchAssets = true;
-    // Texture array a hot-reloaded atlas layer writes into. Invalid = the
+    // Texture array a hot-reloaded atlas layer writes into.
     Rhi::TextureArrayHandle textureArray{};
     Assets::TextureFormat textureArrayFormat = Assets::TextureFormat::Rgba8;
     Assets::TextureFormat defaultTextureFormat = Assets::TextureFormat::Bc7Srgb;
@@ -121,10 +121,10 @@ public:
     void Shutdown();
     [[nodiscard]] bool IsInitialized() const noexcept;
 
-    // Adds Tick as a Render-phase node. The graph is built once after every
+    // Adds Tick as a Render-phase node.
     [[nodiscard]] bool Register(Ecs::SystemGraph& InGraph);
 
-    // The Render-phase system body. Builds one ImGui frame and updates the
+    // The Render-phase system body.
     void Tick(Ecs::SystemContext& InContext);
 
     // Optional frame profiler. The host records phase scopes into it and the
@@ -172,7 +172,7 @@ public:
     [[nodiscard]] AnimationGraphCanvasPanel& AnimationGraph() noexcept;
     // PIE world seam shared by both ImNodes debug canvases.
     void BindAIPlayInEditor(const Ecs::Registry* InPlayWorld, bool InActive) noexcept;
-    // The registry the viewport/render extract should sample. When PIE is
+    // The registry the viewport/render extract should sample.
     [[nodiscard]] Ecs::Registry* ActiveWorld() noexcept;
     [[nodiscard]] const Ecs::Registry* ActiveWorld() const noexcept;
     // PIE client viewport: the second offscreen target that presents
@@ -198,14 +198,14 @@ public:
     [[nodiscard]] AssetImportService& Importer() noexcept;
     [[nodiscard]] AssetDatabaseWatchSystem& Watcher() noexcept;
     [[nodiscard]] bool ProjectOpen() const noexcept;
-    // Set by the Project Dashboard's Quit action; the host checks it in its
+    // Set by the Project Dashboard's Quit action.
     [[nodiscard]] bool ShouldQuit() const noexcept;
 
     // Asks the editor to quit. A dirty scene opens the save/discard/cancel
     // prompt first; a clean scene or the dashboard quits immediately.
     void RequestQuit();
 
-    // Applies an already validated project: mounts its assets folder, loads the
+    // Applies an already validated project: mounts its assets folder and loads the config.
     [[nodiscard]] bool OpenProject(Ecs::SystemContext& InContext, const ProjectPaths& InPaths,
                                    const ProjectConfig& InConfig, std::string* InError = nullptr,
                                    bool InLoadDefaultScene = false);
@@ -213,7 +213,7 @@ public:
     // Appends a line to the editor console. Useful for gameplay/plugin messages
     void PrintLine(std::string_view InLine);
 
-    // Scene IO. The editor's component table is used; custom components can be
+    // Scene IO. The editor's component table is used.
     [[nodiscard]] bool LoadScene(Ecs::SystemContext& InContext, const std::filesystem::path& InPath,
                                  std::string* InError = nullptr);
     [[nodiscard]] bool SaveScene(Ecs::SystemContext& InContext, const std::filesystem::path& InPath,

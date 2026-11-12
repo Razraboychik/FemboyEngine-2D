@@ -107,12 +107,12 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<TextConditionComponent>();
     InRegistry.Register<Hidden>();
 
-    // Persisted components. SkeletonComponent/SkinComponent are
+    // Persisted components. SkeletonComponent/SkinComponent.
     InRegistry.Register<SkeletonAssetRef>();
     InRegistry.Register<SpriteAnimationComponent>();
     InRegistry.Register<SpriteSheetComponent>();
 
-    // Multimedia ecosystem components. Everything below is a flat POD with a
+    // Multimedia ecosystem components. Everything below is a flat POD.
     InRegistry.Register<ScriptComponent>();
     InRegistry.Register<Video::VideoStreamComponent>();
     InRegistry.Register<Ui::WidgetComponent>();

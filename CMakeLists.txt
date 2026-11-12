@@ -111,8 +111,8 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
     if(WIN32 AND FBY_WITH_ASAN AND FBY_WITH_UBSAN)
         message(FATAL_ERROR "ASan and UBSan cannot be combined on Windows (different CRT runtimes)")
     endif()
-    # clang-cl rejects the GCC spelling; its driver keeps frame pointers through
-    # /Oy- instead. The Microsoft compiler itself is rejected in FbyCompiler.cmake.
+    # clang-cl and cl.exe keep frame pointers through /Oy- rather than the GCC
+    # -fno-omit-frame-pointer spelling.
     if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         list(APPEND FBY_ASAN_COMPILE_OPTIONS -fno-omit-frame-pointer)
     else()

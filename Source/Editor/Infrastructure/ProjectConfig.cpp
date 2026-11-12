@@ -141,7 +141,7 @@ void SetError(std::string* InError, std::string InText)
     {
         return false;
     }
-    // The name is substituted into a TOML string, a C++ string literal and a
+    // The name is substituted into a TOML string, a C++ string literal and a file name.
     for (const char ScopedCharacter : InName)
     {
         const auto ScopedByte = static_cast<unsigned char>(ScopedCharacter);
@@ -207,7 +207,7 @@ namespace
     {
         return true;
     }
-    // Installed layout: the executable ships next to the cooked pack and the
+    // Installed layout: the executable ships next to the cooked pack.
     return std::filesystem::is_regular_file(InCandidate / "assets.fempak", ScopedCode);
 }
 
@@ -416,7 +416,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     ScopedConfig.editor.theme[0] = '\0';
     CopyProjectString(ScopedConfig.editor.theme, sizeof(ScopedConfig.editor.theme), "graphite");
 
-    // An empty but valid scene gives "New Project" something to open without
+    // An empty but valid scene gives "New Project" something to open.
     const std::filesystem::path ScopedDefaultScene = ScopedPaths.scenes / "main.toml";
     if (!std::filesystem::exists(ScopedDefaultScene, ScopedCode))
     {
@@ -427,7 +427,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
         }
     }
 
-    // a new project is buildable immediately. The three scaffold files are
+    // A new project is buildable immediately.
     const std::string ScopedTargetName = ScaffoldTargetName(InProjectName);
     const std::string_view ScopedDisplayName = InProjectName;
     const std::filesystem::path ScopedCMakeLists = ScopedPaths.root / "CMakeLists.txt";

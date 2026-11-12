@@ -122,6 +122,7 @@ PluginHost::PluginHost(ComponentRegistry& InComponents, void* InEcsRegistry)
     MApi.log = &PluginHost::HostLog;
     MApi.component_layout_hash = &PluginHost::HostLayoutHash;
     MApi.add_system = &PluginHost::HostAddSystem;
+    MApi.voice = nullptr;
 }
 
 PluginHost::~PluginHost()
@@ -258,10 +259,14 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
         {
             MEffects->RemoveOwner(ScopedPlugin.get());
         }
+        if (MVoicePresets != nullptr)
+        {
+            MVoicePresets->RemoveOwner(ScopedPlugin.get());
+        }
         CloseLibrary(ScopedLibrary);
-        return ScopedFail(ScopedLoadThrew ? std::format("'{}' threw from fby_plugin_load", InPath)
-                                          : std::format("'{}' refused to load (fby_plugin_load returned {})", InPath,
-                                                        ScopedResult));
+        return ScopedFail(
+            ScopedLoadThrew ? std::format("'{}' threw from fby_plugin_load", InPath)
+                            : std::format("'{}' refused to load (fby_plugin_load returned {})", InPath, ScopedResult));
     }
 
     const auto ScopedAbortLoaded = [&]()
@@ -286,6 +291,10 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
         if (MEffects != nullptr)
         {
             MEffects->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MVoicePresets != nullptr)
+        {
+            MVoicePresets->RemoveOwner(ScopedPlugin.get());
         }
         CloseLibrary(ScopedLibrary);
     };
@@ -349,6 +358,10 @@ bool PluginHost::Unload(const std::string& InPath, std::string* InError)
         {
             MEffects->RemoveOwner(&ScopedPlugin);
         }
+        if (MVoicePresets != nullptr)
+        {
+            MVoicePresets->RemoveOwner(&ScopedPlugin);
+        }
         CloseLibrary(static_cast<LibraryHandle>(ScopedPlugin.handle));
         ScopedPlugin.handle = nullptr;
         MPlugins.erase(ScopedIt);
@@ -394,6 +407,10 @@ bool PluginHost::Reload(const std::string& InPath, std::string* InError)
         {
             MEffects->RemoveOwner(&ScopedPlugin);
         }
+        if (MVoicePresets != nullptr)
+        {
+            MVoicePresets->RemoveOwner(&ScopedPlugin);
+        }
         CloseLibrary(static_cast<LibraryHandle>(ScopedPlugin.handle));
         ScopedPlugin.handle = nullptr;
         MPlugins.erase(ScopedIt);
@@ -435,6 +452,10 @@ void PluginHost::UnloadAll()
         if (MEffects != nullptr)
         {
             MEffects->RemoveOwner(ScopedPlugin.get());
+        }
+        if (MVoicePresets != nullptr)
+        {
+            MVoicePresets->RemoveOwner(ScopedPlugin.get());
         }
         CloseLibrary(static_cast<LibraryHandle>(ScopedPlugin->handle));
         ScopedPlugin->handle = nullptr;
@@ -484,8 +505,9 @@ std::uint64_t PluginHost::HostLayoutHash(void* InUser, const char* InName)
 int PluginHost::HostRegisterTheme(void* InUser, const FbyThemeDesc* InTheme)
 {
     auto* ScopedHost = static_cast<PluginHost*>(InUser);
-    if (ScopedHost == nullptr || ScopedHost->MThemes == nullptr || ScopedHost->MLoading == nullptr || InTheme == nullptr ||
-        InTheme->struct_size < sizeof(FbyThemeDesc) || InTheme->id == nullptr || InTheme->display_name == nullptr)
+    if (ScopedHost == nullptr || ScopedHost->MThemes == nullptr || ScopedHost->MLoading == nullptr ||
+        InTheme == nullptr || InTheme->struct_size < sizeof(FbyThemeDesc) || InTheme->id == nullptr ||
+        InTheme->display_name == nullptr)
     {
         return 0;
     }
@@ -552,18 +574,19 @@ int PluginHost::HostRegisterEffect(void* InUser, const FbyEffectDesc* InEffect)
     ScopedEffect.PatternScale = std::clamp(InEffect->pattern_scale, 0.1f, 8.0f);
     ScopedEffect.Generation = static_cast<std::uint8_t>(std::min<std::uint32_t>(InEffect->generation, 255));
     ScopedEffect.Tint = Color32{InEffect->tint};
-    ScopedEffect.TagCount = static_cast<std::uint8_t>(std::min<std::uint32_t>(InEffect->tag_count, Ui::kAccessibilityEffectTags));
+    ScopedEffect.TagCount =
+        static_cast<std::uint8_t>(std::min<std::uint32_t>(InEffect->tag_count, Ui::kAccessibilityEffectTags));
     for (std::size_t ScopedI = 0; ScopedI < ScopedEffect.TagCount; ++ScopedI)
     {
         std::snprintf(ScopedEffect.Tags[ScopedI].Tag, sizeof(ScopedEffect.Tags[ScopedI].Tag), "%s",
                       InEffect->tags[ScopedI]);
     }
-    ScopedEffect.AlcoholEffectCount = static_cast<std::uint8_t>(
-        std::min<std::uint32_t>(InEffect->alcohol_effect_count, Ui::kMaxAlcoholEffects));
+    ScopedEffect.AlcoholEffectCount =
+        static_cast<std::uint8_t>(std::min<std::uint32_t>(InEffect->alcohol_effect_count, Ui::kMaxAlcoholEffects));
     for (std::size_t ScopedI = 0; ScopedI < ScopedEffect.AlcoholEffectCount; ++ScopedI)
     {
-        ScopedEffect.AlcoholEffects[ScopedI].Effect = static_cast<Ui::AlcoholEffect>(
-            std::min<std::uint32_t>(InEffect->alcohol_effects[ScopedI].effect, 9));
+        ScopedEffect.AlcoholEffects[ScopedI].Effect =
+            static_cast<Ui::AlcoholEffect>(std::min<std::uint32_t>(InEffect->alcohol_effects[ScopedI].effect, 9));
         ScopedEffect.AlcoholEffects[ScopedI].Intensity =
             std::clamp(InEffect->alcohol_effects[ScopedI].intensity, 0.0f, 1.0f);
         ScopedEffect.AlcoholEffects[ScopedI].Frequency =
@@ -586,6 +609,89 @@ int PluginHost::HostSetEffect(void* InUser, const char* InId)
         return 0;
     }
     return ScopedHost->MEffects->SetActive(InId) ? 1 : 0;
+}
+
+int PluginHost::HostRegisterVoicePreset(void* InUser, const FbyVoicePresetDesc* InPreset)
+{
+    static_assert(static_cast<int>(VoiceEffectKind::None) == FBY_VOICE_EFFECT_NONE, "voice effect ABI drifted");
+    static_assert(static_cast<int>(VoiceEffectKind::Whisper) == FBY_VOICE_EFFECT_WHISPER, "voice effect ABI drifted");
+    static_assert(static_cast<int>(VoicePresetCategory::Scene) == FBY_VOICE_CATEGORY_SCENE,
+                  "voice category ABI drifted");
+    auto* ScopedHost = static_cast<PluginHost*>(InUser);
+    if (ScopedHost == nullptr || ScopedHost->MVoicePresets == nullptr || ScopedHost->MLoading == nullptr ||
+        InPreset == nullptr)
+    {
+        return 0;
+    }
+    if (InPreset->struct_size < sizeof(FbyVoicePresetDesc) || InPreset->id == nullptr ||
+        InPreset->name_key == nullptr || InPreset->slot_count == 0 || InPreset->slot_count > FBY_VOICE_SLOT_COUNT)
+    {
+        return 0;
+    }
+    VoicePresetDesc ScopedDesc{};
+    std::snprintf(ScopedDesc.Id, sizeof(ScopedDesc.Id), "%s", InPreset->id);
+    std::snprintf(ScopedDesc.NameKey, sizeof(ScopedDesc.NameKey), "%s", InPreset->name_key);
+    ScopedDesc.Category = static_cast<VoicePresetCategory>(InPreset->category);
+    ScopedDesc.Flags = InPreset->flags;
+    ScopedDesc.MinIntensity = InPreset->min_intensity;
+    ScopedDesc.MaxIntensity = InPreset->max_intensity;
+    ScopedDesc.Profile.EnableConditions = InPreset->enable_conditions != 0;
+    for (std::uint32_t ScopedSlot = 0; ScopedSlot < InPreset->slot_count; ++ScopedSlot)
+    {
+        const FbyVoiceEffectSlotDesc& ScopedSource = InPreset->slots[ScopedSlot];
+        if (ScopedSource.kind == FBY_VOICE_EFFECT_NONE ||
+            ScopedSource.kind > static_cast<std::uint32_t>(VoiceEffectKind::Whisper))
+        {
+            return 0;
+        }
+        VoiceEffectSlot ScopedValue{};
+        ScopedValue.Kind = static_cast<VoiceEffectKind>(ScopedSource.kind);
+        ScopedValue.Mix = ScopedSource.mix;
+        ScopedValue.Mute.FadeSeconds = ScopedSource.mute.fade_seconds;
+        ScopedValue.Muffle.LowCutHz = ScopedSource.muffle.low_cut_hz;
+        ScopedValue.Muffle.HighCutHz = ScopedSource.muffle.high_cut_hz;
+        ScopedValue.Muffle.Resonance = ScopedSource.muffle.resonance;
+        ScopedValue.Muffle.DriveDb = ScopedSource.muffle.drive_db;
+        ScopedValue.Muffle.WobbleHz = ScopedSource.muffle.wobble_hz;
+        ScopedValue.Muffle.WobbleDepth = ScopedSource.muffle.wobble_depth;
+        ScopedValue.Muffle.BreathLevel = ScopedSource.muffle.breath_level;
+        ScopedValue.Underwater.LowCutHz = ScopedSource.underwater.low_cut_hz;
+        ScopedValue.Underwater.HighCutHz = ScopedSource.underwater.high_cut_hz;
+        ScopedValue.Underwater.Resonance = ScopedSource.underwater.resonance;
+        ScopedValue.Underwater.WowHz = ScopedSource.underwater.wow_hz;
+        ScopedValue.Underwater.WowDepth = ScopedSource.underwater.wow_depth;
+        ScopedValue.Radio.LowCutHz = ScopedSource.radio.low_cut_hz;
+        ScopedValue.Radio.HighCutHz = ScopedSource.radio.high_cut_hz;
+        ScopedValue.Radio.StaticLevel = ScopedSource.radio.static_level;
+        ScopedValue.Radio.CrackleRate = ScopedSource.radio.crackle_rate;
+        ScopedValue.Radio.Squelch = ScopedSource.radio.squelch;
+        ScopedValue.Radio.DriveDb = ScopedSource.radio.drive_db;
+        ScopedValue.Radio.MuteWhenSquelched = ScopedSource.radio.mute_when_squelched != 0;
+        ScopedValue.Pitch.Semitones = ScopedSource.pitch.semitones;
+        ScopedValue.Pitch.WindowMs = ScopedSource.pitch.window_ms;
+        ScopedValue.Formant.Semitones = ScopedSource.formant.semitones;
+        ScopedValue.Formant.StrengthDb = ScopedSource.formant.strength_db;
+        ScopedValue.Distortion.DriveDb = ScopedSource.distortion.drive_db;
+        ScopedValue.Distortion.LowCutHz = ScopedSource.distortion.low_cut_hz;
+        ScopedValue.Distortion.HighCutHz = ScopedSource.distortion.high_cut_hz;
+        ScopedValue.Distortion.BitDepth = ScopedSource.distortion.bit_depth;
+        ScopedValue.RingModulation.FrequencyHz = ScopedSource.ring_modulation.frequency_hz;
+        ScopedValue.RingModulation.Depth = ScopedSource.ring_modulation.depth;
+        ScopedValue.Whisper.NoiseLevel = ScopedSource.whisper.noise_level;
+        ScopedValue.Whisper.LowCutHz = ScopedSource.whisper.low_cut_hz;
+        ScopedValue.Whisper.HighCutHz = ScopedSource.whisper.high_cut_hz;
+        if (!ScopedDesc.Profile.BaseChain.Add(ScopedValue))
+        {
+            return 0;
+        }
+    }
+    std::string ScopedError;
+    if (!ScopedHost->MVoicePresets->Add(ScopedDesc, ScopedHost->MLoading, &ScopedError))
+    {
+        LogWarn("plugin", "voice preset '{}' rejected: {}", InPreset->id, ScopedError);
+        return 0;
+    }
+    return 1;
 }
 
 int PluginHost::HostSetTheme(void* InUser, const char* InId)

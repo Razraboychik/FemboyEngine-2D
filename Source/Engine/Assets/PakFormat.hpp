@@ -1,4 +1,4 @@
-// FemboyEngine2D - .fempak on-disk format, shared by the runtime and the
+// FemboyEngine2D - .fempak on-disk format, shared by the runtime.
 #pragma once
 
 #include <cstdint>
@@ -34,7 +34,7 @@ struct PakEntry
 static_assert(sizeof(PakHeader) == 40, ".fempak header is fixed at 40 bytes");
 static_assert(sizeof(PakEntry) == 24, ".fempak entry is fixed at 24 bytes");
 
-// The canonical path used by the cooker, the VFS and every tool. Public so all
+// The canonical path used by the cooker, the VFS and every tool.
 [[nodiscard]] inline std::string NormalizePakPath(std::string_view InPath)
 {
     std::string ScopedNormalized;

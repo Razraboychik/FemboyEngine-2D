@@ -56,6 +56,24 @@ The same 16K request with a smaller render target:
 This is the practical 16K/32K path: render at 4K/8K and upscale. Native 16K/32K
 is a target-bandwidth stress test, not a game mode.
 
+## Full-screen overdraw
+
+`--dense` distributes the same 15k sprites over the whole target instead of the
+small top-left grid:
+
+| Render extent | Sparse GPU | Sparse FPS | Dense GPU | Dense FPS | Dense + PostFX GPU |
+| --- | --- | --- | --- | --- | --- |
+| 3840x2160 | ~0.35 ms | ~2890 | ~0.70 ms | ~1440 | ~0.90 ms |
+| 7680x4320 | ~1.55 ms | ~630 | ~3.44 ms | ~290 | ~8.04 ms |
+| 15360x8640 | ~5.86 ms | ~170 | ~16.96 ms | ~59 | ~30.32 ms |
+
+The dense scene is a real fill-rate test. At 16K it costs about 11 ms more than
+the sparse grid, and the default PostFX pass adds another ~13 ms. Overdraw,
+front-to-back/depth-prepass and PostFX are therefore scene policies for a
+full-screen sprite scene, not universal defaults.
+
+
+
 
 ## Bottleneck order
 

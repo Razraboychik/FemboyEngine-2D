@@ -90,12 +90,12 @@ SECTIONS: list[dict] = [
             ("bullets", B(
                 [
                     "Audience: gameplay programmers, technical designers and tools engineers.",
-                    "Assumed knowledge: C++20 basics, an ECS at the level of EnTT, and one graphics API.",
+                    "Assumed knowledge: C++20 basics, an ECS at the level of a chunked registry, and one graphics API.",
                     "Not covered: Vulkan synchronization details, console certification and legal storefront setup.",
                 ],
                 [
                     "Аудитория: геймплей-программисты, технические дизайнеры и tools-инженеры.",
-                    "Требуемые знания: основы C++20, ECS на уровне EnTT и один графический API.",
+                    "Требуемые знания: основы C++20, ECS на уровне chunked-реестра и один графический API.",
                     "Не рассматривается: детали синхронизации Vulkan, сертификация консолей и юридическое подключение "
                     "магазинов.",
                 ],
@@ -163,11 +163,11 @@ SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 cmake --build build
 ctest --test-dir build --output-on-failure""")),
             ("p", B(
-                "The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and "
-                "GCC 16+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing "
+                "The compiler is part of the contract: C++26 is required, Clang 23.1.4+ is the reference toolchain and "
+                "GCC 16.2.0+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing "
                 "the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer "
                 "uses the deterministic FbyLZ codec and reports it in the cook log.",
-                "Компилятор — часть контракта: требуется C++26, эталонный тулчейн — Clang 19+, поддерживается GCC 16+. "
+                "Компилятор — часть контракта: требуется C++26, эталонный тулчейн — Clang 23.1.4+, поддерживается GCC 16.2.0+. "
                 "Сборка определяет FBY_HAS_MDSPAN, FBY_HAS_FORMAT и FBY_HAS_JTHREAD пробой компилятора, а не по "
                 "номеру версии. Наличие LZMA SDK тоже проверяется; без него писатель .femarc использует "
                 "детерминированный кодек FbyLZ и сообщает об этом в логе кукера.",
@@ -298,14 +298,14 @@ struct InputComponent
 struct AIBehaviorComponent
 {
     std::uint32_t behavior = 0; // 0 chase, 1 keep distance, 2 patrol, 3 boss
-    Entity target = entt::null;
+    Entity target = Fby::kNullEntity;
     float thinkSeconds = 0.0f;
     float preferredRange = 220.0f;
 };
 
 struct ProjectileComponent
 {
-    Entity owner = entt::null;
+    Entity owner = Fby::kNullEntity;
     Vector2D velocity{};
     float damage = 10.0f;
     float ttl = 4.0f;
@@ -418,7 +418,7 @@ Entity SpawnEnemy(ecs::Registry& registry, const EnemyArchetype& archetype, Vect
             continue;
         }
         InputComponent& input = view.get<InputComponent>(entity);
-        if (behaviorComponent.target == entt::null || !context.registry.valid(behaviorComponent.target))
+        if (behaviorComponent.target == Fby::kNullEntity || !context.registry.valid(behaviorComponent.target))
         {
             continue;
         }
@@ -529,11 +529,11 @@ if (!graph.Build())
 }""")),
             ("p", B(
                 "Determinism is a property of the data, not of a hope. FixedUpdate receives a constant dt, the RNG is "
-                "Pcg32 seeded per run, and structural commands are logged. Snapshot v4 captures the ECS plus the "
+                "Pcg32 seeded per run, and structural commands are logged. Snapshot v5 captures the ECS plus the "
                 "world extension (joints, cloth, fluid) and restores it with a b2 body remap. The replay test "
                 "resimulates the same input log on a fresh registry and compares the checksum.",
                 "Детерминизм — свойство данных, а не надежда. FixedUpdate получает постоянный dt, RNG — Pcg32 с "
-                "сидом на запуск, структурные команды логируются. Snapshot v4 захватывает ECS плюс расширение мира "
+                "сидом на запуск, структурные команды логируются. Snapshot v5 захватывает ECS плюс расширение мира "
                 "(суставы, ткань, жидкость) и восстанавливает его с ремапом b2-тел. Тест реплея пересимулирует тот "
                 "же лог ввода на чистом реестре и сравнивает контрольную сумму.",
             )),
@@ -602,7 +602,7 @@ session.SubmitRemoteInput(0, frame);""")),
                 [
                     "Authoritative simulation: the server owns the tick, the RNG seed and the CommandLog. Clients predict with the same tick size and the same gameplay systems.",
                     "Register gameplay components in SnapshotSchema before the first capture; a component outside the schema silently does not replicate.",
-                    "Use stable NetEntityId values for replicated entities. Never derive one from an EnTT id, a spawn order or an allocator address.",
+                    "Use stable NetEntityId values for replicated entities. Never derive one from a runtime entity id, a spawn order or an allocator address.",
                     "Replicate input frames and structural commands, not raw device state or render-only values.",
                     "On a correction, restore the snapshot before the first bad tick, replay the corrected input and compare the final checksum.",
                     "Test PIE with two players, artificial latency, packet loss and a forced rollback before adding content.",
@@ -610,7 +610,7 @@ session.SubmitRemoteInput(0, frame);""")),
                 [
                     "Авторитетная симуляция: сервер владеет тиком, сидом RNG и CommandLog. Клиенты предсказывают с тем же размером тика и теми же геймплейными системами.",
                     "Регистрируйте геймплейные компоненты в SnapshotSchema до первого захвата; компонент вне схемы молча не реплицируется.",
-                    "Используйте стабильные NetEntityId для реплицируемых сущностей. Никогда не выводите их из EnTT id, порядка спавна или адреса аллокатора.",
+                    "Используйте стабильные NetEntityId для реплицируемых сущностей. Никогда не выводите их из runtime entity id, порядка спавна или адреса аллокатора.",
                     "Реплицируйте input frames и структурные команды, а не сырые устройства или render-only значения.",
                     "При коррекции восстановите снапшот до первого плохого тика, повторите исправленный ввод и сравните итоговую контрольную сумму.",
                     "Проверяйте PIE на двух игроках, с искусственной задержкой, потерей пакетов и принудительным роллбэком до добавления контента.",
@@ -1451,20 +1451,24 @@ def export_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, node: str, lo_cl
     if not lo_cli or not pathlib.Path(lo_cli).is_file():
         print("pdf: LibreOffice Kit CLI not found; pass --lo-cli or set FBY_LO_CLI", file=sys.stderr)
         return False
-    pdf_path.unlink(missing_ok=True)
+    temporary = pdf_path.with_name(pdf_path.name + ".tmp.pdf")
+    temporary.unlink(missing_ok=True)
     log_path = pathlib.Path(tempfile.gettempdir()) / "fby_application_guide_pdf.log"
     with log_path.open("w", encoding="utf-8") as log:
         completed = subprocess.run(
-            [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(pdf_path)],
+            [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(temporary)],
             stdout=log,
             stderr=log,
         )
-    if completed.returncode != 0 or not pdf_path.is_file() or pdf_path.stat().st_size == 0:
+    if completed.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
         print(f"pdf: export failed; see {log_path}", file=sys.stderr)
+        temporary.unlink(missing_ok=True)
         return False
-    if pdf_path.read_bytes()[:5] != b"%PDF-":
+    if temporary.read_bytes()[:5] != b"%PDF-":
         print("pdf: output is not a PDF", file=sys.stderr)
+        temporary.unlink(missing_ok=True)
         return False
+    os.replace(temporary, pdf_path)
     return True
 
 

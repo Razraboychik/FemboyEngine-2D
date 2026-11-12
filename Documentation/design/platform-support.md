@@ -16,7 +16,7 @@ natively on that OS. The project contract is in
 |---|---|---|---|---|---|
 | Windows 10/11 x64 | clang-cl 23.1.4 / Clang 23.1.4 / MSVC 19.44 / GCC 16.2.0 | Vulkan | `windows-release` | editor Build & Pack Game | authoritative |
 | Linux x64 | clang++ 23.1.4+ / GCC 16.2.0+ | Vulkan | `linux-release` | editor Build & Pack Game | advisory until green |
-| macOS 14+ x86_64 | Homebrew Clang 23.1.4+ | Metal | `macos-release` | editor Build & Pack Game | focused gate green |
+| macOS 14+ x86_64/arm64 | AppleClang 21+ / Homebrew Clang 23.1.4+ | Metal | `macos-release` | editor Build & Pack Game | focused gate green |
 
 The presets configure `FBY_BUILD_EDITOR=ON`, `FBY_BUILD_TESTS=ON` and
 `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. The generated build trees are
@@ -99,7 +99,7 @@ editor/input/text/frame-composer/release-cooker tests.
 The macOS gate is a hosted Intel runner with a headless test scope. It proves
 the build, cook and core engine seams; it does not prove a physical Apple
 Silicon GPU, a visible Metal window, or every GPU-dependent test. The full
-197-test suite remains the Windows/Linux gate. Do not describe macOS GPU
+CTest suite remains the Windows/Linux gate. Do not describe macOS GPU
 behavior as hardware-verified until a physical Mac run is recorded. Do not treat a successful Windows build as proof of Linux or
 macOS runtime behavior.
 

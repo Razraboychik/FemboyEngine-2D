@@ -6,10 +6,14 @@
 
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Audio/VoiceDsp.hpp"
+#include "Engine/Audio/VoicePreset.hpp"
+#include "Engine/Audio/VoiceReactiveSfx.hpp"
+#include "Engine/Audio/VoiceSession.hpp"
 
 #include "imgui.h"
 
 #include <cstdio>
+#include <cstring>
 
 namespace Fby::Editor
 {
@@ -27,6 +31,56 @@ void CopyIdInto(char* OutDestination, std::size_t InCapacity, const char* InSour
         return;
     }
     std::snprintf(OutDestination, InCapacity, "%s", InSource);
+}
+
+// Preset ids are stable data; the list shows the last id segment so a data pack
+// keeps readable labels without shipping a localization table in the panel.
+[[nodiscard]] const char* PresetLabel(const Fby::VoicePresetDesc& InPreset) noexcept
+{
+    const char* ScopedDot = std::strrchr(InPreset.Id, '.');
+    return ScopedDot != nullptr ? ScopedDot + 1 : InPreset.Id;
+}
+
+[[nodiscard]] bool DrawPresetCombo(const char* InLabel, const Fby::VoicePresetRegistry& InPresets,
+                                   std::uint32_t InRequiredFlag, Fby::VoicePresetChoice& InChoice) noexcept
+{
+    const Fby::VoicePresetDesc* ScopedCurrent = InChoice.Enabled ? InPresets.Find(InChoice.Id) : nullptr;
+    bool ScopedChanged = false;
+    ImGui::SetNextItemWidth(220.0f);
+    if (ImGui::BeginCombo(InLabel, ScopedCurrent != nullptr ? PresetLabel(*ScopedCurrent) : "None"))
+    {
+        if (ImGui::Selectable("None", ScopedCurrent == nullptr))
+        {
+            InChoice.Clear();
+            ScopedChanged = true;
+        }
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < InPresets.Count(); ++ScopedIndex)
+        {
+            const Fby::VoicePresetDesc* ScopedPreset = InPresets.At(ScopedIndex);
+            if (ScopedPreset == nullptr || (ScopedPreset->Flags & InRequiredFlag) == 0 ||
+                (ScopedPreset->Flags & Fby::VoicePresetFlagModeration) != 0)
+            {
+                continue;
+            }
+            if (ImGui::Selectable(PresetLabel(*ScopedPreset), ScopedCurrent == ScopedPreset))
+            {
+                InChoice.Set(ScopedPreset->Id, InChoice.Intensity);
+                ScopedChanged = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    return ScopedChanged;
+}
+
+void DrawChoiceIntensity(Fby::VoicePresetChoice& InChoice) noexcept
+{
+    if (!InChoice.Enabled)
+    {
+        return;
+    }
+    ImGui::SetNextItemWidth(180.0f);
+    (void)ImGui::SliderFloat("Intensity", &InChoice.Intensity, 0.0f, 1.0f, "%.2f");
 }
 }
 
@@ -97,9 +151,7 @@ void VoiceDevicePanel::DrawDeviceCombo(AudioDeviceKind InKind, const char* InLab
                                                                         : sizeof(ScopedProject.voiceOutputDevice);
     const AudioDeviceList& ScopedDevices = MDevices.Devices(InKind);
 
-    const std::int32_t ScopedCurrent = ScopedStoredId[0] == '\0'
-                                           ? 0
-                                           : 1 + MDevices.FindIndex(InKind, ScopedStoredId);
+    const std::int32_t ScopedCurrent = ScopedStoredId[0] == '\0' ? 0 : 1 + MDevices.FindIndex(InKind, ScopedStoredId);
     ImGui::TextUnformatted(InLabel);
     ImGui::SetNextItemWidth(320.0f);
     if (ImGui::BeginCombo(InLabel, ScopedStoredId[0] == '\0' ? "System default" : ScopedStoredId))
@@ -124,7 +176,9 @@ void VoiceDevicePanel::DrawDeviceCombo(AudioDeviceKind InKind, const char* InLab
     }
 }
 
-void VoiceDevicePanel::Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSystem* InAudio)
+void VoiceDevicePanel::Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSystem* InAudio, VoiceSystem* InVoice,
+                            VoiceSession* InSession, VoicePresetRegistry* InPresets, VoicePresetSelection* InSelection,
+                            VoiceEffectPolicy* InPolicy, VoiceReactiveSfxSettings* InSfxSettings)
 {
     if (InOpen != nullptr && !*InOpen)
     {
@@ -158,6 +212,7 @@ void VoiceDevicePanel::Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSyst
 
     DrawDeviceCombo(AudioDeviceKind::Input, "Microphone", InStore);
     DrawDeviceCombo(AudioDeviceKind::Output, "Output", InStore);
+    (void)InVoice;
     if (InAudio != nullptr)
     {
         if (ImGui::Button("Apply output"))
@@ -179,10 +234,8 @@ void VoiceDevicePanel::Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSyst
 
     if (InStore != nullptr)
     {
-        MInputIndex =
-            MDevices.Resolve(AudioDeviceKind::Input, InStore->Project().voiceInputDevice);
-        MOutputIndex =
-            MDevices.Resolve(AudioDeviceKind::Output, InStore->Project().voiceOutputDevice);
+        MInputIndex = MDevices.Resolve(AudioDeviceKind::Input, InStore->Project().voiceInputDevice);
+        MOutputIndex = MDevices.Resolve(AudioDeviceKind::Output, InStore->Project().voiceOutputDevice);
     }
 
     ImGui::Separator();
@@ -195,8 +248,7 @@ void VoiceDevicePanel::Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSyst
             MStatus = "microphone test stopped";
         }
         ImGui::SameLine();
-        ImGui::Text("peak %.3f   rms %.3f", static_cast<double>(MMonitor.Peak()),
-                    static_cast<double>(MMonitor.Rms()));
+        ImGui::Text("peak %.3f   rms %.3f", static_cast<double>(MMonitor.Peak()), static_cast<double>(MMonitor.Rms()));
         ImGui::ProgressBar(MMonitor.Peak(), ImVec2(-1.0f, 0.0f));
     }
     else
@@ -305,11 +357,63 @@ void VoiceDevicePanel::Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSyst
         }
     }
 
+    if (InPresets != nullptr)
+    {
+        ImGui::Separator();
+        ImGui::TextUnformatted("Voice effects");
+        if (InSelection != nullptr)
+        {
+            (void)DrawPresetCombo("Your voice", *InPresets, VoicePresetFlagAllowUplink, InSelection->Local);
+            DrawChoiceIntensity(InSelection->Local);
+        }
+        if (InPolicy != nullptr)
+        {
+            ImGui::Checkbox("Mumble when muted", &InPolicy->MumbleWhenModerated);
+            ImGui::SameLine();
+            ImGui::Checkbox("Allow local effects", &InPolicy->AllowLocalUplink);
+        }
+        if (InSfxSettings != nullptr)
+        {
+            ImGui::Checkbox("Reactive SFX", &InSfxSettings->Enabled);
+            if (InSfxSettings->Enabled)
+            {
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(160.0f);
+                (void)ImGui::SliderFloat("SFX gain", &InSfxSettings->MasterGain, 0.0f, 1.0f, "%.2f");
+            }
+        }
+        if (InSession != nullptr && InSelection != nullptr)
+        {
+            ImGui::SeparatorText("Participants");
+            bool ScopedAny = false;
+            for (std::uint8_t ScopedPlayer = 0; ScopedPlayer < static_cast<std::uint8_t>(kVoiceMaxPeers);
+                 ++ScopedPlayer)
+            {
+                const VoiceParticipant* ScopedParticipant = InSession->Participant(ScopedPlayer);
+                if (ScopedParticipant == nullptr || !ScopedParticipant->Present)
+                {
+                    continue;
+                }
+                ScopedAny = true;
+                ImGui::PushID(static_cast<int>(ScopedPlayer));
+                ImGui::Text("Player %u%s", static_cast<unsigned>(ScopedPlayer),
+                            ScopedParticipant->LocalMuted ? " (muted)" : "");
+                (void)DrawPresetCombo("Effect", *InPresets, VoicePresetFlagAllowDownlink,
+                                      InSelection->Participants[ScopedPlayer]);
+                DrawChoiceIntensity(InSelection->Participants[ScopedPlayer]);
+                ImGui::PopID();
+            }
+            if (!ScopedAny)
+            {
+                ImGui::TextDisabled("No participants in the session.");
+            }
+        }
+    }
+
     if (MInputIndex >= 0)
     {
         ImGui::Separator();
-        ImGui::TextDisabled("resolved input: %s",
-                            MDevices.Devices(AudioDeviceKind::Input).Devices[MInputIndex].Name);
+        ImGui::TextDisabled("resolved input: %s", MDevices.Devices(AudioDeviceKind::Input).Devices[MInputIndex].Name);
     }
     if (MOutputIndex >= 0)
     {

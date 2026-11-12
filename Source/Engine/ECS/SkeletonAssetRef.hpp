@@ -16,7 +16,7 @@ namespace Fby
 inline constexpr std::uint32_t kSkeletonAssetRefSpawnSkin = 1u << 0;
 inline constexpr std::uint32_t kSkeletonAssetRefRebindOnLoad = 1u << 1;
 
-// Migration: the scene now stores a transactional metadata handle instead of
+// Migration: the scene now stores a transactional metadata handle instead.
 struct SkeletonAssetRef
 {
     Assets::AssetHandle Asset{};

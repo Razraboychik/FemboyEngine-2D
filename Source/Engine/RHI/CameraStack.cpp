@@ -160,7 +160,7 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
         ScopedSlot.previousCamera = ScopedSlot.camera;
         Camera2D ScopedBase = ScopedSlot.baseCamera;
 
-        // Pick up authoring changes (zoom, viewport) without overwriting the
+        // Pick up authoring changes (zoom, viewport) without overwriting.
         if (ScopedSlot.desc.cameraEntity != Fby::kNullEntity && InView.registry.valid(ScopedSlot.desc.cameraEntity))
         {
             if (const auto* ScopedAuthored = InView.registry.try_get<Camera2D>(ScopedSlot.desc.cameraEntity);

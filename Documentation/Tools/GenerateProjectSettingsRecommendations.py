@@ -646,23 +646,32 @@ def BuildDocx(blocks: list[tuple], path: pathlib.Path) -> None:
 
 
 def ExportPdf(docx_path: pathlib.Path, pdf_path: pathlib.Path) -> bool:
-    if pdf_path.exists():
-        pdf_path.unlink()
+    if not NODE.is_file() or not LIBREOFFICE_CLI.is_file():
+        print("pdf export skipped: LibreOffice Kit is not installed")
+        return False
+    # Convert beside the target first: a failed run must leave the previously
+    # published PDF in place.
+    temporary = pdf_path.with_name(pdf_path.name + ".tmp.pdf")
+    temporary.unlink(missing_ok=True)
     result = subprocess.run(
-        [str(NODE), str(LIBREOFFICE_CLI), "convert", "--input", str(docx_path), "--output", str(pdf_path)],
+        [str(NODE), str(LIBREOFFICE_CLI), "convert", "--input", str(docx_path), "--output", str(temporary)],
         capture_output=True,
         text=True,
         timeout=300,
     )
     if result.returncode != 0:
         print(f"PDF export failed for {docx_path.name}: {result.stderr.strip()}")
+        temporary.unlink(missing_ok=True)
         return False
-    if not pdf_path.is_file() or pdf_path.stat().st_size == 0:
+    if not temporary.is_file() or temporary.stat().st_size == 0:
         print(f"PDF export produced no file for {docx_path.name}")
+        temporary.unlink(missing_ok=True)
         return False
-    if pdf_path.read_bytes()[:5] != b"%PDF-":
+    if temporary.read_bytes()[:5] != b"%PDF-":
         print(f"PDF export is not a PDF: {pdf_path.name}")
+        temporary.unlink(missing_ok=True)
         return False
+    os.replace(temporary, pdf_path)
     return True
 
 

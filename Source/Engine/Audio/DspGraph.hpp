@@ -17,10 +17,10 @@ namespace Fby
 inline constexpr std::uint32_t kMaxBuses = 32;
 inline constexpr std::uint32_t kMaxVoices = 128;
 inline constexpr std::uint32_t kMaxCommands = 256;
-// Upper bound on the frames rendered into the internal scratch buffers per
+// Upper bound on the frames rendered into the internal scratch buffers.
 inline constexpr std::uint32_t kMaxBlockFrames = 256;
 
-// A small integer handle, not a pointer: ids stay valid across a snapshot and
+// A small integer handle, not a pointer: ids stay valid across a snapshot.
 using BusId = std::uint16_t;
 inline constexpr BusId kInvalidBus = 0xFFFFu;
 inline constexpr BusId kMasterBus = 0;
@@ -92,7 +92,7 @@ struct DuckingParams
     float releaseSeconds = 0.25f;
 };
 
-// Schroeder reverb: four parallel combs into two series allpass filters. The
+// Schroeder reverb: four parallel combs into two series allpass filters.
 struct ReverbParams
 {
     bool enabled = false;
@@ -176,7 +176,7 @@ public:
     CommandQueue(const CommandQueue&) = delete;
     CommandQueue& operator=(const CommandQueue&) = delete;
 
-    // Producer side. Returns false when the ring is full; the caller drops the
+    // Producer side. Returns false when the ring is full.
     [[nodiscard]] bool Push(const AudioCommand& InCommand) noexcept;
 
     // Consumer side. Returns false when empty.
@@ -201,7 +201,7 @@ private:
     std::atomic<std::uint32_t> MDropped{0};
 };
 
-// What a voice needs in order to play one cooked clip. `samples` points into a
+// What a voice needs in order to play one cooked clip.
 struct DspClipView
 {
     const std::byte* samples = nullptr;
@@ -237,7 +237,7 @@ public:
 
     // Producer API (game / render thread). Every structural change is queued;
 
-    // Allocates the lowest free bus slot under `parent`. `outBus` receives the
+    // Allocates the lowest free bus slot under `parent`.
     [[nodiscard]] DspResult CreateBus(BusId InParent, float InGain, BusId* OutBus = nullptr) noexcept;
     // Detaches the bus and reparents its children to its parent. Master cannot
     [[nodiscard]] DspResult DestroyBus(BusId InBus) noexcept;
@@ -269,7 +269,7 @@ public:
     // Returns InvalidArgument for a stale or free voice handle.
     [[nodiscard]] DspResult SetVoiceSpatial(std::uint32_t InVoice, float InVolume, float InPan) noexcept;
 
-    // Escape hatch for callers that already built an AudioCommand (tests, the
+    // Escape hatch for callers that already built an AudioCommand.
     [[nodiscard]] bool PushCommand(const AudioCommand& InCommand) noexcept;
 
     // Producer-side queries. They read the atomic shadow, never the audio
@@ -281,20 +281,20 @@ public:
     [[nodiscard]] std::uint32_t QueuedCommandCount() const noexcept;
     [[nodiscard]] std::uint32_t DroppedCommandCount() const noexcept;
 
-    // Audio-thread entry point. Renders `frameCount` stereo frames into
+    // Audio-thread entry point. Renders `frameCount` stereo frames.
     void Process(float* InInterleavedStereo, std::uint32_t InFrameCount) noexcept;
     // Same render path, exposed under a name the offline tests can call.
     void ProcessOffline(float* InInterleavedStereo, std::uint32_t InFrameCount) noexcept;
 
 private:
-    // Bushadow: the producer's mirror of the parent pointers. It exists only so
+    // Bushadow: the producer's mirror of the parent pointers.
     struct BusShadow
     {
         BusId parent = kInvalidBus;
         bool active = false;
     };
 
-    // Per-bus ducking runtime. The detector envelope and the applied gain are
+    // Per-bus ducking runtime. The detector envelope and the applied gain are audio-thread state.
     struct DuckingState
     {
         BusId sourceBus = kInvalidBus;
@@ -366,7 +366,7 @@ private:
         bool loop = false;
     };
 
-    // Lock-free bookkeeping for one bus: the producer writes gain/mute, the
+    // Lock-free bookkeeping for one bus: the producer writes gain/mute.
     struct BusAtomics
     {
         std::atomic<float> gain{1.0f};
@@ -398,7 +398,7 @@ private:
     std::uint32_t MSampleRate = 48000;
     BusState MBuses[kMaxBuses]{};
     BusAtomics MBusAtomics[kMaxBuses]{};
-    // Producer-visible mirror of BusFilterParams, so a UI can read back the
+    // Producer-visible mirror of BusFilterParams, so a UI can read back the current filter.
     std::atomic<float> MFilterReverbGain[kMaxBuses]{};
     std::atomic<float> MFilterLowPassHz[kMaxBuses]{};
     std::atomic<float> MFilterSmoothing[kMaxBuses]{};
@@ -408,7 +408,7 @@ private:
     std::uint32_t MOrderCount = 0;
     bool MTopologyDirty = true;
 
-    // Voice pool. `voiceClaimed_` is set by the producer when it allocates a
+    // Voice pool. `voiceClaimed_` is set by the producer when it allocates a voice.
     VoiceState MVoiceStates[kMaxVoices]{};
     std::atomic<bool> MVoiceClaimed[kMaxVoices]{};
     std::atomic<bool> MVoicePlaybackActive[kMaxVoices]{};
@@ -429,7 +429,7 @@ private:
     std::uint32_t MReverbCombLength[4]{};
     std::uint32_t MReverbAllpassLength[2]{};
 
-    // SPSC command ring. Must stay last-ish in the object; nothing depends on
+    // SPSC command ring. Must stay last-ish in the object.
     CommandQueue MCommands{};
 };
 }

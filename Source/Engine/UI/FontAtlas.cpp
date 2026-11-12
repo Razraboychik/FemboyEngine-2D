@@ -26,7 +26,7 @@ bool FontAtlas::Open(std::span<const std::byte> InBytes) noexcept
     {
         return false;
     }
-    // A .fbyfont comes from the VFS and may be authored by a mod. Bound the
+    // A .fbyfont comes from the VFS and may be authored by a mod.
     constexpr std::uint32_t kMaxAtlasEdge = 8192;
     if (ScopedHeader.atlasWidth > kMaxAtlasEdge || ScopedHeader.atlasHeight > kMaxAtlasEdge)
     {
@@ -84,7 +84,7 @@ const GlyphRecord* FontAtlas::Glyph(std::uint32_t InCodepoint) const noexcept
     {
         return nullptr;
     }
-    // Cooker emits ascending codepoints; binary search keeps a label with 100
+    // Cooker emits ascending codepoints.
     const GlyphRecord* ScopedBegin = MGlyphs.data();
     const GlyphRecord* ScopedEnd = ScopedBegin + MGlyphs.size();
     const GlyphRecord* ScopedFound =
@@ -439,7 +439,7 @@ bool FontAtlasSet::Add(std::span<const std::byte> InBytes)
         LogError("fonts", "FontAtlasSet::Add: capacity is {} atlases; '{}' was rejected", MAtlases.size(), MCount);
         return false;
     }
-    // Every atlas in a set must share one pixel size: GlyphRecord UVs are
+    // Every atlas in a set must share one pixel size: GlyphRecord UVs.
     if (MCount > 0)
     {
         const FontAtlas& ScopedFirst = MAtlases[0];
@@ -731,7 +731,7 @@ bool FontAtlasSet::MountToTextureArray(Rhi::RHI& InRhi)
         }
     }
 
-    // Layer 0 is the white texel, so the array is always one layer larger than
+    // Layer 0 is the white texel, so the array is always one layer larger.
     const std::uint32_t ScopedLayerCount = MCount + 1u;
     if (ScopedLayerCount > kMaxFontAtlases + 1u)
     {
@@ -751,7 +751,7 @@ bool FontAtlasSet::MountToTextureArray(Rhi::RHI& InRhi)
     }
     if (ScopedDeviceLayers == 0)
     {
-        // A backend that reports no limit cannot validate the request; the
+        // A backend that reports no limit cannot validate the request.
         LogWarn("fonts", "MountToTextureArray: the RHI reports maxTextureLayers == 0; using the engine bound of {}",
                 kMaxFontAtlases + 1u);
     }
@@ -801,7 +801,7 @@ bool FontAtlasSet::MountToTextureArray(Rhi::RHI& InRhi)
             }
             continue;
         }
-        // R8 coverage -> white RGB + alpha. Pink UI multiplies the sample by the
+        // R8 coverage -> white RGB + alpha.
         for (std::size_t ScopedTexel = 0; ScopedTexel < ScopedSource.size(); ++ScopedTexel)
         {
             ScopedTarget[ScopedTexel * 4 + 0] = std::byte{0xFF};
@@ -818,7 +818,7 @@ bool FontAtlasSet::MountToTextureArray(Rhi::RHI& InRhi)
     ScopedDesc.srgb = false;
     ScopedDesc.format = Assets::TextureFormat::Rgba8;
 
-    // Atomic publish: the new array is fully populated before the old handle is
+    // Atomic publish: the new array is fully populated before the old handle is released.
     const Rhi::TextureArrayHandle ScopedNew =
         InRhi.CreateTextureArray(ScopedDesc, std::span<const std::byte>(MMountScratch.data(), MMountScratch.size()));
     if (!ScopedNew.IsValid())
@@ -847,7 +847,7 @@ void FontAtlasSet::UnmountFromTextureArray(Rhi::RHI& InRhi)
         MMountedGeneration = 0;
         return;
     }
-    // Same barrier rule as MountToTextureArray(): the device must be idle before
+    // Same barrier rule as MountToTextureArray(): the device must be idle.
     InRhi.WaitIdle();
     InRhi.DestroyTextureArray(MTextureArray);
     MTextureArray = Rhi::TextureArrayHandle{};

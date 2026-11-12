@@ -98,7 +98,7 @@ public:
         return ScopedRecorded;
     }
 
-    // Ends the gesture. With no byte change the CommandStack cancels itself, so
+    // Ends the gesture. With no byte change the CommandStack cancels itself.
     [[nodiscard]] Result Commit() noexcept
     {
         if (!MActive)

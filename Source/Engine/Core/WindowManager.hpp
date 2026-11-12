@@ -176,7 +176,7 @@ struct InputState
         return InIndex < gamepads.size() && gamepads[InIndex].connected ? &gamepads[InIndex] : nullptr;
     }
 
-    // Called by WindowManager once per PumpEvents(): pressed/released and the
+    // Called by WindowManager once per PumpEvents(): pressed/released.
     void BeginFrame() noexcept
     {
         pressed.fill(false);
@@ -246,7 +246,7 @@ public:
     [[nodiscard]] bool Create(const WindowDesc& InDesc);
     void Destroy();
 
-    // Drain the OS event queue into the input snapshot. Returns false when the
+    // Drain the OS event queue into the input snapshot.
     bool PumpEvents();
 
     // Optional observer for a backend that needs the raw event stream (ImGui's
@@ -278,9 +278,9 @@ public:
 
     // Opaque bridge for the RHI. `NativeWindow()` returns SDL_Window*.
     [[nodiscard]] void* NativeWindow() const noexcept;
-    // Vulkan instance extensions required by the window system. Empty when the
+    // Vulkan instance extensions required by the window system.
     [[nodiscard]] std::span<const char* const> VulkanInstanceExtensions() const;
-    // Creates the platform surface for `instance` (VkInstance). The result is
+    // Creates the platform surface for `instance` (VkInstance).
     [[nodiscard]] bool CreateVulkanSurface(const void* InInstance, std::uint64_t* InSurface) const;
     // macOS: returns the CAMetalLayer* the Metal backend must draw into.
     [[nodiscard]] void* MetalLayer() const noexcept;

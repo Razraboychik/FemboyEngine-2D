@@ -298,7 +298,7 @@ ReleaseCookConfig ReleaseCooker::FromProject(const ProjectPaths& InPaths, const 
     CopyText(ScopedConfig.projectName, sizeof(ScopedConfig.projectName), InSettings.name);
     CopyText(ScopedConfig.projectRoot, sizeof(ScopedConfig.projectRoot), InPaths.root.generic_string());
     CopyText(ScopedConfig.assetsRoot, sizeof(ScopedConfig.assetsRoot), InPaths.assets.generic_string());
-    // Output is project-local: <root>/build/release for intermediates, while the
+    // Output is project-local: <root>/build/release for intermediates.
     const std::string ScopedOutput = InPaths.release.generic_string();
     const std::string ScopedArchives = InPaths.archives.generic_string();
     CopyText(ScopedConfig.outputRoot, sizeof(ScopedConfig.outputRoot), ScopedOutput);
@@ -1049,7 +1049,7 @@ void ReleaseCooker::Run(std::stop_token InStop) noexcept
             }
         }
 
-        // A release is not complete until every store directory contains the
+        // A release is not complete until every store directory contains its archive.
         if (!StageStoreArchives(ScopedPluginPath))
         {
             Fail("cannot stage the per-store archives");

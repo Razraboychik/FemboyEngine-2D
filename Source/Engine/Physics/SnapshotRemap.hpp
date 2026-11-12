@@ -103,7 +103,7 @@ private:
     std::uint32_t MCount = 0;
 };
 
-// Captures the current packed body ids, clears every native handle in the
+// Captures the current packed body ids, clears every native handle.
 [[nodiscard]] bool RebuildPhysicsBodies(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics,
                                         PhysicsBodyRemapTable& InRemap) noexcept;
 }

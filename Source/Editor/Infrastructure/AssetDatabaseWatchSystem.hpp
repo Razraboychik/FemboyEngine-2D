@@ -26,7 +26,7 @@ public:
 
     struct Config
     {
-        // Assets root; source paths are relative to it
+        // Assets root; source paths are relative.
         std::filesystem::path projectRoot;
         std::uint32_t debounceMs = 250;
         bool recursive = true;
@@ -38,7 +38,7 @@ public:
     struct Callbacks
     {
         void* user = nullptr;
-        // Asynchronous cooker seam. The watcher only enqueues the re-cook; the
+        // Asynchronous cooker seam. The watcher only enqueues the re-cook.
         bool (*scheduleCook)(void* InUser, std::string_view InSourcePath, Assets::AssetHandle InHandle,
                              std::string* InError) noexcept = nullptr;
         // Synchronous fallback, retained for tools and tests. The watcher opens
@@ -76,7 +76,7 @@ public:
     // Adds a folder (relative to projectRoot) to the watched set.
     [[nodiscard]] bool Watch(std::string_view InRelativeDirectory, std::string* InError = nullptr);
 
-    // Startup pass: creates .femeta rows for source files that appeared while
+    // Startup pass: creates .femeta rows for source files that appeared.
     std::uint32_t ScanForNewSources(std::string* InError = nullptr);
 
     // Editor-frame entry point: drains OS changes, debounces by source hash,

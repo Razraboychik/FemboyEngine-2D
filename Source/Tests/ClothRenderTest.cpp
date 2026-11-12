@@ -78,7 +78,7 @@ int main()
     FBY_CHECK(ScopedItem.indices.size() == 54);
     FBY_CHECK(Rhi::IsUnskinnedMeshItem(ScopedItem));
 
-    // Non-collapse: the mesh still spans the authored 64x64 pixels. A cloth that
+    // Non-collapse: the mesh still spans the authored 64x64 pixels.
     float ScopedMinX = ScopedItem.vertices[0].position.X;
     float ScopedMaxX = ScopedMinX;
     float ScopedMinY = ScopedItem.vertices[0].position.Y;

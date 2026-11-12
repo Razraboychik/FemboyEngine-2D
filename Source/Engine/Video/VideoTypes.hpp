@@ -10,10 +10,10 @@ namespace Fby::Video
 inline constexpr std::uint32_t kInvalidVideoPlayer = 0xFFFFFFFFu;
 inline constexpr std::uint32_t kInvalidVideoTexture = 0xFFFFFFFFu;
 
-// Fixed capacities. The frame pool is also the texture-array layer count, so a
+// Fixed capacities. The frame pool is also the texture-array layer count.
 inline constexpr std::uint32_t kMaxVideoPlayers = 8;
 inline constexpr std::uint32_t kVideoFramePoolSize = 4;
-// The ring is deeper than the pool: a couple of decoded frames can wait while
+// The ring is deeper than the pool: a couple of decoded frames can wait.
 inline constexpr std::uint32_t kVideoRingCapacity = 8;
 
 // VideoStreamComponent::flags. Valid and Finished are written by VideoSystem;
@@ -29,7 +29,7 @@ enum VideoStreamFlags : std::uint32_t
 inline constexpr std::uint32_t kVideoFlagMask =
     kVideoFlagValid | kVideoFlagFinished | kVideoFlagAlpha | kVideoFlagError;
 
-// One decode step result. The background thread treats PoolExhausted and
+// One decode step result.
 enum class DecodeStatus : std::uint8_t
 {
     Decoded = 0,

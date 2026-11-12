@@ -272,7 +272,7 @@ bool WindowManager::PumpEvents()
     SDL_Event ScopedEvent;
     while (SDL_PollEvent(&ScopedEvent))
     {
-        // The UI backend sees every event before the engine consumes it. The
+        // The UI backend sees every event before the engine consumes it.
         if (MEventObserver)
         {
             MEventObserver(MEventObserverUser, &ScopedEvent);
@@ -532,7 +532,7 @@ float WindowManager::DisplayScale() const noexcept
     {
         return 1.0f;
     }
-    // SDL3 returns the content scale of the display the window is on. A 0 is a
+    // SDL3 returns the content scale of the display the window is on.
     const float ScopedScale = SDL_GetWindowDisplayScale(static_cast<SDL_Window*>(MWindow));
     return ScopedScale > 0.0f ? ScopedScale : 1.0f;
 }
@@ -721,7 +721,7 @@ void WindowManager::ShowSaveFile(std::string_view InTitle, std::span<const FileF
                            static_cast<int>(ScopedRequest->filters.size()),
                            ScopedRequest->defaultLocation.empty() ? nullptr
                                                                   : ScopedRequest->defaultLocation.c_str());
-    // A save dialog's default name is supplied through the default location on
+    // A save dialog's default name is supplied through the default location.
     (void)InDefaultName;
     (void)InTitle;
 }

@@ -22,7 +22,7 @@ constexpr std::uint32_t AlignUp(std::uint32_t InValue, std::uint32_t InAlignment
     return static_cast<std::uint32_t>(Reflect::Fnv1a(InLabel));
 }
 
-// Coalesces adjacent/near-adjacent changed bytes so a struct edit stores tens of
+// Coalesces adjacent changed bytes so a struct edit stores tens of bytes, not the whole struct.
 template <typename Consumer>
 void ForEachChangedRange(std::span<const std::byte> InOldBytes, std::span<const std::byte> InNewBytes,
                          Consumer&& InConsumer) noexcept
@@ -577,7 +577,7 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
         return Result::Ok;
     }
 
-    // Build each command payload after the scratch region, then compact the
+    // Build each command payload after the scratch region, then compact the payloads.
     std::array<Command, kMaxTransactionEdits + kMaxSpawnedEntitiesPerTransaction * 2> ScopedBuilt{};
     std::uint32_t ScopedBuiltCount = 0;
     std::size_t ScopedFirstPayload = MArenaUsed;
@@ -677,7 +677,7 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
         CancelTransaction();
         return Result::Ok;
     }
-    // One committed transaction is one undo step: the first command records the
+    // One committed transaction is one undo step: the first command records the group size.
     ScopedBuilt[0].groupSize = static_cast<std::uint16_t>(ScopedBuiltCount);
     // Compact command payloads from firstPayload down to transactionStart_.
     std::size_t ScopedCompact = MTransactionStart;
@@ -887,7 +887,7 @@ bool CommandStack::Undo() noexcept
     std::uint32_t ScopedGroup = MCommands[MCursor - 1].groupSize;
     if (ScopedGroup == 0)
     {
-        // The group size is stored on the first command; the cursor sits on the
+        // The group size is stored on the first command.
         std::uint32_t ScopedHead = MCursor - 1;
         while (ScopedHead > 0 && MCommands[ScopedHead].groupSize == 0)
         {

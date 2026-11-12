@@ -33,7 +33,11 @@ set(FBY_ENGINE_SOURCES
     Audio/VoiceCodec.cpp
     Audio/VoiceDsp.cpp
     Audio/VoiceEffects.cpp
+    Audio/VoicePreset.cpp
+    Audio/VoicePresetIo.cpp
+    Audio/VoiceReactiveSfx.cpp
     Audio/VoiceSession.cpp
+    Audio/VoiceSfxSynth.cpp
     Core/CryptoAead.cpp
     Core/CryptoAsymmetric.cpp
     Core/CryptoKdf.cpp

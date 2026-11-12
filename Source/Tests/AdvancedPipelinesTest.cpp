@@ -393,7 +393,7 @@ void TestAudioZones()
     FBY_CHECK(ScopedResolved.ReverbGain < 0.3f);
     FBY_CHECK(ScopedResolved.LowPassHz < 500.0f);
 
-    // Move the listener outside both zones: target returns to open and the
+    // Move the listener outside both zones: target returns to open.
     auto& ScopedListenerState = ScopedRegistry.get<Fby::AudioListener>(ScopedListener);
     ScopedListenerState.position = Fby::Vector2D{1000.0f, 1000.0f};
     ScopedSystem.Update(ScopedRegistry, static_cast<Fby::AudioSystem*>(nullptr), 1.0f / 60.0f);

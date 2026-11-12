@@ -50,12 +50,12 @@ template <typename T> inline void Store(std::byte* InBase, std::uint32_t InOffse
     }
 }
 
-// Host services the generated code may call. Function pointers, not an
+// Host services the generated code may call.
 struct HostApi
 {
     std::uint32_t version = kAbiVersion;
     std::uint32_t reserved = 0;
-    // Opaque pointer the host passes back on every call (the EcsBridge). Not a
+    // Opaque pointer the host passes back on every call (the EcsBridge).
     void* componentUser = nullptr;
     void* (*component)(void* InComponentUser, void* InRegistry, std::uint32_t InEntity,
                        std::uint64_t InLayoutHash) noexcept = nullptr;
@@ -375,7 +375,7 @@ struct Context
     }
 };
 
-// One exported record per cooked program. `componentHashes` is an array of
+// One exported record per cooked program.
 struct Module
 {
     std::uint32_t magic = kMagic;

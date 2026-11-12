@@ -36,12 +36,18 @@ struct UserSettings
     UpscalerBackendSetting upscalerBackend = UpscalerBackendSetting::Auto;
     UpscalePolicy upscalePolicy = UpscalePolicy::Auto;
     Rhi::DlssQualityMode dlssQuality = Rhi::DlssQualityMode::Quality;
+    // Listener-side voice presentation. Preset ids are data so an unloaded or
+    // renamed pack falls back to "no effect" instead of failing the load.
+    char voicePresetId[64] = "";
+    float voicePresetIntensity = 1.0f;
+    bool voiceModerationMumble = true;
+    bool voiceReactiveSfx = true;
+    float voiceReactiveSfxGain = 0.5f;
 
     [[nodiscard]] friend bool operator==(const UserSettings&, const UserSettings&) noexcept = default;
 };
 
-[[nodiscard]] bool LoadUserSettings(std::string_view InPath, UserSettings* OutSettings,
-                                    std::string* InError = nullptr);
+[[nodiscard]] bool LoadUserSettings(std::string_view InPath, UserSettings* OutSettings, std::string* InError = nullptr);
 [[nodiscard]] bool SaveUserSettings(std::string_view InPath, const UserSettings& InSettings,
                                     std::string* InError = nullptr);
 

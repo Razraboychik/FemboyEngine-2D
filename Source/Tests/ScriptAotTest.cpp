@@ -111,7 +111,7 @@ bool TestTranspilerShape()
     return true;
 }
 
-// A hand-written module standing in for a cooked .dll: it exercises exactly the
+// A hand-written module standing in for a cooked .dll: it exercises exactly.
 std::uint64_t GVelocityHash = 0;
 const std::uint64_t* GHashes = &GVelocityHash;
 

@@ -578,7 +578,7 @@ private:
         float MaxTension = 0.0f;
         float TensionPerDistance = 0.0f;
         float TensionDistance = 0.0f;
-        // Damage per second at full overstress and the stress ratio that starts it
+        // Damage per second at full overstress and the stress ratio that starts the damage.
         float DamageRate = 0.0f;
         float DamageThreshold = 1.0f;
         bool EnableLimit = false;

@@ -386,7 +386,7 @@ void AccessibilityKernel::ApplyTtsLanguage() noexcept
     }
     if (!RequireMainThread("AccessibilityKernel::ApplyTtsLanguage"))
     {
-        // Keep the request pending: FlushSpeech() runs on the owner thread and
+        // Keep the request pending: FlushSpeech() runs on the owner thread.
         MPendingVoiceLanguage = true;
         return;
     }
@@ -837,7 +837,7 @@ void AccessibilityKernel::SetSpeechSink(SpeechSink InSink, void* InUser) noexcep
 
 void AccessibilityKernel::SetTtsBackend(const TtsBackend* InBackend) noexcept
 {
-    // Installing a backend is a main-thread operation for the same reason as
+    // Installing a backend is a main-thread operation for the same reason.
     if (!RequireMainThread("AccessibilityKernel::SetTtsBackend"))
     {
         return;
@@ -856,11 +856,11 @@ void AccessibilityKernel::SetTtsBackend(const TtsBackend* InBackend) noexcept
 
 void AccessibilityKernel::FlushSpeech() noexcept
 {
-    // Hard main-thread contract. SAPI is apartment-threaded and AVSpeech owns a
+    // Hard main-thread contract. SAPI is apartment-threaded and AVSpeech owns a queue.
     const std::thread::id ScopedCurrentThread = std::this_thread::get_id();
     if (!MMainThreadKnown)
     {
-        // The anchor comes from the process, not from this call: otherwise the
+        // The anchor comes from the process, not from this call.
         MMainThread = MainThreadId();
         MMainThreadKnown = true;
     }
@@ -868,7 +868,7 @@ void AccessibilityKernel::FlushSpeech() noexcept
     {
         return;
     }
-    // A locale change from a worker is applied here, on the owner thread, before
+    // A locale change from a worker is applied here, on the owner thread.
     if (MPendingVoiceLanguage)
     {
         ApplyTtsLanguage();

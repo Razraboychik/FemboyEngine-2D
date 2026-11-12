@@ -39,7 +39,7 @@ public:
     static constexpr std::uint32_t kBinaryVersion = 1;
     static constexpr char kBinaryMagic[8] = {'F', 'B', 'Y', 'P', 'R', 'F', '0', '1'};
 
-    // Asset import: strict subset of TOML used by prefabs. Returns false with a
+    // Asset import: strict subset of TOML used by prefabs.
     [[nodiscard]] static bool LoadToml(std::string_view InText, PrefabAsset& OutAsset, std::string* OutError = nullptr);
     [[nodiscard]] static bool LoadTomlFile(std::string_view InPath, PrefabAsset& OutAsset,
                                            std::string* OutError = nullptr);

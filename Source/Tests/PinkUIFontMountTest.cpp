@@ -137,7 +137,7 @@ int main()
     FBY_CHECK(ScopedItems[0].layer == Ui::kWhiteLayer);
     FBY_CHECK(ScopedItems[1].layer == 1);
 
-    // Adding a font invalidates the GPU array: IsCurrent() goes false until the
+    // Adding a font invalidates the GPU array: IsCurrent() goes false until.
     FBY_CHECK(ScopedFonts.Add(ScopedAtlasBytes));
     FBY_CHECK(ScopedFonts.Mounted());
     FBY_CHECK(!ScopedFonts.IsCurrent());
@@ -161,7 +161,7 @@ int main()
     FBY_CHECK(ScopedImageOutput.fontTextureArray == 0xFFFFFFFFu);
     FBY_CHECK(ScopedBatches[0].textureArray == 3);
 
-    // Strict contract: a text canvas backed by an unmounted set is refused, and
+    // Strict contract: a text canvas backed by an unmounted set is refused.
     Ui::FontAtlasSet ScopedUnmounted;
     FBY_CHECK(ScopedUnmounted.Add(ScopedAtlasBytes));
     ScopedContext.fonts = &ScopedUnmounted;
@@ -187,7 +187,7 @@ int main()
     FBY_CHECK(ScopedUnmountedOutput.fontTextureArray == 0xFFFFFFFFu);
 #endif
 
-    // Hostile .fbyfont header: an absurd atlas dimension must be rejected at
+    // Hostile .fbyfont header: an absurd atlas dimension must be rejected.
     std::vector<std::byte> ScopedHostile = ScopedAtlasBytes;
     Ui::FontAtlasHeader ScopedHostileHeader{};
     std::memcpy(&ScopedHostileHeader, ScopedHostile.data(), sizeof(ScopedHostileHeader));

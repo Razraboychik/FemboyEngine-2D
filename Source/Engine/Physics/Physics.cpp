@@ -502,7 +502,7 @@ void PhysicsSystem::BindToRegistry(Ecs::Registry& InRegistry) noexcept
 
 void PhysicsSystem::CreateMissingBodies(Ecs::Registry& InRegistry)
 {
-    // Recycle records for entities destroyed since the last step. Without this
+    // Recycle records for entities destroyed since the last step.
     PruneDeadBodies(InRegistry);
     auto ScopedView = InRegistry.view<RigidBody2D, Collider2D, Transform2D>();
     for (auto [ScopedEntity, ScopedBody, ScopedCollider, ScopedTransform] : ScopedView.each())

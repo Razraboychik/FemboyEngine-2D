@@ -5,8 +5,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Supported compilers are the newest validated releases of the 0.4 alpha line.
-# The floor is intentionally the current release, not an older compatibility
+# clang-cl is the reference Windows toolchain and the release gate; MSVC,
+# Clang, AppleClang and GCC are supported alternatives, never an obligation.
+# The floor is the release this line validates, not an older compatibility
 # version: the engine uses the latest C++26 library surface.
 set(FBY_MIN_CLANG "23.1.4")
 # The macOS x64 Homebrew bottle currently ships Clang 22.1.8; Apple Silicon
@@ -22,10 +23,14 @@ set(FBY_MIN_APPLECLANG "21.0")
 set(FBY_IS_MSVC FALSE)
 set(FBY_IS_CLANG_CL FALSE)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    # The project contract is Clang (clang-cl/clang++) and GCC only. clang-cl is
-    # reported as Clang with the MSVC frontend variant and keeps working.
-    message(FATAL_ERROR
-        "FemboyEngine2D does not support the Microsoft compiler; use Clang ${FBY_MIN_CLANG}+ or GCC ${FBY_MIN_GCC}+.")
+    # clang-cl stays the reference Windows toolchain. The Microsoft compiler is
+    # an optional alternative: supported when a team needs it, never required.
+    set(FBY_IS_MSVC TRUE)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${FBY_MIN_MSVC}")
+        message(FATAL_ERROR
+            "FemboyEngine2D requires MSVC ${FBY_MIN_MSVC} or newer; "
+            "found MSVC ${CMAKE_CXX_COMPILER_VERSION}.")
+    endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${FBY_MIN_APPLECLANG}")
         message(FATAL_ERROR
@@ -118,7 +123,18 @@ if(WIN32)
 endif()
 
 # Optimisation is per configuration and belongs to engine targets only.
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
+if(FBY_IS_MSVC)
+    # The Microsoft driver has no -fno-math-errno equivalent, and /fp:fast
+    # would break the determinism contract, so the default FP model stays.
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_options(fby_compiler_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/O2>)
+    elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        target_compile_options(fby_compiler_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/O2>
+            $<$<COMPILE_LANGUAGE:CXX>:/Zi>)
+    endif()
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(fby_compiler_flags INTERFACE
         $<$<COMPILE_LANGUAGE:CXX>:-O3>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-math-errno>)
@@ -131,8 +147,13 @@ endif()
 # Optional interprocedural optimisation for release measurements.
 option(FBY_ENABLE_LTO "Enable link-time optimisation" OFF)
 if(FBY_ENABLE_LTO)
-    target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-flto>)
-    target_link_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-flto>)
+    if(FBY_IS_MSVC)
+        target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:/GL>)
+        target_link_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:/LTCG>)
+    else()
+        target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-flto>)
+        target_link_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-flto>)
+    endif()
 endif()
 
 # Profile-guided builds: generate with one run, then point the use option at the
@@ -141,7 +162,13 @@ endif()
 option(FBY_PGO_GENERATE "Compile with profile instrumentation" OFF)
 set(FBY_PGO_PROFILE "" CACHE STRING "Profile data for the optimized build")
 if(FBY_PGO_GENERATE)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if(FBY_IS_MSVC)
+        # The Microsoft PGO path is /GL plus /GENPROFILE at link time.
+        target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:/GL>)
+        target_link_options(fby_compiler_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/LTCG>
+            $<$<COMPILE_LANGUAGE:CXX>:/GENPROFILE>)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(fby_compiler_flags INTERFACE
             $<$<COMPILE_LANGUAGE:CXX>:-fprofile-instr-generate>)
         target_link_options(fby_compiler_flags INTERFACE
@@ -152,7 +179,12 @@ if(FBY_PGO_GENERATE)
     endif()
 endif()
 if(FBY_PGO_PROFILE)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if(FBY_IS_MSVC)
+        target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:/GL>)
+        target_link_options(fby_compiler_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/LTCG>
+            $<$<COMPILE_LANGUAGE:CXX>:/USEPROFILE:${FBY_PGO_PROFILE}>)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(fby_compiler_flags INTERFACE
             $<$<COMPILE_LANGUAGE:CXX>:-fprofile-instr-use=${FBY_PGO_PROFILE}>)
         target_link_options(fby_compiler_flags INTERFACE

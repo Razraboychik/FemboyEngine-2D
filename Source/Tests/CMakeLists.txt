@@ -126,6 +126,11 @@ if(TARGET fby_hello_mod)
             FBY_TEST_ALCOHOL_PATH="$<TARGET_FILE:fby_alcohol>")
         add_dependencies(fby_plugin_reload_test fby_rainbow_palette fby_nvg fby_thermal fby_alcohol)
     endif()
+    if(TARGET fby_voice_pack)
+        target_compile_definitions(fby_plugin_reload_test PRIVATE
+            FBY_TEST_VOICE_PACK_PATH="$<TARGET_FILE:fby_voice_pack>")
+        add_dependencies(fby_plugin_reload_test fby_voice_pack)
+    endif()
 endif()
 # Runtime storage layout, log file sink, rotation and crash reports.
 fby_add_engine_test(fby_storage_test storage StorageTest.cpp)
@@ -367,6 +372,10 @@ endif()
 set_target_properties(fby_voice_effects_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 add_test(NAME voice_effects COMMAND fby_voice_effects_test)
+
+# Voice preset data pack, moderation policy and the reactive SFX layer.
+fby_add_engine_test(fby_voice_preset_test voice_presets VoicePresetTest.cpp)
+fby_add_engine_test(fby_voice_reactive_sfx_test voice_reactive_sfx VoiceReactiveSfxTest.cpp)
 
 # Shipped attribution: the generated Fby::Notices table and its license texts.
 fby_add_engine_test(fby_notices_test notices NoticesTest.cpp)

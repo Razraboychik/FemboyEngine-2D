@@ -35,7 +35,7 @@ void NativeLogVec2(Script::ScriptVm& InVm, Script::VmContext&, std::uint8_t InBa
 
 void NativeLogMessage(Script::ScriptVm& InVm, Script::VmContext&, std::uint8_t InBase)
 {
-    // The message id is a compiler-assigned constant; the string table lives in
+    // The message id is a compiler-assigned constant.
     LogInfo("script", "log.message #{}", InVm.U(InBase));
 }
 
@@ -640,7 +640,7 @@ void NativeDecimalRelease(Script::ScriptVm& InVm, Script::VmContext& InContext, 
 
 void RegisterScriptableComponents(Script::EcsBridge& InBridge)
 {
-    // Built-ins a visual graph can read/write today. Every registration is a
+    // Built-ins a visual graph can read/write today.
     (void)InBridge.RegisterComponent<Transform2D>("Transform2D");
     (void)InBridge.RegisterComponent<Velocity>("Velocity");
     (void)InBridge.RegisterComponent<TransportGroupComponent>("TransportGroupComponent");
@@ -1001,7 +1001,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
             {
                 InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
             }
-            // Mark started even after a fault: retrying a broken Start every
+            // Mark started even after a fault: retrying a broken Start would loop.
             ScopedComponent.Flags |= kScriptFlagStarted;
         }
 

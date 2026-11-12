@@ -394,7 +394,7 @@ bool TestMalformedBindingsRejected()
               "integer store wider than a register is rejected");
     }
 
-    // A zero-sized float field would make the VM read four bytes past the
+    // A zero-sized float field would make the VM read four bytes past the field.
     {
         ProgramBuilder ScopedBuilder;
         const std::uint16_t ScopedComponent = ScopedBuilder.AddComponent(0x5678u, 4);

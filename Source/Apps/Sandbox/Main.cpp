@@ -52,7 +52,6 @@ constexpr int kMaxFixedStepsPerFrame = 8;
 constexpr float kMaxFrameTime = 0.25f;
 constexpr std::uint32_t kChunkSize = 4096;
 
-// Render extract
 class RenderExtract
 {
 public:
@@ -774,7 +773,7 @@ int main(int argc, char** argv)
             ScopedAccessibility.ApplyProfile(ScopedProfile);
         }
 
-        // Camera: arrow keys pan, wheel zooms. The camera is plain data in the
+        // Camera: arrow keys pan, wheel zooms.
         const Fby::InputState& ScopedInput = ScopedWindow.Input();
         const float ScopedPanSpeed = 900.0f / std::max(ScopedWorld.zoom, 0.05f) * ScopedDt;
         if (ScopedInput.IsDown(Fby::Key::Left))
@@ -798,7 +797,7 @@ int main(int argc, char** argv)
             ScopedWorld.zoom = std::clamp(ScopedWorld.zoom * (1.0f + ScopedInput.wheel * 0.1f), 0.05f, 4.0f);
         }
 
-        // The swapchain and the RHI size follow the drawable size, not the
+        // The swapchain and the RHI size follow the drawable size.
         const Fby::WindowExtent ScopedSize = ScopedWindow.Size();
         if (ScopedSize.width > 0 && ScopedSize.height > 0 &&
             (ScopedSize.width != ScopedDeviceDesc.size.width || ScopedSize.height != ScopedDeviceDesc.size.height))
@@ -816,7 +815,7 @@ int main(int argc, char** argv)
         {
             ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
 
-            // Fixed step: gameplay sees a constant dt, presentation sees the
+            // Fixed step: gameplay sees a constant dt while presentation interpolates.
             ScopedAccumulator += ScopedDt;
             int ScopedSteps = 0;
             while (ScopedAccumulator >= kFixedStep && ScopedSteps < kMaxFixedStepsPerFrame)

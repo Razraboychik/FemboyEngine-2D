@@ -40,7 +40,7 @@ inline constexpr std::uint32_t kMaxAudioClips = 512;
 // Legacy AudioSystem::Play() contract: failure is 0xFFFFFFFF, a value that can
 inline constexpr std::uint32_t kInvalidAudioVoice = 0xFFFFFFFFu;
 
-// A mix-in authoring bus. `busId` is a runtime DspGraph bus id: the built-in
+// A mix-in authoring bus.
 struct AudioBusComponent
 {
     std::uint16_t BusID = kInvalidBus;
@@ -53,7 +53,7 @@ struct AudioBusComponent
 // Bit in AudioBusComponent::flags.
 inline constexpr std::uint32_t kAudioBusFlagMuted = 1u << 0;
 
-// A flat audio emitter. The runtime voice handle is kept by AudioSystem, not in
+// A flat audio emitter.
 struct AudioSourceComponent
 {
     AssetId Clip{};
@@ -127,11 +127,11 @@ public:
     [[nodiscard]] bool RegisterClip(AssetId InId, std::span<const float> InInterleavedSamples, std::uint32_t InChannels,
                                     std::uint32_t InSampleRate);
 
-    // Registers a validated .fpcm block (magic/version/payload checks) without
+    // Registers a validated .fpcm block (magic/version/payload checks).
     [[nodiscard]] bool RegisterCookedClip(AssetId InId, std::span<const std::byte> InCookedBlock,
                                           std::string* InError = nullptr);
 
-    // Decodes a whole cooked Ogg Opus block into an owned f32 stereo buffer and
+    // Decodes a whole cooked Ogg Opus block into an owned f32 stereo buffer.
     [[nodiscard]] bool RegisterOggMusic(AssetId InId, std::span<const std::byte> InCookedBlock,
                                         std::string* InError = nullptr);
 
@@ -162,7 +162,7 @@ public:
         return MLimiter;
     }
 
-    // Starts a one-shot/looped voice. Returns kInvalidVoice when the pool or the
+    // Starts a one-shot/looped voice.
     [[nodiscard]] std::uint32_t Play(AssetId InId, AudioBus InBus = AudioBus::Sfx, float InVolume = 1.0f,
                                      float InPitch = 1.0f, bool InLoop = false);
     void Stop(std::uint32_t InVoice);
@@ -205,7 +205,7 @@ private:
         Assets::CookedAudioView view{};
     };
 
-    // Stable storage for a decoded music track: the graph voice points at
+    // Stable storage for a decoded music track: the graph voice points into this buffer.
     struct OwnedPcmRecord
     {
         AssetId id{};

@@ -271,7 +271,7 @@ opus_val16 op_pvq_search_c(celt_norm *X, int *iy, int K, int N, int arch)
          /* It's really important to round *towards zero* here */
          iy[j] = MULT16_16_Q15(X[j],rcp);
 #else
-         iy[j] = (int)floor(rcp*X[j]);
+         iy[j] = (int)floor((double)rcp*X[j]);
 #endif
          y[j] = (celt_norm)iy[j];
          yy = MAC16_16(yy, y[j],y[j]);

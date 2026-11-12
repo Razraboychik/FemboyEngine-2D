@@ -452,8 +452,8 @@ int opus_projection_encoder_ctl(OpusProjectionEncoder *st, int request, ...)
       goto bad_arg;
     }
     *value =
-      ms_encoder->layout.nb_channels * (ms_encoder->layout.nb_streams
-      + ms_encoder->layout.nb_coupled_streams) * sizeof(opus_int16);
+      (opus_int32)ms_encoder->layout.nb_channels * (ms_encoder->layout.nb_streams
+      + ms_encoder->layout.nb_coupled_streams) * (opus_int32)sizeof(opus_int16);
   }
   break;
   case OPUS_PROJECTION_GET_DEMIXING_MATRIX_GAIN_REQUEST:
@@ -488,7 +488,7 @@ int opus_projection_encoder_ctl(OpusProjectionEncoder *st, int request, ...)
       goto bad_arg;
     }
     internal_short = mapping_matrix_get_data(demixing_matrix);
-    internal_size = nb_input_streams * nb_output_streams * sizeof(opus_int16);
+    internal_size = (opus_int32)nb_input_streams * nb_output_streams * (opus_int32)sizeof(opus_int16);
     if (external_size != internal_size)
     {
       goto bad_arg;

@@ -59,7 +59,7 @@ void CloseCodecLibrary(LibraryHandle handle) noexcept
 }
 #endif
 
-// The names a libvpx build is normally installed under. Loaded in order; the
+// The names a libvpx build is normally installed under. Loaded in order.
 constexpr const char* kLibraryNames[] = {
 #if defined(_WIN32)
     "vpx.dll",

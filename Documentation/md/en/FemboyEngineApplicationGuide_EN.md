@@ -1,6 +1,6 @@
 # FemboyEngine2D Application Guide
 
-*ECS in a production project, optimisation and the distribution SDK — 2026-11-08*
+*ECS in a production project, optimisation and the distribution SDK — 2026-11-12*
 
 ## 1. What this guide is for
 
@@ -9,7 +9,7 @@ FemboyEngine2D is a data-oriented 2D engine. This guide is the practical compani
 The running project is small. A player, three enemy archetypes, a boss with phases, bullets, pickups and a card board are enough to demonstrate every architectural rule. Every code snippet compiles against the headers shipped in Source/Engine; paths and type names are real.
 
 - Audience: gameplay programmers, technical designers and tools engineers.
-- Assumed knowledge: C++20 basics, an ECS at the level of EnTT, and one graphics API.
+- Assumed knowledge: C++20 basics, an ECS at the level of a chunked registry, and one graphics API.
 - Not covered: Vulkan synchronization details, console certification and legal storefront setup.
 
 > **Note.** The engine is validated by the full CTest suite. The suites cover the SDK profile and crypto, the storefront bridge, SDF physics, the render/weather stack and the data-driven prefab/DPI/theme path. Run ctest --test-dir build --output-on-failure before trusting a local change.
@@ -55,7 +55,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The compiler is part of the contract: C++26 is required, Clang 19+ is the reference toolchain and GCC 16+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer uses the deterministic FbyLZ codec and reports it in the cook log.
+The compiler is part of the contract: C++26 is required, Clang 23.1.4+ is the reference toolchain and GCC 16.2.0+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer uses the deterministic FbyLZ codec and reports it in the cook log.
 
 > **Note.** Setup never modifies a source file. It is safe to delete third_party/<name>-src and re-run with --force; the lock file is regenerated and the CMake cache does not embed a machine-specific path.
 
@@ -131,14 +131,14 @@ struct InputComponent
 struct AIBehaviorComponent
 {
     std::uint32_t behavior = 0; // 0 chase, 1 keep distance, 2 patrol, 3 boss
-    Entity target = entt::null;
+    Entity target = Fby::kNullEntity;
     float thinkSeconds = 0.0f;
     float preferredRange = 220.0f;
 };
 
 struct ProjectileComponent
 {
-    Entity owner = entt::null;
+    Entity owner = Fby::kNullEntity;
     Vector2D velocity{};
     float damage = 10.0f;
     float ttl = 4.0f;
@@ -224,7 +224,7 @@ void AISystem(ecs::SystemContext& context)
             continue;
         }
         InputComponent& input = view.get<InputComponent>(entity);
-        if (behaviorComponent.target == entt::null || !context.registry.valid(behaviorComponent.target))
+        if (behaviorComponent.target == Fby::kNullEntity || !context.registry.valid(behaviorComponent.target))
         {
             continue;
         }
@@ -319,7 +319,7 @@ if (!graph.Build())
 }
 ```
 
-Determinism is a property of the data, not of a hope. FixedUpdate receives a constant dt, the RNG is Pcg32 seeded per run, and structural commands are logged. Snapshot v4 captures the ECS plus the world extension (joints, cloth, fluid) and restores it with a b2 body remap. The replay test resimulates the same input log on a fresh registry and compares the checksum.
+Determinism is a property of the data, not of a hope. FixedUpdate receives a constant dt, the RNG is Pcg32 seeded per run, and structural commands are logged. Snapshot v5 captures the ECS plus the world extension (joints, cloth, fluid) and restores it with a b2 body remap. The replay test resimulates the same input log on a fresh registry and compares the checksum.
 
 - Headless first: a gameplay system takes SystemContext and must not require a window or a GPU.
 - Test the data, not the pixels: assert component values and command-log bytes.
@@ -371,7 +371,7 @@ session.SubmitRemoteInput(0, frame);
 
 - Authoritative simulation: the server owns the tick, the RNG seed and the CommandLog. Clients predict with the same tick size and the same gameplay systems.
 - Register gameplay components in SnapshotSchema before the first capture; a component outside the schema silently does not replicate.
-- Use stable NetEntityId values for replicated entities. Never derive one from an EnTT id, a spawn order or an allocator address.
+- Use stable NetEntityId values for replicated entities. Never derive one from a runtime entity id, a spawn order or an allocator address.
 - Replicate input frames and structural commands, not raw device state or render-only values.
 - On a correction, restore the snapshot before the first bad tick, replay the corrected input and compare the final checksum.
 - Test PIE with two players, artificial latency, packet loss and a forced rollback before adding content.

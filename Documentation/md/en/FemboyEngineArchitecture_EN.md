@@ -2,9 +2,9 @@
 
 **Language section:** English
 
-**Version:** 0.3.0-alpha.1
+**Version:** 0.4.0-alpha.1
 **Status:** Alpha
-**Date:** 2026-11-08
+**Date:** 2026-11-12
 **Document:** FBY-ARCH-0.1
 
 ---
@@ -19,7 +19,7 @@ The design rules are strict. Simulation state is plain, trivially copyable data;
 
 - RHI: persistent frame rings, 48-byte sprite items, indirect mesh draws and one compute dispatch for linear-blend skinning.
 
-- ECS and physics: EnTT registry, declarative SystemGraph, Snapshot v4, Box2D v3 bridge, joint chains, Verlet cloth and two water models.
+- ECS and physics: FCS registry, declarative SystemGraph, Snapshot v5, Box2D v3 bridge, joint chains, Verlet cloth and two water models.
 
 - Network: NetRollbackSession with a 256-tick snapshot ring, input prediction, late-input replay and stable entity ids.
 
@@ -107,9 +107,9 @@ Draws are emitted as one vkCmdDrawIndexedIndirect per (texture array, layer, geo
 
 Three frames in flight are the default. Each slice owns an instance ring, a mesh vertex ring and a mesh index ring allocated once at device creation. Capacity is a startup decision, not a per-frame allocation: the defaults cover 1,048,576 sprite items, 65,536 mesh vertices and 131,072 mesh indices per slice.
 
-## 5. ECS, schedule and Snapshot v4
+## 5. ECS, schedule and Snapshot v5
 
-The ECS is EnTT's registry with a strict component contract: trivially copyable, standard layout, no string, no container, no vtable. Components are data; behaviour lives in systems. The frame has four phases: PreUpdate (variable dt, input and streaming), FixedUpdate (constant dt, gameplay and physics), PostUpdate (camera, culling, audio) and Render (extract and editor).
+The ECS is the FCS chunked registry with a strict component contract: trivially copyable, standard layout, no string, no container, no vtable. Components are data; behaviour lives in systems. The frame has four phases: PreUpdate (variable dt, input and streaming), FixedUpdate (constant dt, gameplay and physics), PostUpdate (camera, culling, audio) and Render (extract and editor).
 
 SystemGraph is the production scheduler. Dependencies are explicit after/before bitmasks; a one-time topological sort produces the order; a cycle or a cross-phase dependency fails Build(). The graph holds up to 64 nodes and uses function pointers plus an opaque user pointer, never std::function. PluginHost removes every node whose user pointer matches when a plugin unloads.
 
@@ -120,7 +120,7 @@ SystemGraph is the production scheduler. Dependencies are explicit after/before 
 | PostUpdate | Camera follow, culling, mixer submission; variable dt |
 | Render | Render extract, UI build, editor draw; once per frame |
 
-Snapshot v4 is a canonical, checksummed byte image. The 104-byte header carries magic, version, entity/component counts, tick/baseTick, payload bytes, FNV-1a checksum, base checksum, schema hash, the RNG state and the v3 world-extension fields. ECS records come first, field-by-field through Mirror; the extension bytes for chains, cloth, water and emitter clocks follow and are addressed by stable subsystem ids, never by Box2D handles. A delta snapshot stores only changed records and still checksums the base it was derived from.
+Snapshot v5 is a canonical, checksummed byte image. The 104-byte header carries magic, version, entity/component counts, tick/baseTick, payload bytes, FNV-1a checksum, base checksum, schema hash, the RNG state and the v3 world-extension fields. ECS records come first, field-by-field through Mirror; the extension bytes for chains, cloth, water and emitter clocks follow and are addressed by stable subsystem ids, never by Box2D handles. A delta snapshot stores only changed records and still checksums the base it was derived from.
 
 ```cpp
 struct SnapshotHeader {
@@ -161,9 +161,9 @@ Two water models share one system. GerstnerField is a small sum of trochoidal wa
 
 The DOD backend is a second implementation of the same PhysicsSystem contract, selected by project policy or PhysicsDesc.backend. It owns SoA positions, velocities and collider extents and resolves pairs through a sorted uniform grid; PhysicsSystem::Capabilities() is the only supported feature query. Transport and wheels explicitly declare their backend boundary: transport support and conveyors work on both solvers, while weld joints and wheel joints require Box2D.
 
-## 7. Network rollback and Snapshot v4
+## 7. Network rollback and Snapshot v5
 
-NetRollbackSession is the glue between Snapshot v4, CommandLog, Pcg32 and the gameplay components (tags, attributes, effects and skills). A session owns a fixed ring of full snapshots (one per simulated tick), one input ring per player, a stable NetEntityId to local EnTT id map and the replay loop. Everything after Initialize() is allocation-free: the snapshot arena, entity tables, input rings and frame metadata are fixed capacity. The simulation callback is a function pointer plus void*, never std::function.
+NetRollbackSession is the glue between Snapshot v5, CommandLog, Pcg32 and the gameplay components (tags, attributes, effects and skills). A session owns a fixed ring of full snapshots (one per simulated tick), one input ring per player, a stable NetEntityId to local entity id map and the replay loop. Everything after Initialize() is allocation-free: the snapshot arena, entity tables, input rings and frame metadata are fixed capacity. The simulation callback is a function pointer plus void*, never std::function.
 
 When a remote input arrives late, the session restores the snapshot immediately before the earliest corrected tick, restores the RNG and CommandLog cursor from the same slot, reapplies structural commands, resimulates the affected ticks with the corrected input and prediction for still-missing inputs, captures new snapshots, and reports which frames changed.
 
@@ -176,7 +176,7 @@ When a remote input arrives late, the session restores the snapshot immediately 
 
 NetInputFrame is 24 bytes and uses signed 16-bit fixed-point axes, not floats: a float bit pattern is not guaranteed to survive a different compiler, and the simulation must be a pure function of the input bits. The status of each player frame is Confirmed, Predicted or Missing. A late input overwrites the prediction in place at the same tick, which is exactly what replay needs.
 
-NetEntityId is assigned by the authority (or by the local peer for locally owned objects) and is never derived from an EnTT id. A restored snapshot, a different spawn order or a different allocator must not change it. The replicated gameplay state is a compact tag mask plus fixed attribute, effect and skill records; the checksum folds each of them per mapped entity. CommandLog records structural spawn/despawn/add/remove, so a rollback can replay structure as well as values.
+NetEntityId is assigned by the authority (or by the local peer for locally owned objects) and is never derived from a runtime entity id. A restored snapshot, a different spawn order or a different allocator must not change it. The replicated gameplay state is a compact tag mask plus fixed attribute, effect and skill records; the checksum folds each of them per mapped entity. CommandLog records structural spawn/despawn/add/remove, so a rollback can replay structure as well as values.
 
 ## 8. Asset pipeline and editor infrastructure
 
@@ -277,7 +277,7 @@ python Documentation/Tools/GenerateDocumentation.py --node <node> --lo-cli <libr
 
 - Promote CheckStyle.py to a CI test and a pre-commit hook, so a lowercase file or a Vec2 alias cannot merge.
 
-- Add a public C++ API stability policy: frozen component layouts, Snapshot v4 compatibility tests and an ABI-version matrix for plugins.
+- Add a public C++ API stability policy: frozen component layouts, Snapshot v5 compatibility tests and an ABI-version matrix for plugins.
 
 - Finish Metal parity: indirect mesh path, compute skinning and the same FramePacket contract as Vulkan, then enable macOS CI.
 

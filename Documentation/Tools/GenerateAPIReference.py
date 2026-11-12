@@ -115,10 +115,10 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "The engine targets C++26 with GCC 16 or newer and Clang 19 or newer; the Windows release "
+                    "The engine targets C++26 with GCC 16.2.0 or newer and Clang 23.1.4 or newer; the Windows release "
                     "candidate is built with clang-cl against the MSVC standard library. Four rules are load "
                     "bearing and every public API is designed around them:",
-                    "Движок рассчитан на C++26 с GCC 16 или новее и Clang 19 или новее; релиз-кандидат под Windows "
+                    "Движок рассчитан на C++26 с GCC 16.2 или новее и Clang 23.1.4 или новее; релиз-кандидат под Windows "
                     "собирается clang-cl со стандартной библиотекой MSVC. Четыре правила являются несущими, и "
                     "каждый публичный API спроектирован вокруг них:",
                 ),
@@ -310,9 +310,9 @@ SECTIONS: list[dict] = [
                     [
                         B("CastComponent<To>(registry, entity)", "CastComponent<To>(registry, entity)"),
                         B(
-                            "ECS spelling of Cast<>: EnTT proves the component type at compile time and the "
+                            "ECS spelling of Cast<>: the type system proves the component type at compile time and the "
                             "registry validates the entity. Returns nullptr when the entity lacks the component.",
-                            "ECS-написание Cast<>: EnTT проверяет тип компонента на этапе компиляции, а реестр "
+                            "ECS-написание Cast<>: система типов проверяет тип компонента на этапе компиляции, а реестр "
                             "проверяет сущность. Возвращает nullptr, если компонента у сущности нет.",
                         ),
                     ],
@@ -336,11 +336,11 @@ SECTIONS: list[dict] = [
                 "text": B(
                     "StableTypeId<T>() is a consteval FNV-1a of the type's registered name (or the compiler "
                     "signature when no name is pinned). A type that changes its registered name changes its id, "
-                    "which is why component names are part of the serialized schema and why Snapshot v4 stores a "
+                    "which is why component names are part of the serialized schema and why Snapshot v5 stores a "
                     "LayoutHash next to the name.",
                     "StableTypeId<T>() — consteval FNV-1a от зарегистрированного имени типа (или сигнатуры "
                     "компилятора, если имя не закреплено). Смена зарегистрированного имени меняет id, поэтому имена "
-                    "компонентов входят в сериализованную схему, а Snapshot v4 хранит LayoutHash рядом с именем.",
+                    "компонентов входят в сериализованную схему, а Snapshot v5 хранит LayoutHash рядом с именем.",
                 ),
             },
         ],
@@ -466,12 +466,12 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "The registry is EnTT. Systems are registered on a SystemGraph in one of five phases "
+                    "The registry is FCS. Systems are registered on a SystemGraph in one of five phases "
                     "(PreUpdate, FixedUpdate, Update, PostUpdate, Render). SystemContext is the only parameter a "
                     "system receives; it carries the registry, JobSystem, frame arena, renderer, window, VFS, "
                     "AssetDatabase, audio, physics, joints, cloth, fluid, camera stack, accessibility kernel and "
                     "font atlases.",
-                    "Реестр — это EnTT. Системы регистрируются в SystemGraph в одной из пяти фаз (PreUpdate, "
+                    "Реестр — это FCS. Системы регистрируются в SystemGraph в одной из пяти фаз (PreUpdate, "
                     "FixedUpdate, Update, PostUpdate, Render). SystemContext — единственный параметр системы; он "
                     "содержит реестр, JobSystem, кадровую арену, рендерер, окно, VFS, AssetDatabase, аудио, "
                     "физику, суставы, ткань, жидкость, стек камер, ядро доступности и атласы шрифтов.",
@@ -493,12 +493,12 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "Snapshot v4 is a canonical, checksummed byte image of the registry. Components are written by "
+                    "Snapshot v5 is a canonical, checksummed byte image of the registry. Components are written by "
                     "hand-written codecs when they contain runtime handles (b2BodyId, b2ShapeId); the snapshot "
                     "never serializes those handles, and the restore path recreates bodies from the component "
                     "fields. The schema stores the Mirror name and LayoutHash of every component, so a field "
                     "change is rejected instead of silently misread.",
-                    "Snapshot v4 — канонический образ реестра с контрольной суммой. Компоненты с рантайм-хэндлами "
+                    "Snapshot v5 — канонический образ реестра с контрольной суммой. Компоненты с рантайм-хэндлами "
                     "(b2BodyId, b2ShapeId) пишутся рукописными кодеками; снапшот никогда не сериализует эти "
                     "хэндлы, а восстановление пересоздаёт тела из полей компонента. Схема хранит Mirror-имя и "
                     "LayoutHash каждого компонента, поэтому изменение поля отклоняется, а не читается молча "
@@ -521,8 +521,8 @@ SECTIONS: list[dict] = [
                     ],
                     [
                         B("Fby::Net::NetRollbackSession", "Fby::Net::NetRollbackSession"),
-                        B("Consumes snapshot v4 and replays ticks on late input (section 10).",
-                          "Использует snapshot v4 и воспроизводит тики при опоздании ввода (раздел 10)."),
+                        B("Consumes snapshot v5 and replays ticks on late input (section 10).",
+                          "Использует snapshot v5 и воспроизводит тики при опоздании ввода (раздел 10)."),
                     ],
                 ],
             },
@@ -852,12 +852,12 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "A session binds snapshot v4, CommandLog, Pcg32 and the gameplay components (tags, attributes, "
+                    "A session binds snapshot v5, CommandLog, Pcg32 and the gameplay components (tags, attributes, "
                     "effects and skills) into one fixed-capacity "
                     "rollback loop. Everything after Initialize() is allocation-free: one snapshot ring, one "
                     "input ring per player, a fixed entity map and fixed frame metadata. The simulation callback "
                     "is a function pointer plus void*.",
-                    "Сессия связывает snapshot v4, CommandLog, Pcg32 и геймплейные компоненты (теги, атрибуты, "
+                    "Сессия связывает snapshot v5, CommandLog, Pcg32 и геймплейные компоненты (теги, атрибуты, "
                     "эффекты и скиллы) в один контур роллбэка с "
                     "фиксированной ёмкостью. После Initialize() аллокаций нет: одно кольцо снапшотов, одно кольцо "
                     "ввода на игрока, фиксированная карта сущностей и фиксированные метаданные кадров. Колбэк "
@@ -1775,23 +1775,27 @@ def export_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, node: str, lo_cl
     if not lo_cli or not pathlib.Path(lo_cli).is_file():
         print("pdf: LibreOffice Kit CLI not found; pass --lo-cli or set FBY_LO_CLI", file=sys.stderr)
         return False
-    pdf_path.unlink(missing_ok=True)
+    temporary = pdf_path.with_name(pdf_path.name + ".tmp.pdf")
+    temporary.unlink(missing_ok=True)
     # Keep the LibreOffice transcript out of Documentation/: the style gate
     # rejects a committed .log, and the generator must be runnable on a clean
     # tree without leaving junk behind.
     log_path = pathlib.Path(tempfile.gettempdir()) / "fby_api_reference_pdf.log"
     with log_path.open("w", encoding="utf-8") as log:
         completed = subprocess.run(
-            [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(pdf_path)],
+            [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(temporary)],
             stdout=log,
             stderr=log,
         )
-    if completed.returncode != 0 or not pdf_path.is_file() or pdf_path.stat().st_size == 0:
+    if completed.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
         print(f"pdf: export failed; see {log_path}", file=sys.stderr)
+        temporary.unlink(missing_ok=True)
         return False
-    if pdf_path.read_bytes()[:5] != b"%PDF-":
+    if temporary.read_bytes()[:5] != b"%PDF-":
         print("pdf: output is not a PDF", file=sys.stderr)
+        temporary.unlink(missing_ok=True)
         return False
+    os.replace(temporary, pdf_path)
     return True
 
 

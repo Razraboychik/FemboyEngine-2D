@@ -1,6 +1,6 @@
 # Project Settings Recommendations
 
-*FemboyEngine2D 0.3.0-alpha.1 - by game scale: light, medium, large*
+*FemboyEngine2D 0.4.0-alpha.1 - by game scale: light, medium, large*
 
 Every project descriptor (project.femproj) mixes three kinds of settings: gameplay simulation, shipping quality and build policy. The same numbers do not fit a two-week jam and a streaming open world. This guide gives one recommendation column per scale, explains the cost behind each value, and lists the mistakes that show up in profiles and bug reports. Treat the values as starting points and measure before shipping.
 

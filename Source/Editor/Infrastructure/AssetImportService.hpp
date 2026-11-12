@@ -118,7 +118,7 @@ public:
     // Binds an AssetId to a fixed Vulkan texture-array layer. The editor's atlas
     void BindTextureAsset(AssetId InId, std::uint32_t InLayer) noexcept;
     [[nodiscard]] std::uint32_t LayerFor(AssetId InId) const noexcept;
-    // Project Settings can change the cook target without restarting the
+    // Project Settings can change the cook target without restarting.
     void SetTextureFormat(Assets::TextureFormat InFormat) noexcept
     {
         MConfig.textureFormat = InFormat;

@@ -30,7 +30,7 @@ inline constexpr std::uint32_t kFesklMaxAssetPath = 96;
 inline constexpr std::uint32_t kFesklFlagHasSkin = 1u << 0;
 inline constexpr std::uint32_t kFesklFlagHasSprite = 1u << 1;
 
-// "FESKL001" - eight bytes so a hex dump is self-describing and the version is
+// "FESKL001" - eight bytes so a hex dump is self-describing and the version is readable.
 inline constexpr std::array<char, 8> kFesklMagic{'F', 'E', 'S', 'K', 'L', '0', '0', '1'};
 
 // On-disk PODs.
@@ -182,7 +182,7 @@ void SkeletonNameTableReset(SkeletonNameTable& InTable) noexcept;
 [[nodiscard]] bool SkeletonNameTableSet(SkeletonNameTable& InTable, std::uint32_t InBone,
                                         std::string_view InName) noexcept;
 [[nodiscard]] std::string_view SkeletonNameTableGet(const SkeletonNameTable& InTable, std::uint32_t InBone) noexcept;
-// Fills missing names with "bone_<index>" (snprintf into the fixed buffer) and
+// Fills missing names with "bone_<index>" (snprintf into the fixed buffer).
 void SkeletonNameTablePopulateFromIndices(SkeletonNameTable& InTable, std::uint32_t InBoneCount) noexcept;
 
 // Writer input.
@@ -201,20 +201,20 @@ struct SkeletonAssetSource
 // Codec.
 [[nodiscard]] std::expected<SkeletonAssetView, std::string> DecodeSkeletonAsset(std::span<const std::byte> InBytes);
 
-// Serializes rest-pose locals, hierarchy, names and skin binding. `out` is
+// Serializes rest-pose locals, hierarchy, names and skin binding.
 [[nodiscard]] bool EncodeSkeletonAsset(const SkeletonAssetSource& InSource, std::vector<std::byte>& Out,
                                        std::uint64_t* OutHash = nullptr, std::string* InError = nullptr);
 
-// Fills a runtime SkeletonComponent/SkinComponent from a validated view and
+// Fills a runtime SkeletonComponent/SkinComponent from a validated view.
 void InstantiateSkeletonAsset(const SkeletonAssetView& InView, SkeletonComponent& InSkeleton, SkinComponent& InSkin,
                               SkeletonNameTable& InNames, FesklSprite& InSprite) noexcept;
 
-// VFS convenience: the span returned by Read() is decoded in place, then the
+// VFS convenience: the span returned by Read() is decoded in place.
 [[nodiscard]] bool LoadSkeletonAsset(VirtualFileSystem& InVfs, std::string_view InPath, SkeletonComponent& InSkeleton,
                                      SkinComponent& InSkin, SkeletonNameTable& InNames, FesklSprite& InSprite,
                                      std::uint64_t* OutHash = nullptr, std::string* InError = nullptr);
 
-// Encodes and writes through the VFS writable overlay (a directory mount; a
+// Encodes and writes through the VFS writable overlay.
 [[nodiscard]] bool SaveSkeletonAsset(VirtualFileSystem& InVfs, std::string_view InPath,
                                      const SkeletonAssetSource& InSource, std::uint64_t* OutHash = nullptr,
                                      std::string* InError = nullptr);

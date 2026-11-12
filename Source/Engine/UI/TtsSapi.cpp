@@ -46,7 +46,7 @@ namespace
     return static_cast<ISpVoice*>(InRaw);
 }
 
-// Bounded enumeration: a Windows installation ships a handful of voices, and a
+// Bounded enumeration: a Windows installation ships a handful of voices.
 constexpr std::uint32_t kMaxVoiceTokens = 64;
 constexpr std::size_t kMaxLanguageTagBytes = 64;
 
@@ -228,7 +228,7 @@ SapiTts::~SapiTts()
 bool SapiTts::Initialize() noexcept
 {
 #if defined(_WIN32)
-    // Creating the ISpVoice initializes the calling thread's COM apartment. A
+    // Creating the ISpVoice initializes the calling thread's COM apartment.
     if (!RequireMainThread("SapiTts::Initialize"))
     {
         return false;

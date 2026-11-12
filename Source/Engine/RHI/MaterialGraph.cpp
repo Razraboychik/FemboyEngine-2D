@@ -92,7 +92,7 @@ std::string InputLabel(const MaterialNode& InNode, std::uint32_t InSlot)
     return InSource != kInvalidMaterialNode && InSource < InNodeCount && InSource != InConsumer;
 }
 
-// Kahn's algorithm over every node, deterministic: the lowest ready index is
+// Kahn's algorithm over every node, deterministic: the lowest ready index.
 [[nodiscard]] bool TopologicalSortAll(const MaterialGraph& InGraph, std::uint16_t* InOrder, std::uint32_t* OutCount,
                                       std::string* InError)
 {
@@ -367,7 +367,7 @@ void MaterialGraph::Clear() noexcept
     MPinCount = 0;
     MParamCount = 0;
 
-    // The single Output node always exists at index 0; AddNode() refuses to
+    // The single Output node always exists at index 0.
     MaterialNode& ScopedOutput = MNodes[0];
     ScopedOutput.kind = MaterialNodeKind::Output;
     ScopedOutput.firstInput = 0;
@@ -687,7 +687,7 @@ bool MaterialGraph::Connect(std::uint16_t InNode, std::uint8_t InSlot, std::uint
         return false;
     }
 
-    // Cross-slot rules: pretend the connection is already made, then check the
+    // Cross-slot rules: pretend the connection is already made, then check.
     MaterialValueType ScopedInputs[kMaxMaterialInputs] = {};
     for (std::uint16_t ScopedInputSlot = 0; ScopedInputSlot < ScopedTarget.inputCount; ++ScopedInputSlot)
     {
@@ -849,7 +849,7 @@ MaterialGraphRequirements MaterialGraph::Requirements() const noexcept
                 ScopedRequirements.needsTime = true;
                 break;
             case MaterialNodeKind::Distortion:
-                // The distortion phase is a function of the material clock even when
+                // The distortion phase is a function of the material clock even.
                 ScopedRequirements.needsTime = true;
                 break;
             case MaterialNodeKind::WorldPosition:
@@ -928,7 +928,7 @@ bool MaterialGraph::Validate(std::string* InError) const
         return false;
     }
 
-    // The Output count is checked before the per-node layout so a graph that was
+    // The Output count is checked before the per-node layout so a graph.
     std::uint32_t ScopedOutputCount = 0;
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < MNodeCount; ++ScopedIndex)
     {
@@ -1323,7 +1323,7 @@ struct CompileContext
     bool needsInverse = false;
     bool fragmentNeedsMaterialParams = false;
     bool fragmentNeedsViewProjection = false;
-    // True whenever the fragment declares the push-constant block: either it
+    // True whenever the fragment declares the push-constant block.
     bool fragmentNeedsPushConstant = false;
     bool vertexNeedsMaterialParams = false;
 
@@ -1629,7 +1629,7 @@ void AppendNodeExpression(GlslWriter& Out, const CompileContext& InContext, std:
         }
         case MaterialNodeKind::Distortion:
         {
-            // Deterministic animated warp. The phase is a pure function of UV and
+            // Deterministic animated warp. The phase is a pure function of UV.
             const MaterialParam& ScopedParam = ScopedGraph.Param(ScopedNode.paramIndex);
             Out.Append("(");
             if (PinConnected(InContext, InNodeIndex, 0))

@@ -14,7 +14,7 @@ namespace Fby::Ecs
 {
 namespace
 {
-// One independently runnable node. The semaphore is per Run() call and lives on
+// One independently runnable node.
 struct GraphInvocation
 {
     GraphSystemFn run = nullptr;
@@ -211,7 +211,7 @@ bool SystemGraph::Build()
         return false;
     }
 
-    // Persist the resolved masks. `before` edges are already folded into
+    // Persist the resolved masks.
     for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
     {
         MDependencies[ScopedI] = ScopedDependencies[ScopedI];

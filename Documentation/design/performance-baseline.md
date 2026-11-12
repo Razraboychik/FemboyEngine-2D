@@ -80,3 +80,100 @@ build/bin/tests/fby_mesh_indirect_smoke_test.exe
 
 Record the machine and compiler with every run. A change that makes FCS slower
 than the EnTT baseline on the 100k iteration case blocks the FCS migration.
+
+## Remaining systems profile (0.4 alpha)
+
+These probes are CPU-only and independent of the composer:
+
+| Probe | Result |
+| --- | --- |
+| `physics_backend_benchmark` (2000 bodies) | Box2D 1.60 ms/frame, DOD 2.05 ms/frame |
+| `flow_field_benchmark` (256x256) | 18.4 ms build, 59.6k reachable cells |
+| `crowd_benchmark` (16384 agents) | 4.24 ms/step |
+| `crowd_render_benchmark` (100k items) | 1.43 ms |
+| `profiler_benchmark` | 1M records 27.5 ms; 200k scopes 10.0 ms |
+
+The DOD physics backend is slower than Box2D on this small body count, so the
+default physics path should stay Box2D unless a scene specifically benefits from
+the DOD layout. Crowd/navigation and profiler costs are significant enough to
+profile in the real game loop before changing the composer further.
+
+## High-resolution targets
+
+Native 16K/32K is dominated by color/depth target bandwidth, not sprite count.
+The measured matrix and the `--dense` full-screen overdraw case are in
+[high-resolution-benchmark.md](high-resolution-benchmark.md). Use render scale
+and upscaling for 16K/32K; do not clear/draw a native 32K target in the game.
+
+## Dense overdraw
+
+`fby_optimization_ab --dense` fills the target instead of using the sparse grid.
+At 8K the dense baseline was ~6.73 ms GPU; `front-to-back` reduced it to ~3.93 ms
+and `prepass` to ~4.17 ms. At 4K the extra depth work made both slower (~1.4 ms
+versus ~0.69 ms), and at 16K the measurements were dominated by target bandwidth
+and clocks. Front-to-back/depth prepass is therefore a scene policy, not a
+universal default.
+
+## Text/UI hot path
+
+`fby_text_ui_benchmark` measures one million shaped-cache hits with the Latin
+face: **~28.6 ns/hit**, zero misses after the initial shape. This is the UI text
+hot path; full widget layout/build still needs its own frame probe.
+
+## Stable benchmark wrapper
+
+`Source/Tools/Dev/BenchmarkMatrix.py` runs static and dynamic passes in
+alternating order with a warmup and reports the median. It is the preferred way
+to compare modes:
+
+```bat
+python Source/Tools/Dev/BenchmarkMatrix.py --runs 3 --width 7680 --height 4320
+```
+
+The wrapper accepts `--timeout` and fails cleanly instead of leaving a 16K
+benchmark process stuck. The static GPU path can appear slower than dynamic
+because the lighter CPU load lets the GPU downclock; the wrapper reduces, but does
+not eliminate, that effect.
+
+## Culling fast path
+
+`FrameComposer::SetWorldBounds(min, max)` lets the caller declare conservative
+world bounds. When the camera view fully contains them, the extractor skips
+per-sprite visibility tests. The caller is responsible for including every
+renderable sprite; `ClearWorldBounds()` restores normal culling. This is covered
+by the composer test suite.
+
+## PGO from the Sandbox
+
+The Sandbox now accepts `--frames <count>` so PGO can use a real game loop instead
+of a Composer-only probe:
+
+```bat
+cmake -S . -B build-pgo-gen -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ^
+  -DFBY_PGO_GENERATE=ON
+cmake --build build-pgo-gen --target fby_sandbox
+set LLVM_PROFILE_FILE=%CD%\build\pgo-game\sandbox-%p.raw
+build-pgo-gen\bin\fby_sandbox.exe 15000 --frames 120 --no-vsync
+llvm-profdata merge -o build\pgo-game\default.profdata build\pgo-game\*.raw
+
+cmake -S . -B build-pgo-use -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ^
+  -DFBY_PGO_PROFILE=%CD%\build\pgo-game\default.profdata
+cmake --build build-pgo-use --target fby_sandbox
+```
+
+The 15k-sprite Sandbox run produced a ~400 KiB profile and exited cleanly after
+120 frames. Alternating five-second windows, release vs game-PGO Sandbox:
+release median **3024 FPS**, PGO median **3148 FPS** (about **+4%**). The GPU was
+warm in both cases; this is the practical PGO delta on this scene, not a promise
+for every workload.
+
+## PostFX
+
+The dense 16K scene with the default PostFX set (CRT/vignette/bloom/FXAA) costs
+~30.3 ms GPU versus ~16.96 ms without PostFX. Fullscreen effects are a second
+bandwidth/fill cost on top of sprite overdraw; keep them half-resolution or
+disable them for native 16K stress runs.
+
+

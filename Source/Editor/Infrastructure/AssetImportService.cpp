@@ -245,7 +245,7 @@ bool AssetImportService::ScheduleCook(std::string_view InSourcePath, Assets::Ass
         SetError(InError, "stale asset handle");
         return false;
     }
-    // Audio/video are copied or decoded by their own runtime paths; this
+    // Audio/video are copied or decoded by their own runtime paths.
     if (ScopedMeta->kind != AssetKind::Texture)
     {
         return true;
@@ -258,7 +258,7 @@ bool AssetImportService::ScheduleCook(std::string_view InSourcePath, Assets::Ass
     }
     if (MVfs != nullptr)
     {
-        // Windows cannot replace a mapped file. Drop both mappings on the
+        // Windows cannot replace a mapped file.
         (void)MVfs->InvalidateFile(ScopedNormalized);
         const std::string ScopedCooked = CookedPathForSource(ScopedNormalized, ScopedMeta->kind);
         if (!ScopedCooked.empty())

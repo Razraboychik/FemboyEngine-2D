@@ -120,7 +120,7 @@ private:
     std::uint32_t NextId = 1;
 };
 
-// A five-word SPIR-V module. The cache never parses a stage, it only forwards it
+// A five-word SPIR-V module.
 std::span<const std::byte> MinimalStage()
 {
     static const std::vector<std::uint32_t> GStage = {kSpirvMagicWord, 0u, 0u, 0u, 0u};
@@ -264,7 +264,7 @@ void TestExhaustion()
     RecordingRhi ScopedRhi;
     MaterialPipelineCache ScopedCache;
 
-    // Every entry stays referenced, so the cache must refuse instead of
+    // Every entry stays referenced, so the cache must refuse instead.
     for (std::uint32_t ScopedIndex = 1; ScopedIndex <= kMaxCachedMaterialPipelines; ++ScopedIndex)
     {
         FBY_CHECK(ScopedCache.Acquire(ScopedRhi, MakeMaterial(ScopedIndex)).IsValid());

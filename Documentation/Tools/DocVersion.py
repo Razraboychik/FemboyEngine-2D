@@ -6,5 +6,5 @@ import sys
 
 sys.dont_write_bytecode = True
 
-VERSION = "0.3.0-alpha.1"
+VERSION = "0.4.0-alpha.1"
 STATUS = "Alpha"

@@ -11,11 +11,11 @@
 namespace Fby::Script
 {
 
-// Validates ABI version and component LayoutHashes. Does not call into the
+// Validates ABI version and component LayoutHashes.
 [[nodiscard]] bool ValidateAotModule(const Aot::Module& InModule, const EcsBridge& InBridge,
                                      std::string* InError = nullptr);
 
-// Runs one event of an already-loaded module. Returns false when the event is
+// Runs one event of an already-loaded module.
 [[nodiscard]] bool RunAotModule(const Aot::Module& InModule, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
                                 const EcsBridge& InBridge, std::string* InError = nullptr);
 

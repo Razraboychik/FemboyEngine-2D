@@ -14,7 +14,7 @@
 namespace Fby::Script
 {
 
-// Native function ids are part of the bytecode ABI: the compiler emits them and
+// Native function ids are part of the bytecode ABI: the compiler emits them.
 enum class NativeId : std::uint16_t
 {
     LogFloat = 0,
@@ -433,7 +433,7 @@ static_assert(sizeof(Instruction) == 8,
               "bytecode is an 8-byte stream; the VM decodes one instruction per cache line slot");
 static_assert(std::is_trivially_copyable_v<Instruction>);
 
-// One component type a program touches. The layout hash is the same hash the
+// One component type a program touches.
 struct ComponentBinding
 {
     std::uint64_t layoutHash = 0;
@@ -504,7 +504,7 @@ struct CompiledDebug
     [[nodiscard]] bool Locate(std::uint32_t InPc, DebugSpan* OutSpan) const noexcept;
 };
 
-// Zero-copy view of a cooked program. All spans point into `storage`, which the
+// Zero-copy view of a cooked program.
 struct CompiledProgram
 {
     ProgramHeader header{};
@@ -592,7 +592,7 @@ private:
     std::uint32_t MRegisterHighWater = 0;
 };
 
-// The AOT path needs the exact bytes; expose a stable "light" operand limit so
+// The AOT path needs the exact bytes.
 inline constexpr std::uint32_t kMaxFieldBindingsLimit = kMaxFieldBindings;
 
 // Stable identity of a cooked program: FNV-1a over the bytes. A cooked build

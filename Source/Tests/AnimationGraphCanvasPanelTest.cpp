@@ -331,7 +331,7 @@ void TestPIEState()
     FBY_CHECK(ScopedPanel.PIEBlendTime() == 0.1f);
     FBY_CHECK(ScopedPanel.PIEActiveLink() < ScopedPanel.Document().LinkCount);
 
-    // A live mutation is invisible until the simulation side publishes. This is
+    // A live mutation is invisible until the simulation side publishes.
     ScopedState.CurrentState = 99;
     FBY_CHECK(ScopedPanel.RefreshPIEState() == 2);
     FBY_CHECK(ScopedPanel.PIEActiveNode() == FindClipNode(ScopedPanel.Document(), 1));
@@ -375,7 +375,7 @@ void TestPIEConcurrentPublication()
         const std::uint32_t ScopedActive = ScopedPanel.RefreshPIEState();
         if (ScopedActive == 0)
         {
-            // A retry can legitimately fail while a slot is mid-update; the
+            // A retry can legitimately fail while a slot is mid-update.
             continue;
         }
         if (ScopedActive > 2)
@@ -413,7 +413,7 @@ void TestBlendCycleValidation()
         ScopedFirstBlend->Blend.StateTimeThreshold = 0.0f;
     }
 
-    // Add the second half of a two-blend loop: Attack -> Blend 2 -> Idle. Its
+    // Add the second half of a two-blend loop: Attack -> Blend 2 -> Idle.
     const std::uint16_t ScopedSecondBlend =
         ScopedPanel.AddNode(Fby::Editor::AnimationGraphNodeKind::Blend, Fby::Vector2D{});
     FBY_CHECK(ScopedSecondBlend != 0xFFFFu);
@@ -436,7 +436,7 @@ void TestBlendCycleValidation()
     FBY_CHECK(ScopedPanel.AddLink(1, 0, ScopedExitClip, 0));
     FBY_CHECK(ScopedPanel.CompileGraph());
 
-    // The unmodified demo remains valid: a gated blend and a gated return are a
+    // The unmodified demo remains valid: a gated blend and a gated return.
     ScopedPanel.BuildDefaultDocument();
     FBY_CHECK(ScopedPanel.CompileGraph());
 }
@@ -462,7 +462,7 @@ void TestPanelDrawHeadless()
         ScopedPanel.Draw("Animation Graph", &ScopedOpen);
         ImGui::Render();
     }
-    // Structural edits after a live ImNodes context exists must purge the
+    // Structural edits after a live ImNodes context exists must purge.
     ScopedPanel.NotifyHistoryChanged();
     FBY_CHECK(ScopedPanel.RemoveLink(0));
     FBY_CHECK(ScopedPanel.DeleteNode(0));

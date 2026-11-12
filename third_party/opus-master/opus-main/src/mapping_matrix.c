@@ -47,7 +47,7 @@ opus_int32 mapping_matrix_get_size(int rows, int cols)
    */
   if (rows > 255 || cols > 255)
       return 0;
-  size = rows * (opus_int32)cols * sizeof(opus_int16);
+  size = (opus_int32)rows * (opus_int32)cols * (opus_int32)sizeof(opus_int16);
   if (size > 65004)
     return 0;
 
@@ -69,7 +69,7 @@ void mapping_matrix_init(MappingMatrix * const matrix,
 #if !defined(ENABLE_ASSERTIONS)
   (void)data_size;
 #endif
-  celt_assert(align(data_size) == align(rows * cols * sizeof(opus_int16)));
+  celt_assert(align(data_size) == align((opus_int32)rows * cols * (opus_int32)sizeof(opus_int16)));
 
   matrix->rows = rows;
   matrix->cols = cols;

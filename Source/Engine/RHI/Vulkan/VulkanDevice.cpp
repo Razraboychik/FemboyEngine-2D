@@ -338,7 +338,7 @@ bool VulkanRHI::CreateDevice()
 
     const char* ScopedDeviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-    // The indirect mesh path uses firstInstance as the draw-record index, which
+    // The indirect mesh path uses firstInstance as the draw-record index.
     VkPhysicalDeviceVulkan11Features ScopedVulkan11{};
     ScopedVulkan11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
     VkPhysicalDeviceVulkan12Features ScopedVulkan12{};

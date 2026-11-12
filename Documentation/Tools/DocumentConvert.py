@@ -4,14 +4,14 @@
 DjVu is the fourth documentation format. It stores a document as compressed
 layers and reads well in a dedicated viewer. The preferred converter is
 `pdf2djvu` from DjVuLibre. When it is unavailable, the module rasterises the PDF
-with `pdftoppm` and packages the pages with DjVuLibre's `c44` and `djvm`. Both
-paths are documentation tooling for the publishing machine, never an engine
-dependency: nothing links this module, CMake does not see it, and a machine that
-only builds the engine never needs it.
+with `pdftoppm` (or PyMuPDF when poppler is not installed) and packages the pages
+with DjVuLibre's `c44` and `djvm`. Both paths are documentation tooling for the
+publishing machine, never an engine dependency: nothing links this module, CMake
+does not see it, and a machine that only builds the engine never needs it.
 
   * the converter is `FBY_PDF2DJVU` when set, otherwise `pdf2djvu` on PATH;
-  * the raster fallback uses `FBY_PDFTOPPM`, `FBY_C44` and `FBY_DJVM`, or the
-    same tools on PATH;
+  * the raster fallback uses `FBY_C44` and `FBY_DJVM`, or the same tools on PATH,
+    and renders the pages with `FBY_PDFTOPPM`, `pdftoppm` or PyMuPDF;
   * the background is rasterised at `FBY_PDF2DJVU_DPI` (150 by default);
   * when neither path is available the export is skipped with one line and never
     fails the run, because a machine without DjVuLibre must still build the rest
@@ -72,17 +72,32 @@ def HasDjvuMagic(path: pathlib.Path) -> bool:
         return handle.read(len(DJVU_MAGIC)) == DJVU_MAGIC
 
 
-def BuildRasterDjvu(pdf_path: pathlib.Path, djvu_path: pathlib.Path) -> bool:
-    """Builds a page-image DjVu when pdf2djvu is unavailable."""
-    pdftoppm = FindTool("FBY_PDFTOPPM", "pdftoppm")
-    c44 = FindTool("FBY_C44", "c44")
-    djvm = FindTool("FBY_DJVM", "djvm")
-    if not (pdftoppm and c44 and djvm):
+def RasterizeWithPymupdf(pdf_path: pathlib.Path, prefix: pathlib.Path) -> bool:
+    """Renders the pages to JPEG with PyMuPDF when poppler is unavailable."""
+    try:
+        import pymupdf
+    except ImportError:
+        try:
+            import fitz as pymupdf
+        except ImportError:
+            return False
+    try:
+        document = pymupdf.open(str(pdf_path))
+    except Exception as error:
+        print(f"djvu raster failed: PyMuPDF could not open {pdf_path.name}: {error}")
         return False
+    for index, page in enumerate(document, start=1):
+        pixmap = page.get_pixmap(dpi=int(DEFAULT_DPI))
+        pixmap.save(str(prefix.parent / f"{prefix.name}-{index}.jpg"), jpg_quality=88)
+    document.close()
+    return True
 
-    with tempfile.TemporaryDirectory(prefix="fby_djvu_") as temporary:
-        work = pathlib.Path(temporary)
-        prefix = work / "page"
+
+def RasterizePages(pdf_path: pathlib.Path, work: pathlib.Path) -> list[pathlib.Path]:
+    """Writes page JPEGs into the work directory and returns them in order."""
+    prefix = work / "page"
+    pdftoppm = FindTool("FBY_PDFTOPPM", "pdftoppm")
+    if pdftoppm:
         raster = subprocess.run(
             [pdftoppm, "-r", DEFAULT_DPI, "-jpeg", "-jpegopt", "quality=88", str(pdf_path), str(prefix)],
             check=False,
@@ -90,10 +105,24 @@ def BuildRasterDjvu(pdf_path: pathlib.Path, djvu_path: pathlib.Path) -> bool:
         )
         if raster.returncode != 0:
             print(f"djvu raster failed: {raster.stderr.decode('utf-8', errors='replace').strip()[:400]}")
-            return False
-        pages = sorted(work.glob("page-*.jpg"), key=lambda item: int(item.stem.rsplit("-", 1)[-1]))
+            return []
+    elif not RasterizeWithPymupdf(pdf_path, prefix):
+        return []
+    return sorted(work.glob("page-*.jpg"), key=lambda item: int(item.stem.rsplit("-", 1)[-1]))
+
+
+def BuildRasterDjvu(pdf_path: pathlib.Path, djvu_path: pathlib.Path) -> bool:
+    """Builds a page-image DjVu when pdf2djvu is unavailable."""
+    c44 = FindTool("FBY_C44", "c44")
+    djvm = FindTool("FBY_DJVM", "djvm")
+    if not (c44 and djvm):
+        return False
+
+    with tempfile.TemporaryDirectory(prefix="fby_djvu_") as temporary:
+        work = pathlib.Path(temporary)
+        pages = RasterizePages(pdf_path, work)
         if not pages:
-            print("djvu raster failed: pdftoppm produced no pages")
+            print("djvu raster failed: no page rasteriser produced pages")
             return False
         encoded: list[str] = []
         for index, page in enumerate(pages):
@@ -129,7 +158,7 @@ def BuildDjvu(pdf_path: pathlib.Path, djvu_path: pathlib.Path) -> bool:
     converter = FindPdf2Djvu()
     if converter is None:
         if not BuildRasterDjvu(pdf_path, djvu_path):
-            print(f"djvu skipped: install pdf2djvu or set FBY_PDFTOPPM, FBY_C44 and FBY_DJVM ({djvu_path.name})")
+            print(f"djvu skipped: install pdf2djvu/djvulibre or set FBY_C44 and FBY_DJVM ({djvu_path.name})")
             return False
     else:
         if djvu_path.is_file():

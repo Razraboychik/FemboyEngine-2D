@@ -79,7 +79,7 @@ constexpr std::uint64_t kFnvPrime = 1099511628211ull;
     return !InName.empty() && InName.size() <= kFesklMaxBoneNameLength && InName.find('\0') == std::string_view::npos;
 }
 
-// Deterministic section placement: each section is aligned from the end of the
+// Deterministic section placement: each section is aligned from the end.
 struct AssetLayout
 {
     std::uint32_t nameRefs = 0;
@@ -97,7 +97,6 @@ struct AssetLayout
 };
 }
 
-// Name table
 void SkeletonNameTableReset(SkeletonNameTable& InTable) noexcept
 {
     InTable = SkeletonNameTable{};
@@ -207,7 +206,7 @@ std::expected<SkeletonAssetView, std::string> DecodeSkeletonAsset(std::span<cons
         return ScopedReject("invalid .feskl name blob size");
     }
 
-    // The content hash covers every byte after the header. It is checked before
+    // The content hash covers every byte after the header.
     const std::uint64_t ScopedExpectedHash =
         HashBytes(InBytes.subspan(ScopedHeader.headerSize, InBytes.size() - ScopedHeader.headerSize));
     if (ScopedExpectedHash != ScopedHeader.contentHash)

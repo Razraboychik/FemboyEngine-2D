@@ -183,7 +183,7 @@ public:
     [[nodiscard]] bool ApplyUntil(Registry& InRegistry, const SnapshotSchema& InSchema, std::uint64_t InTick,
                                   Cursor& InCursor, const CommandWorldCallbacks* InWorld = nullptr) const;
 
-    // Parsed view for tools/netcode. Open() validates magic, version, size and
+    // Parsed view for tools/netcode.
     struct View
     {
         CommandLogHeader header{};

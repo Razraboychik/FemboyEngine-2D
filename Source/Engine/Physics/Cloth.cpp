@@ -582,7 +582,7 @@ void ClothSystem::Step(float InDt) noexcept
                 }
                 const float ScopedPush = (ScopedRadiusMetres - ScopedDistance) * ScopedPixelsPerMeter;
                 ScopedCloth.positions[ScopedI] += ScopedNormal * ScopedPush;
-                // Remove the colliding velocity component: keeping it turns a
+                // Remove the colliding velocity component: keeping it turns the contact into a bounce.
                 ScopedCloth.previous[ScopedI] += ScopedNormal * ScopedPush;
             }
         }

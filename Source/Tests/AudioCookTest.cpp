@@ -215,7 +215,6 @@ struct WavFile
     return ScopedStream;
 }
 
-// 1: WAV round-trip
 void TestWavRoundTrip()
 {
     const std::uint32_t ScopedFrames = 32;
@@ -362,7 +361,6 @@ void TestCookedValidation()
     }
 }
 
-// 3: MP3 rejection
 void TestMp3Rejection()
 {
     const WavFile ScopedWav = BuildWav(16, 2, 48000, 8);
@@ -617,7 +615,7 @@ void TestOggCooking()
 int main()
 {
     std::error_code ScopedCode;
-    // Prefer the OS temp directory, but fall back to a scratch directory next to
+    // Prefer the OS temp directory, but fall back to a scratch directory next to it.
     const auto ScopedPrepare = [](const fs::path& InCandidate) -> bool
     {
         std::error_code ScopedError;

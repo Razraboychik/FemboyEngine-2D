@@ -123,7 +123,6 @@ void SetError(std::string* InError, std::string InMessage)
     return InBytes.size() >= 4 && std::memcmp(InBytes.data(), "OggS", 4) == 0;
 }
 
-// WAV
 struct WavDescription
 {
     Assets::PcmFormat format = Assets::PcmFormat::PcmS16;
@@ -251,7 +250,7 @@ struct WavDescription
     {
         return false;
     }
-    // Samples are copied verbatim; the runtime reads int16/int24 directly with
+    // Samples are copied verbatim.
     return Assets::AppendCookedAudio(*Output, ScopedDescription.format, ScopedDescription.channels,
                                      ScopedDescription.sampleRate, ScopedDescription.frameCount, 0,
                                      ScopedDescription.samples, InError);
@@ -308,7 +307,7 @@ struct WavDescription
         return false;
     }
 
-    // Validate the whole page stream, not just the first page: a truncated or
+    // Validate the whole page stream, not just the first page: a truncated page must fail.
     Audio::OggPageReader ScopedPages;
     ScopedPages.Reset(InBytes);
     Audio::OggPage ScopedPage;

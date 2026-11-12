@@ -35,7 +35,7 @@ public:
         char name[16] = {};
     };
 
-    // ThreadCount == 0 picks hardware_concurrency() - 1 (the main thread is a
+    // ThreadCount == 0 picks hardware_concurrency().
     explicit JobSystem(std::uint32_t InThreadCount = 0);
     ~JobSystem();
 
@@ -85,7 +85,7 @@ public:
     {
         return MPending.load(std::memory_order_relaxed);
     }
-    // Copies the per-thread counters into `InLoads` (slot 0 = main). The copy is
+    // Copies the per-thread counters into `InLoads` (slot 0 = main).
     std::uint32_t SampleThreadLoad(std::span<ThreadLoad> InLoads) const noexcept;
     [[nodiscard]] static bool IsWorkerThread() noexcept;
 

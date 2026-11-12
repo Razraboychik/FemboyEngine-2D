@@ -58,7 +58,7 @@ inline constexpr std::uint32_t kMaxGridRows = 32;
 inline constexpr std::uint32_t kWhiteLayer = 0;
 inline constexpr std::uint32_t kFontAtlasLayer = 1;
 
-// Font atlas geometry: ASCII 32..126 is 95 glyphs, laid out left-to-right in a
+// Font atlas geometry: ASCII 32..126 is 95 glyphs, laid out left-to-right.
 inline constexpr std::uint32_t kFontAtlasColumns = 16;
 inline constexpr std::uint32_t kFontAtlasRows = 6;
 inline constexpr std::uint32_t kFontFirstChar = 32;
@@ -93,7 +93,7 @@ struct WidgetHandle
 inline constexpr std::int32_t kMinZOrder = -32;
 inline constexpr std::int32_t kMaxZOrder = 31;
 
-// Accent colour of the module. A default, not a theme: the editor owns the
+// Accent colour of the module.
 inline constexpr Color32 kPinkAccent = Color32::FromBytes(0xFF, 0x4F, 0xA8, 0xFF);
 
 // Widget kinds
@@ -115,7 +115,7 @@ enum class WidgetKind : std::uint8_t
     Spacer,
     // Four-quad stroke frame; borderWidth is the thickness of each side
     Border,
-    // Track + fill + knob; progress is the value and a drag sets it
+    // Track + fill + knob.
     Slider,
     // Box + check mark; the Checked flag carries the state
     Checkbox,
@@ -142,14 +142,14 @@ enum class WidgetKind : std::uint8_t
     Count
 };
 
-// Per-widget state bits. Fixed-width bit flags, not booleans: a flag update is
+// Per-widget state bits. Fixed-width bit flags, not booleans: a flag update.
 enum class WidgetFlags : std::uint32_t
 {
     None = 0,
     Visible = 1u << 0,
     Enabled = 1u << 1,
     Focusable = 1u << 2,
-    // PointerDown set it, PointerUp has not cleared it
+    // PointerDown set it, PointerUp has not cleared.
     Pressed = 1u << 3,
     // Set by PointerMove; the app may also set it directly
     Hovered = 1u << 4,
@@ -188,9 +188,9 @@ enum class WidgetFlags : std::uint32_t
 enum class FocusPolicy : std::uint8_t
 {
     None = 0,
-    // Click focuses the widget, but Tab skips it
+    // Click focuses the widget, but Tab skips.
     Pointer = 1,
-    // Tab reaches the widget, but a click does not focus it
+    // Tab reaches the widget, but a click does not focus.
     Tab = 2,
     // Both pointer and Tab reach the widget
     TabAndPointer = 3,
@@ -266,7 +266,7 @@ enum class WidgetComponentFlags : std::uint32_t
     None = 0,
     // Skip the canvas in WidgetCanvasSystem::Update
     Visible = 1u << 0,
-    // Hint: the app's camera should not transform it
+    // Hint: the app's camera should not transform.
     ScreenSpace = 1u << 1,
 };
 
@@ -483,7 +483,7 @@ struct OledShiftState
 // WidgetCanvas - the flat widget data model.
 struct WidgetCanvas;
 
-// Declared ahead of the struct because EnsureLayout() is defined inline and
+// Declared ahead of the struct because EnsureLayout() is defined inline.
 void ResolveLayout(const WidgetCanvas& InCanvas) noexcept;
 
 // Vertical scroll controller for a clipped Panel + content + optional
@@ -621,7 +621,7 @@ struct WidgetCanvas
     UiThemeAsset theme = DefaultUiTheme();
     // RenderKey layer bucket. 16-bit by design: MakeRenderKey reserves 16 bits
     std::uint16_t sortLayer = 0;
-    // Explicit pad: keeps the following 32-bit ids naturally aligned without
+    // Explicit pad: keeps the following 32-bit ids naturally aligned.
     std::uint16_t reserved0 = 0;
     // DrawBatch texture-array binding: a full 32-bit Rhi::TextureArrayHandle::id.
     std::uint32_t textureArray = 0;
@@ -630,7 +630,7 @@ struct WidgetCanvas
     // Reserved
     std::uint32_t canvasFlags = 0;
     std::uint32_t widgetCount = 0;
-    // Incremented by Clear(); WidgetHandle generations are stamped with it
+    // Incremented by Clear(); WidgetHandle generations are stamped.
     std::uint32_t Generation = 1;
     std::uint32_t textUsed = 0;
     std::int32_t focusIndex = kNoWidget;
@@ -640,7 +640,7 @@ struct WidgetCanvas
     std::int32_t focusScope = kNoWidget;
     // Tab from the last candidate wraps to the first
     bool focusWrap = true;
-    // Only widgets in this group take Tab focus; kNoFocusGroup disables it
+    // Only widgets in this group take Tab focus.
     std::uint16_t focusGroupFilter = kNoFocusGroup;
     std::uint16_t reserved1 = 0;
     // Optional focus ring drawn around the focused widget, outside its rect
@@ -732,13 +732,12 @@ struct WidgetCanvas
     std::array<WidgetHyperlink, 128> hyperlinks{};
     std::uint32_t hyperlinkUsed = 0;
 
-    // Character pool for labels. Text is an (offset, length) range into this
+    // Character pool for labels.
     std::array<char, kMaxTextPool> textPool{};
     // Localization key + 1 per widget (0 = no key). The key is resolved lazily
     // by ApplyLocalization(), so switching locale does not touch the layout.
     std::array<std::uint32_t, kMaxWidgets> textKeys{};
 
-    // Layout cache
     struct LayoutCache
     {
         std::array<Vector2D, kMaxWidgets> localMins{};
@@ -774,7 +773,7 @@ struct WidgetCanvas
         const auto ScopedIndex = static_cast<std::uint32_t>(InHandle.Widget);
         return Rect{layout.localMins[ScopedIndex], layout.localMaxs[ScopedIndex]};
     }
-    // Physical window extent / display scale. The canvas stays in Units, so the
+    // Physical window extent / display scale.
     void SetPhysicalCanvasSize(Vector2D InPhysicalPixels, float InScale) noexcept
     {
         const float ScopedScale = InScale > 0.0f ? InScale : 1.0f;
@@ -843,7 +842,7 @@ struct WidgetCanvas
         return oled.enabled ? oled.offset : Vector2D{};
     }
 
-    // Configures the grid. `columnWidths` must hold exactly `columns` values and
+    // Configures the grid. `columnWidths` must hold exactly `columns` values.
     [[nodiscard]] bool SetGrid(std::uint32_t InColumns, std::uint32_t InRows, std::span<const float> InColumnWidths,
                                std::span<const float> InRowHeights, Vector2D InGap, Vector2D InPadding) noexcept;
 
@@ -851,13 +850,13 @@ struct WidgetCanvas
     {
         return GridView(tracks[0].data(), 2, kTrackCapacity);
     }
-    // Physical extent of the mdspan grid at a display scale. Layout stays in
+    // Physical extent of the mdspan grid at a display scale.
     [[nodiscard]] Vector2D GridPixelExtent(float InScale) const noexcept;
 
     // Insertion
     [[nodiscard]] std::int32_t AddWidget(const WidgetDesc& InDesc) noexcept;
 
-    // Replaces the text range of a label. The new string is appended to the
+    // Replaces the text range of a label.
     [[nodiscard]] bool SetText(std::int32_t InWidget, std::string_view InText) noexcept;
 
     // Rewrites a widget text in place when it fits, otherwise appends and
@@ -1285,7 +1284,6 @@ struct WidgetCanvas
         return ValidWidget(InWidget) && HasFlag(flags[static_cast<std::uint32_t>(InWidget)], WidgetFlags::ClipChildren);
     }
 
-    // Layout
     void InvalidateLayout() noexcept
     {
         layout.valid = false;
@@ -1420,7 +1418,6 @@ void SetFocus(WidgetCanvas& InCanvas, std::int32_t InWidget) noexcept;
 // every other kind is returned so the app can run its click action.
 [[nodiscard]] std::int32_t ActivateFocused(WidgetCanvas& InCanvas) noexcept;
 
-// Frame output
 struct FrameOutput
 {
     std::span<Rhi::RenderItem> items{};
@@ -1454,7 +1451,7 @@ enum class BuildStatus : std::uint8_t
     Overflow,
     // Canvas data is inconsistent (defensive; should not happen)
     Invalid,
-    // The canvas has visible text but the font atlas set is missing, empty, not
+    // The canvas has visible text but the font atlas set is missing, empty.
     FontsNotMounted,
 };
 
@@ -1467,7 +1464,7 @@ public:
     {
     }
 
-    // Cold path only: call from app init / scene load, never from BuildFrame or
+    // Cold path only: call from app init / scene load, never from BuildFrame.
     [[nodiscard]] bool MountFonts(Rhi::RHI& InRhi);
 
     [[nodiscard]] static BuildStatus BuildFrame(const Ecs::UiSystemView& InView, const WidgetCanvas& InCanvas,

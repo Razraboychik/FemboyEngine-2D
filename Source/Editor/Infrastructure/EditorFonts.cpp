@@ -226,7 +226,7 @@ bool EditorFonts::Initialize(ImGuiIO& InIo, VirtualFileSystem* InVfs, WindowMana
 
     if (MFonts[0] == nullptr)
     {
-        // The dashboard must never fall back to the 13 px bitmap font: on a
+        // The dashboard must never fall back to the 13 px bitmap font.
         if (!InSpec.allowEmbeddedVectorFallback)
         {
             LogError("fonts", "no usable UI font in the VFS and the embedded fallback is disabled");
@@ -337,7 +337,7 @@ ImFont* EditorFonts::LoadOne(ImGuiIO& InIo, VirtualFileSystem* InVfs, std::strin
     ImFontConfig ScopedConfig;
     // The stable copy is owned by EditorFonts; the atlas must not free it.
     ScopedConfig.FontDataOwnedByAtlas = false;
-    // Subpixel: fractional advances are kept, so text is positioned with the
+    // Subpixel: fractional advances are kept, so text is positioned with subpixel precision.
     ScopedConfig.PixelSnapH = false;
     // 0 means "auto" (2-3 horizontally, 1 vertically), which is what ImGui
     ScopedConfig.OversampleH = 0;

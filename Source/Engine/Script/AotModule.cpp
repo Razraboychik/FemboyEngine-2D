@@ -43,7 +43,7 @@ void SetError(std::string* InError, const std::string& InMessage)
     }
 }
 
-// Host callbacks. They are free functions so the plugin ABI is plain C; the
+// Host callbacks. They are free functions so the plugin ABI is plain C.
 void* HostComponent(void* InComponentUser, void* InRegistry, std::uint32_t InEntity,
                     std::uint64_t InLayoutHash) noexcept
 {

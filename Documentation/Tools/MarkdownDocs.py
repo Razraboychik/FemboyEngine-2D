@@ -156,20 +156,25 @@ def build_docx(markdown_path: pathlib.Path, docx_path: pathlib.Path) -> None:
 
 def build_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path) -> int:
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    if pdf_path.is_file():
-        pdf_path.unlink()
     if not NODE.is_file() or not LIBREOFFICE_CLI.is_file():
         print("pdf export skipped: LibreOffice Kit is not installed")
         return 1
-    command = [str(NODE), str(LIBREOFFICE_CLI), "convert", "--input", str(docx_path), "--output", str(pdf_path)]
+    # Convert beside the target first: a missing converter or a failed run must
+    # leave the previously published PDF in place.
+    temporary = pdf_path.with_name(pdf_path.name + ".tmp.pdf")
+    temporary.unlink(missing_ok=True)
+    command = [str(NODE), str(LIBREOFFICE_CLI), "convert", "--input", str(docx_path), "--output", str(temporary)]
     result = subprocess.run(command, check=False)
-    if result.returncode != 0 or not pdf_path.is_file() or pdf_path.stat().st_size == 0:
+    if result.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
         print(f"pdf export failed: {docx_path}")
+        temporary.unlink(missing_ok=True)
         return 1
-    with pdf_path.open("rb") as handle:
+    with temporary.open("rb") as handle:
         if handle.read(5) != b"%PDF-":
             print(f"pdf signature missing: {pdf_path}")
+            temporary.unlink(missing_ok=True)
             return 1
+    os.replace(temporary, pdf_path)
     return 0
 
 

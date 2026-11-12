@@ -91,7 +91,7 @@ public:
     void Shutdown() noexcept;
     void Unload() noexcept;
 
-    // Drains the command ring and pumps the provider. Safe to call once per
+    // Drains the command ring and pumps the provider.
     std::uint32_t Pump();
 
     [[nodiscard]] bool QueueAchievement(std::uint64_t InId, std::string_view InApiName) noexcept;

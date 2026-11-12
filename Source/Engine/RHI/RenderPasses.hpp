@@ -172,7 +172,7 @@ class PostFxPass
 public:
     PostFxPass() = default;
 
-    // `InCameras` must outlive the graph. The composite reads ActivePostFx() at
+    // `InCameras` must outlive the graph.
     [[nodiscard]] bool Build(RenderGraph& InGraph, Fby::CameraStackSystem& InCameras,
                              std::string_view InColorResource = "scene.color") noexcept;
     [[nodiscard]] const PostFxConstants& Constants() const noexcept

@@ -165,7 +165,7 @@ OPUS_CUSTOM_NOSTATIC int opus_custom_encoder_get_size(const CELTMode *mode, int 
    size = sizeof(struct CELTEncoder)
          + (channels*mode->overlap-1)*sizeof(celt_sig)    /* celt_sig in_mem[channels*mode->overlap]; */
          + channels*QEXT_SCALE(COMBFILTER_MAXPERIOD)*sizeof(celt_sig) /* celt_sig prefilter_mem[channels*COMBFILTER_MAXPERIOD]; */
-         + 4*channels*mode->nbEBands*sizeof(celt_glog)    /* celt_glog oldBandE[channels*mode->nbEBands]; */
+         + 4*(size_t)channels*mode->nbEBands*sizeof(celt_glog)    /* celt_glog oldBandE[channels*mode->nbEBands]; */
                                                           /* celt_glog oldLogE[channels*mode->nbEBands]; */
                                                           /* celt_glog oldLogE2[channels*mode->nbEBands]; */
                                                           /* celt_glog energyError[channels*mode->nbEBands]; */
@@ -428,7 +428,7 @@ static int transient_analysis(const opus_val32 * OPUS_RESTRICT in, int len, int 
 #ifdef FIXED_POINT
          id = MAX32(0,MIN32(127,MULT16_32_Q15(tmp[i]+EPSILON,norm))); /* Do not round to nearest */
 #else
-         id = (int)MAX32(0,MIN32(127,floor(64*norm*(tmp[i]+EPSILON)))); /* Do not round to nearest */
+         id = (int)MAX32(0,MIN32(127,floor(64*(double)norm*(tmp[i]+EPSILON)))); /* Do not round to nearest */
 #endif
          unmask += inv_table[id];
       }

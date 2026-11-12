@@ -320,7 +320,7 @@ enum class PinType : std::uint8_t
     Exec = 0,
     Float,
     Vector2D,
-    // A Set Field value pin is typed by its field binding rather than by the
+    // A Set Field value pin is typed by its field binding rather.
     Any,
     // Opaque script token into the big number pool.
     BigInt,
@@ -531,7 +531,7 @@ struct LogicGraph
                 // Statement nodes expose their success/follow-up exec pin first.
                 return InPin == 0 ? PinType::Exec : PinType::Float;
             case LogicNodeKind::GetField:
-                // The concrete type is stored in LogicNode::outputType when the
+                // The concrete type is stored in LogicNode::outputType.
                 return PinType::Float;
             case LogicNodeKind::SetField:
             case LogicNodeKind::SpawnEntity:
@@ -774,7 +774,7 @@ template <typename Component>
 
 struct LogicCompileOptions
 {
-    // Cook-time hashing: the caller feeds the graph asset hash so two cooks of
+    // Cook-time hashing: the caller feeds the graph asset hash so two cooks.
     std::uint64_t graphHash = 0;
     std::uint64_t sourceHash = 0;
 };
@@ -789,7 +789,7 @@ struct LogicCompileResult
     std::string error{};
 };
 
-// Compiles the graph's single event node (EventStart or EventUpdate) into a
+// Compiles the graph's single event node (EventStart or EventUpdate).
 [[nodiscard]] std::uint64_t HashLogicGraph(const LogicGraph& InGraph) noexcept;
 
 [[nodiscard]] bool CompileLogicGraph(const LogicGraph& InGraph, const LogicCompileOptions& InOptions,

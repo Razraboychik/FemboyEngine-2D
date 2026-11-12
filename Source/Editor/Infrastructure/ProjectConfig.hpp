@@ -233,7 +233,7 @@ struct ProjectSettings
     // are project-global.
     GameplayTagDatabase gameplayTags{};
 
-    // Cooker target for imported textures. BC7 is the desktop default; ASTC is
+    // Cooker target for imported textures. BC7 is the desktop default.
     Assets::TextureFormat textureFormat = Assets::TextureFormat::Bc7Srgb;
 
     VirtualTextureSettings virtualTexture{};
@@ -267,7 +267,7 @@ struct ProjectSettings
     // Final AOT cook policy. Persisted in [build] so the same project always
     Build::BuildProfile build{};
 
-    // Layer matrix edited by ProjectSettingsPanel. The runtime receives it on
+    // Layer matrix edited by ProjectSettingsPanel.
     CollisionFilterMatrix collision = CollisionFilterMatrix::Defaults();
 
     // Project-scoped plugins. Paths are relative to the project root and are
@@ -301,7 +301,7 @@ inline constexpr std::string_view kDefaultProjectsDirectoryName = "Projects";
 // Absolute path of the engine root, or current_path() when nothing matches.
 [[nodiscard]] std::filesystem::path ResolveEngineRoot();
 
-// <engineRoot>/Projects, created when InCreate is true. On failure returns the
+// <engineRoot>/Projects, created when InCreate is true.
 [[nodiscard]] std::filesystem::path DefaultProjectsRoot(bool InCreate, std::string* InError = nullptr);
 
 // Resolved project layout. `CreateProject()` creates exactly these directories:
@@ -342,11 +342,11 @@ struct ProjectPaths
                                  ProjectPaths* OutPaths = nullptr, ProjectConfig* OutConfig = nullptr,
                                  std::string* InError = nullptr);
 
-// Reads project.femproj. Missing optional sections fall back to defaults; a
+// Reads project.femproj. Missing optional sections fall back to defaults.
 [[nodiscard]] bool LoadProject(const std::filesystem::path& InRootOrProjectFile, ProjectPaths* OutPaths,
                                ProjectConfig* OutConfig, std::string* InError = nullptr);
 
-// In-memory owner of one project's configuration. Panels edit Project() and
+// In-memory owner of one project's configuration.
 class ProjectConfigStore
 {
 public:
@@ -410,7 +410,7 @@ void CopyProjectString(char* InDestination, std::size_t InCapacity, std::string_
 [[nodiscard]] std::string EncodeProjectToml(const ProjectConfig& InConfig);
 [[nodiscard]] bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::string* InError = nullptr);
 
-// Writes a file beside the target and replaces it in one OS operation. Used by
+// Writes a file beside the target and replaces it in one OS operation.
 [[nodiscard]] bool WriteFileAtomically(const std::filesystem::path& InPath, std::string_view InText,
                                        std::string* InError = nullptr);
 }

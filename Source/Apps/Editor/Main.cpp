@@ -100,7 +100,7 @@ struct SkeletonDemo
     float time = 0.0f;
 };
 
-// State for the game systems. SystemGraph stores `void* user`, so a system that
+// State for the game systems.
 struct EditorGameSystems
 {
     Fby::SpriteAnimationEventQueue spriteAnimationEvents;
@@ -377,7 +377,7 @@ void SpawnFallbackWorld(Fby::Ecs::Registry& InRegistry)
     }
 }
 
-// A four-cell horizontal flipbook cut from texture-array layer 1. The
+// A four-cell horizontal flipbook cut from texture-array layer 1.
 [[nodiscard]] Fby::Entity SpawnSpriteAnimationDemo(Fby::Ecs::Registry& InRegistry,
                                                    Fby::Assets::AssetHandle InAtlasHandle)
 {
@@ -2071,7 +2071,7 @@ int main(int argc, char** argv)
                 }
             }
 
-            // The swapchain pass is UI-only: RenderToTarget already drew the
+            // The swapchain pass is UI-only: RenderToTarget already drew the scene.
             Fby::Rhi::FramePacket ScopedMainPass;
             if (ScopedProjectSettings.oitMode != Fby::Editor::OitMode::Off && !ScopedExtract.OitPacket().items.empty())
             {

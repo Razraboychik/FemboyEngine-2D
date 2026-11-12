@@ -1,6 +1,6 @@
 # Editor Settings Reference
 
-This document is the complete reference for the editor's own settings in FemboyEngine2D 0.3.0-alpha.1: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
+This document is the complete reference for the editor's own settings in FemboyEngine2D 0.4.0-alpha.1: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
 
 The settings are environment preferences, not gameplay. They are stored next to the project so a team reproduces the same authoring environment, they are mirrored to the editor INI for humans and legacy readers, and they never change how a shipped game behaves. No shipped runtime reads them.
 
@@ -56,6 +56,16 @@ Types are the TOML types written by the encoder and accepted by the decoder. "De
 | `[editor] window_height` | `windowHeight` | `window_height` | int | 900 | 240 through 16384 | Windowed height in pixels, used by modes 0 and 1 |
 | `[editor] save_ini_on_commit` | `saveEditorIniOnCommit` | `save_ini_on_commit` | bool | true | true or false | Rewrites the `[FemboyEditor]` section of `editor.ini` after a settings commit |
 | `[editor] theme` | `theme` | `theme` | string | "graphite" | Up to 31 bytes | Preset name of the editor palette |
+| `[editor] text_color` | `textColor` | `text_color` | int | 0xF2F2F2 | 0 through 0xFFFFFF | Authored sRGB colour of editor text |
+| `[editor] text_opacity` | `textOpacity` | `text_opacity` | float | 1.0 | 0.2 through 1.0 | Alpha of editor text |
+| `[editor] text_contrast` | `textContrast` | `text_contrast` | float | 1.0 | 0.5 through 2.0 | Contrast multiplier against the panel background |
+| `[editor] text_outline` | `textOutline` | `text_outline` | bool | false | true or false | Draws an outline around glyphs |
+| `[editor] text_outline_color` | `textOutlineColor` | `text_outline_color` | int | 0x000000 | 0 through 0xFFFFFF | Outline colour |
+| `[editor] text_outline_size` | `textOutlineSize` | `text_outline_size` | float | 1.0 | 0.5 through 4.0 | Outline width in logical pixels |
+| `[editor] panel_glow` | `panelGlow` | `panel_glow` | float | 0.15 | 0.0 through 1.0 | Accent glow around panels; 0 disables it |
+| `[editor] custom_symbol_colors` | `customSymbolColors` | `custom_symbol_colors` | bool | false | true or false | Enables the per-symbol colour overrides |
+| `[editor] symbol_*` | `symbolColors.*` | `symbol_*` | int | 0 | 0 through 0xFFFFFF | One override per symbol; 0 follows the theme |
+| `[editor] symbol_plot_0` ... `symbol_plot_3` | `symbolColors.Plot` | `symbol_plot_*` | int | 0 | 0 through 0xFFFFFF | Plot series colours |
 | `[editor] ide_blind_mode` | - | `ide_blind_mode` | bool | false | true or false | Keyboard navigation, always-visible focus and the narration sink for the editor window |
 | `[editor] ide_deaf_mode` | - | `ide_deaf_mode` | bool | false | true or false | Visual status cues only; no editor audio alerts |
 | `[editor] ide_flash_guard` | - | `ide_flash_guard` | bool | true | true or false | FlashGuard on the editor background |
@@ -96,12 +106,15 @@ The typography block is a readability contract: 18 px body text is the floor on 
 | `font_script_pin_input` | 18 | 16 through 28 | Pin labels are dense; keep them at or above the floor |
 | `font_script_pin_output` | 18 | 16 through 28 | Same as input pins |
 | `font_scene_text` | 18 | 16 through 40 | Scene text is read against art, so it needs more headroom |
+| `text_line_spacing` | 0 | -4 through 24 | Extra space between lines; 0 keeps the font metrics |
+| `text_letter_spacing` | 0 | -2 through 12 | Extra space after every glyph; useful for dense UI fonts |
+| `text_word_spacing` | 0 | -4 through 24 | Extra space after a space glyph; does not change the space character width |
 
 The panel ranges are narrower than the file clamps: the panel keeps a safe band, the file accepts an extreme for a specific display.
 
 A legacy migration is part of the decoder. A project that still carries exactly the old combination (20 px title, 16 px body, 16 px tooltip, 18 px node title, 16 px pins, 16 px scene text) is upgraded once to the 24/18/18/21/18/18/18 defaults and the migration is logged. A project that changed any single value keeps its authored sizes, so the migration can never overwrite a deliberate choice.
 
-Font size changes take effect when the font atlas is reloaded, which is the next launch or a hot reload.
+Font size changes take effect when the font atlas is reloaded, which is the next launch or a hot reload. Line, letter and word spacing are applied by the text renderer immediately; they do not require an atlas rebuild.
 
 ### 3.3 Viewport diagnostics
 
@@ -149,6 +162,38 @@ The eight `ide_*` keys configure the editor window only; the game's own profile 
 | `ide_flash_threshold` | 0.20 | Largest allowed luminance change per frame; the panel slider covers 0.02 through 0.45 and the file clamp allows up to 1.0 |
 
 `ide_flash_threshold` is the only accessibility key with a conditional widget: the slider is disabled while `ide_flash_guard` is off, because the threshold has no meaning without the guard.
+
+### 3.8 Text appearance and symbol colours
+
+Text styling is independent of the panel palette: the colour is authored in
+sRGB, the opacity and the contrast multiplier are applied against the selected
+panel background, and the outline is drawn over the glyph coverage. The symbol
+table is an override layer: `customSymbolColors` enables it, and a stored zero
+always means "follow the selected theme".
+
+| Key | Default | Effect |
+|---|---|---|
+| `text_color` | 0xF2F2F2 | Base text colour |
+| `text_opacity` | 1.0 | Text alpha; the clamp keeps the value at or above 0.2 |
+| `text_contrast` | 1.0 | Multiplier against the panel background |
+| `text_outline` | false | Enables the outline pass |
+| `text_outline_color` | 0x000000 | Outline colour |
+| `text_outline_size` | 1.0 | Outline width in logical pixels |
+| `panel_glow` | 0.15 | Accent glow around panels; 0 disables it |
+| `custom_symbol_colors` | false | Enables the overrides below |
+| `symbol_axis_x`, `symbol_axis_y` | 0 | Axis colours |
+| `symbol_grid` | 0 | Grid colour |
+| `symbol_play`, `symbol_pause`, `symbol_step`, `symbol_stop` | 0 | Playback bar glyphs |
+| `symbol_rotate` | 0 | Rotate gizmo glyph |
+| `symbol_multiplayer` | 0 | Play (Multiplayer) glyph |
+| `symbol_plot_0` through `symbol_plot_3` | 0 | Plot series colours |
+
+The panel exposes the same ranges as the file codec for opacity, contrast,
+outline size and glow, so section 6 lists no divergence for them. The three
+spacing keys (`text_line_spacing`, `text_letter_spacing`, `text_word_spacing`,
+fields `textLineSpacing`, `textLetterSpacing` and `textWordSpacing`) exist only in
+`project.femproj`: the INI mirror described in section 5 is never read back, and
+the renderer takes them from `EditorSettings` directly.
 
 ## 4. The two viewport keys
 
@@ -231,6 +276,27 @@ ide_color_vision = 0
 ide_color_vision_strength = 1.000000
 ide_flash_threshold = 0.200000
 theme = "graphite"
+text_color = 15921906
+text_opacity = 1.000000
+text_contrast = 1.000000
+panel_glow = 0.150000
+text_outline = false
+text_outline_color = 0
+text_outline_size = 1.000000
+custom_symbol_colors = false
+symbol_axis_x = 0
+symbol_axis_y = 0
+symbol_grid = 0
+symbol_play = 0
+symbol_pause = 0
+symbol_step = 0
+symbol_stop = 0
+symbol_rotate = 0
+symbol_multiplayer = 0
+symbol_plot_0 = 0
+symbol_plot_1 = 0
+symbol_plot_2 = 0
+symbol_plot_3 = 0
 ```
 
 Floats are written with six decimal places by the string conversion used for the mirror, booleans as `true` and `false`, and the theme as a quoted string. The mirror reflects the clamped values: `window_mode` is written as at most 2 and `viewport_view_mode` goes through `ClampViewportViewMode`, so the mirror can never advertise a value the editor would refuse.

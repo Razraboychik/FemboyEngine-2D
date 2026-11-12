@@ -452,7 +452,7 @@ void GogAchievementSystem::Update(Ecs::SystemContext& InContext)
             ScopedEntities[ScopedCount++] = ScopedEntity;
         }
     }
-    // Same deterministic ordering rule as the Steam path: id, then entity. The
+    // Same deterministic ordering rule as the Steam path: id, then entity.
     for (std::uint32_t ScopedI = 1; ScopedI < ScopedCount; ++ScopedI)
     {
         const Entity ScopedValue = ScopedEntities[ScopedI];
@@ -584,7 +584,7 @@ bool GogStorageSystem::StageWrite(std::uint64_t InSaveId, std::string_view InFil
         (ScopedSlot->size != InData.size() || std::memcmp(ScopedSlot->data.data(), InData.data(), InData.size()) != 0);
     if (ScopedOverwrite)
     {
-        // Two producers staged different bytes for the same save id before the
+        // Two producers staged different bytes for the same save id.
         ++MConflicts;
     }
     ScopedSlot->used = true;

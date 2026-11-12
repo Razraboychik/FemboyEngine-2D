@@ -43,7 +43,7 @@ SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation,
     const std::uint64_t ScopedTotalCells =
         static_cast<std::uint64_t>(ScopedColumns) * static_cast<std::uint64_t>(ScopedRows);
 
-    // currentFrame is local to the clip; startFrame selects the first cell in
+    // currentFrame is local to the clip.
     const std::uint32_t ScopedLocal = InSpriteAnimation.CurrentFrame % ScopedFrameCount;
     const std::uint64_t ScopedAbsolute =
         ScopedTotalCells > 0
@@ -67,7 +67,7 @@ SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation,
 void ApplySpriteFrame(const SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid,
                       Sprite2D& InSprite) noexcept
 {
-    // A default-constructed SpriteAnimationComponent has no clip yet; it must not erase the
+    // A default-constructed SpriteAnimationComponent has no clip yet.
     if (InSpriteAnimation.FrameCount == 0)
     {
         return;
@@ -77,7 +77,7 @@ void ApplySpriteFrame(const SpriteAnimationComponent& InSpriteAnimation, const S
     InSprite.UVMax = ScopedRect.uvMax;
     if (InGrid != nullptr)
     {
-        // The array handle in SpriteAnimationComponent selects the texture array; the
+        // The array handle in SpriteAnimationComponent selects the texture array.
         InSprite.Layer = InGrid->Layer;
     }
 }
@@ -110,7 +110,7 @@ bool AdvanceSpriteAnimation(SpriteAnimationComponent& InSpriteAnimation, float I
         return false;
     }
 
-    // Keep the fractional remainder so a frame does not drift when dt is not an
+    // Keep the fractional remainder so a frame does not drift when dt varies.
     const double ScopedClampedSteps = std::min(ScopedStepCount, 1.0e12);
     const auto ScopedSteps = static_cast<std::uint64_t>(ScopedClampedSteps);
     InSpriteAnimation.ElapsedTime = std::max(

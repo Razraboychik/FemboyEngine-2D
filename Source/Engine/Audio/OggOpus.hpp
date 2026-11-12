@@ -14,7 +14,7 @@
 namespace Fby::Audio
 {
 
-// A packet that does not fit here is not a music packet: Opus audio packets are
+// A packet that does not fit here is not a music packet.
 inline constexpr std::uint32_t kOggMaxPacketBytes = 16384;
 // Every page header is 27 bytes: capture pattern, version, flags, granule,
 inline constexpr std::uint32_t kOggPageHeaderBytes = 27;
@@ -50,7 +50,7 @@ struct OggPage
 
 // Ogg's CRC-32: polynomial 0x04C11DB7, initial value 0, no reflection, no final
 [[nodiscard]] std::uint32_t OggCrc32(std::span<const std::byte> InBytes) noexcept;
-// CRC over a complete page with the checksum field (bytes 22..25) treated as
+// CRC over a complete page with the checksum field (bytes 22..25) treated as zero.
 [[nodiscard]] std::uint32_t OggPageCrc(std::span<const std::byte> InPage) noexcept;
 
 // Walks the page sequence. Every page is validated: capture pattern, version,
@@ -82,7 +82,7 @@ struct OggPacket
     bool endOfStream = false;
 };
 
-// Reassembles packets from pages. The assembled packet is copied into an
+// Reassembles packets from pages.
 class OggPacketReader
 {
 public:
@@ -102,7 +102,7 @@ private:
     std::array<std::byte, kOggMaxPacketBytes> MBuffer{};
 };
 
-// The Opus ID header. `preSkip` samples at 48 kHz must be discarded after
+// The Opus ID header.
 struct OpusHeadInfo
 {
     std::uint8_t version = 0;
@@ -143,7 +143,7 @@ public:
     [[nodiscard]] bool Start();
     void Stop() noexcept;
 
-    // Pops up to `frameCount` interleaved stereo frames. Returns how many were
+    // Pops up to `frameCount` interleaved stereo frames.
     [[nodiscard]] std::uint32_t Read(float* InInterleavedStereo, std::uint32_t InFrameCount) noexcept;
 
     [[nodiscard]] std::uint32_t AvailableFrames() const noexcept;

@@ -63,7 +63,7 @@ MaterialGraph BuildAtlasMaterialGraph()
     return ScopedGraph;
 }
 
-// A graph that touches every interesting code path: atlas sample with an
+// A graph that touches every interesting code path: atlas sample.
 MaterialGraph BuildRichMaterialGraph()
 {
     MaterialGraph ScopedGraph;
@@ -116,7 +116,7 @@ void TestDefaultLayout()
     FBY_CHECK(ScopedGraph.OutputNode() == 0);
     FBY_CHECK(ScopedGraph.Node(0).kind == MaterialNodeKind::Output);
 
-    // A fresh graph has no BaseColor: it is a dangling required pin, which is
+    // A fresh graph has no BaseColor: it is a dangling required pin.
     std::string ScopedError;
     FBY_CHECK(!ScopedGraph.Validate(&ScopedError));
     FBY_CHECK(Contains(ScopedError, "unconnected"));

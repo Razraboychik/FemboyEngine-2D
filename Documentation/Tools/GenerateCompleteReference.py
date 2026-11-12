@@ -1920,7 +1920,7 @@ EXTRA_SECTIONS: list[dict] = [
                 "type": "code",
                 "lang": "cpp",
                 "text": "// Filtering is a record copy, not a registry walk. The output is a valid\n"
-                        "// Snapshot v4 delta against the same base: checksum and counts are rebuilt.\n"
+                        "// Snapshot v5 delta against the same base: checksum and counts are rebuilt.\n"
                         "for (std::uint32_t R = 0; R < View.header.entityCount; ++R) {\n"
                         "    const FilteredRecordHeader& Rec = ReadRecord(View.payload, Offset);\n"
                         "    const bool Removed = (Rec.Flags & SnapshotEntityRemoved) != 0;\n"
@@ -2033,13 +2033,13 @@ EXTRA_SECTIONS: list[dict] = [
                 "text": B(
                     "The four pipelines are covered by the headless advanced_pipelines test. It mounts a real "
                     "directory, writes real .fvtc chunks and verifies that a second view produces zero uploads; "
-                    "it checks that a static entity produces an empty dirty range; it builds a real Snapshot v4 "
+                    "it checks that a static entity produces an empty dirty range; it builds a real Snapshot v5 "
                     "delta and verifies that FilterDeltaForPlayer keeps one of two records; and it drives a "
                     "priority-9 underwater zone to 450 Hz and back to open. No GPU or audio device is opened, so "
                     "the test runs on a headless CI agent.",
                     "Четыре конвейера покрыты headless-тестом advanced_pipelines. Он монтирует реальный каталог, "
                     "пишет реальные .fvtc-чанки и проверяет, что повторный вид даёт ноль загрузок; проверяет, что "
-                    "статичная сущность даёт пустой dirty range; строит реальную Snapshot v4 дельту и проверяет, "
+                    "статичная сущность даёт пустой dirty range; строит реальную Snapshot v5 дельту и проверяет, "
                     "что FilterDeltaForPlayer сохраняет одну из двух записей; и прогоняет underwater-зону с "
                     "приоритетом 9 до 450 Гц и обратно до открытого фильтра. GPU и аудиоустройство не открываются, "
                     "поэтому тест работает на headless CI-агенте.",
@@ -2612,7 +2612,7 @@ EXTRA_SECTIONS: list[dict] = [
                 "text": B(
                     "The canvas needs six scalars per frame: CurrentState, PreviousState, BlendWeight, BlendTime, "
                     "StateTime and LastTransition. Reading them from a live AnimStateComponent on the ImGui thread "
-                    "is not a benign race: SystemGraph workers may be inside AnimGraphSystem::Run, and the EnTT "
+                    "is not a benign race: SystemGraph workers may be inside AnimGraphSystem::Run, and the component "
                     "lookup itself is unsafe while component pools are created or destroyed. Atomic reads of the "
                     "six fields would not fix the registry/lifetime part. The panel therefore owns a 64-byte POD "
                     "and a two-slot seqlock: the simulation thread publishes, the editor thread consumes, and the "
@@ -2620,7 +2620,7 @@ EXTRA_SECTIONS: list[dict] = [
                     "Холсту нужны шесть скаляров на кадр: CurrentState, PreviousState, BlendWeight, BlendTime, "
                     "StateTime и LastTransition. Чтение их из живого AnimStateComponent в потоке ImGui — не "
                     "безобидная гонка: воркеры SystemGraph могут находиться внутри AnimGraphSystem::Run, а сам "
-                    "поиск в EnTT небезопасен, пока создаются/уничтожаются пулы компонентов. Атомарное чтение "
+                    "поиск компонента небезопасен, пока создаются/уничтожаются пулы компонентов. Атомарное чтение "
                     "шести полей не решило бы часть с реестром и временем жизни. Поэтому панель владеет "
                     "64-байтным POD и двумя слотами seqlock: поток симуляции публикует, поток редактора "
                     "потребляет, а живой компонент никогда не разыменовывается из Draw().",

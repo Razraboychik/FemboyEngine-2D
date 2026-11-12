@@ -1389,7 +1389,7 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
 
     if (!IsSrgbFormat(ScopedTarget->format) && MOffscreenRenderPass != VK_NULL_HANDLE)
     {
-        // Shared offscreen pass: identical attachment format and structure, so
+        // Shared offscreen pass: identical attachment format and structure.
         ScopedTarget->renderPass = MOffscreenRenderPass;
         ScopedTarget->ownsRenderPass = false;
     }
@@ -2863,7 +2863,7 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
         }
     }
 
-    // One draw per batch. With a texture array the only batch boundary is the
+    // One draw per batch.
     if (ScopedBatches.empty())
     {
         ScopedApi.vkCmdDrawIndexed(InCommandBuffer, kQuadIndexCount, static_cast<std::uint32_t>(InPacket.items.size()),
@@ -3058,7 +3058,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
 
             if (ScopedUnskinned)
             {
-                // CPU-deformed geometry: copy the bind-pose vertices into the
+                // CPU-deformed geometry: copy the bind-pose vertices.
                 if (ScopedSkinnedVertexBase + ScopedSkinnedVertexTotal + ScopedUnskinnedCursor + ScopedVertexCount >
                     MMeshVertexCapacity)
                 {
@@ -3194,7 +3194,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
 
     if (ScopedPassIndexCount > 0)
     {
-        // The dynamic index copy is a transfer, not a shader write. Make it
+        // The dynamic index copy is a transfer, not a shader write.
         VkMemoryBarrier ScopedIndexBarrier{};
         ScopedIndexBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         ScopedIndexBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -3204,7 +3204,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
                                        nullptr);
     }
 
-    // Group by (geometry class, texture array, layer). Within a group the
+    // Group by (geometry class, texture array, layer).
     std::sort(MMeshDrawOrder.begin(), MMeshDrawOrder.end(),
               [this](std::uint32_t InLeft, std::uint32_t InRight)
               {
@@ -3317,7 +3317,7 @@ void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     ScopedPush.materialParams =
         Vector4D{InPacket.timeSeconds, InPacket.camera.viewport.X, InPacket.camera.viewport.Y, 0.0f};
 
-    // Static and skinned commands share this pool, so every material/layer is a
+    // Static and skinned commands share this pool, so every material/layer.
     ScopedApi.vkCmdBindIndexBuffer(InCommandBuffer, MIndexPool, 0, VK_INDEX_TYPE_UINT16);
     ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MMeshGraphicsLayout, 1, 1,
                                       &ScopedFrame.graphicsSet, 0, nullptr);
@@ -3332,7 +3332,7 @@ void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
         {
             continue;
         }
-        // MaterialGraph pipelines are created for the same pipeline layout and
+        // MaterialGraph pipelines are created for the same pipeline layout.
         VkPipeline ScopedGroupPipeline = InPipeline;
         if (ScopedGroup.materialPipeline != kDefaultMaterialPipeline)
         {
@@ -3472,7 +3472,7 @@ void VulkanRHI::Submit(const FramePacket& InPacket)
     ApplyVirtualTexture(InPacket);
     PreUploadInstances(ScopedCommandBuffer, InPacket);
 
-    // Compute skinning must run outside the render pass. In BlindMode the
+    // Compute skinning must run outside the render pass.
     if (!MBlindFrame)
     {
         RecordMeshSkinning(ScopedCommandBuffer, InPacket);
@@ -4025,7 +4025,7 @@ void VulkanRHI::EndFrame()
 
     if (MPassOpen)
     {
-        // UI last: the game has already been recorded into the main pass and
+        // UI last: the game has already been recorded into the main pass.
         if (MUiRenderer != nullptr && !MBlindFrame && !MSkipMainUi && MUiVisible)
         {
             MUiRenderer(MUiUser, ScopedCommandBuffer);

@@ -40,7 +40,7 @@ constexpr float kBlendEpsilon = 1.0e-6f;
     return ScopedWrapped - kPi;
 }
 
-// Smoothstep only at the cross-fade level: linear per-bone interpolation with an
+// Smoothstep only at the cross-fade level: linear per-bone interpolation.
 [[nodiscard]] float SmoothStep(float InWeight) noexcept
 {
     const float ScopedClamped = std::clamp(InWeight, 0.0f, 1.0f);
@@ -101,7 +101,7 @@ void AnimGraphCaptureRestPose(SkeletonComponent& InSkeleton) noexcept
         InSkeleton.RestRotations[ScopedBone] = InSkeleton.LocalRotations[ScopedBone];
         InSkeleton.RestScales[ScopedBone] = InSkeleton.LocalScales[ScopedBone];
     }
-    // Bones above the current count keep the identity rest pose the skeleton was
+    // Bones above the current count keep the identity rest pose the skeleton.
     InSkeleton.RestPoseCaptured = true;
 }
 
@@ -115,7 +115,7 @@ bool AnimTransitionMatches(const AnimTransition& InTransition, const AnimStateCo
     const std::uint32_t ScopedConditions = InTransition.Conditions;
     if (ScopedConditions == AnimConditionNone)
     {
-        // Inert by construction: an unconditional transition would fire every
+        // Inert by construction: an unconditional transition would fire.
         return false;
     }
     if ((ScopedConditions & AnimConditionStateTimeAtLeast) != 0 &&
@@ -204,7 +204,7 @@ void AnimGraphApplySkeletal(AnimStateComponent& InState, const AnimGraphDefiniti
     const AnimClip* ScopedPrevious = AnimGraphFindClip(InDefinition, InState.PreviousState);
     const float ScopedWeight = SmoothStep(InState.BlendWeight);
 
-    // The three destination arrays live in the skeleton; RestPose and the
+    // The three destination arrays live in the skeleton.
     Vector2D* FBY_RESTRICT ScopedOutPositions = InSkeleton.LocalPositions.data();
     float* FBY_RESTRICT ScopedOutRotations = InSkeleton.LocalRotations.data();
     float* FBY_RESTRICT ScopedOutScales = InSkeleton.LocalScales.data();
@@ -344,7 +344,7 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
 
         const auto* ScopedTags = InRegistry.try_get<GameplayTagsComponent>(ScopedEntity);
 
-        // First transition in authored order wins. The loop is bounded by 8 and
+        // First transition in authored order wins.
         const AnimTransition* ScopedFired = nullptr;
         std::uint16_t ScopedFiredIndex = kNoAnimTransition;
         for (std::uint16_t ScopedIndex = 0; ScopedIndex < kMaxAnimTransitions; ++ScopedIndex)
@@ -394,7 +394,7 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
                 AnimGraphResolveDirectional(ScopedDefinition, ScopedState, ScopedFacing->Direction, &ScopedPoseState);
         }
 
-        // Bridge 1: SkeletalAnimation. Always apply, not only on a transition, because the
+        // Bridge 1: SkeletalAnimation. Always apply, not only on a transition.
         if (auto* ScopedSkeleton = InRegistry.try_get<SkeletonComponent>(ScopedEntity); ScopedSkeleton != nullptr)
         {
             AnimGraphApplySkeletal(ScopedPoseState, ScopedDefinition, *ScopedSkeleton);

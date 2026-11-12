@@ -74,7 +74,7 @@ inline void BindThreadRole(ThreadRole InRole) noexcept
     return Detail::ThreadRoleStorage();
 }
 
-// Marks the calling thread as the process main thread. Startup-only; safe to
+// Marks the calling thread as the process main thread. Startup-only.
 void MarkMainThread() noexcept;
 
 // True when the calling thread is the process main thread.

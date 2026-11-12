@@ -1,13 +1,13 @@
 # Управление проектом и движком через CMake
 
-Применимо к FemboyEngine2D 0.3.0-alpha.1 и CMake 3.28 или новее.
+Применимо к FemboyEngine2D 0.4.0-alpha.1 и CMake 3.28 или новее.
 
 ## Требования к инструментам
 
 Движку нужен C++26:
 
-- Windows: clang-cl 19+ с MSVC STL.
-- Linux: Clang 19+ или GCC 16+.
+- Windows: clang-cl 23.1.4+ (эталон) или MSVC 19.44+ (опциональная альтернатива), оба со STL MSVC.
+- Linux: Clang 23.1.4+ или GCC 16.2.0+.
 - macOS: Apple Clang с поддержкой C++26.
 
 Поддерживаемый генератор проверенной сборки — Ninja. Visual Studio используется

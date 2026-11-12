@@ -33,7 +33,7 @@ enum class NarrativeArchetype : std::uint8_t
     Count,
 };
 
-// Semantic branches. A node points at one group; the group is the branch of the
+// Semantic branches. A node points at one group.
 enum class NarrativeGroup : std::uint8_t
 {
     Scene = 0,

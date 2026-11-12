@@ -46,7 +46,7 @@ public:
     }
     // Draws the panel and applies/persists after a commit.
     void Draw(Ecs::SystemContext& InContext, bool* InOpen);
-    // Pushes the current POD to AudioSystem/AccessibilityKernel; called after a
+    // Pushes the current POD to AudioSystem/AccessibilityKernel.
     void Apply(Ecs::SystemContext& InContext);
     // EditorSystem calls this after Ctrl+Z/Ctrl+Y. It re-applies and persists
     void SyncFromHistory(Ecs::SystemContext& InContext);

@@ -21,11 +21,11 @@ public:
         return MSeed;
     }
 
-    // Classic improved Perlin noise. Zero at every integer lattice point and
+    // Classic improved Perlin noise.
     [[nodiscard]] float Perlin2D(float InX, float InY) const noexcept;
     [[nodiscard]] float Perlin3D(float InX, float InY, float InZ) const noexcept;
 
-    // 2D/3D simplex noise, roughly in [-1, 1]. Cheaper than Perlin for 3D and
+    // 2D/3D simplex noise, roughly in [-1, 1].
     [[nodiscard]] float Simplex2D(float InX, float InY) const noexcept;
     [[nodiscard]] float Simplex3D(float InX, float InY, float InZ) const noexcept;
 
@@ -37,7 +37,7 @@ public:
     void Worley2D(float InX, float InY, float& InF1, float& InF2) const noexcept;
     void Worley3D(float InX, float InY, float InZ, float& InF1, float& InF2) const noexcept;
 
-    // Fractal Brownian motion over the chosen base field. Normalized so the
+    // Fractal Brownian motion over the chosen base field.
     [[nodiscard]] float Fbm2D(float InX, float InY, int InOctaves, float InLacunarity = 2.0f,
                               float InGain = 0.5f) const noexcept;
     [[nodiscard]] float Fbm3D(float InX, float InY, float InZ, int InOctaves, float InLacunarity = 2.0f,
@@ -55,7 +55,7 @@ private:
     std::uint64_t MSeed = 0;
 };
 
-// Shared math helpers. Exposed because the shader mirror tests them against the
+// Shared math helpers. Exposed because the shader mirror tests them against the CPU path.
 [[nodiscard]] constexpr float Fade(float InT) noexcept
 {
     return InT * InT * InT * (InT * (InT * 6.0f - 15.0f) + 10.0f);

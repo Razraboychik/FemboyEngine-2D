@@ -30,7 +30,7 @@ class LocalizationTable
 public:
     LocalizationTable() = default;
 
-    // Verifies the buffer and keeps a view of it. The caller guarantees the
+    // Verifies the buffer and keeps a view of it.
     [[nodiscard]] static LocalizationTable Open(std::span<const std::byte> InBytes, std::string* InError = nullptr);
 
     [[nodiscard]] bool IsValid() const noexcept

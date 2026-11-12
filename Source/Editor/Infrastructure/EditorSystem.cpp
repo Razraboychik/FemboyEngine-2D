@@ -3,6 +3,9 @@
 #include "Engine/RHI/CameraStack.hpp"
 
 #include "Engine/Audio/Audio.hpp"
+#include "Engine/Audio/VoicePreset.hpp"
+#include "Engine/Audio/VoiceReactiveSfx.hpp"
+#include "Engine/Audio/VoiceSfxSynth.hpp"
 #include "Engine/Audio/VoiceSystem.hpp"
 #include "Engine/Core/PluginHost.hpp"
 #include "Engine/UI/Accessibility.hpp"
@@ -97,7 +100,7 @@ namespace Fby::Editor
 {
 namespace
 {
-// Fixed PIE snapshot arena. It is allocated once in Initialize(), never on
+// Fixed PIE snapshot arena.
 inline constexpr std::size_t kPieArenaBytes = 32u * 1024u * 1024u;
 // Bump when the default dock layout changes materially (new panel, new split).
 // The marker next to the ImGui ini then forces one rebuild, so an old saved
@@ -433,7 +436,7 @@ void ApplyModelMatrix(const float* InModel, Transform2D& InTransform)
                                  std::sqrt(InModel[4] * InModel[4] + InModel[5] * InModel[5])};
 }
 
-// Viewport camera + image rectangle, handed to the physics debug visualizer as
+// Viewport camera + image rectangle, handed to the physics debug visualizer.
 struct PhysicsDebugView
 {
     Vector2D center{};
@@ -472,7 +475,7 @@ struct EditorSystem::Impl
     ImFont* fontRegular = nullptr;
     ImFont* fontMono = nullptr;
 
-    // Style geometry is scaled relative to the last applied factor, never by
+    // Style geometry is scaled relative to the last applied factor, never to the raw factor.
     float styleUiScale = 1.0f;
     float appliedStyleScale = 0.0f;
 
@@ -647,6 +650,15 @@ struct EditorSystem::Impl
     TransportGroupPanel transportGroups;
     std::unique_ptr<VoiceSystem> voiceRuntime;
     VoiceSession voiceSession;
+    Fby::VoicePresetRegistry voicePresets;
+    Fby::VoicePresetSelection voiceSelection;
+    Fby::VoiceEffectPolicy voicePolicy;
+    Fby::VoicePresetApplier voiceApplier;
+    Fby::VoiceReactiveSfxSettings voiceSfxSettings{};
+    Fby::VoiceReactiveSfxSettings voiceSfxApplied{};
+    Fby::VoiceReactiveSfx voiceSfx;
+    std::array<Fby::AssetId, static_cast<std::size_t>(Fby::VoiceSfxKind::Count)> voiceSfxClips{};
+    bool voiceSfxClipsReady = false;
     AudioDeviceEnumerator voiceDevicesEnumerator;
     bool voiceDevicesReady = false;
     bool voiceAttempted = false;
@@ -838,7 +850,7 @@ struct EditorSystem::Impl
         consoleScrollToBottom = true;
     }
 
-    // Fonts live in the .fempak. The VFS returns spans into an mmap; ImGui is
+    // Fonts live in the .fempak. The VFS returns spans into an mmap.
     [[nodiscard]] EditorFontSpec MakeFontSpec(float InUiScale) const
     {
         EditorFontSpec ScopedSpec;
@@ -876,7 +888,7 @@ struct EditorSystem::Impl
 
     void StopProjectSystems()
     {
-        // Stop the producer first; the worker thread is then joined before the
+        // Stop the producer first.
         watcher.Shutdown();
         importer.Shutdown();
         watcherStarted = false;
@@ -952,7 +964,7 @@ struct EditorSystem::Impl
         return true;
     }
 
-    // Bind both ImNodes canvases to the same runtime world. PIE owns the
+    // Bind both ImNodes canvases to the same runtime world.
     void SyncCanvasWorlds(Ecs::SystemContext& InContext)
     {
         const Ecs::Registry* ScopedRuntime = pie.Active() ? &pie.World() : aiPlayWorld;
@@ -1110,7 +1122,7 @@ struct EditorSystem::Impl
         {
             return;
         }
-        // Bind before the step so PublishPIEStateFromWorlds() resolves the
+        // Bind before the step so PublishPIEStateFromWorlds() resolves.
         SyncCanvasWorlds(InContext);
         if (piePaused)
         {
@@ -1151,7 +1163,7 @@ struct EditorSystem::Impl
                                                      : pie.Step(*graph, InContext.dt, ScopedFixedStep);
         if (ScopedStepped)
         {
-            // The step joined every system-graph worker before returning. The
+            // The step joined every system-graph worker before returning.
             SyncCanvasWorlds(InContext);
             (void)animationGraph.PublishPIEStateFromWorlds();
         }
@@ -1768,7 +1780,7 @@ struct EditorSystem::Impl
             }
             case Reflect::FieldKind::String:
             {
-                // Asset paths and other fixed-capacity strings. The buffer is
+                // Asset paths and other fixed-capacity strings.
                 std::array<char, 256> ScopedBuffer{};
                 const std::string ScopedCurrent = ReadStringField(ScopedComponent, InField);
                 std::snprintf(ScopedBuffer.data(), ScopedBuffer.size(), "%s", ScopedCurrent.c_str());
@@ -2166,7 +2178,7 @@ struct EditorSystem::Impl
             ImGui::PopID();
         }
 
-        // The skeleton is a large SoA block whose persistent form is
+        // The skeleton is a large SoA block whose persistent form is the asset, not the component.
         DrawSkeletonAssetInspector(InContext, ScopedEntity, skeletonPanel);
         spriteAnimationPanel.textureArray = textureArray;
         spriteAnimationPanel.thumbnails = &thumbnails;
@@ -2188,7 +2200,7 @@ struct EditorSystem::Impl
                 ImGui::EndCombo();
             }
         }
-        // A drag ends when ImGui no longer has an active item (mouse release or
+        // A drag ends when ImGui no longer has an active item.
         if (interaction.Active() && interaction.GetSource() == InteractionTransaction::Source::InspectorField &&
             !ImGui::IsAnyItemActive())
         {
@@ -2789,7 +2801,7 @@ struct EditorSystem::Impl
             ScopedDraw->PopClipRect();
         }
 
-        // Physics debug overlay: Box2D outlines, rope links, Verlet cloth and
+        // Physics debug overlay: Box2D outlines, rope links, Verlet cloth.
         if (showPhysicsDebug)
         {
             PhysicsDebugView ScopedDebugView;
@@ -3059,7 +3071,7 @@ struct EditorSystem::Impl
             ScopedDraw->PopClipRect();
         }
 
-        // Content Browser -> Viewport drop. The panel turns this into a
+        // Content Browser -> Viewport drop.
         {
             ContentBrowserPanel::SpawnContext ScopedSpawn;
             ScopedSpawn.commands = &commands;
@@ -4572,6 +4584,12 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     {
         return true;
     }
+    if (MImpl->voicePresets.Empty())
+    {
+        MImpl->voicePresets.RegisterBuiltIns();
+    }
+    MImpl->voiceSfx.Configure(MImpl->voiceSfxSettings);
+    MImpl->voiceSfxApplied = MImpl->voiceSfxSettings;
     if (InContext.renderer == nullptr || InContext.window == nullptr)
     {
         LogError("editor", "EditorSystem::Initialize needs SystemContext::renderer and ::window");
@@ -4606,6 +4624,16 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
         {
             LogInfo("editor", "user settings not loaded: {}", ScopedUserError);
         }
+        if (MImpl->userSettings.voicePresetId[0] != '\0')
+        {
+            MImpl->voiceSelection.Local.Set(MImpl->userSettings.voicePresetId,
+                                            MImpl->userSettings.voicePresetIntensity);
+        }
+        MImpl->voicePolicy.MumbleWhenModerated = MImpl->userSettings.voiceModerationMumble;
+        MImpl->voiceSfxSettings.Enabled = MImpl->userSettings.voiceReactiveSfx;
+        MImpl->voiceSfxSettings.MasterGain = MImpl->userSettings.voiceReactiveSfxGain;
+        MImpl->voiceSfx.Configure(MImpl->voiceSfxSettings);
+        MImpl->voiceSfxApplied = MImpl->voiceSfxSettings;
     }
     Scene::RegisterBuiltInComponents(MImpl->components);
     MImpl->textureArray = InDesc.textureArray;
@@ -4744,7 +4772,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     (void)MImpl->directionalBlendSpace.Initialize(MImpl->commands);
     MImpl->animationGraph.SetGameplayTagRegistry(&MImpl->gameplayTags);
 
-    // Allocate the PIE arena once, at editor startup. Play/Step/Stop then
+    // Allocate the PIE arena once, at editor startup.
     MImpl->pieArena.resize(kPieArenaBytes);
     if (!MImpl->pie.Initialize(MImpl->pieArena, Ecs::SnapshotSchema::BuiltIns(), MImpl->pieArena.size()))
     {
@@ -4870,7 +4898,7 @@ void EditorSystem::Shutdown()
     // Thumbnail descriptors reference ImGui's Vulkan backend; drop the cache
     // before the ImGui context and the renderer go away.
     MImpl->thumbnails.Clear();
-    // Persist the final settings image before the background threads and the
+    // Persist the final settings image before the background threads and the device shut down.
     if (MImpl->projectConfig.Loaded())
     {
         std::string ScopedPersistError;
@@ -4952,7 +4980,7 @@ void EditorSystem::Shutdown()
                 ScopedMainViewport->PlatformHandleRaw = nullptr;
             }
         }
-        // Detach the Log() observer before the ImGui context and the panel that
+        // Detach the Log() observer before the ImGui context and the panel are destroyed.
         MImpl->logBoy.Shutdown();
         if (MImpl->plotContext != nullptr)
         {
@@ -5097,10 +5125,84 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         if (MImpl->voiceRuntime != nullptr)
         {
             MImpl->voiceRuntime->Tick(InContext.dt, MImpl->voiceSession);
+            if (MImpl->voicePresets.Empty())
+            {
+                MImpl->voicePresets.RegisterBuiltIns();
+            }
+            MImpl->voiceApplier.Apply(*MImpl->voiceRuntime, MImpl->voiceSession, MImpl->voicePresets,
+                                      MImpl->voicePolicy, MImpl->voiceSelection);
+            std::snprintf(MImpl->userSettings.voicePresetId, sizeof(MImpl->userSettings.voicePresetId), "%s",
+                          MImpl->voiceSelection.Local.Enabled ? MImpl->voiceSelection.Local.Id : "");
+            MImpl->userSettings.voicePresetIntensity = MImpl->voiceSelection.Local.Intensity;
+            MImpl->userSettings.voiceModerationMumble = MImpl->voicePolicy.MumbleWhenModerated;
+            MImpl->userSettings.voiceReactiveSfx = MImpl->voiceSfxSettings.Enabled;
+            MImpl->userSettings.voiceReactiveSfxGain = MImpl->voiceSfxSettings.MasterGain;
+            if (!(MImpl->voiceSfxSettings == MImpl->voiceSfxApplied))
+            {
+                MImpl->voiceSfx.Configure(MImpl->voiceSfxSettings);
+                MImpl->voiceSfxApplied = MImpl->voiceSfxSettings;
+            }
+            if (InContext.audio != nullptr && InContext.audio->IsValid() && !MImpl->voiceSfxClipsReady)
+            {
+                std::array<float, Fby::kVoiceSfxMaxSamples> ScopedBuffer{};
+                for (std::uint8_t ScopedKind = 1; ScopedKind < static_cast<std::uint8_t>(Fby::VoiceSfxKind::Count);
+                     ++ScopedKind)
+                {
+                    const auto ScopedValue = static_cast<Fby::VoiceSfxKind>(ScopedKind);
+                    const std::uint32_t ScopedSamples =
+                        Fby::SynthesizeVoiceSfx(ScopedValue, 48000, std::span<float>(ScopedBuffer));
+                    if (ScopedSamples == 0)
+                    {
+                        continue;
+                    }
+                    const std::string ScopedPath = std::string("voice_sfx/") + Fby::VoiceSfxKindName(ScopedValue);
+                    const Fby::AssetId ScopedClip = Fby::AssetId::FromPath(ScopedPath, Fby::AssetKind::AudioClip);
+                    if (InContext.audio->RegisterClip(
+                            ScopedClip, std::span<const float>(ScopedBuffer.data(), ScopedSamples), 1, 48000))
+                    {
+                        MImpl->voiceSfxClips[ScopedKind] = ScopedClip;
+                    }
+                }
+                MImpl->voiceSfxClipsReady = true;
+            }
+
+            Fby::VoiceReactiveSfxInput ScopedSfxInput{};
+            for (std::uint8_t ScopedPlayer = 0; ScopedPlayer < static_cast<std::uint8_t>(Fby::kVoiceMaxPeers);
+                 ++ScopedPlayer)
+            {
+                const Fby::VoiceParticipant* ScopedParticipant = MImpl->voiceSession.Participant(ScopedPlayer);
+                if (ScopedParticipant == nullptr || !ScopedParticipant->Present)
+                {
+                    continue;
+                }
+                Fby::VoiceReactiveSfxPlayer& ScopedSource = ScopedSfxInput.Players[ScopedPlayer];
+                ScopedSource.Present = true;
+                ScopedSource.Talking = ScopedParticipant->Talking;
+                ScopedSource.LocallyMuted = ScopedParticipant->LocalMuted;
+                ScopedSource.Position = ScopedParticipant->SourcePosition;
+                ScopedSource.Pan = ScopedParticipant->SpatialPan;
+                const Fby::VoiceConditionOutput* ScopedCondition =
+                    MImpl->voiceRuntime->ParticipantCondition(ScopedPlayer);
+                ScopedSource.Submerged = ScopedCondition != nullptr && ScopedCondition->Submerged;
+            }
+            std::array<Fby::VoiceSfxEvent, 8> ScopedSfxEvents{};
+            const std::uint32_t ScopedSfxCount = MImpl->voiceSfx.Update(InContext.dt, ScopedSfxInput, ScopedSfxEvents);
+            if (InContext.audio != nullptr)
+            {
+                for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedSfxCount; ++ScopedIndex)
+                {
+                    const Fby::VoiceSfxEvent& ScopedEvent = ScopedSfxEvents[ScopedIndex];
+                    const Fby::AssetId ScopedClip = MImpl->voiceSfxClips[static_cast<std::size_t>(ScopedEvent.Kind)];
+                    if (ScopedClip.IsValid())
+                    {
+                        (void)Fby::PlayVoiceSfx(*InContext.audio, ScopedClip, ScopedEvent);
+                    }
+                }
+            }
         }
     }
 
-    // Main-thread speech pump: SAPI is apartment-threaded and AVSpeech owns a
+    // Main-thread speech pump: SAPI is apartment-threaded and AVSpeech owns a queue.
     if (InContext.accessibility != nullptr)
     {
         InContext.accessibility->FlushSpeech();
@@ -5142,7 +5244,7 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     }
     if (MImpl->fonts.DetectFontChanges())
     {
-        // ImGui::FontAtlas::Clear() destroys the dynamic font texture. Wait for
+        // ImGui::FontAtlas::Clear() destroys the dynamic font texture.
         if (MImpl->gpu != nullptr)
         {
             MImpl->gpu->WaitIdle();
@@ -5167,10 +5269,10 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     ImGui::NewFrame();
     ImGuizmo::BeginFrame();
 
-    // Follow the monitor the window is on. Glyph re-baking is automatic on the
+    // Follow the monitor the window is on.
     MImpl->fonts.RefreshDisplayScale(ImGui::GetIO(), MImpl->window);
 
-    // Watcher -> importer -> RHI. Poll() only enqueues the background cook; the
+    // Watcher -> importer -> RHI. Poll() only enqueues the background cook.
     if (MImpl->watcherStarted)
     {
         (void)MImpl->watcher.Poll();
@@ -5290,7 +5392,7 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         return;
     }
 
-    // PIE state machine, once per editor frame, before any panel reads the
+    // PIE state machine, once per editor frame, before any panel reads the world.
     MImpl->ProcessPIE(InContext);
 
     // Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) drive the transactional command stack.
@@ -5606,7 +5708,9 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     if (MImpl->showVoiceDevices)
     {
         ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
-        MImpl->voiceDevices.Draw(&MImpl->showVoiceDevices, &MImpl->projectConfig, InContext.audio);
+        MImpl->voiceDevices.Draw(&MImpl->showVoiceDevices, &MImpl->projectConfig, InContext.audio,
+                                 MImpl->voiceRuntime.get(), &MImpl->voiceSession, &MImpl->voicePresets,
+                                 &MImpl->voiceSelection, &MImpl->voicePolicy, &MImpl->voiceSfxSettings);
     }
     if (MImpl->showTransportGroups)
     {
@@ -5664,7 +5768,7 @@ void EditorSystem::OnPlatformEvent(const void* InSdlEvent)
     }
     ImGui::SetCurrentContext(MImpl->imguiContext);
     const SDL_Event* ScopedEvent = static_cast<const SDL_Event*>(InSdlEvent);
-    // A window can move between monitors or its content scale can change while
+    // A window can move between monitors or its content scale can change.
     if (ScopedEvent->type == SDL_EVENT_WINDOW_DISPLAY_CHANGED ||
         ScopedEvent->type == SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED)
     {
@@ -6237,7 +6341,7 @@ bool EditorSystem::SaveScene(Ecs::SystemContext& InContext, const std::filesyste
     MImpl->aiStateTree.SetScenePath(InPath);
     if (MImpl->aiStateTree.HasCompiledImage())
     {
-        // SaveSceneFileToml rewrites the whole file, so the marked AI block is
+        // SaveSceneFileToml rewrites the whole file, so the marked AI block must be merged back first.
         (void)MImpl->aiStateTree.SaveCompiledToSceneToml();
     }
     MImpl->animationGraph.SetScenePath(InPath);

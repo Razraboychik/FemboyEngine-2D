@@ -15,7 +15,9 @@ RenderFlags::Oit
 ParticleEmitterOit / ParticleEmitterOitDisabled
 ```
 
-Diagnostics show `OIT mode` and `OIT items`. The render pass is not implemented.
+Diagnostics show `OIT mode` and `OIT items`. The weighted blended pass is
+implemented for the swapchain and for render targets; the `Accurate` mode is
+not, and the weighting remains an alpha approximation.
 
 ## Weighted Blended OIT
 

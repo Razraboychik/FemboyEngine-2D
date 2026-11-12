@@ -20,7 +20,7 @@ inline constexpr std::uint32_t kMaxStateTreeNodes = 64;
 inline constexpr std::uint32_t kMaxStateTreeTransitions = 32;
 inline constexpr std::uint32_t kMaxStateTrees = 4;
 inline constexpr std::uint16_t kStateTreeNone = 0xFFFFu;
-// Internal trigger raised when the active leaf's own condition turns false. An
+// Internal trigger raised when the active leaf's own condition turns false.
 inline constexpr std::uint64_t kStateTreeTriggerLeafFailed = 1ull << 63;
 
 // Evaluators: pure data + a flat switch, no per-node object. Tag checks use the
@@ -171,7 +171,7 @@ enum class AICommandKind : std::uint8_t
     Action,
 };
 
-// Stored as uint32 so Mirror can describe it with FieldKind::UInt32 (the
+// Stored as uint32 so Mirror can describe it with FieldKind::UInt32.
 struct AICommandComponent
 {
     std::uint32_t Kind = static_cast<std::uint32_t>(AICommandKind::None);
@@ -194,7 +194,7 @@ static_assert(std::is_standard_layout_v<AICommandComponent>);
 // Per-entity state
 struct StateTreeComponent
 {
-    // The mandated path array: ActiveStates[0] is the root, the leaf is at
+    // The mandated path array: ActiveStates[0] is the root, the leaf is last.
     std::array<std::uint16_t, kMaxStateTreeDepth> ActiveStates{kStateTreeNone, kStateTreeNone, kStateTreeNone,
                                                                kStateTreeNone};
 
@@ -230,17 +230,16 @@ constexpr void StateTreeRaiseTrigger(StateTreeComponent& InState, std::uint64_t 
 [[nodiscard]] std::uint16_t StateTreeAddNode(StateTreeDefinition& InTree, StateTreeNodeKind InKind,
                                              std::uint16_t InParent = kStateTreeNone) noexcept;
 
-// Attaches an evaluator and a task to a leaf. Safe to call on a group too, in
+// Attaches an evaluator and a task to a leaf.
 void StateTreeSetLeaf(StateTreeDefinition& InTree, std::uint16_t InNode, const StateTreeEvaluator& InEvaluator,
                       const StateTreeTask& InTask) noexcept;
 
 [[nodiscard]] bool StateTreeAddTransition(StateTreeDefinition& InTree, const StateTreeTransition& InTransition) noexcept;
 
-// System
 class StateTreeSystem
 {
 public:
-    // Copies the definition into the fixed slot table. Rejects a full table or a
+    // Copies the definition into the fixed slot table.
     [[nodiscard]] bool AddTree(const StateTreeDefinition& InTree) noexcept;
     void ClearTrees() noexcept;
     [[nodiscard]] std::uint32_t TreeCount() const noexcept

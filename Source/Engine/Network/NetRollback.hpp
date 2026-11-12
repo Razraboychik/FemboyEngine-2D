@@ -30,12 +30,12 @@ inline constexpr std::uint32_t kMaxNetEntities = 4096;
 inline constexpr std::uint32_t kInputRingCapacity = 256;
 inline constexpr std::uint64_t kInvalidNetTick = 0xFFFFFFFFFFFFFFFFull;
 
-// Relevance grid integration. The grid itself lives in RelevanceGrid.hpp; the
+// Relevance grid integration. The grid itself lives in RelevanceGrid.hpp.
 struct RelevanceConfig;
 struct RelevancePlan;
 class RelevanceGrid;
 
-// Stable identity of a replicated object. It is assigned by the authority (or
+// Stable identity of a replicated object.
 struct NetEntityId
 {
     std::uint32_t value = kInvalidNetEntityId;
@@ -66,7 +66,7 @@ struct NetPlayerId
     [[nodiscard]] friend constexpr bool operator==(NetPlayerId, NetPlayerId) = default;
 };
 
-// One player's input for one tick. Axes are signed 16-bit fixed point, not
+// One player's input for one tick.
 struct NetInputFrame
 {
     std::uint64_t tick = 0;
@@ -106,7 +106,7 @@ enum NetInputStatus : std::uint8_t
     NetInputMissing = 2,
 };
 
-// What the simulation callback receives for one tick. Fixed size; no span into
+// What the simulation callback receives for one tick. Fixed size.
 struct NetTickInputs
 {
     std::array<NetInputFrame, kMaxNetPlayers> frames{};
@@ -119,7 +119,7 @@ struct NetTickInputs
     }
 };
 
-// Fixed-capacity tick -> input ring. Late input overwrites the prediction in
+// Fixed-capacity tick -> input ring.
 class InputRingBuffer
 {
 public:
@@ -309,7 +309,7 @@ public:
         return "?";
     }
 
-    // The simulation is a pure function of the registry, the tick inputs and the
+    // The simulation is a pure function of the registry, the tick inputs and the RNG.
     using SimulateFn = void (*)(void* InUser, Ecs::Registry& InRegistry, std::uint64_t InTick,
                                 const NetTickInputs& InInputs, DeterministicRng& InRng) noexcept;
 
@@ -345,7 +345,7 @@ public:
     // Allocation-free variant: the caller supplies the snapshot arena. It must
     [[nodiscard]] Result Initialize(Ecs::Registry& InRegistry, const Ecs::SnapshotSchema& InSchema,
                                     const Config& InConfig, std::span<std::byte> InSnapshotArena) noexcept;
-    // Convenience variant: allocates one arena here (the only allocation the
+    // Convenience variant: allocates one arena here.
     [[nodiscard]] Result Initialize(Ecs::Registry& InRegistry, const Ecs::SnapshotSchema& InSchema,
                                     const Config& InConfig);
     void Shutdown() noexcept;
@@ -369,7 +369,7 @@ public:
         MPhysics = InPhysics;
     }
 
-    // Captures tick 0 (or Config::startTick) as the rollback base and stores the
+    // Captures tick 0 (or Config::startTick) as the rollback base and stores it.
     [[nodiscard]] Result Start(const DeterministicRng& InRng) noexcept;
 
     // Simulates exactly the next tick. The local input is pushed into the local
@@ -393,7 +393,7 @@ public:
     [[nodiscard]] Result RefreshRelevanceGrid() noexcept;
     [[nodiscard]] Result BuildRelevancePlan(NetPlayerId InPlayer, std::uint64_t InTick,
                                             RelevancePlan& OutPlan) const noexcept;
-    // Copies only the delta records whose local entity maps to a NetEntityId in
+    // Copies only the delta records whose local entity maps to a NetEntityId.
     [[nodiscard]] Result FilterDeltaForPlayer(const RelevancePlan& InPlan, std::span<const std::byte> InDelta,
                                               std::span<std::byte> OutFiltered, std::size_t* OutBytes = nullptr,
                                               bool InKeepRemovals = true) const noexcept;
@@ -417,7 +417,7 @@ public:
     // Executes the pending rollback. Restores the snapshot before the earliest
     [[nodiscard]] Result ReplayPending(RollbackReport* InReport = nullptr) noexcept;
 
-    // The single restore entry point used by ReplayPending(). Destroys every
+    // The single restore entry point used by ReplayPending().
     [[nodiscard]] Result RestoreSnapshot(std::span<const std::byte> InSnapshot) noexcept;
     // Restores one captured frame from this session's arena (diagnostics and
     // tests; the replay path uses the same restore internally).
@@ -453,7 +453,7 @@ public:
     }
     [[nodiscard]] std::uint64_t StateChecksum() const noexcept;
 
-    // Compares a remote report with the locally stored frame. Returns false when
+    // Compares a remote report with the locally stored frame.
     struct ChecksumComparison
     {
         bool snapshotMatches = false;

@@ -24,8 +24,7 @@ void SetError(std::string* InError, const std::string& InMessage)
     }
 }
 
-template <typename T>
-[[nodiscard]] T ValueField(const toml::table& InTable, std::string_view InKey, T InFallback)
+template <typename T> [[nodiscard]] T ValueField(const toml::table& InTable, std::string_view InKey, T InFallback)
 {
     const auto* ScopedNode = InTable.get(InKey);
     return ScopedNode != nullptr ? ScopedNode->value<T>().value_or(InFallback) : InFallback;
@@ -59,6 +58,9 @@ UserSettings ClampUserSettings(UserSettings InSettings) noexcept
         std::clamp(static_cast<std::uint8_t>(InSettings.upscalePolicy), std::uint8_t{0}, std::uint8_t{2}));
     InSettings.dlssQuality = static_cast<Rhi::DlssQualityMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.dlssQuality), std::uint8_t{0}, std::uint8_t{3}));
+    InSettings.voicePresetId[63] = '\0';
+    InSettings.voicePresetIntensity = std::clamp(InSettings.voicePresetIntensity, 0.0f, 1.0f);
+    InSettings.voiceReactiveSfxGain = std::clamp(InSettings.voiceReactiveSfxGain, 0.0f, 1.0f);
     return InSettings;
 }
 
@@ -88,36 +90,50 @@ bool LoadUserSettings(std::string_view InPath, UserSettings* OutSettings, std::s
         ScopedSettings.vsync = ValueField<bool>(*ScopedGraphics, "vsync", ScopedSettings.vsync);
         ScopedSettings.qualityPreset = static_cast<std::uint8_t>(
             ValueField<std::int64_t>(*ScopedGraphics, "quality_preset", ScopedSettings.qualityPreset));
-        ScopedSettings.renderScale = static_cast<float>(
-            ValueField<double>(*ScopedGraphics, "render_scale", ScopedSettings.renderScale));
-        ScopedSettings.upscaleMode = static_cast<UpscaleMode>(
-            ValueField<std::int64_t>(*ScopedGraphics, "upscale_mode", static_cast<std::int64_t>(ScopedSettings.upscaleMode)));
+        ScopedSettings.renderScale =
+            static_cast<float>(ValueField<double>(*ScopedGraphics, "render_scale", ScopedSettings.renderScale));
+        ScopedSettings.upscaleMode = static_cast<UpscaleMode>(ValueField<std::int64_t>(
+            *ScopedGraphics, "upscale_mode", static_cast<std::int64_t>(ScopedSettings.upscaleMode)));
         ScopedSettings.temporalUpscale = static_cast<TemporalUpscaleMode>(ValueField<std::int64_t>(
             *ScopedGraphics, "temporal_upscale", static_cast<std::int64_t>(ScopedSettings.temporalUpscale)));
-        ScopedSettings.oitEnabled =
-            ValueField<bool>(*ScopedGraphics, "oit_enabled", ScopedSettings.oitEnabled);
-        ScopedSettings.fsr1Sharpness = static_cast<float>(
-            ValueField<double>(*ScopedGraphics, "fsr1_sharpness", ScopedSettings.fsr1Sharpness));
+        ScopedSettings.oitEnabled = ValueField<bool>(*ScopedGraphics, "oit_enabled", ScopedSettings.oitEnabled);
+        ScopedSettings.fsr1Sharpness =
+            static_cast<float>(ValueField<double>(*ScopedGraphics, "fsr1_sharpness", ScopedSettings.fsr1Sharpness));
         if (const toml::table* ScopedHud = ScopedTable["hud"].as_table())
         {
-            ScopedSettings.hudRenderScale = static_cast<float>(
-                ValueField<double>(*ScopedHud, "render_scale", ScopedSettings.hudRenderScale));
-            ScopedSettings.hudUpscale = static_cast<UpscaleMode>(ValueField<std::int64_t>(
-                *ScopedHud, "upscale", static_cast<std::int64_t>(ScopedSettings.hudUpscale)));
+            ScopedSettings.hudRenderScale =
+                static_cast<float>(ValueField<double>(*ScopedHud, "render_scale", ScopedSettings.hudRenderScale));
+            ScopedSettings.hudUpscale = static_cast<UpscaleMode>(
+                ValueField<std::int64_t>(*ScopedHud, "upscale", static_cast<std::int64_t>(ScopedSettings.hudUpscale)));
             ScopedSettings.hudVisible = ValueField<bool>(*ScopedHud, "visible", ScopedSettings.hudVisible);
-            ScopedSettings.hudTarget = static_cast<HudTargetMode>(ValueField<std::int64_t>(
-                *ScopedHud, "target", static_cast<std::int64_t>(ScopedSettings.hudTarget)));
+            ScopedSettings.hudTarget = static_cast<HudTargetMode>(
+                ValueField<std::int64_t>(*ScopedHud, "target", static_cast<std::int64_t>(ScopedSettings.hudTarget)));
             ScopedSettings.frameGeneration = static_cast<FrameGenerationMode>(ValueField<std::int64_t>(
                 *ScopedHud, "frame_generation", static_cast<std::int64_t>(ScopedSettings.frameGeneration)));
             ScopedSettings.upscalerBackend = static_cast<UpscalerBackendSetting>(ValueField<std::int64_t>(
                 *ScopedHud, "upscaler_backend", static_cast<std::int64_t>(ScopedSettings.upscalerBackend)));
-            ScopedSettings.frameGenerationPolicy = static_cast<FrameGenerationPolicySetting>(ValueField<std::int64_t>(
-                *ScopedHud, "frame_generation_policy",
-                static_cast<std::int64_t>(ScopedSettings.frameGenerationPolicy)));
+            ScopedSettings.frameGenerationPolicy = static_cast<FrameGenerationPolicySetting>(
+                ValueField<std::int64_t>(*ScopedHud, "frame_generation_policy",
+                                         static_cast<std::int64_t>(ScopedSettings.frameGenerationPolicy)));
             ScopedSettings.upscalePolicy = static_cast<UpscalePolicy>(ValueField<std::int64_t>(
                 *ScopedHud, "upscale_policy", static_cast<std::int64_t>(ScopedSettings.upscalePolicy)));
             ScopedSettings.dlssQuality = static_cast<Rhi::DlssQualityMode>(ValueField<std::int64_t>(
                 *ScopedHud, "dlss_quality", static_cast<std::int64_t>(ScopedSettings.dlssQuality)));
+        }
+        if (const toml::table* ScopedVoice = ScopedTable["voice"].as_table())
+        {
+            const std::string ScopedPreset =
+                ValueField<std::string>(*ScopedVoice, "preset", std::string(ScopedSettings.voicePresetId));
+            std::snprintf(ScopedSettings.voicePresetId, sizeof(ScopedSettings.voicePresetId), "%s",
+                          ScopedPreset.c_str());
+            ScopedSettings.voicePresetIntensity =
+                static_cast<float>(ValueField<double>(*ScopedVoice, "intensity", ScopedSettings.voicePresetIntensity));
+            ScopedSettings.voiceModerationMumble =
+                ValueField<bool>(*ScopedVoice, "moderation_mumble", ScopedSettings.voiceModerationMumble);
+            ScopedSettings.voiceReactiveSfx =
+                ValueField<bool>(*ScopedVoice, "reactive_sfx", ScopedSettings.voiceReactiveSfx);
+            ScopedSettings.voiceReactiveSfxGain = static_cast<float>(
+                ValueField<double>(*ScopedVoice, "reactive_sfx_gain", ScopedSettings.voiceReactiveSfxGain));
         }
         *OutSettings = ClampUserSettings(ScopedSettings);
         return true;
@@ -166,9 +182,16 @@ bool SaveUserSettings(std::string_view InPath, const UserSettings& InSettings, s
         ScopedHud.insert("upscaler_backend", static_cast<std::int64_t>(ScopedSettings.upscalerBackend));
         ScopedHud.insert("upscale_policy", static_cast<std::int64_t>(ScopedSettings.upscalePolicy));
         ScopedHud.insert("dlss_quality", static_cast<std::int64_t>(ScopedSettings.dlssQuality));
+        toml::table ScopedVoice;
+        ScopedVoice.insert("preset", std::string(ScopedSettings.voicePresetId));
+        ScopedVoice.insert("intensity", static_cast<double>(ScopedSettings.voicePresetIntensity));
+        ScopedVoice.insert("moderation_mumble", ScopedSettings.voiceModerationMumble);
+        ScopedVoice.insert("reactive_sfx", ScopedSettings.voiceReactiveSfx);
+        ScopedVoice.insert("reactive_sfx_gain", static_cast<double>(ScopedSettings.voiceReactiveSfxGain));
         toml::table ScopedRoot;
         ScopedRoot.insert("graphics", std::move(ScopedGraphics));
         ScopedRoot.insert("hud", std::move(ScopedHud));
+        ScopedRoot.insert("voice", std::move(ScopedVoice));
         std::ofstream ScopedFile(ScopedPath, std::ios::trunc);
         if (!ScopedFile)
         {

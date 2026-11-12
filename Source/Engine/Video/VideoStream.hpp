@@ -32,7 +32,7 @@ class AssetDatabase;
 namespace Fby::Video
 {
 
-// The component. `player` was assigned by VideoSystem::Open(); `texture` is the
+// The component. `player` was assigned by VideoSystem::Open().
 struct VideoStreamComponent
 {
     // Transactional metadata handle. The .femeta row owns the WebM source
@@ -62,7 +62,7 @@ public:
     VideoSystem(const VideoSystem&) = delete;
     VideoSystem& operator=(const VideoSystem&) = delete;
 
-    // Binds the device and the VFS. `backend` may be null, in which case the
+    // Binds the device and the VFS.
     [[nodiscard]] bool Initialize(Rhi::RHI* InGpu, VirtualFileSystem* InVfs, const Vp9Backend* InBackend = nullptr,
                                   std::string* InError = nullptr);
     void Shutdown();
@@ -72,7 +72,7 @@ public:
     {
         MBackend = InBackend;
     }
-    // Tests drive PumpFrame()/Update() synchronously and do not want a
+    // Tests drive PumpFrame()/Update() synchronously and do not want.
     void SetThreadingEnabled(bool InEnabled) noexcept
     {
         MThreadingEnabled = InEnabled;
@@ -82,12 +82,12 @@ public:
         return MThreadingEnabled;
     }
 
-    // Reads `path` from the VFS, starts playback on a free player slot and
+    // Reads `path` from the VFS, starts playback on a free player slot.
     [[nodiscard]] bool Open(VideoStreamComponent& InComponent, std::string_view InPath, std::string* InError = nullptr);
-    // path: resolves the transactional .femeta handle to its source path and
+    // path: resolves the transactional .femeta handle to its source path.
     [[nodiscard]] bool OpenFromAsset(VideoStreamComponent& InComponent, Assets::AssetDatabase& InDatabase,
                                      std::string* InError = nullptr);
-    // Same, over a caller-owned span (editor preview of an in-memory cook, and
+    // Same, over a caller-owned span.
     [[nodiscard]] bool OpenMemory(VideoStreamComponent& InComponent, std::span<const std::byte> InWebm,
                                   std::string* InError = nullptr);
 
@@ -98,7 +98,7 @@ public:
     void Update(Ecs::SystemContext& InContext);
     void Update(Ecs::Registry& InRegistry, float InDeltaSeconds);
 
-    // Convenience for the Schedule-based sandbox/editor: registers Update in
+    // Convenience for the Schedule-based sandbox/editor: registers Update.
     [[nodiscard]] static bool Register(Ecs::Schedule& InSchedule, VideoSystem& InSystem);
     // SystemGraph overload for the current scheduler.
     [[nodiscard]] static bool Register(Ecs::SystemGraph& InGraph, VideoSystem& InSystem);
