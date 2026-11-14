@@ -908,6 +908,7 @@ bool RunAotModule(const Aot::Module& InModule, ScriptEvent InEvent, Entity InSel
     ScopedAotContext.dt = InContext.dt;
     ScopedAotContext.frameIndex = InContext.frameIndex;
     ScopedAotContext.self = static_cast<std::uint32_t>(InSelf);
+    ScopedAotContext.coroutine = InContext.aotCoroutine;
     ScopedEntry(ScopedAotContext);
     return true;
 }

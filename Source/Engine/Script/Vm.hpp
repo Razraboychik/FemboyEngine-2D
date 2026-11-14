@@ -5,6 +5,7 @@
 #include "Engine/Core/DecimalStore.hpp"
 #include "Engine/Core/DeterministicRng.hpp"
 #include "Engine/ECS/CommandBuffer.hpp"
+#include "Engine/Script/AotAbi.hpp"
 #include "Engine/Script/Bytecode.hpp"
 #include "Engine/Script/EcsBridge.hpp"
 #include "Engine/Script/ScriptHeap.hpp"
@@ -144,6 +145,9 @@ struct VmContext
     // Bounded value heap for strings, arrays and maps. A host that runs a script
     // without collections may leave it null; collection natives then fault.
     ScriptHeap* heap = nullptr;
+    // Host-owned AOT coroutine slot for the current event, if the cooked program
+    // contains Yield. The VM does not use it; AotModule forwards it.
+    Aot::CoroutineState* aotCoroutine = nullptr;
 };
 
 class ScriptVm;
@@ -163,6 +167,7 @@ enum class VmHalt : std::uint8_t
     Completed = 0,
     Faulted,
     Paused,
+    Yielded,
 };
 
 struct VmStopInfo
@@ -180,6 +185,17 @@ struct VmStopInfo
     {
         return Halt == VmHalt::Faulted;
     }
+};
+
+// One active user-function call. `ReturnPc` is the caller's next instruction,
+// `ResultDst` the caller's result register, `Function` the function-table index
+// and `Base` the start of the callee's fixed register window.
+struct VmCallFrame
+{
+    std::uint32_t ReturnPc = 0;
+    std::uint8_t ResultDst = 0;
+    std::uint16_t Function = 0;
+    std::uint16_t Base = 0;
 };
 
 // Debug session state owned by the editor. `RunDebug` reads and writes it, so a
@@ -202,6 +218,10 @@ struct VmDebugState
     std::uint32_t PauseCount = 0;
     std::uint32_t BreakpointCount = 0;
     std::array<std::uint64_t, (kMaxInstructions + 63) / 64> Breakpoints{};
+    // Active user-function frames, persisted across RunDebug resumes so a pause
+    // inside a nested call can return to the right caller.
+    std::array<VmCallFrame, kMaxCallDepth> CallStack{};
+    std::uint32_t CallDepth = 0;
 
     void SetBreakpoint(std::uint32_t InPc) noexcept
     {
@@ -260,6 +280,28 @@ struct VmDebugState
 // Native functions read their arguments from consecutive VM registers starting
 using NativeFn = void (*)(ScriptVm& InVm, VmContext& InContext, std::uint8_t InBase);
 
+union VmRegister
+{
+    float f;
+    std::int32_t i;
+    std::uint32_t u;
+};
+
+// A suspended coroutine: the register file, tags and pc to resume from. The
+// scheduler owns one slot per entity/program/event and never allocates.
+struct VmSuspendState
+{
+    bool Valid = false;
+    ScriptEvent Event = ScriptEvent::Update;
+    Entity Self = Fby::kNullEntity;
+    std::uint32_t Pc = 0;
+    std::uint32_t CallDepth = 0;
+    std::uint64_t WakeFrame = 0;
+    std::array<VmRegister, kMaxVmRegisters> Registers{};
+    std::array<ValueTag, kMaxVmRegisters> Tags{};
+    std::array<VmCallFrame, kMaxCallDepth> CallStack{};
+};
+
 class ScriptVm
 {
 public:
@@ -283,8 +325,10 @@ public:
     }
 
     // Runs one event entry point for `self`. Returns false only on a fault.
+    // When `InSuspend` is supplied, a Yield stores the resumable state there and
+    // the next call resumes from it; a completed run clears the state.
     [[nodiscard]] bool Run(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
-                           VmFault* InFault = nullptr) noexcept;
+                           VmFault* InFault = nullptr, VmSuspendState* InSuspend = nullptr) noexcept;
 
     // Debug entry point. With `InDebug.Enabled` false this is equivalent to
     // Run(); with it enabled the loop honours breakpoints, single steps and
@@ -358,32 +402,19 @@ public:
     }
 
 private:
-    union Register
-    {
-        float f;
-        std::int32_t i;
-        std::uint32_t u;
-    };
-
     [[nodiscard]] bool Fault(VmFault* InFault, VmFault::Code InCode, std::uint32_t InPc,
                              std::uint32_t InDetail = 0) noexcept;
     [[nodiscard]] VmStopInfo FaultStop(VmFault* InFault, VmFault::Code InCode, std::uint32_t InPc,
                                        std::uint32_t InDetail = 0) noexcept;
     [[nodiscard]] VmStopInfo PauseStop(VmDebugState& InDebug, VmPauseReason InReason) noexcept;
     [[nodiscard]] VmStopInfo Execute(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf,
-                                     VmContext& InContext, VmFault* InFault, VmDebugState* InDebug) noexcept;
+                                     VmContext& InContext, VmFault* InFault, VmDebugState* InDebug,
+                                     VmSuspendState* InSuspend) noexcept;
 
-    std::array<Register, kMaxVmRegisters> MRegisters{};
+    std::array<VmRegister, kMaxVmRegisters> MRegisters{};
     std::array<ValueTag, kMaxVmRegisters> MTags{};
     std::array<NativeFn, kMaxNatives> MNatives{};
-    struct CallFrame
-    {
-        std::uint32_t ReturnPc = 0;
-        std::uint8_t ResultDst = 0;
-        std::uint16_t Function = 0;
-        std::uint16_t Base = 0;
-    };
-    std::array<CallFrame, kMaxCallDepth> MCalls{};
+    std::array<VmCallFrame, kMaxCallDepth> MCalls{};
     std::uint32_t MCallDepth = 0;
     VmFault::Code MPendingFault = VmFault::Code::None;
     std::uint32_t MPendingFaultDetail = 0;

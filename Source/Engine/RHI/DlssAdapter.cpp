@@ -1,6 +1,8 @@
 // FemboyEngine2D - optional DLSS Super Resolution adapter.
 #include "Engine/RHI/DlssAdapter.hpp"
 
+#include "Engine/Core/Log.hpp"
+
 #if defined(FBY_WITH_DLSS)
 #include <vulkan/vulkan.h>
 #include <nvsdk_ngx.h>
@@ -16,12 +18,9 @@ struct DlssNgxApi
 {
     HMODULE Module = nullptr;
     decltype(&NVSDK_NGX_VULKAN_Init) Init = nullptr;
+    decltype(&NVSDK_NGX_VULKAN_Init_with_ProjectID) InitProject = nullptr;
     decltype(&NVSDK_NGX_VULKAN_Shutdown1) Shutdown = nullptr;
     decltype(&NVSDK_NGX_VULKAN_GetCapabilityParameters) GetCapabilityParameters = nullptr;
-    decltype(&NVSDK_NGX_Parameter_GetI) GetI = nullptr;
-    decltype(&NVSDK_NGX_Parameter_SetVoidPointer) SetVoidPointer = nullptr;
-    decltype(&NVSDK_NGX_Parameter_SetUI) SetUI = nullptr;
-    decltype(&NVSDK_NGX_Parameter_SetF) SetF = nullptr;
     decltype(&NVSDK_NGX_VULKAN_CreateFeature1) CreateFeature = nullptr;
     decltype(&NVSDK_NGX_VULKAN_EvaluateFeature) EvaluateFeature = nullptr;
     decltype(&NVSDK_NGX_VULKAN_ReleaseFeature) ReleaseFeature = nullptr;
@@ -54,6 +53,7 @@ struct DlssNgxApi
         }
         if (Module == nullptr)
         {
+            Fby::LogWarn("dlss", "nvngx.dll load failed: {}", static_cast<int>(GetLastError()));
             return false;
         }
         const auto ScopedResolve = [this](const char* InName)
@@ -61,21 +61,39 @@ struct DlssNgxApi
             return GetProcAddress(Module, InName);
         };
         Init = reinterpret_cast<decltype(Init)>(ScopedResolve("NVSDK_NGX_VULKAN_Init"));
+        InitProject = reinterpret_cast<decltype(InitProject)>(ScopedResolve("NVSDK_NGX_VULKAN_Init_ProjectID"));
         Shutdown = reinterpret_cast<decltype(Shutdown)>(ScopedResolve("NVSDK_NGX_VULKAN_Shutdown1"));
+        if (Shutdown == nullptr)
+        {
+            Shutdown = reinterpret_cast<decltype(Shutdown)>(ScopedResolve("NVSDK_NGX_VULKAN_Shutdown"));
+        }
         GetCapabilityParameters = reinterpret_cast<decltype(GetCapabilityParameters)>(
             ScopedResolve("NVSDK_NGX_VULKAN_GetCapabilityParameters"));
-        GetI = reinterpret_cast<decltype(GetI)>(ScopedResolve("NVSDK_NGX_Parameter_GetI"));
-        SetVoidPointer = reinterpret_cast<decltype(SetVoidPointer)>(
-            ScopedResolve("NVSDK_NGX_Parameter_SetVoidPointer"));
-        SetUI = reinterpret_cast<decltype(SetUI)>(ScopedResolve("NVSDK_NGX_Parameter_SetUI"));
-        SetF = reinterpret_cast<decltype(SetF)>(ScopedResolve("NVSDK_NGX_Parameter_SetF"));
         CreateFeature = reinterpret_cast<decltype(CreateFeature)>(ScopedResolve("NVSDK_NGX_VULKAN_CreateFeature1"));
         EvaluateFeature = reinterpret_cast<decltype(EvaluateFeature)>(
             ScopedResolve("NVSDK_NGX_VULKAN_EvaluateFeature"));
         ReleaseFeature = reinterpret_cast<decltype(ReleaseFeature)>(ScopedResolve("NVSDK_NGX_VULKAN_ReleaseFeature"));
-        return Init != nullptr && Shutdown != nullptr && GetCapabilityParameters != nullptr && GetI != nullptr &&
-               SetVoidPointer != nullptr && SetUI != nullptr && SetF != nullptr && CreateFeature != nullptr &&
-               EvaluateFeature != nullptr && ReleaseFeature != nullptr;
+        return Init != nullptr && Shutdown != nullptr && GetCapabilityParameters != nullptr &&
+               CreateFeature != nullptr && EvaluateFeature != nullptr && ReleaseFeature != nullptr;
+    }
+
+    // Parameter access goes through the NGX C++ interface, not exported
+    // free functions: modern nvngx.dll runtimes expose only the vtable.
+    static void SetVoidPointer(NVSDK_NGX_Parameter* InParameter, const char* InName, void* InValue)
+    {
+        InParameter->Set(InName, InValue);
+    }
+    static void SetUI(NVSDK_NGX_Parameter* InParameter, const char* InName, unsigned int InValue)
+    {
+        InParameter->Set(InName, InValue);
+    }
+    static void SetF(NVSDK_NGX_Parameter* InParameter, const char* InName, float InValue)
+    {
+        InParameter->Set(InName, InValue);
+    }
+    static NVSDK_NGX_Result GetI(NVSDK_NGX_Parameter* InParameter, const char* InName, int* OutValue)
+    {
+        return InParameter->Get(InName, OutValue);
     }
 };
 
@@ -101,14 +119,24 @@ bool DlssAdapter::Initialize(RHI& InGpu)
     }
     if (!GDlssNgx.Load())
     {
+        Fby::LogWarn("dlss", "nvngx runtime is not loadable");
         return false;
     }
-    const NVSDK_NGX_Result ScopedInit = GDlssNgx.Init(
-        0, L"./", static_cast<VkInstance>(ScopedHandles.Instance),
-        static_cast<VkPhysicalDevice>(ScopedHandles.PhysicalDevice), static_cast<VkDevice>(ScopedHandles.Device),
-        nullptr, nullptr, nullptr, NVSDK_NGX_Version_API);
+    const NVSDK_NGX_Result ScopedInit =
+        GDlssNgx.InitProject != nullptr
+            ? GDlssNgx.InitProject(
+                  "femboyengine", NVSDK_NGX_ENGINE_TYPE_CUSTOM, "1.0", L"./",
+                  static_cast<VkInstance>(ScopedHandles.Instance),
+                  static_cast<VkPhysicalDevice>(ScopedHandles.PhysicalDevice),
+                  static_cast<VkDevice>(ScopedHandles.Device), nullptr, nullptr, nullptr,
+                  NVSDK_NGX_Version_API)
+            : GDlssNgx.Init(0, L"./", static_cast<VkInstance>(ScopedHandles.Instance),
+                            static_cast<VkPhysicalDevice>(ScopedHandles.PhysicalDevice),
+                            static_cast<VkDevice>(ScopedHandles.Device), nullptr, nullptr, nullptr,
+                            NVSDK_NGX_Version_API);
     if (NVSDK_NGX_FAILED(ScopedInit))
     {
+        Fby::LogWarn("dlss", "NVSDK_NGX_VULKAN_Init failed: {}", static_cast<int>(ScopedInit));
         return false;
     }
     MInitialized = true;

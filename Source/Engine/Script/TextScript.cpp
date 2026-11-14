@@ -188,13 +188,18 @@ class Compiler
 public:
     Compiler(std::string_view InSource, const Scene::ComponentRegistry& InComponents,
              const TextCompileOptions& InOptions, std::string* InError)
-        : MLexer(InSource), MComponents(InComponents), MOptions(InOptions), MError(InError)
+        : MSourceText(InSource), MLexer(InSource), MComponents(InComponents), MOptions(InOptions),
+          MError(InError)
     {
     }
 
     [[nodiscard]] bool Run(std::vector<std::byte>* OutProgram)
     {
         MBuilder.SetSourceName(MOptions.sourceName);
+        if (!ScanFunctionDeclarations())
+        {
+            return false;
+        }
         MToken = MLexer.Next();
         while (!MFailed && MToken.kind != TokenKind::End)
         {
@@ -232,7 +237,7 @@ public:
                 break;
             }
             Emit(OpCode::Halt);
-            MBuilder.AddFunction(ScopedEvent, ScopedOffset);
+            (void)MBuilder.AddFunction(ScopedEvent, ScopedOffset);
         }
         if (MFailed)
         {
@@ -541,6 +546,144 @@ private:
         std::uint8_t Params = 0;
     };
 
+    [[nodiscard]] bool ScanFunctionDeclarations()
+    {
+        Lexer ScopedScanner(MSourceText);
+        Token ScopedToken = ScopedScanner.Next();
+        const auto ScopedSkipBlock = [&]() -> bool
+        {
+            if (ScopedToken.kind != TokenKind::Punctuation || ScopedToken.text != "{")
+            {
+                Fail("expected '{'");
+                return false;
+            }
+            int ScopedDepth = 0;
+            do
+            {
+                if (ScopedToken.kind == TokenKind::Punctuation)
+                {
+                    if (ScopedToken.text == "{")
+                    {
+                        ++ScopedDepth;
+                    }
+                    else if (ScopedToken.text == "}")
+                    {
+                        --ScopedDepth;
+                    }
+                }
+                ScopedToken = ScopedScanner.Next();
+            } while (ScopedDepth > 0 && ScopedToken.kind != TokenKind::End);
+            if (ScopedDepth != 0)
+            {
+                Fail("unterminated block");
+                return false;
+            }
+            return true;
+        };
+
+        bool ScopedSawEvent = false;
+        std::uint32_t ScopedIndex = 0;
+        while (ScopedToken.kind != TokenKind::End)
+        {
+            if (ScopedToken.kind != TokenKind::Identifier)
+            {
+                Fail("expected 'function' or 'event'");
+                return false;
+            }
+            if (ScopedToken.text == "function")
+            {
+                if (ScopedSawEvent)
+                {
+                    Fail("function declarations must precede events");
+                    return false;
+                }
+                ScopedToken = ScopedScanner.Next();
+                if (ScopedToken.kind != TokenKind::Identifier)
+                {
+                    Fail("expected a function name");
+                    return false;
+                }
+                const std::string ScopedName = ScopedToken.text;
+                ScopedToken = ScopedScanner.Next();
+                if (ScopedToken.kind != TokenKind::Punctuation || ScopedToken.text != "(")
+                {
+                    Fail("expected '(' after function name");
+                    return false;
+                }
+                std::vector<std::string> ScopedParams;
+                ScopedToken = ScopedScanner.Next();
+                if (ScopedToken.kind != TokenKind::Punctuation || ScopedToken.text != ")")
+                {
+                    for (;;)
+                    {
+                        if (ScopedToken.kind != TokenKind::Identifier)
+                        {
+                            Fail("expected a parameter name");
+                            return false;
+                        }
+                        ScopedParams.push_back(ScopedToken.text);
+                        ScopedToken = ScopedScanner.Next();
+                        if (ScopedToken.kind == TokenKind::Punctuation && ScopedToken.text == ")")
+                        {
+                            break;
+                        }
+                        if (ScopedToken.kind != TokenKind::Punctuation || ScopedToken.text != ",")
+                        {
+                            Fail("expected ',' or ')' in parameter list");
+                            return false;
+                        }
+                        ScopedToken = ScopedScanner.Next();
+                    }
+                }
+                if (ScopedParams.size() >= kUserFunctionRegisters || ScopedIndex >= kMaxUserFunctions)
+                {
+                    Fail("too many user functions or parameters");
+                    return false;
+                }
+                if (MUserFunctions.find(ScopedName) != MUserFunctions.end())
+                {
+                    Fail("duplicate function '" + ScopedName + "'");
+                    return false;
+                }
+                const auto ScopedBase =
+                    static_cast<std::uint8_t>(kEventRegisterLimit + ScopedIndex * kUserFunctionRegisters);
+                if (static_cast<std::uint32_t>(ScopedBase) + kUserFunctionRegisters > kMaxVmRegisters)
+                {
+                    Fail("user function register window exceeds the register file");
+                    return false;
+                }
+                MUserFunctions[ScopedName] = FunctionInfo{
+                    static_cast<std::uint16_t>(ScopedIndex), ScopedBase, static_cast<std::uint8_t>(ScopedParams.size())};
+                ++ScopedIndex;
+                ScopedToken = ScopedScanner.Next();
+                if (!ScopedSkipBlock())
+                {
+                    return false;
+                }
+                continue;
+            }
+            if (ScopedToken.text == "event")
+            {
+                ScopedSawEvent = true;
+                ScopedToken = ScopedScanner.Next();
+                if (ScopedToken.kind != TokenKind::Identifier)
+                {
+                    Fail("expected an event name");
+                    return false;
+                }
+                ScopedToken = ScopedScanner.Next();
+                if (!ScopedSkipBlock())
+                {
+                    return false;
+                }
+                continue;
+            }
+            Fail("expected 'function' or 'event'");
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool ParseFunction()
     {
         if (!Expect("function") || MToken.kind != TokenKind::Identifier)
@@ -573,29 +716,19 @@ private:
                 }
             }
         }
-        if (MUserFunctions.find(ScopedName) != MUserFunctions.end())
+        const auto ScopedFunction = MUserFunctions.find(ScopedName);
+        if (ScopedFunction == MUserFunctions.end())
         {
-            Fail("duplicate function '" + ScopedName + "'");
+            Fail("function '" + ScopedName + "' was not predeclared");
             return false;
         }
-        if (ScopedParams.size() >= kUserFunctionRegisters || MUserFunctionCount >= kMaxUserFunctions)
+        const FunctionInfo ScopedInfo = ScopedFunction->second;
+        if (ScopedParams.size() != ScopedInfo.Params)
         {
-            Fail("too many user functions or parameters");
-            return false;
-        }
-        const auto ScopedBase =
-            static_cast<std::uint8_t>(kEventRegisterLimit + MUserFunctionCount * kUserFunctionRegisters);
-        if (static_cast<std::uint32_t>(ScopedBase) + kUserFunctionRegisters > kMaxVmRegisters)
-        {
-            Fail("user function register window exceeds the register file");
+            Fail("function '" + ScopedName + "' has a mismatched parameter list");
             return false;
         }
         const std::uint32_t ScopedOffset = MBuilder.CodeSize();
-        const std::uint16_t ScopedIndex =
-            MBuilder.AddUserFunction(static_cast<std::uint16_t>(ScopedParams.size()), ScopedBase, ScopedOffset);
-        MUserFunctions[ScopedName] = FunctionInfo{ScopedIndex, ScopedBase,
-                                                  static_cast<std::uint8_t>(ScopedParams.size())};
-        ++MUserFunctionCount;
 
         const auto ScopedSavedVariables = MVariables;
         const std::uint32_t ScopedSavedNext = MNextRegister;
@@ -603,9 +736,9 @@ private:
         const std::uint32_t ScopedSavedLast = MLastRegister;
         const std::uint8_t ScopedSavedEntity = MEntityRegister;
         MVariables.clear();
-        MNextRegister = ScopedBase;
-        MRegisterLimit = static_cast<std::uint32_t>(ScopedBase) + kUserFunctionRegisters;
-        MLastRegister = ScopedBase;
+        MNextRegister = ScopedInfo.Base;
+        MRegisterLimit = static_cast<std::uint32_t>(ScopedInfo.Base) + kUserFunctionRegisters;
+        MLastRegister = ScopedInfo.Base;
         MEntityRegister = 0xFF;
         for (const std::string& ScopedParam : ScopedParams)
         {
@@ -615,15 +748,21 @@ private:
         const bool ScopedOk = ParseBlock();
         if (ScopedOk)
         {
-            Emit(OpCode::LoadI32, ScopedBase, 0, 0);
-            Emit(OpCode::Return, 0, ScopedBase);
+            Emit(OpCode::LoadI32, ScopedInfo.Base, 0, 0);
+            Emit(OpCode::Return, 0, ScopedInfo.Base);
+            const std::uint16_t ScopedAdded =
+                MBuilder.AddUserFunction(static_cast<std::uint16_t>(ScopedParams.size()), ScopedInfo.Base, ScopedOffset);
+            if (ScopedAdded != ScopedInfo.Index)
+            {
+                Fail("function table order changed during compilation");
+            }
         }
         MVariables = ScopedSavedVariables;
         MNextRegister = ScopedSavedNext;
         MRegisterLimit = ScopedSavedLimit;
         MLastRegister = ScopedSavedLast;
         MEntityRegister = ScopedSavedEntity;
-        return ScopedOk;
+        return ScopedOk && !MFailed;
     }
 
     [[nodiscard]] bool CompileUserCall(const FunctionInfo& InFunction)
@@ -661,6 +800,24 @@ private:
 
     [[nodiscard]] bool ParseStatement()
     {
+        if (Accept("yield"))
+        {
+            std::uint16_t ScopedFrames = 0;
+            if (MToken.kind == TokenKind::Number)
+            {
+                char* ScopedEnd = nullptr;
+                const unsigned long ScopedValue = std::strtoul(MToken.text.c_str(), &ScopedEnd, 10);
+                if (ScopedEnd == MToken.text.c_str() || *ScopedEnd != '\0' || ScopedValue > 3600ul)
+                {
+                    Fail("yield frame count must be an integer in 0..3600");
+                    return false;
+                }
+                ScopedFrames = static_cast<std::uint16_t>(ScopedValue);
+                MToken = MLexer.Next();
+            }
+            Emit(OpCode::Yield, 0, 0, ScopedFrames);
+            return Expect(";");
+        }
         if (Accept("return"))
         {
             if (!ParseExpression(nullptr))
@@ -1157,6 +1314,11 @@ private:
         }
         const std::uint16_t ScopedFieldIndex =
             MBuilder.AddField(ScopedComponentIndex, ScopedField->kind, ScopedField->offset, ScopedField->size);
+        if (ScopedFieldIndex != MFieldBindings.size())
+        {
+            Fail("field binding order diverged from the program table");
+            return 0;
+        }
         MFieldBindings.push_back(FieldBinding{ScopedComponentIndex, static_cast<std::uint8_t>(ScopedField->kind),
                                               static_cast<std::uint8_t>(ScopedField->size), ScopedField->offset, 0});
         MFieldCache[ScopedKey] = MFieldBindings.size() - 1;
@@ -1243,6 +1405,7 @@ private:
         }
     }
 
+    std::string_view MSourceText;
     Lexer MLexer;
     const Scene::ComponentRegistry& MComponents;
     TextCompileOptions MOptions;
@@ -1257,7 +1420,6 @@ private:
     std::uint32_t MNextRegister = 0;
     std::uint32_t MRegisterLimit = kEventRegisterLimit;
     std::uint32_t MLastRegister = 0;
-    std::uint32_t MUserFunctionCount = 0;
     std::uint8_t MEntityRegister = 0xFF;
     bool MFailed = false;
 };

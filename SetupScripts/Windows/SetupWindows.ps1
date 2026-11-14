@@ -43,6 +43,7 @@ $Versions = [ordered]@{
     SDL         = "release-3.4.18"
     Vulkan      = "v1.4.366"
     Glslang     = "15.3.0"
+    SpirvCross  = "vulkan-sdk-1.4.363.0"
     Miniaudio   = "0.11.23"
     Box2D       = "v3.2.0"
     Monocypher  = "4.0.3"
@@ -348,6 +349,11 @@ Write-Step "glslang $($Versions.Glslang)"
 $GlslangArchive = Get-Archive "https://github.com/KhronosGroup/glslang/archive/refs/tags/$($Versions.Glslang).tar.gz" "glslang.tar.gz"
 Expand-Tar $GlslangArchive (Join-Path $ThirdParty "glslang-src") $true
 $Lock.Add("glslang = $($Versions.Glslang)")
+
+Write-Step "SPIRV-Cross $($Versions.SpirvCross)"
+$SpirvCrossArchive = Get-Archive "https://github.com/KhronosGroup/SPIRV-Cross/archive/refs/tags/$($Versions.SpirvCross).tar.gz" "SPIRV-Cross.tar.gz"
+Expand-Tar $SpirvCrossArchive (Join-Path $ThirdParty "spirv-cross") $true
+$Lock.Add("spirv_cross = $($Versions.SpirvCross)")
 
 Write-Step "miniaudio $($Versions.Miniaudio)"
 $MiniaudioArchive = Get-Archive "https://github.com/mackron/miniaudio/archive/refs/tags/$($Versions.Miniaudio).tar.gz" "miniaudio.tar.gz"

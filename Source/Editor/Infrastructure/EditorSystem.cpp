@@ -14,6 +14,9 @@
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/Profiler.hpp"
+#include "Engine/ECS/CoreComponents.hpp"
+#include "Engine/ECS/PrefabInstance.hpp"
+#include "Engine/ECS/PrefabSystem.hpp"
 #include "Engine/Core/ProfilerPanel.hpp"
 #include "Engine/ECS/Skeleton.hpp"
 #include "Engine/ECS/Hierarchy.hpp"
@@ -539,6 +542,7 @@ struct EditorSystem::Impl
     std::mutex sceneDialogMutex;
     std::string pendingNewScenePath;
     std::string pendingPrefabPath;
+    std::string pendingSpawnPrefabPath;
     // Dirty tracking is derived from the command stack each frame, so undo back
     // to the saved state clears the marker again.
     std::uint32_t savedCommandCount = 0;
@@ -557,6 +561,8 @@ struct EditorSystem::Impl
     CommandStack commands;
     InteractionTransaction interaction;
     std::uint16_t transformCodec = 0xFFFFu;
+    std::uint16_t parentCodec = 0xFFFFu;
+    std::uint16_t localTransformCodec = 0xFFFFu;
     char hierarchySearch[64] = {};
     Entity renamingEntity = Fby::kNullEntity;
     bool renameFocusTaken = false;
@@ -1954,12 +1960,75 @@ struct EditorSystem::Impl
 
     void ReparentEntity(Ecs::Registry& InRegistry, Entity InChild, Entity InParent)
     {
+        const Parent2D* ScopedOldParent = InRegistry.try_get<Parent2D>(InChild);
+        const LocalTransform2D* ScopedOldLocal = InRegistry.try_get<LocalTransform2D>(InChild);
+        Parent2D ScopedParentBefore{};
+        LocalTransform2D ScopedLocalBefore{};
+        if (ScopedOldParent != nullptr)
+        {
+            ScopedParentBefore = *ScopedOldParent;
+        }
+        if (ScopedOldLocal != nullptr)
+        {
+            ScopedLocalBefore = *ScopedOldLocal;
+        }
+        const bool ScopedParentBeforePresent = ScopedOldParent != nullptr;
+        const bool ScopedLocalBeforePresent = ScopedOldLocal != nullptr;
+
+        if (!commands.Initialized() || parentCodec == 0xFFFFu || localTransformCodec == 0xFFFFu ||
+            commands.BeginTransaction("Reparent") != CommandStack::Result::Ok)
+        {
+            if (!Ecs::SetParent(InRegistry, InChild, InParent))
+            {
+                SetStatus("reparent rejected: invalid entity or a parent chain cycle");
+                return;
+            }
+            SetStatus(InParent == Fby::kNullEntity ? "parent cleared" : "reparented");
+            return;
+        }
         if (!Ecs::SetParent(InRegistry, InChild, InParent))
         {
+            commands.CancelTransaction();
             SetStatus("reparent rejected: invalid entity or a parent chain cycle");
             return;
         }
-        SetStatus(InParent == Fby::kNullEntity ? "parent cleared" : "reparented");
+
+        const Parent2D* ScopedNewParent = InRegistry.try_get<Parent2D>(InChild);
+        const LocalTransform2D* ScopedNewLocal = InRegistry.try_get<LocalTransform2D>(InChild);
+        Parent2D ScopedParentAfter{};
+        LocalTransform2D ScopedLocalAfter{};
+        if (ScopedNewParent != nullptr)
+        {
+            ScopedParentAfter = *ScopedNewParent;
+        }
+        if (ScopedNewLocal != nullptr)
+        {
+            ScopedLocalAfter = *ScopedNewLocal;
+        }
+        bool ScopedRecorded = true;
+        if (ScopedParentBeforePresent || ScopedNewParent != nullptr)
+        {
+            ScopedRecorded =
+                commands.RecordPresence(InChild, parentCodec, ScopedParentBeforePresent,
+                                        std::as_bytes(std::span{&ScopedParentBefore, 1}), ScopedNewParent != nullptr,
+                                        std::as_bytes(std::span{&ScopedParentAfter, 1})) == CommandStack::Result::Ok &&
+                ScopedRecorded;
+        }
+        if (ScopedLocalBeforePresent || ScopedNewLocal != nullptr)
+        {
+            ScopedRecorded =
+                commands.RecordPresence(InChild, localTransformCodec, ScopedLocalBeforePresent,
+                                        std::as_bytes(std::span{&ScopedLocalBefore, 1}), ScopedNewLocal != nullptr,
+                                        std::as_bytes(std::span{&ScopedLocalAfter, 1})) == CommandStack::Result::Ok &&
+                ScopedRecorded;
+        }
+        if (!ScopedRecorded || commands.CommitTransaction() != CommandStack::Result::Ok)
+        {
+            commands.CancelTransaction();
+            SetStatus("reparent applied but not recorded for undo");
+            return;
+        }
+        SetStatus(InParent == Fby::kNullEntity ? "parent cleared (undo available)" : "reparented (undo available)");
     }
 
     void DrawHierarchy(Ecs::SystemContext& InContext)
@@ -4454,6 +4523,25 @@ struct EditorSystem::Impl
                         },
                         ScopedPrefabs.string(), ScopedName);
                 }
+                if (ImGui::MenuItem("Spawn Prefab...", nullptr, false,
+                                    projectOpen && window != nullptr && !pie.Active()))
+                {
+                    const std::filesystem::path ScopedPrefabs = projectConfig.Paths().assets / "prefabs";
+                    std::error_code ScopedCode;
+                    std::filesystem::create_directories(ScopedPrefabs, ScopedCode);
+                    FileFilter ScopedFilter{"FemboyEngine prefab", "toml"};
+                    window->ShowOpenFile(
+                        "Spawn Prefab", std::span<const FileFilter>(&ScopedFilter, 1),
+                        [this](std::vector<std::string> InPaths)
+                        {
+                            if (InPaths.empty())
+                            {
+                                return;
+                            }
+                            std::lock_guard<std::mutex> ScopedLock(sceneDialogMutex);
+                            pendingSpawnPrefabPath = InPaths.front();
+                        });
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Build"))
@@ -4816,6 +4904,8 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
         }
     }
     MImpl->transformCodec = MImpl->commands.CodecForLayoutHash(Reflect::LayoutHash<Transform2D>());
+    MImpl->parentCodec = MImpl->commands.CodecForLayoutHash(Reflect::LayoutHash<Parent2D>());
+    MImpl->localTransformCodec = MImpl->commands.CodecForLayoutHash(Reflect::LayoutHash<LocalTransform2D>());
 
     // Settings are external CommandStack targets so a slider drag has the same
     MImpl->projectSettingsCodec =
@@ -5099,10 +5189,12 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     // thread, before any ImGui window is built for this frame.
     std::string ScopedPendingScene;
     std::string ScopedPendingPrefab;
+    std::string ScopedPendingSpawnPrefab;
     {
         std::lock_guard<std::mutex> ScopedLock(MImpl->sceneDialogMutex);
         ScopedPendingScene.swap(MImpl->pendingNewScenePath);
         ScopedPendingPrefab.swap(MImpl->pendingPrefabPath);
+        ScopedPendingSpawnPrefab.swap(MImpl->pendingSpawnPrefabPath);
     }
     if (InContext.cameraStack != nullptr)
     {
@@ -5123,6 +5215,67 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         else
         {
             MImpl->SetStatus("prefab failed: " + ScopedPrefabError);
+        }
+    }
+    if (!ScopedPendingSpawnPrefab.empty())
+    {
+        Fby::PrefabAsset ScopedAsset;
+        std::string ScopedPrefabError;
+        if (!Fby::PrefabSystem::LoadTomlFile(ScopedPendingSpawnPrefab, ScopedAsset, &ScopedPrefabError))
+        {
+            MImpl->SetStatus("prefab spawn failed: " + ScopedPrefabError);
+        }
+        else if (InContext.commands == nullptr || InContext.assetDb == nullptr)
+        {
+            MImpl->SetStatus("prefab spawn failed: no command buffer or asset database");
+        }
+        else
+        {
+            std::error_code ScopedRelativeCode;
+            const std::filesystem::path ScopedRelative =
+                std::filesystem::relative(ScopedPendingSpawnPrefab, MImpl->projectConfig.Paths().assets,
+                                          ScopedRelativeCode);
+            const std::string ScopedRelativePath = ScopedRelative.generic_string();
+            Assets::AssetHandle ScopedHandle =
+                InContext.assetDb->FindHandleBySourcePath(ScopedRelativePath);
+            if (!ScopedHandle.IsValid() && !ScopedRelativePath.empty())
+            {
+                ScopedHandle = InContext.assetDb->EnsureMeta(
+                    AssetId::FromPath(ScopedRelativePath, AssetKind::Scene), AssetKind::Scene, ScopedRelativePath,
+                    &ScopedPrefabError);            }
+            if (!ScopedHandle.IsValid())
+            {
+                MImpl->SetStatus("prefab spawn failed: asset is not registered: " + ScopedPrefabError);
+            }
+            else
+            {
+                const Entity ScopedInstance = InContext.registry.create();
+                PrefabInstanceComponent ScopedLink;
+                ScopedLink.Prefab = ScopedHandle;
+                ScopedLink.Origin = MImpl->camera.center;
+                InContext.registry.emplace<PrefabInstanceComponent>(ScopedInstance, ScopedLink);
+                std::array<Entity, Fby::kPrefabMaxEntities> ScopedChildren{};
+                if (!PrefabInstance::Expand(InContext.registry, *InContext.commands, ScopedInstance, ScopedAsset,
+                                            ScopedChildren))
+                {
+                    InContext.registry.destroy(ScopedInstance);
+                    MImpl->SetStatus("prefab spawn failed: instantiation rejected");
+                }
+                else
+                {
+                    InContext.commands->Play(InContext.registry);
+                    if (MImpl->commands.BeginTransaction("Spawn Prefab Instance") == CommandStack::Result::Ok)
+                    {
+                        (void)MImpl->commands.RecordSpawn(ScopedInstance);
+                        for (std::uint32_t ScopedI = 0; ScopedI < ScopedAsset.count; ++ScopedI)
+                        {
+                            (void)MImpl->commands.RecordSpawn(ScopedChildren[ScopedI]);
+                        }
+                        (void)MImpl->commands.CommitTransaction();
+                    }
+                    MImpl->SetStatus("prefab instance spawned: " + ScopedPendingSpawnPrefab);
+                }
+            }
         }
     }
     // Compose the opt-in local/world transform hierarchy after the authoring

@@ -3,6 +3,7 @@
 
 #include "Engine/Script/ScriptHeap.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cstring>
 #include <limits>
@@ -114,13 +115,13 @@ bool ScriptVm::Fault(VmFault* InFault, VmFault::Code InCode, std::uint32_t InPc,
 }
 
 bool ScriptVm::Run(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
-                   VmFault* InFault) noexcept
+                   VmFault* InFault, VmSuspendState* InSuspend) noexcept
 {
     if (InFault != nullptr)
     {
         *InFault = {};
     }
-    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, InFault, nullptr);
+    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, InFault, nullptr, InSuspend);
     return ScopedStop.Halt != VmHalt::Faulted;
 }
 
@@ -129,11 +130,12 @@ VmStopInfo ScriptVm::RunDebug(const BoundProgram& InProgram, ScriptEvent InEvent
 {
     VmFault ScopedFault{};
     VmDebugState* ScopedDebug = InDebug.Enabled ? &InDebug : nullptr;
-    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, &ScopedFault, ScopedDebug);
+    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, &ScopedFault, ScopedDebug, nullptr);
     if (InDebug.Enabled && ScopedStop.Halt == VmHalt::Faulted)
     {
         InDebug.Paused = false;
         InDebug.ResumeValid = false;
+        InDebug.CallDepth = 0;
         InDebug.LastReason = VmPauseReason::None;
     }
     return ScopedStop;
@@ -143,6 +145,7 @@ void ScriptVm::RequestPauseAtEntry(VmDebugState& InDebug) noexcept
 {
     InDebug.Paused = false;
     InDebug.ResumeValid = false;
+    InDebug.CallDepth = 0;
     InDebug.SkipOnce = false;
     InDebug.PauseRequested = true;
     InDebug.StepRequested = false;
@@ -169,6 +172,11 @@ VmStopInfo ScriptVm::PauseStop(VmDebugState& InDebug, VmPauseReason InReason) no
     InDebug.ResumeValid = true;
     InDebug.ResumePc = InDebug.CurrentPc;
     InDebug.PausePc = InDebug.CurrentPc;
+    InDebug.CallDepth = MCallDepth;
+    for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+    {
+        InDebug.CallStack[ScopedI] = MCalls[ScopedI];
+    }
     InDebug.LastReason = InReason;
     InDebug.SkipOnce = true;
     InDebug.SkipPc = InDebug.CurrentPc;
@@ -181,7 +189,7 @@ VmStopInfo ScriptVm::PauseStop(VmDebugState& InDebug, VmPauseReason InReason) no
 }
 
 VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
-                             VmFault* InFault, VmDebugState* InDebug) noexcept
+                             VmFault* InFault, VmDebugState* InDebug, VmSuspendState* InSuspend) noexcept
 {
     VmStopInfo ScopedStop;
     if (InFault != nullptr)
@@ -207,7 +215,9 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
 
     const std::uint32_t ScopedRegisters = InProgram.program.header.registerHighWater;
     const bool ScopedResume = InDebug != nullptr && InDebug->ResumeValid;
-    if (!ScopedResume)
+    const bool ScopedCoroutineResume =
+        InSuspend != nullptr && InSuspend->Valid && InSuspend->Event == InEvent && InSuspend->Self == InSelf;
+    if (!ScopedResume && !ScopedCoroutineResume)
     {
         for (std::uint32_t ScopedI = 0; ScopedI < ScopedRegisters; ++ScopedI)
         {
@@ -215,15 +225,48 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
             MTags[ScopedI] = ValueTag::Float;
         }
     }
+    else if (ScopedCoroutineResume)
+    {
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedRegisters; ++ScopedI)
+        {
+            MRegisters[ScopedI] = InSuspend->Registers[ScopedI];
+            MTags[ScopedI] = InSuspend->Tags[ScopedI];
+        }
+    }
+    if (InSuspend != nullptr)
+    {
+        InSuspend->Valid = false;
+    }
+    if (ScopedResume)
+    {
+        MCallDepth = std::min(InDebug->CallDepth, kMaxCallDepth);
+        for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+        {
+            MCalls[ScopedI] = InDebug->CallStack[ScopedI];
+        }
+    }
+    else if (ScopedCoroutineResume)
+    {
+        MCallDepth = std::min(InSuspend->CallDepth, kMaxCallDepth);
+        for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+        {
+            MCalls[ScopedI] = InSuspend->CallStack[ScopedI];
+        }
+    }
+    else
+    {
+        MCallDepth = 0;
+    }
     if (InDebug != nullptr)
     {
         InDebug->ResumeValid = false;
     }
-    MCallDepth = 0;
 
     const auto& ScopedCode = InProgram.program.code;
     const auto& ScopedConstants = InProgram.program.constants;
-    std::uint32_t ScopedPc = ScopedResume ? InDebug->ResumePc : ScopedEntry->codeOffset;
+    std::uint32_t ScopedPc = ScopedCoroutineResume
+                                 ? InSuspend->Pc
+                                 : (ScopedResume ? InDebug->ResumePc : ScopedEntry->codeOffset);
     std::uint32_t ScopedSteps = 0;
 
     // One lambda, not std::function: the compiler inlines both field helpers
@@ -302,6 +345,7 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 {
                     InDebug->Paused = false;
                     InDebug->ResumeValid = false;
+                    InDebug->CallDepth = 0;
                 }
                 return ScopedStop;
             }
@@ -663,7 +707,7 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                         return FaultStop(InFault, VmFault::Code::Recursion, ScopedPc, ScopedInstruction.operand);
                     }
                 }
-                CallFrame& ScopedFrame = MCalls[MCallDepth++];
+                VmCallFrame& ScopedFrame = MCalls[MCallDepth++];
                 ScopedFrame.ReturnPc = ScopedNext;
                 ScopedFrame.ResultDst = ScopedInstruction.dst;
                 ScopedFrame.Function = ScopedInstruction.operand;
@@ -677,13 +721,39 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 {
                     return FaultStop(InFault, VmFault::Code::BadCall, ScopedPc);
                 }
-                const CallFrame ScopedFrame = MCalls[--MCallDepth];
+                const VmCallFrame ScopedFrame = MCalls[--MCallDepth];
                 MRegisters[ScopedFrame.Base].u = MRegisters[ScopedInstruction.src].u;
                 MTags[ScopedFrame.Base] = MTags[ScopedInstruction.src];
                 MRegisters[ScopedFrame.ResultDst].u = MRegisters[ScopedFrame.Base].u;
                 MTags[ScopedFrame.ResultDst] = MTags[ScopedFrame.Base];
                 ScopedNext = ScopedFrame.ReturnPc;
                 break;
+            }
+
+            case OpCode::Yield:
+            {
+                if (InSuspend != nullptr)
+                {
+                    InSuspend->Event = InEvent;
+                    InSuspend->Self = InSelf;
+                    InSuspend->Pc = ScopedNext;
+                    InSuspend->Valid = true;
+                    InSuspend->WakeFrame =
+                        InContext.frameIndex + (ScopedInstruction.operand == 0 ? 1u : ScopedInstruction.operand);
+                    InSuspend->CallDepth = MCallDepth;
+                    for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+                    {
+                        InSuspend->CallStack[ScopedI] = MCalls[ScopedI];
+                    }
+                    for (std::uint32_t ScopedI = 0; ScopedI < kMaxVmRegisters; ++ScopedI)
+                    {
+                        InSuspend->Registers[ScopedI] = MRegisters[ScopedI];
+                        InSuspend->Tags[ScopedI] = MTags[ScopedI];
+                    }
+                }
+                ScopedStop.Halt = VmHalt::Yielded;
+                ScopedStop.Pc = ScopedNext;
+                return ScopedStop;
             }
 
             case OpCode::Count:

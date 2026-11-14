@@ -144,14 +144,15 @@ editor infrastructure test (panel clamp).
 
 - The editor render target follows the dock content region times the framebuffer
   scale (clamped to 1..4096), and the feedback extent is a quarter of the target.
-  A live resize therefore changes both; the backend re-creates the feedback
-  images on an extent change (`EnsureVtFeedback`).
-- VT and SDF are frame-global state: `ApplyVirtualTexture` early-returns for the
-  same id and `ApplySdfLighting` overwrites one mapped block, so the PIE client
-  and the editor draw in one frame share the last writer. The PIE packet does not
-  set its own VT/SDF; a client-specific pass is tracked in the project issue
-  tracker.
-- Feedback image recreation can happen mid-frame without waiting for the device,
-  so a live resize can free images still referenced by in-flight command
-  buffers (tracked in the project issue tracker).
+  A live resize therefore changes both; `EnsureVtFeedback` defers the rebuild
+  while a frame is recording and `BeginFrame` drains all in-flight work with
+  `WaitAllInFlight()` before it recreates images or rewrites descriptors. The
+  remaining cost is a full device drain on a resize, not a lifetime bug.
+- PIE packets carry their own `sdf` frame and virtual-texture handle/params. When
+  the VT self-test is active the editor creates a second `VirtualTextureSystem`
+  and GPU resource for the PIE client, with its own page table and camera-driven
+  streaming, so the client camera cannot evict the authoring viewport's pages.
+  Without the self-test the packet keeps the default binding.
+- Feedback image recreation is deferred to the next `BeginFrame` when a resize
+  arrives mid-frame, so no command buffer references freed images.
 - VT stays opt-in: the editor creates a resource only under `FBY_VT_SELFTEST=1`.

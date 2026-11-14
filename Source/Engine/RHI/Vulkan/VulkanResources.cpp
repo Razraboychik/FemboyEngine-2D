@@ -1309,10 +1309,11 @@ bool VulkanRHI::CreateTemporalResources()
     {
         return false;
     }
-    VkDescriptorPoolSize ScopedPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5};
+    VkDescriptorPoolSize ScopedPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                        5 * kMaxFramesInFlight};
     VkDescriptorPoolCreateInfo ScopedPoolInfo{};
     ScopedPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    ScopedPoolInfo.maxSets = 1;
+    ScopedPoolInfo.maxSets = kMaxFramesInFlight;
     ScopedPoolInfo.poolSizeCount = 1;
     ScopedPoolInfo.pPoolSizes = &ScopedPoolSize;
     if (ScopedApi.vkCreateDescriptorPool(MDevice, &ScopedPoolInfo, nullptr, &MTemporalPool) != VK_SUCCESS)

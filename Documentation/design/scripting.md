@@ -43,7 +43,14 @@ hash and only falls back to the VM when the host allows it.
   to the function window base, and the call site copies it back.
 - The AOT backend emits one `fby_fn_<index>` per function with the same absolute
   register window, a `ctx.callDepth` guard and prototypes for every function.
-- Coroutines and forward function references are not part of 0.5.0.
+- Forward function references are resolved by a pre-scan of the textual function
+  block. `yield;` / `yield N;` suspends the VM; the script system owns a fixed
+  slot per `(entity, program, event)` and restores registers, tags, call frames
+  and pc on the wake frame.
+- The AOT backend lowers `Yield` to a resume switch over a host-owned
+  `Aot::CoroutineState` (bounded frame stack, PC, wake frame, registers, tags).
+  Nested user-function yields resume at the saved call frame up to the VM call
+  depth; the generated function returns a suspend flag through each caller.
 
 ## Nodes added for parity
 

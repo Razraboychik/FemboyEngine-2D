@@ -21,7 +21,74 @@ enum class Backend : std::uint8_t
     Null = 0,
     Vulkan,
     Metal,
+    D3D12,
+    D3D11,
 };
+
+// Capability tier, independent of the graphics API name. Legacy is rejected by
+// the current Vulkan path; Baseline starts at Vulkan 1.2, Enhanced at 1.3 and
+// Temporal at 1.4.
+enum class GpuTier : std::uint8_t
+{
+    Legacy = 0,
+    Baseline,
+    Enhanced,
+    Temporal,
+};
+
+[[nodiscard]] constexpr const char* GpuTierName(GpuTier InTier) noexcept
+{
+    switch (InTier)
+    {
+        case GpuTier::Legacy:
+            return "legacy";
+        case GpuTier::Baseline:
+            return "baseline";
+        case GpuTier::Enhanced:
+            return "enhanced";
+        case GpuTier::Temporal:
+            return "temporal";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] constexpr GpuTier VulkanTier(std::uint32_t InApiVersion) noexcept
+{
+    if (InApiVersion >= (1u << 22) + (4u << 12))
+    {
+        return GpuTier::Temporal;
+    }
+    if (InApiVersion >= (1u << 22) + (3u << 12))
+    {
+        return GpuTier::Enhanced;
+    }
+    if (InApiVersion >= (1u << 22) + (2u << 12))
+    {
+        return GpuTier::Baseline;
+    }
+    return GpuTier::Legacy;
+}
+
+[[nodiscard]] constexpr Backend BackendFromName(std::string_view InName) noexcept
+{
+    if (InName == "vulkan")
+    {
+        return Backend::Vulkan;
+    }
+    if (InName == "metal")
+    {
+        return Backend::Metal;
+    }
+    if (InName == "d3d12")
+    {
+        return Backend::D3D12;
+    }
+    if (InName == "d3d11")
+    {
+        return Backend::D3D11;
+    }
+    return Backend::Null;
+}
 
 [[nodiscard]] constexpr const char* BackendName(Backend InBackend) noexcept
 {
@@ -33,6 +100,10 @@ enum class Backend : std::uint8_t
             return "vulkan";
         case Backend::Metal:
             return "metal";
+        case Backend::D3D12:
+            return "d3d12";
+        case Backend::D3D11:
+            return "d3d11";
     }
     return "unknown";
 }
@@ -50,7 +121,9 @@ struct DeviceDesc
 {
     Backend backend = Backend::Null;
     void* nativeWindow = nullptr;
-    Extent2D size{1280, 720};
+    // Zero asks RHI::Create to take the client size from nativeWindow, or
+    // 1280x720 when the device is headless.
+    Extent2D size{};
     bool vsync = true;
     bool enableValidation = false;
     // Triple buffering by default: the CPU may be one frame ahead of the GPU
@@ -115,6 +188,7 @@ struct DeviceInfo
     char name[256] = {};
     char driver[128] = {};
     std::uint32_t apiVersion = 0;
+    GpuTier tier = GpuTier::Legacy;
     std::uint32_t framesInFlight = 0;
     std::uint32_t maxItemsPerFrame = 0;
     std::uint32_t maxTextureLayers = 0;
@@ -170,6 +244,10 @@ struct ShaderPipelineDesc
     std::span<const std::byte> vertexSpirv;
     // Empty: engine mesh.frag
     std::span<const std::byte> fragmentSpirv;
+    // Optional DX12 DXIL stages from a cooked material; when present the D3D12
+    // backend prefers them over SPIR-V.
+    std::span<const std::byte> vertexDxil;
+    std::span<const std::byte> fragmentDxil;
     const char* debugName = nullptr;
     // Layout and vertex stage contract the pipeline is built.
     ShaderPipelineDomain domain = ShaderPipelineDomain::Mesh;
@@ -782,5 +860,7 @@ protected:
 [[nodiscard]] std::unique_ptr<RHI> CreateMetalRHI();
 
 // Selects a backend for the current platform at runtime.
+// Returns Null, which asks RHI::Create to probe Vulkan first and fall back to the
+// platform backend. Games should normally leave DeviceDesc::backend untouched.
 [[nodiscard]] Backend SelectDefaultBackend() noexcept;
 }

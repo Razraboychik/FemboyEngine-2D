@@ -505,11 +505,77 @@ void TestSystemGraphStress()
 }
 }
 
+void TestPresenceUndoRedo()
+{
+    Fby::Editor::CommandStack ScopedStack;
+    Check(ScopedStack.Initialize(), "presence stack initializes");
+    Fby::Scene::Registry ScopedRegistry;
+    ScopedStack.Bind(&ScopedRegistry, nullptr);
+    const std::uint16_t ScopedParentCodec = ScopedStack.RegisterComponent<Fby::Parent2D>("Parent2D");
+    const std::uint16_t ScopedLocalCodec = ScopedStack.RegisterComponent<Fby::LocalTransform2D>("LocalTransform2D");
+    Check(ScopedParentCodec != 0xFFFF && ScopedLocalCodec != 0xFFFF, "hierarchy codecs registered");
+
+    const Fby::Entity ScopedChild = ScopedRegistry.create();
+    const Fby::Entity ScopedParent = ScopedRegistry.create();
+    Fby::Parent2D ScopedOldParent{};
+    Fby::LocalTransform2D ScopedOldLocal{};
+    Fby::Parent2D ScopedNewParent{};
+    ScopedNewParent.Parent = ScopedParent;
+    Fby::LocalTransform2D ScopedNewLocal{};
+    ScopedNewLocal.Position = Fby::Vector2D{5.0f, 6.0f};
+
+    Check(ScopedStack.BeginTransaction("Reparent") == Fby::Editor::CommandStack::Result::Ok,
+          "presence add transaction");
+    ScopedRegistry.emplace<Fby::Parent2D>(ScopedChild, ScopedNewParent);
+    ScopedRegistry.emplace<Fby::LocalTransform2D>(ScopedChild, ScopedNewLocal);
+    Check(ScopedStack.RecordPresence(ScopedChild, ScopedParentCodec, false,
+                                     std::as_bytes(std::span{&ScopedOldParent, 1}), true,
+                                     std::as_bytes(std::span{&ScopedNewParent, 1})) ==
+              Fby::Editor::CommandStack::Result::Ok,
+          "record parent addition");
+    Check(ScopedStack.RecordPresence(ScopedChild, ScopedLocalCodec, false,
+                                     std::as_bytes(std::span{&ScopedOldLocal, 1}), true,
+                                     std::as_bytes(std::span{&ScopedNewLocal, 1})) ==
+              Fby::Editor::CommandStack::Result::Ok,
+          "record local addition");
+    Check(ScopedStack.CommitTransaction() == Fby::Editor::CommandStack::Result::Ok, "commit presence add");
+
+    Check(ScopedStack.Undo(), "undo presence add");
+    Check(ScopedRegistry.try_get<Fby::Parent2D>(ScopedChild) == nullptr, "undo removes Parent2D");
+    Check(ScopedRegistry.try_get<Fby::LocalTransform2D>(ScopedChild) == nullptr, "undo removes LocalTransform2D");
+    Check(ScopedStack.Redo(), "redo presence add");
+    Check(ScopedRegistry.try_get<Fby::Parent2D>(ScopedChild) != nullptr, "redo restores Parent2D");
+    Check(ScopedRegistry.try_get<Fby::LocalTransform2D>(ScopedChild) != nullptr, "redo restores LocalTransform2D");
+
+    Check(ScopedStack.BeginTransaction("Clear parent") == Fby::Editor::CommandStack::Result::Ok,
+          "presence remove transaction");
+    ScopedRegistry.remove<Fby::Parent2D>(ScopedChild);
+    ScopedRegistry.remove<Fby::LocalTransform2D>(ScopedChild);
+    Check(ScopedStack.RecordPresence(ScopedChild, ScopedParentCodec, true,
+                                     std::as_bytes(std::span{&ScopedNewParent, 1}), false,
+                                     std::as_bytes(std::span{&ScopedOldParent, 1})) ==
+              Fby::Editor::CommandStack::Result::Ok,
+          "record parent removal");
+    Check(ScopedStack.RecordPresence(ScopedChild, ScopedLocalCodec, true,
+                                     std::as_bytes(std::span{&ScopedNewLocal, 1}), false,
+                                     std::as_bytes(std::span{&ScopedOldLocal, 1})) ==
+              Fby::Editor::CommandStack::Result::Ok,
+          "record local removal");
+    Check(ScopedStack.CommitTransaction() == Fby::Editor::CommandStack::Result::Ok, "commit presence remove");
+    Check(ScopedStack.Undo(), "undo presence remove");
+    Check(ScopedRegistry.try_get<Fby::Parent2D>(ScopedChild) != nullptr, "undo restores Parent2D");
+    Check(ScopedRegistry.try_get<Fby::LocalTransform2D>(ScopedChild) != nullptr, "undo restores LocalTransform2D");
+    Check(ScopedStack.Redo(), "redo presence remove");
+    Check(ScopedRegistry.try_get<Fby::Parent2D>(ScopedChild) == nullptr, "redo removes Parent2D");
+    Check(ScopedRegistry.try_get<Fby::LocalTransform2D>(ScopedChild) == nullptr, "redo removes LocalTransform2D");
+}
+
 int main()
 {
     TestFieldUndoRedo();
     TestLargeComponentDelta();
     TestInteractionTransaction();
+    TestPresenceUndoRedo();
     TestFieldWiseComparison();
     TestPlayInEditor();
     TestSystemGraphParallel();

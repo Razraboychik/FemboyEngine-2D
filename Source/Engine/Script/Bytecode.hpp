@@ -359,6 +359,9 @@ enum class OpCode : std::uint8_t
     CallFunction,
     // Returns from a user function; src is the result register.
     Return,
+    // Suspends the current event until the next script frame. The scheduler
+    // stores the resumable VM state; the AOT backend rejects it for now.
+    Yield,
 
     Count
 };
@@ -467,6 +470,8 @@ enum class OpCode : std::uint8_t
             return "call.function";
         case OpCode::Return:
             return "return";
+        case OpCode::Yield:
+            return "yield";
         case OpCode::Count:
             break;
     }

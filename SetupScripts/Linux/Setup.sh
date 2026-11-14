@@ -232,6 +232,12 @@ GLSLANG_ARCHIVE="$(download "https://github.com/KhronosGroup/glslang/archive/ref
 extract_tar "${GLSLANG_ARCHIVE}" "${THIRD_PARTY}/glslang-src"
 printf 'glslang = 15.3.0\n' >> "${LOCK}"
 
+log "SPIRV-Cross vulkan-sdk-1.4.363.0"
+SPIRV_CROSS_ARCHIVE="$(download "https://github.com/KhronosGroup/SPIRV-Cross/archive/refs/tags/vulkan-sdk-1.4.363.0.tar.gz" SPIRV-Cross.tar.gz)"
+extract_tar "${SPIRV_CROSS_ARCHIVE}" "${THIRD_PARTY}/spirv-cross"
+printf 'spirv_cross = vulkan-sdk-1.4.363.0
+' >> "${LOCK}"
+
 log "miniaudio 0.11.23"
 MINIAUDIO_ARCHIVE="$(download "https://github.com/mackron/miniaudio/archive/refs/tags/0.11.23.tar.gz" miniaudio.tar.gz)"
 extract_tar "${MINIAUDIO_ARCHIVE}" "${THIRD_PARTY}/miniaudio-master/miniaudio-master"

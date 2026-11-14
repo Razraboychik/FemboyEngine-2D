@@ -96,6 +96,8 @@ void StartAndHandshake(ChannelPair& InPair, std::uint32_t InRecordsPerKey = Fby:
 
     FBY_CHECK(InPair.Client.Start(ScopedClientConfig) == Fby::Net::SecureStatus::Ok);
     FBY_CHECK(InPair.Server.Start(ScopedServerConfig) == Fby::Net::SecureStatus::Ok);
+    FBY_CHECK(!InPair.Client.ProtocolV2());
+    FBY_CHECK(!InPair.Server.ProtocolV2());
     FBY_CHECK(Exchange(InPair.Client, InPair.Server));
     FBY_CHECK(Exchange(InPair.Server, InPair.Client));
     FBY_CHECK(Exchange(InPair.Client, InPair.Server));

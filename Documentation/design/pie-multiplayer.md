@@ -93,6 +93,6 @@ own composer, so a second world never overwrites the first packet mid-frame.
 - The PIE client packet carries its own SDF lighting: dynamic casters are built
   from the client world and the static field/atlas are shared with the authoring
   pass. The virtual-texture handle, params and debug mode travel in the packet
-  too; the diagnostic VT self-test shares its page table with the PIE client
-  because the client world is a clone. A separate residency set per client is an
-  optimization for diverged cameras, not a correctness requirement.
+  too. When the VT self-test is active the client owns a second VT resource,
+  page table and camera-driven streamer, so a diverged client camera does not
+  evict the authoring pages; without VT the packet keeps the default binding.

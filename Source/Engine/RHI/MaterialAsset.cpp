@@ -358,6 +358,47 @@ bool DecodeMaterialGraph(std::span<const std::byte> InBytes, MaterialGraph* OutG
 
 bool EncodeCookedMaterial(std::uint64_t InGraphHash, std::uint16_t InContract,
                           std::span<const std::byte> InVertexSpirv, std::span<const std::byte> InFragmentSpirv,
+                          std::span<const std::byte> InVertexDxil, std::span<const std::byte> InFragmentDxil,
+                          std::vector<std::byte>* OutBytes) noexcept
+{
+    if (OutBytes == nullptr || InGraphHash == 0 || InFragmentDxil.empty())
+    {
+        return false;
+    }
+    if ((InContract & ~static_cast<std::uint16_t>(MaterialContract::MaterialContractKnown)) != 0 ||
+        InVertexSpirv.size() > kMaxCookedStageBytes || InFragmentSpirv.size() > kMaxCookedStageBytes ||
+        InVertexDxil.size() > kMaxCookedStageBytes || InFragmentDxil.size() > kMaxCookedStageBytes)
+    {
+        return false;
+    }
+    const bool ScopedGeneratedVertex =
+        (InContract & static_cast<std::uint16_t>(MaterialContract::MaterialContractGeneratedVertexStage)) != 0;
+    if (ScopedGeneratedVertex != !InVertexSpirv.empty() || ScopedGeneratedVertex != !InVertexDxil.empty() ||
+        !IsSpirvStage(InFragmentSpirv) || (!InVertexSpirv.empty() && !IsSpirvStage(InVertexSpirv)))
+    {
+        return false;
+    }
+    const std::size_t ScopedBytes = static_cast<std::size_t>(kMaterialAssetHeaderBytes) + InVertexSpirv.size() +
+                                    InFragmentSpirv.size() + InVertexDxil.size() + InFragmentDxil.size();
+    OutBytes->clear();
+    OutBytes->reserve(ScopedBytes);
+    PutU32(OutBytes, kMaterialAssetMagic);
+    PutU16(OutBytes, kMaterialAssetVersionDxil);
+    PutU16(OutBytes, InContract);
+    PutU64(OutBytes, InGraphHash);
+    PutU32(OutBytes, static_cast<std::uint32_t>(InVertexSpirv.size()));
+    PutU32(OutBytes, static_cast<std::uint32_t>(InFragmentSpirv.size()));
+    PutU32(OutBytes, static_cast<std::uint32_t>(InVertexDxil.size()));
+    PutU32(OutBytes, static_cast<std::uint32_t>(InFragmentDxil.size()));
+    OutBytes->insert(OutBytes->end(), InVertexSpirv.begin(), InVertexSpirv.end());
+    OutBytes->insert(OutBytes->end(), InFragmentSpirv.begin(), InFragmentSpirv.end());
+    OutBytes->insert(OutBytes->end(), InVertexDxil.begin(), InVertexDxil.end());
+    OutBytes->insert(OutBytes->end(), InFragmentDxil.begin(), InFragmentDxil.end());
+    return OutBytes->size() == ScopedBytes;
+}
+
+bool EncodeCookedMaterial(std::uint64_t InGraphHash, std::uint16_t InContract,
+                          std::span<const std::byte> InVertexSpirv, std::span<const std::byte> InFragmentSpirv,
                           std::vector<std::byte>* OutBytes) noexcept
 {
     if (OutBytes == nullptr || InGraphHash == 0)
@@ -435,12 +476,16 @@ bool DecodeCookedMaterial(std::span<const std::byte> InBytes, CookedMaterialView
         SetError(OutError, MaterialAssetError::BadMagic);
         return false;
     }
-    if (ScopedVersion != kMaterialAssetVersion)
+    if (ScopedVersion != kMaterialAssetVersion && ScopedVersion != kMaterialAssetVersionDxil)
     {
         SetError(OutError, MaterialAssetError::UnsupportedVersion);
         return false;
     }
-    if (ScopedHash == 0 || ScopedReserved != 0)
+    const std::uint32_t ScopedVertexDxilBytes =
+        ScopedVersion == kMaterialAssetVersionDxil ? static_cast<std::uint32_t>(ScopedReserved & 0xFFFFFFFFu) : 0;
+    const std::uint32_t ScopedFragmentDxilBytes =
+        ScopedVersion == kMaterialAssetVersionDxil ? static_cast<std::uint32_t>(ScopedReserved >> 32) : 0;
+    if (ScopedHash == 0 || (ScopedVersion == kMaterialAssetVersion && ScopedReserved != 0))
     {
         SetError(OutError, MaterialAssetError::BadContract);
         return false;
@@ -451,13 +496,20 @@ bool DecodeCookedMaterial(std::span<const std::byte> InBytes, CookedMaterialView
         return false;
     }
     if (ScopedVertexBytes > kMaxCookedStageBytes || ScopedFragmentBytes > kMaxCookedStageBytes ||
-        ScopedFragmentBytes == 0)
+        ScopedFragmentBytes == 0 || ScopedVertexDxilBytes > kMaxCookedStageBytes ||
+        ScopedFragmentDxilBytes > kMaxCookedStageBytes)
+    {
+        SetError(OutError, MaterialAssetError::BadPayloadSize);
+        return false;
+    }
+    const bool ScopedHasDxil = ScopedVersion == kMaterialAssetVersionDxil;
+    if (ScopedHasDxil && ScopedFragmentDxilBytes == 0)
     {
         SetError(OutError, MaterialAssetError::BadPayloadSize);
         return false;
     }
     const std::size_t ScopedExpected = static_cast<std::size_t>(kMaterialAssetHeaderBytes) + ScopedVertexBytes +
-                                       ScopedFragmentBytes;
+                                       ScopedFragmentBytes + ScopedVertexDxilBytes + ScopedFragmentDxilBytes;
     if (InBytes.size() != ScopedExpected)
     {
         SetError(OutError, MaterialAssetError::BadPayloadSize);
@@ -468,6 +520,11 @@ bool DecodeCookedMaterial(std::span<const std::byte> InBytes, CookedMaterialView
     const std::span<const std::byte> ScopedVertex = InBytes.subspan(ScopedVertexOffset, ScopedVertexBytes);
     const std::span<const std::byte> ScopedFragment =
         InBytes.subspan(ScopedVertexOffset + ScopedVertexBytes, ScopedFragmentBytes);
+    const std::size_t ScopedDxilOffset = ScopedVertexOffset + ScopedVertexBytes + ScopedFragmentBytes;
+    const std::span<const std::byte> ScopedVertexDxil =
+        InBytes.subspan(ScopedDxilOffset, ScopedVertexDxilBytes);
+    const std::span<const std::byte> ScopedFragmentDxil =
+        InBytes.subspan(ScopedDxilOffset + ScopedVertexDxilBytes, ScopedFragmentDxilBytes);
     const bool ScopedGeneratedVertex =
         (ScopedContract & static_cast<std::uint16_t>(MaterialContract::MaterialContractGeneratedVertexStage)) != 0;
     if (ScopedGeneratedVertex != !ScopedVertex.empty())
@@ -485,6 +542,8 @@ bool DecodeCookedMaterial(std::span<const std::byte> InBytes, CookedMaterialView
     OutView->contract = ScopedContract;
     OutView->vertexSpirv = ScopedVertex;
     OutView->fragmentSpirv = ScopedFragment;
+    OutView->vertexDxil = ScopedVertexDxil;
+    OutView->fragmentDxil = ScopedFragmentDxil;
     return true;
 }
 }

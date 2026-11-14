@@ -1,6 +1,8 @@
 // FemboyEngine2D - FidelityFX FSR2 adapter contract.
 #include "Engine/RHI/Fsr2Adapter.hpp"
 
+#include "Engine/Core/Log.hpp"
+
 #if defined(FBY_WITH_FIDELITYFX)
 #include "ffx_api.h"
 #include "ffx_api_loader.h"
@@ -69,13 +71,23 @@ bool Fsr2Adapter::Initialize(void* InDevice, void* InPhysicalDevice, void* InDev
         GFsr2Api.Module = LoadLibraryW((ScopedBase + L"amd_fidelityfx_upscaler_vk.dll").c_str());
         if (GFsr2Api.Module == nullptr)
         {
+            LogWarn("fsr2", "FidelityFX DLL load failed: {}", static_cast<int>(GetLastError()));
             return false;
         }
-        ffxLoadFunctions(&GFsr2Api.Functions, GFsr2Api.Module);
+        GFsr2Api.Functions.CreateContext =
+            reinterpret_cast<PfnFfxCreateContext>(GetProcAddress(GFsr2Api.Module, "ffxCreateContext"));
+        GFsr2Api.Functions.DestroyContext =
+            reinterpret_cast<PfnFfxDestroyContext>(GetProcAddress(GFsr2Api.Module, "ffxDestroyContext"));
+        GFsr2Api.Functions.Configure =
+            reinterpret_cast<PfnFfxConfigure>(GetProcAddress(GFsr2Api.Module, "ffxConfigure"));
+        GFsr2Api.Functions.Query = reinterpret_cast<PfnFfxQuery>(GetProcAddress(GFsr2Api.Module, "ffxQuery"));
+        GFsr2Api.Functions.Dispatch =
+            reinterpret_cast<PfnFfxDispatch>(GetProcAddress(GFsr2Api.Module, "ffxDispatch"));
     }
     if (GFsr2Api.Functions.CreateContext == nullptr || GFsr2Api.Functions.DestroyContext == nullptr ||
         GFsr2Api.Functions.Dispatch == nullptr)
     {
+        LogWarn("fsr2", "FidelityFX DLL is missing the upscaler exports");
         return false;
     }
 
@@ -92,8 +104,10 @@ bool Fsr2Adapter::Initialize(void* InDevice, void* InPhysicalDevice, void* InDev
     ScopedUpscale.header.pNext = &ScopedBackend.header;
 
     ffxContext ScopedContext = nullptr;
-    if (GFsr2Api.Functions.CreateContext(&ScopedContext, &ScopedUpscale.header, nullptr) != FFX_API_RETURN_OK)
+    const ffxReturnCode_t ScopedCreate = GFsr2Api.Functions.CreateContext(&ScopedContext, &ScopedUpscale.header, nullptr);
+    if (ScopedCreate != FFX_API_RETURN_OK)
     {
+        LogWarn("fsr2", "FidelityFX CreateContext failed: {}", static_cast<int>(ScopedCreate));
         return false;
     }
     MContext = ScopedContext;

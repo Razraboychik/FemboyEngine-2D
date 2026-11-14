@@ -65,6 +65,8 @@ Transform2D/Velocity, relevance plan filter call).
   48 x 448-byte chunk budget. `net_replication` publishes a 12000-byte baseline
   in one state; a state above the cap falls back to the local client instead of
   silently truncating.
-- `CaptureReplicationBaseline` uses the bare ECS restore, so a physics world
-  attached to a replicated baseline inherits the native-body lifetime problem
-  tracked in the project issue tracker.
+- `RestoreSnapshot` clears the registry through `Scene::DestroyAllEntities`, so a
+  physics world must call `PhysicsSystem::BindToRegistry` once. The cleanup hook
+  releases Box2D bodies before the components disappear; the next step recreates
+  them from the restored components. `physics_backend` covers this round trip.
+  A world that skips `BindToRegistry` still owns stale native bodies.

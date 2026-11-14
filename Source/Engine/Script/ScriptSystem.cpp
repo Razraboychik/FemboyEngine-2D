@@ -949,11 +949,81 @@ bool ScriptRuntime::Initialize()
     RegisterDefaultScriptNatives(*this);
     MRng = DeterministicRng::FromSeed(0x4642334C4F4C49ull);
     MHeap->Reset();
+    MCoroutines.fill(CoroutineSlot{});
     MActiveScriptCount = 0;
     MActiveStamp = 0;
     MDroppedDestroyEvents = 0;
     MInitialized = true;
     return true;
+}
+
+Script::VmSuspendState* ScriptRuntime::FindCoroutine(Entity InEntity, std::uint32_t InProgram,
+                                                     Script::ScriptEvent InEvent) noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+            ScopedSlot.Event == InEvent)
+        {
+            return &ScopedSlot.State;
+        }
+    }
+    return nullptr;
+}
+
+void ScriptRuntime::StoreCoroutine(Entity InEntity, std::uint32_t InProgram, Script::ScriptEvent InEvent,
+                                   const Script::VmSuspendState& InState) noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+            ScopedSlot.Event == InEvent)
+        {
+            ScopedSlot.State = InState;
+            return;
+        }
+    }
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (!ScopedSlot.Used)
+        {
+            ScopedSlot.Used = true;
+            ScopedSlot.Entity = InEntity;
+            ScopedSlot.Program = InProgram;
+            ScopedSlot.Event = InEvent;
+            ScopedSlot.State = InState;
+            return;
+        }
+    }
+}
+
+void ScriptRuntime::RemoveCoroutine(Entity InEntity, std::uint32_t InProgram, Script::ScriptEvent InEvent) noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+            ScopedSlot.Event == InEvent)
+        {
+            ScopedSlot = CoroutineSlot{};
+            return;
+        }
+    }
+}
+
+void ScriptRuntime::ClearCoroutines() noexcept
+{
+    MCoroutines.fill(CoroutineSlot{});
+}
+
+void ScriptRuntime::PruneCoroutines(const Ecs::Registry& InRegistry) noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && (!InRegistry.valid(ScopedSlot.Entity) || Program(ScopedSlot.Program) == nullptr))
+        {
+            ScopedSlot = CoroutineSlot{};
+        }
+    }
 }
 
 std::uint16_t ScriptRuntime::LoadProgram(std::span<const std::byte> InCooked, std::string* InError)
@@ -1013,6 +1083,13 @@ bool ScriptRuntime::UnloadProgram(std::uint32_t InHandle) noexcept
     }
     MSlots[InHandle] = {};
     MFaultReported[InHandle] = false;
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.Program == InHandle)
+        {
+            ScopedSlot = CoroutineSlot{};
+        }
+    }
     if (MProgramCount > 0)
     {
         --MProgramCount;
@@ -1159,6 +1236,7 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
         return;
     }
     InRuntime.BeginScriptFrame();
+    InRuntime.PruneCoroutines(InContext.registry);
 
     Script::VmContext ScopedVmContext{InContext.registry};
     ScopedVmContext.commands = InContext.commands;
@@ -1228,24 +1306,63 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
             continue;
         }
 
-        if ((ScopedComponent.Flags & kScriptFlagStarted) == 0)
+        const auto ScopedRunEvent = [&](Script::ScriptEvent InEvent, bool& OutSuspended)
         {
+            OutSuspended = false;
+            if (const Script::VmSuspendState* ScopedPending =
+                    InRuntime.FindCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+                ScopedPending != nullptr && ScopedPending->WakeFrame > ScopedVmContext.frameIndex)
+            {
+                OutSuspended = true;
+                return;
+            }
             Script::VmFault ScopedFault;
-            if (!InRuntime.Vm().Run(*ScopedProgram, Script::ScriptEvent::Start, ScopedEntity, ScopedVmContext,
-                                    &ScopedFault))
+            if (Script::VmSuspendState* ScopedState =
+                    InRuntime.FindCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+                ScopedState != nullptr)
+            {
+                const bool ScopedOk =
+                    InRuntime.Vm().Run(*ScopedProgram, InEvent, ScopedEntity, ScopedVmContext, &ScopedFault,
+                                       ScopedState);
+                OutSuspended = ScopedState->Valid;
+                if (!OutSuspended)
+                {
+                    InRuntime.RemoveCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+                }
+                if (!ScopedOk)
+                {
+                    InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
+                }
+                return;
+            }
+            Script::VmSuspendState ScopedState;
+            const bool ScopedOk =
+                InRuntime.Vm().Run(*ScopedProgram, InEvent, ScopedEntity, ScopedVmContext, &ScopedFault, &ScopedState);
+            OutSuspended = ScopedState.Valid;
+            if (OutSuspended)
+            {
+                InRuntime.StoreCoroutine(ScopedEntity, ScopedComponent.Program, InEvent, ScopedState);
+            }
+            if (!ScopedOk)
             {
                 InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
             }
-            // Mark started even after a fault: retrying a broken Start would loop.
-            ScopedComponent.Flags |= kScriptFlagStarted;
+        };
+
+        if ((ScopedComponent.Flags & kScriptFlagStarted) == 0)
+        {
+            bool ScopedStartSuspended = false;
+            ScopedRunEvent(Script::ScriptEvent::Start, ScopedStartSuspended);
+            // A yielding Start keeps the flag clear so the next frame resumes it.
+            if (!ScopedStartSuspended)
+            {
+                ScopedComponent.Flags |= kScriptFlagStarted;
+            }
         }
 
-        Script::VmFault ScopedFault;
-        if (!InRuntime.Vm().Run(*ScopedProgram, Script::ScriptEvent::Update, ScopedEntity, ScopedVmContext,
-                                &ScopedFault))
-        {
-            InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
-        }
+        bool ScopedUpdateSuspended = false;
+        ScopedRunEvent(Script::ScriptEvent::Update, ScopedUpdateSuspended);
+        (void)ScopedUpdateSuspended;
     }
     InRuntime.RunDestroyForInactive(InContext.registry, ScopedVmContext, InAllowVmFallback);
 }

@@ -236,6 +236,12 @@ int main()
     FBY_CHECK(Fby::Rhi::ChooseUpscaler(ScopedCaps, Fby::Rhi::UpscalerBackend::Dlss) == Fby::Rhi::UpscalerBackend::Fsr2);
     FBY_CHECK(Fby::Rhi::ChooseFrameGen(ScopedCaps, Fby::Rhi::FrameGenBackend::DlssFg) ==
               Fby::Rhi::FrameGenBackend::Off);
+    FBY_CHECK(Fby::Rhi::UpscalerUnavailableReason(ScopedCaps, Fby::Rhi::UpscalerBackend::Fsr2) == nullptr);
+    FBY_CHECK(Fby::Rhi::UpscalerUnavailableReason(ScopedCaps, Fby::Rhi::UpscalerBackend::Dlss) != nullptr);
+    FBY_CHECK(Fby::Rhi::FrameGenUnavailableReason(ScopedCaps, Fby::Rhi::FrameGenBackend::Fsr3) != nullptr);
+    ScopedCaps.MotionVectors = false;
+    FBY_CHECK(Fby::Rhi::UpscalerUnavailableReason(ScopedCaps, Fby::Rhi::UpscalerBackend::Fsr2) != nullptr);
+    ScopedCaps.MotionVectors = true;
     ScopedCaps.Fsr1 = true;
     ScopedCaps.Fsr2 = false;
     FBY_CHECK(ChooseUpscaleMode(UpscaleMode::Fsr2, ScopedCaps) == UpscaleMode::Fsr1);

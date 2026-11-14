@@ -1,11 +1,14 @@
 // FemboyEngine2D - backend selection, segment queries and projectile modes.
 #include "Engine/ECS/Schedule.hpp"
+#include "Engine/ECS/Snapshot.hpp"
 #include "Engine/ECS/Presentation.hpp"
 #include "Engine/Physics/Physics.hpp"
 #include "Engine/Physics/ProjectileSystem.hpp"
 
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 
 using namespace Fby;
 
@@ -123,6 +126,37 @@ int main()
     Check(ScopedJointPhysics.Capabilities().Joints, "Box2D exposes joints");
     ScopedJointPhysics.Shutdown();
     ScopedPhysics.Shutdown();
+
+    // A snapshot restore clears the registry through the native cleanup hook.
+    // The physics world must release its Box2D bodies before the components are
+    // rebuilt, then recreate them from the restored components on the next step.
+    {
+        Ecs::Registry ScopedSnapshotRegistry;
+        PhysicsDesc ScopedSnapshotDesc;
+        ScopedSnapshotDesc.gravity = Vector2D{0.0f, 0.0f};
+        ScopedSnapshotDesc.requireJoints = true;
+        PhysicsSystem ScopedSnapshotPhysics;
+        Check(ScopedSnapshotPhysics.Initialize(ScopedSnapshotDesc), "initialize snapshot physics backend");
+        ScopedSnapshotPhysics.BindToRegistry(ScopedSnapshotRegistry);
+        (void)MakeBody(ScopedSnapshotRegistry, Vector2D{16.0f, 24.0f}, Vector2D{4.0f, 4.0f}, BodyType::Dynamic);
+        ScopedSnapshotPhysics.Step(ScopedSnapshotRegistry, 1.0f / 60.0f);
+        Check(ScopedSnapshotPhysics.LiveBodyCount() == 1, "snapshot world has one live body");
+
+        const Ecs::SnapshotSchema ScopedSchema = Ecs::SnapshotSchema::BuiltIns();
+        const std::size_t ScopedSize = Ecs::SnapshotSize(ScopedSnapshotRegistry, ScopedSchema);
+        Check(ScopedSize > 0, "snapshot size is non-zero");
+        std::vector<std::byte> ScopedBytes(ScopedSize);
+        std::size_t ScopedWritten = 0;
+        Check(Ecs::CaptureSnapshot(ScopedSnapshotRegistry, ScopedSchema, ScopedBytes, 1, DeterministicRng::FromSeed(1),
+                                   &ScopedWritten),
+              "physics world snapshot captures");
+
+        Check(Ecs::RestoreSnapshot(ScopedSnapshotRegistry, ScopedSchema, ScopedBytes), "physics world snapshot restores");
+        Check(ScopedSnapshotPhysics.LiveBodyCount() == 0, "snapshot restore releases native bodies");
+        ScopedSnapshotPhysics.Step(ScopedSnapshotRegistry, 1.0f / 60.0f);
+        Check(ScopedSnapshotPhysics.LiveBodyCount() == 1, "the next step recreates the restored body");
+        ScopedSnapshotPhysics.Shutdown();
+    }
 
     std::printf("physics_backend: ok\n");
     return 0;

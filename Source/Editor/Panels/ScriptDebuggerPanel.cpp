@@ -618,7 +618,21 @@ void ScriptDebuggerPanel::DrawState(Ecs::Registry& InRegistry, const Scene::Comp
                         static_cast<unsigned>(ScopedFrame.Pc));
             ImGui::TextDisabled("line %u, column %u", static_cast<unsigned>(ScopedFrame.Location.Line),
                                 static_cast<unsigned>(ScopedFrame.Location.Column));
-            ImGui::TextDisabled("the VM is a flat event machine: one frame per event");
+            for (std::uint32_t ScopedI = MDebug.CallDepth; ScopedI > 0; --ScopedI)
+            {
+                const Script::VmCallFrame& ScopedCall = MDebug.CallStack[ScopedI - 1];
+                const std::uint32_t ScopedPc = ScopedI == MDebug.CallDepth ? MDebug.PausePc : ScopedCall.ReturnPc;
+                const Script::DebugFrame ScopedCallFrame =
+                    Script::MakeFrame(MParsed, Script::ScriptEvent::Update, InSelected, ScopedPc);
+                ImGui::Text("fn #%u  base r%u  return pc %u", static_cast<unsigned>(ScopedCall.Function),
+                            static_cast<unsigned>(ScopedCall.Base), static_cast<unsigned>(ScopedCall.ReturnPc));
+                ImGui::TextDisabled("line %u, column %u", static_cast<unsigned>(ScopedCallFrame.Location.Line),
+                                    static_cast<unsigned>(ScopedCallFrame.Location.Column));
+            }
+            if (MDebug.CallDepth == 0)
+            {
+                ImGui::TextDisabled("event frame");
+            }
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Program"))

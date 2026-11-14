@@ -6,6 +6,7 @@
 #include "Engine/ECS/Lighting.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
+#include "Engine/ECS/PrefabInstance.hpp"
 #include "Engine/ECS/SkeletonAssetRef.hpp"
 #include "Engine/ECS/SkeletonIk.hpp"
 #include "Engine/ECS/Tilemap.hpp"
@@ -109,6 +110,9 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<TextFormatComponent>();
     InRegistry.Register<TextConditionComponent>();
     InRegistry.Register<Hidden>();
+    InRegistry.Register<PrefabInstanceComponent>();
+    // Transient child marker: rebuilt from PrefabInstanceComponent on load.
+    InRegistry.Register<PrefabInstanceMemberComponent>(false);
 
     // Persisted components. SkeletonComponent/SkinComponent.
     InRegistry.Register<SkeletonAssetRef>();

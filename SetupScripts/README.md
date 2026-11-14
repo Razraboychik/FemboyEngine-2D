@@ -77,3 +77,34 @@ SetupScripts\Windows\Package.ps1
 ```
 
 Pass `--skip-build` to package the existing `build-<platform>-release` tree.
+
+## Vendor release
+
+Vendor SDKs remain optional and are never committed or redistributed by the
+setup scripts. After accepting the licences:
+
+```text
+Windows: SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
+Linux:   SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses
+macOS:   SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
+```
+
+Then configure the separate vendor preset (not the normal release preset):
+
+```text
+cmake --preset release-vendor-clang
+cmake --build --preset release-vendor-clang
+ctest --preset release-vendor-clang
+```
+
+CMake copies the signed FidelityFX runtime DLLs into `bin/` and `bin/tests/`.
+`PackageDesktop.py` automatically adds any `amd_fidelityfx_*`, `nvngx_dlss*`
+and `libxess*` runtime found in the build `bin/` to the desktop bundle.
+
+The D3D12 validation layer is an optional Windows "Graphics Tools" feature and
+is not required by the normal build or by the vendor preset.
+
+SPIRV-Cross is downloaded as an **offline material-cook dependency** only. It is
+linked into `fby_matc` (`--dx12` writes HLSL), never into the engine or a game
+runtime. If the checkout is absent, `fby_matc` still builds the Vulkan path and
+reports that DX HLSL cooking is disabled.

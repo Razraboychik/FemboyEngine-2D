@@ -13,8 +13,11 @@ inline constexpr std::uint32_t kMagic = 0x544F4146u;
 // Bumped when HostApi gains callbacks. Generated plugins and the loader must
 // agree, so a stale .dll is rejected with "ABI version mismatch" instead of
 // calling through a short function table.
-inline constexpr std::uint16_t kAbiVersion = 8;
+inline constexpr std::uint16_t kAbiVersion = 10;
 inline constexpr std::uint32_t kMaxModuleComponents = 32;
+inline constexpr std::uint32_t kMaxCoroutineRegisters = 128;
+// Mirrors VM kMaxCallDepth: the event frame is 0, user calls use 1..15.
+inline constexpr std::uint32_t kMaxCoroutineFrames = 16;
 
 // Register tags mirror Fby::Script::ValueTag. They are duplicated here so the
 // generated plugin depends only on this header, not on the engine heap.
@@ -152,6 +155,25 @@ struct HostApi
     std::uint32_t (*heapStringEquals)(void* InUser, std::uint32_t InLeft, std::uint32_t InRight) noexcept = nullptr;
 };
 
+struct CoroutineFrame
+{
+    std::uint32_t Function = 0;
+    std::uint32_t Pc = 0;
+    std::uint32_t Active = 0;
+    std::uint32_t Reserved = 0;
+};
+
+struct CoroutineState
+{
+    std::uint32_t Depth = 0;
+    std::uint32_t WakeFrame = 0;
+    std::uint32_t Active = 0;
+    std::uint32_t Reserved = 0;
+    CoroutineFrame Frames[kMaxCoroutineFrames]{};
+    std::uint32_t Registers[kMaxCoroutineRegisters]{};
+    std::uint32_t Tags[kMaxCoroutineRegisters]{};
+};
+
 struct Context
 {
     const HostApi* host = nullptr;
@@ -163,6 +185,8 @@ struct Context
     std::uint32_t reserved = 0;
     // Bounded user-function call depth shared by every generated entry point.
     std::uint32_t callDepth = 0;
+    // Host-owned coroutine slot for this (entity, program, event).
+    CoroutineState* coroutine = nullptr;
 
     [[nodiscard]] std::byte* Component(std::uint64_t InLayoutHash) const noexcept
     {

@@ -20,6 +20,7 @@ private:
     Extent2D MOutputExtent{};
     std::uint64_t MFrameId = 0;
     bool MReset = false;
+    bool MDx12 = false;
     FramePacingConfig MPacingConfig{};
     FramePacingState MPacingState{};
 };

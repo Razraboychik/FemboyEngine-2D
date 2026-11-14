@@ -1,6 +1,9 @@
 // FemboyEngine2D - FidelityFX FSR3 frame generation backend.
 #include "Engine/RHI/Fsr3FrameGenerator.hpp"
 
+#include "Engine/Core/Log.hpp"
+#include "Engine/RHI/Fsr3Dx12.hpp"
+
 #if defined(FBY_WITH_FIDELITYFX) && defined(_WIN32)
 #include "ffx_api.h"
 #include "ffx_api_loader.h"
@@ -39,7 +42,13 @@ struct Fsr3FgApi
         {
             return false;
         }
-        ffxLoadFunctions(&Functions, Module);
+        Functions.CreateContext =
+            reinterpret_cast<PfnFfxCreateContext>(GetProcAddress(Module, "ffxCreateContext"));
+        Functions.DestroyContext =
+            reinterpret_cast<PfnFfxDestroyContext>(GetProcAddress(Module, "ffxDestroyContext"));
+        Functions.Configure = reinterpret_cast<PfnFfxConfigure>(GetProcAddress(Module, "ffxConfigure"));
+        Functions.Query = reinterpret_cast<PfnFfxQuery>(GetProcAddress(Module, "ffxQuery"));
+        Functions.Dispatch = reinterpret_cast<PfnFfxDispatch>(GetProcAddress(Module, "ffxDispatch"));
         return Functions.CreateContext != nullptr && Functions.DestroyContext != nullptr &&
                Functions.Dispatch != nullptr;
     }
@@ -78,12 +87,25 @@ bool Fsr3FrameGenerator::Initialize(RHI& InGpu, Extent2D InRenderExtent, Extent2
         return true;
     }
     Shutdown(InGpu);
-    if (!GFsr3FgApi.Load())
+    RHI::NativeDeviceHandles ScopedHandles;
+    if (!InGpu.GetNativeDeviceHandles(ScopedHandles))
     {
         return false;
     }
-    RHI::NativeDeviceHandles ScopedHandles;
-    if (!InGpu.GetNativeDeviceHandles(ScopedHandles))
+    if (InGpu.GetBackend() == Backend::D3D12)
+    {
+        void* ScopedDxContext = nullptr;
+        if (!Fsr3Dx12::CreateContext(ScopedHandles.Device, InRenderExtent.width, InRenderExtent.height,
+                                     InOutputExtent.width, InOutputExtent.height, &ScopedDxContext))
+        {
+            return false;
+        }
+        MContext = ScopedDxContext;
+        MDx12 = true;
+        MOutputExtent = InOutputExtent;
+        return true;
+    }
+    if (!GFsr3FgApi.Load())
     {
         return false;
     }
@@ -101,9 +123,11 @@ bool Fsr3FrameGenerator::Initialize(RHI& InGpu, Extent2D InRenderExtent, Extent2
     ScopedCreate.backBufferFormat = FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM;
     ScopedCreate.header.pNext = &ScopedBackend.header;
     ffxContext ScopedContext = nullptr;
-    if (GFsr3FgApi.Functions.CreateContext(&ScopedContext, &ScopedCreate.header, nullptr) != FFX_API_RETURN_OK ||
-        ScopedContext == nullptr)
+    const ffxReturnCode_t ScopedCreateResult =
+        GFsr3FgApi.Functions.CreateContext(&ScopedContext, &ScopedCreate.header, nullptr);
+    if (ScopedCreateResult != FFX_API_RETURN_OK || ScopedContext == nullptr)
     {
+        std::fprintf(stderr, "fsr3: context failed %d\n", static_cast<int>(ScopedCreateResult));
         return false;
     }
     MContext = ScopedContext;
@@ -123,6 +147,37 @@ bool Fsr3FrameGenerator::Generate(RHI& InGpu, const FrameGenerationInput& InInpu
     if (MContext == nullptr || !InInput.HudSeparated || !InInput.Color.IsValid() || !InInput.Output.IsValid())
     {
         return false;
+    }
+    if (MDx12)
+    {
+        const FrameGenerationStatus ScopedDxStatus =
+            EvaluateFrameGeneration(InInput.Policy, InInput.Fps, InInput.ResetHistory);
+        if (ScopedDxStatus != FrameGenerationStatus::Ready &&
+            ScopedDxStatus != FrameGenerationStatus::ResetHistory)
+        {
+            return false;
+        }
+        MPacingState = UpdateFramePacing(MPacingConfig, MPacingState, InInput.DeltaMs, InInput.RealFrame);
+        if (!MPacingState.AllowGenerated && !InInput.ResetHistory)
+        {
+            return false;
+        }
+        NativeTextureView ScopedColor;
+        NativeTextureView ScopedOutput;
+        if (!InGpu.RenderTargetTexture(InInput.Color, ScopedColor) ||
+            !InGpu.RenderTargetTexture(InInput.Output, ScopedOutput))
+        {
+            return false;
+        }
+        const bool ScopedOk = Fsr3Dx12::Dispatch(MContext, InGpu.CurrentCommandBuffer(), ScopedColor.image,
+                                                 ScopedOutput.image, InInput.OutputExtent.width,
+                                                 InInput.OutputExtent.height, InInput.ResetHistory || MReset,
+                                                 MFrameId++);
+        if (ScopedOk)
+        {
+            MReset = false;
+        }
+        return ScopedOk;
     }
     const FrameGenerationStatus ScopedStatus = EvaluateFrameGeneration(InInput.Policy, InInput.Fps, InInput.ResetHistory);
     if (ScopedStatus != FrameGenerationStatus::Ready && ScopedStatus != FrameGenerationStatus::ResetHistory)
@@ -174,14 +229,19 @@ void Fsr3FrameGenerator::ResetHistory() noexcept
 void Fsr3FrameGenerator::Shutdown(RHI& InGpu) noexcept
 {
     (void)InGpu;
+    if (MDx12)
+    {
+        Fsr3Dx12::DestroyContext(MContext);
+    }
 #if defined(FBY_WITH_FIDELITYFX) && defined(_WIN32)
-    if (MContext != nullptr && GFsr3FgApi.Functions.DestroyContext != nullptr)
+    else if (MContext != nullptr && GFsr3FgApi.Functions.DestroyContext != nullptr)
     {
         ffxContext ScopedContext = static_cast<ffxContext>(MContext);
         GFsr3FgApi.Functions.DestroyContext(&ScopedContext, nullptr);
     }
 #endif
     MContext = nullptr;
+    MDx12 = false;
     MOutputExtent = {};
     MFrameId = 0;
     MReset = false;

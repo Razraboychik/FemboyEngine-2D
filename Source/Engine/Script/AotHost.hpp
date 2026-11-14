@@ -65,6 +65,15 @@ public:
     [[nodiscard]] bool Run(std::uint64_t InProgramHash, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
                            std::string* InError = nullptr) const;
 
+    // AOT coroutine slots. They mirror ScriptRuntime's VM table so a cooked build
+    // can suspend and resume the same `yield` program shape.
+    static constexpr std::uint32_t kMaxCoroutines = 128;
+    [[nodiscard]] Aot::CoroutineState* CoroutineFor(Entity InEntity, std::uint32_t InProgram,
+                                                    ScriptEvent InEvent) const noexcept;
+    void ReleaseCoroutine(Entity InEntity, std::uint32_t InProgram, ScriptEvent InEvent) const noexcept;
+    void ClearCoroutines() const noexcept;
+    void PruneCoroutines(const Ecs::Registry& InRegistry) const noexcept;
+
     // Cook gate: every required program must be nativized. Missing hashes are
     // reported together, so a cook fails once instead of after a partial deploy.
     [[nodiscard]] bool ValidateRequired(std::span<const std::uint64_t> InRequiredHashes,
@@ -103,6 +112,15 @@ private:
     [[nodiscard]] Slot* FindMutable(std::uint64_t InHash) noexcept;
 
     std::array<Slot, kMaxAotPrograms> MSlots{};
+    struct CoroutineSlot
+    {
+        Entity Entity = Fby::kNullEntity;
+        std::uint32_t Program = 0;
+        ScriptEvent Event = ScriptEvent::Update;
+        Aot::CoroutineState State{};
+        bool Used = false;
+    };
+    mutable std::array<CoroutineSlot, kMaxCoroutines> MCoroutines{};
     // Nativized scripts use the same token pool layout as the interpreter.
     mutable BigNumberPool MBigNumbers{};
     mutable DecimalPool MDecimals{};

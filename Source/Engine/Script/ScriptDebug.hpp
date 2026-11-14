@@ -97,9 +97,9 @@ template <typename OutRange> std::uint32_t CollectPcsForLine(const CompiledProgr
     return {};
 }
 
-// The debugger's "call stack". The VM is a flat event machine without user
-// functions, so a paused program has exactly one frame: the event, the entity
-// it runs for, and the source location inside it.
+// The debugger's source frame: the event, the entity it runs for and the source
+// location. User-function frames are described separately by VmDebugState's
+// call stack (function index, register base and return pc).
 struct DebugFrame
 {
     ScriptEvent Event = ScriptEvent::Update;

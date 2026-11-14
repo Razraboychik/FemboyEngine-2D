@@ -32,6 +32,28 @@ color/depth target bytes.
 | 15360x8640 | ~5.86 ms | ~170 | ~7.37 ms | ~136 |
 | 30720x17280 | 62–2643 ms | 0.4–16 | not stable | not stable |
 
+The table is historical 0.4-alpha data. Treat it as a target, not a current
+guarantee: the 2026-11-13 re-run on the RTX 4060 Laptop (driver 610.88) at
+15360x8640 measured 11.8–27 ms, i.e. roughly 37–85 FPS depending on clock and
+thermal state, not 170. The engine now logs the selected device; a benchmark run
+is valid only when that log names the discrete GPU and `gpu_timestamps_valid=1`.
+
+## Device selection
+
+On a hybrid laptop the Vulkan loader may expose the iGPU first and the engine's
+1.4 gate then rejects it. Select the discrete GPU explicitly:
+
+```powershell
+$env:FBY_VULKAN_DEVICE = "NVIDIA"
+# or force a single ICD:
+$env:VK_ICD_FILENAMES = "C:\Windows\System32\DriverStore\FileRepository\...\nv-vk64.json"
+```
+
+The log must contain `vulkan: selected device 'NVIDIA ...'`. Without that line
+the run may have fallen back to a headless/invalid path; do not publish it. Lock
+clocks or repeat the three-run median if the result differs by more than a few
+percent.
+
 The 32K target is 2.1 GB for color plus 2.1 GB for D32 depth (4.25 GB total).
 Even ten-frame runs vary from ~62 ms to ~2.6 s, so a median is meaningless: the
 target is memory/bandwidth-bound and the GPU/driver state dominates. 32K native

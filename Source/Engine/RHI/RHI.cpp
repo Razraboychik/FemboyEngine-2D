@@ -1,5 +1,9 @@
 #include "Engine/RHI/RHI.hpp"
 
+#include <cstdlib>
+
+#include <SDL3/SDL.h>
+
 #include "Engine/Core/Assert.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/RHI/RingBuffer.hpp"
@@ -151,25 +155,19 @@ private:
 
 Backend SelectDefaultBackend() noexcept
 {
-#if FBY_METAL_AVAILABLE
-    return Backend::Metal;
-#elif FBY_VULKAN_AVAILABLE
-    return Backend::Vulkan;
-#else
+    // Null with a window means "auto": Vulkan first, then the platform backend.
     return Backend::Null;
-#endif
 }
 
-std::unique_ptr<RHI> RHI::Create(const DeviceDesc& InDesc)
-{
-    Backend ScopedBackend = InDesc.backend;
-    if (ScopedBackend == Backend::Null && InDesc.nativeWindow != nullptr)
-    {
-        // "Null" means headless; a caller that passed a window expected a real
-        ScopedBackend = SelectDefaultBackend();
-    }
+std::unique_ptr<RHI> CreateD3D12RHI();
+std::unique_ptr<RHI> CreateD3D11RHI();
 
-    switch (ScopedBackend)
+namespace
+{
+
+std::unique_ptr<RHI> TryCreateBackend(Backend InBackend, const DeviceDesc& InDesc)
+{
+    switch (InBackend)
     {
         case Backend::Vulkan:
 #if FBY_VULKAN_AVAILABLE
@@ -177,39 +175,139 @@ std::unique_ptr<RHI> RHI::Create(const DeviceDesc& InDesc)
             auto ScopedDevice = CreateVulkanRHI();
             if (!ScopedDevice || !ScopedDevice->Initialize(InDesc))
             {
-                LogError("RHI", "Vulkan initialization failed; falling back to the null backend");
-                break;
+                LogWarn("RHI", "Vulkan initialization failed; trying the next backend");
+                return nullptr;
             }
             return ScopedDevice;
         }
 #else
-            LogError("RHI", "Vulkan backend requested but this build has no Vulkan headers");
             return nullptr;
 #endif
         case Backend::Metal:
 #if FBY_METAL_AVAILABLE
         {
-            auto device = CreateMetalRHI();
-            if (!device || !device->Initialize(InDesc))
+            auto ScopedDevice = CreateMetalRHI();
+            if (!ScopedDevice || !ScopedDevice->Initialize(InDesc))
             {
-                LogError("RHI", "Metal initialization failed; falling back to the null backend");
-                break;
+                LogWarn("RHI", "Metal initialization failed; trying the next backend");
+                return nullptr;
             }
-            return device;
+            return ScopedDevice;
         }
 #else
-            LogError("RHI", "Metal backend requested on a platform without Metal");
+            return nullptr;
+#endif
+        case Backend::D3D12:
+#if defined(_WIN32)
+        {
+            auto ScopedDevice = CreateD3D12RHI();
+            if (!ScopedDevice || !ScopedDevice->Initialize(InDesc))
+            {
+                LogWarn("RHI", "D3D12 initialization failed; trying the next backend");
+                return nullptr;
+            }
+            return ScopedDevice;
+        }
+#else
+            return nullptr;
+#endif
+        case Backend::D3D11:
+#if defined(_WIN32)
+        {
+            auto ScopedDevice = CreateD3D11RHI();
+            if (!ScopedDevice || !ScopedDevice->Initialize(InDesc))
+            {
+                LogWarn("RHI", "D3D11 initialization failed");
+                return nullptr;
+            }
+            return ScopedDevice;
+        }
+#else
             return nullptr;
 #endif
         case Backend::Null:
-            break;
+            return nullptr;
     }
+    return nullptr;
+}
 
-    auto ScopedNullDevice = std::make_unique<NullRHI>();
-    if (!ScopedNullDevice->Initialize(InDesc))
+}
+
+std::unique_ptr<RHI> RHI::Create(const DeviceDesc& InDesc)
+{
+    DeviceDesc ScopedDesc = InDesc;
+    if (ScopedDesc.size.width == 0 || ScopedDesc.size.height == 0)
     {
+        if (ScopedDesc.nativeWindow != nullptr)
+        {
+            int ScopedWidth = 0;
+            int ScopedHeight = 0;
+            if (SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(ScopedDesc.nativeWindow), &ScopedWidth,
+                                          &ScopedHeight) &&
+                ScopedWidth > 0 && ScopedHeight > 0)
+            {
+                ScopedDesc.size = {static_cast<std::uint32_t>(ScopedWidth),
+                                   static_cast<std::uint32_t>(ScopedHeight)};
+            }
+        }
+        if (ScopedDesc.size.width == 0 || ScopedDesc.size.height == 0)
+        {
+            ScopedDesc.size = {1280, 720};
+        }
+    }
+    Backend ScopedBackend = ScopedDesc.backend;
+    // Manual/diagnostic override: FBY_RHI_BACKEND=vulkan, d3d12, d3d11, metal,
+    // null or auto. Unset/auto prefers Vulkan when it is available and falls back
+    // to the platform backend, so games do not have to probe APIs themselves.
+    if (const char* ScopedOverride = std::getenv("FBY_RHI_BACKEND"); ScopedOverride != nullptr)
+    {
+        ScopedBackend = BackendFromName(ScopedOverride);
+    }
+    const bool ScopedAuto = ScopedBackend == Backend::Null && ScopedDesc.nativeWindow != nullptr;
+
+    if (ScopedAuto)
+    {
+#if FBY_METAL_AVAILABLE
+        if (auto ScopedDevice = TryCreateBackend(Backend::Metal, ScopedDesc))
+        {
+            return ScopedDevice;
+        }
+#endif
+#if FBY_VULKAN_AVAILABLE
+        if (auto ScopedDevice = TryCreateBackend(Backend::Vulkan, ScopedDesc))
+        {
+            return ScopedDevice;
+        }
+#endif
+#if defined(_WIN32)
+        if (auto ScopedDevice = TryCreateBackend(Backend::D3D12, ScopedDesc))
+        {
+            return ScopedDevice;
+        }
+        if (auto ScopedDevice = TryCreateBackend(Backend::D3D11, ScopedDesc))
+        {
+            return ScopedDevice;
+        }
+#endif
+        LogError("RHI", "No graphics backend could be initialized");
         return nullptr;
     }
-    return ScopedNullDevice;
+
+    if (ScopedBackend == Backend::Null)
+    {
+        auto ScopedNullDevice = std::make_unique<NullRHI>();
+        if (!ScopedNullDevice->Initialize(ScopedDesc))
+        {
+            return nullptr;
+        }
+        return ScopedNullDevice;
+    }
+
+    auto ScopedDevice = TryCreateBackend(ScopedBackend, ScopedDesc);
+    if (!ScopedDevice)
+    {
+        LogError("RHI", "Requested backend failed to initialize");
+    }
+    return ScopedDevice;
 }
 }

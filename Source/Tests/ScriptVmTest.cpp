@@ -1,4 +1,5 @@
 // FemboyEngine2D - FemboyScript 2.0 VM / ECS bridge / graph compiler tests.
+#include "Engine/Core/JobSystem.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/Script/Bytecode.hpp"
@@ -643,6 +644,159 @@ event update {
     return true;
 }
 
+bool TestTextForwardFunctions()
+{
+    using namespace Fby::Script;
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    constexpr std::string_view ScopedSource = R"FBY(
+function first(x) {
+    return second(x) + 1.0;
+}
+function second(y) {
+    return y * 2.0;
+}
+event update {
+    self.Transform2D.Rotation = first(20.0);
+}
+)FBY";
+    std::string ScopedError;
+    std::vector<std::byte> ScopedProgram;
+    Check(CompileTextScript(ScopedSource, ScopedComponents, {}, &ScopedProgram, &ScopedError),
+          "forward function reference compiles");
+    if (ScopedProgram.empty())
+    {
+        std::printf("forward function compile error: %s\n", ScopedError.c_str());
+        return false;
+    }
+
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "forward function runtime initializes");
+    const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
+    Check(ScopedHandle != Fby::kScriptNoProgram, "forward function program loads");
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
+    VmContext ScopedContext{ScopedRegistry};
+    Check(Fby::RunScriptOnce(ScopedRuntime, ScopedHandle, ScopedEntity, ScriptEvent::Update, ScopedContext),
+          "forward function program runs");
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 41.0f,
+          "a function declared later is callable");
+
+    constexpr std::string_view ScopedLateSource = R"FBY(
+event update {
+}
+function late() {
+    return 1.0;
+}
+)FBY";
+    std::vector<std::byte> ScopedLateProgram;
+    Check(!CompileTextScript(ScopedLateSource, ScopedComponents, {}, &ScopedLateProgram, &ScopedError),
+          "a function after an event is rejected");
+    return true;
+}
+
+bool TestTextCoroutineScheduler()
+{
+    using namespace Fby::Script;
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    constexpr std::string_view ScopedSource = R"FBY(
+function tick() {
+    self.Transform2D.Rotation = self.Transform2D.Rotation + 1.0;
+    yield;
+    self.Transform2D.Rotation = self.Transform2D.Rotation + 10.0;
+}
+event update {
+    tick();
+}
+)FBY";
+    std::string ScopedError;
+    std::vector<std::byte> ScopedProgram;
+    Check(CompileTextScript(ScopedSource, ScopedComponents, {}, &ScopedProgram, &ScopedError),
+          "coroutine text script compiles");
+    if (ScopedProgram.empty())
+    {
+        std::printf("coroutine compile error: %s\n", ScopedError.c_str());
+        return false;
+    }
+
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "coroutine runtime initializes");
+    const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
+    Check(ScopedHandle != Fby::kScriptNoProgram, "coroutine program loads");
+
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
+    Fby::ScriptComponent ScopedComponent;
+    ScopedComponent.Program = ScopedHandle;
+    ScopedComponent.Flags = Fby::kScriptFlagEnabled;
+    ScopedRegistry.emplace<Fby::ScriptComponent>(ScopedEntity, ScopedComponent);
+
+    Fby::JobSystem ScopedJobs(1);
+    Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 1.0f,
+          "the coroutine ran up to yield");
+    Check(ScopedRuntime.FindCoroutine(ScopedEntity, ScopedHandle, ScriptEvent::Update) != nullptr,
+          "the scheduler retained the suspended state");
+
+    ScopedContext.frameIndex = 1;
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 11.0f,
+          "the coroutine resumed after the yield");
+    Check(ScopedRuntime.FindCoroutine(ScopedEntity, ScopedHandle, ScriptEvent::Update) == nullptr,
+          "a completed coroutine releases its slot");
+    return true;
+}
+
+bool TestTextCoroutineDelay()
+{
+    using namespace Fby::Script;
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    constexpr std::string_view ScopedSource = R"FBY(
+event update {
+    self.Transform2D.Rotation = self.Transform2D.Rotation + 1.0;
+    yield 2;
+    self.Transform2D.Rotation = self.Transform2D.Rotation + 10.0;
+}
+)FBY";
+    std::string ScopedError;
+    std::vector<std::byte> ScopedProgram;
+    Check(CompileTextScript(ScopedSource, ScopedComponents, {}, &ScopedProgram, &ScopedError),
+          "delayed coroutine compiles");
+    if (ScopedProgram.empty())
+    {
+        return false;
+    }
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "delayed coroutine runtime initializes");
+    const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
+    Fby::ScriptComponent ScopedComponent;
+    ScopedComponent.Program = ScopedHandle;
+    ScopedComponent.Flags = Fby::kScriptFlagEnabled;
+    ScopedRegistry.emplace<Fby::ScriptComponent>(ScopedEntity, ScopedComponent);
+    Fby::JobSystem ScopedJobs(1);
+    Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
+
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 1.0f, "delayed coroutine starts");
+    ScopedContext.frameIndex = 1;
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 1.0f,
+          "delayed coroutine stays suspended for one frame");
+    ScopedContext.frameIndex = 2;
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 11.0f,
+          "delayed coroutine resumes on its wake frame");
+    return true;
+}
+
 int main()
 {
     TestArithmetic();
@@ -661,6 +815,9 @@ int main()
     TestCollections();
     TestTextCollections();
     TestTextUserFunctions();
+    TestTextForwardFunctions();
+    TestTextCoroutineScheduler();
+    TestTextCoroutineDelay();
 
     if (GFailures != 0)
     {

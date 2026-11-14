@@ -7,6 +7,9 @@
 #include "Engine/RHI/TemporalResolvePass.hpp"
 #include "Engine/RHI/Fsr2Pass.hpp"
 #include "Engine/RHI/CustomFrameGenerator.hpp"
+#include "Engine/RHI/DlssAdapter.hpp"
+#include "Engine/RHI/Fsr2Adapter.hpp"
+#include "Engine/RHI/Fsr3FrameGenerator.hpp"
 
 #include <array>
 #include <cstdio>
@@ -29,7 +32,7 @@ void HudTestRender(void*, void*)
 
 int main()
 {
-    Fby::SetLogLevel(Fby::LogLevel::Warn);
+    Fby::SetLogLevel(std::getenv("FBY_GPU_LOG") != nullptr ? Fby::LogLevel::Info : Fby::LogLevel::Warn);
     Fby::WindowManager ScopedWindow;
     if (!ScopedWindow.Initialize())
     {
@@ -96,6 +99,25 @@ int main()
     {
         std::fprintf(stderr, "Vulkan temporal capabilities are not reported\n");
         return 1;
+    }
+    Fby::Rhi::RHI::NativeDeviceHandles ScopedAdapterHandles;
+    if (ScopedGpu->GetNativeDeviceHandles(ScopedAdapterHandles))
+    {
+        Fby::Rhi::Fsr2Adapter ScopedFsr2;
+        const bool ScopedFsr2Ready = ScopedFsr2.Initialize(
+            ScopedAdapterHandles.Device, ScopedAdapterHandles.PhysicalDevice, ScopedAdapterHandles.DeviceProcAddr,
+            1920, 1080, 3840, 2160);
+        std::printf("static_bake_gpu: FSR2 vendor adapter=%d\n", ScopedFsr2Ready ? 1 : 0);
+        ScopedFsr2.Shutdown();
+        Fby::Rhi::Fsr3FrameGenerator ScopedFsr3;
+        const bool ScopedFsr3Ready = ScopedFsr3.Initialize(*ScopedGpu, {160, 90}, {320, 180});
+        std::printf("static_bake_gpu: FSR3 vendor frame generator=%d\n", ScopedFsr3Ready ? 1 : 0);
+        ScopedFsr3.Shutdown(*ScopedGpu);
+        Fby::Rhi::DlssAdapter ScopedDlss;
+        const bool ScopedDlssReady = ScopedDlss.Initialize(*ScopedGpu);
+        std::printf("static_bake_gpu: DLSS vendor adapter=%d fg=%d\n", ScopedDlssReady ? 1 : 0,
+                    ScopedDlss.IsFrameGenerationAvailable() ? 1 : 0);
+        ScopedDlss.Shutdown(*ScopedGpu);
     }
     std::printf("static_bake_gpu: native handles=%d\n",
                 ScopedGpu->GetNativeDeviceHandles(ScopedNative) && ScopedNative.Device != nullptr ? 1 : 0);

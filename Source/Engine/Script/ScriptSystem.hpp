@@ -157,6 +157,18 @@ public:
         return MInitialized;
     }
 
+    // Coroutine scheduling. A slot key is (entity, program, event); the VM
+    // snapshots its registers and pc on Yield and restores them on the next
+    // frame. The table is fixed-capacity and allocation-free.
+    static constexpr std::uint32_t kMaxCoroutines = 128;
+    [[nodiscard]] Script::VmSuspendState* FindCoroutine(Entity InEntity, std::uint32_t InProgram,
+                                                        Script::ScriptEvent InEvent) noexcept;
+    void StoreCoroutine(Entity InEntity, std::uint32_t InProgram, Script::ScriptEvent InEvent,
+                        const Script::VmSuspendState& InState) noexcept;
+    void RemoveCoroutine(Entity InEntity, std::uint32_t InProgram, Script::ScriptEvent InEvent) noexcept;
+    void ClearCoroutines() noexcept;
+    void PruneCoroutines(const Ecs::Registry& InRegistry) noexcept;
+
 private:
     struct Slot
     {
@@ -192,6 +204,15 @@ private:
     std::uint32_t MActiveScriptCount = 0;
     std::uint32_t MActiveStamp = 0;
     std::uint32_t MDroppedDestroyEvents = 0;
+    struct CoroutineSlot
+    {
+        Entity Entity = Fby::kNullEntity;
+        std::uint32_t Program = 0;
+        Script::ScriptEvent Event = Script::ScriptEvent::Update;
+        Script::VmSuspendState State{};
+        bool Used = false;
+    };
+    std::array<CoroutineSlot, kMaxCoroutines> MCoroutines{};
     TransportGroupSystem* MTransportGroups = nullptr;
     PhysicsSystem* MPhysics = nullptr;
     CameraStackSystem* MCamera = nullptr;

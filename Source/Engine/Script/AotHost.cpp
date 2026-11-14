@@ -125,6 +125,61 @@ bool AotHost::RegisterModule(std::uint64_t InHash, const Aot::Module& InModule, 
     return true;
 }
 
+Aot::CoroutineState* AotHost::CoroutineFor(Entity InEntity, std::uint32_t InProgram,
+                                           ScriptEvent InEvent) const noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+            ScopedSlot.Event == InEvent)
+        {
+            return &ScopedSlot.State;
+        }
+    }
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (!ScopedSlot.Used)
+        {
+            ScopedSlot.Used = true;
+            ScopedSlot.Entity = InEntity;
+            ScopedSlot.Program = InProgram;
+            ScopedSlot.Event = InEvent;
+            ScopedSlot.State = Aot::CoroutineState{};
+            return &ScopedSlot.State;
+        }
+    }
+    return nullptr;
+}
+
+void AotHost::ReleaseCoroutine(Entity InEntity, std::uint32_t InProgram, ScriptEvent InEvent) const noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+            ScopedSlot.Event == InEvent)
+        {
+            ScopedSlot = CoroutineSlot{};
+            return;
+        }
+    }
+}
+
+void AotHost::ClearCoroutines() const noexcept
+{
+    MCoroutines.fill(CoroutineSlot{});
+}
+
+void AotHost::PruneCoroutines(const Ecs::Registry& InRegistry) const noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && !InRegistry.valid(ScopedSlot.Entity))
+        {
+            ScopedSlot = CoroutineSlot{};
+        }
+    }
+}
+
 bool AotHost::Run(std::uint64_t InProgramHash, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
                   std::string* InError) const
 {
@@ -183,6 +238,7 @@ bool AotHost::ValidateRequired(std::span<const std::uint64_t> InRequiredHashes, 
 
 void AotHost::Unload() noexcept
 {
+    ClearCoroutines();
     for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
     {
         if (MSlots[ScopedI].Owned != nullptr)

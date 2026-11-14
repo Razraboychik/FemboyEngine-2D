@@ -3,7 +3,7 @@
 **Движок на C++26 в парадигме data-oriented: полная публичная поверхность, контракты и пошаговый пример**
 
 
-Version 0.5.0 (Release) · 2026-11-12 · Russian
+Version 0.5.0 (Release) · 2026-11-13 · Russian
 
 
 ---
@@ -508,14 +508,14 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `AssetImportService` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 58 |
 | `Callbacks` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 38 |
 | `Change` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 126 |
-| `Codec` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 222 |
-| `Command` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 236 |
+| `Codec` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 230 |
+| `Command` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 244 |
 | `CommandKind` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 33 |
 | `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 30 |
 | `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 59 |
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 27 |
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 39 |
-| `Config` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 88 |
+| `Config` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 90 |
 | `ContentBrowserPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 60 |
 | `CookRequest` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 141 |
 | `CookResult` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 152 |
@@ -552,8 +552,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `NetworkDiagnosticsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 63 |
 | `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 99 |
 | `OpaqueRenderMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 92 |
-| `PendingEdit` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 261 |
-| `PendingSpawn` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 270 |
+| `PendingEdit` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 270 |
+| `PendingSpawn` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 282 |
 | `PhysicsDebugFlags` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 19 |
 | `PhysicsDebugFrame` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 47 |
 | `PhysicsDebugLine` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 32 |
@@ -576,7 +576,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 182 |
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 22 |
 | `ProjectSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 66 |
-| `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 253 |
+| `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 262 |
 | `ReleaseCookConfig` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 70 |
 | `ReleaseCooker` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 158 |
 | `ReleaseCookProgress` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 121 |
@@ -584,7 +584,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ReleaseCookStage` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 28 |
 | `ResolvedHudSettings` | Infrastructure | `Source/Editor/Infrastructure/ResolvedRenderSettings.hpp` | 35 |
 | `ResolvedRenderSettings` | Infrastructure | `Source/Editor/Infrastructure/ResolvedRenderSettings.hpp` | 14 |
-| `Result` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 43 |
+| `Result` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 45 |
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 47 |
 | `SdfCollisionSystem` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 13 |
 | `Services` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 224 |
@@ -593,13 +593,13 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `SettingScope` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 11 |
 | `Slot` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 118 |
 | `Source` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 19 |
-| `SpawnComponent` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 284 |
-| `SpawnHeader` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 277 |
+| `SpawnComponent` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 296 |
+| `SpawnHeader` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 289 |
 | `SpawnTransaction` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 190 |
 | `StableSource` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 145 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 88 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 55 |
-| `Stats` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 95 |
+| `Stats` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 97 |
 | `TemporalUpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 155 |
 | `TextureArrayAsset` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 23 |
 | `TextureBinding` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 168 |
@@ -1050,7 +1050,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Slot` | Documents | `Source/Engine/Documents/Document.hpp` | 105 |
 | `VirtualFileSystem` | Documents | `Source/Engine/Documents/Document.hpp` | 14 |
 
-### Engine/ECS (289)
+### Engine/ECS (292)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -1226,6 +1226,9 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `PrefabEntityDesc` | ECS | `Source/Engine/ECS/Descriptors.hpp` | 76 |
 | `PrefabEntityFlags` | ECS | `Source/Engine/ECS/Descriptors.hpp` | 98 |
 | `PrefabEntityOverride` | ECS | `Source/Engine/ECS/PrefabSystem.hpp` | 18 |
+| `PrefabInstance` | ECS | `Source/Engine/ECS/PrefabInstance.hpp` | 50 |
+| `PrefabInstanceComponent` | ECS | `Source/Engine/ECS/PrefabInstance.hpp` | 21 |
+| `PrefabInstanceMemberComponent` | ECS | `Source/Engine/ECS/PrefabInstance.hpp` | 43 |
 | `PrefabOverrides` | ECS | `Source/Engine/ECS/PrefabSystem.hpp` | 31 |
 | `PrefabSystem` | ECS | `Source/Engine/ECS/PrefabSystem.hpp` | 36 |
 | `QuantizedPose` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 165 |
@@ -1510,7 +1513,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Peer` | Network | `Source/Engine/Network/SecureSessionTransport.hpp` | 87 |
 | `PendingEvent` | Network | `Source/Engine/Network/Session.hpp` | 279 |
 | `PendingState` | Network | `Source/Engine/Network/Replication.hpp` | 129 |
-| `Phase` | Network | `Source/Engine/Network/SecureChannel.hpp` | 256 |
+| `Phase` | Network | `Source/Engine/Network/SecureChannel.hpp` | 263 |
 | `PhysicsSystem` | Network | `Source/Engine/Network/NetRollback.hpp` | 20 |
 | `RateEntry` | Network | `Source/Engine/Network/SecureSessionTransport.hpp` | 120 |
 | `Reassembly` | Network | `Source/Engine/Network/Transport.hpp` | 115 |
@@ -1919,11 +1922,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VisibleSprite` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 87 |
 | `VulkanRHI` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 440 |
 
-### Engine/Script (76)
+### Engine/Script (81)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `ActiveScript` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 183 |
+| `ActiveScript` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 195 |
 | `AotBuilder` | Script | `Source/Engine/Script/AotBuilder.hpp` | 71 |
 | `AotBuildOptions` | Script | `Source/Engine/Script/AotBuilder.hpp` | 43 |
 | `AotBuildResult` | Script | `Source/Engine/Script/AotBuilder.hpp` | 60 |
@@ -1934,17 +1937,20 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `AotModule` | Script | `Source/Engine/Script/AotModule.hpp` | 22 |
 | `AotProgramRef` | Script | `Source/Engine/Script/AotHost.hpp` | 22 |
 | `AotTranspileOptions` | Script | `Source/Engine/Script/AotTranspiler.hpp` | 12 |
-| `AudioSystem` | Script | `Source/Engine/Script/Vm.hpp` | 20 |
+| `AudioSystem` | Script | `Source/Engine/Script/Vm.hpp` | 21 |
 | `BoundProgram` | Script | `Source/Engine/Script/EcsBridge.hpp` | 101 |
-| `CallFrame` | Script | `Source/Engine/Script/Vm.hpp` | 379 |
 | `CameraStackSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 20 |
-| `CameraStackSystem` | Script | `Source/Engine/Script/Vm.hpp` | 19 |
-| `Code` | Script | `Source/Engine/Script/Vm.hpp` | 34 |
-| `CompiledDebug` | Script | `Source/Engine/Script/Bytecode.hpp` | 554 |
-| `CompiledProgram` | Script | `Source/Engine/Script/Bytecode.hpp` | 569 |
+| `CameraStackSystem` | Script | `Source/Engine/Script/Vm.hpp` | 20 |
+| `Code` | Script | `Source/Engine/Script/Vm.hpp` | 35 |
+| `CompiledDebug` | Script | `Source/Engine/Script/Bytecode.hpp` | 559 |
+| `CompiledProgram` | Script | `Source/Engine/Script/Bytecode.hpp` | 574 |
 | `ComponentAccessor` | Script | `Source/Engine/Script/EcsBridge.hpp` | 17 |
-| `ComponentBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 496 |
-| `Context` | Script | `Source/Engine/Script/AotAbi.hpp` | 155 |
+| `ComponentBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 501 |
+| `Context` | Script | `Source/Engine/Script/AotAbi.hpp` | 177 |
+| `CoroutineFrame` | Script | `Source/Engine/Script/AotAbi.hpp` | 158 |
+| `CoroutineSlot` | Script | `Source/Engine/Script/AotHost.hpp` | 115 |
+| `CoroutineSlot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 207 |
+| `CoroutineState` | Script | `Source/Engine/Script/AotAbi.hpp` | 166 |
 | `DebugField` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 123 |
 | `DebugFrame` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 103 |
 | `DebugSectionHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 215 |
@@ -1952,10 +1958,10 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `DebugSpanFlags` | Script | `Source/Engine/Script/Bytecode.hpp` | 184 |
 | `DebugVariable` | Script | `Source/Engine/Script/Bytecode.hpp` | 206 |
 | `EcsBridge` | Script | `Source/Engine/Script/EcsBridge.hpp` | 26 |
-| `FieldBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 506 |
-| `FunctionEntry` | Script | `Source/Engine/Script/Bytecode.hpp` | 519 |
-| `HostApi` | Script | `Source/Engine/Script/AotAbi.hpp` | 75 |
-| `Instruction` | Script | `Source/Engine/Script/Bytecode.hpp` | 476 |
+| `FieldBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 511 |
+| `FunctionEntry` | Script | `Source/Engine/Script/Bytecode.hpp` | 524 |
+| `HostApi` | Script | `Source/Engine/Script/AotAbi.hpp` | 78 |
+| `Instruction` | Script | `Source/Engine/Script/Bytecode.hpp` | 481 |
 | `LogicCompareOp` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 22 |
 | `LogicCompileOptions` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 775 |
 | `LogicCompileResult` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 782 |
@@ -1966,17 +1972,17 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `LogicNode` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 333 |
 | `LogicNodeKind` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 111 |
 | `MapEntry` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 137 |
-| `Module` | Script | `Source/Engine/Script/AotAbi.hpp` | 502 |
+| `Module` | Script | `Source/Engine/Script/AotAbi.hpp` | 526 |
 | `NativeId` | Script | `Source/Engine/Script/Bytecode.hpp` | 18 |
 | `Object` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 115 |
 | `ObjectKind` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 108 |
 | `OpCode` | Script | `Source/Engine/Script/Bytecode.hpp` | 279 |
-| `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 673 |
+| `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 678 |
 | `PhysicsSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 19 |
-| `PhysicsSystem` | Script | `Source/Engine/Script/Vm.hpp` | 18 |
+| `PhysicsSystem` | Script | `Source/Engine/Script/Vm.hpp` | 19 |
 | `PinType` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 318 |
-| `ProgramBuilder` | Script | `Source/Engine/Script/Bytecode.hpp` | 628 |
-| `ProgramHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 529 |
+| `ProgramBuilder` | Script | `Source/Engine/Script/Bytecode.hpp` | 633 |
+| `ProgramHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 534 |
 | `ResolvedComponent` | Script | `Source/Engine/Script/EcsBridge.hpp` | 93 |
 | `ScriptComponent` | Script | `Source/Engine/Script/ScriptComponent.hpp` | 16 |
 | `ScriptEvent` | Script | `Source/Engine/Script/Bytecode.hpp` | 249 |
@@ -1984,21 +1990,23 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 24 |
 | `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 28 |
 | `ScriptValue` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 26 |
-| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 149 |
-| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 263 |
-| `Slot` | Script | `Source/Engine/Script/AotHost.hpp` | 94 |
-| `Slot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 161 |
+| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 153 |
+| `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 305 |
+| `Slot` | Script | `Source/Engine/Script/AotHost.hpp` | 103 |
+| `Slot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 173 |
 | `SourceLocation` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 17 |
 | `TextCompileOptions` | Script | `Source/Engine/Script/TextScript.hpp` | 14 |
-| `TransportGroupSystem` | Script | `Source/Engine/Script/Vm.hpp` | 17 |
+| `TransportGroupSystem` | Script | `Source/Engine/Script/Vm.hpp` | 18 |
 | `ValueTag` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 15 |
-| `Vector2D` | Script | `Source/Engine/Script/AotAbi.hpp` | 49 |
-| `VmContext` | Script | `Source/Engine/Script/Vm.hpp` | 123 |
-| `VmDebugState` | Script | `Source/Engine/Script/Vm.hpp` | 188 |
-| `VmFault` | Script | `Source/Engine/Script/Vm.hpp` | 32 |
-| `VmHalt` | Script | `Source/Engine/Script/Vm.hpp` | 161 |
-| `VmPauseReason` | Script | `Source/Engine/Script/Vm.hpp` | 152 |
-| `VmStopInfo` | Script | `Source/Engine/Script/Vm.hpp` | 168 |
+| `Vector2D` | Script | `Source/Engine/Script/AotAbi.hpp` | 52 |
+| `VmCallFrame` | Script | `Source/Engine/Script/Vm.hpp` | 193 |
+| `VmContext` | Script | `Source/Engine/Script/Vm.hpp` | 124 |
+| `VmDebugState` | Script | `Source/Engine/Script/Vm.hpp` | 204 |
+| `VmFault` | Script | `Source/Engine/Script/Vm.hpp` | 33 |
+| `VmHalt` | Script | `Source/Engine/Script/Vm.hpp` | 165 |
+| `VmPauseReason` | Script | `Source/Engine/Script/Vm.hpp` | 156 |
+| `VmStopInfo` | Script | `Source/Engine/Script/Vm.hpp` | 173 |
+| `VmSuspendState` | Script | `Source/Engine/Script/Vm.hpp` | 292 |
 
 ### Engine/Text (84)
 
@@ -2264,8 +2272,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | Макрос | Заголовок | Строка |
 |---|---|---|
 | `FBY_ALCOHOL_EFFECTS` | `Source/Engine/Core/PluginAPI.h` | 105 |
-| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 519 |
-| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 521 |
+| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 543 |
+| `FBY_AOT_EXPORT` | `Source/Engine/Script/AotAbi.hpp` | 545 |
 | `FBY_ASSERT` | `Source/Engine/Core/Assert.hpp` | 13 |
 | `FBY_ASSERT` | `Source/Engine/Core/Assert.hpp` | 31 |
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 22 |

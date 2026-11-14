@@ -43,7 +43,7 @@ REQUIRED_DIRECTORIES = [
 # Extra first-class modules. They are not in the required list because a
 # platform-less or weather-less build is valid, but they are allowed to live
 # directly under Source/Engine.
-OPTIONAL_ENGINE_MODULES = {"Weather", "Platform", "Navigation", "Text", "AI", "Gameplay", "Input", "Documents", "Effects"}
+OPTIONAL_ENGINE_MODULES = {"Weather", "Platform", "Navigation", "Text", "AI", "Gameplay", "Input", "Documents", "Effects", "Animation"}
 EDITOR_MODULES = {"Panels", "Infrastructure"}
 JUNK_PATTERNS = (
     "*.obj",

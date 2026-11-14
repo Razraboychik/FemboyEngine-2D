@@ -46,6 +46,7 @@ set(FBY_ENGINE_SOURCES
     Core/CryptoKdf.cpp
     Core/Sha256.cpp
     Core/JobSystem.cpp
+    Core/DataTable.cpp
     Core/CrashHandler.cpp
     Core/BuildInfo.cpp
     Core/Log.cpp
@@ -69,6 +70,7 @@ set(FBY_ENGINE_SOURCES
     ECS/Lighting.cpp
     ECS/LightSource.cpp
     ECS/Presentation.cpp
+    ECS/PrefabInstance.cpp
     ECS/PrefabSystem.cpp
     ECS/ComponentRegistry.cpp
     ECS/SceneBinary.cpp
@@ -109,6 +111,7 @@ set(FBY_ENGINE_SOURCES
     Network/Session.cpp
     Network/Ticket.cpp
     Network/Transport.cpp
+    Network/WebSocket.cpp
     Navigation/CrowdPool.cpp
     Navigation/FlowField.cpp
     Navigation/PagedNavGrid.cpp
@@ -131,6 +134,7 @@ set(FBY_ENGINE_SOURCES
     Physics/SnapshotRemap.cpp
     Physics/TransportGroups.cpp
     Platform/PlatformService.cpp
+    Platform/SystemInfo.cpp
     Platform/PlatformSystems.cpp
     RHI/CameraStack.cpp
     RHI/DynamicResolution.cpp
@@ -148,8 +152,13 @@ set(FBY_ENGINE_SOURCES
     RHI/Fsr2Pass.cpp
     RHI/CustomFrameGenerator.cpp
     RHI/DlssAdapter.cpp
+    RHI/Dx/DxProbe.cpp
+    RHI/D3D12/D3D12RHI.cpp
+    RHI/D3D11/D3D11RHI.cpp
+    RHI/DlssExtensions.cpp
     RHI/Fsr2Adapter.cpp
     RHI/Fsr3FrameGenerator.cpp
+    RHI/Fsr3Dx12.cpp
     RHI/SkinningBridge.cpp
     RHI/StaticBake.cpp
     RHI/StaticBakeRenderer.cpp
@@ -549,6 +558,9 @@ if (UNIX AND NOT APPLE)
 # mmap, dlopen and the POSIX file layer.
     target_link_libraries(fby_engine PRIVATE dl)
 endif()
+if(WIN32)
+    target_link_libraries(fby_engine PRIVATE dxgi)
+endif()
 
 if (FBY_WITH_FIDELITYFX)
     if(NOT EXISTS "${FBY_FIDELITYFX_ROOT}/api/include/ffx_api.h")
@@ -581,6 +593,27 @@ if (FBY_WITH_FIDELITYFX)
             message(STATUS
                 "FidelityFX runtime DLL is absent; the compiled backend will fall back at runtime")
         endif()
+        foreach(FfxRuntime
+                amd_fidelityfx_framegeneration_dx12.dll
+                amd_fidelityfx_framegeneration_vk.dll
+                amd_fidelityfx_loader_dx12.dll
+                amd_fidelityfx_loader_vk.dll)
+            if(EXISTS "${FBY_FIDELITYFX_ROOT}/signedbin/${FfxRuntime}")
+                add_custom_command(TARGET fby_engine POST_BUILD
+                    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                        "${FBY_FIDELITYFX_ROOT}/signedbin/${FfxRuntime}"
+                        "${CMAKE_BINARY_DIR}/bin/${FfxRuntime}"
+                    VERBATIM)
+                if(FBY_BUILD_TESTS)
+                    add_custom_command(TARGET fby_engine POST_BUILD
+                        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/bin/tests"
+                        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                            "${FBY_FIDELITYFX_ROOT}/signedbin/${FfxRuntime}"
+                            "${CMAKE_BINARY_DIR}/bin/tests/${FfxRuntime}"
+                        VERBATIM)
+                endif()
+            endif()
+        endforeach()
     endif()
 endif()
 
@@ -607,6 +640,10 @@ if (FBY_WITH_DLSS)
         target_include_directories(fby_engine PRIVATE "${FBY_DLSS_ROOT}/include")
         target_compile_definitions(fby_engine PRIVATE FBY_WITH_DLSS=1)
     endif()
+endif()
+
+if(WIN32)
+    target_link_libraries(fby_engine PRIVATE dxgi d3d12 d3d11 d3dcompiler)
 endif()
 
 target_compile_definitions(fby_engine PUBLIC

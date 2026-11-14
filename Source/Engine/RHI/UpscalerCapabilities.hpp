@@ -114,4 +114,66 @@ struct BackendCapabilities
     return false;
 }
 
+// Human-readable gate for diagnostics. Returns nullptr when the backend is
+// available; otherwise names the first missing capability.
+[[nodiscard]] constexpr const char* UpscalerUnavailableReason(const BackendCapabilities& InCaps,
+                                                              UpscalerBackend InBackend) noexcept
+{
+    if (BackendAvailable(InCaps, InBackend))
+    {
+        return nullptr;
+    }
+    switch (InBackend)
+    {
+    case UpscalerBackend::None:
+        return "off";
+    case UpscalerBackend::Fsr1:
+        return "FSR1 spatial pass unavailable";
+    case UpscalerBackend::Fsr2:
+        return InCaps.MotionVectors ? "FSR2 temporal resolve unavailable" : "motion vectors unavailable";
+    case UpscalerBackend::Dlss:
+        if (InCaps.Platform != PlatformKind::Windows)
+        {
+            return "DLSS requires Windows";
+        }
+        if (InCaps.Vendor != GpuVendor::Nvidia)
+        {
+            return "DLSS requires an NVIDIA GPU";
+        }
+        if (!InCaps.Dlss)
+        {
+            return "DLSS runtime unavailable";
+        }
+        return "motion vectors unavailable";
+    case UpscalerBackend::MetalFx:
+        return "MetalFX requires macOS on Apple silicon";
+    case UpscalerBackend::XeSs:
+        return InCaps.MotionVectors ? "XeSS runtime unavailable" : "motion vectors unavailable";
+    }
+    return "unknown backend";
+}
+
+[[nodiscard]] constexpr const char* FrameGenUnavailableReason(const BackendCapabilities& InCaps,
+                                                              FrameGenBackend InBackend) noexcept
+{
+    if (FrameGenAvailable(InCaps, InBackend))
+    {
+        return nullptr;
+    }
+    switch (InBackend)
+    {
+    case FrameGenBackend::Off:
+        return "off";
+    case FrameGenBackend::Custom:
+        return InCaps.MotionVectors ? "custom frame generation disabled" : "motion vectors unavailable";
+    case FrameGenBackend::Fsr3:
+        return InCaps.MotionVectors ? "FSR3 frame generation runtime unavailable" : "motion vectors unavailable";
+    case FrameGenBackend::DlssFg:
+        return InCaps.MotionVectors ? "DLSS frame generation runtime unavailable" : "motion vectors unavailable";
+    case FrameGenBackend::XeSsFg:
+        return InCaps.MotionVectors ? "XeSS frame generation runtime unavailable" : "motion vectors unavailable";
+    }
+    return "unknown backend";
+}
+
 }

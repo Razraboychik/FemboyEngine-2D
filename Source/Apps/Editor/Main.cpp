@@ -1147,6 +1147,12 @@ int main(int argc, char** argv)
     std::unique_ptr<Fby::Rhi::VirtualTextureSystem> ScopedVtSystem;
     std::vector<std::uint32_t> ScopedVtTable;
     Fby::Rhi::VirtualTextureRhiTarget ScopedVtTarget;
+    // The PIE client owns a separate VT resource so its camera cannot evict the
+    // authoring viewport's pages. Only created when the VT self-test is active.
+    Fby::Rhi::VirtualTextureHandle ScopedPieVtHandle;
+    std::unique_ptr<Fby::Rhi::VirtualTextureSystem> ScopedPieVtSystem;
+    std::vector<std::uint32_t> ScopedPieVtTable;
+    Fby::Rhi::VirtualTextureRhiTarget ScopedPieVtTarget;
     std::uint64_t ScopedVtTotalUploads = 0;
     std::uint64_t ScopedVtTotalEvictions = 0;
     std::uint64_t ScopedVtTotalMisses = 0;
@@ -1272,6 +1278,32 @@ int main(int argc, char** argv)
                 ScopedVtSystem->SetPrefetchTiles(ScopedVtCfg.prefetchTiles);
                 ScopedVtTable.assign(static_cast<std::size_t>(ScopedVtTableSize) * ScopedVtTableSize,
                                      Fby::Rhi::kVirtualTexturePageTableMissing);
+                ScopedPieVtHandle = ScopedGpu->CreateVirtualTexture(ScopedVtDesc);
+                if (ScopedPieVtHandle.IsValid())
+                {
+                    ScopedPieVtTarget.Renderer = ScopedGpu.get();
+                    ScopedPieVtTarget.Handle = ScopedPieVtHandle;
+                    ScopedPieVtTarget.TileSize = ScopedVtCfg.tileSize;
+                    ScopedPieVtTarget.TilesPerAxis = ScopedVtCfg.pageSize / ScopedVtCfg.tileSize;
+                    ScopedPieVtSystem = std::make_unique<Fby::Rhi::VirtualTextureSystem>();
+                    std::string ScopedPieVtError;
+                    if (!ScopedPieVtSystem->Initialize(ScopedStreamDesc, ScopedVtVfs, ".",
+                                                      &Fby::Rhi::UploadVirtualTextureTileToRhi, &ScopedPieVtTarget))
+                    {
+                        Fby::LogWarn("editor_app", "PIE VT streaming init failed: {}", ScopedPieVtError);
+                        ScopedPieVtSystem.reset();
+                        ScopedGpu->DestroyVirtualTexture(ScopedPieVtHandle);
+                        ScopedPieVtHandle = {};
+                    }
+                    else
+                    {
+                        ScopedPieVtSystem->SetMaxLoadsPerUpdate(std::max(1u, ScopedVtCfg.budgetLoadsPerFrame));
+                        ScopedPieVtSystem->SetPrefetchTiles(ScopedVtCfg.prefetchTiles);
+                        ScopedPieVtTable.assign(static_cast<std::size_t>(ScopedVtTableSize) * ScopedVtTableSize,
+                                                Fby::Rhi::kVirtualTexturePageTableMissing);
+                        Fby::LogInfo("editor_app", "PIE VT: separate resource and page table initialized");
+                    }
+                }
                 if (const char* ScopedDebug = std::getenv("FBY_VT_DEBUG"); ScopedDebug != nullptr)
                 {
                     const std::string_view ScopedDebugText(ScopedDebug);
@@ -1827,14 +1859,61 @@ int main(int argc, char** argv)
                 // accessibility profile, while the authoring viewport keeps its
                 // own editor-window policy.
                 Fby::Rhi::FramePacket ScopedPiePacket = ScopedPieExtract.Packet();
-                // The shipped viewport inherits the virtual-texturing binding the
-                // authoring pass selected. Without this the PIE packet kept the
-                // default handle and VT sprites sampled the fallback page.
+                // A live VT self-test gives the client its own page table and
+                // resource, so its camera cannot evict the authoring viewport's
+                // pages. Without VT the packet keeps the default binding.
                 const Fby::Rhi::FramePacket& ScopedEditorPacket = ScopedExtract.Packet();
-                ScopedPiePacket.virtualTexture = ScopedEditorPacket.virtualTexture;
-                ScopedPiePacket.virtualTextureParams = ScopedEditorPacket.virtualTextureParams;
-                ScopedPiePacket.virtualTextureLayout = ScopedEditorPacket.virtualTextureLayout;
-                ScopedPiePacket.virtualTextureDebugMode = ScopedEditorPacket.virtualTextureDebugMode;
+                if (ScopedPieVtSystem != nullptr && ScopedPieVtHandle.IsValid())
+                {
+                    const Fby::Editor::VirtualTextureSettings& ScopedPieVtRuntime =
+                        ScopedEditor.VirtualTextureConfig();
+                    ScopedPieVtSystem->SetMaxLoadsPerUpdate(std::max(1u, ScopedPieVtRuntime.budgetLoadsPerFrame));
+                    ScopedPieVtSystem->SetPrefetchTiles(ScopedPieVtRuntime.prefetchTiles);
+                    ScopedPieVtSystem->BeginFrame();
+                    ScopedPieVtSystem->SetFocus(ScopedPieState.center);
+                    ScopedPieVtSystem->Update(
+                        ScopedPieState.center,
+                        Fby::Vector2D{static_cast<float>(ScopedPieViewport.width),
+                                      static_cast<float>(ScopedPieViewport.height)},
+                        ScopedPieState.zoom);
+                    ScopedPieVtSystem->PollLoads();
+                    bool ScopedPieVtTableChanged = false;
+                    for (const Fby::Rhi::VirtualTextureTableUpdate& ScopedUpdate :
+                         ScopedPieVtSystem->PendingTableUpdates())
+                    {
+                        const std::int32_t ScopedCellX = ScopedUpdate.TileX;
+                        const std::int32_t ScopedCellY = ScopedUpdate.TileY;
+                        if (ScopedCellX < 0 || ScopedCellY < 0 ||
+                            ScopedCellX >= static_cast<std::int32_t>(ScopedVtTableSize) ||
+                            ScopedCellY >= static_cast<std::int32_t>(ScopedVtTableSize))
+                        {
+                            continue;
+                        }
+                        ScopedPieVtTable[static_cast<std::size_t>(ScopedCellY) * ScopedVtTableSize +
+                                         static_cast<std::size_t>(ScopedCellX)] = ScopedUpdate.Entry;
+                        ScopedPieVtTableChanged = true;
+                    }
+                    ScopedPieVtSystem->ClearPendingTableUpdates();
+                    if (ScopedPieVtTableChanged)
+                    {
+                        (void)ScopedGpu->UpdateVirtualTexturePageTable(ScopedPieVtHandle, ScopedVtTableSize,
+                                                                       ScopedVtTableSize, ScopedPieVtTable);
+                    }
+                    ScopedPiePacket.virtualTexture = ScopedPieVtHandle;
+                    ScopedPiePacket.virtualTextureParams =
+                        Fby::Vector4D{ScopedVtWorldTile, 0.0f, 0.0f, 1.0f};
+                    ScopedPiePacket.virtualTextureLayout =
+                        Fby::Vector4D{static_cast<float>(ScopedVtTileSize), static_cast<float>(ScopedVtPageSize),
+                                      static_cast<float>(ScopedVtTableSize), static_cast<float>(ScopedVtTableSize)};
+                    ScopedPiePacket.virtualTextureDebugMode = ScopedVtDebugMode;
+                }
+                else
+                {
+                    ScopedPiePacket.virtualTexture = ScopedEditorPacket.virtualTexture;
+                    ScopedPiePacket.virtualTextureParams = ScopedEditorPacket.virtualTextureParams;
+                    ScopedPiePacket.virtualTextureLayout = ScopedEditorPacket.virtualTextureLayout;
+                    ScopedPiePacket.virtualTextureDebugMode = ScopedEditorPacket.virtualTextureDebugMode;
+                }
                 // The client world has its own dynamic SDF casters; the static
                 // field and atlas are shared with the authoring pass.
                 Fby::Rhi::SdfLightingFrame ScopedPieSdfFrame;
@@ -2508,6 +2587,18 @@ int main(int argc, char** argv)
     if (ScopedAtlas.IsValid())
     {
         ScopedAtlas.Release(*ScopedGpu);
+    }
+    ScopedPieVtSystem.reset();
+    if (ScopedPieVtHandle.IsValid())
+    {
+        ScopedGpu->DestroyVirtualTexture(ScopedPieVtHandle);
+        ScopedPieVtHandle = {};
+    }
+    ScopedVtSystem.reset();
+    if (ScopedVtHandle.IsValid())
+    {
+        ScopedGpu->DestroyVirtualTexture(ScopedVtHandle);
+        ScopedVtHandle = {};
     }
     ScopedGpu->Shutdown();
     LogShutdownPhase("gpu");

@@ -190,6 +190,11 @@ public:
     {
     }
 
+    void SetProgramCoroutine(bool InValue) noexcept
+    {
+        MProgramCoroutine = InValue;
+    }
+
     [[nodiscard]] bool Emit(const FunctionEntry& InFunction, std::uint32_t InIndex, std::string* InError)
     {
         const auto& ScopedCode = MProgram.code;
@@ -216,6 +221,21 @@ public:
             return false;
         }
 
+        std::vector<std::uint32_t> ScopedYieldPcs;
+        std::vector<std::uint32_t> ScopedCallPcs;
+        for (std::uint32_t ScopedPc = InFunction.codeOffset; ScopedPc <= ScopedEnd; ++ScopedPc)
+        {
+            const OpCode ScopedOp = ScopedCode[ScopedPc].Code();
+            if (ScopedOp == OpCode::Yield)
+            {
+                ScopedYieldPcs.push_back(ScopedPc);
+            }
+            else if (MProgramCoroutine && ScopedOp == OpCode::CallFunction)
+            {
+                ScopedCallPcs.push_back(ScopedPc);
+            }
+        }
+        MIsUserFunction = ScopedUserFunction;
         MCurrentBase = InFunction.registerHighWater;
 
         MUsedComponents.assign(MProgram.components.size(), false);
@@ -238,7 +258,16 @@ public:
 
         if (ScopedUserFunction)
         {
-            AppendFormat(MOut, "void fby_fn_%u(::Fby::Script::Aot::Context& ctx, Registers& r) noexcept\n{\n", InIndex);
+            if (MProgramCoroutine)
+            {
+                AppendFormat(MOut, "bool fby_fn_%u(::Fby::Script::Aot::Context& ctx, Registers& r) noexcept\n{\n",
+                             InIndex);
+            }
+            else
+            {
+                AppendFormat(MOut, "void fby_fn_%u(::Fby::Script::Aot::Context& ctx, Registers& r) noexcept\n{\n",
+                             InIndex);
+            }
         }
         else
         {
@@ -260,10 +289,67 @@ public:
             }
             AppendFormat(MOut, "    std::byte* c%u = ctx.Component(%s);\n", ScopedComponent,
                          Hex64(MProgram.components[ScopedComponent].layoutHash).c_str());
-            AppendFormat(MOut, "    if (c%u == nullptr) { ctx.Fault(%u, %u); return; }\n", ScopedComponent,
-                         Aot::FaultCode::MissingComponent, InFunction.codeOffset);
+            AppendFormat(MOut, "    if (c%u == nullptr) { ctx.Fault(%u, %u); return%s; }\n", ScopedComponent,
+                         Aot::FaultCode::MissingComponent, InFunction.codeOffset,
+                         MIsUserFunction ? " false" : "");
         }
         MOut += "\n";
+        if (MProgramCoroutine)
+        {
+            if (ScopedUserFunction)
+            {
+                MOut += "    if (ctx.coroutine == nullptr) { ctx.Fault(20u, " + std::to_string(InFunction.codeOffset) +
+                        "u); return false; }\n";
+                MOut += "    if (ctx.callDepth >= 16u) { ctx.Fault(21u, " + std::to_string(InFunction.codeOffset) +
+                        "u); return false; }\n";
+                MOut += "    const std::uint32_t fby_frame = ctx.callDepth;\n";
+                MOut += "    if (ctx.coroutine->Frames[fby_frame].Active != 0) {\n";
+                AppendFormat(MOut, "        if (ctx.coroutine->Frames[fby_frame].Function != %u) { ctx.Fault(20u, %u); return false; }\n",
+                             InIndex, InFunction.codeOffset);
+                MOut += "        switch (ctx.coroutine->Frames[fby_frame].Pc) {\n";
+                for (const std::uint32_t ScopedYieldPc : ScopedYieldPcs)
+                {
+                    AppendFormat(MOut, "        case %u: goto Y%u;\n", ScopedYieldPc + 1, ScopedYieldPc + 1);
+                }
+                for (const std::uint32_t ScopedCallPc : ScopedCallPcs)
+                {
+                    AppendFormat(MOut, "        case %u: goto Y%u;\n", ScopedCallPc, ScopedCallPc);
+                }
+                MOut += "        default: break;\n        }\n    } else {\n";
+                AppendFormat(MOut, "        ctx.coroutine->Frames[fby_frame].Function = %u;\n", InIndex);
+                MOut += "        ctx.coroutine->Frames[fby_frame].Pc = 0;\n";
+                MOut += "        ctx.coroutine->Frames[fby_frame].Active = 1;\n";
+                MOut += "    }\n";
+            }
+            else
+            {
+                MOut += "    if (ctx.coroutine == nullptr) { ctx.Fault(20u, " + std::to_string(InFunction.codeOffset) +
+                        "u); return; }\n";
+                MOut += "    if (ctx.coroutine->Active != 0) {\n";
+                for (std::uint32_t ScopedRegister = 0; ScopedRegister < 128; ++ScopedRegister)
+                {
+                    AppendFormat(
+                        MOut, "        r.u[%u] = ctx.coroutine->Registers[%u]; r.tag[%u] = ctx.coroutine->Tags[%u];\n",
+                        ScopedRegister, ScopedRegister, ScopedRegister, ScopedRegister);
+                }
+                MOut += "        ctx.callDepth = 0;\n";
+                MOut += "        switch (ctx.coroutine->Frames[0].Pc) {\n";
+                for (const std::uint32_t ScopedYieldPc : ScopedYieldPcs)
+                {
+                    AppendFormat(MOut, "        case %u: goto Y%u;\n", ScopedYieldPc + 1, ScopedYieldPc + 1);
+                }
+                for (const std::uint32_t ScopedCallPc : ScopedCallPcs)
+                {
+                    AppendFormat(MOut, "        case %u: goto Y%u;\n", ScopedCallPc, ScopedCallPc);
+                }
+                MOut += "        default: break;\n        }\n    } else {\n";
+                AppendFormat(MOut, "        ctx.coroutine->Frames[0].Function = %u;\n", InIndex);
+                MOut += "        ctx.coroutine->Frames[0].Pc = 0;\n";
+                MOut += "        ctx.coroutine->Frames[0].Active = 1;\n";
+                MOut += "        ctx.coroutine->Depth = 0;\n";
+                MOut += "    }\n";
+            }
+        }
 
         std::vector<bool> ScopedLabels(ScopedCode.size(), false);
         for (std::uint32_t ScopedPc = InFunction.codeOffset; ScopedPc <= ScopedEnd; ++ScopedPc)
@@ -283,6 +369,13 @@ public:
 
         for (std::uint32_t ScopedPc = InFunction.codeOffset; ScopedPc <= ScopedEnd; ++ScopedPc)
         {
+            for (const std::uint32_t ScopedYieldPc : ScopedYieldPcs)
+            {
+                if (ScopedPc == ScopedYieldPc + 1)
+                {
+                    AppendFormat(MOut, "Y%u:;\n", ScopedPc);
+                }
+            }
             if (ScopedLabels[ScopedPc])
             {
                 AppendFormat(MOut, "L%u:;\n", ScopedPc);
@@ -320,6 +413,11 @@ private:
                 MOut += "    ;\n";
                 return true;
             case OpCode::Halt:
+                if (MProgramCoroutine)
+                {
+                    MOut += "    if (ctx.coroutine != nullptr) { ctx.coroutine->Frames[0].Active = 0; "
+                            "ctx.coroutine->Active = 0; }\n";
+                }
                 MOut += "    return;\n";
                 return true;
             case OpCode::LoadF32:
@@ -887,12 +985,43 @@ private:
                     return false;
                 }
                 const std::uint32_t ScopedBase = MProgram.functions[ScopedO].registerHighWater;
-                AppendFormat(MOut,
-                             "    if (ctx.callDepth >= %u) { ctx.Fault(%u, %u); return; }\n", kMaxCallDepth,
-                             Aot::FaultCode::Recursion, InPc);
-                MOut += "    ++ctx.callDepth;\n";
-                AppendFormat(MOut, "    fby_fn_%u(ctx, r);\n", ScopedO);
-                MOut += "    --ctx.callDepth;\n";
+                if (MProgramCoroutine)
+                {
+                    const std::string ScopedReturn = MIsUserFunction ? "return false;" : "return;";
+                    AppendFormat(MOut, "    if (ctx.callDepth >= %u) { ctx.Fault(%u, %u); %s }\n", kMaxCallDepth,
+                                 Aot::FaultCode::Recursion, InPc, ScopedReturn.c_str());
+                    MOut += "    {\n";
+                    MOut += "    const std::uint32_t fby_caller = ctx.callDepth;\n";
+                    MOut += "    ++ctx.callDepth;\n";
+                    MOut += "    ctx.coroutine->Frames[ctx.callDepth].Active = 0;\n";
+                    AppendFormat(MOut, "    if (!fby_fn_%u(ctx, r)) {\n", ScopedO);
+                    MOut += "        ctx.coroutine->Frames[fby_caller].Pc = " + std::to_string(InPc) + "u;\n";
+                    MOut += "        ctx.coroutine->Depth = ctx.callDepth;\n";
+                    MOut += "        " + ScopedReturn + "\n    }\n";
+                    MOut += "    --ctx.callDepth;\n";
+                    MOut += "    }\n";
+                    AppendFormat(MOut, "    goto fby_after_%u;\n", InPc);
+                    AppendFormat(MOut, "Y%u:;\n", InPc);
+                    MOut += "    {\n";
+                    MOut += "    const std::uint32_t fby_resume_caller = ctx.callDepth;\n";
+                    MOut += "    ++ctx.callDepth;\n";
+                    AppendFormat(MOut, "    if (!fby_fn_%u(ctx, r)) {\n", ScopedO);
+                    MOut += "        ctx.coroutine->Frames[fby_resume_caller].Pc = " + std::to_string(InPc) + "u;\n";
+                    MOut += "        ctx.coroutine->Depth = ctx.callDepth;\n";
+                    MOut += "        " + ScopedReturn + "\n    }\n";
+                    MOut += "    --ctx.callDepth;\n";
+                    MOut += "    }\n";
+                    AppendFormat(MOut, "fby_after_%u:;\n", InPc);
+                }
+                else
+                {
+                    AppendFormat(MOut,
+                                 "    if (ctx.callDepth >= %u) { ctx.Fault(%u, %u); return; }\n", kMaxCallDepth,
+                                 Aot::FaultCode::Recursion, InPc);
+                    MOut += "    ++ctx.callDepth;\n";
+                    AppendFormat(MOut, "    fby_fn_%u(ctx, r);\n", ScopedO);
+                    MOut += "    --ctx.callDepth;\n";
+                }
                 AppendFormat(MOut, "    r.u[%u] = r.u[%u]; r.tag[%u] = r.tag[%u];\n", ScopedD, ScopedBase, ScopedD,
                              ScopedBase);
                 return true;
@@ -900,7 +1029,39 @@ private:
             case OpCode::Return:
                 AppendFormat(MOut, "    r.u[%u] = r.u[%u]; r.tag[%u] = r.tag[%u];\n", MCurrentBase, ScopedS,
                              MCurrentBase, ScopedS);
-                MOut += "    return;\n";
+                if (MProgramCoroutine)
+                {
+                    MOut += "    ctx.coroutine->Frames[ctx.callDepth].Active = 0;\n";
+                    MOut += "    return true;\n";
+                }
+                else
+                {
+                    MOut += "    return;\n";
+                }
+                return true;
+
+            case OpCode::Yield:
+                if (!MProgramCoroutine)
+                {
+                    *InError = "yield outside an event coroutine";
+                    return false;
+                }
+                AppendFormat(MOut, "    if (ctx.coroutine == nullptr) { ctx.Fault(%u, %u); return",
+                             Aot::FaultCode::BadCall, InPc);
+                MOut += MIsUserFunction ? " false; }\n" : "; }\n";
+                for (std::uint32_t ScopedRegister = 0; ScopedRegister < 128; ++ScopedRegister)
+                {
+                    AppendFormat(MOut,
+                                 "    ctx.coroutine->Registers[%u] = r.u[%u]; ctx.coroutine->Tags[%u] = r.tag[%u];\n",
+                                 ScopedRegister, ScopedRegister, ScopedRegister, ScopedRegister);
+                }
+                AppendFormat(MOut, "    ctx.coroutine->Frames[ctx.callDepth].Pc = %uu;\n", InPc + 1);
+                MOut += "    ctx.coroutine->Frames[ctx.callDepth].Active = 1;\n";
+                MOut += "    ctx.coroutine->Depth = ctx.callDepth;\n";
+                AppendFormat(MOut, "    ctx.coroutine->WakeFrame = static_cast<std::uint32_t>(ctx.frameIndex) + %uu;\n",
+                             InInstruction.operand == 0 ? 1u : InInstruction.operand);
+                MOut += "    ctx.coroutine->Active = 1;\n";
+                MOut += MIsUserFunction ? "    return false;\n" : "    return;\n";
                 return true;
 
             case OpCode::Count:
@@ -914,6 +1075,8 @@ private:
     std::string& MOut;
     std::vector<bool> MUsedComponents{};
     std::uint32_t MCurrentBase = 0;
+    bool MProgramCoroutine = false;
+    bool MIsUserFunction = false;
 };
 }
 
@@ -961,15 +1124,25 @@ bool TranspileProgramToCpp(const CompiledProgram& InProgram, const AotTranspileO
     ScopedOut += "};\n\n";
 
     bool ScopedAnyFunction = false;
+    bool ScopedProgramCoroutine = false;
+    for (const Instruction& ScopedInstruction : InProgram.code)
+    {
+        if (ScopedInstruction.Code() == OpCode::Yield)
+        {
+            ScopedProgramCoroutine = true;
+            break;
+        }
+    }
     FunctionEmitter ScopedEmitter(InProgram, ScopedOut);
+    ScopedEmitter.SetProgramCoroutine(ScopedProgramCoroutine);
     // User functions can call each other in any order once every prototype is
     // visible; the text compiler still rejects forward calls.
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < InProgram.functions.size(); ++ScopedIndex)
     {
         if ((InProgram.functions[ScopedIndex].event & kUserFunctionFlag) != 0)
         {
-            AppendFormat(ScopedOut, "void fby_fn_%u(::Fby::Script::Aot::Context& ctx, Registers& r) noexcept;\n",
-                         ScopedIndex);
+            AppendFormat(ScopedOut, "%s fby_fn_%u(::Fby::Script::Aot::Context& ctx, Registers& r) noexcept;\n",
+                         ScopedProgramCoroutine ? "bool" : "void", ScopedIndex);
         }
     }
     if (!InProgram.functions.empty())

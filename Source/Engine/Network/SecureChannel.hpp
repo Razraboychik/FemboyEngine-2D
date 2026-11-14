@@ -207,6 +207,13 @@ public:
     {
         return MPhase == Phase::Established;
     }
+    // Protocol negotiated by Start(). False means the deprecated frozen v1
+    // transcript is in use; the session layer can expose this in diagnostics
+    // during the one-release deprecation window.
+    [[nodiscard]] bool ProtocolV2() const noexcept
+    {
+        return MProtocolV2;
+    }
     [[nodiscard]] std::uint64_t SessionId() const noexcept
     {
         return MConfig.SessionId;

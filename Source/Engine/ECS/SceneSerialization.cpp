@@ -6,6 +6,7 @@
 #include "Engine/ECS/SkeletonAssetRef.hpp"
 #include "Engine/ECS/SkeletonAsset.hpp"
 #include "Engine/ECS/SceneField.hpp"
+#include "Engine/ECS/PrefabInstance.hpp"
 #include "Engine/ECS/RegistryOps.hpp"
 
 #include <algorithm>
@@ -249,6 +250,12 @@ SceneData CaptureScene(const Registry& InRegistry, const ComponentRegistry& InCo
 
     for (const Entity ScopedEntity : ScopedEntities)
     {
+        // Prefab children are transient: the scene stores the instance proxy and
+        // rebuilds these entities from the asset on load.
+        if (InRegistry.try_get<PrefabInstanceMemberComponent>(ScopedEntity) != nullptr)
+        {
+            continue;
+        }
         SceneEntity ScopedRecord;
         for (const ComponentOps& ScopedOps : InComponents.All())
         {
@@ -396,6 +403,66 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
                                  &ScopedSkeletonInstanceError))
     {
         return std::unexpected(std::move(ScopedSkeletonInstanceError));
+    }
+
+    if (InOptions.assets != nullptr && InOptions.assetDb != nullptr)
+    {
+        std::vector<std::byte> ScopedArenaBytes(256 * 1024);
+        FrameArena ScopedArena{std::span<std::byte>(ScopedArenaBytes)};
+        Ecs::CommandBuffer ScopedCommands;
+        ScopedCommands.Initialize(&ScopedArena);
+        std::vector<Entity> ScopedInstanceEntities;
+        auto ScopedInstances = InRegistry.view<PrefabInstanceComponent>();
+        for (const Entity ScopedInstance : ScopedInstances)
+        {
+            ScopedInstanceEntities.push_back(ScopedInstance);
+        }
+        for (const Entity ScopedInstance : ScopedInstanceEntities)
+        {
+            const PrefabInstanceComponent& ScopedLink = InRegistry.get<PrefabInstanceComponent>(ScopedInstance);
+            if (!ScopedLink.Prefab.IsValid())
+            {
+                continue;
+            }
+            const std::string_view ScopedSourcePath = InOptions.assetDb->SourcePath(ScopedLink.Prefab);
+            const auto ScopedBytes = InOptions.assets->Read(ScopedSourcePath);
+            if (!ScopedBytes)
+            {
+                return std::unexpected("prefab instance points at missing asset '" + std::string(ScopedSourcePath) +
+                                       "'");
+            }
+            PrefabAsset ScopedAsset;
+            std::string ScopedAssetError;
+            bool ScopedLoaded = false;
+            if (ScopedSourcePath.ends_with(".toml"))
+            {
+                ScopedLoaded = PrefabSystem::LoadToml(
+                    std::string_view(reinterpret_cast<const char*>(ScopedBytes->data()), ScopedBytes->size()),
+                    ScopedAsset, &ScopedAssetError);
+            }
+            else
+            {
+                ScopedLoaded = PrefabSystem::LoadFlatBuffers(*ScopedBytes, ScopedAsset, &ScopedAssetError);
+                if (!ScopedLoaded)
+                {
+                    ScopedLoaded = PrefabSystem::LoadBinary(*ScopedBytes, ScopedAsset, &ScopedAssetError);
+                }
+            }
+            if (!ScopedLoaded)
+            {
+                return std::unexpected("prefab instance asset '" + std::string(ScopedSourcePath) +
+                                       "' is invalid: " + ScopedAssetError);
+            }
+            PrefabInstance::ClearChildren(InRegistry, ScopedInstance);
+            std::array<Entity, kPrefabMaxEntities> ScopedChildren{};
+            if (!PrefabInstance::Expand(InRegistry, ScopedCommands, ScopedInstance, ScopedAsset, ScopedChildren))
+            {
+                return std::unexpected("prefab instance expansion failed for '" + std::string(ScopedSourcePath) +
+                                       "'");
+            }
+            ScopedCommands.Play(InRegistry);
+            ScopedArena.Reset();
+        }
     }
 
     LogInfo("scene", "applied '{}': {} entities{}", InScene.meta.name, ScopedRemap.entities.size(),

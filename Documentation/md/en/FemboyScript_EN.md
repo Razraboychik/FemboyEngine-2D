@@ -23,7 +23,7 @@ graph format; the engine version is 0.5.0.
 | Standalone textual `.fbs` parser | `CompileTextScript()` text subset |
 | Arrays, strings, maps | Collection natives (`array_new`, `array_push`, `array_get`, `array_length`, `map_new`, `map_set`, `map_get`, `map_has`, `map_length`, `string_concat`, `string_length`, `string_equals`) over a bounded heap |
 | User functions | Textual `function name(a, b) { ... }` with fixed 8-register windows and depth-limited calls |
-| Coroutines | Not present in 0.5.0 |
+| Coroutines | `yield;` / `yield N;` at any event or user-function depth; VM and AOT frame stacks |
 
 Collections live in a fixed-capacity `ScriptHeap` owned by the script runtime.
 Handles are 32-bit register payloads tagged as strings, arrays or maps; the VM
@@ -36,8 +36,18 @@ User functions are declared before the events that call them: `function add(a, b
 { return a + b; }`. Each function owns an 8-register window above the event
 registers, so nested calls do not clobber the caller; arguments move into the
 callee window and the return value moves back into the caller's destination
-register. Calls are depth-limited and may not recurse. LogicGraph nodes for user
-functions are not part of 0.5.0.
+register. Calls are depth-limited and may not recurse. A function may call one
+declared later; the compiler pre-scans the function block, but declarations must
+still precede the events. LogicGraph nodes for user functions are not part of
+0.5.0.
+
+A coroutine yields with `yield;` or `yield N;` to skip N script frames. The script
+system owns one fixed-capacity slot per `(entity, program, event)` and saves the
+VM register file, tags, call frames and resume pc; the next eligible script frame
+restores that state and continues after the yield. Event-top-level yields are
+lowered by the AOT backend to a resume switch over a host-owned
+`Aot::CoroutineState`; nested user-function yields use its bounded frame stack, so
+a cooked build can suspend and resume at any call depth up to the VM limit.
 
 The visual graph is the default authoring surface for designers. The textual
 front-end is an optional power surface for version control, CI, mods and dense
@@ -346,18 +356,21 @@ fields (resolved against the scene schema), and read/write live field values.
 
 The editor's **Script Debugger** panel compiles the text script, shows the source
 with clickable breakpoints, Continue/Step/Pause/Reset, a Locals table, editable
-Self fields, a one-frame stack and program counters. `ScriptDebuggerPanelTest`
-covers compile errors, a line breakpoint, resume and fault reporting without an
-ImGui frame.
+Self fields, a call stack for nested user functions and program counters.
+`ScriptDebuggerPanelTest` covers compile errors, a line breakpoint, resume, the
+persisted function frames and fault reporting without an ImGui frame.
 
 ## Roadmap
 
-The next language features, in dependency order:
+Collections (`ScriptHeap`, bytecode v2 strings) and user functions with fixed
+register windows are shipped in 0.5.0; forward function references are resolved
+by the pre-scan. The next language features, in dependency order:
 
-1. Arrays, strings, maps and user functions with a fixed call stack.
-2. Coroutines/timers and deterministic scheduling.
-3. Debugger views for the StateTree canvas (the VM-side breakpoints, spans and
-   the LogicGraph "Debug graph" view already exist).
+1. LogicGraph call/return nodes for user functions.
+2. Timer syntax (`yield;`/`yield N;` already work in VM and AOT, including nested
+   user-function frames).
+3. Debugger views for the StateTree canvas (the nested user-function call stack
+   is shipped in 0.5.0).
 
 The flat VM contract is not extended by adding heap objects to the
 8-byte instruction. Any new object model needs a new bytecode version and a

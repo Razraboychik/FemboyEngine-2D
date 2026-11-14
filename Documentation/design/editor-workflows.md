@@ -166,8 +166,15 @@ fixed-step path as the normal play loop.
 - The transform hierarchy is opt-in: drag an entity onto another in the Hierarchy
   to parent it (world transform preserved), and use **Clear parent** to detach.
   `UpdateHierarchy` runs after the fixed step in the sandbox and PIE, and once
-  per editor frame. Reparenting is not yet part of the undo stack.
-- No prefab instances with overrides: only "spawn a prefab" exists.
+  per editor frame. Reparenting records `Parent2D`/`LocalTransform2D` presence
+  changes in the CommandStack, so Undo/Redo restore the previous chain.
+- **Entity > Spawn Prefab...** creates a `PrefabInstanceComponent` proxy at
+  the camera center, expands it through the command buffer and records the proxy
+  and children for Undo. The proxy stores the prefab asset handle, origin and
+  per-entity transform/color override masks and arrays; children are tagged
+  `PrefabInstanceMemberComponent`, skipped by scene capture and rebuilt from the
+  asset on load with the stored overrides. The editor dialog currently edits the
+  instance origin only; the override arrays are available through the engine API.
 - Material/scene creation wizards are limited to the empty TOML scene template.
 - Content Browser rename/delete dialogs and the prefab save dialog are
   UI-driven; automation covers only the VFS index and the scene round trip

@@ -95,6 +95,21 @@ def main() -> int:
             print(f"package: missing artifact {relative}", file=sys.stderr)
         return 1
 
+    # Vendor runtimes are optional and live beside the executables. Copy them
+    # into the bundle so a release-vendor build is runnable without the SDK tree.
+    vendor_runtime_patterns = (
+        "amd_fidelityfx_*.dll",
+        "amd_fidelityfx_*.so*",
+        "nvngx_dlss*.dll",
+        "libxess*.dll",
+        "libxess*.so*",
+    )
+    for pattern in vendor_runtime_patterns:
+        for source in sorted(binary_root.glob(pattern)):
+            relative = "bin/" + source.name
+            if relative not in artifacts:
+                artifacts[relative] = source
+
     bundle_name = f"FemboyEngine2D-{args.platform}-{args.version}"
     bundle = ROOT / args.output / bundle_name
     if bundle.exists():
