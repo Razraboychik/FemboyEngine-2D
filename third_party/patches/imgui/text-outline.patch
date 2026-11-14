@@ -2,20 +2,26 @@ diff --git a/third_party/imgui-master/imgui-master/imgui.cpp b/third_party/imgui
 index 8a72f23..a22cd3f 100644
 --- a/third_party/imgui-master/imgui-master/imgui.cpp
 +++ b/third_party/imgui-master/imgui-master/imgui.cpp
-@@ -1595,6 +1595,8 @@ ImGuiStyle::ImGuiStyle()
+@@ -1595,9 +1595,11 @@ ImGuiStyle::ImGuiStyle()
      FontSizeBase                = 0.0f;             // Will default to io.Fonts->Fonts[0] on first frame.
      FontScaleMain               = 1.0f;             // Main scale factor. May be set by application once, or exposed to end-user.
      FontScaleDpi                = 1.0f;             // Additional scale factor from viewport/monitor contents scale. When io.ConfigDpiScaleFonts is enabled, this is automatically overwritten when changing monitor DPI.
 +    TextBorderSize              = 0.0f;             // Outline radius in pixels for rendered text.
+     TextLineSpacing             = 0.0f;
+     TextLetterSpacing           = 0.0f;
+     TextWordSpacing             = 0.0f;
 +    TextBorderColor             = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
  
      Alpha                       = 1.0f;             // Global alpha applies to everything in Dear ImGui.
      DisabledAlpha               = 0.60f;            // Additional alpha multiplier applied by BeginDisabled(). Multiply over current value of Alpha.
-@@ -1737,6 +1739,7 @@ void ImGuiStyle::ScaleAllSizes(float scale_factor)
+@@ -1737,9 +1739,10 @@ void ImGuiStyle::ScaleAllSizes(float scale_factor)
      InputTextCursorSize = ImTrunc(InputTextCursorSize * scale_factor);
      SeparatorSize = ImTrunc(SeparatorSize * scale_factor);
      SeparatorTextBorderSize = ImTrunc(SeparatorTextBorderSize * scale_factor);
 +    TextBorderSize = TextBorderSize * scale_factor;
+     TextLineSpacing = TextLineSpacing * scale_factor;
+     TextLetterSpacing = TextLetterSpacing * scale_factor;
+     TextWordSpacing = TextWordSpacing * scale_factor;
      SeparatorTextPadding = ImTrunc(SeparatorTextPadding * scale_factor);
      DockingSeparatorSize = ImTrunc(DockingSeparatorSize * scale_factor);
      DisplayWindowPadding = ImTrunc(DisplayWindowPadding * scale_factor);
@@ -23,12 +29,15 @@ diff --git a/third_party/imgui-master/imgui-master/imgui.h b/third_party/imgui-m
 index 7f3a1c1..ddc9e22 100644
 --- a/third_party/imgui-master/imgui-master/imgui.h
 +++ b/third_party/imgui-master/imgui-master/imgui.h
-@@ -2420,6 +2420,8 @@ struct ImGuiStyle
+@@ -2420,9 +2420,11 @@ struct ImGuiStyle
      float       FontSizeBase;               // Current base font size before external global factors are applied. Use PushFont(NULL, size) to modify. Use ImGui::GetFontSize() to obtain scaled value.
      float       FontScaleMain;              // Main global scale factor. May be set by application once, or exposed to end-user.
      float       FontScaleDpi;               // Additional global scale factor from viewport/monitor contents scale. In docking branch: when io.ConfigDpiScaleFonts is enabled, this is automatically overwritten when changing monitor DPI.
 +    float       TextBorderSize;             // Outline radius in pixels for rendered text. 0 disables the outline.
 +    ImVec4      TextBorderColor;            // Outline color for rendered text.
+     float       TextLineSpacing;            // Extra pixels between text lines. 0 keeps the font default.
+     float       TextLetterSpacing;          // Extra pixels after every glyph.
+     float       TextWordSpacing;            // Extra pixels after a space glyph.
  
      float       Alpha;                      // Global alpha applies to everything in Dear ImGui.
      float       DisabledAlpha;              // Additional alpha multiplier applied by BeginDisabled(). Multiply over current value of Alpha.

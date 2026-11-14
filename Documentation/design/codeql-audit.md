@@ -12,13 +12,20 @@ and the unused-vendor alerts stayed open.
 There were two more reasons the 0.4.0/0.5.0 work was not reflected:
 
 - default setup scans `main`; the compiled-vendor patches and the own-code
-  changes were on `v0.5.0alpha.1` (`5807cec`), not on `main` (`de8abf4`);
+  changes were on `v0.5.0alpha.1` (`5807cec` and later), not on `main`
+  (`de8abf4`);
 - one own-code alert in `Source/Tests/AdvancedPipelinesTest.cpp` was still
-  unpatched.
+  unpatched at that time.
 
-The latest analysis was `2149258970` at `2026-11-12T04:32:00Z`, commit
-`de8abf4a4e`, with **74 open results** (the earlier 76 count was a previous
-snapshot). Every result is `cpp/integer-multiplication-cast-to-long`.
+The latest analysis was run `43327158131` ("Scheduled", default setup) at
+`2026-11-12T23:14:31Z`, commit `de8abf4a4e`, completed successfully with **74
+open results** (the earlier 76 count was a previous snapshot). Every result is
+`cpp/integer-multiplication-cast-to-long`.
+
+CodeQL is therefore not "blind": it analyzes the default branch, and that branch
+does not contain the fixes. A push to `v0.5.0alpha.1` does not trigger a CodeQL
+run either, because the default-setup trigger is the default branch, a pull
+request or the schedule.
 
 ## Current triage
 
@@ -31,6 +38,33 @@ snapshot). Every result is `cpp/integer-multiplication-cast-to-long`.
 After the 51 dismissals, the GitHub page shows **23 open alerts**. The 22 vendor
 patches and the test patch still need to reach `main` and a new default-branch
 analysis; until then the old `de8abf4` results remain visible.
+
+## What changed in this branch
+
+- The non-built Opus program list is complete: every `src/*_demo.c`,
+  `src/*_compare.c`, `src/extensions.c` and `dnn/*.c` file with its own `main()`
+  is excluded. Opus is configured with `OPUS_BUILD_PROGRAMS=OFF` and
+  `OPUS_BUILD_TESTING=OFF`, so none of those files is part of `Opus::opus`.
+- `text-outline.patch` was repaired after the typography spacing fields
+  (`TextLineSpacing`, `TextLetterSpacing`, `TextWordSpacing`) changed its
+  context. All 13 patches under `third_party/patches/` now pass
+  `git apply -R --check` against the tree, which is the re-import contract.
+
+## How to actually close the remaining results
+
+1. Land the fixes on `main` (merge or cherry-pick the alpha branch). The next
+   scheduled or pull-request analysis then re-evaluates `de8abf4`-era results
+   and marks the patched ones fixed.
+2. The 51 unused-vendor results are dismissed as `won't fix`; a dismissal is
+   only invalidated when the line changes, so re-check the path if one reopens.
+3. To make the ignores automatic instead of manual, disable default setup and
+   enable advanced setup with `.github/codeql/codeql-config.yml`, or (for an
+   organization repository) set the `github-codeql-config-file` property. The
+   advanced workflow needs `security-events: write` and must upload SARIF
+   through `github/codeql-action/analyze`.
+
+A default-setup scan that still reports an excluded path means the scan is
+reading a tree without this configuration, not that the exclusion is wrong.
 
 ## Own-code fix
 
@@ -57,13 +91,17 @@ ScopedBytes.resize(sizeof(std::uint64_t) + 6u * sizeof(std::uint32_t) +
 ## Existing patches
 
 The compiled-asset patches are in `third_party/patches`:
-`stb/stb_image-size-overflow.patch`, the two
-`imgui/imstb_truetype-*size-overflow.patch` files,
+`stb/stb_image-size-overflow.patch`, `stb/codeql-integer-multiplication.patch`,
+the two `imgui/imstb_truetype-*size-overflow.patch` files,
+`imgui/codeql-integer-multiplication.patch`, `implot/codeql-integer-multiplication.patch`,
+`harfbuzz/codeql-integer-multiplication.patch`,
 `miniaudio/miniaudio-size-hardening.patch` and
 `opus/codeql-integer-multiplication.patch`,
 `monocypher/codeql-integer-multiplication.patch`. They are validated with
-`git apply --check` after re-import and by a full build and CTest run after
-applying them. The patch set is not a licence exception: miniaudio is
+`git apply -R --check` against the patched tree after re-import and by a full
+build and CTest run after applying them. The 13th patch,
+`imgui/text-outline.patch`, is an authored feature patch and follows the same
+check. The patch set is not a licence exception: miniaudio is
 MIT-0/Unlicense and stb_vorbis is MIT/Public Domain, so both permit
 modification and redistribution under their terms.
 

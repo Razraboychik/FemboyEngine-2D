@@ -16,9 +16,8 @@ upstream-тесты, демо и утилиты:
 | `third_party/opus-master/opus-main/celt/tests/**` | upstream unit-тесты Opus |
 | `third_party/opus-master/opus-main/celt/opus_custom_demo.c` | демо Opus |
 | `third_party/opus-master/opus-main/src/opus_compare.c` | утилита сравнения Opus |
-| `third_party/opus-master/opus-main/dnn/adaconvtest.c` | тестовая утилита Opus DNN |
-| `third_party/opus-master/opus-main/dnn/parse_lpcnet_weights.c` | утилита разбора весов Opus DNN |
-| `third_party/opus-master/opus-main/dnn/dump_data.c` | утилита дампа Opus DNN |
+| `third_party/opus-master/opus-main/src/*_demo.c`, `src/*_compare.c`, `src/extensions.c` | исходники программ Opus, собираемые только при `OPUS_BUILD_PROGRAMS` или `OPUS_BUILD_TESTING`; движок принудительно отключает оба |
+| файлы `third_party/opus-master/opus-main/dnn/*.c` с `main()` (`adaconvtest`, `bwe_demo`, `dred_compare`, `dump_data`, `dump_lpcnet_tables`, `fargan_demo`, `lossgen`, `lossgen_demo`, `osce`, `parse_lpcnet_weights`, `test_vec`, `write_lpcnet_weights`) | программы-утилиты Opus DNN; исходники самой библиотеки DNN остаются видимыми и разбираются |
 | `third_party/flatbuffers-master/flatbuffers-master/tests/**` | upstream-тесты FlatBuffers |
 
 Список исключений лежит в `.github/codeql/codeql-config.yml`. Он намеренно

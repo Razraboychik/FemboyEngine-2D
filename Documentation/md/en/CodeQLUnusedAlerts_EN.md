@@ -16,9 +16,8 @@ tests, demos and tools:
 | `third_party/opus-master/opus-main/celt/tests/**` | upstream Opus unit tests |
 | `third_party/opus-master/opus-main/celt/opus_custom_demo.c` | Opus demo |
 | `third_party/opus-master/opus-main/src/opus_compare.c` | Opus comparison tool |
-| `third_party/opus-master/opus-main/dnn/adaconvtest.c` | Opus DNN test utility |
-| `third_party/opus-master/opus-main/dnn/parse_lpcnet_weights.c` | Opus DNN weight parser tool |
-| `third_party/opus-master/opus-main/dnn/dump_data.c` | Opus DNN dump utility |
+| `third_party/opus-master/opus-main/src/*_demo.c`, `src/*_compare.c`, `src/extensions.c` | Opus program sources, built only when `OPUS_BUILD_PROGRAMS` or `OPUS_BUILD_TESTING` is enabled; the engine forces both off |
+| `third_party/opus-master/opus-main/dnn/*.c` files with `main()` (`adaconvtest`, `bwe_demo`, `dred_compare`, `dump_data`, `dump_lpcnet_tables`, `fargan_demo`, `lossgen`, `lossgen_demo`, `osce`, `parse_lpcnet_weights`, `test_vec`, `write_lpcnet_weights`) | Opus DNN tool programs; the DNN library sources stay visible and triaged |
 | `third_party/flatbuffers-master/flatbuffers-master/tests/**` | upstream FlatBuffers tests |
 
 The exclusion list lives in `.github/codeql/codeql-config.yml`. It is

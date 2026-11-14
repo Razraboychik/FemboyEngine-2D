@@ -14,9 +14,26 @@ paths-ignore:
   - third_party/opus-master/opus-main/celt/tests/**
   - third_party/opus-master/opus-main/celt/opus_custom_demo.c
   - third_party/opus-master/opus-main/src/opus_compare.c
+  # Opus is added with OPUS_BUILD_PROGRAMS=OFF and OPUS_BUILD_TESTING=OFF.
+  # Every file below has its own main() and belongs to a program target the
+  # engine never configures; none of them is part of the libopus sources.
+  - third_party/opus-master/opus-main/src/extensions.c
+  - third_party/opus-master/opus-main/src/opus_demo.c
+  - third_party/opus-master/opus-main/src/osce_compare.c
+  - third_party/opus-master/opus-main/src/qext_compare.c
+  - third_party/opus-master/opus-main/src/repacketizer_demo.c
   - third_party/opus-master/opus-main/dnn/adaconvtest.c
-  - third_party/opus-master/opus-main/dnn/parse_lpcnet_weights.c
+  - third_party/opus-master/opus-main/dnn/bwe_demo.c
+  - third_party/opus-master/opus-main/dnn/dred_compare.c
   - third_party/opus-master/opus-main/dnn/dump_data.c
+  - third_party/opus-master/opus-main/dnn/dump_lpcnet_tables.c
+  - third_party/opus-master/opus-main/dnn/fargan_demo.c
+  - third_party/opus-master/opus-main/dnn/lossgen.c
+  - third_party/opus-master/opus-main/dnn/lossgen_demo.c
+  - third_party/opus-master/opus-main/dnn/osce.c
+  - third_party/opus-master/opus-main/dnn/parse_lpcnet_weights.c
+  - third_party/opus-master/opus-main/dnn/test_vec.c
+  - third_party/opus-master/opus-main/dnn/write_lpcnet_weights.c
   - third_party/flatbuffers-master/flatbuffers-master/tests/**
   # HarfBuzz's upstream test executables are not built or linked by the engine.
   - third_party/harfbuzz-download/**/src/test-*.cc
