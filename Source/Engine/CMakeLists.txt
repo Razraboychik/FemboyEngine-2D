@@ -192,6 +192,10 @@ set(FBY_ENGINE_SOURCES
     UI/AccessibilityEffects.cpp
     UI/AccessibilityEffectConsumer.cpp
     UI/AccessibilityOverlay.cpp
+    UI/AccessibilityProjection.cpp
+    UI/AccessibilityTree.cpp
+    UI/AccessibilityBridge.cpp
+    UI/Narrator.cpp
     UI/CardBoard.cpp
     UI/FontAtlas.cpp
     UI/FontBuilder.cpp
@@ -221,6 +225,26 @@ if(APPLE)
     set_source_files_properties(UI/TtsAvSpeech.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 else()
     list(APPEND FBY_ENGINE_SOURCES UI/TtsAvSpeechStub.cpp)
+endif()
+
+# Linux speech-dispatcher: loaded at runtime with dlopen, so the engine has no
+# hard dependency on the daemon or on the LGPL client library.
+if(UNIX AND NOT APPLE)
+    list(APPEND FBY_ENGINE_SOURCES UI/TtsSpeechDispatcher.cpp)
+endif()
+
+# Windows one-core voices: the modern speech stack lives behind C++/WinRT, so
+# the adapter is a Windows-only translation unit.
+if(WIN32)
+    list(APPEND FBY_ENGINE_SOURCES UI/TtsWinRt.cpp)
+endif()
+
+# OS accessibility provider. Windows exposes UI Automation; every other
+# platform keeps the semantic tree and the narrator without a system bridge.
+if(WIN32)
+    list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeWindows.cpp)
+else()
+    list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeStub.cpp)
 endif()
 
 # Shaders: GLSL -> SPIR-V -> embedded header
@@ -545,7 +569,39 @@ endif()
 if (WIN32)
 # winmm is for the miniaudio backend; ole32/uuid for WASAPI; bcrypt is the
 # entropy/AEAD backend; crypt32 is the DPAPI identity store.
-    target_link_libraries(fby_engine PRIVATE user32 gdi32 shell32 ole32 oleaut32 uuid winmm bcrypt crypt32 ws2_32)
+    target_link_libraries(fby_engine PRIVATE user32 gdi32 shell32 ole32 oleaut32 uuid winmm bcrypt crypt32 ws2_32 uiautomationcore)
+
+# One-core speech needs the C++/WinRT projection shipped with the Windows SDK.
+# The SDK root is not exposed by the Ninja generator, so the environment variable
+# (present in a VS developer prompt) is preferred and the default install path is
+# the fallback. Without the projection the engine keeps the desktop SAPI voices.
+if(WIN32)
+    set(FBY_CPPWINRT_DIR "")
+    if(DEFINED ENV{WindowsSdkDir})
+        file(GLOB FBY_CPPWINRT_CANDIDATES "$ENV{WindowsSdkDir}Include/*/cppwinrt")
+    else()
+        file(GLOB FBY_CPPWINRT_CANDIDATES "C:/Program Files (x86)/Windows Kits/10/Include/*/cppwinrt")
+    endif()
+    list(SORT FBY_CPPWINRT_CANDIDATES)
+    list(REVERSE FBY_CPPWINRT_CANDIDATES)
+    foreach(FBY_CPPWINRT_CANDIDATE IN LISTS FBY_CPPWINRT_CANDIDATES)
+        if(EXISTS "${FBY_CPPWINRT_CANDIDATE}/winrt/Windows.Media.SpeechSynthesis.h")
+            set(FBY_CPPWINRT_DIR "${FBY_CPPWINRT_CANDIDATE}")
+            break()
+        endif()
+    endforeach()
+    if(FBY_CPPWINRT_DIR)
+        message(STATUS "One-core speech: C++/WinRT projection at ${FBY_CPPWINRT_DIR}")
+        target_include_directories(fby_engine SYSTEM PRIVATE "${FBY_CPPWINRT_DIR}")
+        target_compile_definitions(fby_engine PRIVATE FBY_HAS_WINRT=1)
+        target_link_libraries(fby_engine PRIVATE windowsapp)
+        # C++/WinRT uses exceptions; the engine policy is -fno-exceptions, so the
+        # single adapter translation unit opts back in.
+        set_source_files_properties(UI/TtsWinRt.cpp PROPERTIES COMPILE_OPTIONS "-fexceptions;-frtti")
+    else()
+        message(STATUS "One-core speech: C++/WinRT projection not found; SAPI voices only")
+    endif()
+endif()
 elseif (APPLE)
     target_link_libraries(fby_engine PRIVATE
         "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework Foundation")

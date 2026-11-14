@@ -1,0 +1,291 @@
+diff --git a/third_party/imgui-master/imgui-master/imgui.cpp b/third_party/imgui-master/imgui-master/imgui.cpp
+index aeea908..4f488ed 100644
+--- a/third_party/imgui-master/imgui-master/imgui.cpp
++++ b/third_party/imgui-master/imgui-master/imgui.cpp
+@@ -4405,6 +4405,11 @@ ImGuiContext::ImGuiContext(ImFontAtlas* shared_font_atlas)
+     InputTextState.Ctx = this;
+ 
+     Initialized = false;
++    A11yFocusId = 0;
++    A11yFocusLabel[0] = 0;
++    A11yFocusRole = ImGuiA11yRole_None;
++    A11yFocusMin = ImVec2(0.0f, 0.0f);
++    A11yFocusMax = ImVec2(0.0f, 0.0f);
+     WithinFrameScope = WithinFrameScopeWithImplicitWindow = false;
+     TestEngineHookItems = false;
+     FrameCount = 0;
+@@ -5341,6 +5346,44 @@ bool ImGui::IsClippedEx(const ImRect& bb, ImGuiID id)
+ 
+ // This is also inlined in ItemAdd()
+ // Note: if ImGuiItemStatusFlags_HasDisplayRect is set, user needs to set g.LastItemData.DisplayRect.
++// Accessibility focus query. The label is captured by ItemAdd() while the
++// focused item is drawn; the host reads it between frames.
++const char* ImGui::GetAccessibilityFocusLabel()
++{
++    ImGuiContext& g = *GImGui;
++    return (g.A11yFocusId != 0 && g.A11yFocusLabel[0] != 0) ? g.A11yFocusLabel : NULL;
++}
++
++ImGuiA11yRole ImGui::GetAccessibilityFocusRole()
++{
++    ImGuiContext& g = *GImGui;
++    return (ImGuiA11yRole)g.A11yFocusRole;
++}
++
++ImGuiID ImGui::GetAccessibilityFocusId()
++{
++    return GImGui->A11yFocusId;
++}
++
++bool ImGui::GetAccessibilityFocusBounds(ImVec2* out_min, ImVec2* out_max)
++{
++    ImGuiContext& g = *GImGui;
++    if (g.A11yFocusId == 0)
++        return false;
++    if (out_min != NULL)
++        *out_min = g.A11yFocusMin;
++    if (out_max != NULL)
++        *out_max = g.A11yFocusMax;
++    return true;
++}
++
++void ImGui::SetAccessibilityItemRole(ImGuiA11yRole role)
++{
++    ImGuiContext& g = *GImGui;
++    if (g.LastItemData.ID != 0 && g.LastItemData.ID == g.NavId)
++        g.A11yFocusRole = (ImU8)role;
++}
++
+ void ImGui::SetLastItemData(ImGuiID item_id, ImGuiItemFlags item_flags, ImGuiItemStatusFlags status_flags, const ImRect& item_rect)
+ {
+     ImGuiContext& g = *GImGui;
+@@ -5889,6 +5932,14 @@ static void SetupDrawListSharedData()
+ void ImGui::NewFrame()
+ {
+     IM_ASSERT(GImGui != NULL && "No current context. Did you call ImGui::CreateContext() and ImGui::SetCurrentContext() ?");
++
++    // Accessibility: the capture from the previous frame stays readable until
++    // here, which is what a host reading it between frames relies on.
++    GImGui->A11yFocusId = 0;
++    GImGui->A11yFocusLabel[0] = 0;
++    GImGui->A11yFocusRole = ImGuiA11yRole_None;
++    GImGui->A11yFocusMin = ImVec2(0.0f, 0.0f);
++    GImGui->A11yFocusMax = ImVec2(0.0f, 0.0f);
+     ImGuiContext& g = *GImGui;
+ 
+     // Remove pending delete hooks before frame start.
+@@ -10056,6 +10107,26 @@ ImGuiID ImGuiWindow::GetID(const char* str, const char* str_end)
+ {
+     ImGuiID seed = IDStack.back();
+     ImGuiID id = ImHashStr(str, str_end ? (str_end - str) : 0, seed);
++    // Accessibility: remember the label that produced this id. ItemAdd() uses
++    // it only when the ids match, so an unrelated GetID() cannot leak a label.
++    if (str != NULL)
++    {
++        const char* label_end = str_end ? str_end : str + ImStrlen(str);
++        // "##" hides everything after it; the spoken label is the visible part.
++        for (const char* scan = str; scan + 1 < label_end; scan++)
++            if (scan[0] == '#' && scan[1] == '#')
++            {
++                label_end = scan;
++                break;
++            }
++        ImU64 label_len = (ImU64)(label_end - str);
++        if (label_len >= IM_ARRAYSIZE(DC.PendingItemLabel))
++            label_len = IM_ARRAYSIZE(DC.PendingItemLabel) - 1;
++        memcpy(DC.PendingItemLabel, str, (size_t)label_len);
++        DC.PendingItemLabel[label_len] = 0;
++        DC.PendingItemId = id;
++        DC.PendingItemLabelValid = true;
++    }
+ #ifndef IMGUI_DISABLE_DEBUG_TOOLS
+     ImGuiContext& g = *Ctx;
+     if (g.DebugHookIdInfoId == id)
+@@ -12289,6 +12360,27 @@ bool ImGui::ItemAdd(const ImRect& bb, ImGuiID id, const ImRect* nav_bb_arg, ImGu
+     g.LastItemData.NavRect = nav_bb_arg ? *nav_bb_arg : bb;
+     g.LastItemData.ItemFlags = g.CurrentItemFlags | g.NextItemData.ItemFlagsSet | extra_flags;
+     g.LastItemData.StatusFlags = ImGuiItemStatusFlags_None;
++    // Accessibility: attach the recorded label to this item. The pending label
++    // is consumed only on an id match; a stale one is dropped.
++    if (window->DC.PendingItemLabelValid && id != 0)
++    {
++        if (window->DC.PendingItemId == id)
++        {
++            if (id == g.NavId)
++            {
++                g.A11yFocusId = id;
++                memcpy(g.A11yFocusLabel, window->DC.PendingItemLabel, IM_ARRAYSIZE(g.A11yFocusLabel));
++                g.A11yFocusRole = ImGuiA11yRole_None;
++                g.A11yFocusMin = bb.Min;
++                g.A11yFocusMax = bb.Max;
++            }
++            window->DC.PendingItemLabelValid = false;
++        }
++        else
++        {
++            window->DC.PendingItemLabelValid = false;
++        }
++    }
+     // Note: we don't copy 'g.NextItemData.SelectionUserData' to an hypothetical g.LastItemData.SelectionUserData: since the former is not cleared.
+ 
+     if (id != 0)
+diff --git a/third_party/imgui-master/imgui-master/imgui.h b/third_party/imgui-master/imgui-master/imgui.h
+index 8bc1ed6..3c24b9c 100644
+--- a/third_party/imgui-master/imgui-master/imgui.h
++++ b/third_party/imgui-master/imgui-master/imgui.h
+@@ -268,6 +268,7 @@ typedef int ImGuiHoveredFlags;      // -> enum ImGuiHoveredFlags_    // Flags: f
+ typedef int ImGuiInputFlags;        // -> enum ImGuiInputFlags_      // Flags: for Shortcut(), SetNextItemShortcut()
+ typedef int ImGuiInputTextFlags;    // -> enum ImGuiInputTextFlags_  // Flags: for InputText(), InputTextMultiline()
+ typedef int ImGuiItemFlags;         // -> enum ImGuiItemFlags_       // Flags: for PushItemFlag(), shared by all items
++typedef int ImGuiA11yRole;          // -> enum ImGuiA11yRole_         // Accessibility role of the focused item
+ typedef int ImGuiKeyChord;          // -> ImGuiKey | ImGuiMod_XXX    // Flags: for IsKeyChordPressed(), Shortcut() etc. an ImGuiKey optionally OR-ed with one or more ImGuiMod_XXX values.
+ typedef int ImGuiListClipperFlags;  // -> enum ImGuiListClipperFlags_// Flags: for ImGuiListClipper
+ typedef int ImGuiPopupFlags;        // -> enum ImGuiPopupFlags_      // Flags: for OpenPopup*(), BeginPopupContext*(), IsPopupOpen()
+@@ -1053,6 +1054,20 @@ namespace ImGui
+     // Overlapping mode
+     IMGUI_API void          SetNextItemAllowOverlap();                                          // allow next item to be overlapped by a subsequent item. Typically useful with InvisibleButton(), Selectable(), TreeNode() covering an area where subsequent items may need to be added. Note that both Selectable() and TreeNode() have dedicated flags doing this.
+ 
++    // Accessibility: label and role of the item that owns navigation focus.
++    // The label is the visible part of the widget label ("##" and beyond is
++    // stripped) and stays valid until the next NewFrame(). Returns NULL when no
++    // item is focused.
++    IMGUI_API const char*   GetAccessibilityFocusLabel();
++    IMGUI_API ImGuiA11yRole GetAccessibilityFocusRole();
++    IMGUI_API ImGuiID       GetAccessibilityFocusId();
++    // Screen-space bounds of the focused item, in the same coordinates as
++    // ImGui::GetItemRectMin(). Returns false when there is no focused item.
++    IMGUI_API bool          GetAccessibilityFocusBounds(ImVec2* out_min, ImVec2* out_max);
++    // Called by the widgets right after ItemAdd(); it records the role only for
++    // the item that just took focus.
++    IMGUI_API void          SetAccessibilityItemRole(ImGuiA11yRole role);
++
+     // Item/Widgets Utilities and Query Functions
+     // - Most of the functions are referring to the previous Item that has been submitted.
+     // - See Demo Window under "Widgets->Querying Status" for an interactive visualization of most of those functions.
+@@ -1294,6 +1309,24 @@ enum ImGuiChildFlags_
+ #endif
+ };
+ 
++// Accessibility role of the item that currently owns keyboard navigation focus.
++// A widget sets it right after ItemAdd(); an application reads it back with
++// GetAccessibilityFocusRole() when it mirrors the interface to a screen reader.
++// The enum names what a spoken interface needs, not what a renderer needs.
++enum ImGuiA11yRole_
++{
++    ImGuiA11yRole_None = 0,
++    ImGuiA11yRole_Button,
++    ImGuiA11yRole_CheckBox,
++    ImGuiA11yRole_RadioButton,
++    ImGuiA11yRole_Slider,
++    ImGuiA11yRole_TextInput,
++    ImGuiA11yRole_ComboBox,
++    ImGuiA11yRole_ListItem,
++    ImGuiA11yRole_MenuItem,
++    ImGuiA11yRole_TreeItem,
++};
++
+ // Flags for ImGui::PushItemFlag()
+ // (Those are shared by all submitted items)
+ enum ImGuiItemFlags_
+diff --git a/third_party/imgui-master/imgui-master/imgui_internal.h b/third_party/imgui-master/imgui-master/imgui_internal.h
+index a58fed8..7514391 100644
+--- a/third_party/imgui-master/imgui-master/imgui_internal.h
++++ b/third_party/imgui-master/imgui-master/imgui_internal.h
+@@ -2657,7 +2657,14 @@ struct ImGuiContext
+     //bool                  NavDisableMouseHover;               // Old name for g.NavHighlightItemUnderNav before 1.91.1 (2024/10/18) this was called When user starts using keyboard/gamepad, we hide mouse hovering highlight until mouse is touched again.
+     bool                    NavMousePosDirty;                   // When set we will update mouse position if io.ConfigNavMoveSetMousePos is set (not enabled by default)
+     bool                    NavIdIsAlive;                       // Nav widget has been seen this frame ~~ NavRectRel is valid
+-    ImGuiID                 NavId;                              // Focused item for navigation
++    ImGuiID                 NavId;
++    // Accessibility focus capture. Reset at the start of NewFrame(), filled by
++    // ItemAdd() while the focused item is drawn.
++    ImGuiID                 A11yFocusId;
++    char                    A11yFocusLabel[96];
++    ImU8                    A11yFocusRole;
++    ImVec2                  A11yFocusMin;
++    ImVec2                  A11yFocusMax;                              // Focused item for navigation
+     ImGuiWindow*            NavWindow;                          // Focused window for navigation. Could be called 'FocusedWindow'
+     ImGuiID                 NavFocusScopeId;                    // Focused focus scope (e.g. selection code often wants to "clear other items" when landing on an item of the same scope)
+     ImGuiNavLayer           NavLayer;                           // Focused layer (main scrolling layer, or menu/title bar layer)
+@@ -2960,6 +2967,13 @@ struct IMGUI_API ImGuiWindowTempData
+     bool                    NavHideHighlightOneFrame;
+     bool                    NavWindowHasScrollY;    // Set per window when scrolling can be used (== ScrollMax.y > 0.0f)
+ 
++    // Accessibility: the label that produced the last GetID() call. ItemAdd()
++    // consumes it only when the ids match, so an unrelated GetID() can never
++    // leak a label onto the next widget.
++    ImGuiID                 PendingItemId;
++    char                    PendingItemLabel[96];
++    bool                    PendingItemLabelValid;
++
+     // Miscellaneous
+     bool                    MenuBarAppending;       // FIXME: Remove this
+     ImVec2                  MenuBarOffset;          // MenuBarOffset.x is sort of equivalent of a per-layer CursorPos.x, saved/restored as we switch to the menu bar. The only situation when MenuBarOffset.y is > 0 if when (SafeAreaPadding.y > FramePadding.y), often used on TVs.
+diff --git a/third_party/imgui-master/imgui-master/imgui_widgets.cpp b/third_party/imgui-master/imgui-master/imgui_widgets.cpp
+index 494c3f6..19ff027 100644
+--- a/third_party/imgui-master/imgui-master/imgui_widgets.cpp
++++ b/third_party/imgui-master/imgui-master/imgui_widgets.cpp
+@@ -806,6 +806,7 @@ bool ImGui::ButtonEx(const char* label, const ImVec2& size_arg, ImGuiButtonFlags
+     ItemSize(size, style.FramePadding.y);
+     if (!ItemAdd(bb, id))
+         return false;
++    SetAccessibilityItemRole(ImGuiA11yRole_Button);
+ 
+     bool hovered, held;
+     bool pressed = ButtonBehavior(bb, id, &hovered, &held, flags);
+@@ -860,6 +861,7 @@ bool ImGui::InvisibleButton(const char* str_id, const ImVec2& size_arg, ImGuiBut
+     ItemSize(size);
+     if (!ItemAdd(bb, id, NULL, (flags & ImGuiButtonFlags_EnableNav) ? ImGuiItemFlags_None : ImGuiItemFlags_NoNav))
+         return false;
++    SetAccessibilityItemRole(ImGuiA11yRole_Button);
+ 
+     bool hovered, held;
+     bool pressed = ButtonBehavior(bb, id, &hovered, &held, flags);
+@@ -1265,6 +1267,7 @@ bool ImGui::Checkbox(const char* label, bool* v)
+     const ImRect total_bb(pos, pos + ImVec2(square_sz + (label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f), label_size.y + style.FramePadding.y * 2.0f));
+     ItemSize(total_bb, style.FramePadding.y);
+     const bool is_visible = ItemAdd(total_bb, id);
++    SetAccessibilityItemRole(ImGuiA11yRole_CheckBox);
+     const bool is_multi_select = (g.LastItemData.ItemFlags & ImGuiItemFlags_IsMultiSelect) != 0;
+     if (!is_visible)
+         if (!is_multi_select || !g.BoxSelectState.UnclipMode || !g.BoxSelectState.UnclipRect.Overlaps(total_bb)) // Extra layer of "no logic clip" for box-select support
+@@ -1391,6 +1394,7 @@ bool ImGui::RadioButton(const char* label, bool active)
+     ItemSize(total_bb, style.FramePadding.y);
+     if (!ItemAdd(total_bb, id))
+         return false;
++    SetAccessibilityItemRole(ImGuiA11yRole_RadioButton);
+ 
+     ImVec2 center = check_bb.GetCenter();
+     center.x = IM_ROUND(center.x);
+@@ -1970,6 +1974,7 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
+     ItemSize(total_bb, style.FramePadding.y);
+     if (!ItemAdd(total_bb, id, &bb))
+         return false;
++    SetAccessibilityItemRole(ImGuiA11yRole_ComboBox);
+ 
+     // Open on click
+     bool hovered, held;
+@@ -2773,6 +2778,7 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
+     ItemSize(total_bb, style.FramePadding.y);
+     if (!ItemAdd(total_bb, id, &frame_bb, temp_input_allowed ? ImGuiItemFlags_Inputable : 0))
+         return false;
++    SetAccessibilityItemRole(ImGuiA11yRole_Slider);
+ 
+     // Default format string when passing NULL
+     if (format == NULL)
+@@ -3389,6 +3395,7 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
+     ItemSize(total_bb, style.FramePadding.y);
+     if (!ItemAdd(total_bb, id, &frame_bb, temp_input_allowed ? ImGuiItemFlags_Inputable : 0))
+         return false;
++    SetAccessibilityItemRole(ImGuiA11yRole_Slider);
+ 
+     // Default format string when passing NULL
+     if (format == NULL)
+@@ -4837,6 +4844,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
+             EndGroup();
+             return false;
+         }
++        SetAccessibilityItemRole(ImGuiA11yRole_TextInput);
+         item_data_backup = g.LastItemData;
+         window->DC.CursorPos = backup_pos;
+ 

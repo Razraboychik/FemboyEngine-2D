@@ -371,13 +371,15 @@ WidgetCanvasSystem is also the accessibility surface: BlindMode reads widget lab
 
 Accessibility is a frame policy, not an overlay. BlindMode skips the game pass, indirect draws and the skinning dispatch, then publishes a bounded narrative log. DeafMode mutes the Master bus and routes sound triggers into SubtitleLines. FlashGuard compresses sudden luminance changes. Colour-vision correction uses the published Machado 2009 matrices, and SrgbRelativeLuminance()/ContrastRatio() implement WCAG 2.2 for authoring-time validation.
 
+The kernel feeds one semantic tree shared by the game and the editor. ProjectWidgetCanvas() projects the retained canvas into Ui::AccessibilityTree (roles, states, localized names, screen bounds and focus), the Narrator speaks the focused node from a priority queue with deduplication and sentence-bounded chunking, and the UI Automation bridge publishes the same nodes to the operating system. A game calls ProjectCanvas() once per frame after building its UI canvas; FlushSpeech() remains the main-thread speech pump.
+
 | Item | Contract |
 |---|---|
 | NarrativeEvent | 128-slot SPSC ring of 160-byte text payloads; the simulation thread pushes, the speech thread pops. |
 | ColorVisionMatrix(deficiency) | Returns the 3x3 matrix for protanopia, deuteranopia or tritanopia. |
 | ApplyColorVision(color, matrix, strength) | Applies the matrix in linear light to an sRGB Color32. |
 | FlashGuard::Evaluate(luminance, dt) | Returns the gain for the current frame; a large delta is compressed to the threshold. |
-| EditorSettings::ide* | The same policies applied to the editor window itself: Machado correction, WCAG high-contrast, FlashGuard, keyboard navigation and LogBoy as the narration sink. |
+| EditorSettings::ide* | The same policies applied to the editor window itself: Machado correction, WCAG high-contrast, FlashGuard, keyboard navigation, and the editor narrator that speaks the focused panel and widget; LogBoy keeps the written log. |
 
 
 ## 14. Asset pipeline, VFS and localization

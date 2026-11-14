@@ -6,6 +6,7 @@
 #include "Engine/Audio/AudioDevices.hpp"
 #include "Engine/Audio/VoiceNetworkBridge.hpp"
 #include "Engine/ECS/Schedule.hpp"
+#include "Engine/ECS/ReplayRecorder.hpp"
 #include "Engine/ECS/Snapshot.hpp"
 #include "Engine/Network/NetLink.hpp"
 #include "Engine/Network/Replication.hpp"
@@ -323,6 +324,9 @@ private:
     float MElapsed = 0.0f;
     float MFixedAccumulator = 0.0f;
     DeterministicRng MRng{};
+    // Every PIE run records a verifiable replay under the editor storage root.
+    Ecs::ReplayRecorder MReplay{};
+    bool MReplayFailed = false;
     bool MActive = false;
     bool MInitialized = false;
 };

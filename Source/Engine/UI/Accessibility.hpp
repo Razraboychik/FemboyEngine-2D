@@ -6,8 +6,10 @@
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/RHI/PostProcess.hpp"
 #include "Engine/RHI/RenderItem.hpp"
+#include "Engine/UI/AccessibilityBridge.hpp"
 #include "Engine/UI/AccessibilityEffects.hpp"
 #include "Engine/UI/NarrativeTree.hpp"
+#include "Engine/UI/Narrator.hpp"
 #include "Engine/UI/SoundCues.hpp"
 
 #include <array>
@@ -278,6 +280,11 @@ struct AccessibilityProfile
     AccessibilitySettings runtime{};
     AccessibilityPresentationSettings presentation{};
     AccessibilityEditorSettings editor{};
+    // Spoken output of the shipped game. The editor keeps its own narrator
+    // settings in EditorSettings, so a game's policy never changes the editor.
+    NarratorSettings narration{};
+    // What the game publishes to the operating system accessibility tree.
+    AccessibilityBridgeSettings bridge{};
 };
 
 // 1.0 defaults: flash guard on, OLED orbit on, no colour correction, full
@@ -420,6 +427,42 @@ public:
     // Builds the subtitle overlay into a dedicated canvas.
     bool BuildSubtitleCanvas(Ui::WidgetCanvas& InCanvas) const noexcept;
 
+    // Semantic tree of the current interface. ProjectCanvas() rebuilds it from
+    // the retained PinkUI canvas; the bridge and the narrator read the same
+    // nodes, so what a screen reader announces and what the narrator speaks can
+    // never disagree.
+    [[nodiscard]] Ui::AccessibilityTree& Tree() noexcept
+    {
+        return MTree;
+    }
+    [[nodiscard]] const Ui::AccessibilityTree& Tree() const noexcept
+    {
+        return MTree;
+    }
+    [[nodiscard]] Narrator& Speech() noexcept
+    {
+        return MSpeech;
+    }
+    [[nodiscard]] const Narrator& Speech() const noexcept
+    {
+        return MSpeech;
+    }
+    void SetNarratorSettings(const NarratorSettings& InSettings) noexcept;
+    // Which side of the editor owns the voice. A standalone game sets Game once.
+    void SetSpeechOwner(NarratorOwner InOwner) noexcept
+    {
+        MSpeech.SetOwner(InOwner);
+    }
+    // Projects a PinkUI canvas into the tree, announces a focus change and
+    // publishes the result to the OS bridge.
+    void ProjectCanvas(const Ui::WidgetCanvas& InCanvas) noexcept;
+
+    // OS bridge lifecycle. The app passes its SDL window; the project bridge
+    // policy decides whether anything is published.
+    [[nodiscard]] bool StartBridge(void* InNativeWindow) noexcept;
+    void StopBridge() noexcept;
+    [[nodiscard]] bool BridgeRunning() const noexcept;
+
 private:
     struct StateTrack
     {
@@ -445,6 +488,9 @@ private:
     bool MMainThreadKnown = false;
     // Set when SetNarrativeLocale() changed the language off the main thread.
     bool MPendingVoiceLanguage = false;
+    // Set when ApplyProfile() ran off the main thread: the narrator policy is
+    // applied by the next FlushSpeech() on the owner thread.
+    bool MPendingNarratorSettings = false;
     Ui::NarrativeTree MNarrative{};
     const GameplayTagRegistry* MTags = nullptr;
     bool MNativeTtsAttached = false;
@@ -459,5 +505,10 @@ private:
     const VoiceCaptionProvider* MVoiceCaptionProvider = nullptr;
     const Ui::AccessibilityEffectRegistry* MEffects = nullptr;
     float MCaptionClockMs = 0.0f;
+    Ui::AccessibilityTree MTree{};
+    Narrator MSpeech{};
+    // Native window the game bridge was started for; null when the bridge is
+    // owned by another system (the editor runs its own bridge).
+    void* MBridgeWindow = nullptr;
 };
 }

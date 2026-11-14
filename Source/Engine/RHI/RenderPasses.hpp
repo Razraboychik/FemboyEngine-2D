@@ -126,9 +126,15 @@ struct PostFxConstants
 
 static_assert(sizeof(PostFxConstants) == 304, "the composite UBO is layout-checked against the shader");
 
+// Fills the 304-byte composite block from camera post-FX settings. InTimeSeed is
+// the shader clock used for scanlines, grain and accessibility animation.
+[[nodiscard]] PostFxConstants BuildPostFxConstants(const PostFxSettings& InSettings, Extent2D InExtent,
+                                                   std::uint32_t InTimeSeed);
+
 struct ColorGradingSettings
 {
-    // Opaque LUT texture id: a 32x1024 strip or a 3D palette.
+    // LUT texture array id: the 2D strip (32x1024 or N x N*N) lives in layer 0.
+    // The low 32 bits are the TextureArrayHandle id the backend resolves.
     std::uint64_t lutTexture = 0;
     std::uint32_t lutSize = 32;
     float intensity = 1.0f;

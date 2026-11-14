@@ -1,6 +1,11 @@
 // FemboyEngine2D - live network session diagnostics panel.
 #pragma once
 
+#include "Engine/Network/WebSocket.hpp"
+
+#include <array>
+#include <string>
+
 namespace Fby::Net
 {
 class NetSession;
@@ -25,5 +30,9 @@ public:
 
 protected:
     const Fby::Net::NetSession* MSession = nullptr;
+    Fby::Net::WebSocketClient MWebSocket;
+    std::array<char, 512> MWebSocketUrl{};
+    std::array<char, 256> MWebSocketMessage{};
+    std::string MWebSocketLog;
 };
 }

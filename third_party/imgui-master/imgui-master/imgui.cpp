@@ -4405,6 +4405,11 @@ ImGuiContext::ImGuiContext(ImFontAtlas* shared_font_atlas)
     InputTextState.Ctx = this;
 
     Initialized = false;
+    A11yFocusId = 0;
+    A11yFocusLabel[0] = 0;
+    A11yFocusRole = ImGuiA11yRole_None;
+    A11yFocusMin = ImVec2(0.0f, 0.0f);
+    A11yFocusMax = ImVec2(0.0f, 0.0f);
     WithinFrameScope = WithinFrameScopeWithImplicitWindow = false;
     TestEngineHookItems = false;
     FrameCount = 0;
@@ -5341,6 +5346,44 @@ bool ImGui::IsClippedEx(const ImRect& bb, ImGuiID id)
 
 // This is also inlined in ItemAdd()
 // Note: if ImGuiItemStatusFlags_HasDisplayRect is set, user needs to set g.LastItemData.DisplayRect.
+// Accessibility focus query. The label is captured by ItemAdd() while the
+// focused item is drawn; the host reads it between frames.
+const char* ImGui::GetAccessibilityFocusLabel()
+{
+    ImGuiContext& g = *GImGui;
+    return (g.A11yFocusId != 0 && g.A11yFocusLabel[0] != 0) ? g.A11yFocusLabel : NULL;
+}
+
+ImGuiA11yRole ImGui::GetAccessibilityFocusRole()
+{
+    ImGuiContext& g = *GImGui;
+    return (ImGuiA11yRole)g.A11yFocusRole;
+}
+
+ImGuiID ImGui::GetAccessibilityFocusId()
+{
+    return GImGui->A11yFocusId;
+}
+
+bool ImGui::GetAccessibilityFocusBounds(ImVec2* out_min, ImVec2* out_max)
+{
+    ImGuiContext& g = *GImGui;
+    if (g.A11yFocusId == 0)
+        return false;
+    if (out_min != NULL)
+        *out_min = g.A11yFocusMin;
+    if (out_max != NULL)
+        *out_max = g.A11yFocusMax;
+    return true;
+}
+
+void ImGui::SetAccessibilityItemRole(ImGuiA11yRole role)
+{
+    ImGuiContext& g = *GImGui;
+    if (g.LastItemData.ID != 0 && g.LastItemData.ID == g.NavId)
+        g.A11yFocusRole = (ImU8)role;
+}
+
 void ImGui::SetLastItemData(ImGuiID item_id, ImGuiItemFlags item_flags, ImGuiItemStatusFlags status_flags, const ImRect& item_rect)
 {
     ImGuiContext& g = *GImGui;
@@ -5889,6 +5932,14 @@ static void SetupDrawListSharedData()
 void ImGui::NewFrame()
 {
     IM_ASSERT(GImGui != NULL && "No current context. Did you call ImGui::CreateContext() and ImGui::SetCurrentContext() ?");
+
+    // Accessibility: the capture from the previous frame stays readable until
+    // here, which is what a host reading it between frames relies on.
+    GImGui->A11yFocusId = 0;
+    GImGui->A11yFocusLabel[0] = 0;
+    GImGui->A11yFocusRole = ImGuiA11yRole_None;
+    GImGui->A11yFocusMin = ImVec2(0.0f, 0.0f);
+    GImGui->A11yFocusMax = ImVec2(0.0f, 0.0f);
     ImGuiContext& g = *GImGui;
 
     // Remove pending delete hooks before frame start.
@@ -10056,6 +10107,26 @@ ImGuiID ImGuiWindow::GetID(const char* str, const char* str_end)
 {
     ImGuiID seed = IDStack.back();
     ImGuiID id = ImHashStr(str, str_end ? (str_end - str) : 0, seed);
+    // Accessibility: remember the label that produced this id. ItemAdd() uses
+    // it only when the ids match, so an unrelated GetID() cannot leak a label.
+    if (str != NULL)
+    {
+        const char* label_end = str_end ? str_end : str + ImStrlen(str);
+        // "##" hides everything after it; the spoken label is the visible part.
+        for (const char* scan = str; scan + 1 < label_end; scan++)
+            if (scan[0] == '#' && scan[1] == '#')
+            {
+                label_end = scan;
+                break;
+            }
+        ImU64 label_len = (ImU64)(label_end - str);
+        if (label_len >= IM_ARRAYSIZE(DC.PendingItemLabel))
+            label_len = IM_ARRAYSIZE(DC.PendingItemLabel) - 1;
+        memcpy(DC.PendingItemLabel, str, (size_t)label_len);
+        DC.PendingItemLabel[label_len] = 0;
+        DC.PendingItemId = id;
+        DC.PendingItemLabelValid = true;
+    }
 #ifndef IMGUI_DISABLE_DEBUG_TOOLS
     ImGuiContext& g = *Ctx;
     if (g.DebugHookIdInfoId == id)
@@ -12289,6 +12360,27 @@ bool ImGui::ItemAdd(const ImRect& bb, ImGuiID id, const ImRect* nav_bb_arg, ImGu
     g.LastItemData.NavRect = nav_bb_arg ? *nav_bb_arg : bb;
     g.LastItemData.ItemFlags = g.CurrentItemFlags | g.NextItemData.ItemFlagsSet | extra_flags;
     g.LastItemData.StatusFlags = ImGuiItemStatusFlags_None;
+    // Accessibility: attach the recorded label to this item. The pending label
+    // is consumed only on an id match; a stale one is dropped.
+    if (window->DC.PendingItemLabelValid && id != 0)
+    {
+        if (window->DC.PendingItemId == id)
+        {
+            if (id == g.NavId)
+            {
+                g.A11yFocusId = id;
+                memcpy(g.A11yFocusLabel, window->DC.PendingItemLabel, IM_ARRAYSIZE(g.A11yFocusLabel));
+                g.A11yFocusRole = ImGuiA11yRole_None;
+                g.A11yFocusMin = bb.Min;
+                g.A11yFocusMax = bb.Max;
+            }
+            window->DC.PendingItemLabelValid = false;
+        }
+        else
+        {
+            window->DC.PendingItemLabelValid = false;
+        }
+    }
     // Note: we don't copy 'g.NextItemData.SelectionUserData' to an hypothetical g.LastItemData.SelectionUserData: since the former is not cleared.
 
     if (id != 0)

@@ -1210,6 +1210,7 @@ std::int32_t WidgetCanvas::AddWidget(const WidgetDesc& InDesc) noexcept
         InDesc.parent == kNoWidget ? 0
                                    : static_cast<std::uint16_t>(childCounts[static_cast<std::uint32_t>(InDesc.parent)]);
     switcherActive[ScopedSlot] = WidgetHandle{};
+    accessibleNameIds[ScopedSlot] = 0;
     customPaints[ScopedSlot] = InDesc.customPaint;
     customUsers[ScopedSlot] = InDesc.customUser;
     customParams[ScopedSlot] = InDesc.customParams;
@@ -1432,6 +1433,24 @@ std::uint32_t WidgetCanvas::TextKey(std::int32_t InWidget) const noexcept
     }
     const std::uint32_t ScopedStored = textKeys[static_cast<std::uint32_t>(InWidget)];
     return ScopedStored == 0 ? 0xFFFFFFFFu : ScopedStored - 1u;
+}
+
+void WidgetCanvas::SetAccessibleName(std::int32_t InWidget, std::uint32_t InNameId) noexcept
+{
+    if (!ValidWidget(InWidget))
+    {
+        return;
+    }
+    accessibleNameIds[static_cast<std::uint32_t>(InWidget)] = InNameId;
+}
+
+std::uint32_t WidgetCanvas::AccessibleName(std::int32_t InWidget) const noexcept
+{
+    if (!ValidWidget(InWidget))
+    {
+        return 0;
+    }
+    return accessibleNameIds[static_cast<std::uint32_t>(InWidget)];
 }
 
 std::uint32_t WidgetCanvas::ApplyLocalization(const LocalizationTable& InTable) noexcept

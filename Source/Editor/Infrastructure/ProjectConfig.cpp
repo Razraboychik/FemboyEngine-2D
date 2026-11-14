@@ -833,6 +833,27 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
                                static_cast<double>(ScopedProfile.presentation.hudFadeAfterIdleSeconds));
     ScopedAccessibility.insert("minimum_contrast_ratio",
                                static_cast<double>(ScopedProfile.presentation.minimumContrastRatio));
+    // Narrator and OS bridge policy of the shipped game.
+    ScopedAccessibility.insert("narration_enabled", ScopedProfile.narration.Enabled);
+    ScopedAccessibility.insert("narration_focus", ScopedProfile.narration.AnnounceFocus);
+    ScopedAccessibility.insert("narration_role", ScopedProfile.narration.AnnounceRole);
+    ScopedAccessibility.insert("narration_state", ScopedProfile.narration.AnnounceState);
+    ScopedAccessibility.insert("narration_scene", ScopedProfile.narration.AnnounceScene);
+    ScopedAccessibility.insert("narration_world", ScopedProfile.narration.AnnounceWorldEvents);
+    ScopedAccessibility.insert("narration_interrupt", ScopedProfile.narration.InterruptOnFocus);
+    ScopedAccessibility.insert("narration_verbosity", static_cast<std::int64_t>(ScopedProfile.narration.Verbosity));
+    ScopedAccessibility.insert("narration_rate", static_cast<double>(ScopedProfile.narration.Rate));
+    ScopedAccessibility.insert("narration_max_queue", static_cast<std::int64_t>(ScopedProfile.narration.MaxQueued));
+    ScopedAccessibility.insert("narration_language", std::string(
+                                                        ProjectString(ScopedProfile.narration.Language,
+                                                                     sizeof(ScopedProfile.narration.Language))));
+    ScopedAccessibility.insert("narration_voice", std::string(ProjectString(
+                                                     ScopedProfile.narration.VoiceId,
+                                                     sizeof(ScopedProfile.narration.VoiceId))));
+    ScopedAccessibility.insert("bridge_enabled", ScopedProfile.bridge.Enabled);
+    ScopedAccessibility.insert("bridge_focus_events", ScopedProfile.bridge.RaiseFocusEvents);
+    ScopedAccessibility.insert("bridge_structure_events", ScopedProfile.bridge.RaiseStructureEvents);
+    ScopedAccessibility.insert("bridge_state_events", ScopedProfile.bridge.RaiseStateEvents);
     ScopedRoot.insert("accessibility", std::move(ScopedAccessibility));
 
     toml::table ScopedComfort;
@@ -901,6 +922,26 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedEditorTable.insert("ide_color_vision", static_cast<std::int64_t>(ScopedEditorProfile.colorVision));
     ScopedEditorTable.insert("ide_color_vision_strength", static_cast<double>(ScopedEditorProfile.colorVisionStrength));
     ScopedEditorTable.insert("ide_flash_threshold", static_cast<double>(ScopedEditorProfile.flashThreshold));
+    // Editor-side narrator and bridge. These keys belong to the editor
+    // environment; the shipped game reads the [accessibility] section instead.
+    ScopedEditorTable.insert("narration_enabled", ScopedEditor.narration.Enabled);
+    ScopedEditorTable.insert("narration_focus", ScopedEditor.narration.AnnounceFocus);
+    ScopedEditorTable.insert("narration_role", ScopedEditor.narration.AnnounceRole);
+    ScopedEditorTable.insert("narration_state", ScopedEditor.narration.AnnounceState);
+    ScopedEditorTable.insert("narration_interrupt", ScopedEditor.narration.InterruptOnFocus);
+    ScopedEditorTable.insert("narration_verbosity", static_cast<std::int64_t>(ScopedEditor.narration.Verbosity));
+    ScopedEditorTable.insert("narration_rate", static_cast<double>(ScopedEditor.narration.Rate));
+    ScopedEditorTable.insert("narration_max_queue", static_cast<std::int64_t>(ScopedEditor.narration.MaxQueued));
+    ScopedEditorTable.insert("narration_language", std::string(
+                                                       ProjectString(ScopedEditor.narration.Language,
+                                                                    sizeof(ScopedEditor.narration.Language))));
+    ScopedEditorTable.insert("narration_voice", std::string(
+                                                     ProjectString(ScopedEditor.narration.VoiceId,
+                                                                  sizeof(ScopedEditor.narration.VoiceId))));
+    ScopedEditorTable.insert("bridge_enabled", ScopedEditor.bridge.Enabled);
+    ScopedEditorTable.insert("bridge_focus_events", ScopedEditor.bridge.RaiseFocusEvents);
+    ScopedEditorTable.insert("bridge_structure_events", ScopedEditor.bridge.RaiseStructureEvents);
+    ScopedEditorTable.insert("bridge_state_events", ScopedEditor.bridge.RaiseStateEvents);
     ScopedRoot.insert("editor", std::move(ScopedEditorTable));
 
     std::ostringstream ScopedStream;
@@ -1175,6 +1216,43 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
         ScopedProfile.presentation.minimumContrastRatio = static_cast<float>(std::clamp(
             FloatField(*ScopedAccessibility, "minimum_contrast_ratio", ScopedProfile.presentation.minimumContrastRatio),
             1.0, 21.0));
+
+        NarratorSettings& ScopedNarration = ScopedProfile.narration;
+        ScopedNarration.Enabled = BoolField(*ScopedAccessibility, "narration_enabled", ScopedNarration.Enabled);
+        ScopedNarration.AnnounceFocus =
+            BoolField(*ScopedAccessibility, "narration_focus", ScopedNarration.AnnounceFocus);
+        ScopedNarration.AnnounceRole =
+            BoolField(*ScopedAccessibility, "narration_role", ScopedNarration.AnnounceRole);
+        ScopedNarration.AnnounceState =
+            BoolField(*ScopedAccessibility, "narration_state", ScopedNarration.AnnounceState);
+        ScopedNarration.AnnounceScene =
+            BoolField(*ScopedAccessibility, "narration_scene", ScopedNarration.AnnounceScene);
+        ScopedNarration.AnnounceWorldEvents =
+            BoolField(*ScopedAccessibility, "narration_world", ScopedNarration.AnnounceWorldEvents);
+        ScopedNarration.InterruptOnFocus =
+            BoolField(*ScopedAccessibility, "narration_interrupt", ScopedNarration.InterruptOnFocus);
+        ScopedNarration.Verbosity = static_cast<std::uint8_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedAccessibility, "narration_verbosity",
+                     static_cast<std::int64_t>(ScopedNarration.Verbosity)), 0, 3));
+        ScopedNarration.Rate = static_cast<float>(std::clamp(
+            FloatField(*ScopedAccessibility, "narration_rate", ScopedNarration.Rate), 0.5, 2.0));
+        ScopedNarration.MaxQueued = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedAccessibility, "narration_max_queue", static_cast<std::int64_t>(ScopedNarration.MaxQueued)),
+            1, 16));
+        const std::string ScopedNarrationLanguage = StringField(*ScopedAccessibility, "narration_language");
+        if (!ScopedNarrationLanguage.empty())
+        {
+            CopyProjectString(ScopedNarration.Language, sizeof(ScopedNarration.Language), ScopedNarrationLanguage);
+        }
+        const std::string ScopedNarrationVoice = StringField(*ScopedAccessibility, "narration_voice");
+        CopyProjectString(ScopedNarration.VoiceId, sizeof(ScopedNarration.VoiceId), ScopedNarrationVoice);
+        ScopedProfile.bridge.Enabled = BoolField(*ScopedAccessibility, "bridge_enabled", ScopedProfile.bridge.Enabled);
+        ScopedProfile.bridge.RaiseFocusEvents =
+            BoolField(*ScopedAccessibility, "bridge_focus_events", ScopedProfile.bridge.RaiseFocusEvents);
+        ScopedProfile.bridge.RaiseStructureEvents =
+            BoolField(*ScopedAccessibility, "bridge_structure_events", ScopedProfile.bridge.RaiseStructureEvents);
+        ScopedProfile.bridge.RaiseStateEvents =
+            BoolField(*ScopedAccessibility, "bridge_state_events", ScopedProfile.bridge.RaiseStateEvents);
     }
     if (const toml::table* ScopedEditor = Section(ScopedRoot, "editor"); ScopedEditor != nullptr)
     {
@@ -1296,6 +1374,40 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             BoolField(*ScopedEditor, "ide_reduce_motion", ScopedProfile.editor.reduceMotion);
         ScopedProfile.editor.colorVision = static_cast<std::uint8_t>(std::clamp<std::int64_t>(
             IntField(*ScopedEditor, "ide_color_vision", ScopedProfile.editor.colorVision), 0, 3));
+
+        NarratorSettings& ScopedEditorNarration = ScopedConfig.editor.narration;
+        ScopedEditorNarration.Enabled = BoolField(*ScopedEditor, "narration_enabled", ScopedEditorNarration.Enabled);
+        ScopedEditorNarration.AnnounceFocus =
+            BoolField(*ScopedEditor, "narration_focus", ScopedEditorNarration.AnnounceFocus);
+        ScopedEditorNarration.AnnounceRole =
+            BoolField(*ScopedEditor, "narration_role", ScopedEditorNarration.AnnounceRole);
+        ScopedEditorNarration.AnnounceState =
+            BoolField(*ScopedEditor, "narration_state", ScopedEditorNarration.AnnounceState);
+        ScopedEditorNarration.InterruptOnFocus =
+            BoolField(*ScopedEditor, "narration_interrupt", ScopedEditorNarration.InterruptOnFocus);
+        ScopedEditorNarration.Verbosity = static_cast<std::uint8_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "narration_verbosity", static_cast<std::int64_t>(ScopedEditorNarration.Verbosity)),
+            0, 3));
+        ScopedEditorNarration.Rate = static_cast<float>(std::clamp(
+            FloatField(*ScopedEditor, "narration_rate", ScopedEditorNarration.Rate), 0.5, 2.0));
+        ScopedEditorNarration.MaxQueued = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "narration_max_queue", static_cast<std::int64_t>(ScopedEditorNarration.MaxQueued)), 1,
+            16));
+        const std::string ScopedEditorLanguage = StringField(*ScopedEditor, "narration_language");
+        if (!ScopedEditorLanguage.empty())
+        {
+            CopyProjectString(ScopedEditorNarration.Language, sizeof(ScopedEditorNarration.Language),
+                              ScopedEditorLanguage);
+        }
+        const std::string ScopedEditorVoice = StringField(*ScopedEditor, "narration_voice");
+        CopyProjectString(ScopedEditorNarration.VoiceId, sizeof(ScopedEditorNarration.VoiceId), ScopedEditorVoice);
+        ScopedConfig.editor.bridge.Enabled = BoolField(*ScopedEditor, "bridge_enabled", ScopedConfig.editor.bridge.Enabled);
+        ScopedConfig.editor.bridge.RaiseFocusEvents =
+            BoolField(*ScopedEditor, "bridge_focus_events", ScopedConfig.editor.bridge.RaiseFocusEvents);
+        ScopedConfig.editor.bridge.RaiseStructureEvents =
+            BoolField(*ScopedEditor, "bridge_structure_events", ScopedConfig.editor.bridge.RaiseStructureEvents);
+        ScopedConfig.editor.bridge.RaiseStateEvents =
+            BoolField(*ScopedEditor, "bridge_state_events", ScopedConfig.editor.bridge.RaiseStateEvents);
         ScopedProfile.editor.colorVisionStrength = static_cast<float>(std::clamp(
             FloatField(*ScopedEditor, "ide_color_vision_strength", ScopedProfile.editor.colorVisionStrength), 0.0, 1.0));
         ScopedProfile.editor.flashThreshold = static_cast<float>(std::clamp(

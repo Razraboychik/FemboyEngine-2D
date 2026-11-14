@@ -25,6 +25,17 @@ NAMES = {
     "d3d11_temporal_VSMain": "D3D11TemporalVsSm5",
     "d3d11_temporal_PSMain": "D3D11TemporalPsSm5",
     "d3d11_sharpen_PSMain": "D3D11SharpenPsSm5",
+    "d3d11_postfx_composite_VSMain": "D3D11PostFxVsSm5",
+    "d3d11_postfx_composite_PSMain": "D3D11PostFxPsSm5",
+    "d3d11_bloom_prefilter_CSMain": "D3D11BloomPrefilterCsSm5",
+    "d3d11_bloom_blur_CSMain": "D3D11BloomBlurCsSm5",
+    "d3d11_color_grading_VSMain": "D3D11ColorGradingVsSm5",
+    "d3d11_color_grading_PSMain": "D3D11ColorGradingPsSm5",
+    "d3d11_blit_PSMain": "D3D11BlitPsSm5",
+    "d3d11_hud_composite_PSMain": "D3D11HudCompositePsSm5",
+    "d3d11_upscale_PSMain": "D3D11UpscalePsSm5",
+    "d3d11_accessibility_composite_PSMain": "D3D11AccessibilityPsSm5",
+    "d3d11_accessibility_flash_CSMain": "D3D11AccessibilityFlashCsSm5",
     "d3d12_sprite_VSMain": "D3D12SpriteVsSm5",
     "d3d12_sprite_PSMain": "D3D12SpritePsSm5",
     "d3d12_motion_VSMain": "D3D12MotionVsSm5",
@@ -33,6 +44,19 @@ NAMES = {
     "d3d12_temporal_PSMain": "D3D12TemporalPsSm5",
     "d3d12_sharpen_VSMain": "D3D12SharpenVsSm5",
     "d3d12_sharpen_PSMain": "D3D12SharpenPsSm5",
+    "d3d12_material_sprite_VSMain": "D3D12MaterialSpriteVsSm5",
+    "d3d12_postfx_composite_VSMain": "D3D12PostFxVsSm5",
+    "d3d12_postfx_composite_PSMain": "D3D12PostFxPsSm5",
+    "d3d12_bloom_prefilter_CSMain": "D3D12BloomPrefilterCsSm5",
+    "d3d12_bloom_blur_CSMain": "D3D12BloomBlurCsSm5",
+    "d3d12_color_grading_VSMain": "D3D12ColorGradingVsSm5",
+    "d3d12_color_grading_PSMain": "D3D12ColorGradingPsSm5",
+    "d3d12_blit_PSMain": "D3D12BlitPsSm5",
+    "d3d12_hud_composite_PSMain": "D3D12HudCompositePsSm5",
+    "d3d12_upscale_PSMain": "D3D12UpscalePsSm5",
+    "d3d12_accessibility_composite_PSMain": "D3D12AccessibilityPsSm5",
+    "d3d12_accessibility_flash_CSMain": "D3D12AccessibilityFlashCsSm5",
+    "d3d12_material_sprite_PSMain": "D3D12MaterialSpritePsSm5",
 }
 
 
@@ -66,7 +90,12 @@ def find_fxc() -> pathlib.Path:
 
 
 def compile_one(fxc: pathlib.Path, backend: str, name: str, entry: str, output: pathlib.Path) -> None:
-    profile = "vs_5_0" if entry == "VSMain" else "ps_5_0"
+    if entry == "VSMain":
+        profile = "vs_5_0"
+    elif entry == "CSMain":
+        profile = "cs_5_0"
+    else:
+        profile = "ps_5_0"
     source = SHADER_ROOT / backend / f"{name}.hlsl"
     subprocess.run(
         [str(fxc), "/nologo", "/T", profile, "/E", entry, "/Fo", str(output), str(source)],
@@ -83,10 +112,20 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="fby-dx-shaders-") as temp:
         temp_dir = pathlib.Path(temp)
         for backend in ("d3d11", "d3d12"):
-            names = ("sprite", "motion", "temporal", "sharpen")
+            names = ("sprite", "motion", "temporal", "sharpen", "postfx_composite", "bloom_prefilter", "bloom_blur",
+                     "color_grading", "blit", "hud_composite", "upscale", "accessibility_composite",
+                     "accessibility_flash")
+            if backend == "d3d12":
+                names = names + ("material_sprite",)
             for name in names:
                 entries = ("VSMain", "PSMain")
                 if backend == "d3d11" and name == "sharpen":
+                    entries = ("PSMain",)
+                if name == "material_sprite":
+                    entries = ("VSMain", "PSMain")
+                if name in ("bloom_prefilter", "bloom_blur", "accessibility_flash"):
+                    entries = ("CSMain",)
+                if name in ("blit", "hud_composite", "upscale", "accessibility_composite"):
                     entries = ("PSMain",)
                 for entry in entries:
                     compile_one(fxc, backend, name, entry, temp_dir / f"{backend}_{name}_{entry}.cso")

@@ -64,8 +64,8 @@ namespace Fby::Rhi
         InFidelityFxRuntime.FrameGeneration && InInfo.upscalers.motionVectors;
     ScopedCaps.DlssFrameGeneration = ScopedNvidiaWindows && InDlssRuntime.FrameGeneration &&
                                      InInfo.upscalers.motionVectors;
-    // XeSS FG in the vendored SDK exposes only the D3D12 swapchain API; the
-    // engine has no D3D12 backend, so it must never be advertised on Vulkan.
+    // XeSS FG in the vendored SDK exposes only the D3D12 swapchain API, which the
+    // D3D12 backend does not wire to the XeSS runtime, so it stays unadvertised.
     ScopedCaps.XeSsFrameGeneration = false;
     ScopedCaps.VendorFrameGeneration = ScopedCaps.Fsr3FrameGeneration || ScopedCaps.DlssFrameGeneration ||
                                       ScopedCaps.XeSsFrameGeneration;

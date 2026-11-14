@@ -26,7 +26,10 @@ add_library(fby_editor STATIC
     Panels/AnimationTimelinePanel.cpp
     Panels/DirectionalBlendFile.cpp
     Panels/DirectionalBlendSpacePanel.cpp
+    Panels/BooksPanel.cpp
     Panels/ContentBrowserPanel.cpp
+    Panels/DataTablePanel.cpp
+    Panels/DocumentsPanel.cpp
     Panels/LogBoyPanel.cpp
     Panels/LicensesPanel.cpp
     Panels/NetworkDiagnosticsPanel.cpp
@@ -43,7 +46,10 @@ add_library(fby_editor STATIC
     Panels/SkeletonAssetPanel.cpp
     Panels/SpriteAnimationPanel.cpp
     Panels/TilemapEditorPanel.cpp
+    Panels/RenderTuningPanel.cpp
     Panels/TextPreviewPanel.cpp
+    Panels/VideoPanel.cpp
+    Panels/UiLayoutPanel.cpp
     Panels/TransportGroupPanel.cpp
     Panels/VirtualTexturePanel.cpp
     Panels/VisualScriptPanel.cpp)

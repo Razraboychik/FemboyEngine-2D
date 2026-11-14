@@ -902,6 +902,17 @@ fby_add_engine_test(fby_pinkui_font_mount_test pinkui_font_mount PinkUIFontMount
 # TTS: FlushSpeech is main-thread-only; setVoice follows the narrative locale.
 fby_add_engine_test(fby_tts_thread_test tts_thread TtsThreadTest.cpp)
 
+# Semantic tree, PinkUI projection, narrator queue and the accessibility
+# bridge policy shared by the game and the editor.
+fby_add_engine_test(fby_accessibility_narrator_test accessibility_narrator AccessibilityNarratorTest.cpp)
+
+# Linux system voice: the speech-dispatcher adapter must fail closed without the
+# daemon and stay bounded with it. The test also compiles on other platforms as
+# a skip, so the CMake target stays portable.
+if(UNIX AND NOT APPLE)
+    fby_add_engine_test(fby_tts_speech_dispatcher_test tts_speech_dispatcher TtsSpeechDispatcherTest.cpp)
+endif()
+
 # Cloth render bridge: ClothRenderSystem emits a CPU-deformed MeshRenderItem and
 fby_add_engine_test(fby_cloth_render_test cloth_render ClothRenderTest.cpp)
 

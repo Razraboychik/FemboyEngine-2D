@@ -268,6 +268,7 @@ typedef int ImGuiHoveredFlags;      // -> enum ImGuiHoveredFlags_    // Flags: f
 typedef int ImGuiInputFlags;        // -> enum ImGuiInputFlags_      // Flags: for Shortcut(), SetNextItemShortcut()
 typedef int ImGuiInputTextFlags;    // -> enum ImGuiInputTextFlags_  // Flags: for InputText(), InputTextMultiline()
 typedef int ImGuiItemFlags;         // -> enum ImGuiItemFlags_       // Flags: for PushItemFlag(), shared by all items
+typedef int ImGuiA11yRole;          // -> enum ImGuiA11yRole_         // Accessibility role of the focused item
 typedef int ImGuiKeyChord;          // -> ImGuiKey | ImGuiMod_XXX    // Flags: for IsKeyChordPressed(), Shortcut() etc. an ImGuiKey optionally OR-ed with one or more ImGuiMod_XXX values.
 typedef int ImGuiListClipperFlags;  // -> enum ImGuiListClipperFlags_// Flags: for ImGuiListClipper
 typedef int ImGuiPopupFlags;        // -> enum ImGuiPopupFlags_      // Flags: for OpenPopup*(), BeginPopupContext*(), IsPopupOpen()
@@ -1053,6 +1054,20 @@ namespace ImGui
     // Overlapping mode
     IMGUI_API void          SetNextItemAllowOverlap();                                          // allow next item to be overlapped by a subsequent item. Typically useful with InvisibleButton(), Selectable(), TreeNode() covering an area where subsequent items may need to be added. Note that both Selectable() and TreeNode() have dedicated flags doing this.
 
+    // Accessibility: label and role of the item that owns navigation focus.
+    // The label is the visible part of the widget label ("##" and beyond is
+    // stripped) and stays valid until the next NewFrame(). Returns NULL when no
+    // item is focused.
+    IMGUI_API const char*   GetAccessibilityFocusLabel();
+    IMGUI_API ImGuiA11yRole GetAccessibilityFocusRole();
+    IMGUI_API ImGuiID       GetAccessibilityFocusId();
+    // Screen-space bounds of the focused item, in the same coordinates as
+    // ImGui::GetItemRectMin(). Returns false when there is no focused item.
+    IMGUI_API bool          GetAccessibilityFocusBounds(ImVec2* out_min, ImVec2* out_max);
+    // Called by the widgets right after ItemAdd(); it records the role only for
+    // the item that just took focus.
+    IMGUI_API void          SetAccessibilityItemRole(ImGuiA11yRole role);
+
     // Item/Widgets Utilities and Query Functions
     // - Most of the functions are referring to the previous Item that has been submitted.
     // - See Demo Window under "Widgets->Querying Status" for an interactive visualization of most of those functions.
@@ -1292,6 +1307,24 @@ enum ImGuiChildFlags_
 #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
     //ImGuiChildFlags_Border                = ImGuiChildFlags_Borders,  // Renamed in 1.91.1 (August 2024) for consistency.
 #endif
+};
+
+// Accessibility role of the item that currently owns keyboard navigation focus.
+// A widget sets it right after ItemAdd(); an application reads it back with
+// GetAccessibilityFocusRole() when it mirrors the interface to a screen reader.
+// The enum names what a spoken interface needs, not what a renderer needs.
+enum ImGuiA11yRole_
+{
+    ImGuiA11yRole_None = 0,
+    ImGuiA11yRole_Button,
+    ImGuiA11yRole_CheckBox,
+    ImGuiA11yRole_RadioButton,
+    ImGuiA11yRole_Slider,
+    ImGuiA11yRole_TextInput,
+    ImGuiA11yRole_ComboBox,
+    ImGuiA11yRole_ListItem,
+    ImGuiA11yRole_MenuItem,
+    ImGuiA11yRole_TreeItem,
 };
 
 // Flags for ImGui::PushItemFlag()

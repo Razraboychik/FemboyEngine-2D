@@ -2657,7 +2657,14 @@ struct ImGuiContext
     //bool                  NavDisableMouseHover;               // Old name for g.NavHighlightItemUnderNav before 1.91.1 (2024/10/18) this was called When user starts using keyboard/gamepad, we hide mouse hovering highlight until mouse is touched again.
     bool                    NavMousePosDirty;                   // When set we will update mouse position if io.ConfigNavMoveSetMousePos is set (not enabled by default)
     bool                    NavIdIsAlive;                       // Nav widget has been seen this frame ~~ NavRectRel is valid
-    ImGuiID                 NavId;                              // Focused item for navigation
+    ImGuiID                 NavId;
+    // Accessibility focus capture. Reset at the start of NewFrame(), filled by
+    // ItemAdd() while the focused item is drawn.
+    ImGuiID                 A11yFocusId;
+    char                    A11yFocusLabel[96];
+    ImU8                    A11yFocusRole;
+    ImVec2                  A11yFocusMin;
+    ImVec2                  A11yFocusMax;                              // Focused item for navigation
     ImGuiWindow*            NavWindow;                          // Focused window for navigation. Could be called 'FocusedWindow'
     ImGuiID                 NavFocusScopeId;                    // Focused focus scope (e.g. selection code often wants to "clear other items" when landing on an item of the same scope)
     ImGuiNavLayer           NavLayer;                           // Focused layer (main scrolling layer, or menu/title bar layer)
@@ -2959,6 +2966,13 @@ struct IMGUI_API ImGuiWindowTempData
     bool                    NavIsScrollPushableX;   // Set when current work location may be scrolled horizontally when moving left / right. This is generally always true UNLESS within a column.
     bool                    NavHideHighlightOneFrame;
     bool                    NavWindowHasScrollY;    // Set per window when scrolling can be used (== ScrollMax.y > 0.0f)
+
+    // Accessibility: the label that produced the last GetID() call. ItemAdd()
+    // consumes it only when the ids match, so an unrelated GetID() can never
+    // leak a label onto the next widget.
+    ImGuiID                 PendingItemId;
+    char                    PendingItemLabel[96];
+    bool                    PendingItemLabelValid;
 
     // Miscellaneous
     bool                    MenuBarAppending;       // FIXME: Remove this

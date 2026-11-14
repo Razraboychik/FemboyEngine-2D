@@ -145,6 +145,10 @@ public:
     // SDL_Event* from WindowManager's observer.
     void OnPlatformEvent(const void* InSdlEvent);
 
+    // Speaks one line through the editor narrator. Panels call it for events a
+    // screen reader cannot see: commits, selections, build results, PIE state.
+    void Announce(std::string_view InText, bool InUrgent = false) noexcept;
+
     [[nodiscard]] bool WantsMouse() const noexcept;
     [[nodiscard]] bool WantsKeyboard() const noexcept;
 
@@ -241,6 +245,12 @@ public:
     void ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSystem* InVfs);
 
 private:
+    // Applies the editor narrator and bridge policy and advances the speech
+    // queue. Runs once per frame before the ImGui frame starts.
+    void UpdateSpeech(Ecs::SystemContext& InContext);
+    // Rebuilds the semantic tree from the live ImGui windows.
+    void BuildEditorTree() noexcept;
+
     struct Impl;
     std::unique_ptr<Impl> MImpl;
 };

@@ -12,6 +12,7 @@
 #include <memory>
 #include <span>
 #include <type_traits>
+#include <vector>
 
 namespace Fby::Rhi
 {
@@ -616,7 +617,6 @@ public:
     {
         (void)InHandle;
     }
-    // Records a sprite pass into the target and leaves it in a sampleable
     // Presents the target on the swapchain with a blit. Used by offscreen
     // benchmarks and by a cached static frame, so the window never shows a
     // black placeholder.
@@ -858,6 +858,11 @@ protected:
 // Backend factory hooks, implemented by the backend translation units.
 [[nodiscard]] std::unique_ptr<RHI> CreateVulkanRHI();
 [[nodiscard]] std::unique_ptr<RHI> CreateMetalRHI();
+
+// CPU pixels for the built-in four-layer atlas: white, checker, radial shade and
+// a soft disc. Layer 0 is the white texel every solid rectangle samples, which is
+// why a backend that owns an atlas must expose it to 0xFFFFFFFF packets.
+[[nodiscard]] std::vector<std::byte> BuildBuiltInAtlasPixels(std::uint32_t InSize, std::uint32_t InLayers);
 
 // Selects a backend for the current platform at runtime.
 // Returns Null, which asks RHI::Create to probe Vulkan first and fall back to the

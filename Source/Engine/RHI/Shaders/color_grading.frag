@@ -8,7 +8,7 @@ layout(location = 0) in vec2 vUv;
 layout(location = 0) out vec4 outColor;
 
 layout(set = 0, binding = 0) uniform sampler2D uScene;
-layout(set = 0, binding = 1) uniform sampler2D uLut;
+layout(set = 0, binding = 1) uniform sampler2DArray uLut;
 
 layout(set = 0, binding = 2) uniform ColorGradingBlock
 {
@@ -24,7 +24,7 @@ vec3 SampleLut(vec3 color)
     const float slice = floor(clamped.b * maxIndex + 0.5);
     const vec2 uv = vec2((clamped.r * maxIndex + 0.5) / size,
                          (slice * size + clamped.g * maxIndex + 0.5) / (size * size));
-    return texture(uLut, uv).rgb;
+    return texture(uLut, vec3(uv, 0.0)).rgb;
 }
 
 void main()

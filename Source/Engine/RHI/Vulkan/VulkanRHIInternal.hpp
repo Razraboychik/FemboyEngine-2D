@@ -33,6 +33,10 @@
 namespace Fby::Rhi::Impl
 {
 constexpr std::uint32_t kMaxFramesInFlight = 4;
+// Several viewports (editor, PIE, UI) share one recorded frame. Every recorded
+// effect pass takes its own view slot, so a descriptor set is never rewritten
+// while draws that already reference it are still pending.
+constexpr std::uint32_t kMaxViewsPerFrame = 4;
 constexpr std::uint32_t kQuadIndexCount = 6;
 constexpr std::uint32_t kAtlasSize = 128;
 constexpr std::uint32_t kAtlasLayers = 4;
@@ -243,6 +247,12 @@ struct MaterialPipeline
     // sRGB render targets use a different attachment format, so a pipeline is
     // only compatible with the pass it was created for.
     VkPipeline srgbPass = VK_NULL_HANDLE;
+    // Cooked stage code kept so a pipeline can be built for a target render pass
+    // that is not one of the three shared passes.
+    std::vector<std::byte> vertexCode;
+    std::vector<std::byte> fragmentCode;
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    std::unordered_map<VkRenderPass, VkPipeline> passVariants;
     bool alive = false;
 };
 
@@ -549,7 +559,16 @@ private:
                           const FrameAccessibility& InAccessibility) noexcept;
     bool CreateAccessibilitySwapchainResources();
     bool CreatePostFxResources();
+    bool CreateBloomResources();
+    [[nodiscard]] bool EnsureBloomImages(Extent2D InExtent);
+    void DestroyBloomResources() noexcept;
+    void RecordBloomChain(VkCommandBuffer InCommandBuffer);
+    bool CreateColorGradeResources();
+    void RecordColorGrade(VkCommandBuffer InCommandBuffer);
+    void DestroyColorGradeResources() noexcept;
+    void RecordPostFxSourceBarrier(VkCommandBuffer InCommandBuffer);
     void RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const PostFxBlock& InBlock, const Extent2D& InExtent);
+    [[nodiscard]] PostFxBlock BuildPostFxBlock(const PostFxSettings& InSettings, Extent2D InExtent) const;
     void RecordPostFxComposite(VkCommandBuffer InCommandBuffer, const PostFxSettings& InSettings,
                                const Extent2D& InExtent);
     void DestroyAccessibilitySwapchainResources() noexcept;
@@ -619,7 +638,8 @@ private:
     bool CreateMeshPipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline);
     bool CreateGraphicsPipelineForPass(VkRenderPass InRenderPass, VkPipelineLayout InLayout, const void* InVertexSpirv,
                                        std::size_t InVertexBytes, const void* InFragmentSpirv,
-                                       std::size_t InFragmentBytes, VkPipeline* OutPipeline);
+                                       std::size_t InFragmentBytes, VkPipeline* OutPipeline,
+                                       bool InBlendEnable = true);
     bool CreateOffscreenRenderPass();
     bool CreateSdfShadowResources();
     bool CreateSdfComputeResources();
@@ -643,7 +663,7 @@ private:
     bool CreateUploadArena(std::uint32_t InBytes);
     void DestroyMaterialPipelines() noexcept;
     [[nodiscard]] VkPipeline ResolveMaterialPipeline(std::uint32_t InId, bool InOffscreen,
-                                                     bool InSrgb = false) const noexcept;
+                                                     bool InSrgb = false);
     bool CreateStaticMeshArena();
     void DestroyStaticMeshArena() noexcept;
     bool AllocateStaticRange(std::vector<MeshArenaRange>& InFreeList, std::uint32_t InCount, std::uint32_t* InOffset);
@@ -687,6 +707,9 @@ private:
     void DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
                     bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot, bool InDepthOnly = false);
     void PreUploadInstances(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
+    // GI probe upload must run outside a render pass: it records a host-write
+    // memory barrier, which is illegal inside vkCmdBeginRenderPass.
+    void UploadGiProbes(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
     // The shared sprite sets outlive a frame slot, so any rewrite has to wait for
     // every command buffer that may still reference them.
     void WaitAllInFlight();
@@ -764,46 +787,48 @@ private:
     VkPipeline MPipelineOpaque = VK_NULL_HANDLE;
     VkDescriptorSetLayout MOitResolveSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool MOitResolvePool = VK_NULL_HANDLE;
-    VkDescriptorSet MOitResolveSet = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight * kMaxViewsPerFrame> MOitResolveSets{};
     VkPipelineLayout MOitResolveLayout = VK_NULL_HANDLE;
     VkPipeline MOitResolvePipeline = VK_NULL_HANDLE;
     std::unordered_map<VkRenderPass, VkPipeline> MOitResolvePipelines;
     VkSampler MOitResolveSampler = VK_NULL_HANDLE;
     VkDescriptorSetLayout MUpscaleSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool MUpscalePool = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, kMaxFramesInFlight> MUpscaleSets{};
-    [[nodiscard]] VkDescriptorSet UpscaleSet() const noexcept
-    {
-        return MUpscaleSets[MFrameIndex];
-    }
-
+    std::array<VkDescriptorSet, kMaxFramesInFlight * kMaxViewsPerFrame> MUpscaleSets{};
     // RCAS runs after the upscale in the same frame; a shared set would be updated
     // after the command buffer already bound it.
-    std::array<VkDescriptorSet, kMaxFramesInFlight> MRcasSets{};
-    [[nodiscard]] VkDescriptorSet RcasSet() const noexcept
-    {
-        return MRcasSets[MFrameIndex];
-    }
+    std::array<VkDescriptorSet, kMaxFramesInFlight * kMaxViewsPerFrame> MRcasSets{};
 
     VkPipelineLayout MUpscaleLayout = VK_NULL_HANDLE;
     VkSampler MUpscaleSampler = VK_NULL_HANDLE;
     std::unordered_map<VkRenderPass, VkPipeline> MUpscalePipelines;
     VkPipelineLayout MRcasLayout = VK_NULL_HANDLE;
     std::unordered_map<VkRenderPass, VkPipeline> MRcasPipelines;
+    // Returns the descriptor-set slot for the current viewport and advances to
+    // the next one. Slots are allocated per frame and never rewritten in a frame,
+    // which keeps recorded draws from aliasing a later viewport's descriptors.
+    [[nodiscard]] std::uint32_t TakeViewSlot() noexcept
+    {
+        const std::uint32_t ScopedSlot = std::min(MViewSlot, kMaxViewsPerFrame - 1u);
+        if (MViewSlot < kMaxViewsPerFrame)
+        {
+            ++MViewSlot;
+        }
+        else if (!MViewSlotWarned)
+        {
+            MViewSlotWarned = true;
+            LogWarn("vulkan", "more than {} effect passes in one frame; descriptor sets are reused",
+                    kMaxViewsPerFrame);
+        }
+        return MFrameIndex * kMaxViewsPerFrame + ScopedSlot;
+    }
+    bool MViewSlotWarned = false;
     std::uint32_t MHudTargetId = 0xFFFFFFFFu;
     VkDescriptorSetLayout MHudSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool MHudPool = VK_NULL_HANDLE;
-    // One HUD set per frame slot: the composite rewrites it every frame, and a
-    // single shared set would be updated while earlier submissions still read it.
-    std::array<VkDescriptorSet, kMaxFramesInFlight> MHudSets{};
-    [[nodiscard]] VkDescriptorSet HudSet() const noexcept
-    {
-        return MHudSets[MFrameIndex];
-    }
-    [[nodiscard]] VkDescriptorSet& HudSetRef() noexcept
-    {
-        return MHudSets[MFrameIndex];
-    }
+    // One HUD set per frame and view slot: the composite rewrites it every
+    // frame, and a shared set would be updated while earlier draws still use it.
+    std::array<VkDescriptorSet, kMaxFramesInFlight * kMaxViewsPerFrame> MHudSets{};
     VkPipelineLayout MHudLayout = VK_NULL_HANDLE;
     VkSampler MHudSampler = VK_NULL_HANDLE;
     VkSampler MHudNearestSampler = VK_NULL_HANDLE;
@@ -819,21 +844,16 @@ private:
     void* MMotionMapped = nullptr;
     VkDescriptorSetLayout MMotionSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool MMotionPool = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, kMaxFramesInFlight> MMotionSets{};
-    [[nodiscard]] VkDescriptorSet MotionSet() const noexcept
-    {
-        return MMotionSets[MFrameIndex];
-    }
+    std::array<VkDescriptorSet, kMaxFramesInFlight * kMaxViewsPerFrame> MMotionSets{};
+    // Set selected by UploadMotionVectors and consumed by RenderMotionVectors in
+    // the same frame, so one motion pass owns one view slot.
+    VkDescriptorSet MMotionActiveSet = VK_NULL_HANDLE;
 
     VkPipelineLayout MMotionLayout = VK_NULL_HANDLE;
     std::unordered_map<VkRenderPass, VkPipeline> MMotionPipelines;
     VkDescriptorSetLayout MTemporalSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool MTemporalPool = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, kMaxFramesInFlight> MTemporalSets{};
-    [[nodiscard]] VkDescriptorSet TemporalSet() const noexcept
-    {
-        return MTemporalSets[MFrameIndex];
-    }
+    std::array<VkDescriptorSet, kMaxFramesInFlight * kMaxViewsPerFrame> MTemporalSets{};
 
     VkPipelineLayout MTemporalLayout = VK_NULL_HANDLE;
     std::unordered_map<VkRenderPass, VkPipeline> MTemporalPipelines;
@@ -858,8 +878,8 @@ private:
     VkDeviceMemory MSdfFieldMemory = VK_NULL_HANDLE;
     VkImageView MSdfFieldView = VK_NULL_HANDLE;
     VkSampler MSdfFieldSampler = VK_NULL_HANDLE;
-    // Sparse atlas: a grid of 16x16 brick tiles plus a header table. The sampling
-    // switch lands after the descriptors; until then the resources stay inert.
+    // Sparse atlas: a grid of 16x16 brick tiles plus a header table. The table
+    // is uploaded once and bound to the SDF lighting descriptors.
     static constexpr std::uint32_t kSdfAtlasSize = 256;
     static constexpr std::uint32_t kSdfTableCapacity = 256;
     static constexpr std::uint32_t kSdfTableEntryBytes = 32;
@@ -980,6 +1000,20 @@ private:
     bool MCullReady = false;
 
     bool MClusterRecordedThisFrame = false;
+    // One cluster table is built per frame, so it belongs to exactly one camera.
+    // A second viewport with a different camera keeps the CPU lighting path.
+    CameraData MClusterCamera{};
+    std::uint32_t MClusterLightCount = 0;
+    bool MClusterBuiltThisFrame = false;
+    // True when the built cluster table was produced for this packet's camera.
+    [[nodiscard]] bool ClusterMatchesCamera(const FramePacket& InPacket) const noexcept
+    {
+        return MClusterBuiltThisFrame && MClusterCamera.center.X == InPacket.camera.center.X &&
+               MClusterCamera.center.Y == InPacket.camera.center.Y && MClusterCamera.zoom == InPacket.camera.zoom &&
+               MClusterCamera.viewport.X == InPacket.camera.viewport.X &&
+               MClusterCamera.viewport.Y == InPacket.camera.viewport.Y &&
+               MClusterLightCount == InPacket.lights.size();
+    }
 
     VkDescriptorSetLayout MMeshComputeSetLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout MMeshGraphicsSetLayout = VK_NULL_HANDLE;
@@ -1064,6 +1098,9 @@ private:
     // overwriting the previous one.
     std::uint32_t MInstanceFrameCursor = 0;
     std::uint32_t MRecordedPassIndex = 0;
+    // View slot used by the next effect pass in this frame. Reset every frame so
+    // each recorded viewport owns a distinct descriptor set.
+    std::uint32_t MViewSlot = 0;
     // A slice is valid after its first full upload. Delta range uploads are only
     // applied when the slice was written in the immediately previous frame.
     std::array<bool, 8> MInstanceSliceValid{};
@@ -1071,6 +1108,9 @@ private:
 
     std::uint32_t MFrameIndex = 0;
     std::uint32_t MImageIndex = 0;
+    // Render pass the current Submit/RenderToTarget is recording into. Material
+    // pipelines are built lazily for passes outside the three shared ones.
+    VkRenderPass MActiveRenderPass = VK_NULL_HANDLE;
     std::uint64_t MFrameCounter = 0;
     std::size_t MTransientCapacity = 0;
     bool MInFrame = false;
@@ -1078,6 +1118,10 @@ private:
     // True once Submit opened the swapchain pass; EndFrame uses it to avoid
     // presenting an image that was never written.
     bool MMainPassRecorded = false;
+    // Surface capability: PresentRenderTarget needs TRANSFER_DST on the swapchain
+    // and colour grading needs TRANSFER_SRC.
+    bool MSwapchainTransferDst = false;
+    bool MSwapchainTransferSrc = false;
     std::uint32_t MPresentTargetId = 0xFFFFFFFFu;
     // Set when a fence wait or a submit reports a device error; BeginFrame then
     // refuses to run so a reset-but-unsignalled fence can never hang the loop.
@@ -1137,7 +1181,7 @@ private:
     VkDescriptorPool MPostFxPool = VK_NULL_HANDLE;
     VkPipelineLayout MPostFxLayout = VK_NULL_HANDLE;
     VkPipeline MPostFxPipeline = VK_NULL_HANDLE;
-    VkDescriptorSet MPostFxSet = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> MPostFxSets{};
     VkBuffer MPostFxUniformBuffer = VK_NULL_HANDLE;
     VkDeviceMemory MPostFxUniformMemory = VK_NULL_HANDLE;
     bool MPostFxReady = false;
@@ -1146,6 +1190,47 @@ private:
     // Constants arriving through RecordGraphicsPass (render-graph path).
     PostFxBlock MPostFxRecordBlock{};
     bool MPostFxRecordPending = false;
+
+    // Bloom chain. The render graph forwards constants only, so the backend owns
+    // the scene-to-bloom resources: two half-resolution images per frame slot,
+    // ping-ponged by the separable blur.
+    static constexpr std::uint32_t kBloomImageCount = 2;
+    static constexpr std::uint32_t kBloomSetsPerFrame = 3;
+    std::array<std::array<VkImage, kBloomImageCount>, kMaxFramesInFlight> MBloomImages{};
+    std::array<std::array<VkDeviceMemory, kBloomImageCount>, kMaxFramesInFlight> MBloomMemories{};
+    std::array<std::array<VkImageView, kBloomImageCount>, kMaxFramesInFlight> MBloomViews{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight * kBloomSetsPerFrame> MBloomSets{};
+    VkExtent2D MBloomExtent{};
+    VkSampler MBloomSampler = VK_NULL_HANDLE;
+    VkDescriptorSetLayout MBloomSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MBloomPool = VK_NULL_HANDLE;
+    VkPipelineLayout MBloomLayout = VK_NULL_HANDLE;
+    VkPipeline MBloomPrefilterPipeline = VK_NULL_HANDLE;
+    VkPipeline MBloomBlurPipeline = VK_NULL_HANDLE;
+    PostFxBlock MBloomBlock{};
+    bool MBloomReady = false;
+    bool MBloomRequested = false;
+    bool MBloomRanThisFrame = false;
+    // Colour grading: the final swapchain content is copied to a scratch image
+    // and re-rendered through the LUT shader.
+    VkImage MColorGradeImage = VK_NULL_HANDLE;
+    VkDeviceMemory MColorGradeMemory = VK_NULL_HANDLE;
+    VkImageView MColorGradeView = VK_NULL_HANDLE;
+    VkRenderPass MColorGradeRenderPass = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> MColorGradeFramebuffers;
+    VkDescriptorSetLayout MColorGradeSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool MColorGradePool = VK_NULL_HANDLE;
+    VkDescriptorSet MColorGradeSet = VK_NULL_HANDLE;
+    VkPipelineLayout MColorGradeLayout = VK_NULL_HANDLE;
+    VkPipeline MColorGradePipeline = VK_NULL_HANDLE;
+    VkSampler MColorGradeSampler = VK_NULL_HANDLE;
+    VkBuffer MColorGradeUniformBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory MColorGradeUniformMemory = VK_NULL_HANDLE;
+    ColorGradingConstants MColorGradeBlock{};
+    bool MColorGradePending = false;
+    bool MColorGradeReady = false;
+    bool MColorGradeLogged = false;
+    bool MColorGradeRan = false;
     VkPipelineLayout MAccessibilityLayout = VK_NULL_HANDLE;
     VkPipeline MAccessibilityPipeline = VK_NULL_HANDLE;
     VkSampler MAccessibilitySampler = VK_NULL_HANDLE;
@@ -1194,6 +1279,7 @@ private:
 
     VkPhysicalDeviceFeatures MDeviceFeatures{};
     bool MAstcLdrSupported = false;
+    bool MSubgroupSupported = false;
 };
 }
 

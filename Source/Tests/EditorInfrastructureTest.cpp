@@ -52,7 +52,10 @@ void Check(bool InCondition, const char* InMessage)
     {
         ScopedBase /= "build";
     }
-    return ScopedBase / std::string(InName);
+    // Parallel ctest processes must not share one scratch directory; a stale or
+    // still-locked file from another run otherwise fails cooking at random.
+    const auto ScopedStamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    return ScopedBase / (std::string(InName) + "_" + std::to_string(ScopedStamp));
 }
 
 [[nodiscard]] bool WriteText(const std::filesystem::path& InPath, std::string_view InText)

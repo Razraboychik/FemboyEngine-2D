@@ -51,6 +51,13 @@ public:
     {
         return MBatchCount;
     }
+    // Read-only view of the retained caption canvas. The accessibility
+    // projection turns it into semantic nodes, so the bridge can describe the
+    // captions and the narrator can read them.
+    [[nodiscard]] const Ui::WidgetCanvas& Canvas() const noexcept
+    {
+        return MCanvas;
+    }
 
 private:
     Ui::WidgetCanvas MCanvas{};

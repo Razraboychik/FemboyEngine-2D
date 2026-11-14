@@ -3,6 +3,7 @@
 
 #include "Engine/Audio/AudioDevices.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -49,6 +50,7 @@ protected:
     AudioDeviceEnumerator MDevices;
     AudioCaptureMonitor MMonitor;
     std::string MStatus;
+    std::array<char, 512> MPresetPath{};
     std::uint64_t MLastRefreshMs = 0;
     std::int32_t MInputIndex = -1;
     std::int32_t MOutputIndex = -1;

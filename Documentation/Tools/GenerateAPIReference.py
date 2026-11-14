@@ -1071,6 +1071,23 @@ SECTIONS: list[dict] = [
                 ),
             },
             {
+                "type": "p",
+                "text": B(
+                    "The kernel feeds one semantic tree shared by the game and the editor. "
+                    "ProjectWidgetCanvas() projects the retained canvas into Ui::AccessibilityTree (roles, states, "
+                    "localized names, screen bounds and focus), the Narrator speaks the focused node from a "
+                    "priority queue with deduplication and sentence-bounded chunking, and the UI Automation bridge "
+                    "publishes the same nodes to the operating system. A game calls ProjectCanvas() once per frame "
+                    "after building its UI canvas; FlushSpeech() remains the main-thread speech pump.",
+                    "Ядро питает одно семантическое дерево, общее для игры и редактора. ProjectWidgetCanvas() "
+                    "проецирует retained-канвас в Ui::AccessibilityTree (роли, состояния, локализованные имена, "
+                    "экранные границы и фокус), диктор Narrator озвучивает сфокусированный узел из очереди с "
+                    "приоритетами, дедупликацией и нарезкой по границам предложений, а мост UI Automation "
+                    "публикует те же узлы в операционную систему. Игра вызывает ProjectCanvas() раз в кадр после "
+                    "сборки UI-канваса; FlushSpeech() остаётся насосом речи главного потока.",
+                ),
+            },
+            {
                 "type": "table",
                 "headers": [B("Item", "Элемент"), B("Contract", "Контракт")],
                 "rows": [
@@ -1090,9 +1107,11 @@ SECTIONS: list[dict] = [
                        "Возвращает усиление для текущего кадра; большое изменение сжимается до порога.")],
                     [B("EditorSettings::ide*", "EditorSettings::ide*"),
                      B("The same policies applied to the editor window itself: Machado correction, WCAG "
-                       "high-contrast, FlashGuard, keyboard navigation and LogBoy as the narration sink.",
+                       "high-contrast, FlashGuard, keyboard navigation, and the editor narrator that speaks "
+                       "the focused panel and widget; LogBoy keeps the written log.",
                        "Те же политики применяются к самому окну редактора: коррекция Machado, высокий контраст "
-                       "WCAG, FlashGuard, навигация с клавиатуры и LogBoy как приёмник нарратива.")],
+                       "WCAG, FlashGuard, навигация с клавиатуры и диктор редактора, который озвучивает "
+                       "панель и виджет в фокусе; LogBoy ведёт письменный журнал.")],
                 ],
             },
         ],

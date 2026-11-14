@@ -45,8 +45,12 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
   arrays, and the GPU weather pass (clouds, cloud shadows, fog, precipitation,
   fire, lightning and wind).
 - **Assets and editor** — asset database, `.femeta`, hot reload, texture and
-  material cooking, `.fempak`/`.femarc`, PinkUI, accessibility, the editor panels
-  and the project/scene workflow.
+  material cooking, `.fempak`/`.femarc`, PinkUI, the editor panels and the
+  project/scene workflow.
+- **Accessibility** — a self-voicing narrator in the game and in the editor, a
+  UI Automation screen-reader bridge, captions, flash guard, colour-vision
+  correction, the OLED orbit and accessible editor themes; see the
+  [Accessibility guide](design/accessibility-guide.md).
 
 ## Start here
 
@@ -78,6 +82,7 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Show formatted books and manuals | [Streaming books](design/books.md), [TXT documents](design/documents.md) |
 | Move a project between Windows, Linux and macOS | [Desktop portability](design/desktop-portability.md) |
 | Tune project or editor settings | [Project Settings](md/en/ProjectSettingsRecommendations_EN.md), [Editor Settings](md/en/EditorSettingsReference_EN.md) |
+| Make the game and the editor accessible | [Accessibility guide](design/accessibility-guide.md), [implementation contract](design/accessibility.md) |
 | Choose a viewport diagnostic mode | [Viewport Modes](md/en/ViewportModes_EN.md) |
 | Follow the C++ style contract | [Code Style](style/CodeStyle.md) |
 | Report a bug or request a feature | [Issue tracker](https://github.com/Razraboychik/FemboyEngine-2D/issues) |

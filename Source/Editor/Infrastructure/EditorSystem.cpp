@@ -11,6 +11,7 @@
 #include "Engine/Core/PluginHost.hpp"
 #include "Engine/UI/Accessibility.hpp"
 #include "Engine/Text/TextService.hpp"
+#include "Engine/Assets/ProjectBundle.hpp"
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/Profiler.hpp"
@@ -18,6 +19,8 @@
 #include "Engine/ECS/PrefabInstance.hpp"
 #include "Engine/ECS/PrefabSystem.hpp"
 #include "Engine/Core/ProfilerPanel.hpp"
+#include "Engine/Core/ProfilerTrace.hpp"
+#include "Engine/Core/StoragePaths.hpp"
 #include "Engine/ECS/Skeleton.hpp"
 #include "Engine/ECS/Hierarchy.hpp"
 #include "Engine/ECS/Lighting.hpp"
@@ -44,6 +47,12 @@
 #include "Editor/Infrastructure/EditorWidgets.hpp"
 #include "Editor/Panels/LogBoyPanel.hpp"
 #include "Editor/Panels/LicensesPanel.hpp"
+#include "Editor/Panels/DocumentsPanel.hpp"
+#include "Editor/Panels/BooksPanel.hpp"
+#include "Editor/Panels/RenderTuningPanel.hpp"
+#include "Editor/Panels/VideoPanel.hpp"
+#include "Editor/Panels/UiLayoutPanel.hpp"
+#include "Editor/Panels/DataTablePanel.hpp"
 #include "Editor/Panels/NetworkDiagnosticsPanel.hpp"
 #include "Editor/Panels/PieClientViewport.hpp"
 #include "Editor/Panels/ParticleFxPanel.hpp"
@@ -610,6 +619,17 @@ struct EditorSystem::Impl
     bool piePauseHud = true;
     bool pieInitialized = false;
     bool pieVoicePushToTalk = false;
+
+    // Editor narrator and OS bridge. Both read EditorSettings only; the game's
+    // policy lives in the project accessibility profile and never leaks here.
+    Fby::Narrator editorSpeech;
+    Fby::NarratorSettings appliedSpeech{};
+    Fby::AccessibilityBridgeSettings appliedBridge{};
+    Fby::Ui::AccessibilityTree editorTree;
+    bool speechApplied = false;
+    bool bridgeStarted = false;
+    ImGuiID lastFocusWindow = 0;
+    ImGuiID lastFocusItem = 0;
     enum class PieCommand : std::uint8_t
     {
         None = 0,
@@ -648,6 +668,12 @@ struct EditorSystem::Impl
     bool showSceneText = true;
     LogBoyPanel logBoy;
     LicensesPanel licenses;
+    DocumentsPanel documents;
+    DataTablePanel dataTables;
+    BooksPanel books;
+    UiLayoutPanel uiLayout;
+    RenderTuningPanel renderTuning;
+    VideoPanel video;
     NetworkDiagnosticsPanel networkDiagnostics;
     Fby::SdfComposerSession sdfComposer;
     std::vector<float> composerPreviewSamples;
@@ -710,6 +736,12 @@ struct EditorSystem::Impl
     bool showAssets = true;
     bool showConsole = true;
     bool showLicenses = false;
+    bool showDocuments = false;
+    bool showDataTables = false;
+    bool showBooks = false;
+    bool showUiLayout = std::getenv("FBY_EDITOR_OPEN_UI_LAYOUT") != nullptr;
+    bool showRenderTuning = std::getenv("FBY_EDITOR_OPEN_RENDER_TUNING") != nullptr;
+    bool showVideo = std::getenv("FBY_EDITOR_OPEN_VIDEO") != nullptr;
     bool showNetworkDiagnostics = false;
     bool showVoiceDevices = false;
     bool showParticleFx = false;
@@ -4268,6 +4300,25 @@ struct EditorSystem::Impl
             {
                 ImGui::Text("%u more categories", profilerPanel.HiddenCount());
             }
+            if (ImGui::Button("Export Chrome trace"))
+            {
+                const std::filesystem::path ScopedTracePath =
+                    Fby::Core::StorageRoot() / "Profiler" / "trace.json";
+                std::error_code ScopedError;
+                std::filesystem::create_directories(ScopedTracePath.parent_path(), ScopedError);
+                std::ofstream ScopedTraceFile(ScopedTracePath, std::ios::binary | std::ios::trunc);
+                if (ScopedTraceFile)
+                {
+                    const std::string ScopedTrace =
+                        Fby::Core::ToChromeTraceJson(*profiler, profilerNames);
+                    ScopedTraceFile.write(ScopedTrace.data(), static_cast<std::streamsize>(ScopedTrace.size()));
+                    status = std::format("Profiler trace written to {}", ScopedTracePath.string());
+                }
+                else
+                {
+                    status = std::format("Profiler trace could not be written to {}", ScopedTracePath.string());
+                }
+            }
         }
         PopMono();
         EndEditorPanel();
@@ -4454,6 +4505,21 @@ struct EditorSystem::Impl
                 {
                     ScopedDirtyShortcut = true;
                 }
+                if (ImGui::MenuItem("Export Project Bundle...", nullptr, false, projectOpen))
+                {
+                    const std::filesystem::path ScopedRoot = projectConfig.Paths().root;
+                    const std::filesystem::path ScopedArchive =
+                        ScopedRoot.parent_path() / (ScopedRoot.filename().string() + ".fbyproj");
+                    std::string ScopedBundleError;
+                    if (Fby::Assets::ExportProjectBundle(ScopedRoot, ScopedArchive, &ScopedBundleError))
+                    {
+                        SetStatus("project bundle written to " + ScopedArchive.string());
+                    }
+                    else
+                    {
+                        SetStatus("project bundle failed: " + ScopedBundleError);
+                    }
+                }
                 if (ImGui::MenuItem("Reload Scene", "F5", false, !currentScene.empty()))
                 {
                     std::string ScopedError;
@@ -4628,6 +4694,12 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("Editor Settings", nullptr, &showEditorSettings);
                 ImGui::MenuItem("Player Settings", nullptr, &showUserSettings);
                 ImGui::MenuItem("Licenses", nullptr, &showLicenses);
+                ImGui::MenuItem("Documents", nullptr, &showDocuments);
+                ImGui::MenuItem("Data Table", nullptr, &showDataTables);
+                ImGui::MenuItem("Books", nullptr, &showBooks);
+                ImGui::MenuItem("UI Layout", nullptr, &showUiLayout);
+                ImGui::MenuItem("Render Tuning", nullptr, &showRenderTuning);
+                ImGui::MenuItem("Video", nullptr, &showVideo);
                 ImGui::MenuItem("Network Diagnostics", nullptr, &showNetworkDiagnostics);
                 ImGui::MenuItem("Voice Devices", nullptr, &showVoiceDevices);
                 ImGui::MenuItem("Particle FX", nullptr, &showParticleFx);
@@ -4893,6 +4965,15 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     MImpl->layoutMarker = ScopedLayoutMarker;
     MImpl->initialized = true;
 
+    // The editor narrator is installed once; the policy is applied every frame
+    // from EditorSettings, so a change in the settings panel takes effect
+    // immediately and never needs a restart.
+    MImpl->editorSpeech.SetBackend(NativeTtsBackend());
+    MImpl->appliedSpeech = MImpl->projectConfig.Editor().narration;
+    MImpl->editorSpeech.SetSettings(MImpl->appliedSpeech);
+    MImpl->editorSpeech.SetLanguage(MImpl->appliedSpeech.Language);
+    MImpl->speechApplied = true;
+
     // Authoring services: the command stack is bound to the editor registry
     (void)MImpl->commands.Initialize();
     MImpl->commands.Bind(&InContext.registry, &MImpl->components);
@@ -5045,6 +5126,219 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     return true;
 }
 
+void EditorSystem::Announce(std::string_view InText, bool InUrgent) noexcept
+{
+    if (MImpl == nullptr || InText.empty())
+    {
+        return;
+    }
+    // The narrator drops the line when the running game owns the voice, which
+    // is exactly the arbitration the editor needs during Play In Editor.
+    (void)MImpl->editorSpeech.Enqueue(NarratorOwner::Editor,
+                                      InUrgent ? NarratorPriority::Critical : NarratorPriority::Normal, InText);
+}
+
+namespace
+{
+// ImGui's accessibility roles use a small, stable vocabulary; the engine tree
+// speaks the same vocabulary so the narrator and the bridge agree.
+[[nodiscard]] Ui::AccessibilityRole AccessibilityRoleOfImGui(ImGuiA11yRole InRole) noexcept
+{
+    switch (InRole)
+    {
+        case ImGuiA11yRole_Button:
+            return Ui::AccessibilityRole::Button;
+        case ImGuiA11yRole_CheckBox:
+            return Ui::AccessibilityRole::CheckBox;
+        case ImGuiA11yRole_RadioButton:
+            return Ui::AccessibilityRole::RadioButton;
+        case ImGuiA11yRole_Slider:
+            return Ui::AccessibilityRole::Slider;
+        case ImGuiA11yRole_TextInput:
+            return Ui::AccessibilityRole::TextInput;
+        case ImGuiA11yRole_ComboBox:
+            return Ui::AccessibilityRole::ComboBox;
+        case ImGuiA11yRole_ListItem:
+            return Ui::AccessibilityRole::ListItem;
+        case ImGuiA11yRole_MenuItem:
+            return Ui::AccessibilityRole::MenuItem;
+        case ImGuiA11yRole_TreeItem:
+            return Ui::AccessibilityRole::TreeItem;
+        case ImGuiA11yRole_None:
+        default:
+            break;
+    }
+    return Ui::AccessibilityRole::Unknown;
+}
+}
+
+void EditorSystem::BuildEditorTree() noexcept
+{
+    ImGuiContext* ScopedContext = ImGui::GetCurrentContext();
+    if (ScopedContext == nullptr)
+    {
+        return;
+    }
+
+    MImpl->editorTree.Reset();
+    const ImVec2 ScopedDisplay = ImGui::GetIO().DisplaySize;
+    const std::uint32_t ScopedRoot = MImpl->editorTree.AddNode(
+        1u, Ui::AccessibilityRole::Window, Ui::kNoAccessibilityNode, Vector4D{0.0f, 0.0f, ScopedDisplay.x, ScopedDisplay.y},
+        Ui::AccessibilityStateEnabled, 0, "FemboyEngine2D editor");
+    if (ScopedRoot == Ui::kNoAccessibilityNode)
+    {
+        return;
+    }
+
+    // One node per visible top-level ImGui window. Child windows are part of
+    // their parent's semantics, so they are deliberately not published: a
+    // screen reader walks panels, not every nested draw list.
+    ImGuiWindow* ScopedFocusWindow = ScopedContext->NavWindow;
+    std::uint32_t ScopedFocusPaneNode = Ui::kNoAccessibilityNode;
+    for (ImGuiWindow* ScopedWindow : ScopedContext->Windows)
+    {
+        // Active is only meaningful while the window is current; between frames
+        // the stable flag is WasActive, which records the last drawn frame.
+        if (ScopedWindow == nullptr || ScopedWindow->Hidden || !ScopedWindow->WasActive)
+        {
+            continue;
+        }
+        if ((ScopedWindow->Flags & ImGuiWindowFlags_ChildWindow) != 0 || ScopedWindow->Name == nullptr)
+        {
+            continue;
+        }
+
+        // ImGui names carry an "###id" suffix; the spoken name stops at the
+        // first '#' so a panel never reads its internal identifier.
+        char ScopedName[96]{};
+        const char* ScopedSource = ScopedWindow->Name;
+        std::size_t ScopedLength = 0;
+        while (ScopedSource[ScopedLength] != '\0' && ScopedSource[ScopedLength] != '#' &&
+               ScopedLength + 1 < sizeof(ScopedName))
+        {
+            ScopedName[ScopedLength] = ScopedSource[ScopedLength];
+            ++ScopedLength;
+        }
+        if (ScopedLength == 0)
+        {
+            std::snprintf(ScopedName, sizeof(ScopedName), "panel");
+        }
+
+        std::uint32_t ScopedStates = Ui::AccessibilityStateEnabled;
+        if (ScopedWindow == ScopedFocusWindow)
+        {
+            ScopedStates |= Ui::AccessibilityStateFocused;
+        }
+        std::uint32_t ScopedId = static_cast<std::uint32_t>(ScopedWindow->ID) | 1u;
+        const std::uint32_t ScopedPaneNode =
+            MImpl->editorTree.AddNode(ScopedId, Ui::AccessibilityRole::Pane, ScopedRoot,
+                                      Vector4D{ScopedWindow->Pos.x, ScopedWindow->Pos.y,
+                                               ScopedWindow->Pos.x + ScopedWindow->Size.x,
+                                               ScopedWindow->Pos.y + ScopedWindow->Size.y},
+                                      ScopedStates, 0, ScopedName);
+        if (ScopedWindow == ScopedFocusWindow)
+        {
+            ScopedFocusPaneNode = ScopedPaneNode;
+        }
+
+    }
+
+    // A focused widget is a child of its panel: a screen reader can then answer
+    // "which control" and not only "which panel". The label and the role come
+    // from the ImGui item-label patch.
+    const ImGuiID ScopedFocusId = ScopedFocusWindow != nullptr ? ScopedFocusWindow->ID : 0u;
+    std::uint32_t ScopedFocusIndex = Ui::kNoAccessibilityNode;
+    std::uint32_t ScopedItemNode = Ui::kNoAccessibilityNode;
+    const char* ScopedFocusLabel = ImGui::GetAccessibilityFocusLabel();
+    ImGuiID ScopedFocusItemId = 0;
+    if (ScopedFocusLabel != nullptr && ScopedFocusPaneNode != Ui::kNoAccessibilityNode)
+    {
+        ImVec2 ScopedMin(0.0f, 0.0f);
+        ImVec2 ScopedMax(0.0f, 0.0f);
+        (void)ImGui::GetAccessibilityFocusBounds(&ScopedMin, &ScopedMax);
+        ScopedFocusItemId = ImGui::GetAccessibilityFocusId();
+        const std::uint32_t ScopedStableId =
+            (static_cast<std::uint32_t>(ScopedFocusItemId) ^ 0x5A5A0000u) | 2u;
+        ScopedItemNode = MImpl->editorTree.AddNode(
+            ScopedStableId, AccessibilityRoleOfImGui(ImGui::GetAccessibilityFocusRole()), ScopedFocusPaneNode,
+            Vector4D{ScopedMin.x, ScopedMin.y, ScopedMax.x, ScopedMax.y},
+            Ui::AccessibilityStateEnabled | Ui::AccessibilityStateFocused, 0, ScopedFocusLabel);
+        if (ScopedItemNode != Ui::kNoAccessibilityNode)
+        {
+            ScopedFocusIndex = ScopedItemNode;
+        }
+    }
+    if (ScopedFocusIndex == Ui::kNoAccessibilityNode && ScopedFocusId != 0u)
+    {
+        ScopedFocusIndex = MImpl->editorTree.FindIndexById(static_cast<std::uint32_t>(ScopedFocusId) | 1u);
+    }
+    MImpl->editorTree.SetFocusedId(ScopedFocusIndex != Ui::kNoAccessibilityNode
+                                       ? MImpl->editorTree.At(ScopedFocusIndex).Id
+                                       : 0u);
+
+    const bool ScopedFocusChanged =
+        ScopedFocusId != MImpl->lastFocusWindow || ScopedFocusItemId != MImpl->lastFocusItem;
+    if (ScopedFocusChanged)
+    {
+        MImpl->lastFocusWindow = ScopedFocusId;
+        MImpl->lastFocusItem = ScopedFocusItemId;
+        if (ScopedFocusIndex != Ui::kNoAccessibilityNode)
+        {
+            (void)MImpl->editorSpeech.AnnounceFocus(MImpl->editorTree, ScopedFocusIndex);
+        }
+    }
+
+    if (MImpl->bridgeStarted)
+    {
+        UpdateAccessibilityBridge(MImpl->editorTree);
+    }
+}
+
+void EditorSystem::UpdateSpeech(Ecs::SystemContext& InContext)
+{
+    if (MImpl == nullptr || !MImpl->speechApplied)
+    {
+        return;
+    }
+
+    const Fby::Editor::EditorSettings& ScopedSettings = MImpl->projectConfig.Editor();
+    if (!(MImpl->appliedSpeech == ScopedSettings.narration))
+    {
+        MImpl->appliedSpeech = ScopedSettings.narration;
+        MImpl->editorSpeech.SetSettings(MImpl->appliedSpeech);
+        MImpl->editorSpeech.SetLanguage(MImpl->appliedSpeech.Language);
+    }
+
+    // A running game owns the voice. The editor keeps building its tree for the
+    // bridge but queues no speech until the play session stops.
+    MImpl->editorSpeech.SetOwner(MImpl->pie.Active() ? NarratorOwner::Game : NarratorOwner::Editor);
+
+    const bool ScopedWantsBridge = ScopedSettings.bridge.Enabled && InContext.window != nullptr;
+    if (ScopedWantsBridge && (!MImpl->bridgeStarted || !(MImpl->appliedBridge == ScopedSettings.bridge)))
+    {
+        if (MImpl->bridgeStarted)
+        {
+            Fby::StopAccessibilityBridge();
+            MImpl->bridgeStarted = false;
+        }
+        MImpl->appliedBridge = ScopedSettings.bridge;
+        MImpl->bridgeStarted =
+            Fby::StartAccessibilityBridge(InContext.window->NativeWindow(), MImpl->appliedBridge);
+    }
+    else if (!ScopedWantsBridge && MImpl->bridgeStarted)
+    {
+        Fby::StopAccessibilityBridge();
+        MImpl->bridgeStarted = false;
+    }
+
+    if (MImpl->bridgeStarted || MImpl->appliedSpeech.Enabled)
+    {
+        BuildEditorTree();
+    }
+
+    MImpl->editorSpeech.Advance(InContext.dt);
+}
+
 void EditorSystem::Shutdown()
 {
     if (MImpl == nullptr)
@@ -5056,6 +5350,12 @@ void EditorSystem::Shutdown()
         return;
     }
     MImpl->initialized = false;
+    MImpl->editorSpeech.Stop();
+    if (MImpl->bridgeStarted)
+    {
+        Fby::StopAccessibilityBridge();
+        MImpl->bridgeStarted = false;
+    }
 
     // Thumbnail descriptors reference ImGui's Vulkan backend; drop the cache
     // before the ImGui context and the renderer go away.
@@ -5435,11 +5735,16 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     {
         InContext.accessibility->FlushSpeech();
     }
+
     if (!MImpl->initialized || !MImpl->visible)
     {
         return;
     }
     ImGui::SetCurrentContext(MImpl->imguiContext);
+
+    // Editor voice and bridge. Runs with the ImGui context current because the
+    // semantic tree is built from the live window list.
+    UpdateSpeech(InContext);
 
     // Typography changes and font-file hot reload both mutate the ImGui atlas,
     // so both are applied before NewFrame.
@@ -6043,6 +6348,36 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     {
         ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
         MImpl->licenses.Draw(&MImpl->showLicenses);
+    }
+    if (MImpl->showDocuments)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->documents.Draw(InContext, &MImpl->showDocuments);
+    }
+    if (MImpl->showDataTables)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->dataTables.Draw(InContext, &MImpl->showDataTables);
+    }
+    if (MImpl->showVideo)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->video.Draw(InContext, &MImpl->showVideo);
+    }
+    if (MImpl->showRenderTuning)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->renderTuning.Draw(InContext, &MImpl->showRenderTuning);
+    }
+    if (MImpl->showUiLayout)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->uiLayout.Draw(InContext, &MImpl->showUiLayout);
+    }
+    if (MImpl->showBooks)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->books.Draw(InContext, &MImpl->showBooks);
     }
     if (MImpl->showNetworkDiagnostics)
     {

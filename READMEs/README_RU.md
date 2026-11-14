@@ -472,6 +472,7 @@ file>` (нажать Open на панели после `FBY_EDITOR_SMOKE_DASHBOA
 - [Дизайн физических бэкендов](../Documentation/design/physics-backends.md)
 - [Аудит CodeQL](../Documentation/design/codeql-audit.md)
 - [Время, таймеры и даты](../Documentation/design/time.md)
+- [Руководство по доступности](../Documentation/design/accessibility-guide_RU.md)
 - [Контракт доступности](../Documentation/design/accessibility.md)
 - [Мировые системы: тайлмапы, IK и навигация](../Documentation/design/world-systems.md)
 - [Освещение и SDF-тени](../Documentation/design/lighting.md)

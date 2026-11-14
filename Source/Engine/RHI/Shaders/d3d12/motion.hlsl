@@ -7,4 +7,4 @@ VSOutput VSMain(VSInput input)
     output.delta = input.delta;
     return output;
 }
-float4 PSMain(VSOutput input) : SV_Target { return float4(input.delta * 0.5, 0.0, 1.0); }
+float4 PSMain(VSOutput input) : SV_Target { return float4(input.delta, 0.0, 1.0); }

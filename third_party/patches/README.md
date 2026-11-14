@@ -4,9 +4,9 @@ Vendored sources stay close to their upstream release. A fix that must change a
 vendored file is kept here as a `git apply`-able patch, with a regression test
 where the affected code is compiled by the engine.
 
-The four patches below are applied to the vendored files on this branch. The
-patch files remain as the upstream/reapply record; do not apply them twice on
-this tree.
+The patches below are applied to the vendored files on this branch. The patch
+files remain as the upstream/reapply record; do not apply them twice on this
+tree.
 
 ## Apply
 
@@ -31,3 +31,5 @@ patches:
 | `stb/stb_image-size-overflow.patch` | stb MIT OR Public Domain |
 | `imgui/imstb_truetype-size-overflow.patch` | Dear ImGui MIT; imstb_truetype MIT OR Public Domain |
 | `imgui/imstb_truetype-sdf-size-overflow.patch` | Dear ImGui MIT; imstb_truetype MIT OR Public Domain |
+| `imgui/text-outline.patch` | Dear ImGui MIT |
+| `imgui/a11y-item-labels.patch` | Dear ImGui MIT |

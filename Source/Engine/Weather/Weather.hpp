@@ -1,6 +1,7 @@
 // FemboyEngine2D - authoritative weather and global wind.
 #pragma once
 
+#include "Engine/Core/Mirror.hpp"
 #include "Engine/Core/NoiseGenerator.hpp"
 #include "Engine/Core/Types.hpp"
 #include "Engine/ECS/Schedule.hpp"
@@ -130,3 +131,32 @@ private:
     WeatherDesc MDesc{};
 };
 }
+
+FBY_REFLECT_COMPONENT(
+    Fby::Weather::WeatherContextComponent, "WeatherContextComponent",
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, weatherId, UInt64),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, flags, UInt32),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, seed, UInt32),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, atmosphereDensity, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, airViscosity, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, gravityScale, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, temperatureCelsius, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, windSpeed, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, windDirectionX, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, windDirectionY, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, turbulence, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, gustFrequency, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, cloudCoverage, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, cloudSpeed, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, cloudHeight, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, cloudShadowStrength, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, fogDensity, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, fogFalloff, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, rainIntensity, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, snowIntensity, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, fireIntensity, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, wetness, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, timeSeconds, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, resolvedWindX, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, resolvedWindY, Float),
+    FBY_FIELD(Fby::Weather::WeatherContextComponent, gust, Float))

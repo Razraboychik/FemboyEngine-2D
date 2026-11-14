@@ -3,6 +3,7 @@
 #include "Engine/ECS/Components.hpp"
 #include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/RHI/RHI.hpp"
+#include "Engine/RHI/RenderPasses.hpp"
 
 #include <array>
 #include <cstdio>
@@ -58,6 +59,25 @@ int main()
         return 1;
     }
 
+    // Streaming update: 2 layers, 2 mips; mip 0 is 16 bytes and mip 1 is 4.
+    std::array<std::byte, 40> ScopedStreamPixels{};
+    Fby::Rhi::TextureArrayDesc ScopedStreamDesc;
+    ScopedStreamDesc.size = {2, 2};
+    ScopedStreamDesc.layers = 2;
+    ScopedStreamDesc.mipLevels = 2;
+    const Fby::Rhi::TextureArrayHandle ScopedStream =
+        ScopedGpu->CreateTextureArray(ScopedStreamDesc, std::span<const std::byte>(ScopedStreamPixels));
+    if (!ScopedStream.IsValid() ||
+        !ScopedGpu->UpdateTextureArrayLayer(ScopedStream, 1, 0, std::span<const std::byte>(ScopedStreamPixels.data(), 16)) ||
+        !ScopedGpu->UpdateTextureArrayLayer(ScopedStream, 0, 1, std::span<const std::byte>(ScopedStreamPixels.data(), 4)) ||
+        ScopedGpu->UpdateTextureArrayLayer(ScopedStream, 2, 0, std::span<const std::byte>(ScopedStreamPixels.data(), 16)) ||
+        ScopedGpu->UpdateTextureArrayLayer(ScopedStream, 0, 2, std::span<const std::byte>(ScopedStreamPixels.data(), 4)))
+    {
+        std::fprintf(stderr, "texture array streaming failed\n");
+        return 1;
+    }
+    ScopedGpu->DestroyTextureArray(ScopedStream);
+
     Fby::Ecs::Registry ScopedRegistry;
     const Fby::Entity ScopedSprite = ScopedRegistry.create();
     ScopedRegistry.emplace<Fby::Transform2D>(ScopedSprite, Fby::Transform2D{Fby::Vector2D{0.0f, 0.0f}});
@@ -73,6 +93,11 @@ int main()
         std::fprintf(stderr, "UploadMotionVectors failed\n");
         return 1;
     }
+    // One frame exercises the offscreen scene + fullscreen post-FX composite.
+    Fby::Rhi::FramePacket ScopedPostFxPacket = ScopedPacket;
+    ScopedPostFxPacket.postFxEnabled = true;
+    ScopedPostFxPacket.postFx.flags =
+        Fby::Rhi::PostFxCrt | Fby::Rhi::PostFxVignette | Fby::Rhi::PostFxColorVision | Fby::Rhi::PostFxBloom;
     for (int ScopedFrame = 0; ScopedFrame < 3; ++ScopedFrame)
     {
         if (!ScopedGpu->BeginFrame())
@@ -80,7 +105,33 @@ int main()
             std::fprintf(stderr, "d3d11_rhi: BeginFrame failed\n");
             return 1;
         }
-        ScopedGpu->Submit(ScopedPacket);
+        if (ScopedFrame == 1)
+        {
+            Fby::Rhi::PostFxConstants ScopedPostFxGraph{};
+            ScopedPostFxGraph.flagsAndCrt = Fby::Vector4D{
+                static_cast<float>(static_cast<std::uint32_t>(Fby::Rhi::PostFxCrt | Fby::Rhi::PostFxVignette)),
+                0.0f, 0.0f, 0.0f};
+            ScopedPostFxGraph.vignetteAndBloom = Fby::Vector4D{0.35f, 0.8f, 1.0f, 1.0f};
+            if (!ScopedGpu->RecordGraphicsPass("postfx_composite.frag", &ScopedPostFxGraph,
+                                               sizeof(ScopedPostFxGraph), Fby::Rhi::Extent2D{320, 240}, 1))
+            {
+                std::fprintf(stderr, "post-FX graph record failed\n");
+                return 1;
+            }
+        }
+        if (ScopedFrame == 2)
+        {
+            Fby::Rhi::ColorGradingConstants ScopedGrading{};
+            ScopedGrading.params0 = Fby::Vector4D{32.0f, 1.0f, 1.0f, 1.0f};
+            ScopedGrading.params1 = Fby::Vector4D{0.0f, static_cast<float>(ScopedTexture.id), 0.0f, 0.0f};
+            if (!ScopedGpu->RecordGraphicsPass("color_grading.frag", &ScopedGrading, sizeof(ScopedGrading),
+                                               Fby::Rhi::Extent2D{320, 240}, 1))
+            {
+                std::fprintf(stderr, "colour grading record failed\n");
+                return 1;
+            }
+        }
+        ScopedGpu->Submit(ScopedFrame == 2 ? ScopedPostFxPacket : ScopedPacket);
         ScopedGpu->EndFrame();
     }
     ScopedGpu->WaitIdle();
@@ -98,6 +149,7 @@ int main()
         std::fprintf(stderr, "d3d11_rhi: RenderToTarget failed\n");
         return 1;
     }
+    ScopedGpu->PresentRenderTarget(ScopedOffscreen);
     ScopedGpu->EndFrame();
     std::array<std::byte, 8 * 8 * 4> ScopedOffscreenPixels{};
     if (!ScopedGpu->CaptureRenderTarget(ScopedOffscreen, ScopedOffscreenPixels))
@@ -105,6 +157,24 @@ int main()
         std::fprintf(stderr, "d3d11_rhi: offscreen capture failed\n");
         return 1;
     }
+    // Wrap the rendered target as a one-layer array and draw it as a sprite.
+    const Fby::Rhi::TextureArrayHandle ScopedBaked =
+        ScopedGpu->CreateTextureArrayFromRenderTarget(ScopedOffscreen);
+    if (!ScopedBaked.IsValid())
+    {
+        std::fprintf(stderr, "texture array from render target failed\n");
+        return 1;
+    }
+    Fby::Rhi::FramePacket ScopedBakedPacket = ScopedPacket;
+    ScopedBakedPacket.textureArray = ScopedBaked.id;
+    if (!ScopedGpu->BeginFrame())
+    {
+        return 1;
+    }
+    ScopedGpu->Submit(ScopedBakedPacket);
+    ScopedGpu->EndFrame();
+    ScopedGpu->WaitIdle();
+    ScopedGpu->DestroyTextureArray(ScopedBaked);
     ScopedGpu->DestroyRenderTarget(ScopedOffscreen);
 
     const Fby::Rhi::RenderTargetHandle ScopedMotion = ScopedGpu->CreateMotionVectorTarget({160, 90});
@@ -169,7 +239,10 @@ int main()
     ScopedUpscaleDesc.format = Fby::Rhi::RenderTargetFormat::Rgba8Unorm;
     const Fby::Rhi::RenderTargetHandle ScopedUpscaled = ScopedGpu->CreateRenderTarget(ScopedUpscaleDesc);
     if (!ScopedUpscaled.IsValid() ||
-        !ScopedGpu->UpscaleRenderTarget(ScopedCurrent, ScopedUpscaled, Fby::Rhi::SpatialUpscaleMode::Bilinear))
+        !ScopedGpu->UpscaleRenderTarget(ScopedCurrent, ScopedUpscaled, Fby::Rhi::SpatialUpscaleMode::Bilinear) ||
+        !ScopedGpu->UpscaleRenderTarget(ScopedCurrent, ScopedUpscaled, Fby::Rhi::SpatialUpscaleMode::Nearest) ||
+        !ScopedGpu->UpscaleRenderTarget(ScopedCurrent, ScopedUpscaled, Fby::Rhi::SpatialUpscaleMode::Bicubic) ||
+        !ScopedGpu->UpscaleRenderTarget(ScopedCurrent, ScopedUpscaled, Fby::Rhi::SpatialUpscaleMode::Fsr1))
     {
         std::fprintf(stderr, "d3d11_rhi: UpscaleRenderTarget failed\n");
         return 1;
@@ -207,7 +280,8 @@ int main()
     ScopedGpu->PresentRenderTarget(ScopedPresentTarget);
     ScopedGpu->EndFrame();
     Fby::Rhi::RenderTargetDesc ScopedHudDesc;
-    ScopedHudDesc.size = {320, 240};
+    // A differently sized HUD target exercises the scaling overlay.
+    ScopedHudDesc.size = {160, 120};
     ScopedHudDesc.format = Fby::Rhi::RenderTargetFormat::Rgba8Unorm;
     const Fby::Rhi::RenderTargetHandle ScopedHudTarget = ScopedGpu->CreateRenderTarget(ScopedHudDesc);
     if (!ScopedHudTarget.IsValid() || !ScopedGpu->BeginFrame() ||
@@ -238,6 +312,59 @@ int main()
     }
     ScopedGpu->EndFrame();
     ScopedGpu->DestroyRenderTarget(ScopedOitTarget);
+    // sRGB targets keep the same four-byte payload and must still capture.
+    Fby::Rhi::RenderTargetDesc ScopedSrgbDesc;
+    ScopedSrgbDesc.size = {8, 8};
+    ScopedSrgbDesc.format = Fby::Rhi::RenderTargetFormat::Rgba8Srgb;
+    const Fby::Rhi::RenderTargetHandle ScopedSrgbTarget = ScopedGpu->CreateRenderTarget(ScopedSrgbDesc);
+    std::array<std::byte, 8 * 8 * 4> ScopedSrgbPixels{};
+    if (!ScopedSrgbTarget.IsValid() || !ScopedGpu->CaptureRenderTarget(ScopedSrgbTarget, ScopedSrgbPixels))
+    {
+        std::fprintf(stderr, "d3d11_rhi: sRGB capture failed\n");
+        return 1;
+    }
+    ScopedGpu->DestroyRenderTarget(ScopedSrgbTarget);
+    // CopyDepth must copy the depth attachment, not only the colour image.
+    Fby::Rhi::RenderTargetDesc ScopedDepthCopySourceDesc;
+    ScopedDepthCopySourceDesc.size = {8, 8};
+    Fby::Rhi::RenderTargetDesc ScopedDepthCopyTargetDesc = ScopedDepthCopySourceDesc;
+    const Fby::Rhi::RenderTargetHandle ScopedDepthCopySource =
+        ScopedGpu->CreateRenderTarget(ScopedDepthCopySourceDesc);
+    const Fby::Rhi::RenderTargetHandle ScopedDepthCopyTarget =
+        ScopedGpu->CreateRenderTarget(ScopedDepthCopyTargetDesc);
+    if (!ScopedDepthCopySource.IsValid() || !ScopedDepthCopyTarget.IsValid() || !ScopedGpu->BeginFrame() ||
+        !ScopedGpu->RenderToTarget(ScopedDepthCopySource, ScopedPacket) ||
+        !ScopedGpu->CopyDepth(ScopedDepthCopySource, ScopedDepthCopyTarget))
+    {
+        std::fprintf(stderr, "d3d11_rhi: depth copy failed\n");
+        return 1;
+    }
+    ScopedGpu->EndFrame();
+    ScopedGpu->DestroyRenderTarget(ScopedDepthCopySource);
+    ScopedGpu->DestroyRenderTarget(ScopedDepthCopyTarget);
+    // VSync and resize must reach the swapchain, not just the flags.
+    if (!ScopedGpu->SetVSync(true) || !ScopedGpu->VSyncEnabled())
+    {
+        std::fprintf(stderr, "d3d11_rhi: vsync toggle failed\n");
+        return 1;
+    }
+    (void)ScopedGpu->SetVSync(false);
+    ScopedGpu->Resize({400, 300});
+    ScopedGpu->WaitIdle();
+    if (!ScopedGpu->BeginFrame())
+    {
+        std::fprintf(stderr, "d3d11_rhi: frame after resize failed\n");
+        return 1;
+    }
+    ScopedGpu->Submit(ScopedPacket);
+    ScopedGpu->EndFrame();
+    const Fby::Rhi::DeviceInfo& ScopedInfo = ScopedGpu->Info();
+    if (!ScopedInfo.upscalers.motionVectors || !ScopedInfo.upscalers.fsr1 || ScopedInfo.platform != 0 ||
+        ScopedInfo.driver[0] == '\0')
+    {
+        std::fprintf(stderr, "d3d11_rhi: capability reporting failed\n");
+        return 1;
+    }
     ScopedGpu->Shutdown();
     return 0;
 #else

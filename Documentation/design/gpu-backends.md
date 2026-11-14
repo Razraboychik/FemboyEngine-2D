@@ -41,26 +41,22 @@ issue, not an omitted extension in this path.
 4. **Capability matrix**: Vulkan 1.2/1.3/1.4, D3D11, D3D12, Null; tests for
    adapter selection, fallback chains and extension filtering.
 
-`Backend::D3D12` and `Backend::D3D11` now create a real RHI device and swapchain:
-`fby_d3d12_rhi_test` / `fby_d3d11_rhi_test` call `RHI::Create`, `BeginFrame` and
-`EndFrame` three times, present, create a motion render target and destroy it.
-The backends currently clear/present, allocate offscreen render targets and
-texture arrays (`Rgba8`/`Rgba8Srgb`, `Rg16Float` motion targets); each RHI smoke
-creates and destroys one motion target and a two-layer 1x1 texture. Both backends consume a one-quad `FramePacket` in `Submit` with a textured
-sprite pipeline: D3D12 compiles the VS/PS, creates an SRV root signature/PSO and
-uploads six vertices with UV/layer; D3D11 uses the equivalent dynamic vertex and
-sampler path with a white fallback texture. DX is not considered a full render
-path until full depth/motion/render passes and FrameComposer parity land.
-Both backends now have a D32 depth target: D3D12 an explicit DSV heap/clear and
-depth-enabled PSO; D3D11 a depth texture/DSV, depth-stencil state and clear/bind.
-Both D3D11 and D3D12 select the non-software DXGI adapter with the largest
-dedicated VRAM, so the RTX 4060 is chosen over the Radeon iGPU. If only a
-software adapter exists (headless/CI), they fall back to it instead of failing. Both backends have `RenderToTarget` for drawing a FramePacket into an offscreen
-target and restoring the swapchain binding; both the D3D11 and D3D12 offscreen
-render+capture flows are covered by the smoke tests. Its shader target follows the
-device feature level: `vs_5_0/ps_5_0` on 11_0+, `vs_4_0/ps_4_0` on 10_0/10_1. Both DX smoke tests build a packet with `FrameComposer::BuildFramePacket` from a
-real `Transform2D`/`Sprite2D`/`DrawOrder` entity and submit that packet, so the
-engine packet path is exercised rather than a hand-built quad.
+`Backend::D3D12` and `Backend::D3D11` create a real RHI device and swapchain:
+`fby_d3d12_rhi_test` / `fby_d3d11_rhi_test` exercise `RHI::Create`, frames,
+present, resize/VSync, offscreen render+capture, sRGB capture, depth copies and
+the temporal/upscale paths. Both backends consume the engine `FramePacket`
+directly: sorted sprite batches with per-batch atlas, material pipelines, inline
+and cached meshes, motion vectors, temporal resolve with real depth, post-FX
+composite, bloom, LUT colour grading, HUD overlay, spatial upscale and RCAS
+sharpen, present blit and the accessibility composite all run on D3D11 and
+D3D12. The D3D12 path records the post-FX and colour-grading passes through
+`RecordGraphicsPass` and reports the engine-side upscaler capabilities in
+`DeviceInfo`. Both backends select the non-software DXGI adapter with the
+largest dedicated VRAM and fall back to software for headless/CI runs. Shader
+targets follow the feature level: `vs_5_0/ps_5_0` on 11_0+, `vs_4_0/ps_4_0` on
+10_0/10_1. The DX smoke tests build a packet from a real
+`Transform2D`/`Sprite2D`/`DrawOrder` entity, so the engine packet path is
+exercised rather than a hand-built quad.
 
 ## DXGI probe (first stage)
 
@@ -98,28 +94,42 @@ same selection path is exercised.
 
 | Area | Vulkan | D3D12 | D3D11 |
 | --- | --- | --- | --- |
-| Device/swapchain/present | yes (1.2/1.3/1.4 tiers) | yes | yes |
-| Textured sprite FramePacket | yes | yes | yes |
-| Depth pass | yes | yes | yes |
-| Texture arrays | yes | yes | yes |
+| Device/swapchain/present + resize | yes (1.2/1.3/1.4 tiers) | yes | yes |
+| Textured sprite FramePacket (camera, rotation, flips) | yes | yes | yes |
+| Sorted sprite batches with per-batch atlas | yes | yes | yes |
+| Depth pass | yes (prepass) | depth-tested draws only | depth-tested draws only |
+| Texture arrays, BC7, mip chains | yes (BC7 + ASTC) | yes (BC7) | yes (BC7) |
+| Built-in atlas for 0xFFFFFFFF packets | yes | yes | yes |
 | Render targets/motion target | yes | yes | yes |
 | FrameComposer smoke | yes | yes | yes |
-| Motion-vector pass | yes | yes | yes |
+| Motion-vector pass (normalized UV delta) | yes | yes | yes |
 | Temporal resolve (motion + depth reject) | yes (1.4) | yes | yes |
-| Spatial upscale / sharpen | yes | yes | yes |
+| Spatial upscale / sharpen | yes (all four) | yes (nearest/bilinear/bicubic; FSR1 maps to bicubic) | yes (same) |
 | Capture / copy / PresentRenderTarget | yes | yes | yes |
 | HUD / OIT blend modes | yes | yes | yes |
 | FSR2-compatible chain (temporal+upscale+sharpen) | yes (1.4) | yes | yes |
 | Custom frame generation (temporal+history) | yes | yes | yes |
 | Vendor FSR3 frame generation | yes (1.4) | yes (DX12) | custom FG only (no vendor DX11 FG) |
 | MeshRenderItem path (inline + cached mesh) | yes | yes | yes |
-| Full render graph parity | yes | partial | partial |
+| Post-FX composite (CRT/vignette/chromatic/colour vision) | yes | yes | yes |
+| Bloom chain (prefilter + separable blur) | yes | yes | yes |
+| LUT colour grading (`color_grading.frag`) | yes | yes | yes |
+| Accessibility composite (`FramePacket.accessibility`) | yes | yes | yes |
+| OIT resolve (weighted blended accumulation/revealage) | yes | no | no |
+| Clustered lighting / SDF shadows / virtual texturing | yes | no | no |
+| Full render graph parity | partial | partial | partial |
 
-DX is a functional sprite/depth/present backend, not yet full FrameComposer parity.
-`ClearMotionVectors` and `UploadMotionVectors` are implemented on both DX
-backends. Both D3D11 and D3D12 now have a motion-vector draw pass into the RG16
-target; D3D12 uses the sprite PSO with an RG16-compatible variant. Temporal resolve
-is still pending on both DX backends.
+DX is a functional sprite/mesh/depth/motion/post-FX/present backend, not yet full
+FrameComposer parity: the accessibility composite, weighted OIT resolve,
+clustered lighting, SDF shadows and virtual texturing remain Vulkan-only. A DX
+project that enables them keeps the CPU fallback instead of crashing; the matrix
+above lists them explicitly rather than implying parity. `ClearMotionVectors` and `UploadMotionVectors` are implemented on both DX
+backends. Both D3D11 and D3D12 draw motion into the RG16F target with the motion
+VS/PS pair and a `MotionVertex` stream, using the same normalized UV delta the
+Vulkan `motion.vert` writes. Every recorded pass owns a range of the per-frame
+upload ring, and the sprite transform (camera, zoom, rotation, UV flips) is
+applied on the CPU exactly like `quad.vert`, so a world-space FrameComposer
+packet lands where the Vulkan backend puts it.
 D3D11 and D3D12 `CaptureRenderTarget` read an RGBA8/BGRA8 target back to host
 memory (tested with an 8x8 target), and both `CopyColorImage` paths copy matching
 targets. The earlier D3D12 `DEVICE_REMOVED` was traced with the debug layer to an
@@ -131,7 +141,8 @@ the backend-name parser.
 
 ### D3D12 debugging
 
-`FBY_D3D12_DEBUG=1` enables the D3D12 debug layer and an `ID3D12InfoQueue`
+`FBY_D3D11_DEBUG=1` enables the D3D11 debug layer (whose stored messages are
+drained into the log), and `FBY_D3D12_DEBUG=1` enables the D3D12 debug layer and an `ID3D12InfoQueue`
 dump on device removal. It found the invalid SRV `MipLevels=0` that caused the
 old motion/capture failures.
 
@@ -158,8 +169,12 @@ The Vulkan side is covered by `vulkan_rhi` and `fby_vulkan_rhi_legacy_1_2`.
 ### HUD path
 
 Both D3D11 and D3D12 have `SetHudTarget`, `RenderHudTarget`, `CompositeHud`,
-`SetUiVisible` and `SetHudUpscale`; both smoke tests render a 320x240 HUD target
-and composite it into the swapchain.
+`SetUiVisible` and `SetHudUpscale`. The composite draws the premultiplied HUD
+target as a straight-alpha blended fullscreen overlay (never a `CopyResource`
+that would replace the scene), un-premultiplies in the pixel shader like
+`hud_composite.frag`, honours the nearest/linear `SetHudUpscale` choice, and
+scales a HUD target whose size differs from the swapchain. Both smoke tests use
+a 160x120 HUD target composited into a 320x240 swapchain.
 
 ### Sharpen
 
@@ -197,13 +212,16 @@ report `items=64 frames=3`.
 ### Mesh path on DX
 
 `CreateMesh`/`DestroyMesh` cache vertex/index data; `Submit` expands
-`MeshRenderItem` triangles through the sprite pipeline. The item model matrix is
-applied on the CPU; when `boneCount > 0`, two-bone LBS weights from
-`packet.boneMatrices` are applied first (CPU skinning). The FrameComposer batch smoke submits a cached mesh handle on
-both D3D12 and D3D11. `CopyDepth` currently falls back to `CopyColorImage` for
-the engine's color-backed history targets. Both DX backends now create a
-per-render-target D32 depth texture/DSV; `RenderToTarget` binds and clears it and
-`RenderTargetDepthTexture` exposes it.
+`MeshRenderItem` triangles through the sprite pipeline. The item model matrix and
+the camera projection are applied on the CPU; when `boneCount > 0`, two-bone LBS
+weights from `packet.boneMatrices` are applied first (CPU skinning). The
+FrameComposer batch smoke submits a cached mesh handle on both D3D12 and D3D11.
+`CopyDepth` currently falls back to `CopyColorImage` for the engine's
+color-backed history targets. Both DX backends now create a per-render-target
+D32 depth texture/DSV; `RenderToTarget` binds and clears it and
+`RenderTargetDepthTexture` exposes it. The sprite/mesh PSOs keep depth test and
+depth writes disabled because 2D batches are sorted on the CPU and all quads
+share one z.
 
 ### Vendor FSR3 on DX12
 
@@ -223,18 +241,44 @@ context does not support that resolution. D3D11 vendor FSR3 is still pending.
 
 - AMD FidelityFX frame generation ships DX12/Vulkan providers only; D3D11 uses
   the portable `CustomFrameGenerator` instead of vendor FSR3.
-- MaterialGraph runtime pipelines are SPIR-V based; DX backends keep the engine
-  sprite/mesh shaders (the RHI contract makes a material pipeline a hint on those
-  targets).
+- MaterialGraph runtime pipelines are SPIR-V based; the DX backends only build a
+  material PSO when a cooked DXIL/DXBC fragment stage is present and keep the
+  engine sprite VS (the DX mesh path CPU-expands geometry into the sprite vertex
+  contract). The material vertex blob is selected to match the fragment shader
+  model, because D3D12 rejects mixing SM 6.0 with SM 5.x in one PSO.
 - DX mesh skinning is CPU two-bone LBS; there is no GPU skinning/vertex-shader
   palette path yet.
+- The DX post-FX composite and bloom chain are HLSL ports of the Vulkan shaders
+  (`d3d11|d3d12/postfx_composite.hlsl`, `bloom_prefilter.hlsl`, `bloom_blur.hlsl`):
+  the scene renders into an offscreen target, the prefilter reduces it to a
+  half-resolution RGBA16F pair, two blur dispatches ping-pong them, and one
+  fullscreen draw applies CRT/vignette/chromatic/colour-vision/accessibility
+  effects. D3D12 transitions the scene through compute and pixel shader states
+  around the chain. Both the packed `FramePacket::postFx` settings and the
+  render-graph "postfx_composite" constant block are accepted on Vulkan, D3D12
+  and D3D11.
+- `ColorGradingPass` is wired on every backend: `lutTexture` is a
+  `TextureArrayHandle` id whose strip is sampled from layer 0, and the pass copies
+  the final swapchain image to a scratch target before re-rendering it through the
+  LUT (Vulkan), or copies the back buffer and redraws it (D3D11/D3D12).
+- User-authored material parameters are still baked into the generated shader;
+  the RHI carries the engine camera/material-clock block only. A per-material
+  instance constant block (values from a MaterialAsset instance) is the remaining
+  design task.
+- The Metal path covers device/swapchain, sprite/mesh rendering, LBS, HUD targets
+  and compressed textures. Compute passes, virtual texturing, OIT, SDF shadows,
+  temporal resolve, motion vectors, bloom, capture and editor ImGui remain
+  unported; `CreateMotionVectorTarget` now fails instead of silently returning an
+  RGBA8 target.
 
 ### Automatic backend selection
 
 Leave `DeviceDesc::backend` at `Backend::Null` and pass a native window:
 `RHI::Create` probes **Vulkan first**, then Metal on Apple, then D3D12 and D3D11
-on Windows. `FBY_RHI_BACKEND=vulkan|d3d12|d3d11|metal|null` is a diagnostic
-override; an explicit backend fails loudly instead of silently switching.
+on Windows. `FBY_RHI_BACKEND=vulkan|d3d12|d3d11|metal|null|auto` is a diagnostic
+override; an explicit backend fails loudly instead of silently switching, an
+unknown value is rejected, and an explicit `null` really selects the null device
+instead of falling back into the auto probe.
 `auto_backend` covers the preference on this machine and reports `vulkan`.
 
 ### Optional vendor release
@@ -247,15 +291,20 @@ copies the signed upscaler and frame-generation DLLs (DX12/VK plus loaders) into
 
 ### DX material pipelines
 
-DX backends keep the engine sprite/mesh shaders when a MaterialGraph uses runtime
-SPIR-V; `SupportsRuntimeShaderPipelines()` stays false. A future DX path should
-cook MaterialGraph to HLSL/DXIL offline and ship a PSO cache, not translate
-SPIR-V at runtime. This keeps frame cost unchanged and avoids first-use hitches.
+D3D11 keeps the engine sprite shaders; `SupportsRuntimeShaderPipelines()` stays
+false there. D3D12 exposes `CreateShaderPipeline` for a cooked fragment stage and
+selects the material PSO per `DrawBatch::pipeline`, falling back to the default
+sprite PSO. The vertex stage is always the engine material-sprite VS, compiled in
+both SM 5.0 and SM 6.0; the backend inspects the fragment blob and picks the
+matching model so D3D12 never mixes DXIL with DXBC in one PSO. MaterialGraph
+cooking to HLSL/DXIL stays offline (`fby_matc --dx12`), and the PSO cache avoids
+first-use hitches.
 
 ### Offline DX shader bytecode
 
-D3D12 sprite/motion/temporal/sharpen pipelines and D3D11 SM5 pipelines use
-precompiled DXBC from `Source/Engine/RHI/Shaders/DxShaderBlobs.hpp`; no
+D3D12 sprite/motion/temporal/sharpen/post-FX/bloom/grading/present-blit pipelines
+and D3D11 SM5 pipelines use precompiled DXBC from
+`Source/Engine/RHI/Shaders/DxShaderBlobs.hpp`; no
 `D3DCompile` runs on those startup paths. D3D11 feature-level 10 still falls back
 to runtime compilation for the SM4 variant; `FBY_D3D11_FORCE_FL10=1` exercises
 that path in `d3d11_rhi_fl10`.
@@ -272,10 +321,66 @@ not a runtime or setup dependency. MaterialGraph DX cooking is split in two stag
 SPIR-V to HLSL with SPIRV-Cross, writes `<material>.hlsl`, and (when `dxc` is
 available) compiles `.frag.dxil`/`.vert.dxil`. The cooked `.femmat` v2 payload
 carries the optional DXIL stages. D3D12 exposes `CreateShaderPipeline` for a
-sprite-domain payload with DXIL, and `Submit` now selects the material PSO per
-`DrawBatch::pipeline` (falling back to the default sprite PSO). The sprite material root signature now carries the texture table plus 20
-32-bit constants (view-projection and material params); `Submit` binds them for
-material batches. The mesh domain uses the same material PSO path for CPU-expanded mesh draws.
+sprite-domain payload with DXIL, and `Submit` selects the material PSO per `DrawBatch::pipeline` (falling back to the
+default sprite PSO). The material root signature carries the texture table plus a
+28-dword constant block; `Submit` fills it from the packet camera and material
+clock (sprite layout: viewport/centre/zoom, frame slot, material time/viewport;
+mesh layout: view-projection and material clock) instead of binding zeros. The mesh domain uses the same material PSO path for CPU-expanded mesh draws.
 Material PSOs are stored in `ID3D12PipelineLibrary` and serialized to
-`FBY_D3D12_PSO_CACHE` (default `Saved/d3d12_pso_cache.bin`), so a second launch
+`FBY_D3D12_PSO_CACHE` (default `Saved/<executable>_pso_cache.bin`, one file per
+executable so parallel test binaries never share a cache), so a second launch
 loads the cached PSO instead of recreating it.
+
+## Audit status
+
+The render-API audit findings are tracked here; each fixed item is exercised by a
+test (`vulkan_rhi` with the validation layer, `d3d11_rhi` and `d3d12_rhi` with
+their debug layers).
+
+The D3D12 debug layer stays opt-in (`FBY_D3D12_DEBUG=1`): on the current NVIDIA
+driver it intermittently ends the process at teardown after the first post-FX
+frame without emitting a validation message. The same test is stable and silent
+without the layer, so the default test run does not enable it; D3D11's debug
+layer runs clean.
+
+### Fixed
+
+- Vulkan: upscale descriptor sets and per-view effect sets, `UpscaleRenderTarget`
+  early-out, swapchain `TRANSFER_SRC`/`TRANSFER_DST` usage, present-blit barriers,
+  bloom and colour-grading resources, extra validation coverage for clustered
+  lights, SDF shadows, GI probes and the accessibility composite.
+- D3D12: per-frame vertex ring, CPU camera/rotation/UV transform, depth state,
+  motion PSO, persistent descriptor heaps, resize/VSync, scene + post-FX +
+  bloom + colour grading, filled 28-dword material constants, graph post-FX
+  block, accessibility composite, real depth SRVs for temporal, sRGB capture,
+  depth copies, capability reporting and uploaded-byte statistics.
+- D3D11: the same sprite/motion/post-FX/bloom/grading features, resize/VSync,
+  real depth SRVs for temporal, sRGB capture, depth copies, resize state reset,
+  and a clean debug layer (SRV/UAV unbinding, scene render-target release before
+  the bloom compute).
+- Shaders: FSR1 modes, motion/temporal semantics, HLSL ports for post-FX, bloom
+  and colour grading, regenerated DXBC/DXIL bytecode.
+- Cross-cutting: explicit backend override semantics, statistics parity, removed
+  dead heaps, present-target validation. D3D11 and D3D12 present a differently
+  sized render target with a fullscreen scaling blit instead of `CopyResource`
+  (which silently failed on a size mismatch). The DX HUD composite is a blended
+  overlay with nearest/linear upscaling instead of a scene-replacing copy.
+  `UpdateTextureArrayLayer` is implemented on both DX backends (D3D11 arrays are
+  `DEFAULT`, not `IMMUTABLE`, so a layer can stream; D3D12 stages through an
+  upload buffer and a one-shot copy list). `CreateTextureArrayFromRenderTarget`
+  wraps a completed target as a one-layer array on both DX backends, so
+  `StaticBakeRenderer` no longer depends on Vulkan for the bake path.
+  `UpscaleRenderTarget` on DX now runs a dedicated nearest/bilinear/bicubic
+  fullscreen pass (`upscale.hlsl`); FSR1 has no Direct3D port and uses the
+  bicubic filter.
+
+### Remaining
+
+- Material instances (per-material runtime parameter values). The graph stores
+  literals only; an instance layer needs a parameter table in the asset and a
+  uniform block emitted by the graph compiler.
+- Metal renderer surface (virtual texturing, OIT, SDF shadows, editor ImGui).
+  Depth attachments, motion vectors, temporal resolve, spatial upscale, HUD
+  composite, render-target capture, colour/depth copies and the present blit are
+  implemented; the rest cannot be built or verified on Windows and remain a
+  separate macOS-gated work item.

@@ -148,7 +148,13 @@ bool Fsr2Adapter::Dispatch(void* InCommandBuffer, void* InColor, void* InDepth, 
     {
         return false;
     }
-    const auto ScopedTextureDesc = [](std::uint32_t InWidth, std::uint32_t InHeight, uint32_t InFormat)
+    // The backend registers every resource by its description and looks the
+    // registration up by a resource index on dispatch. A zero usage mask leaves
+    // the resource unregistered (the lookup returns -1 and the backend indexes
+    // its table with it), so each slot advertises exactly the usage the SDK's
+    // ffxApiGetImageResourceDescriptionVK would compute for that image.
+    const auto ScopedTextureDesc = [](std::uint32_t InWidth, std::uint32_t InHeight, uint32_t InFormat,
+                                      uint32_t InUsage)
     {
         FfxApiResourceDescription ScopedDesc{};
         ScopedDesc.type = FFX_API_RESOURCE_TYPE_TEXTURE2D;
@@ -157,27 +163,42 @@ bool Fsr2Adapter::Dispatch(void* InCommandBuffer, void* InColor, void* InDepth, 
         ScopedDesc.height = InHeight;
         ScopedDesc.depth = 1;
         ScopedDesc.mipCount = 1;
+        ScopedDesc.flags = FFX_API_RESOURCE_FLAGS_NONE;
+        ScopedDesc.usage = InUsage;
         return ScopedDesc;
     };
+    constexpr uint32_t kReadOnly = FFX_API_RESOURCE_USAGE_READ_ONLY;
     ffxDispatchDescUpscale ScopedDispatch{};
     ScopedDispatch.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
     ScopedDispatch.commandList = InCommandBuffer;
-    ScopedDispatch.color = ffxApiGetResourceVK(InColor, ScopedTextureDesc(InRenderWidth, InRenderHeight,
-                                                                        FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM),
-                                              FFX_API_RESOURCE_STATE_COMPUTE_READ);
-    ScopedDispatch.depth = ffxApiGetResourceVK(InDepth, ScopedTextureDesc(InRenderWidth, InRenderHeight,
-                                                                        FFX_API_SURFACE_FORMAT_R32_FLOAT),
-                                              FFX_API_RESOURCE_STATE_COMPUTE_READ);
-    ScopedDispatch.motionVectors = ffxApiGetResourceVK(InMotion, ScopedTextureDesc(
-        InRenderWidth, InRenderHeight, FFX_API_SURFACE_FORMAT_R16G16_FLOAT), FFX_API_RESOURCE_STATE_COMPUTE_READ);
+    ScopedDispatch.color =
+        ffxApiGetResourceVK(InColor,
+                            ScopedTextureDesc(InRenderWidth, InRenderHeight,
+                                              FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM, kReadOnly),
+                            FFX_API_RESOURCE_STATE_COMPUTE_READ);
+    ScopedDispatch.depth =
+        ffxApiGetResourceVK(InDepth,
+                            ScopedTextureDesc(InRenderWidth, InRenderHeight, FFX_API_SURFACE_FORMAT_R32_FLOAT,
+                                              kReadOnly | FFX_API_RESOURCE_USAGE_DEPTHTARGET),
+                            FFX_API_RESOURCE_STATE_COMPUTE_READ);
+    ScopedDispatch.motionVectors =
+        ffxApiGetResourceVK(InMotion,
+                            ScopedTextureDesc(InRenderWidth, InRenderHeight, FFX_API_SURFACE_FORMAT_R16G16_FLOAT,
+                                              kReadOnly),
+                            FFX_API_RESOURCE_STATE_COMPUTE_READ);
     if (InReactive != nullptr)
     {
-        ScopedDispatch.reactive = ffxApiGetResourceVK(
-            InReactive, ScopedTextureDesc(InRenderWidth, InRenderHeight, FFX_API_SURFACE_FORMAT_R8_UNORM),
-            FFX_API_RESOURCE_STATE_COMPUTE_READ);
+        ScopedDispatch.reactive =
+            ffxApiGetResourceVK(InReactive,
+                                ScopedTextureDesc(InRenderWidth, InRenderHeight, FFX_API_SURFACE_FORMAT_R8_UNORM,
+                                                  kReadOnly),
+                                FFX_API_RESOURCE_STATE_COMPUTE_READ);
     }
-    ScopedDispatch.output = ffxApiGetResourceVK(InOutput, ScopedTextureDesc(
-        InOutputWidth, InOutputHeight, FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM), FFX_API_RESOURCE_STATE_RENDER_TARGET);
+    ScopedDispatch.output =
+        ffxApiGetResourceVK(InOutput,
+                            ScopedTextureDesc(InOutputWidth, InOutputHeight, FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM,
+                                              kReadOnly | FFX_API_RESOURCE_USAGE_UAV),
+                            FFX_API_RESOURCE_STATE_RENDER_TARGET);
     ScopedDispatch.jitterOffset = {InJitterX, InJitterY};
     // The shader writes normalized UV deltas; FSR2 expects pixels.
     ScopedDispatch.motionVectorScale = {static_cast<float>(InRenderWidth), static_cast<float>(InRenderHeight)};

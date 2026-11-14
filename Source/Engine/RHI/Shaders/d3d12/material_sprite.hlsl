@@ -23,3 +23,10 @@ VSOutput VSMain(VSInput input)
     output.layer = (uint)input.layer;
     return output;
 }
+
+// Placeholder pixel stage for smoke tests and for materials that do not cook a
+// fragment DXIL payload; it reproduces the vertex-stage colour unchanged.
+float4 PSMain(VSOutput input) : SV_Target
+{
+    return input.color;
+}

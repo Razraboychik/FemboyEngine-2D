@@ -9,15 +9,21 @@ namespace Fby
 namespace
 {
 #if defined(_WIN32)
-SapiTts& SapiInstance() noexcept
+CompositeTts& CompositeInstance() noexcept
 {
-    static SapiTts ScopedInstance;
+    static CompositeTts ScopedInstance;
     return ScopedInstance;
 }
 #elif defined(__APPLE__)
 AvSpeechTts& AvSpeechInstance() noexcept
 {
     static AvSpeechTts ScopedInstance;
+    return ScopedInstance;
+}
+#elif defined(__linux__)
+SpeechDispatcherTts& SpeechDispatcherInstance() noexcept
+{
+    static SpeechDispatcherTts ScopedInstance;
     return ScopedInstance;
 }
 #endif
@@ -33,14 +39,16 @@ const TtsBackend* NativeTtsBackend() noexcept
 #if defined(_WIN32)
     static TtsBackend ScopedBackend;
     static bool ScopedInitialized = false;
-    if (!ScopedInitialized && SapiInstance().Initialize())
+    if (!ScopedInitialized && CompositeInstance().Initialize())
     {
-        ScopedBackend = SapiInstance().Backend();
+        ScopedBackend = CompositeInstance().Backend();
         ScopedInitialized = true;
     }
     if (!ScopedInitialized)
     {
-        LogWarn("tts", "native TTS (SAPI) is unavailable; BlindMode keeps the narrative log but cannot speak it");
+        LogWarn("tts",
+                "native TTS (SAPI and one-core speech) is unavailable; BlindMode keeps the narrative log but "
+                "cannot speak it");
     }
     return ScopedInitialized && ScopedBackend.speak != nullptr ? &ScopedBackend : nullptr;
 #elif defined(__APPLE__)
@@ -56,17 +64,44 @@ const TtsBackend* NativeTtsBackend() noexcept
         LogWarn("tts", "native TTS (AVSpeech) is unavailable; BlindMode keeps the narrative log but cannot speak it");
     }
     return ScopedInitialized && ScopedBackend.speak != nullptr ? &ScopedBackend : nullptr;
+#elif defined(__linux__)
+    static TtsBackend ScopedBackend;
+    static bool ScopedInitialized = false;
+    if (!ScopedInitialized && SpeechDispatcherInstance().Initialize())
+    {
+        ScopedBackend = SpeechDispatcherInstance().Backend();
+        ScopedInitialized = true;
+    }
+    if (!ScopedInitialized)
+    {
+        LogWarn("tts",
+                "native TTS (speech-dispatcher) is unavailable; BlindMode keeps the narrative log but cannot "
+                "speak it");
+    }
+    return ScopedInitialized && ScopedBackend.speak != nullptr ? &ScopedBackend : nullptr;
 #else
     return nullptr;
 #endif
 }
 
+std::uint32_t EnumerateNativeTtsVoices(TtsVoiceInfo* OutVoices, std::uint32_t InCapacity) noexcept
+{
+    const TtsBackend* ScopedBackend = NativeTtsBackend();
+    if (ScopedBackend == nullptr || ScopedBackend->enumerateVoices == nullptr)
+    {
+        return 0;
+    }
+    return ScopedBackend->enumerateVoices(ScopedBackend->user, OutVoices, InCapacity);
+}
+
 void ShutdownNativeTts() noexcept
 {
 #if defined(_WIN32)
-    SapiInstance().Shutdown();
+    CompositeInstance().Shutdown();
 #elif defined(__APPLE__)
     AvSpeechInstance().Shutdown();
+#elif defined(__linux__)
+    SpeechDispatcherInstance().Shutdown();
 #endif
 }
 }

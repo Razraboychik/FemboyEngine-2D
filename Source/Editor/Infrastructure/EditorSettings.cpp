@@ -105,6 +105,38 @@ void AppendEditorSettingsIni(std::string& InText, const EditorSettings& InEditor
     InText += std::to_string(InIde.colorVisionStrength);
     InText += "\nide_flash_threshold = ";
     InText += std::to_string(InIde.flashThreshold);
+    // Editor narrator and bridge. The values mirror the [editor] section of
+    // project.femproj so an exported editor.ini describes the same environment.
+    InText += "\nnarration_enabled = ";
+    InText += InEditor.narration.Enabled ? "true" : "false";
+    InText += "\nnarration_focus = ";
+    InText += InEditor.narration.AnnounceFocus ? "true" : "false";
+    InText += "\nnarration_role = ";
+    InText += InEditor.narration.AnnounceRole ? "true" : "false";
+    InText += "\nnarration_state = ";
+    InText += InEditor.narration.AnnounceState ? "true" : "false";
+    InText += "\nnarration_interrupt = ";
+    InText += InEditor.narration.InterruptOnFocus ? "true" : "false";
+    InText += "\nnarration_verbosity = ";
+    InText += std::to_string(static_cast<unsigned>(InEditor.narration.Verbosity));
+    InText += "\nnarration_rate = ";
+    InText += std::to_string(InEditor.narration.Rate);
+    InText += "\nnarration_max_queue = ";
+    InText += std::to_string(InEditor.narration.MaxQueued);
+    InText += "\nnarration_language = \"";
+    InText += ThemeText(InEditor.narration.Language, sizeof(InEditor.narration.Language));
+    InText += "\"";
+    InText += "\nnarration_voice = \"";
+    InText += ThemeText(InEditor.narration.VoiceId, sizeof(InEditor.narration.VoiceId));
+    InText += "\"";
+    InText += "\nbridge_enabled = ";
+    InText += InEditor.bridge.Enabled ? "true" : "false";
+    InText += "\nbridge_focus_events = ";
+    InText += InEditor.bridge.RaiseFocusEvents ? "true" : "false";
+    InText += "\nbridge_structure_events = ";
+    InText += InEditor.bridge.RaiseStructureEvents ? "true" : "false";
+    InText += "\nbridge_state_events = ";
+    InText += InEditor.bridge.RaiseStateEvents ? "true" : "false";
     InText += "\ntheme = \"";
     InText += ThemeText(InEditor.theme, sizeof(InEditor.theme));
     InText += "\"\n";

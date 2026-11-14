@@ -402,12 +402,14 @@ PinkUI is the in-game UI: a fixed-capacity canvas, mdspan grid layout, anchor re
 | WidgetCanvas::SetDisplayScale | Density from CameraStackSystem::DisplayScale; font sizes are rounded to whole physical pixels. |
 | OledShiftState | Integer 2 px orbit for OLED safety; ApplyOledShift() binds it to a canvas pool. |
 
-WidgetCanvasSystem is also the accessibility surface: BlindMode reads widget labels for the narrative log, DeafMode receives subtitle widgets, and colour-vision matrices plus FlashGuard are applied to the canvas colours before packing.
+WidgetCanvasSystem is also the accessibility surface: ProjectWidgetCanvas() projects the canvas into the semantic tree (roles, states, names and focus), the narrator speaks the focused node, the UI Automation bridge publishes it, DeafMode receives subtitle widgets, and colour-vision matrices plus FlashGuard are applied to the canvas colours before packing.
 
 
 ## 13. Accessibility kernel (BlindMode, DeafMode, FlashGuard)
 
 Accessibility is a frame policy, not an overlay. BlindMode skips the game pass, indirect draws and the skinning dispatch, then publishes a bounded narrative log. DeafMode mutes the Master bus and routes sound triggers into SubtitleLines. FlashGuard compresses sudden luminance changes. Colour-vision correction uses the published Machado 2009 matrices, and SrgbRelativeLuminance()/ContrastRatio() implement WCAG 2.2 for authoring-time validation.
+
+The kernel feeds one semantic tree shared by the game and the editor. ProjectWidgetCanvas() projects the retained canvas into Ui::AccessibilityTree (roles, states, localized names, screen bounds and focus), the Narrator speaks the focused node from a priority queue with deduplication and sentence-bounded chunking, and the UI Automation bridge publishes the same nodes to the operating system. A game calls ProjectCanvas() once per frame after building its UI canvas; FlushSpeech() remains the main-thread speech pump.
 
 | Item | Contract |
 |---|---|

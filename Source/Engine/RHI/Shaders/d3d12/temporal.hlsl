@@ -18,13 +18,16 @@ float4 PSMain(VSOutput input) : SV_Target
 {
     float4 current = CurrentColor.Sample(TemporalSampler, input.uv);
     float2 motion = MotionVectors.Sample(TemporalSampler, input.uv).rg * MotionScale;
-    float4 history = HistoryColor.Sample(TemporalSampler, input.uv + motion);
+    float4 history = HistoryColor.Sample(TemporalSampler, input.uv - motion);
     float currentDepth = CurrentDepth.Sample(TemporalSampler, input.uv).r;
-    float historyDepth = HistoryDepth.Sample(TemporalSampler, input.uv + motion).r;
-    float weight = ResetHistory > 0.5 ? 1.0 : HistoryWeight;
+    float historyDepth = HistoryDepth.Sample(TemporalSampler, input.uv - motion).r;
+    // HistoryWeight is the history amount, matching the Vulkan contract and
+    // temporal_resolve.frag: motion shrinks it and disocclusion drops it.
+    float confidence = 1.0 - saturate(length(motion) * 8.0);
+    float historyWeight = ResetHistory > 0.5 ? 0.0 : HistoryWeight * confidence;
     if (abs(currentDepth - historyDepth) > DepthThreshold)
     {
-        weight = 1.0;
+        historyWeight = 0.0;
     }
-    return lerp(history, current, weight);
+    return lerp(history, current, 1.0 - historyWeight);
 }

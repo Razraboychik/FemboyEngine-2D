@@ -284,3 +284,167 @@ fragment float4 sprite_fragment(SpriteVertexOut in [[stage_in]],
     }
     return color;
 }
+
+// ---------------------------------------------------------------------------
+// Spatial upscale: one fullscreen triangle with nearest, bilinear or bicubic
+// filtering. FSR1 has no MSL port and uses the bicubic filter.
+// ---------------------------------------------------------------------------
+struct UpscaleVertexOut
+{
+    float4 position [[position]];
+    float2 uv;
+};
+
+struct UpscaleParams
+{
+    float2 sourceSize;
+    // 0 nearest, 1 bilinear, 2 bicubic.
+    uint mode;
+    float padding;
+};
+
+static float fby_cubic_weight(float value)
+{
+    const float a = abs(value);
+    if (a < 1.0f)
+    {
+        return 1.0f - 2.0f * a * a + a * a * a;
+    }
+    if (a < 2.0f)
+    {
+        return 4.0f - 8.0f * a + 5.0f * a * a - a * a * a;
+    }
+    return 0.0f;
+}
+
+vertex UpscaleVertexOut upscale_vertex(uint vertexId [[vertex_id]])
+{
+    const float2 uv = float2(float((vertexId << 1u) & 2u), float(vertexId & 2u));
+    UpscaleVertexOut out;
+    out.position = float4(uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
+    out.uv = uv;
+    return out;
+}
+
+fragment float4 upscale_fragment(UpscaleVertexOut in [[stage_in]],
+                                 texture2d<float> source [[texture(0)]],
+                                 sampler sourceSampler [[sampler(0)]],
+                                 constant UpscaleParams& params [[buffer(0)]])
+{
+    if (params.mode == 0u)
+    {
+        const uint2 texel = uint2(in.uv * params.sourceSize);
+        const uint2 clamped = min(texel, uint2(params.sourceSize) - 1u);
+        return source.read(clamped);
+    }
+    if (params.mode == 1u)
+    {
+        return source.sample(sourceSampler, in.uv);
+    }
+    const float2 coord = in.uv * params.sourceSize;
+    const float2 base = floor(coord - 0.5f);
+    const uint2 limit = uint2(params.sourceSize) - 1u;
+    float4 accumulated = float4(0.0f);
+    float weightSum = 0.0f;
+    for (uint y = 0u; y < 4u; ++y)
+    {
+        for (uint x = 0u; x < 4u; ++x)
+        {
+            const float2 sampleCoord = base + float2(float(x), float(y));
+            const float2 offset = coord - (sampleCoord + 0.5f);
+            const float weight = fby_cubic_weight(offset.x) * fby_cubic_weight(offset.y);
+            const uint2 texel = min(uint2(clamp(sampleCoord, float2(0.0f), float2(limit))), limit);
+            accumulated += source.read(texel) * weight;
+            weightSum += weight;
+        }
+    }
+    return weightSum > 0.0f ? accumulated / weightSum : source.sample(sourceSampler, in.uv);
+}
+
+// ---------------------------------------------------------------------------
+// Temporal resolve: current/history colour with motion reprojection and a
+// depth-based disocclusion reject, matching the HLSL and GLSL semantics.
+// ---------------------------------------------------------------------------
+struct TemporalParams
+{
+    float historyWeight;
+    float resetHistory;
+    float motionScale;
+    float depthThreshold;
+};
+
+fragment float4 temporal_fragment(UpscaleVertexOut in [[stage_in]],
+                                  texture2d<float> currentColor [[texture(0)]],
+                                  texture2d<float> historyColor [[texture(1)]],
+                                  texture2d<float> motionVectors [[texture(2)]],
+                                  texture2d<float> currentDepth [[texture(3)]],
+                                  texture2d<float> historyDepth [[texture(4)]],
+                                  sampler temporalSampler [[sampler(0)]],
+                                  constant TemporalParams& params [[buffer(0)]])
+{
+    const float4 current = currentColor.sample(temporalSampler, in.uv);
+    const float2 motion = motionVectors.sample(temporalSampler, in.uv).rg * params.motionScale;
+    const float4 history = historyColor.sample(temporalSampler, in.uv - motion);
+    const float currentDepthValue = currentDepth.sample(temporalSampler, in.uv).r;
+    const float historyDepthValue = historyDepth.sample(temporalSampler, in.uv - motion).r;
+    const float confidence = 1.0f - saturate(length(motion) * 8.0f);
+    float historyWeight = params.resetHistory > 0.5f ? 0.0f : params.historyWeight * confidence;
+    if (abs(currentDepthValue - historyDepthValue) > params.depthThreshold)
+    {
+        historyWeight = 0.0f;
+    }
+    return mix(current, history, saturate(historyWeight));
+}
+
+// ---------------------------------------------------------------------------
+// HUD composite: fullscreen blended overlay with nearest/linear upscaling.
+// ---------------------------------------------------------------------------
+struct HudParams
+{
+    // 1 = nearest, 0 = linear.
+    float nearest;
+    float2 size;
+    float padding;
+};
+
+fragment float4 hud_composite_fragment(UpscaleVertexOut in [[stage_in]],
+                                       texture2d<float> hud [[texture(0)]],
+                                       sampler nearestSampler [[sampler(0)]],
+                                       sampler linearSampler [[sampler(1)]],
+                                       constant HudParams& params [[buffer(0)]])
+{
+    if (params.nearest > 0.5f)
+    {
+        return hud.sample(nearestSampler, in.uv);
+    }
+    return hud.sample(linearSampler, in.uv);
+}
+
+// ---------------------------------------------------------------------------
+// Motion vectors: the CPU expands rotated quads into NDC positions with a
+// per-vertex UV delta, so the pass only forwards the delta.
+// ---------------------------------------------------------------------------
+struct MotionVertex
+{
+    packed_float3 position;
+    float2 delta;
+};
+
+struct MotionOut
+{
+    float4 position [[position]];
+    float2 delta;
+};
+
+vertex MotionOut motion_vertex(uint vertexId [[vertex_id]], constant MotionVertex* vertices [[buffer(0)]])
+{
+    MotionOut out;
+    out.position = float4(float3(vertices[vertexId].position), 1.0f);
+    out.delta = vertices[vertexId].delta;
+    return out;
+}
+
+fragment float4 motion_fragment(MotionOut in [[stage_in]])
+{
+    return float4(in.delta, 0.0f, 1.0f);
+}

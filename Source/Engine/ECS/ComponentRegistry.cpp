@@ -1,6 +1,7 @@
 #include "Engine/ECS/ComponentRegistry.hpp"
 
 #include "Engine/Audio/Audio.hpp"
+#include "Engine/Audio/AudioZones.hpp"
 #include "Engine/ECS/AnimGraph.hpp"
 #include "Engine/ECS/BoneAttachment.hpp"
 #include "Engine/ECS/Lighting.hpp"
@@ -32,6 +33,7 @@
 #include "Engine/UI/Hypertext.hpp"
 #include "Engine/UI/PinkUI.hpp"
 #include "Engine/Video/VideoStream.hpp"
+#include "Engine/Weather/Weather.hpp"
 
 namespace Fby::Scene
 {
@@ -125,6 +127,10 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<Ui::WidgetComponent>();
     InRegistry.Register<AudioBusComponent>();
     InRegistry.Register<AudioSourceComponent>();
+    InRegistry.Register<AudioZoneComponent>();
+    // The resolved zone state is runtime-only; it is rebuilt from the zones.
+    InRegistry.Register<AudioContextComponent>(false);
+    InRegistry.Register<Weather::WeatherContextComponent>();
 
     // Physics/media authoring. RigidBody2D/Collider2D stay inspector-editable
     InRegistry.Register<RigidBody2D>(false);

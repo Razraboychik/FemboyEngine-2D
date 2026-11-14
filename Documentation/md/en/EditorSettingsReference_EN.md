@@ -163,6 +163,33 @@ The eight `ide_*` keys configure the editor window only; the game's own profile 
 
 `ide_flash_threshold` is the only accessibility key with a conditional widget: the slider is disabled while `ide_flash_guard` is off, because the threshold has no meaning without the guard.
 
+### 3.7.1 Narrator and screen-reader bridge
+
+The editor speaks through its own narrator and publishes its tree through its own
+bridge. Both policies are fields of `EditorSettings` (`narration` and `bridge`)
+and never change the policy a shipped game reads from `[accessibility]`.
+
+| Key | Default | Effect |
+|---|---|---|
+| `narration_enabled` | false | Speak panels, focus, errors and Play In Editor state; Blind mode turns it on |
+| `narration_focus` | true | Announce a focus move |
+| `narration_role` | true | Include the widget role ("button", "slider") |
+| `narration_state` | true | Include checked, disabled and read-only |
+| `narration_interrupt` | true | A focus move cuts the current line |
+| `narration_verbosity` | 2 | 0 silent, 1 name only, 2 name and role, 3 name, role and state |
+| `narration_rate` | 1.0 | Speech rate, clamped to 0.5 through 2.0 |
+| `narration_max_queue` | 4 | Queued utterances, clamped to 1 through 16 |
+| `narration_language` | `en-US` | BCP-47 tag of the editor voice |
+| `narration_voice` | empty | Exact installed voice id; empty selects the voice by language |
+| `bridge_enabled` | true | Publish editor panes and the focused widget to the OS |
+| `bridge_focus_events` | true | Raise focus-changed events |
+| `bridge_structure_events` | true | Raise structure changes when the pane or widget set changes |
+| `bridge_state_events` | true | Raise state property changes |
+
+The editor narrator is deliberately quieter than the game default: it starts off
+and keeps a queue of four. While Play In Editor runs, the game owns the voice and
+the editor queues nothing; the bridge keeps publishing the editor tree.
+
 ### 3.8 Text appearance and symbol colours
 
 Text styling is independent of the panel palette: the colour is authored in

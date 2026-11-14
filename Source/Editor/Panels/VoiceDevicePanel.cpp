@@ -361,6 +361,28 @@ void VoiceDevicePanel::Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSyst
     {
         ImGui::Separator();
         ImGui::TextUnformatted("Voice effects");
+        ImGui::SetNextItemWidth(360.0f);
+        (void)ImGui::InputText("Preset pack", MPresetPath.data(), MPresetPath.size());
+        ImGui::SameLine();
+        if (ImGui::Button("Load"))
+        {
+            if (MPresetPath[0] == '\0')
+            {
+                MStatus = "Enter a .fbyvoice path first.";
+            }
+            else
+            {
+                std::string ScopedError;
+                if (Fby::LoadVoicePresetFile(MPresetPath.data(), *InPresets, nullptr, &ScopedError))
+                {
+                    MStatus = std::string("loaded ") + MPresetPath.data();
+                }
+                else
+                {
+                    MStatus = "preset pack failed: " + ScopedError;
+                }
+            }
+        }
         if (InSelection != nullptr)
         {
             (void)DrawPresetCombo("Your voice", *InPresets, VoicePresetFlagAllowUplink, InSelection->Local);

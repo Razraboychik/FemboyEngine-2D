@@ -4,6 +4,7 @@
 
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Core/Log.hpp"
+#include "Engine/Core/StoragePaths.hpp"
 #include "Engine/ECS/CommandBuffer.hpp"
 #include "Engine/ECS/Hierarchy.hpp"
 #include "Engine/ECS/RegistryOps.hpp"
@@ -15,6 +16,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -247,6 +250,11 @@ PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs
     MTick = InTick;
     MElapsed = 0.0f;
     MFixedAccumulator = 0.0f;
+    MReplayFailed = !MReplay.Begin(MSchema, 60, MRng);
+    if (MReplayFailed)
+    {
+        LogWarn("pie", "replay recording could not start; the session runs without it");
+    }
     return Result::Ok;
 }
 
@@ -716,6 +724,37 @@ void PlayInEditor::Stop() noexcept
     {
         return;
     }
+    MReplay.End();
+    if (!MReplayFailed)
+    {
+        std::vector<std::byte> ScopedReplayBytes;
+        if (!MReplay.Session().Save(&ScopedReplayBytes))
+        {
+            LogWarn("pie", "replay serialization failed");
+        }
+        else
+        {
+            const std::filesystem::path ScopedDirectory = Fby::Core::StorageRoot() / "Replays";
+            std::error_code ScopedError;
+            std::filesystem::create_directories(ScopedDirectory, ScopedError);
+            const std::filesystem::path ScopedPath =
+                ScopedDirectory /
+                ("pie-" + std::to_string(Fby::Core::Clock::NowNanoseconds()) + ".fbyreplay");
+            std::ofstream ScopedFile(ScopedPath, std::ios::binary | std::ios::trunc);
+            if (ScopedFile)
+            {
+                ScopedFile.write(reinterpret_cast<const char*>(ScopedReplayBytes.data()),
+                                 static_cast<std::streamsize>(ScopedReplayBytes.size()));
+                LogInfo("pie", "replay saved: {} ({} frames, {} bytes)", ScopedPath.string(),
+                        MReplay.Session().FrameCount(), ScopedReplayBytes.size());
+            }
+            else
+            {
+                LogWarn("pie", "replay could not be written to {}", ScopedPath.string());
+            }
+        }
+    }
+    MReplayFailed = false;
     // The clone's bodies belong to the PIE world only.
     if (MPhysicsOwned)
     {
@@ -802,6 +841,11 @@ bool PlayInEditor::Step(Ecs::SystemGraph& InGraph, float InDeltaSeconds, float I
     if (MServices.commands != nullptr)
     {
         MServices.commands->Play(MWorld);
+    }
+    if (!MReplayFailed && !MReplay.RecordTick(MWorld, static_cast<std::uint32_t>(MTick), std::span<const std::byte>{}))
+    {
+        MReplayFailed = true;
+        LogWarn("pie", "replay recording stopped at tick {}; the session keeps running", MTick);
     }
     MTick += 1;
     MElapsed += InDeltaSeconds;

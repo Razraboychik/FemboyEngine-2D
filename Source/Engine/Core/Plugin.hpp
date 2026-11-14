@@ -67,7 +67,8 @@ template <typename Component> [[nodiscard]] constexpr FbyComponentInfo Describe(
     }                                                                                                                  \
     FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* rawHost)                                                          \
     {                                                                                                                  \
-        if (rawHost == nullptr || rawHost->abi_version != FBY_PLUGIN_ABI_VERSION)                                      \
+        if (rawHost == nullptr || rawHost->abi_version != FBY_PLUGIN_ABI_VERSION ||                             \
+            rawHost->struct_size < sizeof(FbyHostApi))                                                          \
         {                                                                                                              \
             return -1;                                                                                                 \
         }                                                                                                              \

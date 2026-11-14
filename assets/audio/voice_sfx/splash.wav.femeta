@@ -1,0 +1,17 @@
+guid = "0x4876189B42A38919"
+asset_id = "0x4E8069A581713DF0"
+type = "audio"
+source = "audio/voice_sfx/splash.wav"
+cooked = "audio/voice_sfx/splash.fpcm"
+source_hash = "0xCC79D9EBE4BCBE82"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

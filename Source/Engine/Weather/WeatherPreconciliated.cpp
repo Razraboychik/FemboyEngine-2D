@@ -184,7 +184,10 @@ void WeatherPreconciliatedSystem::ExecuteSplashSprites(RenderGraphContext& InCon
 bool WeatherPreconciliatedSystem::Register(Ecs::SystemGraph& InGraph, WeatherPreconciliatedSystem& InSystem)
 {
     Ecs::SystemAccess ScopedAccess;
+    // The view is mutable even though the system only reads the context, so the
+    // FCS access checker classifies get() as a write; declare it truthfully.
     ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<WeatherContextComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<WeatherContextComponent>();
     ScopedAccess.Writes = Ecs::kServiceRenderer;
     return InGraph.Add(Ecs::Phase::PreUpdate, "WeatherPreconciliatedSystem", &WeatherPreconciliatedSystem::Tick,
                        &InSystem, 0, 0, ScopedAccess);

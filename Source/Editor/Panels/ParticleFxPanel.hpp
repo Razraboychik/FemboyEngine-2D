@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Engine/Effects/ParticleEffects.hpp"
+#include "Engine/Effects/ParticlePreset.hpp"
 
 #include <array>
 #include <cstdint>
@@ -39,5 +40,9 @@ private:
     float MSpreadDegrees = 20.0f;
     bool MPlaying = true;
     bool MDirty = false;
+    ParticlePresetRegistry MPresetRegistry;
+    std::array<char, 512> MPresetPath{};
+    std::string MStatus;
+    int MExternalPreset = -1;
 };
 }

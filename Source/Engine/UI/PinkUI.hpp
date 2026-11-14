@@ -169,6 +169,8 @@ enum class WidgetFlags : std::uint32_t
     // TextBlock layout direction; the glyph order still comes from Fby::Text
     TextRightToLeft = 1u << 12,
     TextVertical = 1u << 13,
+    // Changes to this widget are announced without waiting for keyboard focus
+    LiveRegion = 1u << 14,
 };
 
 [[nodiscard]] constexpr std::uint32_t operator|(WidgetFlags InA, WidgetFlags InB) noexcept
@@ -737,6 +739,9 @@ struct WidgetCanvas
     // Localization key + 1 per widget (0 = no key). The key is resolved lazily
     // by ApplyLocalization(), so switching locale does not touch the layout.
     std::array<std::uint32_t, kMaxWidgets> textKeys{};
+    // Localization id of the accessible name (0 = use the visible caption).
+    // A screen reader and the narrator read this instead of the painted glyphs.
+    std::array<std::uint32_t, kMaxWidgets> accessibleNameIds{};
 
     struct LayoutCache
     {
@@ -869,6 +874,12 @@ struct WidgetCanvas
     void SetTextKey(std::int32_t InWidget, std::uint32_t InKey) noexcept;
     [[nodiscard]] std::uint32_t TextKey(std::int32_t InWidget) const noexcept;
     std::uint32_t ApplyLocalization(const LocalizationTable& InTable) noexcept;
+
+    // Accessible name of a widget, as a localization id. Zero keeps the visible
+    // caption. The projection prefers this id, so a button can read "Close
+    // dialog" while its caption is an icon.
+    void SetAccessibleName(std::int32_t InWidget, std::uint32_t InNameId) noexcept;
+    [[nodiscard]] std::uint32_t AccessibleName(std::int32_t InWidget) const noexcept;
 
     // TextInput editing. Offsets are UTF-8 byte offsets; the editing methods
     // keep the caret on a codepoint boundary and replace the selection.

@@ -9,6 +9,7 @@
 #include "Engine/RHI/RingBuffer.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <optional>
 #include <utility>
@@ -153,6 +154,63 @@ private:
 };
 }
 
+std::vector<std::byte> BuildBuiltInAtlasPixels(std::uint32_t InSize, std::uint32_t InLayers)
+{
+    const std::uint32_t ScopedSize = InSize == 0 ? 128u : InSize;
+    const std::uint32_t ScopedLayers = InLayers == 0 ? 4u : InLayers;
+    std::vector<std::byte> ScopedPixels(static_cast<std::size_t>(ScopedSize) * ScopedSize * ScopedLayers * 4u);
+    const auto ScopedWrite = [&ScopedPixels, ScopedSize](std::uint32_t InLayer, std::uint32_t InX, std::uint32_t InY,
+                                                         std::uint8_t InR, std::uint8_t InG, std::uint8_t InB,
+                                                         std::uint8_t InA)
+    {
+        const std::size_t ScopedIndex =
+            ((static_cast<std::size_t>(InLayer) * ScopedSize + InY) * ScopedSize + InX) * 4u;
+        ScopedPixels[ScopedIndex + 0] = static_cast<std::byte>(InR);
+        ScopedPixels[ScopedIndex + 1] = static_cast<std::byte>(InG);
+        ScopedPixels[ScopedIndex + 2] = static_cast<std::byte>(InB);
+        ScopedPixels[ScopedIndex + 3] = static_cast<std::byte>(InA);
+    };
+    for (std::uint32_t ScopedY = 0; ScopedY < ScopedSize; ++ScopedY)
+    {
+        for (std::uint32_t ScopedX = 0; ScopedX < ScopedSize; ++ScopedX)
+        {
+            ScopedWrite(0, ScopedX, ScopedY, 255, 255, 255, 255);
+            if (ScopedLayers > 1)
+            {
+                const bool ScopedEven = ((ScopedX / 16u) + (ScopedY / 16u)) % 2u == 0u;
+                ScopedWrite(1, ScopedX, ScopedY, ScopedEven ? 255 : 40, ScopedEven ? 80 : 20,
+                            ScopedEven ? 140 : 60, 255);
+            }
+            if (ScopedLayers > 2)
+            {
+                const float ScopedDx = static_cast<float>(ScopedX) - static_cast<float>(ScopedSize) * 0.5f;
+                const float ScopedDy = static_cast<float>(ScopedY) - static_cast<float>(ScopedSize) * 0.5f;
+                const float ScopedRadius =
+                    std::sqrt(ScopedDx * ScopedDx + ScopedDy * ScopedDy) / (static_cast<float>(ScopedSize) * 0.5f);
+                const auto ScopedShade =
+                    static_cast<std::uint8_t>(std::clamp(1.0f - ScopedRadius, 0.0f, 1.0f) * 255.0f);
+                ScopedWrite(2, ScopedX, ScopedY, 40, ScopedShade, 90, 255);
+            }
+            if (ScopedLayers > 3)
+            {
+                const float ScopedDx = static_cast<float>(ScopedX) - static_cast<float>(ScopedSize) * 0.5f;
+                const float ScopedDy = static_cast<float>(ScopedY) - static_cast<float>(ScopedSize) * 0.5f;
+                const float ScopedRadius =
+                    std::sqrt(ScopedDx * ScopedDx + ScopedDy * ScopedDy) / (static_cast<float>(ScopedSize) * 0.5f);
+                if (ScopedRadius <= 0.85f)
+                {
+                    ScopedWrite(3, ScopedX, ScopedY, 90, 160, 255, 255);
+                }
+                else
+                {
+                    ScopedWrite(3, ScopedX, ScopedY, 0, 0, 0, 0);
+                }
+            }
+        }
+    }
+    return ScopedPixels;
+}
+
 Backend SelectDefaultBackend() noexcept
 {
     // Null with a window means "auto": Vulkan first, then the platform backend.
@@ -256,14 +314,31 @@ std::unique_ptr<RHI> RHI::Create(const DeviceDesc& InDesc)
         }
     }
     Backend ScopedBackend = ScopedDesc.backend;
+    bool ScopedForceNull = false;
     // Manual/diagnostic override: FBY_RHI_BACKEND=vulkan, d3d12, d3d11, metal,
     // null or auto. Unset/auto prefers Vulkan when it is available and falls back
     // to the platform backend, so games do not have to probe APIs themselves.
     if (const char* ScopedOverride = std::getenv("FBY_RHI_BACKEND"); ScopedOverride != nullptr)
     {
-        ScopedBackend = BackendFromName(ScopedOverride);
+        if (std::strcmp(ScopedOverride, "auto") != 0 && ScopedOverride[0] != '\0')
+        {
+            ScopedBackend = BackendFromName(ScopedOverride);
+            if (ScopedBackend == Backend::Null)
+            {
+                if (std::strcmp(ScopedOverride, "null") != 0)
+                {
+                    LogError("RHI",
+                             "unknown FBY_RHI_BACKEND='{}'; expected vulkan, d3d12, d3d11, metal, null or auto",
+                             ScopedOverride);
+                    return nullptr;
+                }
+                // An explicit "null" must not fall into the auto probe.
+                ScopedForceNull = true;
+            }
+        }
     }
-    const bool ScopedAuto = ScopedBackend == Backend::Null && ScopedDesc.nativeWindow != nullptr;
+    const bool ScopedAuto =
+        ScopedBackend == Backend::Null && !ScopedForceNull && ScopedDesc.nativeWindow != nullptr;
 
     if (ScopedAuto)
     {

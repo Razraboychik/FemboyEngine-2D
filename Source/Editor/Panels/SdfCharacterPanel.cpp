@@ -49,6 +49,14 @@ void SdfCharacterPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         if (ImGui::Button("Add SDF Character"))
         {
             ScopedCharacter = &InContext.registry.emplace<SdfCharacterComponent>(ScopedEntity);
+            // A new character starts with one capsule on the root bone. An empty
+            // component would bake nothing and the preview would look broken.
+            ScopedCharacter->PartCount = 1;
+            SdfBonePart& ScopedPart = ScopedCharacter->Parts[0];
+            ScopedPart.Shape = MakeSdfShape(SdfShapeType::Capsule);
+            ScopedPart.Shape.HalfExtents = Fby::Vector2D{24.0f, 0.0f};
+            ScopedPart.Shape.Radius = 8.0f;
+            ScopedPart.BoneIndex = 0;
         }
         ImGui::End();
         return;

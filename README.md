@@ -471,6 +471,7 @@ is [the Russian README](READMEs/README_RU.md).
 - [Physics backends design](Documentation/design/physics-backends.md)
 - [CodeQL audit](Documentation/design/codeql-audit.md)
 - [Time, timers and dates](Documentation/design/time.md)
+- [Accessibility guide](Documentation/design/accessibility-guide.md)
 - [Accessibility contract](Documentation/design/accessibility.md)
 - [World systems: tilemaps, IK and navigation](Documentation/design/world-systems.md)
 - [Lighting and SDF shadows](Documentation/design/lighting.md)

@@ -184,6 +184,50 @@ void ParticleFxPanel::Draw(bool* InOpen)
         ImGui::EndCombo();
     }
 
+    ImGui::SeparatorText("Data-pack presets");
+    ImGui::SetNextItemWidth(320.0f);
+    (void)ImGui::InputText("Pack path", MPresetPath.data(), MPresetPath.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Load pack"))
+    {
+        std::string ScopedError;
+        if (LoadParticlePresetFile(MPresetPath.data(), MPresetRegistry, nullptr, &ScopedError))
+        {
+            MStatus = "loaded " + std::string(MPresetPath.data());
+        }
+        else
+        {
+            MStatus = "pack failed: " + ScopedError;
+        }
+    }
+    if (!MStatus.empty())
+    {
+        ImGui::TextDisabled("%s", MStatus.c_str());
+    }
+    if (!MPresetRegistry.Presets().empty())
+    {
+        const char* ScopedPreview = MExternalPreset >= 0 ? MPresetRegistry.At(static_cast<std::uint32_t>(MExternalPreset))->DisplayName
+                                                          : "Select pack preset";
+        if (ImGui::BeginCombo("Pack preset", ScopedPreview))
+        {
+            for (std::uint32_t ScopedIndex = 0; ScopedIndex < MPresetRegistry.Count(); ++ScopedIndex)
+            {
+                const ParticlePresetDesc* ScopedPreset = MPresetRegistry.At(ScopedIndex);
+                if (ScopedPreset == nullptr)
+                {
+                    continue;
+                }
+                if (ImGui::Selectable(ScopedPreset->DisplayName, MExternalPreset == static_cast<int>(ScopedIndex)))
+                {
+                    MExternalPreset = static_cast<int>(ScopedIndex);
+                    MSettings = ScopedPreset->Settings;
+                    Restart();
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+
     if (ImGui::Button("Restart"))
     {
         Restart();
