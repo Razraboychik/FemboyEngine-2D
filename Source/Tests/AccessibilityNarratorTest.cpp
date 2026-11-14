@@ -72,6 +72,7 @@ void TestSetVoice(void*, const char* InLanguage) noexcept
 {
     if (InLanguage == nullptr)
     {
+        GLastVoiceId[0] = '\0';
         GLastVoice[0] = '\0';
         return;
     }
@@ -241,12 +242,14 @@ int main()
     FBY_CHECK(ScopedNarrator.Enqueue(Fby::NarratorOwner::Editor, Fby::NarratorPriority::Critical, "urgent"));
     FBY_CHECK(ScopedNarrator.Queued() == 1);
 
-    // Language: the voice follows the BCP-47 tag the kernel passes.
+    // Language: the narrator resolves the best installed voice and pins it by
+    // id, so ja-JP with only en/de installed falls back to the English voice.
+    GLastVoiceId[0] = '\0';
     GLastVoice[0] = '\0';
     ScopedNarrator.SetLanguage("ja-JP");
-    FBY_CHECK(std::strcmp(GLastVoice, "ja-JP") == 0);
+    FBY_CHECK(std::strcmp(GLastVoiceId, "voice.one") == 0);
     ScopedNarrator.SetLanguage("pt_BR");
-    FBY_CHECK(std::strcmp(GLastVoice, "pt_BR") == 0);
+    FBY_CHECK(std::strcmp(GLastVoiceId, "voice.one") == 0);
 
     // An explicit voice id wins over the language; a rejected id falls back.
     Fby::NarratorSettings ScopedVoiceSettings = ScopedNarrator.Settings();
@@ -255,6 +258,8 @@ int main()
     FBY_CHECK(std::strcmp(GLastVoiceId, "voice.one") == 0);
 
     GRejectVoiceId = true;
+    GLastVoiceId[0] = '\0';
+    GLastVoice[0] = '\0';
     std::snprintf(ScopedVoiceSettings.VoiceId, sizeof(ScopedVoiceSettings.VoiceId), "voice.missing");
     std::snprintf(ScopedVoiceSettings.Language, sizeof(ScopedVoiceSettings.Language), "de-DE");
     ScopedNarrator.SetSettings(ScopedVoiceSettings);
@@ -274,7 +279,7 @@ int main()
     ScopedKernel.SetTtsBackend(&ScopedBackend);
     ScopedKernel.SetBlindMode(true);
     ScopedKernel.SetNarrativeLocale("ru-RU");
-    FBY_CHECK(std::strcmp(GLastVoice, "ru-RU") == 0);
+    FBY_CHECK(std::strcmp(GLastVoiceId, "voice.one") == 0);
     ScopedKernel.ProjectCanvas(ScopedCanvas);
     FBY_CHECK(ScopedKernel.Tree().Count() == 2);
     ScopedKernel.FlushSpeech();

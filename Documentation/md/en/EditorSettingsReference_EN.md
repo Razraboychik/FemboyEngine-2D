@@ -181,6 +181,14 @@ and never change the policy a shipped game reads from `[accessibility]`.
 | `narration_max_queue` | 4 | Queued utterances, clamped to 1 through 16 |
 | `narration_language` | `en-US` | BCP-47 tag of the editor voice |
 | `narration_voice` | empty | Exact installed voice id; empty selects the voice by language |
+| `narration_actions_enabled` | true | Speak gameplay actions (pickups, doors, combat callouts) |
+| `narration_action_categories` | 63 | Bit mask of enabled action categories (bit 0 interaction, 1 combat, 2 item, 3 navigation, 4 state, 5 system) |
+| `narration_action_direction` | true | Replace `{direction}` with the localized word for the clock sector |
+| `narration_action_distance` | true | Replace `{distance}` with the localized near/medium/far word |
+| `narration_action_min_priority` | 0 | Lowest spoken action priority; 3 keeps critical only |
+| `narration_action_near` | 3.0 | Distance in metres that still maps to the near word |
+| `narration_action_far` | 12.0 | Distance in metres that separates medium from far |
+| `narration_action_dedup_ms` | 1200 | Window in which a repeated action key is dropped |
 | `bridge_enabled` | true | Publish editor panes and the focused widget to the OS |
 | `bridge_focus_events` | true | Raise focus-changed events |
 | `bridge_structure_events` | true | Raise structure changes when the pane or widget set changes |

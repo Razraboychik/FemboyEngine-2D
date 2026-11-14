@@ -96,6 +96,55 @@ mode, F4 — защиту от вспышек, F5 — цветовое зрен�
   контрактом формулировку «озвучивается, если голос есть, иначе — понятный
   запасной вариант».
 
+### Озвучка действий
+
+Игровые события не являются текстом на экране, поэтому у них свои формулировки
+и свой триггер. `ActionNarration` принимает `ActionEvent` (id шаблона
+локализации плюс параметры), подставляет варианты числа, добавляет
+локализованные слова направления и расстояния и ставит строку в очередь. Ту же
+строку можно отдать в субтитры.
+
+```cpp
+Fby::ActionEvent ScopedEvent;
+ScopedEvent.TemplateId = LocIds::NarrationEnemySpotted;
+ScopedEvent.SubjectNameId = LocIds::EnemyGrunt;
+ScopedEvent.Count = 3;
+ScopedEvent.AngleRadians = -1.57f;
+ScopedEvent.HasDirection = true;
+ScopedEvent.DistanceMeters = 4.0f;
+ScopedEvent.Category = static_cast<std::uint8_t>(Fby::NarrationCategory::Combat);
+ScopedEvent.DedupeKey = 42;
+ScopedEvent.Priority = 2;
+Kernel.PublishAction(ScopedEvent);
+```
+
+Шаблоны используют `{subject}`, `{object}`, `{count}`, `{direction}`,
+`{distance}` и `{meters}`. Варианты числа следуют принятому соглашению
+локализации. Восемь слов направления и слова «близко/средне/далеко» берутся из
+`ActionVocabulary`; политика — в ключах проекта `narration_action_*`. Слой
+работает только в Blind mode при включённом `narration_world`, поэтому
+экранный диктор и игра не дублируют интерфейс. Полные правила:
+[озвучка действий](action-narration_RU.md).
+
+### Свои голоса (голосовые паки)
+
+Проект может заменить голоса ОС паками из `Saved/VoicePacks` (или
+`FBY_VOICE_PACKS`):
+
+```text
+Saved/VoicePacks/piper-en-us/
+  voicepack.ini
+  piper_helper.exe
+  en_US-amy.onnx
+```
+
+`voicepack.ini` объявляет `id`, `name`, `language`, `license`, `helper` и
+`model`. Паки появляются в списке голосов как `pack:<id>`; говорит выбранный
+хелпер, и движок его не линкует. Эта процессная граница и оставляет GPL-хелпер
+или отдельно лицензированную модель вне условий MPL 2.0 движка. Плата — звук
+пака не проходит через миксер движка (приглушение музыки не действует).
+Полный контракт: [голосовые паки](voice-packs_RU.md).
+
 Длинный текст нарезается: реплика длиннее 320 байт произносится несколькими
 высказываниями по порядку. Поток событий мира ограничен `narration_max_queue`:
 первыми отбрасываются строки с низшим приоритетом, а счётчик отброшенных виден
@@ -271,3 +320,12 @@ HUD после простоя, `motion_scale` (0—1) масштабирует �
 - `fby_accessibility_composite_test` — GPU-композит на реальном устройстве Vulkan.
 - Ручной прогон: Narrator или NVDA по редактору и по меню собранной игры,
   субтитры в Deaf mode и OLED-сдвиг на статичном ярком экране.
+
+## См. также
+
+- [Доступность для игроков](accessibility-players_RU.md): настройки, голоса и
+  решение проблем для играющего.
+- [Доступность для разработчиков](accessibility-developers_RU.md): работа в
+  редакторе и чек-лист интеграции в игру.
+- [Языки речи](speech-languages_RU.md): каталог на 42 языка и политика
+  фолбэка.

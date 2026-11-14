@@ -1,6 +1,7 @@
 // FemboyEngine2D - native text-to-speech bridge.
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -45,8 +46,8 @@ struct TtsBackend
     // without it falls back to the language search.
     bool (*setVoiceById)(void* InUser, const char* InId) noexcept = nullptr;
     // Returns the number of voices written, at most InCapacity. Optional.
-    std::uint32_t (*enumerateVoices)(void* InUser, TtsVoiceInfo* OutVoices, std::uint32_t InCapacity) noexcept =
-        nullptr;
+    std::uint32_t (*enumerateVoices)(void* InUser, TtsVoiceInfo* OutVoices,
+                                     std::uint32_t InCapacity) noexcept = nullptr;
 };
 
 // Windows SAPI 5 adapter. The implementation is a separate TU; this header has
@@ -226,6 +227,154 @@ private:
     bool MInitialized = false;
 };
 #endif
+
+// One installed voice pack. A pack is a directory with voicepack.ini, a helper
+// executable and a model; the engine never links the helper, it only starts it
+// and speaks to it over a pipe, so a GPL helper or model never enters the
+// engine's own licence terms.
+inline constexpr std::uint32_t kMaxVoicePacks = 16;
+inline constexpr std::uint32_t kVoicePackIdBytes = 48;
+inline constexpr std::uint32_t kVoicePackNameBytes = 96;
+inline constexpr std::uint32_t kVoicePackPathBytes = 512;
+
+struct VoicePackInfo
+{
+    char Id[kVoicePackIdBytes]{};
+    char Name[kVoicePackNameBytes]{};
+    char Language[16]{};
+    // Free-form licence tag of the pack and its helper ("MIT", "CC-BY-4.0",
+    // "GPL-3.0-only", ...). The engine stores it so the launcher can show it and
+    // the license inventory can list it; it does not interpret the value.
+    char License[48]{};
+    char Helper[kVoicePackPathBytes]{};
+    char Model[kVoicePackPathBytes]{};
+};
+
+// Discovers voice packs. The registry is a plain scanner: it never executes a
+// helper, so enumerating voices cannot run third-party code.
+class VoicePackRegistry
+{
+public:
+    VoicePackRegistry() = default;
+
+    void Clear() noexcept;
+    // Scans a directory of pack directories, or a single pack directory. A pack
+    // without voicepack.ini, without an id/name/language or with a missing
+    // helper/model is skipped and counted in Skipped().
+    std::uint32_t Scan(std::string_view InRoot) noexcept;
+    [[nodiscard]] std::uint32_t Count() const noexcept
+    {
+        return MCount;
+    }
+    [[nodiscard]] const VoicePackInfo* At(std::uint32_t InIndex) const noexcept
+    {
+        return InIndex < MCount ? &MPacks[InIndex] : nullptr;
+    }
+    [[nodiscard]] const VoicePackInfo* Find(std::string_view InId) const noexcept;
+    [[nodiscard]] std::uint32_t Skipped() const noexcept
+    {
+        return MSkipped;
+    }
+
+private:
+    void Add(std::string_view InDirectory, std::uint32_t& SkippedCount) noexcept;
+
+    std::array<VoicePackInfo, kMaxVoicePacks> MPacks{};
+    std::uint32_t MCount = 0;
+    std::uint32_t MSkipped = 0;
+};
+
+// Own-voice backend. It starts the selected pack's helper once, then streams
+// newline-delimited commands to its stdin: VOICE, RATE, SPEAK with a byte
+// length and the UTF-8 text, STOP and QUIT. The protocol is length-prefixed so
+// speech text may contain any byte except the terminating newline.
+//
+// The helper owns audio output; this keeps the engine free of any audio codec
+// or phonemizer licence and lets a pack update independently. See
+// Documentation/design/voice-packs.md for the MPL 2.0 process-boundary rules.
+class TtsVoicePack
+{
+public:
+    TtsVoicePack() = default;
+    ~TtsVoicePack();
+
+    TtsVoicePack(const TtsVoicePack&) = delete;
+    TtsVoicePack& operator=(const TtsVoicePack&) = delete;
+
+    [[nodiscard]] bool Initialize(std::string_view InRoot) noexcept;
+    void Shutdown() noexcept;
+    [[nodiscard]] bool IsReady() const noexcept
+    {
+        return MRegistry.Count() > 0;
+    }
+    [[nodiscard]] std::uint32_t EnumerateVoices(TtsVoiceInfo* OutVoices, std::uint32_t InCapacity) noexcept;
+    // Accepts "pack:<id>" only; a bare id is rejected so a stored OS voice id
+    // can never be captured by a pack with the same spelling.
+    [[nodiscard]] bool SetVoiceById(const char* InId) noexcept;
+    // Chooses the first pack whose language starts with the tag's primary
+    // subtag; the explicit pack id always wins.
+    void SetVoice(const char* InLanguageBCP47) noexcept;
+    void SetRate(float InRate) noexcept;
+    [[nodiscard]] bool Speak(std::string_view InUtf8, TtsPriority InPriority) noexcept;
+    void Stop() noexcept;
+    [[nodiscard]] TtsBackend Backend() noexcept;
+
+private:
+    [[nodiscard]] bool EnsureProcess() noexcept;
+    void CloseProcess() noexcept;
+    [[nodiscard]] bool WriteAll(std::string_view InBytes) noexcept;
+    const VoicePackInfo* Selected() const noexcept;
+
+    VoicePackRegistry MRegistry;
+    // Opaque process/handle storage: HANDLE on Windows, pid_t and file
+    // descriptor on POSIX. Zero means "not running".
+    std::intptr_t MProcess = 0;
+    std::intptr_t MStdin = 0;
+    std::intptr_t MThread = 0;
+    std::uint32_t MSelectedIndex = 0;
+    bool MHasSelection = false;
+    bool MBroken = false;
+    float MRate = 1.0f;
+    TtsBackend MBackend{};
+};
+
+// OS voices plus voice packs behind one backend. "pack:<id>" selects a pack;
+// every other id and every language request goes to the OS backend. A machine
+// without packs behaves exactly like the OS backend alone.
+class LayeredTts
+{
+public:
+    LayeredTts() = default;
+    ~LayeredTts();
+
+    LayeredTts(const LayeredTts&) = delete;
+    LayeredTts& operator=(const LayeredTts&) = delete;
+
+    // InOs is owned by the caller and may be null. The pack root is scanned
+    // once; a missing directory is not an error.
+    [[nodiscard]] bool Initialize(const TtsBackend* InOs, std::string_view InPackRoot) noexcept;
+    void Shutdown() noexcept;
+    [[nodiscard]] const TtsBackend* Backend() noexcept;
+    [[nodiscard]] TtsVoicePack& Packs() noexcept
+    {
+        return MPacks;
+    }
+
+private:
+    const TtsBackend* Selected() const noexcept;
+    void UseOs() noexcept
+    {
+        MSelected = MOs;
+    }
+
+    TtsVoicePack MPacks;
+    const TtsBackend* MOs = nullptr;
+    const TtsBackend* MSelected = nullptr;
+    TtsBackend MPackBackend{};
+    TtsBackend MBackend{};
+    float MLastRate = 1.0f;
+    bool MInitialized = false;
+};
 
 // Process-wide backend for the current platform.
 [[nodiscard]] const TtsBackend* NativeTtsBackend() noexcept;

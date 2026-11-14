@@ -8,6 +8,7 @@
 #include "Engine/RHI/RenderItem.hpp"
 #include "Engine/UI/AccessibilityBridge.hpp"
 #include "Engine/UI/AccessibilityEffects.hpp"
+#include "Engine/UI/ActionNarration.hpp"
 #include "Engine/UI/NarrativeTree.hpp"
 #include "Engine/UI/Narrator.hpp"
 #include "Engine/UI/SoundCues.hpp"
@@ -283,6 +284,9 @@ struct AccessibilityProfile
     // Spoken output of the shipped game. The editor keeps its own narrator
     // settings in EditorSettings, so a game's policy never changes the editor.
     NarratorSettings narration{};
+    // Action narration: wording, categories and spatial grammar of gameplay
+    // events. Always a companion of `narration`, never of the editor's own voice.
+    ActionNarrationSettings actions{};
     // What the game publishes to the operating system accessibility tree.
     AccessibilityBridgeSettings bridge{};
 };
@@ -407,6 +411,22 @@ public:
     void PublishNarrative(std::uint32_t InCode, Entity InEntity, Vector2D InPosition, std::string_view InText,
                           std::uint8_t InSeverity = 0) noexcept;
 
+    // Data-driven action narration. Systems publish an event and the layer owns
+    // the localization template, plural rules and spatial words.
+    void SetActionLocalization(const LocalizationTable* InTable) noexcept;
+    void SetActionVocabulary(const ActionVocabulary& InVocabulary) noexcept;
+    void SetActionNarrationSettings(const ActionNarrationSettings& InSettings) noexcept;
+    [[nodiscard]] ActionNarration& Actions() noexcept
+    {
+        return MActions;
+    }
+    [[nodiscard]] const ActionNarration& Actions() const noexcept
+    {
+        return MActions;
+    }
+    // Filters by BlindMode and narration_world, then queues through the narrator.
+    bool PublishAction(const ActionEvent& InEvent) noexcept;
+
     // Narrative Tree locale: "ru" selects Russian, everything else English.
     void SetNarrativeLocale(std::string_view InLocale) noexcept;
     // The registry names tags in BlindMode narration and resolves hierarchy.
@@ -507,6 +527,7 @@ private:
     float MCaptionClockMs = 0.0f;
     Ui::AccessibilityTree MTree{};
     Narrator MSpeech{};
+    ActionNarration MActions{};
     // Native window the game bridge was started for; null when the bridge is
     // owned by another system (the editor runs its own bridge).
     void* MBridgeWindow = nullptr;

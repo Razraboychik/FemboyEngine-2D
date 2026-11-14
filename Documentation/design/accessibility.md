@@ -200,6 +200,24 @@ the speech-dispatcher daemon), not through the engine mixer, so music ducking an
 spatialisation do not apply to system voices. The narrator still owns the text,
 the queue and the language policy in every case.
 
+The language policy is documented separately: the engine ships a 42-language
+catalog, normalizes BCP-47 tags and resolves voices through one fallback chain
+for every backend. See [speech languages](speech-languages.md).
+
+Gameplay events use a second, data-driven channel. `ActionNarration` resolves
+localization templates with plural variants, injects localized names and
+direction/distance words from `ActionVocabulary`, applies category and priority
+policy, and queues through the same narrator. The composed line is returned
+before it is spoken, so captions can reuse it. See
+[action narration](action-narration.md).
+
+Projects can also install voice packs. A pack is a directory with a manifest, a
+helper executable and a model; the engine starts the helper and writes a
+length-prefixed command stream to its stdin. The helper owns playback and is
+never linked into the engine, which keeps separately licensed (including GPL)
+helpers and models outside the MPL 2.0 terms of the engine. See
+[voice packs](voice-packs.md).
+
 The editor publishes one pane per visible ImGui window through the same tree,
 plus a child node for the focused widget. The widget node comes from the
 vendored ImGui patch `third_party/patches/imgui/a11y-item-labels.patch`:

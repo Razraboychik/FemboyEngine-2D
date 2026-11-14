@@ -103,7 +103,7 @@ install_system_linux() {
     if [[ "${SKIP_SYSTEM}" -eq 1 ]]; then
         return
     fi
-    local CPP_APT="build-essential cmake ninja-build git curl ca-certificates pkg-config clang lld libvulkan-dev vulkan-tools glslang-tools libx11-dev libxext-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev"
+    local CPP_APT="build-essential cmake ninja-build git curl ca-certificates pkg-config clang lld libvulkan-dev vulkan-tools glslang-tools libx11-dev libxext-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libdbus-1-dev libasound2-dev libpulse-dev"
     local ARCHIVER_APT="p7zip-full"
     local CPP_DNF="gcc-c++ cmake ninja-build git curl clang lld vulkan-loader-devel vulkan-tools glslang libX11-devel libXext-devel wayland-devel libxkbcommon-devel alsa-lib-devel pulseaudio-libs-devel"
     local ARCHIVER_DNF="p7zip"
@@ -286,13 +286,13 @@ else
 fi
 
 for required in \
-    "third_party/entt-main/entt-main/src/entt/entt.hpp" \
     "third_party/tomlplusplus-master/tomlplusplus-master/toml.hpp" \
     "third_party/stb/stb_image.h" \
     "third_party/opus-master/opus-main/CMakeLists.txt" \
     "third_party/harfbuzz-download/harfbuzz-15.1.0/CMakeLists.txt" \
     "third_party/sheenbidi-download/SheenBidi-3.0.0/CMakeLists.txt" \
-    "third_party/monocypher/monocypher.c" \n    "third_party/rnnoise/src/denoise.c"; do
+    "third_party/monocypher/monocypher.c" \
+    "third_party/rnnoise/src/denoise.c"; do
     if [[ ! -e "${ROOT}/${required}" ]]; then
         warn "missing vendored dependency: ${required}"
     fi

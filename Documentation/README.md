@@ -51,6 +51,11 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
   UI Automation screen-reader bridge, captions, flash guard, colour-vision
   correction, the OLED orbit and accessible editor themes; see the
   [Accessibility guide](design/accessibility-guide.md).
+  Spoken gameplay events: [action narration](design/action-narration.md);
+  own voices: [voice packs](design/voice-packs.md).
+  Speech languages: [42-language catalog](design/speech-languages.md);
+  players: [accessibility for players](design/accessibility-players.md);
+  developers: [accessibility for developers](design/accessibility-developers.md).
 
 ## Start here
 

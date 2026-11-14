@@ -906,6 +906,25 @@ fby_add_engine_test(fby_tts_thread_test tts_thread TtsThreadTest.cpp)
 # bridge policy shared by the game and the editor.
 fby_add_engine_test(fby_accessibility_narrator_test accessibility_narrator AccessibilityNarratorTest.cpp)
 
+# Action narration: localized templates, plural variants, spatial grammar and
+# the category/priority gates.
+fby_add_engine_test(fby_action_narration_test action_narration ActionNarrationTest.cpp)
+
+# Speech language catalog, BCP-47 normalization and the 42-language voice
+# fallback policy shared by every backend.
+fby_add_engine_test(fby_speech_languages_test speech_languages SpeechLanguagesTest.cpp)
+
+# AT-SPI2 mapping used by the Linux bridge: roles, interfaces and state bits.
+fby_add_engine_test(fby_atspi_model_test atspi_model AtspiModelTest.cpp)
+
+# Voice packs: manifest discovery, the helper process protocol and the layered
+# OS/pack routing. The helper is a plain test program, not a shipped TTS.
+add_executable(fby_tts_voicepack_helper TtsVoicePackHelper.cpp)
+set_target_properties(fby_tts_voicepack_helper PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+fby_add_engine_test(fby_tts_voicepack_test tts_voicepack TtsVoicePackTest.cpp)
+add_dependencies(fby_tts_voicepack_test fby_tts_voicepack_helper)
+
 # Linux system voice: the speech-dispatcher adapter must fail closed without the
 # daemon and stay bounded with it. The test also compiles on other platforms as
 # a skip, so the CMake target stays portable.

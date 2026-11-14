@@ -53,6 +53,11 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
   экранный диктор через UI Automation, субтитры, защита от вспышек, коррекция
   цветового зрения, OLED-сдвиг и доступные темы редактора; см.
   [Руководство по доступности](design/accessibility-guide_RU.md).
+  Озвучка игровых событий: [озвучка действий](design/action-narration_RU.md);
+  свои голоса: [голосовые паки](design/voice-packs_RU.md).
+  Языки речи: [каталог на 42 языка](design/speech-languages_RU.md);
+  игрокам: [доступность для игроков](design/accessibility-players_RU.md);
+  разработчикам: [доступность для разработчиков](design/accessibility-developers_RU.md).
 
 ## Начните здесь
 

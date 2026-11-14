@@ -85,7 +85,7 @@ void RefreshVoiceCache()
 
 // "Auto (by language)" plus every installed voice. The id is stored verbatim;
 // an empty id means the language policy owns the choice.
-void DrawVoiceCombo(const char* InLabel, char* InOutVoiceId, std::size_t InCapacity)
+void DrawVoiceCombo(const char* InLabel, char* VoiceIdBuffer, std::size_t InCapacity)
 {
     VoiceListCache& ScopedCache = VoiceCache();
     if (!ScopedCache.Loaded)
@@ -95,7 +95,7 @@ void DrawVoiceCombo(const char* InLabel, char* InOutVoiceId, std::size_t InCapac
     const char* ScopedPreview = "Auto (by language)";
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCache.Count; ++ScopedIndex)
     {
-        if (std::strcmp(ScopedCache.Voices[ScopedIndex].Id, InOutVoiceId) == 0)
+        if (std::strcmp(ScopedCache.Voices[ScopedIndex].Id, VoiceIdBuffer) == 0)
         {
             ScopedPreview = ScopedCache.Labels[ScopedIndex].data();
             break;
@@ -105,16 +105,16 @@ void DrawVoiceCombo(const char* InLabel, char* InOutVoiceId, std::size_t InCapac
     {
         return;
     }
-    if (ImGui::Selectable("Auto (by language)", InOutVoiceId[0] == '\0'))
+    if (ImGui::Selectable("Auto (by language)", VoiceIdBuffer[0] == '\0'))
     {
-        InOutVoiceId[0] = '\0';
+        VoiceIdBuffer[0] = '\0';
     }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCache.Count; ++ScopedIndex)
     {
-        const bool ScopedSelected = std::strcmp(ScopedCache.Voices[ScopedIndex].Id, InOutVoiceId) == 0;
+        const bool ScopedSelected = std::strcmp(ScopedCache.Voices[ScopedIndex].Id, VoiceIdBuffer) == 0;
         if (ImGui::Selectable(ScopedCache.Labels[ScopedIndex].data(), ScopedSelected))
         {
-            CopyProjectField(InOutVoiceId, InCapacity, ScopedCache.Voices[ScopedIndex].Id);
+            CopyProjectField(VoiceIdBuffer, InCapacity, ScopedCache.Voices[ScopedIndex].Id);
         }
     }
     ImGui::Separator();
@@ -711,6 +711,48 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     DrawVoiceCombo("Voice", ScopedNarration.VoiceId, sizeof(ScopedNarration.VoiceId));
     ImGui::TextDisabled("The voice follows the content locale, not the OS locale. A missing voice falls back to "
                         "the system default and is reported in the log.");
+    ImGui::TextDisabled("Voice packs: install a pack under Saved/VoicePacks; it appears here as pack:<id>.");
+    ImGui::EndDisabled();
+
+    // Gameplay events: wording, categories and spatial grammar. The same
+    // profile section the game loads, so the editor previews the shipped policy.
+    ActionNarrationSettings& ScopedActions = ScopedProfile.actions;
+    ImGui::SeparatorText("Action narration (game)");
+    ImGui::Checkbox("Speak gameplay actions", &ScopedActions.Enabled);
+    ImGui::BeginDisabled(!ScopedActions.Enabled);
+    if (ImGui::TreeNode("Categories"))
+    {
+        const char* ScopedCategoryNames[] = {"Interaction", "Combat", "Items", "Navigation", "State", "System"};
+        for (std::uint32_t ScopedCategory = 0; ScopedCategory < kNarrationCategoryCount; ++ScopedCategory)
+        {
+            bool ScopedEnabled = (ScopedActions.Categories & (1u << ScopedCategory)) != 0;
+            if (ImGui::Checkbox(ScopedCategoryNames[ScopedCategory], &ScopedEnabled))
+            {
+                AccessibilitySetFlag(&ScopedActions.Categories, 1u << ScopedCategory, ScopedEnabled);
+            }
+        }
+        ImGui::TreePop();
+    }
+    ImGui::Checkbox("Direction words", &ScopedActions.AnnounceDirection);
+    ImGui::SameLine();
+    ImGui::Checkbox("Distance words", &ScopedActions.AnnounceDistance);
+    int ScopedActionPriority = static_cast<int>(std::min<std::uint8_t>(ScopedActions.MinimumPriority, 3));
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::SliderInt("Lowest spoken priority", &ScopedActionPriority, 0, 3))
+    {
+        ScopedActions.MinimumPriority = static_cast<std::uint8_t>(std::clamp(ScopedActionPriority, 0, 3));
+    }
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Near distance (m)", &ScopedActions.NearDistanceMeters, 0.0f, 30.0f, "%.1f");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Far distance (m)", &ScopedActions.FarDistanceMeters, 0.0f, 100.0f, "%.1f");
+    int ScopedDedup = static_cast<int>(std::min<std::uint16_t>(ScopedActions.DedupWindowMs, 5000));
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::SliderInt("Repeat suppression (ms)", &ScopedDedup, 0, 5000))
+    {
+        ScopedActions.DedupWindowMs = static_cast<std::uint16_t>(std::clamp(ScopedDedup, 0, 5000));
+    }
+    ImGui::TextDisabled("Action lines are localized templates; captions can reuse the same text.");
     ImGui::EndDisabled();
 
     ImGui::SeparatorText("Screen reader bridge (game)");

@@ -850,6 +850,19 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedAccessibility.insert("narration_voice", std::string(ProjectString(
                                                      ScopedProfile.narration.VoiceId,
                                                      sizeof(ScopedProfile.narration.VoiceId))));
+    ScopedAccessibility.insert("narration_actions_enabled", ScopedProfile.actions.Enabled);
+    ScopedAccessibility.insert("narration_action_categories",
+                               static_cast<std::int64_t>(ScopedProfile.actions.Categories));
+    ScopedAccessibility.insert("narration_action_direction", ScopedProfile.actions.AnnounceDirection);
+    ScopedAccessibility.insert("narration_action_distance", ScopedProfile.actions.AnnounceDistance);
+    ScopedAccessibility.insert("narration_action_min_priority",
+                               static_cast<std::int64_t>(ScopedProfile.actions.MinimumPriority));
+    ScopedAccessibility.insert("narration_action_near",
+                               static_cast<double>(ScopedProfile.actions.NearDistanceMeters));
+    ScopedAccessibility.insert("narration_action_far",
+                               static_cast<double>(ScopedProfile.actions.FarDistanceMeters));
+    ScopedAccessibility.insert("narration_action_dedup_ms",
+                               static_cast<std::int64_t>(ScopedProfile.actions.DedupWindowMs));
     ScopedAccessibility.insert("bridge_enabled", ScopedProfile.bridge.Enabled);
     ScopedAccessibility.insert("bridge_focus_events", ScopedProfile.bridge.RaiseFocusEvents);
     ScopedAccessibility.insert("bridge_structure_events", ScopedProfile.bridge.RaiseStructureEvents);
@@ -1246,6 +1259,28 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
         }
         const std::string ScopedNarrationVoice = StringField(*ScopedAccessibility, "narration_voice");
         CopyProjectString(ScopedNarration.VoiceId, sizeof(ScopedNarration.VoiceId), ScopedNarrationVoice);
+        ActionNarrationSettings& ScopedActions = ScopedProfile.actions;
+        ScopedActions.Enabled = BoolField(*ScopedAccessibility, "narration_actions_enabled", ScopedActions.Enabled);
+        ScopedActions.Categories = static_cast<NarrationCategoryMask>(std::clamp<std::int64_t>(
+            IntField(*ScopedAccessibility, "narration_action_categories",
+                     static_cast<std::int64_t>(ScopedActions.Categories)),
+            0, static_cast<std::int64_t>(kAllNarrationCategories)));
+        ScopedActions.AnnounceDirection =
+            BoolField(*ScopedAccessibility, "narration_action_direction", ScopedActions.AnnounceDirection);
+        ScopedActions.AnnounceDistance =
+            BoolField(*ScopedAccessibility, "narration_action_distance", ScopedActions.AnnounceDistance);
+        ScopedActions.MinimumPriority = static_cast<std::uint8_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedAccessibility, "narration_action_min_priority",
+                     static_cast<std::int64_t>(ScopedActions.MinimumPriority)),
+            0, 3));
+        ScopedActions.NearDistanceMeters = static_cast<float>(std::clamp(
+            FloatField(*ScopedAccessibility, "narration_action_near", ScopedActions.NearDistanceMeters), 0.0, 100.0));
+        ScopedActions.FarDistanceMeters = static_cast<float>(std::clamp(
+            FloatField(*ScopedAccessibility, "narration_action_far", ScopedActions.FarDistanceMeters), 0.0, 1000.0));
+        ScopedActions.DedupWindowMs = static_cast<std::uint16_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedAccessibility, "narration_action_dedup_ms",
+                     static_cast<std::int64_t>(ScopedActions.DedupWindowMs)),
+            0, 10000));
         ScopedProfile.bridge.Enabled = BoolField(*ScopedAccessibility, "bridge_enabled", ScopedProfile.bridge.Enabled);
         ScopedProfile.bridge.RaiseFocusEvents =
             BoolField(*ScopedAccessibility, "bridge_focus_events", ScopedProfile.bridge.RaiseFocusEvents);

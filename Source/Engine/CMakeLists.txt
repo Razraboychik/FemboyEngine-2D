@@ -187,6 +187,7 @@ set(FBY_ENGINE_SOURCES
     Text/TextShapeCache.cpp
     Text/TextShaper.cpp
     Text/UnicodeBreak.cpp
+    UI/ActionNarration.cpp
     UI/Accessibility.cpp
     UI/AccessibilityTheme.cpp
     UI/AccessibilityEffects.cpp
@@ -196,6 +197,8 @@ set(FBY_ENGINE_SOURCES
     UI/AccessibilityTree.cpp
     UI/AccessibilityBridge.cpp
     UI/Narrator.cpp
+    UI/AtspiModel.cpp
+    UI/SpeechLanguages.cpp
     UI/CardBoard.cpp
     UI/FontAtlas.cpp
     UI/FontBuilder.cpp
@@ -207,6 +210,7 @@ set(FBY_ENGINE_SOURCES
     UI/WidgetLayoutAsset.cpp
     UI/SoundCues.cpp
     UI/TtsSapi.cpp
+    UI/VoicePack.cpp
     UI/TtsNative.cpp
     Video/VideoPlayer.cpp
     Video/VideoSystem.cpp
@@ -239,12 +243,27 @@ if(WIN32)
     list(APPEND FBY_ENGINE_SOURCES UI/TtsWinRt.cpp)
 endif()
 
-# OS accessibility provider. Windows exposes UI Automation; every other
-# platform keeps the semantic tree and the narrator without a system bridge.
+# OS accessibility provider. Windows exposes UI Automation, macOS exposes
+# NSAccessibility; Linux (AT-SPI2) is the remaining provider and keeps the stub
+# until its D-Bus adapter lands.
 if(WIN32)
     list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeWindows.cpp)
+elseif(APPLE)
+    list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeMac.mm)
+    set_source_files_properties(UI/AccessibilityBridgeMac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 else()
-    list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeStub.cpp)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(DBUS1 QUIET dbus-1)
+    endif()
+    if(DBUS1_FOUND)
+        list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeLinux.cpp)
+        set(FBY_DBUS_BRIDGE ON)
+        message(STATUS "AT-SPI2 bridge: dbus-1 ${DBUS1_VERSION} found")
+    else()
+        list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeStub.cpp)
+        message(STATUS "AT-SPI2 bridge disabled: dbus-1 development files not found")
+    endif()
 endif()
 
 # Shaders: GLSL -> SPIR-V -> embedded header
@@ -608,6 +627,10 @@ elseif (APPLE)
     target_compile_definitions(fby_engine PRIVATE FBY_HAS_METAL=1)
 else()
     target_link_libraries(fby_engine PRIVATE dl pthread m)
+    if(FBY_DBUS_BRIDGE)
+        target_include_directories(fby_engine PRIVATE ${DBUS1_INCLUDE_DIRS})
+        target_link_libraries(fby_engine PRIVATE ${DBUS1_LIBRARIES})
+    endif()
 endif()
 
 if (UNIX AND NOT APPLE)

@@ -169,19 +169,18 @@ void TestProjectCreationAndConfig()
     {
         const std::filesystem::path ScopedLegacyRoot = TestRoot("_editor_infra_typography");
         std::filesystem::remove_all(ScopedLegacyRoot, ScopedCode);
-        const std::string_view ScopedLegacyProject =
-            "format_version = 4\n"
-            "[project]\n"
-            "name = \"Legacy\"\n"
-            "default_scene = \"scenes/main.toml\"\n"
-            "[editor]\n"
-            "font_panel_title = 20.0\n"
-            "font_panel_body = 16.0\n"
-            "font_tooltip = 16.0\n"
-            "font_script_node_title = 18.0\n"
-            "font_script_pin_input = 16.0\n"
-            "font_script_pin_output = 16.0\n"
-            "font_scene_text = 16.0\n";
+        const std::string_view ScopedLegacyProject = "format_version = 4\n"
+                                                     "[project]\n"
+                                                     "name = \"Legacy\"\n"
+                                                     "default_scene = \"scenes/main.toml\"\n"
+                                                     "[editor]\n"
+                                                     "font_panel_title = 20.0\n"
+                                                     "font_panel_body = 16.0\n"
+                                                     "font_tooltip = 16.0\n"
+                                                     "font_script_node_title = 18.0\n"
+                                                     "font_script_pin_input = 16.0\n"
+                                                     "font_script_pin_output = 16.0\n"
+                                                     "font_scene_text = 16.0\n";
         Check(WriteText(ScopedLegacyRoot / "project.femproj", ScopedLegacyProject), "write legacy project");
         Fby::Editor::ProjectConfig ScopedLegacy;
         Check(Fby::Editor::LoadProject(ScopedLegacyRoot, nullptr, &ScopedLegacy), "load legacy project");
@@ -192,21 +191,20 @@ void TestProjectCreationAndConfig()
         Check(ScopedLegacy.editor.logMaxLinesPerFile == Fby::kRecommendedLogRetention.MaxLinesPerFile,
               "legacy project gets the recommended log line count");
 
-        const std::string_view ScopedCustomProject =
-            "format_version = 4\n"
-            "[project]\n"
-            "name = \"Custom\"\n"
-            "default_scene = \"scenes/main.toml\"\n"
-            "[editor]\n"
-            "font_panel_title = 20.0\n"
-            "font_panel_body = 22.0\n"
-            "font_tooltip = 16.0\n"
-            "font_script_node_title = 18.0\n"
-            "font_script_pin_input = 16.0\n"
-            "font_script_pin_output = 16.0\n"
-            "font_scene_text = 16.0\n"
-            "log_max_files = 7\n"
-            "log_max_lines = 1200\n";
+        const std::string_view ScopedCustomProject = "format_version = 4\n"
+                                                     "[project]\n"
+                                                     "name = \"Custom\"\n"
+                                                     "default_scene = \"scenes/main.toml\"\n"
+                                                     "[editor]\n"
+                                                     "font_panel_title = 20.0\n"
+                                                     "font_panel_body = 22.0\n"
+                                                     "font_tooltip = 16.0\n"
+                                                     "font_script_node_title = 18.0\n"
+                                                     "font_script_pin_input = 16.0\n"
+                                                     "font_script_pin_output = 16.0\n"
+                                                     "font_scene_text = 16.0\n"
+                                                     "log_max_files = 7\n"
+                                                     "log_max_lines = 1200\n";
         Check(WriteText(ScopedLegacyRoot / "project.femproj", ScopedCustomProject), "write custom project");
         Fby::Editor::ProjectConfig ScopedCustom;
         Check(Fby::Editor::LoadProject(ScopedLegacyRoot, nullptr, &ScopedCustom), "load custom project");
@@ -241,6 +239,15 @@ void TestProjectCreationAndConfig()
     ScopedStore.Project().accessibility.presentation.hudFadeAfterIdleSeconds = 30.0f;
     ScopedStore.Project().accessibility.presentation.minimumContrastRatio = 7.0f;
     ScopedStore.Project().accessibility.editor.highContrast = true;
+    Fby::ActionNarrationSettings& ScopedActionSettings = ScopedStore.Project().accessibility.actions;
+    ScopedActionSettings.Enabled = false;
+    ScopedActionSettings.Categories = 5;
+    ScopedActionSettings.AnnounceDirection = false;
+    ScopedActionSettings.AnnounceDistance = false;
+    ScopedActionSettings.MinimumPriority = 2;
+    ScopedActionSettings.NearDistanceMeters = 5.5f;
+    ScopedActionSettings.FarDistanceMeters = 20.0f;
+    ScopedActionSettings.DedupWindowMs = 400;
     ScopedStore.Project().fixedUpdateHz = 90.0f;
     ScopedStore.Editor().vsync = false;
     ScopedStore.Editor().windowMode = 2;
@@ -254,8 +261,10 @@ void TestProjectCreationAndConfig()
     Fby::Editor::ProjectConfig ScopedReloaded;
     Check(Fby::Editor::LoadProject(ScopedPaths.root, nullptr, &ScopedReloaded), "reload persisted project");
     const Fby::AccessibilityProfile& ScopedProfile = ScopedReloaded.project.accessibility;
-    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode), "BlindMode persists in TOML");
-    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityDeafMode), "DeafMode persists in TOML");
+    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode),
+          "BlindMode persists in TOML");
+    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityDeafMode),
+          "DeafMode persists in TOML");
     Check(ScopedProfile.runtime.showSubtitles, "ShowSubtitles persists in TOML");
     Check(!ScopedProfile.presentation.oledPixelShift, "OLED shifter persists in TOML");
     Check(!Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityFlashGuard),
@@ -273,6 +282,17 @@ void TestProjectCreationAndConfig()
               ScopedProfile.presentation.minimumContrastRatio <= 7.1f,
           "minimum contrast persists in TOML");
     Check(ScopedProfile.editor.highContrast, "editor high contrast persists in TOML");
+    const Fby::ActionNarrationSettings& ScopedReloadedActions = ScopedProfile.actions;
+    Check(!ScopedReloadedActions.Enabled, "action narration switch persists in TOML");
+    Check(ScopedReloadedActions.Categories == 5, "action categories persist in TOML");
+    Check(!ScopedReloadedActions.AnnounceDirection, "action direction switch persists in TOML");
+    Check(!ScopedReloadedActions.AnnounceDistance, "action distance switch persists in TOML");
+    Check(ScopedReloadedActions.MinimumPriority == 2, "action priority floor persists in TOML");
+    Check(ScopedReloadedActions.NearDistanceMeters >= 5.4f && ScopedReloadedActions.NearDistanceMeters <= 5.6f,
+          "action near distance persists in TOML");
+    Check(ScopedReloadedActions.FarDistanceMeters >= 19.9f && ScopedReloadedActions.FarDistanceMeters <= 20.1f,
+          "action far distance persists in TOML");
+    Check(ScopedReloadedActions.DedupWindowMs == 400, "action dedup window persists in TOML");
     Check(ScopedReloaded.project.fixedUpdateHz == 90.0f, "FixedUpdate persists in TOML");
     Check(!ScopedReloaded.editor.vsync, "VSync persists in TOML");
     Check(ScopedReloaded.editor.windowMode == 2, "window mode persists in TOML");
@@ -330,8 +350,7 @@ void TestProjectCreationAndConfig()
     Check(ScopedTagToml.find("gameplay_tags") != std::string::npos, "project TOML carries gameplay_tags");
     Fby::Editor::ProjectConfig ScopedTagDecoded;
     std::string ScopedTagError;
-    Check(Fby::Editor::DecodeProjectToml(ScopedTagToml, &ScopedTagDecoded, &ScopedTagError),
-          "tag TOML decodes");
+    Check(Fby::Editor::DecodeProjectToml(ScopedTagToml, &ScopedTagDecoded, &ScopedTagError), "tag TOML decodes");
     Check(ScopedTagDecoded.project.gameplayTags == ScopedVtConfig.project.gameplayTags,
           "project tag database roundtrips through TOML");
 

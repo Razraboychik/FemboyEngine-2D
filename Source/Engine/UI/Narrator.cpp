@@ -1,6 +1,8 @@
 // FemboyEngine2D - narrator implementation.
 #include "Engine/UI/Narrator.hpp"
 
+#include "Engine/UI/SpeechLanguages.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -132,6 +134,22 @@ void Narrator::ApplyVoice() noexcept
     {
         MLanguageApplied = true;
         return;
+    }
+    // A language request is resolved against the installed voices first: the
+    // narrator pins the best match by id, so SAPI, one-core, AVSpeech and voice
+    // packs all follow the same 42-language fallback policy instead of each
+    // backend inventing its own prefix search.
+    if (MBackend->enumerateVoices != nullptr && MBackend->setVoiceById != nullptr)
+    {
+        TtsVoiceInfo ScopedVoices[kMaxTtsVoices];
+        const std::uint32_t ScopedCount = MBackend->enumerateVoices(MBackend->user, ScopedVoices, kMaxTtsVoices);
+        const std::uint32_t ScopedBest =
+            FindBestSpeechVoice(ScopedVoices, ScopedCount, std::string_view(MSettings.Language));
+        if (ScopedBest != kNoSpeechVoice && MBackend->setVoiceById(MBackend->user, ScopedVoices[ScopedBest].Id))
+        {
+            MLanguageApplied = true;
+            return;
+        }
     }
     if (MBackend->setVoice == nullptr)
     {

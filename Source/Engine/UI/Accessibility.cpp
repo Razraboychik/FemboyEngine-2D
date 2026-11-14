@@ -300,6 +300,7 @@ AccessibilityProfile DefaultAccessibilityProfile() noexcept
     // out of the box, and a project can switch either of them off.
     ScopedProfile.narration = NarratorSettings{};
     std::snprintf(ScopedProfile.narration.Language, sizeof(ScopedProfile.narration.Language), "%s", "en-US");
+    ScopedProfile.actions = ActionNarrationSettings{};
     ScopedProfile.bridge = AccessibilityBridgeSettings{};
     return ScopedProfile;
 }
@@ -320,6 +321,8 @@ void AccessibilityKernel::ApplyProfile(const AccessibilityProfile& InProfile) no
 
     MSettings = MProfile.runtime;
     MGuard.Configure(MSettings.flashThreshold, MSettings.flashGain);
+
+    MActions.SetSettings(MProfile.actions);
 
     // Narration and bridge policy travel with the profile, so saving a project
     // stores exactly what the game will speak and publish.
@@ -946,6 +949,12 @@ void AccessibilityKernel::FlushSpeech() noexcept
     NarrativeEvent ScopedEvent{};
     while (MLog.Pop(ScopedEvent))
     {
+        // A project that silences world events also silences the physics and
+        // state lines that reach the same queue; the narrator focus path stays.
+        if (!MProfile.narration.AnnounceWorldEvents)
+        {
+            continue;
+        }
         const NarratorPriority ScopedPriority = ScopedEvent.severity >= 2
                                                     ? NarratorPriority::Critical
                                                     : (ScopedEvent.severity == 1 ? NarratorPriority::High
@@ -954,6 +963,31 @@ void AccessibilityKernel::FlushSpeech() noexcept
                               std::string_view(ScopedEvent.text, ScopedEvent.textLength));
     }
     MSpeech.Advance(0.0f);
+}
+
+void AccessibilityKernel::SetActionLocalization(const LocalizationTable* InTable) noexcept
+{
+    MActions.SetLocalization(InTable);
+}
+
+void AccessibilityKernel::SetActionVocabulary(const ActionVocabulary& InVocabulary) noexcept
+{
+    MActions.SetVocabulary(InVocabulary);
+}
+
+void AccessibilityKernel::SetActionNarrationSettings(const ActionNarrationSettings& InSettings) noexcept
+{
+    MProfile.actions = InSettings;
+    MActions.SetSettings(InSettings);
+}
+
+bool AccessibilityKernel::PublishAction(const ActionEvent& InEvent) noexcept
+{
+    if (!BlindMode() || !MProfile.narration.Enabled || !MProfile.narration.AnnounceWorldEvents)
+    {
+        return false;
+    }
+    return MActions.Publish(InEvent, MSpeech);
 }
 
 void AccessibilityKernel::SetNarratorSettings(const NarratorSettings& InSettings) noexcept

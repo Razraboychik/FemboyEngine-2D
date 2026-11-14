@@ -95,6 +95,53 @@ Two honest limits:
 - Reliability of a language across platforms is a matrix, not a promise. Treat
   "spoken if a voice exists, otherwise a clear fallback" as the contract.
 
+### Action narration
+
+Gameplay events are not text on screen, so they have their own wording and their
+own trigger. `ActionNarration` takes an `ActionEvent` (a localization template id
+plus parameters), resolves plural variants, adds the localized direction and
+distance words and queues the line. The same string can feed captions.
+
+```cpp
+Fby::ActionEvent ScopedEvent;
+ScopedEvent.TemplateId = LocIds::NarrationEnemySpotted;
+ScopedEvent.SubjectNameId = LocIds::EnemyGrunt;
+ScopedEvent.Count = 3;
+ScopedEvent.AngleRadians = -1.57f;
+ScopedEvent.HasDirection = true;
+ScopedEvent.DistanceMeters = 4.0f;
+ScopedEvent.Category = static_cast<std::uint8_t>(Fby::NarrationCategory::Combat);
+ScopedEvent.DedupeKey = 42;
+ScopedEvent.Priority = 2;
+Kernel.PublishAction(ScopedEvent);
+```
+
+Templates use `{subject}`, `{object}`, `{count}`, `{direction}`, `{distance}` and
+`{meters}`. Plural variants follow the existing localization convention. The
+eight direction words and the near/medium/far words come from `ActionVocabulary`;
+the policy lives in `narration_action_*` project keys. The layer runs only in
+Blind mode with `narration_world` on, so the source reader and the game never
+double-speak the interface. Full rules: [action narration](action-narration.md).
+
+### Own voices (voice packs)
+
+A project can replace OS voices with packs installed in `Saved/VoicePacks` (or
+`FBY_VOICE_PACKS`):
+
+```text
+Saved/VoicePacks/piper-en-us/
+  voicepack.ini
+  piper_helper.exe
+  en_US-amy.onnx
+```
+
+`voicepack.ini` declares `id`, `name`, `language`, `license`, `helper` and
+`model`. Packs appear in the Voice combo as `pack:<id>`; the selected helper
+speaks, and the engine never links it. That process boundary is what keeps a
+GPL helper or a separately licensed model outside the engine's MPL 2.0 terms. The
+trade-off is that pack audio does not pass through the engine mixer (music
+ducking does not apply). Full contract: [voice packs](voice-packs.md).
+
 Narration of long text is chunked, so a dialogue line longer than 320 bytes is
 spoken as several utterances in order. A burst of world events is bounded by
 `narration_max_queue`; lower-priority lines are dropped first, and the dropped
@@ -271,3 +318,12 @@ errors), `editor` (panel narration).
 - `fby_accessibility_composite_test` — the GPU composite on a real Vulkan device.
 - Manual pass: Narrator or NVDA over the editor and a built game menu, captions in
   Deaf mode, and the OLED orbit on a static bright screen.
+
+## See also
+
+- [Accessibility for players](accessibility-players.md): settings, voices and
+  troubleshooting for the person playing.
+- [Accessibility for developers](accessibility-developers.md): editor workflow
+  and game integration checklist.
+- [Speech languages](speech-languages.md): the 42-language catalog and the
+  fallback policy.

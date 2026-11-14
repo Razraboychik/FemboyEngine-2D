@@ -60,7 +60,6 @@ INCLUDES=(
     "-I${ROOTW}/third_party/opus-master/opus-main/include"
     "-I${ROOTW}/third_party/stb"
     "-I${ROOTW}/engine/tools"
-    "-imsvc${ROOTW}/third_party/entt-main/entt-main/src"
     "-imsvc${ROOTW}/third_party/tomlplusplus-master/tomlplusplus-master"
     "-imsvc${ROOTW}/third_party/miniaudio-master/miniaudio-master"
 )
