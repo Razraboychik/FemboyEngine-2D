@@ -17,7 +17,17 @@ import pathlib
 import re
 import sys
 
-ERROR_MARKERS = ("error:", "FAILED:", "CMake Error", "fatal error:", "undefined reference")
+ERROR_MARKERS = (
+    "error:",
+    "FAILED:",
+    "CMake Error",
+    "fatal error:",
+    "undefined reference",
+    "***Failed",
+    "The following tests FAILED",
+    "FAIL ",
+    "Assertion",
+)
 MAX_ANNOTATIONS = 30
 
 
@@ -44,7 +54,7 @@ def main() -> int:
             continue
         # A bare "error:" inside a command echo is noise; keep real compiler
         # diagnostics and linker failures.
-        match = re.search(r"error:|fatal error:|FAILED:|CMake Error|undefined reference", stripped)
+        match = re.search(r"error:|fatal error:|FAILED:|CMake Error|undefined reference|\*\*\*Failed|The following tests FAILED|FAIL |Assertion", stripped)
         if match is None:
             continue
         print(f"::error::{escape(stripped[:900])}")

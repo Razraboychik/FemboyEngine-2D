@@ -95,7 +95,12 @@ jobs:
       - name: Desktop package
         run: python Source/Tools/Dev/PackageDesktop.py --platform linux --build-dir build --output build/package --skip-build
       - name: Test
-        run: xvfb-run -a ctest --test-dir build --output-on-failure
+        run: |
+          set -o pipefail
+          xvfb-run -a ctest --test-dir build --output-on-failure 2>&1 | tee test.log
+      - name: Test errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
       - name: Vulkan validation
         env:
           VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
@@ -136,7 +141,12 @@ jobs:
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Test
-        run: xvfb-run -a ctest --test-dir build --output-on-failure
+        run: |
+          set -o pipefail
+          xvfb-run -a ctest --test-dir build --output-on-failure 2>&1 | tee test.log
+      - name: Test errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
 
   reproducible:
     env:
@@ -280,4 +290,9 @@ jobs:
         # Hosted macOS CPU timing and loopback UDP are noisy; the full suite is
         # the Windows/Linux gate. This run covers the editor, input, text,
         # frame-composer and release-cooker seams on macOS.
-        run: ctest --preset macos-release --output-on-failure --timeout 120 --repeat until-pass:2 -R "^(project_bundle|editor_infrastructure|frame_composer|input_system|release_cooker|text_shaper)$"
+        run: |
+          set -o pipefail
+          ctest --preset macos-release --output-on-failure --timeout 120 --repeat until-pass:2 -R "^(project_bundle|editor_infrastructure|frame_composer|input_system|release_cooker|text_shaper)$" 2>&1 | tee test.log
+      - name: Test errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
