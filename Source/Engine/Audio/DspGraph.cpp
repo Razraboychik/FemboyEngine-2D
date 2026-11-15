@@ -154,7 +154,7 @@ bool DspGraph::Initialize(std::uint32_t InSampleRate)
     }
     MSampleRate = InSampleRate;
 
-    // Reverb memory is sized here, once. Four combs + two allpasses per bus,
+    // Reverb memory is sized here, once. Four combs + two allpasses per bus.
     std::uint32_t ScopedSamplesPerBus = 0;
     for (std::uint32_t ScopedComb = 0; ScopedComb < 4; ++ScopedComb)
     {
@@ -180,7 +180,7 @@ bool DspGraph::Initialize(std::uint32_t InSampleRate)
         ResetBusSlot(static_cast<BusId>(ScopedBus));
         MShadow[ScopedBus] = BusShadow{};
         MLastBlockPeak[ScopedBus] = 0.0f;
-        // The reverb indices are a property of the slot and the sample rate,
+        // The reverb indices are a property of the slot and the sample rate.
         ReverbState& ScopedReverb = MBuses[ScopedBus].reverb;
         std::uint32_t ScopedOffset = ScopedBus * ScopedSamplesPerBus;
         for (std::uint32_t ScopedComb = 0; ScopedComb < 4; ++ScopedComb)
@@ -996,7 +996,7 @@ void DspGraph::RebuildOrder() noexcept
         return;
     }
 
-    // Iterative post-order DFS from Master. A tree has at most kMaxBuses nodes,
+    // Iterative post-order DFS from Master. A tree has at most kMaxBuses nodes.
     struct Frame
     {
         BusId bus;
@@ -1073,7 +1073,7 @@ bool DspGraph::IsBusInGraph(BusId InBus) const noexcept
 
 bool DspGraph::WouldCycle(BusId InParent, BusId InChild) const noexcept
 {
-    // Walk from the proposed parent to the root: if the child is on that path,
+    // Walk from the proposed parent to the root: if the child is on that path.
     BusId ScopedCursor = InParent;
     for (std::uint32_t ScopedGuard = 0; ScopedGuard < kMaxBuses && ScopedCursor != kInvalidBus; ++ScopedGuard)
     {

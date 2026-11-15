@@ -440,7 +440,7 @@ std::uint32_t PhysicsSystem::DestroyAllBodies(Ecs::Registry* InRegistry) noexcep
     }
     std::uint32_t ScopedDestroyed = 0;
 
-    // 1) Every body this system or an extension explicitly registered. This is
+    // 1) Every body this system or an extension explicitly registered.
     for (const BodyRecord& ScopedRecord : MBodies)
     {
         if (ScopedRecord.body == 0)
@@ -456,7 +456,7 @@ std::uint32_t PhysicsSystem::DestroyAllBodies(Ecs::Registry* InRegistry) noexcep
     }
     MBodies.clear();
 
-    // 2) Registry-owned bodies that were never tracked (joint-chain link bodies
+    // 2) Registry-owned bodies that were never tracked (joint-chain link bodies).
     if (InRegistry != nullptr)
     {
         auto ScopedBodies = InRegistry->view<RigidBody2D>();

@@ -39,7 +39,7 @@ enum class TimelineEventKind : std::uint8_t
     Script,
 };
 
-// One key. `value` is vec2 for every track kind: bone position uses both lanes,
+// One key. `value` is vec2 for every track kind: bone position uses both lanes.
 struct TimelineKey
 {
     float time = 0.0f;
@@ -101,7 +101,7 @@ public:
     [[nodiscard]] std::int16_t FindTrack(TrackKind InKind, std::uint64_t InBoneHash) const noexcept;
     [[nodiscard]] std::int16_t FindTrackByBone(TrackKind InKind, std::int16_t InBoneIndex) const noexcept;
 
-    // Keys inside a track stay sorted by time. Returns the key's global index,
+    // Keys inside a track stay sorted by time. Returns the key's global index.
     [[nodiscard]] std::uint16_t AddKey(std::uint16_t InTrack, float InTime, Vector2D InValue,
                                        Interpolation InInterpolation = Interpolation::Bezier) noexcept;
     [[nodiscard]] bool RemoveKey(std::uint16_t InTrack, std::uint16_t InKeyIndex) noexcept;

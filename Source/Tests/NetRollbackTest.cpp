@@ -655,7 +655,7 @@ void TestPhysicsBodySweep()
           "restore succeeds with a physics world attached");
     Check(ScopedPhysics.LiveBodyCount() == 1, "restore recreates one body, not a duplicate");
 
-    // Stress the destroy/recreate cycle: every iteration must replace the body,
+    // Stress the destroy/recreate cycle: every iteration must replace the body.
     bool ScopedStable = true;
     for (std::uint32_t ScopedIteration = 0; ScopedIteration < 128; ++ScopedIteration)
     {

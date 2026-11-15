@@ -29,7 +29,7 @@ set(FBY_IS_MSVC FALSE)
 set(FBY_IS_CLANG_CL FALSE)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # clang-cl stays the reference Windows toolchain. The Microsoft compiler is
-    # an optional alternative: supported when a team needs it, never required.
+    # a supported alternative with its own CI job, never required.
     set(FBY_IS_MSVC TRUE)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${FBY_MIN_MSVC}")
         message(FATAL_ERROR
@@ -92,6 +92,7 @@ if(FBY_IS_MSVC)
         $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>
         $<$<COMPILE_LANGUAGE:CXX>:/utf-8>
         $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
+        $<$<COMPILE_LANGUAGE:CXX>:/bigobj>
         $<$<COMPILE_LANGUAGE:CXX>:/MP>)
 elseif(FBY_IS_CLANG_CL)
     target_compile_options(fby_compiler_flags INTERFACE

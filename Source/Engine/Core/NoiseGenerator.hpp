@@ -29,7 +29,7 @@ public:
     [[nodiscard]] float Simplex2D(float InX, float InY) const noexcept;
     [[nodiscard]] float Simplex3D(float InX, float InY, float InZ) const noexcept;
 
-    // Worley/cellular noise. F1 is the distance to the nearest feature point,
+    // Worley/cellular noise. F1 is the distance to the nearest feature point.
     [[nodiscard]] float Worley2D(float InX, float InY) const noexcept;
     [[nodiscard]] float Worley3D(float InX, float InY, float InZ) const noexcept;
     [[nodiscard]] float WorleyEdge2D(float InX, float InY) const noexcept;

@@ -33,11 +33,12 @@ Available presets:
 - `release-clang` — RelWithDebInfo;
 - `dev-clangcl` — clang-cl;
 - `audit-clang` — the existing `build-audit` tree;
+- `msvc-dev` — Debug, MSVC `cl.exe`, for a Developer Prompt;
 - `windows-release` — clang-cl, Vulkan, editor and tests;
 - `linux-release` — clang++, Vulkan, editor and tests;
 - `macos-release` — clang++, Metal, editor and tests.
 
-Verified on this machine:
+Validated commands:
 
 ```text
 cmake --preset dev-clang
@@ -48,7 +49,67 @@ cmake --preset dev-clangcl
 cmake --build --preset dev-clangcl --target fby_frame_composer_test
 ```
 
-Both `fby_frame_composer_test` runs pass.
+Both frame-composer runs pass.
+
+New Project offers **Empty / 2D Platformer / Top-Down / UI App**: a valid
+`scenes/main.toml` with reflected components only, a README and a generated
+`CMakeLists.txt` on the CMake 3.22 floor. Existing files are never overwritten.
+Distribution: `fby_fempak --exclude`, `PackageDesktop.py --game --features ...
+--assets ...` and `--max-size-mb`.
+
+Visual Script compiles a graph to bytecode, nativizes it to a native library
+and writes a `<module>.fbyaot` manifest next to it. **Plugin Manager** connects
+that library to the project (paths are restricted to the project root), loads it,
+and **Reload/Unload** works without restarting the editor. **Compatibility**
+shows the host ABI and component count, validates the plugin's component layout
+hashes on load, and **Write plugin report** saves
+`Saved/Plugins/plugin-report.md` with version, author, build info, components and
+systems.
+
+**Accessibility QA** audits the published semantic tree and the project
+profile: node count, unnamed interactive roles, unknown roles, degenerate bounds
+and a stale focus id, plus Blind mode without narration, Deaf mode without
+subtitles, a disabled flash guard and an empty narrator language. **Write QA
+report** saves a Markdown report under `Saved/Accessibility/qa-<stamp>.md`.
+
+**Network Diagnostics** hosts the lobby client: enter the lobby host/port and
+its 32-byte Ed25519 public key (64 hex), then create a room, join by id or start
+the match. The panel shows ready/room/player/started/error and the signed ticket;
+the game calls `NetLobbyClient::ApplyToSessionConfig()` before creating the
+`NetSession`, and the session view below shows the match's rollback diagnostics.
+Lobby traffic uses the same UDP transport as the game.
+
+**SDF Lighting** creates and edits the scene's single `SdfSunComponent`:
+direction, softness, ambient, occlusion radius/strength and the step budget. It
+adds box or circle `Light2DOccluderComponent` entities at the camera centre and
+edits their transform, shape and enabled flag. The renderer collects at most
+`Rhi::kMaxSdfGpuOccluders` dynamic casters per frame; the panel shows the budget
+and warns when it is exceeded. Components serialize with the scene, so authored
+lighting round-trips through the normal scene save.
+
+The **Profiler** (F7) draws the frame-time plot and the per-category rows;
+**Write trace** saves `Profiler/trace.json`. **Crash Diagnostics** shows whether
+the platform handler is armed, the current report session and the recent
+sessions under `Saved/Crashes/`. **Write report now** writes the same text report
+and minidump as an unhandled crash, with the project name and root included, so a
+tester can attach it without reproducing the crash.
+
+A selected prefab instance shows **Prefab overrides** in the Inspector: one
+position/scale/rotation/colour switch per prefab entity. Only enabled fields are
+stored in `PrefabInstanceComponent` masks, and the children are rebuilt from the
+prefab instead of copied, so editing an instance never edits the prefab asset.
+**Clear all overrides** drops every mask.
+
+**Build & Pack Game** cooks and packs the project, then (with the "Stage runnable
+game" toggle) copies the sandbox/server, runtime DLLs and the cooked pak into
+`<release>/<project>-game/`. That folder is the one-click export: it runs without
+the editor or the build tree. Vendor upscaler runtimes stay out by default; the
+packaging CLI selects them per feature.
+
+The editor's Lite/Balanced/High performance profiles cap the undo arena, the
+thumbnail cache and the frame rate; Custom keeps the individual values. The
+frame limit and the unfocused throttle are the two switches that trade latency
+for CPU and GPU time without changing the project.
 
 The desktop matrix uses `windows-release`, `linux-release` and `macos-release`.
 Each preset builds the editor, sandbox, tools and the game packer. The editor
@@ -59,10 +120,11 @@ all three systems. See
 ## Choosing a compiler
 
 The 0.5.0 line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
-reference toolchain and the release gate; CI also runs clang, GCC and AppleClang.
-MSVC builds the same tree and has its own Windows CI job; clang-cl remains the
-release gate. Every compiler is a supported alternative, never an obligation.
-The minimum versions are the oldest supported generations, not an upper bound.
+reference Windows toolchain and the release gate; CI also runs clang, GCC,
+AppleClang and MSVC. Every compiler is a supported alternative, never an
+obligation. The minimum versions are the oldest supported generations, not an
+upper bound; the hosted CI pins LLVM 23.1.4 on Windows, LLVM 23.1.x on Linux,
+GCC 16.2 and the current Visual Studio 2022 MSVC.
 
 | Compiler | Platform | Minimum | Best for |
 |---|---|---|---|
@@ -102,9 +164,11 @@ flags and whichever C++26 library facilities the feature probes can prove. No
 public API uses C++26 syntax, so both modes expose the same engine and the C++23
 build is not a reduced port.
 
-One acceleration is wired today: `Fby::Simd` for the audio bus peak scan. `Fby::FunctionRef` is the matching non-allocating callback view (the C++23 equivalent of `std::function_ref`). The
-build probes `std::simd`, but neither libc++ 19 nor libstdc++ 16 ships `<simd>`
-yet, so the C++23 build uses an SSE2/NEON reduction with a scalar tail.
+One acceleration is wired today: `Fby::Simd` for the audio bus peak scan.
+`Fby::FunctionRef` is the matching non-allocating callback view, the C++23
+equivalent of `std::function_ref`. The build probes `std::simd`, but neither
+libc++ 19 nor libstdc++ 16 ships `<simd>` yet, so the C++23 build uses an
+SSE2/NEON reduction with a scalar tail.
 Measured on a 1 MiB float buffer at `-O2`/`-O3` on x86-64:
 
 | Kernel | Scalar loop | `Fby::Simd` | Result |
@@ -118,7 +182,7 @@ and gives the audio thread headroom. It is not an FPS win, and the build does no
 claim one. New C++26 library accelerations go through the same probes and
 `Fby::` wrappers; core-language C++26 features are deliberately out of scope.
 
-MSVC configure. The Microsoft toolchain stays available, but it is
+MSVC configuration. The Microsoft toolchain has its own CI job but is
 never the reference gate. From a Developer Prompt, `cmake --preset msvc-dev`
 uses the same configuration:
 

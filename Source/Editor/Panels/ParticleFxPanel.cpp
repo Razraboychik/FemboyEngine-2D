@@ -123,6 +123,8 @@ void DragColor(const char* InLabel, Color32& InColor, bool& OutChanged)
 
 ParticleFxPanel::ParticleFxPanel() : MSystem(std::make_unique<ParticleEffectSystem>())
 {
+    std::snprintf(MSaveId.data(), MSaveId.size(), "%s", "custom_effect");
+    std::snprintf(MSaveName.data(), MSaveName.size(), "%s", "Custom Effect");
     LoadPreset(0);
 }
 
@@ -200,6 +202,31 @@ void ParticleFxPanel::Draw(bool* InOpen)
             MStatus = "pack failed: " + ScopedError;
         }
     }
+    ImGui::SeparatorText("Authoring");
+    ImGui::SetNextItemWidth(180.0f);
+    (void)ImGui::InputText("Preset id", MSaveId.data(), MSaveId.size());
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(220.0f);
+    (void)ImGui::InputText("Display name", MSaveName.data(), MSaveName.size());
+    if (ImGui::Button("Save preset"))
+    {
+        ParticlePresetDesc ScopedDesc;
+        std::snprintf(ScopedDesc.Id, sizeof(ScopedDesc.Id), "%s", MSaveId.data());
+        std::snprintf(ScopedDesc.DisplayName, sizeof(ScopedDesc.DisplayName), "%s", MSaveName.data());
+        std::snprintf(ScopedDesc.Category, sizeof(ScopedDesc.Category), "%s", "Authoring");
+        ScopedDesc.Settings = MSettings;
+        std::string ScopedError;
+        if (SaveParticlePresetFile(MPresetPath.data(), ScopedDesc, &ScopedError))
+        {
+            MStatus = std::string("saved ") + MPresetPath.data();
+        }
+        else
+        {
+            MStatus = "save failed: " + ScopedError;
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Writes the current settings to the pack path above.");
     if (!MStatus.empty())
     {
         ImGui::TextDisabled("%s", MStatus.c_str());

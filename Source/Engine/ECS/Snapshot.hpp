@@ -284,7 +284,7 @@ struct SnapshotRestoreExtras
                                    const DeterministicRng& InRng, std::size_t* OutBytes = nullptr,
                                    SnapshotExtras InExtras = {});
 
-// Delta against a previously captured full snapshot. Only changed components,
+// Delta against a previously captured full snapshot. Only changed components.
 [[nodiscard]] bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema,
                                 std::span<const std::byte> InBaseSnapshot, std::span<std::byte> InDestination,
                                 std::uint64_t InTick, const DeterministicRng& InRng, std::size_t* OutBytes = nullptr,

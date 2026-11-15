@@ -146,7 +146,7 @@ private:
     [[nodiscard]] bool ParseTrackEntry(const Element& InEntry, std::string* InError);
     [[nodiscard]] bool ParseVp9CodecPrivate(std::span<const std::byte> InData, std::string* InError);
 
-    // Cluster walking. ReadClusterChild() returns Frame and fills `outFrame`,
+    // Cluster walking. ReadClusterChild() returns Frame and fills `outFrame`.
     enum class ClusterScan : std::uint8_t
     {
         Skip = 0,

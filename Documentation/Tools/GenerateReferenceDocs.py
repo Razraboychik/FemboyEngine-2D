@@ -62,6 +62,7 @@ Documents = (
     {"Stem": "EditorSettingsReference"},
     {"Stem": "Physics"},
     {"Stem": "FemboyEngineFrameGeneration"},
+    {"Stem": "FemboyEngineOptimization"},
 )
 Languages = ("en", "ru")
 

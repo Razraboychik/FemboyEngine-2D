@@ -21,6 +21,7 @@ add_library(fby_editor STATIC
     Infrastructure/ReleaseCooker.cpp
     Infrastructure/TextureThumbnails.cpp
     Panels/AIStateTreeCanvasPanel.cpp
+    Panels/AccessibilityQaPanel.cpp
     Panels/LevelSettingsPanel.cpp
     Panels/AnimationGraphCanvasPanel.cpp
     Panels/AnimationTimelinePanel.cpp
@@ -28,6 +29,7 @@ add_library(fby_editor STATIC
     Panels/DirectionalBlendSpacePanel.cpp
     Panels/BooksPanel.cpp
     Panels/ContentBrowserPanel.cpp
+    Panels/CrashDiagnosticsPanel.cpp
     Panels/DataTablePanel.cpp
     Panels/DocumentsPanel.cpp
     Panels/LogBoyPanel.cpp
@@ -41,6 +43,7 @@ add_library(fby_editor STATIC
     Panels/NodeCanvasPanel.cpp
     Panels/ProjectDashboard.cpp
     Panels/SceneDiagnosticsPanel.cpp
+    Panels/SdfLightingPanel.cpp
     Panels/ScriptDebuggerPanel.cpp
     Panels/SettingsPanels.cpp
     Panels/SkeletonAssetPanel.cpp

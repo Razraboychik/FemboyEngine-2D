@@ -71,6 +71,104 @@ fallback, filters PNG/TGA/WAV/OGG/Opus/WebM/`.femeta`, and for a changed source:
 The OS thread only enqueues fixed-size paths; all database/RHI mutation happens
 in `Poll()` on the editor thread. `InjectChange()` is the test seam.
 
+### Editable import settings
+
+Selecting an asset in the Content Browser opens its import settings: texture
+format, max size, sRGB and mip generation, or the font style/size/oversample/SDF
+fields. **Apply and reimport** writes the settings into `<source>.femeta` and
+queues the normal background cook; the old texture stays bound until the worker
+commits the new layer, so the editor never blocks on a large texture. **Reimport
+now** queues the current settings without editing them. The panel also shows the
+queue/cook/commit/failure counters, which makes a stuck hot reload visible.
+
+The per-asset settings override the `AssetImportService::Config` defaults and are
+the same values the offline cooker reads, so editor and shipped build agree.
+
+### Prefab overrides
+
+A selected prefab instance opens a **Prefab overrides** section in the Inspector.
+Each prefab entity has its own position, scale, rotation and colour switches.
+Only switched-on fields are stored in `PrefabInstanceComponent` masks; the
+children are rebuilt from the prefab plus those masks, so an instance stays
+linked to the asset instead of becoming a copied scene subtree. **Clear all
+overrides** drops every mask. The absolute values live in the instance proxy and
+round-trip through the scene file; the prefab itself is never modified.
+
+### Particle authoring
+
+The Particle FX panel tunes every `ParticleEffectSettings` field live and writes
+the current look as a `.fbyparticle` pack: set **Preset id** and **Display name**,
+then **Save preset** writes one `[[presets]]` table to the pack path. **Load
+pack** reads it back through the same validator the runtime uses, so an authored
+preset cannot contain values the game rejects. The panel keeps the built-in
+previews untouched and never edits them in place.
+
+## 3. Project templates and distribution
+
+The New Project dashboard offers **Empty**, **2D Platformer**, **Top-Down** and
+**UI App**. Every template writes a valid `scenes/main.toml` with only reflected
+components, a template-specific `README.md`, the clean-slate `GameMain.cpp`,
+and a generated `CMakeLists.txt` that uses the CMake 3.22 floor. Hand edits are
+never overwritten: `CreateProject` only writes a file when it is missing.
+
+Distribution is the same project tree: `fby_fempak cook --exclude` controls what
+enters a pak, `PackageDesktop.py --game --features ... --assets <dir>` builds the
+runtime-only bundle and cooks the project assets into it, and `--max-size-mb` is
+the size gate. Editor-only samples and source art stay out of the game bundle.
+
+## 3. AOT mods and plugins
+
+The Visual Script panel compiles a graph to bytecode, nativizes it to a native
+library and writes a `<module>.fbyaot` manifest next to it. **Plugin Manager**
+connects that library to the project (paths are restricted to the project root),
+loads it, and can **Reload** or **Unload** it without restarting the editor. The
+**Compatibility** section shows the host ABI and component count, validates the
+plugin's component layout hashes during load, and **Write plugin report** saves
+`Saved/Plugins/plugin-report.md` with each plugin's version, author, build info,
+components and systems. A plugin built for another ABI or with a changed
+component layout is rejected at load with the exact mismatch.
+
+## 3. Accessibility QA
+
+**Accessibility QA** audits the semantic tree the host publishes and the project
+profile. It counts nodes, unnamed interactive roles and unknown roles, checks
+degenerate bounds and a stale focus id, and verifies the profile flags: Blind
+mode without narration, Deaf mode without subtitles, a disabled flash guard and
+an empty narrator language. **Write QA report** saves a Markdown report under
+`Saved/Accessibility/qa-<stamp>.md` with the counts and findings. The panel takes
+any `AccessibilityTree`, so a game can bind its runtime tree with the same audit.
+
+## 3. Rollback and lobby
+
+**Network Diagnostics** hosts the lobby client next to the session view. Start a
+client with the lobby host/port and its 32-byte Ed25519 public key (64 hex
+characters), then create a named room, join by room id, or start the match.
+The panel shows ready/room/player/started/error state and the signed ticket. The
+game calls `NetLobbyClient::ApplyToSessionConfig()` on that ticket before
+creating the `NetSession`; the session view below then shows the rollback
+diagnostics for the running match. Lobby traffic uses the same UDP transport as
+the game, so the editor never needs a second networking stack.
+
+## 3. SDF lighting authoring
+
+**SDF Lighting** creates and edits the scene's single `SdfSunComponent`:
+direction, softness, ambient, occlusion radius/strength and the step budget.
+The panel also adds box or circle `Light2DOccluderComponent` entities at the
+camera centre and edits their transform, shape and enabled flag. The renderer
+collects at most `Rhi::kMaxSdfGpuOccluders` dynamic casters per frame; the panel
+shows the budget and warns when it is exceeded. Components serialize with the
+scene, so the authored lighting round-trips through the normal scene save.
+
+## 3. Diagnostics and crash reports
+
+**Profiler (F7)** draws the frame-time plot and the per-category rows collected
+by `Core::Profiler`; **Write trace** saves `Profiler/trace.json`. **Crash
+Diagnostics** shows whether the platform handler is armed, the current report
+session and the recent sessions under `Saved/Crashes/`. **Write report now**
+produces the same text report and minidump an unhandled crash would, with the
+project name and root in the details, so a tester can attach it without
+reproducing a crash. Reports are flushed before the process dies.
+
 ## 3. Command stack (Undo/Redo) and PIE
 
 | Piece | File |

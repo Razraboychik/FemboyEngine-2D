@@ -57,8 +57,8 @@ Steps = (
     {"Script": "GenerateAPIReference.py", "PdfFlags": True},
     {"Script": "GenerateCompleteReference.py", "PdfFlags": True},
     {"Script": "GenerateSupplementaryDocs.py", "PdfFlags": True},
-    {"Script": "GenerateProjectSettingsRecommendations.py", "PdfFlags": False},
-    {"Script": "MarkdownDocs.py", "PdfFlags": False, "Extra": ("--all",)},
+    {"Script": "GenerateProjectSettingsRecommendations.py", "PdfFlags": True},
+    {"Script": "MarkdownDocs.py", "PdfFlags": True, "Extra": ("--all",)},
     {"Script": "GenerateReferenceDocs.py", "PdfFlags": True},
     {"Script": "CheckDocs.py", "PdfFlags": False},
 )
@@ -126,6 +126,13 @@ def Main() -> int:
         help="LibreOffice Kit cli.js (default: FBY_LO_CLI)",
     )
     ScopedArguments = parser.parse_args()
+
+    # PDF and DjVu are publishing formats. A machine without the LibreOffice
+    # Kit still regenerates the Markdown and DOCX set; the skip is explicit so
+    # the run does not fail on a converter that is not installed.
+    if not ScopedArguments.SkipPdf and not ScopedArguments.LoCli and not os.environ.get("FBY_LO_CLI"):
+        print("docs: LibreOffice Kit is not configured; writing Markdown and DOCX only")
+        ScopedArguments.SkipPdf = True
 
     ScopedFailed: list[str] = []
     for ScopedStep in Steps:

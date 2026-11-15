@@ -130,7 +130,7 @@ template <typename T> [[nodiscard]] constexpr std::span<const FieldDesc> Fields(
     return InHash;
 }
 
-// Stable identity of a component's memory layout: name, field names, kinds,
+// Stable identity of a component's memory layout: name, field names, kinds.
 template <typename T> [[nodiscard]] constexpr std::uint64_t LayoutHash() noexcept
 {
     static_assert(Reflection<T>::kRegistered, "Mirror: component is not registered");

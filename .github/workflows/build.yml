@@ -98,7 +98,10 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-msvc -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=ON -DFBY_BUILD_TESTS=ON
       - name: Build
-        run: cmake --build build-msvc --parallel 8 -- -k 0
+        run: cmake --build build-msvc --parallel 8 -- -k 0 2>&1 | Tee-Object -FilePath build-msvc.log
+      - name: Build errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build-msvc.log
       - name: Test
         run: ctest --test-dir build-msvc --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings|d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark"
 

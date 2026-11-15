@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Editor/Infrastructure/EditorSettings.hpp"
+#include "Engine/Assets/ProjectScaffold.hpp"
 #include "Engine/Assets/TextureFormat.hpp"
 #include "Engine/Core/BuildProfile.hpp"
 #include "Engine/Audio/AudioDevices.hpp"
@@ -340,7 +341,9 @@ struct ProjectPaths
 // Creates a clean, strictly typed project tree and a default project.femproj.
 [[nodiscard]] bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_view InProjectName,
                                  ProjectPaths* OutPaths = nullptr, ProjectConfig* OutConfig = nullptr,
-                                 std::string* InError = nullptr);
+                                 std::string* InError = nullptr,
+                                 Assets::Scaffold::ProjectTemplate InTemplate =
+                                     Assets::Scaffold::ProjectTemplate::Empty);
 
 // Reads project.femproj. Missing optional sections fall back to defaults.
 [[nodiscard]] bool LoadProject(const std::filesystem::path& InRootOrProjectFile, ProjectPaths* OutPaths,

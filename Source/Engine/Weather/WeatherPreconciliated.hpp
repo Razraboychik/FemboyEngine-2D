@@ -12,7 +12,7 @@
 namespace Fby::Weather
 {
 
-// The weather passes are written against the RHI vocabulary (RenderGraph,
+// The weather passes are written against the RHI vocabulary (RenderGraph.
 using namespace Fby::Rhi;
 
 struct WeatherGpuResources

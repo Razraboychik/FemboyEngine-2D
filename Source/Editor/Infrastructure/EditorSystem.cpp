@@ -40,6 +40,8 @@
 #include "Editor/Infrastructure/AssetImportService.hpp"
 #include "Editor/Infrastructure/CommandStack.hpp"
 #include "Editor/Panels/ContentBrowserPanel.hpp"
+#include "Editor/Panels/CrashDiagnosticsPanel.hpp"
+#include "Editor/Panels/AccessibilityQaPanel.hpp"
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/EditorFonts.hpp"
 #include "Editor/Infrastructure/EditorTypography.hpp"
@@ -69,6 +71,7 @@
 #include "Editor/Infrastructure/TextureThumbnails.hpp"
 #include "Editor/Panels/ProjectDashboard.hpp"
 #include "Editor/Panels/SdfCharacterPanel.hpp"
+#include "Editor/Panels/SdfLightingPanel.hpp"
 #include "Editor/Panels/SceneDiagnosticsPanel.hpp"
 #include "Editor/Panels/ScriptDebuggerPanel.hpp"
 #include "Editor/Panels/SettingsPanels.hpp"
@@ -563,9 +566,13 @@ struct EditorSystem::Impl
     float autoSaveTimer = 0.0f;
     bool titleDirty = false;
 
-    // Panels keep their transient state here: the path being edited,
+    // Panels keep their transient state here: the path being edited.
     SkeletonInspectorState skeletonPanel;
     SpriteAnimationInspectorState spriteAnimationPanel;
+    Assets::AssetHandle prefabInspectorHandle{};
+    PrefabAsset prefabInspectorAsset{};
+    std::uint32_t prefabInspectorGeneration = 0xFFFFFFFFu;
+    std::string prefabInspectorError;
     AnimationTimelinePanel timelinePanel;
     CommandStack commands;
     InteractionTransaction interaction;
@@ -658,6 +665,7 @@ struct EditorSystem::Impl
     UserSettings userSettings{};
     Rhi::BackendCapabilities backendCaps{};
     ReleaseCooker releaseCooker;
+    bool stageRuntimeBundle = true;
     AssetImportService importer;
     AssetDatabaseWatchSystem watcher;
     // Fallback kernel for hosts that do not create one. The editor's settings
@@ -725,7 +733,13 @@ struct EditorSystem::Impl
     bool showInspector = true;
     bool showViewport = true;
     bool showProfiler = false;
+    bool showCrashDiagnostics = false;
+    CrashDiagnosticsPanel crashDiagnostics;
+    bool showAccessibilityQa = false;
+    AccessibilityQaPanel accessibilityQa;
     bool showSdfComposer = false;
+    bool showSdfLighting = false;
+    SdfLightingPanel sdfLighting;
     bool showStats = false;
     bool showLogBoy = true;
     bool showSceneDiagnostics = true;
@@ -877,6 +891,7 @@ struct EditorSystem::Impl
             ReleaseCooker::FromProject(projectConfig.Paths(), projectConfig.Project(),
                                        ScopedEngineRoot.generic_string(), ScopedPacker.generic_string());
         ScopedConfig.compileAot = visualScript.Initialized() && visualScript.Graph().nodeCount != 0;
+        ScopedConfig.stageRuntime = stageRuntimeBundle;
         char ScopedError[kReleaseMessageBytes]{};
         Script::LogicGraph* ScopedGraph = ScopedConfig.compileAot ? &visualScript.Graph() : nullptr;
         if (!releaseCooker.Start(ScopedConfig, ScopedGraph, ScopedError, sizeof(ScopedError)))
@@ -2355,6 +2370,7 @@ struct EditorSystem::Impl
         spriteAnimationPanel.textureArray = textureArray;
         spriteAnimationPanel.thumbnails = &thumbnails;
         DrawSpriteAnimationInspector(InContext, ScopedEntity, spriteAnimationPanel);
+        DrawPrefabOverridesInspector(InContext, ScopedEntity);
 
         if (!ScopedMissing.empty())
         {
@@ -2379,6 +2395,167 @@ struct EditorSystem::Impl
             CommitInteraction();
         }
         EndEditorPanel();
+    }
+
+    void DrawPrefabOverridesInspector(Ecs::SystemContext& InContext, Entity InEntity)
+    {
+        PrefabInstanceComponent* ScopedLink = InContext.registry.try_get<PrefabInstanceComponent>(InEntity);
+        if (ScopedLink == nullptr || InContext.assetDb == nullptr)
+        {
+            return;
+        }
+        const Assets::AssetMeta* ScopedMeta = InContext.assetDb->Meta(ScopedLink->Prefab);
+        if (ScopedMeta == nullptr)
+        {
+            ImGui::SeparatorText("Prefab");
+            ImGui::TextDisabled("The prefab row is missing; the instance cannot be expanded.");
+            return;
+        }
+        if (!(prefabInspectorHandle == ScopedLink->Prefab) ||
+            prefabInspectorGeneration != ScopedMeta->contentGeneration)
+        {
+            prefabInspectorHandle = ScopedLink->Prefab;
+            prefabInspectorGeneration = ScopedMeta->contentGeneration;
+            prefabInspectorError.clear();
+            const std::filesystem::path ScopedSource =
+                std::filesystem::path(ScopedMeta->sourcePath).is_absolute()
+                    ? std::filesystem::path(ScopedMeta->sourcePath)
+                    : AssetPhysicalPath(ScopedMeta->sourcePath);
+            if (!PrefabSystem::LoadTomlFile(ScopedSource.string(), prefabInspectorAsset, &prefabInspectorError))
+            {
+                prefabInspectorError = "cannot load prefab: " + prefabInspectorError;
+            }
+        }
+        ImGui::SeparatorText("Prefab overrides");
+        ImGui::TextDisabled("%s", ScopedMeta->sourcePath);
+        if (!prefabInspectorError.empty())
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", prefabInspectorError.c_str());
+            return;
+        }
+        if (ImGui::SmallButton("Clear all overrides"))
+        {
+            PrefabInstance::ClearOverrides(InContext.registry, InEntity);
+            prefabInspectorGeneration = 0xFFFFFFFFu;
+        }
+        bool ScopedChanged = false;
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < prefabInspectorAsset.count; ++ScopedIndex)
+        {
+            const PrefabEntityDesc& ScopedDesc = prefabInspectorAsset.entities[ScopedIndex];
+            ImGui::PushID(static_cast<int>(ScopedIndex));
+            const std::string ScopedLabel =
+                ScopedDesc.name[0] != '\0' ? ScopedDesc.name : std::format("Entity {}", ScopedIndex);
+            if (ImGui::TreeNodeEx(ScopedLabel.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                const std::uint32_t ScopedBit = 1u << ScopedIndex;
+                bool ScopedPosition = (ScopedLink->PositionMask & ScopedBit) != 0;
+                bool ScopedScale = (ScopedLink->ScaleMask & ScopedBit) != 0;
+                bool ScopedRotation = (ScopedLink->RotationMask & ScopedBit) != 0;
+                bool ScopedColor = (ScopedLink->ColorMask & ScopedBit) != 0;
+                if (ImGui::Checkbox("Position", &ScopedPosition))
+                {
+                    ScopedLink->PositionMask = ScopedPosition ? (ScopedLink->PositionMask | ScopedBit)
+                                                              : (ScopedLink->PositionMask & ~ScopedBit);
+                    if (ScopedPosition)
+                    {
+                        ScopedLink->PositionOverrides[ScopedIndex] = ScopedDesc.transform.Position;
+                    }
+                    ScopedChanged = true;
+                }
+                if (ScopedPosition)
+                {
+                    float ScopedPositionValue[2] = {ScopedLink->PositionOverrides[ScopedIndex].X,
+                                                    ScopedLink->PositionOverrides[ScopedIndex].Y};
+                    if (ImGui::DragFloat2("##position", ScopedPositionValue, 0.5f))
+                    {
+                        ScopedLink->PositionOverrides[ScopedIndex] =
+                            Vector2D{ScopedPositionValue[0], ScopedPositionValue[1]};
+                        ScopedChanged = true;
+                    }
+                }
+                if (ImGui::Checkbox("Scale", &ScopedScale))
+                {
+                    ScopedLink->ScaleMask = ScopedScale ? (ScopedLink->ScaleMask | ScopedBit)
+                                                        : (ScopedLink->ScaleMask & ~ScopedBit);
+                    if (ScopedScale)
+                    {
+                        ScopedLink->ScaleOverrides[ScopedIndex] = ScopedDesc.transform.Scale;
+                    }
+                    ScopedChanged = true;
+                }
+                if (ScopedScale)
+                {
+                    float ScopedScaleValue[2] = {ScopedLink->ScaleOverrides[ScopedIndex].X,
+                                                 ScopedLink->ScaleOverrides[ScopedIndex].Y};
+                    if (ImGui::DragFloat2("##scale", ScopedScaleValue, 0.01f))
+                    {
+                        ScopedLink->ScaleOverrides[ScopedIndex] = Vector2D{ScopedScaleValue[0], ScopedScaleValue[1]};
+                        ScopedChanged = true;
+                    }
+                }
+                if (ImGui::Checkbox("Rotation", &ScopedRotation))
+                {
+                    ScopedLink->RotationMask = ScopedRotation ? (ScopedLink->RotationMask | ScopedBit)
+                                                              : (ScopedLink->RotationMask & ~ScopedBit);
+                    if (ScopedRotation)
+                    {
+                        ScopedLink->RotationOverrides[ScopedIndex].X = ScopedDesc.transform.Rotation;
+                    }
+                    ScopedChanged = true;
+                }
+                if (ScopedRotation)
+                {
+                    float ScopedRotationValue = ScopedLink->RotationOverrides[ScopedIndex].X;
+                    if (ImGui::DragFloat("##rotation", &ScopedRotationValue, 0.01f))
+                    {
+                        ScopedLink->RotationOverrides[ScopedIndex].X = ScopedRotationValue;
+                        ScopedChanged = true;
+                    }
+                }
+                if (ImGui::Checkbox("Color", &ScopedColor))
+                {
+                    ScopedLink->ColorMask = ScopedColor ? (ScopedLink->ColorMask | ScopedBit)
+                                                        : (ScopedLink->ColorMask & ~ScopedBit);
+                    if (ScopedColor)
+                    {
+                        const Color32 ScopedBase = ScopedDesc.sprite.Color;
+                        ScopedLink->ColorOverrides[ScopedIndex] =
+                            Vector2D{static_cast<float>(ScopedBase.R()) / 255.0f,
+                                     static_cast<float>(ScopedBase.G()) / 255.0f};
+                        ScopedLink->RotationOverrides[ScopedIndex].Y =
+                            static_cast<float>(ScopedBase.B()) / 255.0f;
+                    }
+                    ScopedChanged = true;
+                }
+                if (ScopedColor)
+                {
+                    const Vector2D& ScopedStored = ScopedLink->ColorOverrides[ScopedIndex];
+                    float ScopedColorValue[4] = {ScopedStored.X, ScopedStored.Y,
+                                                 ScopedLink->RotationOverrides[ScopedIndex].Y, 1.0f};
+                    if (ImGui::ColorEdit4("##color", ScopedColorValue))
+                    {
+                        ScopedLink->ColorOverrides[ScopedIndex] = Vector2D{ScopedColorValue[0], ScopedColorValue[1]};
+                        ScopedLink->RotationOverrides[ScopedIndex].Y = ScopedColorValue[2];
+                        ScopedChanged = true;
+                    }
+                }
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+        if (ScopedChanged)
+        {
+            PrefabInstance::ClearChildren(InContext.registry, InEntity);
+            if (InContext.commands != nullptr)
+            {
+                std::array<Entity, kPrefabMaxEntities> ScopedChildren{};
+                if (PrefabInstance::Expand(InContext.registry, *InContext.commands, InEntity, prefabInspectorAsset,
+                                           ScopedChildren))
+                {
+                    InContext.commands->Play(InContext.registry);
+                }
+            }
+        }
     }
 
     // Physical path of a VFS-relative asset inside the project.
@@ -3395,6 +3572,13 @@ struct EditorSystem::Impl
             StartReleaseCook();
         }
         ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::Checkbox("Stage runnable game", &stageRuntimeBundle);
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip("Also copy the sandbox/server, runtime DLLs and cooked pak into\n"
+                              "<project>-game/ next to the store archives.");
+        }
         ImGui::SameLine();
         if (releaseCooker.Running())
         {
@@ -4644,7 +4828,10 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("Viewport", nullptr, &showViewport);
                 ImGui::MenuItem("PIE Client", nullptr, &showPieClient);
                 ImGui::MenuItem("Profiler", "F7", &showProfiler);
+                ImGui::MenuItem("Crash Diagnostics", nullptr, &showCrashDiagnostics);
+                ImGui::MenuItem("Accessibility QA", nullptr, &showAccessibilityQa);
                 ImGui::MenuItem("SDF Composer", "F8", &showSdfComposer);
+                ImGui::MenuItem("SDF Lighting", nullptr, &showSdfLighting);
                 ImGui::MenuItem("Scene Diagnostics", nullptr, &showSceneDiagnostics);
                 ImGui::MenuItem("SDF Character", nullptr, &showSdfCharacters);
                 ImGui::MenuItem("Plugin Manager", nullptr, &showPluginManager);
@@ -4997,6 +5184,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
                                                static_cast<std::uint32_t>(sizeof(Fby::Editor::EditorSettings)));
     MImpl->projectSettings.Initialize(MImpl->commands, MImpl->projectConfig, MImpl->projectSettingsCodec);
     MImpl->editorSettings.Initialize(MImpl->commands, MImpl->projectConfig, MImpl->editorSettingsCodec);
+    MImpl->editorSettings.SetThumbnails(&MImpl->thumbnails);
 
     // Both visual editors share the CommandStack with the Inspector.
     (void)MImpl->materialGraph.Initialize(MImpl->commands, MImpl->gpu);
@@ -6267,6 +6455,49 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
                 ImGui::PopID();
             }
             ImGui::EndDisabled();
+            ImGui::SeparatorText("Compatibility");
+            if (MImpl->pluginHost != nullptr)
+            {
+                ImGui::TextDisabled("host ABI %u, %zu known component types", FBY_PLUGIN_ABI_VERSION,
+                                    MImpl->pluginHost->Components().Size());
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Write plugin report"))
+                {
+                    const std::filesystem::path ScopedDirectory =
+                        std::filesystem::current_path() / "Saved" / "Plugins";
+                    std::error_code ScopedError;
+                    std::filesystem::create_directories(ScopedDirectory, ScopedError);
+                    std::ofstream ScopedReport(ScopedDirectory / "plugin-report.md",
+                                               std::ios::binary | std::ios::trunc);
+                    if (ScopedReport)
+                    {
+                        ScopedReport << "# Plugin compatibility report\n\n"
+                                     << "- host ABI: " << FBY_PLUGIN_ABI_VERSION << "\n"
+                                     << "- host component types: " << MImpl->pluginHost->Components().Size() << "\n\n";
+                        for (const auto& ScopedPlugin : MImpl->pluginHost->Plugins())
+                        {
+                            ScopedReport << "## " << ScopedPlugin->name << " " << ScopedPlugin->version << "\n\n"
+                                         << "- path: " << ScopedPlugin->path << "\n"
+                                         << "- author: " << ScopedPlugin->author << "\n"
+                                         << "- build: " << ScopedPlugin->buildInfo << "\n"
+                                         << "- components: " << ScopedPlugin->components.size() << "\n"
+                                         << "- systems: " << ScopedPlugin->systems.size() << "\n"
+                                         << "- ABI and component layout validated during load\n\n";
+                            for (const Plugin::ComponentType& ScopedComponent : ScopedPlugin->components)
+                            {
+                                ScopedReport << "  - " << ScopedComponent.name << " size " << ScopedComponent.size
+                                             << " hash " << std::format("{:016x}", ScopedComponent.layoutHash) << "\n";
+                            }
+                        }
+                        MImpl->pluginStatus =
+                            "plugin report: " + (ScopedDirectory / "plugin-report.md").generic_string();
+                    }
+                    else
+                    {
+                        MImpl->pluginStatus = "could not write the plugin report";
+                    }
+                }
+            }
             ImGui::SeparatorText("Loaded in this project");
             if (MImpl->pluginHost == nullptr)
             {
@@ -6403,7 +6634,25 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
                                     SelectedEntity(InContext.registry));
     }
     MImpl->DrawProfiler(InContext);
+    if (MImpl->showAccessibilityQa)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Console"), ImGuiCond_FirstUseEver);
+        MImpl->accessibilityQa.Draw(MImpl->editorTree, MImpl->projectConfig.Project().accessibility,
+                                    &MImpl->showAccessibilityQa);
+    }
+    if (MImpl->showCrashDiagnostics)
+    {
+        MImpl->crashDiagnostics.SetProject(MImpl->projectConfig.Project().name,
+                                           MImpl->projectConfig.Paths().root.string());
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Console"), ImGuiCond_FirstUseEver);
+        MImpl->crashDiagnostics.Draw(&MImpl->showCrashDiagnostics);
+    }
     MImpl->DrawSdfComposer();
+    if (MImpl->showSdfLighting)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->sdfLighting.Draw(InContext.registry, MImpl->camera.center, &MImpl->showSdfLighting);
+    }
     MImpl->logBoy.SetFrame(static_cast<std::uint32_t>(InContext.frameIndex));
     if (MImpl->showLogBoy)
     {

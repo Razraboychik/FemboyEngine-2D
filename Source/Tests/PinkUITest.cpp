@@ -232,7 +232,7 @@ std::size_t GFailures = 0;
     return InCanvas.AddWidget(ScopedDesc);
 }
 
-// The canvas used by the packing and overflow tests. Five widgets, five kinds,
+// The canvas used by the packing and overflow tests. Five widgets, five kinds.
 [[nodiscard]] WidgetCanvas MakeDemoCanvas()
 {
     WidgetCanvas ScopedCanvas;
@@ -809,7 +809,7 @@ void TestBuildFramePacking(SystemContext& InContext)
     FBY_CHECK(ScopedKeys[0] == 0u);
     FBY_CHECK(ScopedKeys[2] == 0u);
 
-    // Draw order is (zOrder, insertion): panel(-5), label(0), image(1),
+    // Draw order is (zOrder, insertion): panel(-5), label(0), image(1).
     const std::span<const std::uint16_t> ScopedOrder = ScopedCanvas.DrawOrder();
     FBY_CHECK(ScopedOrder.size() == 5);
     FBY_CHECK(ScopedOrder[0] == 0);

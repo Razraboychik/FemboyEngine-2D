@@ -143,7 +143,7 @@ bool FrameExporter::BeginCommon(Rhi::RHI& InGpu, std::string_view InPath, const 
     MHeader.reserved = 0;
     std::memcpy(MImage.data(), &MHeader, sizeof(MHeader));
 
-    // A deterministic packet base. The render callback fills the item spans,
+    // A deterministic packet base. The render callback fills the item spans.
     MPacket = Rhi::FramePacket{};
     MPacket.camera.viewport = {static_cast<float>(InDesc.size.width), static_cast<float>(InDesc.size.height)};
     MPacket.textureArray = 0xFFFFFFFFu;

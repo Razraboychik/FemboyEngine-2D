@@ -139,7 +139,7 @@ struct AnimStateComponent
 {
     // Logical state. 0 = rest pose, no clip.
     std::uint64_t CurrentState = 0;
-    // State the cross-fade is coming from
+    // State the cross-fade is coming from.
     std::uint64_t PreviousState = 0;
     // Seconds spent in CurrentState; reset on every transition
     float StateTime = 0.0f;
@@ -180,7 +180,7 @@ void AnimGraphCaptureRestPose(SkeletonComponent& InSkeleton) noexcept;
                                          const GameplayTagsComponent* InTags,
                                          const GameplayTagRegistry* InTagRegistry) noexcept;
 
-// Writes the blended local pose into the skeleton and runs one SkeletalAnimation evaluation,
+// Writes the blended local pose into the skeleton and runs one SkeletalAnimation evaluation.
 void AnimGraphApplySkeletal(AnimStateComponent& InState, const AnimGraphDefinitionComponent& InDefinition,
                             SkeletonComponent& InSkeleton) noexcept;
 

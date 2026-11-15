@@ -278,6 +278,17 @@ public:
 
     // Opaque bridge for the RHI. `NativeWindow()` returns SDL_Window*.
     [[nodiscard]] void* NativeWindow() const noexcept;
+    // True while the window owns keyboard focus. Used by the editor's idle
+    // throttle; games keep running at full rate when they lose focus.
+    [[nodiscard]] bool Focused() const noexcept;
+
+    // Replaces the OS cursor with a 32-bit BMP. Magenta (255, 0, 255) is the
+    // transparent key because SDL's BMP loader has no alpha channel. The
+    // hotspot is in pixels from the top-left of the image. Returns false and
+    // leaves the current cursor untouched when the file or SDL call fails.
+    [[nodiscard]] bool SetCursorImage(std::string_view InPath, int InHotspotX, int InHotspotY) noexcept;
+    // Restores the platform arrow. Safe to call when no custom cursor is set.
+    void SetSystemCursor() noexcept;
     // Vulkan instance extensions required by the window system.
     [[nodiscard]] std::span<const char* const> VulkanInstanceExtensions() const;
     // Creates the platform surface for `instance` (VkInstance).
@@ -317,6 +328,7 @@ private:
     void CloseGamepad(std::uint32_t InInstanceId) noexcept;
 
     void* MWindow = nullptr;
+    void* MCursor = nullptr;
     InputState MInput{};
     std::array<void*, kMaxGamepads> MGamepads{};
     std::array<std::uint32_t, kMaxGamepads> MGamepadIds{};

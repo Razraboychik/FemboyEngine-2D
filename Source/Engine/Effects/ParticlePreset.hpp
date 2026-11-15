@@ -67,4 +67,10 @@ private:
                                           const void* InOwner = nullptr, std::string* OutError = nullptr);
 [[nodiscard]] bool LoadParticlePresetFile(std::string_view InPath, ParticlePresetRegistry& InRegistry,
                                           const void* InOwner = nullptr, std::string* OutError = nullptr);
+// Writes one preset as a `[[presets]]` table. The editor uses it to save the
+// current particle effect; the loader accepts exactly this shape.
+[[nodiscard]] bool SaveParticlePresetToml(const ParticlePresetDesc& InPreset, std::string* OutText,
+                                          std::string* OutError = nullptr);
+[[nodiscard]] bool SaveParticlePresetFile(std::string_view InPath, const ParticlePresetDesc& InPreset,
+                                          std::string* OutError = nullptr);
 }

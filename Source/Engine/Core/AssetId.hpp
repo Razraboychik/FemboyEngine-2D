@@ -66,7 +66,7 @@ struct AssetId
         ScopedMix(static_cast<std::uint8_t>(static_cast<std::uint16_t>(InKind) & 0xFFu));
         ScopedMix(static_cast<std::uint8_t>((static_cast<std::uint16_t>(InKind) >> 8) & 0xFFu));
         ScopedMix(static_cast<std::uint8_t>(':'));
-        // NormalizePakPath allocates, but this runs at import/registration,
+        // NormalizePakPath allocates, but this runs at import/registration.
         const std::string ScopedNormalized = Assets::NormalizePakPath(InPath);
         for (const char ScopedCharacter : ScopedNormalized)
         {

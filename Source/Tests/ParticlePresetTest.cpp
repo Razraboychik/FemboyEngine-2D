@@ -74,6 +74,25 @@ int main()
         FBY_CHECK(ScopedPreset->Settings.EndColor.A() == 0);
     }
 
+    // Saving the authored settings produces a pack the loader accepts again.
+    if (ScopedPreset != nullptr)
+    {
+        std::string ScopedSaved;
+        FBY_CHECK(SaveParticlePresetToml(*ScopedPreset, &ScopedSaved, &ScopedError));
+        FBY_CHECK(!ScopedSaved.empty());
+        ParticlePresetRegistry ScopedRoundTrip;
+        FBY_CHECK(LoadParticlePresetToml(ScopedSaved, ScopedRoundTrip, nullptr, &ScopedError));
+        const ParticlePresetDesc* ScopedReloaded = ScopedRoundTrip.Find("Test.Pack.Spark");
+        FBY_CHECK(ScopedReloaded != nullptr);
+        if (ScopedReloaded != nullptr)
+        {
+            FBY_CHECK(ScopedReloaded->Settings.Shape == ParticleShape::Spark);
+            FBY_CHECK(ScopedReloaded->Settings.Shape == ScopedPreset->Settings.Shape);
+            FBY_CHECK(ScopedReloaded->Settings.SpeedMin > 99.9f);
+            FBY_CHECK(ScopedReloaded->Settings.Additive);
+        }
+    }
+
     ParticlePresetDesc ScopedDuplicate{};
     ScopedDuplicate.Id[0] = 'X';
     ScopedDuplicate.DisplayName[0] = 'X';

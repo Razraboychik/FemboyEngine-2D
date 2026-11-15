@@ -63,6 +63,7 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 |---|---|
 | Build the engine and open the editor | [Getting Started](md/en/FemboyEngineGettingStarted_EN.md) |
 | Set up VS Code, clangd and manual builds | [Build Workflow](design/build-workflow.md) |
+| Tune the editor and a shipped game | [Optimization guide](md/en/FemboyEngineOptimization_EN.md) |
 | Check editor hardware targets | [Editor system requirements](design/system-requirements.md) |
 | Build and ship a game, Steam/EOS/GOG | [Game distribution](design/game-distribution.md) |
 | Understand the FCS chunked storage | [FCS](design/fcs.md) |
@@ -158,6 +159,7 @@ FemboyEngine2D.
 | Editor Settings | [EN](md/en/EditorSettingsReference_EN.md) / [RU](md/ru/EditorSettingsReference_RU.md) | [EN](docx/en/EditorSettingsReference_EN.docx) / [RU](docx/ru/EditorSettingsReference_RU.docx) | [EN](pdf/en/EditorSettingsReference_EN.pdf) / [RU](pdf/ru/EditorSettingsReference_RU.pdf) | [EN](djvu/en/EditorSettingsReference_EN.djvu) / [RU](djvu/ru/EditorSettingsReference_RU.djvu) |
 | Physics | [EN](md/en/Physics_EN.md) / [RU](md/ru/Physics_RU.md) | [EN](docx/en/Physics_EN.docx) / [RU](docx/ru/Physics_RU.docx) | [EN](pdf/en/Physics_EN.pdf) / [RU](pdf/ru/Physics_RU.pdf) | [EN](djvu/en/Physics_EN.djvu) / [RU](djvu/ru/Physics_RU.djvu) |
 | Frame Generation | [EN](md/en/FemboyEngineFrameGeneration_EN.md) / [RU](md/ru/FemboyEngineFrameGeneration_RU.md) | [EN](docx/en/FemboyEngineFrameGeneration_EN.docx) / [RU](docx/ru/FemboyEngineFrameGeneration_RU.docx) | [EN](pdf/en/FemboyEngineFrameGeneration_EN.pdf) / [RU](pdf/ru/FemboyEngineFrameGeneration_RU.pdf) | [EN](djvu/en/FemboyEngineFrameGeneration_EN.djvu) / [RU](djvu/ru/FemboyEngineFrameGeneration_RU.djvu) |
+| Optimization | [EN](md/en/FemboyEngineOptimization_EN.md) / [RU](md/ru/FemboyEngineOptimization_RU.md) | [EN](docx/en/FemboyEngineOptimization_EN.docx) / [RU](docx/ru/FemboyEngineOptimization_RU.docx) | [EN](pdf/en/FemboyEngineOptimization_EN.pdf) / [RU](pdf/ru/FemboyEngineOptimization_RU.pdf) | [EN](djvu/en/FemboyEngineOptimization_EN.djvu) / [RU](djvu/ru/FemboyEngineOptimization_RU.djvu) |
 | CodeQL unused alerts | [EN](md/en/CodeQLUnusedAlerts_EN.md) / [RU](md/ru/CodeQLUnusedAlerts_RU.md) | [EN](docx/en/CodeQLUnusedAlerts_EN.docx) / [RU](docx/ru/CodeQLUnusedAlerts_RU.docx) | [EN](pdf/en/CodeQLUnusedAlerts_EN.pdf) / [RU](pdf/ru/CodeQLUnusedAlerts_RU.pdf) | [EN](djvu/en/CodeQLUnusedAlerts_EN.djvu) / [RU](djvu/ru/CodeQLUnusedAlerts_RU.djvu) |
 
 ## Regenerate

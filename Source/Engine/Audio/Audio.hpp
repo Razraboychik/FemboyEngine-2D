@@ -223,7 +223,7 @@ private:
         std::uint32_t stamp = 0;
     };
 
-    // Runtime state for AudioBusComponent so a routing change is queued once,
+    // Runtime state for AudioBusComponent so a routing change is queued once.
     struct BusRuntime
     {
         bool applied = false;

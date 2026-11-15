@@ -1,4 +1,4 @@
-// FemboyEngine2D - MaterialGraph implementation: DAG construction, validation,
+// FemboyEngine2D - MaterialGraph implementation: DAG construction, validation.
 #include "Engine/RHI/MaterialGraph.hpp"
 #include "Engine/RHI/MaterialGraphCompiler.hpp"
 

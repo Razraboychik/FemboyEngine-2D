@@ -45,6 +45,19 @@
 | `[editor] font_scene_text` | `fontSceneText` | `font_scene_text` | float | 18.0 | от 16 до 64 px | Размер шрифта текста, нарисованного в сцене |
 | `[editor] log_max_files` | `logMaxFiles` | `log_max_files` | int | 20 | от 1 до 512 | Сколько новейших файлов журнала хранится на категорию; более старые удаляются при открытии sink или применении настройки |
 | `[editor] log_max_lines` | `logMaxLinesPerFile` | `log_max_lines` | int | 50000 | от 1000 до 2000000 | Порог строк, при котором файл журнала уплотняется на месте; сохраняются новейшие 90 процентов |
+| `[editor] undo_memory_mb` | `undoMemoryMB` | `undo_memory_mb` | int | 4 | от 1 до 256 МиБ | Арена undo для сжатых дельт; меньшее значение перераспределяет её и очищает историю |
+| `[editor] undo_command_limit` | `undoCommandLimit` | `undo_command_limit` | int | 512 | от 16 до 512 | Максимум команд в окне undo |
+| `[editor] thumbnail_cache_limit` | `thumbnailCacheLimit` | `thumbnail_cache_limit` | int | 256 | от 0 до 256 | Дескрипторы превью текстур для Content Browser; снижение лимита освобождает старые |
+| `[editor] thumbnail_cache_enabled` | `thumbnailCacheEnabled` | `thumbnail_cache_enabled` | bool | true | true или false | Главный переключатель превью; отключение освобождает уже закэшированные дескрипторы |
+| `[editor] performance_profile` | `performanceProfile` | `performance_profile` | int | 0 | от 0 до 3 | 0 Custom, 1 Lite, 2 Balanced, 3 High; панель применяет пресет к бюджетам и лимиту кадров |
+| `[editor] frame_rate_limit` | `frameRateLimit` | `frame_rate_limit` | int | 0 | от 0 до 240 | Ограничение кадров главного цикла; 0 — без ограничения. Редактор досыпает остаток кадра |
+| `[editor] pause_when_unfocused` | `pauseWhenUnfocused` | `pause_when_unfocused` | bool | false | true или false | Ограничить цикл до 5 FPS, пока окно без фокуса |
+| `[editor] stocking_theme` | `stockingTheme` | `stocking_theme` | bool | false | true или false | Чередовать два цвета строк в таблицах редактора |
+| `[editor] stocking_preset` | `stockingPreset` | `stocking_preset` | int | 0 | 0..10 | Пресет пары: 0 Custom, 1 тёмный сливовый, 2 пастельный розовый, 3 розовый, 4 чёрно-белые чулки, 5 зелёный/чёрный, 6 дейтеранопия, 7 протанопия, 8 тританопия, 9 астигматизм, 10 высокий контраст |
+| `[editor] stocking_color_a` | `stockingColorA` | `stocking_color_a` | int | 0x3A2A3F | от 0 до 0xFFFFFF | Первый цвет строки |
+| `[editor] stocking_color_b` | `stockingColorB` | `stocking_color_b` | int | 0x2F3A35 | от 0 до 0xFFFFFF | Второй цвет строки |
+| `[editor] themed_cursor` | `themedCursor` | `themed_cursor` | bool | false | true или false | Включить тематический курсор |
+| `[editor] cursor_image` | `cursorImage` | `cursor_image` | string | "" | до 255 байт | BMP с magenta-ключом |
 | `[editor] show_demo` | `showDemoWindow` | `show_demo` | bool | false | true или false | Показывает демо-окно Dear ImGui; инструмент разработки, а не релизная функция |
 | `[editor] auto_refresh_browser` | `autoRefreshBrowser` | `auto_refresh_browser` | bool | true | true или false | Обновляет Content Browser при изменении базы ассетов |
 | `[editor] watch_assets` | `watchAssets` | `watch_assets` | bool | true | true или false | Включает файловый наблюдатель ОС и путь горячей перезагрузки |
@@ -137,6 +150,13 @@
 | `log_max_files` | 20 | Хранятся новейшие файлы каждой категории; более старые удаляются при открытии sink или применении настройки |
 | `log_max_lines` | 50000 | Файл, достигший этого числа строк, уплотняется на месте: старые строки отбрасываются, новейшие 90 процентов остаются |
 
+Арена undo и кэш превью — две cache-структуры редактора, которые растут при
+авторинге. `undo_memory_mb` и `undo_command_limit` резервируют бюджет undo
+заранее; снижение любого значения перераспределяет арену и очищает историю.
+`thumbnail_cache_limit` и `thumbnail_cache_enabled` управляют дескрипторами
+превью текстур; снижение лимита освобождает их при следующем Apply, а кнопка
+"Free undo history and thumbnails" освобождает оба кэша сразу.
+
 Панель предлагает те же диапазоны, что и файловый кодек: ползунок от 1 до 512
 файлов и числовое поле от 1 000 до 2 000 000 строк. Рекомендуемые 20 файлов по
 50 000 строк — примерно 6 МБ на файл. Живой retention применяется к sink
@@ -146,7 +166,26 @@
 
 `theme` хранит имя пресета палитры. Редактор 1.0 поставляет встроенную палитру `graphite`; значение сохраняется и дублируется, чтобы будущий набор палитр мог его прочитать без изменения формата.
 
-### 3.7 Доступность редактора
+### 3.7 Чулочные списки и тематический курсор
+
+**Stocking list theme** чередует два редактируемых цвета строк во всех таблицах
+ImGui (журналы, профайлер, таблицы данных, сетевые слоты, отчёты crash/QA) и в
+node-canvas (Visual Script, material, animation, AI): фон узла и заголовок
+чередуются. Пресеты: *Dark plum / teal*, *Pastel pink / white*, *Rose / white*,
+*Black / white stockings* (тёмно-серые, не чистый чёрный), *Green / black
+stockings*, *Deuteranopia-safe*, *Protanopia-safe*, *Tritanopia-safe*,
+*Astigmatism / low halation*, *High contrast*. Изменение цвета переключает пресет
+в *Custom*; выбор пресета также задаёт подходящий цвет текста. Панель считает
+WCAG-контраст текста к обеим строкам и предупреждает ниже 4.5:1. Выключение
+возвращает обычные цвета таблиц и узлов.
+
+**Themed cursor** загружает 32-битный BMP с magenta-ключом; путь задаёт
+пользователь, движок не поставляет арт курсоров. Выключение вызывает
+`WindowManager::SetSystemCursor()` и возвращает системную стрелку. В
+`assets/cursors/PROMPTS.md` — промпты (включая negative prompts и варианты для
+доступности) и конвертация magenta-ключа.
+
+### 3.8 Доступность редактора
 
 Восемь ключей `ide_*` настраивают только окно редактора; собственный профиль игры — отдельная часть файла проекта.
 
@@ -292,6 +331,19 @@ font_script_pin_output = 18.000000
 font_scene_text = 18.000000
 log_max_files = 20
 log_max_lines = 50000
+undo_memory_mb = 4
+undo_command_limit = 512
+thumbnail_cache_limit = 256
+thumbnail_cache_enabled = true
+performance_profile = 0
+frame_rate_limit = 0
+pause_when_unfocused = false
+stocking_theme = false
+stocking_preset = 0
+stocking_color_a = 3819583
+stocking_color_b = 3095093
+themed_cursor = false
+cursor_image = (user-supplied)
 vsync = true
 show_demo = false
 auto_refresh_browser = true

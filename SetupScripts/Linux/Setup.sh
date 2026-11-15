@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # FemboyEngine 2.0 - one-click Linux dependency setup.
 #
-# Installs the pinned toolchain (CMake, Ninja, a C++23 compiler, Vulkan loader,
+# Installs the available toolchain (newest distro compiler, CMake, Ninja, Vulkan loader,
 # glslang) and materialises the exact dependency sources into third_party/.
 # CMake prefers those local checkouts, so a clean configure after this script
 # needs no network access.

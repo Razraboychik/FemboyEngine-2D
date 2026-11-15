@@ -20,7 +20,7 @@ namespace Fby
 // The public layout is fixed. Do not reorder:
 struct SpriteAnimationComponent
 {
-    // Transactional metadata handle: the .femeta row owns the atlas path,
+    // Transactional metadata handle: the .femeta row owns the atlas path.
     Assets::AssetHandle TextureAtlas{};
     // First absolute cell inside the sheet
     std::uint32_t StartFrame = 0;

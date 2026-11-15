@@ -154,8 +154,10 @@ def build_docx(markdown_path: pathlib.Path, docx_path: pathlib.Path) -> None:
     document.save(docx_path)
 
 
-def build_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path) -> int:
+def build_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, SkipPdf: bool = False) -> int:
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    if SkipPdf:
+        return 0
     if not NODE.is_file() or not LIBREOFFICE_CLI.is_file():
         print("pdf export skipped: LibreOffice Kit is not installed")
         return 1
@@ -179,10 +181,10 @@ def build_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path) -> int:
 
 
 def render_one(markdown_path: pathlib.Path, docx_path: pathlib.Path, pdf_path: pathlib.Path,
-               djvu_path: pathlib.Path) -> int:
+               djvu_path: pathlib.Path, SkipPdf: bool = False) -> int:
     print(f"docx {docx_path.relative_to(ROOT)}")
     build_docx(markdown_path, docx_path)
-    if build_pdf(docx_path, pdf_path) != 0:
+    if build_pdf(docx_path, pdf_path, SkipPdf) != 0:
         return 1
     print(f"pdf  {pdf_path.relative_to(ROOT)}")
     docconvert.BuildDjvu(pdf_path, djvu_path)
@@ -195,7 +197,13 @@ def main() -> int:
     parser.add_argument("--docx", help="DOCX destination")
     parser.add_argument("--pdf", help="PDF destination")
     parser.add_argument("--all", action="store_true", help="render every guide in Documentation/md")
+    parser.add_argument("--skip-pdf", action="store_true", help="write DOCX only")
+    parser.add_argument("--node", default=os.environ.get("FBY_NODE", "node"), help="node executable")
+    parser.add_argument("--lo-cli", default=os.environ.get("FBY_LO_CLI", ""), help="LibreOffice Kit cli.js")
     arguments = parser.parse_args()
+    global NODE, LIBREOFFICE_CLI
+    NODE = pathlib.Path(arguments.node)
+    LIBREOFFICE_CLI = pathlib.Path(arguments.lo_cli)
     if arguments.all:
         failures = 0
         for language, (source, stem) in GUIDES.items():
@@ -204,6 +212,7 @@ def main() -> int:
                 DOC_ROOT / "docx" / language / f"{stem}.docx",
                 DOC_ROOT / "pdf" / language / f"{stem}.pdf",
                 DOC_ROOT / "djvu" / language / f"{stem}.djvu",
+                arguments.skip_pdf,
             )
         return 1 if failures else 0
     if not arguments.input or not arguments.docx:

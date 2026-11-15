@@ -154,6 +154,7 @@ static_assert(std::is_trivially_copyable_v<CarrierMemberComponent>);
 static_assert(std::is_standard_layout_v<CarrierMemberComponent>);
 
 // Authored name for the narrative log and the editor inspector. A flat,
+// fixed-capacity name.
 struct NarrativeLabelComponent
 {
     char Name[32] = {};

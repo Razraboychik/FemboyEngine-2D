@@ -45,6 +45,19 @@ Types are the TOML types written by the encoder and accepted by the decoder. "De
 | `[editor] font_scene_text` | `fontSceneText` | `font_scene_text` | float | 18.0 | 16 through 64 px | Font size of text drawn in the scene view |
 | `[editor] log_max_files` | `logMaxFiles` | `log_max_files` | int | 20 | 1 through 512 | Newest journal files kept per log category; older files are deleted when the sink opens or the setting is applied |
 | `[editor] log_max_lines` | `logMaxLinesPerFile` | `log_max_lines` | int | 50000 | 1000 through 2000000 | Line count at which a journal file is compacted in place; the newest 90 percent are kept |
+| `[editor] undo_memory_mb` | `undoMemoryMB` | `undo_memory_mb` | int | 4 | 1 through 256 MiB | Undo arena reserved for compressed deltas; applying a smaller value reallocates it and clears the undo history |
+| `[editor] undo_command_limit` | `undoCommandLimit` | `undo_command_limit` | int | 512 | 16 through 512 | Maximum number of commands kept in the undo window |
+| `[editor] thumbnail_cache_limit` | `thumbnailCacheLimit` | `thumbnail_cache_limit` | int | 256 | 0 through 256 | Texture preview descriptors kept for the Content Browser; lowering the limit frees the old descriptors |
+| `[editor] thumbnail_cache_enabled` | `thumbnailCacheEnabled` | `thumbnail_cache_enabled` | bool | true | true or false | Master switch for texture previews; disabling it also frees the descriptors already cached |
+| `[editor] performance_profile` | `performanceProfile` | `performance_profile` | int | 0 | 0 through 3 | 0 Custom, 1 Lite, 2 Balanced, 3 High; the panel applies the preset to the budgets and frame limit |
+| `[editor] frame_rate_limit` | `frameRateLimit` | `frame_rate_limit` | int | 0 | 0 through 240 | Main-loop frame cap; 0 is unthrottled. The editor sleeps the remainder of each frame |
+| `[editor] pause_when_unfocused` | `pauseWhenUnfocused` | `pause_when_unfocused` | bool | false | true or false | Throttle the loop to 5 FPS while the window does not own focus |
+| `[editor] stocking_theme` | `stockingTheme` | `stocking_theme` | bool | false | true or false | Alternate two colours in editor table rows |
+| `[editor] stocking_preset` | `stockingPreset` | `stocking_preset` | int | 0 | 0 through 10 | Row pair preset: 0 Custom, 1 dark plum, 2 pastel pink, 3 rose, 4 black/white stockings, 5 green/black, 6 deuteranopia, 7 protanopia, 8 tritanopia, 9 astigmatism, 10 high contrast |
+| `[editor] stocking_color_a` | `stockingColorA` | `stocking_color_a` | int | 0x3A2A3F | 0 through 0xFFFFFF | First row colour |
+| `[editor] stocking_color_b` | `stockingColorB` | `stocking_color_b` | int | 0x2F3A35 | 0 through 0xFFFFFF | Second row colour |
+| `[editor] themed_cursor` | `themedCursor` | `themed_cursor` | bool | false | true or false | Use the themed cursor |
+| `[editor] cursor_image` | `cursorImage` | `cursor_image` | string | "" | up to 255 bytes | BMP with a magenta key |
 | `[editor] show_demo` | `showDemoWindow` | `show_demo` | bool | false | true or false | Shows the Dear ImGui demo window; a development aid, not a shipping feature |
 | `[editor] auto_refresh_browser` | `autoRefreshBrowser` | `auto_refresh_browser` | bool | true | true or false | Refreshes the Content Browser when the asset database changes |
 | `[editor] watch_assets` | `watchAssets` | `watch_assets` | bool | true | true or false | Runs the OS file watcher and the hot-reload path |
@@ -137,6 +150,13 @@ These are the two keys introduced with the diagnostic viewport modes. Both are d
 | `log_max_files` | 20 | The newest files of each category are kept; older files are deleted when the sink opens or the setting is applied |
 | `log_max_lines` | 50000 | A file that reaches this many lines is compacted in place: the oldest lines are dropped and the newest 90 percent stay |
 
+The undo arena and the thumbnail cache are the two editor caches that grow while
+authoring. `undo_memory_mb` and `undo_command_limit` reserve the undo budget up
+front; lowering either value reallocates the arena and clears the undo history.
+`thumbnail_cache_limit` and `thumbnail_cache_enabled` control the texture-preview
+descriptors; lowering the limit frees the descriptors at the next Apply, and the
+"Free undo history and thumbnails" button releases both caches immediately.
+
 The panel exposes the same ranges as the file codec: a slider from 1 through 512
 files and a numeric field from 1,000 through 2,000,000 lines. The recommended
 20 files by 50,000 lines is roughly 6 MB per file. The live retention is applied
@@ -146,7 +166,27 @@ to the engine sink on commit; the project file remains the source of truth.
 
 `theme` stores the palette preset name. The 1.0 editor ships the built-in `graphite` palette; the value is persisted and mirrored so a future palette set can read it without a format change.
 
-### 3.7 Editor accessibility
+### 3.7 Stocking lists and themed cursor
+
+The **Stocking list theme** alternates two editable row colours in every ImGui
+table (logs, profiler, data tables, network slots, crash and QA reports) and in
+the node canvases (Visual Script, material, animation and AI graphs), where the
+node background and title bar alternate. The pair presets are *Dark plum /
+teal*, *Pastel pink / white*, *Rose / white*, *Black / white stockings* (dark
+greys, not pure black), *Green / black stockings*, *Deuteranopia-safe*,
+*Protanopia-safe*, *Tritanopia-safe*, *Astigmatism / low halation* and *High
+contrast*; editing a colour switches the preset to *Custom*. Selecting a preset
+also sets the matching text colour. The panel computes the WCAG contrast of the
+current text colour against both rows and warns below 4.5:1. Turning the
+checkbox off restores the normal table and node colours.
+
+The **Themed cursor** switch loads a 32-bit BMP with a magenta transparent key;
+the path is user-supplied because the engine ships no cursor art. Unchecking it
+calls `WindowManager::SetSystemCursor()` and restores the platform arrow.
+`assets/cursors/PROMPTS.md` contains model prompts (including negative prompts
+and accessibility variants) and the magenta-key conversion.
+
+### 3.8 Editor accessibility
 
 The eight `ide_*` keys configure the editor window only; the game's own profile is a separate part of the project file.
 
@@ -291,6 +331,19 @@ font_script_pin_output = 18.000000
 font_scene_text = 18.000000
 log_max_files = 20
 log_max_lines = 50000
+undo_memory_mb = 4
+undo_command_limit = 512
+thumbnail_cache_limit = 256
+thumbnail_cache_enabled = true
+performance_profile = 0
+frame_rate_limit = 0
+pause_when_unfocused = false
+stocking_theme = false
+stocking_preset = 0
+stocking_color_a = 3819583
+stocking_color_b = 3095093
+themed_cursor = false
+cursor_image = (user-supplied)
 vsync = true
 show_demo = false
 auto_refresh_browser = true

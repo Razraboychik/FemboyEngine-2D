@@ -98,6 +98,8 @@
 #include "Engine/ECS/Scene.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -1813,7 +1815,7 @@ int main(int argc, char** argv)
         }
     }
 
-    // Plugins registered directly into the graph during Load(). Build once,
+    // Plugins registered directly into the graph during Load(). Build once.
     if (!ScopedGraph.Build())
     {
         Fby::LogError("editor_app", "SystemGraph build failed (cycle or phase-crossing dependency)");
@@ -2183,6 +2185,7 @@ int main(int argc, char** argv)
 
     while (!ScopedEditor.ShouldQuit() && ScopedWindow.PumpEvents())
     {
+        const auto ScopedFrameStart = std::chrono::steady_clock::now();
         (void)ScopedPieWindowHost.PumpEvents();
         // The window close button goes through the editor so an unsaved scene
         // can ask Save/Discard/Cancel instead of disappearing silently.
@@ -3272,6 +3275,25 @@ int main(int argc, char** argv)
         {
             Fby::LogInfo("editor_app", "auto-quit after {} frames", ScopedFrameIndex);
             break;
+        }
+        // Optional idle throttle. The default is unthrottled, so CI and the
+        // automation hooks keep their current timing.
+        const Fby::Editor::EditorSettings& ScopedPerformance = ScopedEditor.EditorSettings().Values();
+        float ScopedTargetSeconds = 0.0f;
+        if (ScopedPerformance.frameRateLimit > 0)
+        {
+            ScopedTargetSeconds = 1.0f / static_cast<float>(ScopedPerformance.frameRateLimit);
+        }
+        if (ScopedPerformance.pauseWhenUnfocused && !ScopedWindow.Focused())
+        {
+            ScopedTargetSeconds = std::max(ScopedTargetSeconds, 0.2f);
+        }
+        if (ScopedTargetSeconds > 0.0f)
+        {
+            const auto ScopedDeadline =
+                ScopedFrameStart + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                       std::chrono::duration<float>(ScopedTargetSeconds));
+            std::this_thread::sleep_until(ScopedDeadline);
         }
     }
 

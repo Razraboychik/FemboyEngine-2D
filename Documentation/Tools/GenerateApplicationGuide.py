@@ -167,7 +167,7 @@ ctest --test-dir build --output-on-failure""")),
                 "GCC 14.1+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing "
                 "the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer "
                 "uses the deterministic FbyLZ codec and reports it in the cook log.",
-                "Компилятор — часть контракта: требуется C++23, эталонный тулчейн — Clang 19.1+, поддерживается GCC 14.1+. "
+                "Компилятор — часть контракта: требуется C++23; поддерживаемый минимум — Clang 19.1+ (CI закрепляет 23.1.4), также поддерживается GCC 14.1+. "
                 "Сборка определяет FBY_HAS_MDSPAN, FBY_HAS_FORMAT и FBY_HAS_JTHREAD пробой компилятора, а не по "
                 "номеру версии. Наличие LZMA SDK тоже проверяется; без него писатель .femarc использует "
                 "детерминированный кодек FbyLZ и сообщает об этом в логе кукера.",

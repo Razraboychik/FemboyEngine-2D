@@ -576,7 +576,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
     const VkCommandBuffer ScopedCommand = BeginOneShot();
     TransitionImage(ScopedCommand, ScopedArray->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     InDesc.layers, InDesc.mipLevels);
-    // One copy per (layer, mip). The buffer offset is the cooked layer-major,
+    // One copy per (layer, mip). The buffer offset is the cooked layer-major.
     std::uint64_t ScopedBufferOffset = 0;
     for (std::uint32_t ScopedLayer = 0; ScopedLayer < InDesc.layers; ++ScopedLayer)
     {
@@ -3397,7 +3397,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
         ScopedCommand.instanceCount = 1;
         ScopedCommand.firstIndex = ScopedRecord.firstIndex;
         ScopedCommand.vertexOffset = static_cast<std::int32_t>(ScopedRecord.vertexBase);
-        // gl_InstanceIndex = firstInstance + 0. This is the draw record index,
+        // gl_InstanceIndex = firstInstance + 0. This is the draw record index.
         ScopedCommand.firstInstance = ScopedSortedIndex;
     }
 
@@ -3433,7 +3433,7 @@ void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     }
     else
     {
-        // Legacy orthographic camera. Column-major: x' = 2*zoom/vw * x + tx,
+        // Legacy orthographic camera. Column-major: x' = 2*zoom/vw * x + tx.
         const float ScopedScaleX =
             InPacket.camera.viewport.X > 0.0f ? (2.0f * InPacket.camera.zoom) / InPacket.camera.viewport.X : 0.0f;
         const float ScopedScaleY =

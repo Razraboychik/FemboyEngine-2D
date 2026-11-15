@@ -50,6 +50,32 @@ struct EditorSettings
     // sink on commit; see LogRetention for the pruning and compaction rules.
     std::uint32_t logMaxFiles = kRecommendedLogRetention.MaxFiles;
     std::uint32_t logMaxLinesPerFile = kRecommendedLogRetention.MaxLinesPerFile;
+    // Memory policy for the two caches that grow while authoring. The undo
+    // arena is allocated up front; thumbnail descriptors live in VRAM until
+    // the cache is cleared. Raising the limits loads more, lowering them frees
+    // the old buffers on the next Apply.
+    std::uint32_t undoMemoryMB = 4;
+    std::uint16_t undoCommandLimit = 512;
+    std::uint16_t thumbnailCacheLimit = 256;
+    bool thumbnailCacheEnabled = true;
+    // Opt-in performance policy. 0 Custom keeps the values below untouched;
+    // 1 Lite, 2 Balanced and 3 High apply the presets from the settings panel.
+    std::uint8_t performanceProfile = 0;
+    std::uint16_t frameRateLimit = 0;
+    bool pauseWhenUnfocused = false;
+
+    // Striped-list ("stocking") appearance. Two row colours alternate; the
+    // preset only seeds them, Custom keeps the colour pickers. The feature is
+    // opt-in and the contrast warning in the settings panel is advisory.
+    bool stockingTheme = false;
+    std::uint8_t stockingPreset = 0;
+    std::uint32_t stockingColorA = 0x3A2A3F;
+    std::uint32_t stockingColorB = 0x2F3A35;
+
+    // Optional themed cursor. The path is a 32-bit BMP with a magenta key; it
+    // may be relative to the process working directory.
+    bool themedCursor = false;
+    char cursorImage[256] = {};
     bool vsync = true;
     bool showDemoWindow = false;
     bool autoRefreshBrowser = true;

@@ -33,11 +33,12 @@ ctest --preset dev-clang
 - `release-clang` — RelWithDebInfo;
 - `dev-clangcl` — clang-cl;
 - `audit-clang` — существующий `build-audit`;
+- `msvc-dev` — Debug, MSVC `cl.exe`, из Developer Prompt;
 - `windows-release` — clang-cl, Vulkan, редактор и тесты;
 - `linux-release` — clang++, Vulkan, редактор и тесты;
 - `macos-release` — clang++, Metal, редактор и тесты.
 
-Проверены на этой машине:
+Проверочные команды:
 
 ```text
 cmake --preset dev-clang
@@ -50,6 +51,75 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 
 Оба `fby_frame_composer_test` проходят.
 
+**Build & Pack Game** готовит и упаковывает проект, а с включённым
+переключателем "Stage runnable game" копирует sandbox/server, runtime-DLL и
+приготовленный пак в `<release>/<project>-game/`. Это и есть one-click-экспорт:
+папка запускается без редактора и без build-дерева. Vendor-рантаймы апскейлеров
+по умолчанию не копируются; CLI упаковки выбирает их по фичам.
+
+New Project предлагает шаблоны **Empty / 2D Platformer / Top-Down / UI App**:
+валидная `scenes/main.toml` только из отражённых компонентов, README и
+сгенерированный `CMakeLists.txt` с CMake 3.22. Существующие файлы не
+перезаписываются. Дистрибуция: `fby_fempak --exclude`,
+`PackageDesktop.py --game --features ... --assets ...` и `--max-size-mb`.
+
+Visual Script компилирует граф в байткод, нативизирует его в библиотеку и
+пишет манифест `<module>.fbyaot`. **Plugin Manager** подключает библиотеку к
+проекту (только внутри корня проекта), загружает, **Reload/Unload** без
+перезапуска редактора. Раздел **Compatibility** показывает ABI хоста и число
+компонентов, проверяет layout-hash при загрузке, а **Write plugin report**
+пишет `Saved/Plugins/plugin-report.md`.
+
+**Accessibility QA** проверяет опубликованное семантическое дерево и профиль
+проекта: узлы, интерактивные роли без имени, неизвестные роли, вырожденные
+границы и устаревший focus id, а также Blind mode без нарратора, Deaf mode без
+субтитров, выключенный flash guard и пустой язык озвучки. **Write QA report**
+пишет Markdown-отчёт в `Saved/Accessibility/qa-<stamp>.md`.
+
+В **Network Diagnostics** есть клиент лобби: укажите host/port и 32-байтовый
+Ed25519-ключ (64 hex), затем создайте комнату, войдите по id или начните матч.
+Панель показывает ready/room/player/started/error и подписанный ticket; игра
+вызывает `NetLobbyClient::ApplyToSessionConfig()` до создания `NetSession`, а
+ниже видны rollback-диагностики матча. Лобби использует тот же UDP-транспорт,
+что и игра.
+
+Панель **SDF Lighting** создаёт и редактирует единственный `SdfSunComponent`
+(направление, softness, ambient, радиус/сила окклюзии, шаги) и добавляет
+box/circle `Light2DOccluderComponent` в центре камеры. Рендер собирает не более
+`Rhi::kMaxSdfGpuOccluders` динамических окклюдеров за кадр; панель показывает
+бюджет и предупреждает о превышении. Компоненты сохраняются вместе со сценой.
+
+Профайлер (**F7**) показывает график времени кадра и строки по категориям,
+**Write trace** сохраняет `Profiler/trace.json`. **Crash Diagnostics** показывает,
+установлен ли обработчик, текущую сессию отчёта и последние сессии в
+`Saved/Crashes/`; **Write report now** пишет тот же текстовый отчёт и minidump,
+что и необработанное падение, с именем и корнем проекта — тестировщик может
+приложить файл без воспроизведения краша.
+
+Particle FX панель настраивает `ParticleEffectSettings` и сохраняет текущий вид
+в `.fbyparticle`: **Preset id** и **Display name**, затем **Save preset** пишет
+таблицу `[[presets]]` по указанному пути. **Load pack** читает её тем же
+валидатором, что и рантайм, поэтому авторский пресет не может содержать
+значения, которые игра отклонит.
+
+Выбранный prefab-инстанс показывает в Inspector секцию **Prefab overrides**:
+для каждой сущности prefab-а — переключатели position/scale/rotation/color.
+В сцену пишутся только включённые поля (маски в `PrefabInstanceComponent`),
+дочерние сущности пересобираются из prefab-а, а не копируются; **Clear all
+overrides** сбрасывает маски. Сам prefab-ассет не меняется.
+
+В Content Browser у выбранного ассета редактируются import settings (формат
+текстуры, максимальный размер, sRGB, мипы; для шрифтов — стиль, размер,
+oversample, SDF). **Apply and reimport** пишет их в `.femeta` и ставит обычный
+фоновый кукинг; старая текстура остаётся, пока воркер не загрузит новый слой,
+поэтому редактор не блокируется. Счётчики очереди/кукинга/коммитов показывают
+зависший hot reload.
+
+Профили производительности Lite/Balanced/High ограничивают арену undo, кэш
+превью и частоту кадров; Custom сохраняет отдельные значения. Лимит кадров и
+throttle без фокуса — два переключателя, которые меняют задержку на процессор и
+GPU без изменения проекта.
+
 Матрица desktop использует `windows-release`, `linux-release` и `macos-release`.
 Каждый пресет собирает редактор, sandbox, инструменты и упаковщик игры. Редактор
 создаёт `bin/fby_editor`; Build & Pack Game вызывает `bin/tools/fby_fempak` на
@@ -59,10 +129,11 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 ## Выбор компилятора
 
 0.5.0 поддерживает Clang, AppleClang, GCC и MSVC. clang-cl — эталонный
-тулчейн и release gate; CI также прогоняет clang, GCC и AppleClang. MSVC собирает
-то же дерево и имеет отдельную Windows CI-джобу; clang-cl остаётся release gate. Любой компилятор —
-поддерживаемая альтернатива, но никогда не обязанность. Минимальные версии — это
-проверенные релизы текущей линии, а не старые compatibility-цели.
+Windows-тулчейн и release gate; CI также прогоняет clang, GCC, AppleClang и
+MSVC. Любой компилятор — поддерживаемая альтернатива, но никогда не обязанность.
+Минимальные версии — самый старый поддерживаемый выпуск, а не верхняя граница;
+hosted CI закрепляет LLVM 23.1.4 на Windows, LLVM 23.1.x на Linux, GCC 16.2 и
+текущий Visual Studio 2022 MSVC.
 
 | Компилятор | Платформа | Минимум | Для чего |
 |---|---|---|---|
@@ -70,11 +141,12 @@ cmake --build --preset dev-clangcl --target fby_frame_composer_test
 | MSVC (`cl.exe`) | Windows | 19.40 | поддерживаемая альтернатива с отдельной Windows CI-джобой |
 | clang++ | Linux/macOS/Windows | 19.1 | кросс-платформенный паритет, основной Unix-билд |
 | GCC | Linux/MinGW | 14.1 | второй компилятор и проверка переносимости |
-| AppleClang | macOS | 21.0 (Xcode 26.4) | нативная macOS/Metal-сборка |
+| AppleClang | macOS | 16.0 (Xcode 16) | нативная macOS/Metal-сборка |
 
 - **Windows:** clang-cl — эталонная сборка. Он использует Windows SDK и
-  стандартную библиотеку MSVC, работает с отладчиком Visual Studio и PDB. MSVC
-
+  стандартную библиотеку MSVC, работает с отладчиком Visual Studio и PDB.
+  MSVC (`cl.exe`) — поддерживаемая альтернатива для нативного Visual Studio-
+  тулчейна.
 - **Linux:** clang++ — эталон; GCC 14.1 — второе мнение.
 - **macOS:** AppleClang 16+ с Metal-бэкендом.
 - **Один компилятор везде:** Clang. Только он покрывает Windows (clang-cl или
@@ -102,9 +174,11 @@ C++26 и те библиотечные возможности C++26, котор�
 Публичный API не использует синтаксис C++26, поэтому оба режима дают один и тот
 же движок, а сборка на C++23 не является урезанной.
 
-Сейчас подключено одно ускорение: `Fby::Simd` для сканирования пика шин аудио. `Fby::FunctionRef` — парная невыделяющая обёртка для колбэков (аналог `std::function_ref` в C++23).
-Сборка проверяет `std::simd`, но ни libc++ 19, ни libstdc++ 16 пока не поставляют
-`<simd>`, поэтому в C++23 используется SSE2/NEON-редукция со скалярным хвостом.
+Сейчас подключено одно ускорение: `Fby::Simd` для сканирования пика шин аудио.
+`Fby::FunctionRef` — парная невыделяющая обёртка для колбэков, аналог
+`std::function_ref` в C++23. Сборка проверяет `std::simd`, но ни libc++ 19, ни
+libstdc++ 16 пока не поставляют `<simd>`, поэтому в C++23 используется
+SSE2/NEON-редукция со скалярным хвостом.
 Замер на буфере 1 МиБ при `-O2`/`-O3` на x86-64:
 
 | Кернел | Скалярный цикл | `Fby::Simd` | Результат |
@@ -118,7 +192,7 @@ C++26 и те библиотечные возможности C++26, котор�
 Новые библиотечные ускорения C++26 идут через те же пробы и обёртки `Fby::`;
 языковые возможности C++26 сознательно вне области.
 
-Конфигурация MSVC. Тулчейн Microsoft доступен, но никогда не
+Конфигурация MSVC. У тулчейна Microsoft есть отдельная CI-джоба, но он никогда не
 является эталонным гейтом. Из Developer Prompt `cmake --preset msvc-dev`
 использует ту же конфигурацию:
 

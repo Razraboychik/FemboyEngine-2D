@@ -703,21 +703,96 @@ void ContentBrowserPanel::DrawDetails(Ecs::Registry& InRegistry, const Scene::Co
                 ImGui::Text("GUID    0x%016llX", static_cast<unsigned long long>(ScopedMeta->guid));
                 ImGui::Text("content generation %u", ScopedMeta->contentGeneration);
                 ImGui::Text("cooked  %s", ScopedMeta->cookedPath[0] != '\0' ? ScopedMeta->cookedPath : "(none)");
-                ImGui::Text(
-                    "import  %s  max %u  %s  mips %s",
-                    Assets::TextureFormatName(static_cast<Assets::TextureFormat>(ScopedMeta->import.textureFormat)),
-                    ScopedMeta->import.maxSize, ScopedMeta->import.srgb ? "sRGB" : "linear",
-                    ScopedMeta->import.generateMips ? "on" : "off");
-                if (ScopedMeta->kind == AssetKind::Font)
+                Assets::AssetImportSettings ScopedImport = ScopedMeta->import;
+                ImGui::SeparatorText("Import settings");
+                if (ScopedMeta->kind == AssetKind::Texture)
                 {
-                    ImGui::Text("font    style %u  size %u  oversample %u  SDF %s",
-                                ScopedMeta->import.fontStyle, ScopedMeta->import.fontPixels,
-                                ScopedMeta->import.fontOversample, ScopedMeta->import.fontSdf ? "on" : "off");
+                    const char* ScopedFormats[] = {"RGBA8", "BC7 linear", "BC7 sRGB", "ASTC 4x4 linear",
+                                                   "ASTC 4x4 sRGB", "ASTC 6x6 linear", "ASTC 6x6 sRGB"};
+                    int ScopedFormat = static_cast<int>(std::min<std::uint32_t>(ScopedImport.textureFormat, 6));
+                    if (ImGui::Combo("Format", &ScopedFormat, ScopedFormats, 7))
+                    {
+                        ScopedImport.textureFormat = static_cast<std::uint32_t>(ScopedFormat);
+                    }
+                    int ScopedMaxSize = static_cast<int>(ScopedImport.maxSize);
+                    if (ImGui::SliderInt("Max size", &ScopedMaxSize, 64, 8192))
+                    {
+                        ScopedImport.maxSize = static_cast<std::uint32_t>(std::clamp(ScopedMaxSize, 64, 8192));
+                    }
+                    ImGui::Checkbox("sRGB", &ScopedImport.srgb);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("Generate mips", &ScopedImport.generateMips);
+                }
+                else if (ScopedMeta->kind == AssetKind::Font)
+                {
+                    int ScopedStyle = static_cast<int>(ScopedImport.fontStyle);
+                    int ScopedPixels = static_cast<int>(ScopedImport.fontPixels);
+                    int ScopedOversample = static_cast<int>(ScopedImport.fontOversample);
+                    if (ImGui::InputInt("Style slot", &ScopedStyle))
+                    {
+                        ScopedImport.fontStyle = static_cast<std::uint32_t>(std::max(ScopedStyle, 0));
+                    }
+                    if (ImGui::InputInt("Pixel size", &ScopedPixels))
+                    {
+                        ScopedImport.fontPixels = static_cast<std::uint32_t>(std::clamp(ScopedPixels, 8, 256));
+                    }
+                    if (ImGui::InputInt("Oversample", &ScopedOversample))
+                    {
+                        ScopedImport.fontOversample = static_cast<std::uint32_t>(std::clamp(ScopedOversample, 1, 8));
+                    }
+                    ImGui::Checkbox("SDF", &ScopedImport.fontSdf);
+                }
+                else
+                {
+                    ImGui::TextDisabled("Import settings are fixed for this asset kind.");
+                }
+                if (MImporter != nullptr && ScopedMeta->kind != AssetKind::AudioClip &&
+                    ScopedMeta->kind != AssetKind::Video && ImGui::Button("Apply and reimport"))
+                {
+                    std::string ScopedError;
+                    if (MImporter->UpdateImportSettings(ScopedEntry->path, ScopedImport, &ScopedError))
+                    {
+                        if (InStatus != nullptr)
+                        {
+                            *InStatus = std::format("reimported {}", ScopedEntry->path);
+                        }
+                        RequestRefresh();
+                    }
+                    else if (InStatus != nullptr)
+                    {
+                        *InStatus = std::format("reimport failed: {}", ScopedError);
+                    }
                 }
             }
         }
     }
 
+    if (MImporter != nullptr)
+    {
+        const AssetImportService::Stats ScopedStats = MImporter->GetStats();
+        ImGui::TextDisabled("import queue %u  cooking %u  committed %u  failed %u  layer uploads %u",
+                            ScopedStats.queued.load(std::memory_order_relaxed),
+                            ScopedStats.cooked.load(std::memory_order_relaxed),
+                            ScopedStats.committed.load(std::memory_order_relaxed),
+                            ScopedStats.failed.load(std::memory_order_relaxed),
+                            ScopedStats.textureLayersUpdated.load(std::memory_order_relaxed));
+        if (MDatabase != nullptr && ImGui::Button("Reimport now"))
+        {
+            if (const Assets::AssetHandle ScopedHandle = MDatabase->FindHandleBySourcePath(ScopedEntry->path);
+                ScopedHandle.IsValid())
+            {
+                std::string ScopedError;
+                if (MImporter->ScheduleCook(ScopedEntry->path, ScopedHandle, &ScopedError) && InStatus != nullptr)
+                {
+                    *InStatus = std::format("reimport queued for {}", ScopedEntry->path);
+                }
+                else if (!ScopedError.empty() && InStatus != nullptr)
+                {
+                    *InStatus = std::format("reimport failed: {}", ScopedError);
+                }
+            }
+        }
+    }
     ImGui::Text("source size %u bytes", ScopedEntry->size);
 
     if (ScopedEntry->kind == AssetKind::Texture || ScopedEntry->kind == AssetKind::Scene)

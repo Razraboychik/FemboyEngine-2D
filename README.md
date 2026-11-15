@@ -6,7 +6,7 @@
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
 [![C++23](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
-[![CMake 3.22+ (presets need 3.25)](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
+[![CMake 3.22+](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
@@ -257,14 +257,17 @@ alternatives, never an obligation.
 On Windows, run from a shell that provides the Windows SDK headers and
 libraries. The setup scripts install clang-cl / clang++ as the reference
 toolchain and GCC 14.1 (MinGW-w64 UCRT) as the second opinion. On Windows,
-`SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 19.1** MSI
-and verifies the `clang-cl` version.
+`SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI
+(the reference pin; any 19.1+ is accepted) and verifies the `clang-cl` version.
 
-The default language mode is C++23; `-DFBY_CXX_STANDARD=26` enables the experimental C++26 library accelerations behind feature probes.
+The default language mode is C++23.
+`-DFBY_CXX_STANDARD=26` enables the experimental C++26 library accelerations
+behind feature probes.
 
-The validated build uses **clang-cl 19.1 on Windows and clang++ elsewhere**;
-that is what CI and the release gate run. **MSVC 19.40+**, **GCC 14.1** and
-**AppleClang 16+** are supported alternatives; the compiler-selection matrix is in
+The reference CI pins **LLVM 23.1.4** on Windows and **LLVM 23.1.x** on Linux;
+19.1 is the supported floor. That toolchain is what the release gate runs.
+**MSVC 19.40+**, **GCC 14.1** and **AppleClang 16+** are supported alternatives;
+the compiler-selection matrix is in
 [build-workflow.md](Documentation/design/build-workflow.md).
 
 ```bat
@@ -562,7 +565,7 @@ The build uses Vulkan-Headers **1.4.366**. The RHI requests the highest Vulkan
 version the loader offers, capped at 1.4, and enables 1.2/1.3 features only when
 the device exposes them; **Vulkan 1.4 is the minimum supported driver**. A
 machine at or above the recommended column runs the editor and the full CTest
-suite without hardware-specific workarounds. The 0.4 alpha smoke run on an
+suite without hardware-specific workarounds. The first alpha smoke run on an
 RTX 4060 Laptop (Vulkan 1.4.341) executed the mesh/SDF path at 2560x1600 with
 three frames in flight. Vulkan is used on Windows/Linux; Metal is used on macOS;
 the null RHI keeps headless CI machines usable.

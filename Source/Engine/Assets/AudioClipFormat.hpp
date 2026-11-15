@@ -127,7 +127,7 @@ struct CookedAudioView
     std::span<const std::byte> whole;
 };
 
-// Validates a .fpcm blob: magic, version, format, channel/sample-rate range,
+// Validates a .fpcm blob: magic, version, format, channel/sample-rate range.
 [[nodiscard]] std::optional<CookedAudioView> ParseCookedAudio(std::span<const std::byte> InBytes,
                                                               std::string* InError = nullptr);
 

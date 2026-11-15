@@ -141,7 +141,7 @@ void ParsePrimaryLanguage(const char* InTag, char* OutCode, std::size_t InBytes)
     return ScopedCategory;
 }
 
-// A token's Language attribute is a hexadecimal LCID string ("409", "419",
+// A token's Language attribute is a hexadecimal LCID string ("409", "419".
 [[nodiscard]] bool ReadTokenLanguage(ISpObjectToken* InToken, LCID* OutLcid) noexcept
 {
     if (InToken == nullptr || OutLcid == nullptr)

@@ -178,6 +178,14 @@ public:
     {
         return MPlugins;
     }
+
+    // Host-side component contract. The editor's compatibility report compares
+    // the loaded plugin types against this table; the runtime uses it for the
+    // same layout-hash validation during Load().
+    [[nodiscard]] ComponentRegistry& Components() noexcept
+    {
+        return MComponents;
+    }
     // The host table handed to plugins.
     [[nodiscard]] const FbyHostApi& Api() const noexcept
     {

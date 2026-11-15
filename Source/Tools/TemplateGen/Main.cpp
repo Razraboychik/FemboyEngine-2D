@@ -189,7 +189,7 @@ int main()
 }
 )GAME";
 
-constexpr std::string_view kCmakeTemplate = R"CMAKE(cmake_minimum_required(VERSION 3.28)
+constexpr std::string_view kCmakeTemplate = R"CMAKE(cmake_minimum_required(VERSION 3.22)
 project(@NAME@ VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 26)
@@ -448,7 +448,7 @@ int main(int InArgumentCount, char** InArguments)
     }
     std::filesystem::create_directories(ScopedProjectRoot / "assets" / "scenes", ScopedCode);
     std::filesystem::create_directories(ScopedProjectRoot / "configs", ScopedCode);
-    // Every generated artifact stays below the project root: build outputs,
+    // Every generated artifact stays below the project root: build outputs.
     std::filesystem::create_directories(ScopedProjectRoot / "build" / "release", ScopedCode);
     std::filesystem::create_directories(ScopedProjectRoot / "archives", ScopedCode);
     for (const char* ScopedStore : {"steam", "epic", "gog"})

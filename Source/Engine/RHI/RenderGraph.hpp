@@ -54,7 +54,7 @@ enum class RenderResourceKind : std::uint8_t
 // fails the static_assert in the Make* helpers instead of being truncated.
 inline constexpr std::uint32_t kMaxRenderConstantsBytes = 768;
 
-// One recorded unit of GPU work. The RHI backend turns this into a pipeline bind,
+// One recorded unit of GPU work. The RHI backend turns this into a pipeline bind.
 struct RenderCommandRecord
 {
     const char* pipelineName = nullptr;

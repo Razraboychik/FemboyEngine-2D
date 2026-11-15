@@ -182,6 +182,46 @@ bool WindowManager::Create(const WindowDesc& InDesc)
     return true;
 }
 
+bool WindowManager::SetCursorImage(std::string_view InPath, int InHotspotX, int InHotspotY) noexcept
+{
+    if (MWindow == nullptr || InPath.empty())
+    {
+        return false;
+    }
+    const std::string ScopedPath(InPath);
+    SDL_Surface* ScopedSurface = SDL_LoadBMP(ScopedPath.c_str());
+    if (ScopedSurface == nullptr)
+    {
+        return false;
+    }
+    // The generator paints the background magenta; every other pixel is kept.
+    (void)SDL_SetSurfaceColorKey(ScopedSurface, true, SDL_MapRGB(SDL_GetPixelFormatDetails(ScopedSurface->format),
+                                                              SDL_GetSurfacePalette(ScopedSurface), 255, 0, 255));
+    SDL_Cursor* ScopedCursor = SDL_CreateColorCursor(ScopedSurface, InHotspotX, InHotspotY);
+    SDL_DestroySurface(ScopedSurface);
+    if (ScopedCursor == nullptr)
+    {
+        return false;
+    }
+    if (MCursor != nullptr)
+    {
+        SDL_DestroyCursor(static_cast<SDL_Cursor*>(MCursor));
+    }
+    MCursor = ScopedCursor;
+    SDL_SetCursor(ScopedCursor);
+    return true;
+}
+
+void WindowManager::SetSystemCursor() noexcept
+{
+    if (MCursor != nullptr)
+    {
+        SDL_DestroyCursor(static_cast<SDL_Cursor*>(MCursor));
+        MCursor = nullptr;
+    }
+    SDL_SetCursor(SDL_GetDefaultCursor());
+}
+
 void WindowManager::Destroy()
 {
     for (std::size_t ScopedSlot = 0; ScopedSlot < MGamepads.size(); ++ScopedSlot)
@@ -195,6 +235,11 @@ void WindowManager::Destroy()
         }
     }
     MInput.gamepadCount = 0;
+    if (MCursor != nullptr)
+    {
+        SDL_DestroyCursor(static_cast<SDL_Cursor*>(MCursor));
+        MCursor = nullptr;
+    }
     if (MWindow != nullptr)
     {
         SDL_DestroyWindow(static_cast<SDL_Window*>(MWindow));
@@ -550,6 +595,15 @@ float WindowManager::PixelDensity() const noexcept
 float WindowManager::ContentScale() const noexcept
 {
     return std::max(1.0f, DisplayScale() / PixelDensity());
+}
+
+bool WindowManager::Focused() const noexcept
+{
+    if (MWindow == nullptr)
+    {
+        return false;
+    }
+    return (SDL_GetWindowFlags(static_cast<SDL_Window*>(MWindow)) & SDL_WINDOW_INPUT_FOCUS) != 0;
 }
 
 void* WindowManager::NativeWindow() const noexcept

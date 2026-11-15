@@ -1,6 +1,6 @@
 # Performance baseline
 
-This page records the first 0.4 alpha measurements. They are not marketing
+This page records the first alpha measurements. They are not marketing
 numbers: the exact hardware is listed and the probes are reproducible from the
 test tree.
 
@@ -81,7 +81,7 @@ build/bin/tests/fby_mesh_indirect_smoke_test.exe
 Record the machine and compiler with every run. A change that makes FCS slower
 than the EnTT baseline on the 100k iteration case blocks the FCS migration.
 
-## Remaining systems profile (0.4 alpha)
+## Remaining systems profile (alpha baseline)
 
 These probes are CPU-only and independent of the composer:
 

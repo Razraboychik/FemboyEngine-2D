@@ -1,4 +1,4 @@
-// FemboyEngine2D - Linux AT-SPI2 provider (best-effort, verified by Linux CI).
+// FemboyEngine2D - Linux AT-SPI2 provider (best-effort).
 //
 // The bridge speaks the AT-SPI2 D-Bus protocol directly through libdbus:
 //   * connects to the accessibility bus announced by org.a11y.Bus;

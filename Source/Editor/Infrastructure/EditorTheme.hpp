@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 
@@ -118,7 +119,7 @@ struct EditorPalette
     return ImVec4(ScopedChannel(16), ScopedChannel(8), ScopedChannel(0), InAlpha);
 }
 
-// Small helper for status text: accent when a live animation is running,
+// Small helper for status text: accent when a live animation is running.
 [[nodiscard]] inline ImVec4 StatusColor(bool InActive) noexcept
 {
     return HexColor(InActive ? kThemeAccent : kThemeTextDisabled);
@@ -143,5 +144,14 @@ struct EditorPalette
 // contrast to ImGui. The theme controls panel tints; text and symbols are
 // authored separately, so a dark RGB theme does not force a text colour.
 void ApplyEditorTheme(const EditorSettings& InSettings) noexcept;
+
+// Applies or clears the alternating TableRowBg/TableRowBgAlt colours. Called by
+// ApplyEditorTheme; exposed so a panel can preview the pair without a full theme.
+void ApplyStockingRows(const EditorSettings& InSettings) noexcept;
+
+// Current striped-row state. Node canvases use this to alternate node headers
+// and backgrounds; panels that draw their own list rows use the colour helper.
+[[nodiscard]] bool StockingRowsActive() noexcept;
+[[nodiscard]] ImU32 StockingRowColorU32(std::size_t InIndex) noexcept;
 
 }

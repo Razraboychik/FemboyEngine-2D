@@ -29,6 +29,7 @@ namespace Fby::Editor
 
 class CommandStack;
 class ProjectConfigStore;
+class TextureThumbnailCache;
 
 class ProjectSettingsPanel
 {
@@ -94,6 +95,7 @@ public:
     EditorSettingsPanel() = default;
 
     void Initialize(CommandStack& InCommands, ProjectConfigStore& InStore, std::uint16_t InCodec) noexcept;
+    void SetThumbnails(TextureThumbnailCache* InCache) noexcept;
     void Draw(Ecs::SystemContext& InContext, bool* InOpen);
     void Apply(Ecs::SystemContext& InContext);
     void SyncFromHistory(Ecs::SystemContext& InContext);
@@ -117,6 +119,7 @@ private:
 
     CommandStack* MCommands = nullptr;
     ProjectConfigStore* MStore = nullptr;
+    TextureThumbnailCache* MThumbnails = nullptr;
     std::uint16_t MCodec = 0xFFFFu;
     InteractionTransaction MTransaction{};
     EditorSettings MApplied{};

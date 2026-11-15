@@ -75,12 +75,34 @@ bool CommandStack::Initialize(const Config& InConfig)
     MPending.fill(PendingEdit{});
     MPendingSpawns.fill(PendingSpawn{});
     MCodecCount = 0;
+    MMaxCommands = std::min<std::uint32_t>(std::max(InConfig.maxCommands, 1u), kMaxUndoCommands);
     MCommandCount = 0;
     MCursor = 0;
     MArenaUsed = 0;
     MPendingCount = 0;
     MPendingSpawnCount = 0;
     MTransactionOpen = false;
+    MStats = {};
+    MStats.bytesCapacity = static_cast<std::uint32_t>(MPayloadCapacity);
+    return true;
+}
+
+bool CommandStack::SetLimits(std::size_t InPayloadBytes, std::uint32_t InMaxCommands) noexcept
+{
+    const std::size_t ScopedCapacity = std::max(InPayloadBytes, static_cast<std::size_t>(64u << 10));
+    std::byte* ScopedPayload = new (std::nothrow) std::byte[ScopedCapacity];
+    if (ScopedPayload == nullptr)
+    {
+        return false;
+    }
+    delete[] MPayload;
+    MPayload = ScopedPayload;
+    MPayloadCapacity = ScopedCapacity;
+    MMaxCommands = std::min<std::uint32_t>(std::max(InMaxCommands, 1u), kMaxUndoCommands);
+    MCommandCount = 0;
+    MCursor = 0;
+    MArenaUsed = 0;
+    MTransactionStart = 0;
     MStats = {};
     MStats.bytesCapacity = static_cast<std::uint32_t>(MPayloadCapacity);
     return true;
@@ -578,7 +600,7 @@ CommandStack::Result CommandStack::PushCommand(const Command& InCommand, std::sp
 {
     // A new command discards the redo tail.
     MCommandCount = MCursor;
-    if (MCommandCount >= MCommands.size())
+    if (MCommandCount >= MMaxCommands || MCommandCount >= MCommands.size())
     {
         return Result::StackFull;
     }
@@ -793,7 +815,7 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
             return ScopedResult;
         }
     }
-    // PushCommand truncated the redo tail; payloads were already copied in place,
+    // PushCommand truncated the redo tail; payloads were already copied in place.
     MArenaUsed = ScopedCompact;
     MPendingCount = 0;
     MPendingSpawnCount = 0;

@@ -9,6 +9,14 @@ will build the engine; there is no cross-OS launcher.
 | Linux | `Linux/` | `Linux/Setup.sh` |
 | macOS | `macOS/` | `macOS/Setup.command` |
 
+## Toolchain and SDK policy
+
+Compilers, the Vulkan SDK and the archiver are installed from their latest
+stable channel when missing (LLVM's latest GitHub release, the distro/Homebrew
+package, winget). The third-party **source** archives stay pinned in
+`dependencies.lock`; bumping SDL/Vulkan-Headers/glslang is a lock update, not a
+setup side effect.
+
 ## Compilers installed or checked
 
 | Host | Supported frontends |
@@ -40,9 +48,10 @@ all-in-one macOS setup. Vendor SDK download is no longer a separate script: use
 
 - C++ setup installs the pinned toolchain (or checks it), downloads the pinned
   third-party sources into `third_party/`, and writes
-  `third_party/dependencies.lock`. On Windows it installs/checks clang-cl,
-  clang++, MSVC Build Tools and MinGW-w64 GCC; on Linux it installs/checks
-  clang++ and GCC; on macOS it installs/checks AppleClang, Homebrew LLVM and GCC.
+  `third_party/dependencies.lock`. On Windows it installs LLVM (clang-cl and
+  clang++, reference pin 23.1.4) and MinGW-w64 GCC, and checks an existing MSVC
+  without downloading it; on Linux it installs/checks clang++ and GCC; on macOS
+  it installs/checks AppleClang, Homebrew LLVM and GCC.
 - The archiver setup installs 7-Zip/p7zip for `.fempak` compression.
 - Vendor SDK setup is part of the all-in-one Setup: it verifies local DLSS,
   FidelityFX and XeSS SDKs and can download them from GitHub only with an
@@ -78,6 +87,17 @@ SetupScripts\Windows\Package.ps1
 ```
 
 Pass `--skip-build` to package the existing `build-<platform>-release` tree.
+Pass `--max-size-mb <size>` to fail the package when the unpacked bundle exceeds
+the cap; the script prints the bundle total and its five largest files.
+`PackageDesktop.py --game` builds a runtime-only bundle (sandbox, server and
+runtime DLLs, no editor or tools); `--features none|fsr|dlss|xess|all` chooses
+which vendor runtimes ship, and `--assets <dir>` cooks a `game/assets.fempak`
+with `fby_fempak` into the same bundle.
+
+Shipped game paks are filtered with `fby_fempak cook --exclude <substring>` (one
+flag per pattern). The match is against both the pak path and the source path,
+which keeps editor-only samples, source art and test fixtures out of release
+archives without changing the project manifest.
 
 ## Vendor release
 

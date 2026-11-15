@@ -184,7 +184,7 @@ private:
 
     [[nodiscard]] bool CreateTexture(std::string* InError);
     void DestroyTexture() noexcept;
-    // Converts the YUV planes of the just-decoded frame into the pool buffer,
+    // Converts the YUV planes of the just-decoded frame into the pool buffer.
     void ConvertRgba(std::uint32_t InBufferIndex) noexcept;
     void BuildColorTables(bool InFullRange) noexcept;
     void ThreadMain(std::stop_token InStopToken);

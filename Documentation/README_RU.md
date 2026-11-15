@@ -65,6 +65,7 @@ C++23: ECS-хранилища фиксированной ёмкости, явн�
 |---|---|
 | Собрать движок и открыть редактор | [Начало работы](md/ru/FemboyEngineGettingStarted_RU.md) |
 | Настроить VS Code, clangd и ручную сборку | [Рабочий процесс сборки](design/build-workflow_RU.md) |
+| Оптимизировать редактор и релизную игру | [Руководство по оптимизации](md/ru/FemboyEngineOptimization_RU.md) |
 | Проверить требования к железу редактора | [Системные требования](design/system-requirements_RU.md) |
 | Собрать и выпустить игру, Steam/EOS/GOG | [Распространение игры](design/game-distribution_RU.md) |
 | Понять chunked-хранилище FCS | [FCS](design/fcs_ru.md) |

@@ -55,6 +55,7 @@ PAIRED_DOCUMENTS = (
     "EditorSettingsReference",
     "Physics",
     "FemboyEngineFrameGeneration",
+    "FemboyEngineOptimization",
     "CodeQLUnusedAlerts",
 )
 

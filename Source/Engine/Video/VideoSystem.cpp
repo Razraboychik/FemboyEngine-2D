@@ -48,7 +48,7 @@ bool VideoSystem::Initialize(Rhi::RHI* InGpu, VirtualFileSystem* InVfs, const Vp
         MBackend = LibvpxBackend();
         if (MBackend == nullptr)
         {
-            // Not fatal: a headless editor or a test injects a backend later,
+            // Not fatal: a headless editor or a test injects a backend later.
             LogWarn("video", "libvpx (vpx.dll / libvpx.so) not found; VideoSystem opens without a VP9 decoder");
         }
     }

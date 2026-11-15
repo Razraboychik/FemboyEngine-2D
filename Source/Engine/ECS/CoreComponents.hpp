@@ -12,7 +12,7 @@
 namespace Fby
 {
 
-// The transform the renderer and the game both use. Rotation is radians,
+// The transform the renderer and the game both use. Rotation is radians.
 struct Transform2D
 {
     // World units (pixels at zoom 1)

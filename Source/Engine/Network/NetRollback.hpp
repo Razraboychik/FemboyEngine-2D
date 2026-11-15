@@ -163,7 +163,7 @@ private:
     std::uint32_t MCount = 0;
 };
 
-// Stable bidirectional map. Open addressing with tombstones, fixed capacity,
+// Stable bidirectional map. Open addressing with tombstones, fixed capacity.
 class NetEntityMap
 {
 public:
@@ -508,7 +508,7 @@ private:
     std::array<FrameMeta, kMaxRollbackTicks> MFrames{};
     std::array<InputRingBuffer, kMaxNetPlayers> MInputs{};
     NetEntityMap MEntities{};
-    // Owned, not inline: RelevanceGrid.hpp includes this header for NetEntityMap,
+    // Owned, not inline: RelevanceGrid.hpp includes this header for NetEntityMap.
     std::unique_ptr<RelevanceGrid> MRelevance;
     Ecs::CommandLog::Cursor MCommandCursor{};
     DeterministicRng MRng{};

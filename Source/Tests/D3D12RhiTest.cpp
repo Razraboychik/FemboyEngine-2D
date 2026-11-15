@@ -341,13 +341,23 @@ int main()
     }
     ScopedGpu->EndFrame();
     ScopedGpu->DestroyRenderTarget(ScopedOitTarget);
-    // sRGB targets keep the same four-byte payload and must still capture.
+    // sRGB targets keep the same four-byte payload and must still capture. The
+    // target is rendered first: a readback of an untouched target depends on the
+    // driver's zero-initialisation and was flaky after the smoke tests.
     Fby::Rhi::RenderTargetDesc ScopedSrgbDesc;
     ScopedSrgbDesc.size = {8, 8};
     ScopedSrgbDesc.format = Fby::Rhi::RenderTargetFormat::Rgba8Srgb;
     const Fby::Rhi::RenderTargetHandle ScopedSrgbTarget = ScopedGpu->CreateRenderTarget(ScopedSrgbDesc);
+    if (!ScopedSrgbTarget.IsValid() || !ScopedGpu->BeginFrame() ||
+        !ScopedGpu->RenderToTarget(ScopedSrgbTarget, ScopedPacket))
+    {
+        std::fprintf(stderr, "d3d12_rhi: sRGB target render failed\n");
+        return 1;
+    }
+    ScopedGpu->EndFrame();
+    ScopedGpu->WaitIdle();
     std::array<std::byte, 8 * 8 * 4> ScopedSrgbPixels{};
-    if (!ScopedSrgbTarget.IsValid() || !ScopedGpu->CaptureRenderTarget(ScopedSrgbTarget, ScopedSrgbPixels))
+    if (!ScopedGpu->CaptureRenderTarget(ScopedSrgbTarget, ScopedSrgbPixels))
     {
         std::fprintf(stderr, "d3d12_rhi: sRGB capture failed\n");
         return 1;

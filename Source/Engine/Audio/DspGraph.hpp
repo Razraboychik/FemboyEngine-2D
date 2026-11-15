@@ -104,7 +104,7 @@ struct ReverbParams
     float wet = 0.25f;
 };
 
-// Environment parameters written by AudioZoneSystem. They are float controls,
+// Environment parameters written by AudioZoneSystem. They are float controls.
 struct BusFilterParams
 {
     // Gain applied to the reverb return only (0..4)

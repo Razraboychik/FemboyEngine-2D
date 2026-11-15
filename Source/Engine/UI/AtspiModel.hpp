@@ -2,7 +2,7 @@
 //
 // The D-Bus adapter needs exactly this data: the AT-SPI role string, the
 // interface mask and the state bit set for one semantic node. Keeping it in a
-// portable translation unit lets Windows and macOS CI verify the mapping while
+// portable translation unit keeps the mapping testable off Linux while
 // the Linux adapter stays a thin D-Bus translation layer.
 #pragma once
 

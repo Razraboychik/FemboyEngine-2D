@@ -28,12 +28,15 @@ public:
         MRenderer = InRenderer;
     }
 
-    // Drops the cache without touching ImGui: call it before ImGui shuts down.
-    void Clear() noexcept
-    {
-        MEntries = {};
-        MCount = 0;
-    }
+    // Releases the Vulkan descriptors and drops the cache. Safe to call at
+    // runtime; call it before ImGui shuts down.
+    void Clear() noexcept;
+
+    // Disabling the cache makes Get() return an invalid id and frees the
+    // descriptors still held. Lowering the limit drops the whole cache because
+    // the entries are a flat array, not LRU.
+    void SetEnabled(bool InEnabled) noexcept;
+    void SetLimit(std::uint32_t InLimit) noexcept;
 
     // Returns ImTextureID_Invalid when the backend has no layer view (Metal,
     // null RHI) or the descriptor could not be created.
@@ -58,6 +61,8 @@ private:
 
     std::array<Entry, kMaxEntries> MEntries{};
     std::uint32_t MCount = 0;
+    std::uint32_t MLimit = kMaxEntries;
+    bool MEnabled = true;
     Rhi::RHI* MRenderer = nullptr;
 };
 }

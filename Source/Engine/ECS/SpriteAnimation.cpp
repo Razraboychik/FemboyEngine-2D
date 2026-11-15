@@ -39,7 +39,7 @@ SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation,
     const std::uint32_t ScopedFrameCount = SafeFrameCount(InSpriteAnimation);
     const std::uint32_t ScopedColumns = SafeColumns(InSpriteAnimation, InGrid);
     const std::uint32_t ScopedRows = SafeRows(InGrid);
-    // 64-bit product: a corrupt scene can carry UINT32_MAX columns and rows,
+    // 64-bit product: a corrupt scene can carry UINT32_MAX columns and rows.
     const std::uint64_t ScopedTotalCells =
         static_cast<std::uint64_t>(ScopedColumns) * static_cast<std::uint64_t>(ScopedRows);
 

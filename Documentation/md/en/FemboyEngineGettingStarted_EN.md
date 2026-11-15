@@ -8,28 +8,28 @@ This document lists what to install and which files must sit next to the engine 
 |---|---|---|---|
 | Windows 10/11 x64 | yes | yes | clang-cl 19.1+ (primary), MSVC 19.40+, GCC 14.1+ |
 | Linux x64 | yes | yes | Clang 19.1+, GCC 14.1+ |
-| macOS 14+ (Apple Silicon and Intel) | yes | yes | AppleClang 16+ (Xcode 26.4+), Metal backend |
+| macOS 14+ (Apple Silicon and Intel) | yes | yes | AppleClang 16+ (Xcode 16+), Metal backend |
 
 The editor and the game runtime target the three desktop platforms above. SDL3 supplies the window, input and application lifecycle.
 
 ## Required software
 
-**MSVC 19.40+ is supported as an alternative.** On Windows the project builds with clang-cl from LLVM as the reference toolchain, or with MSVC (`cl.exe`) when a team standardizes on it. Both consume the Windows SDK and the MSVC standard library; clang-cl remains what CI and the release gate run.
+**MSVC 19.40+ is supported as an alternative.** On Windows the project builds with clang-cl from LLVM as the reference toolchain, or with MSVC (`cl.exe`) when a team standardizes on it. Both consume the Windows SDK and the MSVC standard library; clang-cl remains the release gate. The setup script installs the **latest stable LLVM**, the latest Vulkan SDK and the latest archiver when they are missing; CI pins the reference versions below for reproducibility.
 
-| Tool | Minimum | Validated | Purpose |
+| Tool | Minimum | CI reference | Purpose |
 |---|---|---|---|
 | CMake | 3.22 | 3.31.6 | configure and build |
 | Ninja | 1.11 | 1.12.1 | build generator |
-| LLVM / clang-cl | 19.1 | 19.1 | primary Windows compiler |
-| MSVC (`cl.exe`) | 19.40 | 19.40 | Visual Studio-native Windows compiler with a dedicated CI job |
-| Clang (Linux) | 19.1 | 19.1 | primary Linux compiler |
-| GCC | 14.1 | 14.1 | second compiler for portability checks |
+| LLVM / clang-cl | 19.1 | 23.1.4 | primary Windows compiler; setup installs the latest stable |
+| MSVC (`cl.exe`) | 19.40 | 19.44 | Visual Studio-native Windows compiler with a dedicated CI job |
+| Clang (Linux) | 19.1 | 23.1.x | primary Linux compiler; distro package is usually the latest available |
+| GCC | 14.1 | 16.2 | second compiler for portability checks |
 | Python | 3.11 | 3.13 | documentation and notices generation |
 | Git | 2.40 | — | clone and version control |
 | Vulkan Loader | 1.4 | 1.4 | runtime on Windows and Linux |
 | MoltenVK | 1.2 | — | Vulkan over Metal on macOS (or the Metal backend directly) |
 | 7-Zip | 21 | 25.01 | unpack the LZMA SDK (otherwise the built-in FbyLZ is used) |
-| Xcode | 26.4 | — | macOS builds (AppleClang 16) |
+| Xcode | 16.0 | 16.0 | macOS builds (AppleClang 16; Homebrew LLVM is newer) |
 
 The language standard is C++23, so an older compiler will not work even when its CMake version matches.
 
@@ -85,8 +85,8 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 
 ### Windows
 
-1. Install LLVM 19.1 (clang-cl) and add its `bin` directory to `PATH`.
-2. Install Visual Studio Build Tools with the "C++ Build Tools" workload (Windows SDK and standard library headers). The MSVC compiler itself is not used by the clang-cl build.
+1. Install the latest stable LLVM (or any 19.1+) and add its `bin` directory to `PATH`.
+2. Install Visual Studio Build Tools with the "C++ Build Tools" workload (Windows SDK and standard library headers). clang-cl uses the MSVC STL; the Microsoft compiler is only needed for the separate MSVC build.
 3. Install CMake 3.31 and Ninja 1.12 (the Build Tools copy is fine).
 4. Install the Vulkan SDK 1.4 — it provides `vulkan-1.dll` and `VULKAN_SDK`.
 5. Install 7-Zip (optional).
@@ -145,7 +145,7 @@ Recommended setup:
 - **CodeLLDB** or `cppdbg` for debugging;
 - RenderDoc for GPU debugging.
 
-CLion also works: it understands CMake natively and can launch `fby_editor` and the tests. Visual Studio can be used as an IDE, but not as an MSVC build; see below.
+CLion also works: it understands CMake natively and can launch `fby_editor` and the tests. Visual Studio can be used as an IDE and for the MSVC build; see below.
 
 ### VS Code setup
 
@@ -237,12 +237,12 @@ Use RenderDoc for GPU debugging: attach it to `fby_editor.exe` and capture a fra
 
 ## Compiler selection
 
-The 0.4 alpha line supports **Clang 19.1+** (clang-cl on Windows, clang++ on Unix), **AppleClang 16+**, **GCC 14.1+** and **MSVC 19.40+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.40+ builds the same tree in its own Windows CI job.
+The 0.5.0 line supports **Clang 19.1+** (clang-cl on Windows, clang++ on Unix), **AppleClang 16+**, **GCC 14.1+** and **MSVC 19.40+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.40+ builds the same tree in its own Windows CI job.
 
 - **Windows, primary:** clang-cl. It is Clang with the MSVC ABI, the Windows SDK and the MSVC standard library, and it works with the Visual Studio debugger and PDBs.
-- **Windows, optional:** MSVC (`cl.exe`). Choose it when the team standardizes on the Microsoft toolchain; CMake selects `/std:c++latest` and the MSVC warning set. RNNoise falls back to the spectral tier because its vendored C sources use variable-length arrays.
+- **Windows, alternative:** MSVC (`cl.exe`). Choose it when the team standardizes on the Microsoft toolchain; CMake selects `/std:c++latest` and the MSVC warning set. RNNoise falls back to the spectral tier because its vendored C sources use variable-length arrays.
 - **Linux, primary:** clang++. GCC 14.1 is the second compiler for portability checks.
-- **macOS:** AppleClang 16+ from Xcode 26.4 with the Metal backend.
+- **macOS:** AppleClang 16+ from Xcode 16+ with the Metal backend.
 - **One compiler on every platform:** Clang (clang-cl on Windows, clang++ elsewhere). It is the only toolchain that covers all three desktop platforms with one frontend.
 
 The full matrix and the per-OS presets are in [build-workflow.md](../../design/build-workflow.md).

@@ -16,7 +16,8 @@ namespace Fby::Audio
 
 // A packet that does not fit here is not a music packet.
 inline constexpr std::uint32_t kOggMaxPacketBytes = 16384;
-// Every page header is 27 bytes: capture pattern, version, flags, granule,
+// Every page header is 27 bytes: capture pattern, version, flags, granule
+// position, serial, sequence, checksum and segment count.
 inline constexpr std::uint32_t kOggPageHeaderBytes = 27;
 inline constexpr std::uint32_t kOggOpusSampleRate = 48000;
 // The mixer is stereo, so the decode path accepts mono and stereo Opus only.
@@ -53,7 +54,7 @@ struct OggPage
 // CRC over a complete page with the checksum field (bytes 22..25) treated as zero.
 [[nodiscard]] std::uint32_t OggPageCrc(std::span<const std::byte> InPage) noexcept;
 
-// Walks the page sequence. Every page is validated: capture pattern, version,
+// Walks the page sequence. Every page is validated: capture pattern, version.
 class OggPageReader
 {
 public:

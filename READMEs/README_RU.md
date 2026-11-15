@@ -6,7 +6,7 @@
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](../LICENSE)
 [![C++23](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
-[![CMake 3.22+ (presets need 3.25)](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
+[![CMake 3.22+](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
@@ -252,7 +252,7 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 ## Сборка
 
-Требования: CMake 3.22+ (presets need 3.25), Ninja и один из компиляторов: **Clang 19.1+**
+Требования: CMake 3.22+ (пресеты требуют 3.25), Ninja и один из компиляторов: **Clang 19.1+**
 (clang-cl на Windows, clang++ на Unix), **MSVC 19.40+**, **AppleClang 16+** или
 **GCC 14.1+**. clang-cl — эталонный тулчейн, остальные поддерживаются как
 альтернативы и никогда не обязательны. На Windows запускайте из оболочки,
@@ -260,12 +260,17 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 заголовки и библиотеки Windows SDK. Скрипты установки ставят clang-cl / clang++
 как эталонный тулчейн и GCC 14.1 (MinGW-w64 UCRT) как второй компилятор. На
 Windows `SetupScripts/Windows/SetupCpp.bat` скачивает официальный MSI
-**LLVM 19.1** и проверяет версию `clang-cl`.
+**LLVM 23.1.4** (эталонный пин; подходит любой 19.1+) и проверяет версию `clang-cl`.
 
-Проверенная сборка использует **clang-cl 19.1 на Windows и clang++ на других
-платформах**; именно её запускают CI и release gate. **MSVC 19.40+**,
-**GCC 14.1** и **AppleClang 16+** поддерживаются как альтернативы; матрица
-выбора компилятора — в [build-workflow_RU.md](../Documentation/design/build-workflow_RU.md).
+Эталонный CI закрепляет **LLVM 23.1.4** на Windows и **LLVM 23.1.x** на Linux;
+19.1 — поддерживаемый минимум. Именно этот тулчейн запускает release gate.
+**MSVC 19.40+**, **GCC 14.1** и **AppleClang 16+** поддерживаются как
+альтернативы; матрица выбора компилятора — в
+[build-workflow_RU.md](../Documentation/design/build-workflow_RU.md).
+
+Режим языка по умолчанию — C++23.
+`-DFBY_CXX_STANDARD=26` включает экспериментальные библиотечные ускорения C++26
+через feature-пробы.
 
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
@@ -562,6 +567,6 @@ multiplayer PIE и редактор на 1440p. Для редактора дис
 возможности 1.2/1.3 только если устройство их предоставляет; **минимальный
 поддерживаемый драйвер — Vulkan 1.4**. Машина на уровне рекомендованной колонки
 запускает редактор и полный набор CTest без аппаратных обходных путей. Smoke-прогон
-0.4 alpha на RTX 4060 Laptop (Vulkan 1.4.341) прошёл mesh/SDF-путь в 2560x1600
+Первый alpha-прогон на RTX 4060 Laptop (Vulkan 1.4.341) прошёл mesh/SDF-путь в 2560x1600
 с тремя кадрами в полёте. На Windows/Linux используется Vulkan, на macOS — Metal;
 null RHI оставляет headless CI-машины рабочими.

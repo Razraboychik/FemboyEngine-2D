@@ -11,9 +11,9 @@
 namespace Fby::Editor
 {
 
-// Owns one live ParticleEffectSystem. The panel is a tuning surface: it is not
-// an authoring asset, so it never writes project files; a developer copies the
-// values into gameplay code after finding the look.
+// Owns one live ParticleEffectSystem. The panel tunes the effect and can save
+// the current settings as a `.fbyparticle` preset pack; the gameplay code reads
+// the same id through the preset registry.
 class ParticleFxPanel
 {
 public:
@@ -42,6 +42,8 @@ private:
     bool MDirty = false;
     ParticlePresetRegistry MPresetRegistry;
     std::array<char, 512> MPresetPath{};
+    std::array<char, 64> MSaveId{};
+    std::array<char, 64> MSaveName{};
     std::string MStatus;
     int MExternalPreset = -1;
 };

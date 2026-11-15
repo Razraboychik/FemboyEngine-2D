@@ -1549,7 +1549,7 @@ bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* Out
 
 bool VulkanRHI::CreateGeometry()
 {
-    // A unit quad as two triangles. The vertex shader reads only gl_VertexIndex,
+    // A unit quad as two triangles. The vertex shader reads only gl_VertexIndex.
     constexpr std::uint16_t ScopedIndices[kQuadIndexCount] = {0, 1, 2, 3, 4, 5};
 
     if (!CreateBuffer(sizeof(ScopedIndices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
@@ -2712,7 +2712,7 @@ bool VulkanRHI::CreateAccessibilitySwapchainResources()
         ScopedWrite.pImageInfo = &ScopedImage;
         ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedWrite, 0, nullptr);
     }
-    // The flash guard now runs inside the composite fragment shader and only uses
+    // The flash guard runs inside the composite fragment shader and only uses
     // this r8 image as luminance history. R8_UNORM supports storage images, so the
     // sRGB scene image no longer needs STORAGE usage.
     {

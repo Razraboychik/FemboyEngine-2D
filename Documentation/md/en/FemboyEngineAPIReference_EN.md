@@ -3,7 +3,7 @@
 **C++23 data-oriented engine - complete public surface, contracts and a build-from-zero walkthrough**
 
 
-Version 0.5.0 (Release) · 2026-11-13 · English
+Version 0.5.0 (Release) · 2026-11-15 · English
 
 
 ---
@@ -510,8 +510,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AssetImportService` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 58 |
 | `Callbacks` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 38 |
 | `Change` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 126 |
-| `Codec` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 230 |
-| `Command` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 244 |
+| `Codec` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 234 |
+| `Command` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 248 |
 | `CommandKind` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 33 |
 | `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 30 |
 | `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 59 |
@@ -519,8 +519,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 39 |
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 90 |
 | `ContentBrowserPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 60 |
-| `CookRequest` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 141 |
-| `CookResult` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 152 |
+| `CookRequest` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 148 |
+| `CookResult` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 159 |
 | `EditorCamera` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 101 |
 | `EditorDesc` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 72 |
 | `EditorFontRole` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 22 |
@@ -528,102 +528,104 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `EditorFonts` | Infrastructure | `Source/Editor/Infrastructure/EditorTypography.hpp` | 7 |
 | `EditorFontSpec` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 38 |
 | `EditorFontStatus` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 67 |
-| `EditorPalette` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 77 |
-| `EditorSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSettings.hpp` | 20 |
-| `EditorSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 14 |
+| `EditorPalette` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 78 |
+| `EditorSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSettings.hpp` | 33 |
+| `EditorSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 15 |
 | `EditorSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 61 |
-| `EditorSymbolColors` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 61 |
-| `EditorSymbolRole` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 42 |
+| `EditorSymbolColors` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 62 |
+| `EditorSymbolRole` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 43 |
 | `EditorSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 110 |
-| `EditorThemeId` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 31 |
-| `Entry` | Infrastructure | `Source/Editor/Infrastructure/TextureThumbnails.hpp` | 52 |
-| `ExternalClientDesc` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 37 |
-| `FrameGenerationMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 139 |
-| `FrameGenerationPolicySetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 132 |
-| `HudTargetMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 148 |
+| `EditorThemeId` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 32 |
+| `Entry` | Infrastructure | `Source/Editor/Infrastructure/TextureThumbnails.hpp` | 55 |
+| `ExternalClientDesc` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 38 |
+| `FrameGenerationMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 140 |
+| `FrameGenerationPolicySetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 133 |
+| `HudTargetMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 149 |
 | `ImFont` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 10 |
 | `ImGuiIO` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 11 |
-| `Impl` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 244 |
+| `Impl` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 254 |
 | `InteractionTransaction` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 16 |
 | `LoadedSource` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 138 |
 | `MaterialGraphPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 62 |
 | `MaterialGraphRuntime` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 41 |
 | `MaterialRuntimeStats` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 25 |
-| `MotionComfortSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 171 |
+| `MotionComfortSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 172 |
 | `NetSession` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 32 |
 | `NetworkDiagnosticsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 63 |
-| `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 99 |
-| `OpaqueRenderMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 92 |
-| `PendingEdit` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 270 |
-| `PendingSpawn` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 282 |
+| `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 100 |
+| `OpaqueRenderMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 93 |
+| `PendingEdit` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 274 |
+| `PendingSpawn` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 286 |
 | `PhysicsDebugFlags` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 19 |
 | `PhysicsDebugFrame` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 47 |
 | `PhysicsDebugLine` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 32 |
 | `PhysicsDebugPoint` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 40 |
 | `PhysicsDebugVisualizer` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 58 |
-| `PiePlayerInput` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 27 |
+| `PiePlayerInput` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 28 |
 | `PlaybackIcon` | Infrastructure | `Source/Editor/Infrastructure/EditorWidgets.hpp` | 12 |
-| `PlayInEditor` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 44 |
+| `PlayInEditor` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 45 |
 | `PluginHost` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 42 |
 | `Profiler` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 27 |
 | `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 67 |
-| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 286 |
+| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 287 |
 | `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 64 |
-| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 350 |
+| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 353 |
 | `ProjectDashboard` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 65 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 68 |
-| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 308 |
+| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 309 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 21 |
-| `ProjectPluginEntry` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 163 |
-| `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 182 |
+| `ProjectPluginEntry` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 164 |
+| `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 183 |
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 22 |
 | `ProjectSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 66 |
-| `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 262 |
+| `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 266 |
 | `ReleaseCookConfig` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 70 |
-| `ReleaseCooker` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 158 |
-| `ReleaseCookProgress` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 121 |
-| `ReleaseCookResult` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 142 |
+| `ReleaseCooker` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 163 |
+| `ReleaseCookProgress` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 125 |
+| `ReleaseCookResult` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 146 |
 | `ReleaseCookStage` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 28 |
 | `ResolvedHudSettings` | Infrastructure | `Source/Editor/Infrastructure/ResolvedRenderSettings.hpp` | 35 |
 | `ResolvedRenderSettings` | Infrastructure | `Source/Editor/Infrastructure/ResolvedRenderSettings.hpp` | 14 |
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 45 |
-| `Result` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 47 |
+| `Result` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 48 |
 | `SdfCollisionSystem` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 13 |
-| `Services` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 224 |
+| `Services` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 225 |
 | `SettingDesc` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 28 |
 | `SettingKind` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 20 |
 | `SettingScope` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 11 |
 | `Slot` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 118 |
 | `Source` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 19 |
-| `SpawnComponent` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 296 |
-| `SpawnHeader` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 289 |
+| `SpawnComponent` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 300 |
+| `SpawnHeader` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 293 |
 | `SpawnTransaction` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 190 |
 | `StableSource` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 145 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 88 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 55 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 97 |
-| `TemporalUpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 155 |
+| `TemporalUpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 156 |
 | `TextureArrayAsset` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 23 |
-| `TextureBinding` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 168 |
+| `TextureBinding` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 175 |
 | `TextureThumbnailCache` | Infrastructure | `Source/Editor/Infrastructure/TextureThumbnails.hpp` | 17 |
-| `UpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 106 |
-| `UpscalePolicy` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 115 |
-| `UpscalerBackendSetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 122 |
+| `UpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 107 |
+| `UpscalePolicy` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 116 |
+| `UpscalerBackendSetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 123 |
 | `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 69 |
 | `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 17 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 20 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 15 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 18 |
 | `VirtualTextureSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 37 |
-| `VirtualTextureSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 32 |
+| `VirtualTextureSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 33 |
 | `VirtualTextureSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 22 |
 | `VisualScriptPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 70 |
 | `WindowManager` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 16 |
 
-### Editor/Panels (90)
+### Editor/Panels (109)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
+| `AccessibilityProfile` | Panels | `Source/Editor/Panels/AccessibilityQaPanel.hpp` | 12 |
+| `AccessibilityQaPanel` | Panels | `Source/Editor/Panels/AccessibilityQaPanel.hpp` | 20 |
 | `Action` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 25 |
 | `AIStateTreeCanvasPanel` | Panels | `Source/Editor/Panels/AIStateTreeCanvasPanel.hpp` | 55 |
 | `AIStateTreeCompiled` | Panels | `Source/Editor/Panels/AIStateTreeCanvasPanel.hpp` | 35 |
@@ -637,22 +639,27 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AnimationTimelinePanel` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 34 |
 | `AssetImportService` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 24 |
 | `AudioSystem` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 15 |
-| `AudioSystem` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 11 |
+| `AudioSystem` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 12 |
+| `BooksPanel` | Panels | `Source/Editor/Panels/BooksPanel.hpp` | 18 |
 | `CanvasModelOps` | Panels | `Source/Editor/Panels/NodeCanvasPanel.hpp` | 21 |
 | `CommandStack` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 25 |
 | `CommandStack` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 30 |
 | `ComponentRegistry` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 18 |
 | `Config` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 35 |
 | `ContentBrowserPanel` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 27 |
+| `CrashDiagnosticsPanel` | Panels | `Source/Editor/Panels/CrashDiagnosticsPanel.hpp` | 13 |
+| `DataTablePanel` | Panels | `Source/Editor/Panels/DataTablePanel.hpp` | 17 |
 | `DirectionalBlendSpacePanel` | Panels | `Source/Editor/Panels/DirectionalBlendSpacePanel.hpp` | 24 |
+| `DocumentsPanel` | Panels | `Source/Editor/Panels/DocumentsPanel.hpp` | 18 |
 | `DragPayload` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 60 |
 | `EditorFonts` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 20 |
 | `EditorFonts` | Panels | `Source/Editor/Panels/VisualScriptPanel.hpp` | 20 |
-| `EditorSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 91 |
+| `EditorSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 92 |
 | `EditSource` | Panels | `Source/Editor/Panels/AIStateTreeCanvasPanel.hpp` | 58 |
 | `EditSource` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 128 |
 | `Entry` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 43 |
 | `FileDialog` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 140 |
+| `Finding` | Panels | `Source/Editor/Panels/AccessibilityQaPanel.hpp` | 26 |
 | `ImNodesContext` | Panels | `Source/Editor/Panels/AIStateTreeCanvasPanel.hpp` | 13 |
 | `ImNodesContext` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 15 |
 | `LevelSettingsPanel` | Panels | `Source/Editor/Panels/LevelSettingsPanel.hpp` | 12 |
@@ -665,53 +672,65 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `LogicGraphDocument` | Panels | `Source/Editor/Panels/VisualScriptPanel.hpp` | 23 |
 | `MaterialGraphPanel` | Panels | `Source/Editor/Panels/MaterialGraphPanel.hpp` | 20 |
 | `Mode` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 84 |
-| `NetSession` | Panels | `Source/Editor/Panels/NetworkDiagnosticsPanel.hpp` | 6 |
-| `NetworkDiagnosticsPanel` | Panels | `Source/Editor/Panels/NetworkDiagnosticsPanel.hpp` | 15 |
+| `NetSession` | Panels | `Source/Editor/Panels/NetworkDiagnosticsPanel.hpp` | 13 |
+| `NetworkDiagnosticsPanel` | Panels | `Source/Editor/Panels/NetworkDiagnosticsPanel.hpp` | 22 |
 | `NodeCanvasPanel` | Panels | `Source/Editor/Panels/NodeCanvasPanel.hpp` | 54 |
-| `ParticleFxPanel` | Panels | `Source/Editor/Panels/ParticleFxPanel.hpp` | 16 |
+| `ParticleFxPanel` | Panels | `Source/Editor/Panels/ParticleFxPanel.hpp` | 17 |
 | `PIEAnimFrame` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 110 |
 | `PieClientViewport` | Panels | `Source/Editor/Panels/PieClientViewport.hpp` | 15 |
 | `PIEFrameSlot` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 302 |
 | `PlaneView` | Panels | `Source/Editor/Panels/DirectionalBlendSpacePanel.hpp` | 122 |
 | `ProjectConfigStore` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 31 |
-| `ProjectConfigStore` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 24 |
+| `ProjectConfigStore` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 25 |
 | `ProjectDashboard` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 22 |
-| `ProjectSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 33 |
+| `ProjectSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 34 |
 | `QueryKind` | Panels | `Source/Editor/Panels/LogBoyPanel.hpp` | 430 |
+| `Registry` | Panels | `Source/Editor/Panels/SdfLightingPanel.hpp` | 10 |
+| `RenderTuningPanel` | Panels | `Source/Editor/Panels/RenderTuningPanel.hpp` | 18 |
 | `SceneDiagnosticsPanel` | Panels | `Source/Editor/Panels/SceneDiagnosticsPanel.hpp` | 56 |
 | `SceneDiagnosticsSample` | Panels | `Source/Editor/Panels/SceneDiagnosticsPanel.hpp` | 15 |
 | `ScriptDebuggerPanel` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 28 |
 | `ScriptRuntime` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 16 |
 | `SdfCharacterPanel` | Panels | `Source/Editor/Panels/SdfCharacterPanel.hpp` | 9 |
+| `SdfLightingPanel` | Panels | `Source/Editor/Panels/SdfLightingPanel.hpp` | 19 |
 | `SinkUser` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 88 |
 | `SkeletonInspectorState` | Panels | `Source/Editor/Panels/SkeletonAssetPanel.hpp` | 19 |
 | `SpawnContext` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 68 |
 | `SpriteAnimationInspectorState` | Panels | `Source/Editor/Panels/SpriteAnimationPanel.hpp` | 21 |
+| `SystemContext` | Panels | `Source/Editor/Panels/BooksPanel.hpp` | 12 |
+| `SystemContext` | Panels | `Source/Editor/Panels/DataTablePanel.hpp` | 11 |
+| `SystemContext` | Panels | `Source/Editor/Panels/DocumentsPanel.hpp` | 12 |
+| `SystemContext` | Panels | `Source/Editor/Panels/RenderTuningPanel.hpp` | 12 |
 | `SystemContext` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 24 |
 | `SystemContext` | Panels | `Source/Editor/Panels/SkeletonAssetPanel.hpp` | 13 |
 | `SystemContext` | Panels | `Source/Editor/Panels/SpriteAnimationPanel.hpp` | 13 |
+| `SystemContext` | Panels | `Source/Editor/Panels/UiLayoutPanel.hpp` | 12 |
+| `SystemContext` | Panels | `Source/Editor/Panels/VideoPanel.hpp` | 11 |
 | `SystemName` | Panels | `Source/Editor/Panels/LogBoyPanel.hpp` | 189 |
-| `TextPreviewPanel` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 24 |
+| `TextPreviewPanel` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 27 |
+| `TextureThumbnailCache` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 32 |
 | `TextureThumbnailCache` | Panels | `Source/Editor/Panels/SpriteAnimationPanel.hpp` | 19 |
 | `TilemapEditorPanel` | Panels | `Source/Editor/Panels/TilemapEditorPanel.hpp` | 20 |
 | `TimelinePanelContext` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 22 |
 | `TransportGroupPanel` | Panels | `Source/Editor/Panels/TransportGroupPanel.hpp` | 14 |
+| `UiLayoutPanel` | Panels | `Source/Editor/Panels/UiLayoutPanel.hpp` | 18 |
 | `UserSettingsPanel` | Panels | `Source/Editor/Panels/UserSettingsPanel.hpp` | 16 |
+| `VideoPanel` | Panels | `Source/Editor/Panels/VideoPanel.hpp` | 17 |
 | `VirtualFileSystem` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 18 |
 | `VirtualFileSystem` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 13 |
-| `VirtualFileSystem` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 15 |
+| `VirtualFileSystem` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 18 |
 | `VirtualTexturePanel` | Panels | `Source/Editor/Panels/VirtualTexturePanel.hpp` | 18 |
 | `VirtualTextureSystem` | Panels | `Source/Editor/Panels/VirtualTexturePanel.hpp` | 10 |
 | `VisualScriptPanel` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 24 |
 | `VisualScriptPanel` | Panels | `Source/Editor/Panels/VisualScriptPanel.hpp` | 32 |
-| `VoiceDevicePanel` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 26 |
-| `VoiceEffectPolicy` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 17 |
-| `VoicePresetChoice` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 15 |
-| `VoicePresetRegistry` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 14 |
-| `VoicePresetSelection` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 16 |
-| `VoiceReactiveSfxSettings` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 18 |
-| `VoiceSession` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 12 |
-| `VoiceSystem` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 13 |
+| `VoiceDevicePanel` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 27 |
+| `VoiceEffectPolicy` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 18 |
+| `VoicePresetChoice` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 16 |
+| `VoicePresetRegistry` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 15 |
+| `VoicePresetSelection` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 17 |
+| `VoiceReactiveSfxSettings` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 19 |
+| `VoiceSession` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 13 |
+| `VoiceSystem` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 14 |
 | `WidgetCanvas` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 18 |
 | `WindowManager` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 14 |
 
@@ -727,7 +746,16 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AIPerceptionSystem` | AI | `Source/Engine/AI/AIController.hpp` | 68 |
 | `GridEntry` | AI | `Source/Engine/AI/AIController.hpp` | 83 |
 
-### Engine/Assets (64)
+### Engine/Animation (4)
+
+| Symbol | Kind | Header | Line |
+|---|---|---|---|
+| `Ease` | Animation | `Source/Engine/Animation/Tween.hpp` | 13 |
+| `Tween` | Animation | `Source/Engine/Animation/Tween.hpp` | 75 |
+| `TweenDesc` | Animation | `Source/Engine/Animation/Tween.hpp` | 60 |
+| `TweenGroup` | Animation | `Source/Engine/Animation/Tween.hpp` | 182 |
+
+### Engine/Assets (65)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -760,7 +788,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AtlasUv` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 41 |
 | `AudioClipHeader` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 87 |
 | `BlockExtent` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 103 |
-| `CleanRenderExtract` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 134 |
+| `CleanRenderExtract` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 150 |
 | `CookedAudioView` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 116 |
 | `CookedTexture` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 41 |
 | `CookedTextureView` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 203 |
@@ -782,6 +810,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `PakHeader` | Assets | `Source/Engine/Assets/PakFormat.hpp` | 16 |
 | `PcmFormat` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 21 |
 | `PinnedFile` | Assets | `Source/Engine/Assets/VFS.hpp` | 67 |
+| `ProjectTemplate` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 11 |
 | `ReloadNotice` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 94 |
 | `SpriteAtlas` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 47 |
 | `SpriteAtlasAsset` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 77 |
@@ -796,7 +825,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VirtualFileSystem` | Assets | `Source/Engine/Assets/TextureArray.hpp` | 16 |
 | `VirtualFileSystem` | Assets | `Source/Engine/Assets/VFS.hpp` | 73 |
 
-### Engine/Audio (122)
+### Engine/Audio (123)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -845,18 +874,19 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `FloatRing` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 32 |
 | `JitterSlot` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 119 |
 | `LimiterDesc` | Audio | `Source/Engine/Audio/Limiter.hpp` | 11 |
-| `OggOpusStream` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 131 |
-| `OggPacket` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 76 |
-| `OggPacketReader` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 86 |
-| `OggPage` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 36 |
-| `OggPageReader` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 57 |
-| `OpusHeadInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 106 |
+| `OggOpusStream` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 132 |
+| `OggPacket` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 77 |
+| `OggPacketReader` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 87 |
+| `OggPage` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 37 |
+| `OggPageReader` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 58 |
+| `OpusHeadInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 107 |
 | `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 209 |
 | `Peer` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 131 |
 | `PlayerState` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 88 |
 | `RateBucket` | Audio | `Source/Engine/Audio/VoiceNetworkBridge.hpp` | 62 |
 | `ResolvedZone` | Audio | `Source/Engine/Audio/AudioZones.hpp` | 115 |
 | `ReverbParams` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 96 |
+| `ReverbSpace` | Audio | `Source/Engine/Audio/AudioReverb.hpp` | 9 |
 | `ReverbState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 311 |
 | `SlotRuntime` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 385 |
 | `SourceRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 219 |
@@ -921,9 +951,9 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VoiceSystemConfig` | Audio | `Source/Engine/Audio/VoiceSystem.hpp` | 22 |
 | `VoiceUnderwaterSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 98 |
 | `VoiceWhisperSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 185 |
-| `VorbisIdentInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 121 |
+| `VorbisIdentInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 122 |
 
-### Engine/Core (113)
+### Engine/Core (116)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -947,6 +977,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `ComponentDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 51 |
 | `ComponentRegistry` | Core | `Source/Engine/Core/PluginHost.hpp` | 43 |
 | `ComponentType` | Core | `Source/Engine/Core/PluginHost.hpp` | 29 |
+| `DataTable` | Core | `Source/Engine/Core/DataTable.hpp` | 13 |
 | `DateTime` | Core | `Source/Engine/Core/Calendar.hpp` | 46 |
 | `DecimalStore` | Core | `Source/Engine/Core/DecimalStore.hpp` | 17 |
 | `DecimalT` | Core | `Source/Engine/Core/Decimal.hpp` | 34 |
@@ -960,6 +991,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `FormatSpec` | Core | `Source/Engine/Core/BigInt.hpp` | 36 |
 | `FrameArena` | Core | `Source/Engine/Core/FrameArena.hpp` | 12 |
 | `FrameTimer` | Core | `Source/Engine/Core/Time.hpp` | 508 |
+| `FunctionRef` | Core | `Source/Engine/Core/FunctionRef.hpp` | 13 |
+| `FunctionRef` | Core | `Source/Engine/Core/FunctionRef.hpp` | 16 |
 | `GamepadState` | Core | `Source/Engine/Core/WindowManager.hpp` | 27 |
 | `GridDesc` | Core | `Source/Engine/Core/Grid.hpp` | 91 |
 | `Handle` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 20 |
@@ -1083,7 +1116,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AudioSystem` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 11 |
 | `AudioSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 121 |
 | `AudioSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 306 |
-| `BigIntComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 168 |
+| `BigIntComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 169 |
 | `BoneAttachment2D` | ECS | `Source/Engine/ECS/BoneAttachment.hpp` | 19 |
 | `BoneAttachmentSystem` | ECS | `Source/Engine/ECS/BoneAttachment.hpp` | 35 |
 | `CachedTarget` | ECS | `Source/Engine/ECS/LightSource.hpp` | 234 |
@@ -1139,7 +1172,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `Cursor` | ECS | `Source/Engine/ECS/CommandLog.hpp` | 177 |
 | `Cursor` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 114 |
 | `Cursor` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 374 |
-| `DecimalComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 179 |
+| `DecimalComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 180 |
 | `DirectionalAnimationPlayer` | ECS | `Source/Engine/ECS/DirectionalAnimationPlayer.hpp` | 29 |
 | `DirectionalBlendAnchor` | ECS | `Source/Engine/ECS/DirectionalBlend.hpp` | 52 |
 | `DirectionalBlendAnchorEntry` | ECS | `Source/Engine/ECS/DirectionalBlend.hpp` | 84 |
@@ -1208,11 +1241,11 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `LightSourceSystem` | ECS | `Source/Engine/ECS/LightSource.hpp` | 169 |
 | `LightSourceType` | ECS | `Source/Engine/ECS/LightSource.hpp` | 23 |
 | `LocalizationTable` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 17 |
-| `LocalizedTextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 226 |
+| `LocalizedTextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 227 |
 | `LocalTransform2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 27 |
 | `Mat3` | ECS | `Source/Engine/ECS/Skeleton.hpp` | 32 |
 | `NameComponent` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 116 |
-| `NarrativeLabelComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 157 |
+| `NarrativeLabelComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 158 |
 | `NativeCleanupHook` | ECS | `Source/Engine/ECS/RegistryOps.hpp` | 12 |
 | `PackedTransform2D` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 229 |
 | `Parent2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 35 |
@@ -1305,14 +1338,14 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `SystemGraph` | ECS | `Source/Engine/ECS/Schedule.hpp` | 15 |
 | `SystemGraph` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 116 |
 | `TargetIndexEntry` | ECS | `Source/Engine/ECS/LightSource.hpp` | 244 |
-| `TextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 198 |
-| `TextConditionComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 282 |
-| `TextEffectComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 252 |
-| `TextFormatComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 264 |
+| `TextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 199 |
+| `TextConditionComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 283 |
+| `TextEffectComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 253 |
+| `TextFormatComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 265 |
 | `TextService` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 40 |
 | `TextServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 90 |
 | `TextShapeCache` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 41 |
-| `TextShapeComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 241 |
+| `TextShapeComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 242 |
 | `TilemapAssetRefComponent` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 130 |
 | `TilemapComponent` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 63 |
 | `TilemapRenderSystem` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 150 |
@@ -1456,7 +1489,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `PathStats` | Navigation | `Source/Engine/Navigation/Navigation.hpp` | 116 |
 | `TilemapComponent` | Navigation | `Source/Engine/Navigation/PagedNavGrid.hpp` | 14 |
 
-### Engine/Network (91)
+### Engine/Network (96)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -1551,6 +1584,11 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `TransportChannel` | Network | `Source/Engine/Network/Transport.hpp` | 63 |
 | `TransportPeer` | Network | `Source/Engine/Network/Transport.hpp` | 85 |
 | `TransportStats` | Network | `Source/Engine/Network/Transport.hpp` | 69 |
+| `WebSocketClient` | Network | `Source/Engine/Network/WebSocket.hpp` | 54 |
+| `WebSocketMessage` | Network | `Source/Engine/Network/WebSocket.hpp` | 32 |
+| `WebSocketOpcode` | Network | `Source/Engine/Network/WebSocket.hpp` | 14 |
+| `WebSocketState` | Network | `Source/Engine/Network/WebSocket.hpp` | 24 |
+| `WebSocketStats` | Network | `Source/Engine/Network/WebSocket.hpp` | 38 |
 
 ### Engine/Physics (142)
 
@@ -1699,7 +1737,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `WaterView` | Physics | `Source/Engine/Physics/Fluid.hpp` | 85 |
 | `WheelSystem` | Physics | `Source/Engine/Physics/VehicleWheels.hpp` | 16 |
 
-### Engine/Platform (21)
+### Engine/Platform (26)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -1707,9 +1745,11 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AchievementRequest` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 104 |
 | `CloudSaveComponent` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 124 |
 | `CloudSaveFlags` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 115 |
+| `DisplayInfo` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 14 |
 | `EgsStoreSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 178 |
 | `GogAchievementSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 224 |
 | `GogStorageSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 258 |
+| `HardwareInfo` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 31 |
 | `PlatformAccountComponent` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 137 |
 | `PlatformCommand` | Platform | `Source/Engine/Platform/PlatformService.hpp` | 35 |
 | `PlatformCommandLog` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 46 |
@@ -1724,14 +1764,17 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `StagedSave` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 204 |
 | `StagedSave` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 291 |
 | `SteamAchievementSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 148 |
+| `StorageInfo` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 41 |
+| `SystemInfo` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 64 |
+| `SystemProfile` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 53 |
 
-### Engine/RHI (194)
+### Engine/RHI (195)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
-| `AccessibilityCompositePush` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 282 |
+| `AccessibilityCompositePush` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 292 |
 | `Api` | RHI | `Source/Engine/RHI/Vulkan/VulkanLoader.hpp` | 123 |
-| `Backend` | RHI | `Source/Engine/RHI/RHI.hpp` | 19 |
+| `Backend` | RHI | `Source/Engine/RHI/RHI.hpp` | 20 |
 | `BackendCapabilities` | RHI | `Source/Engine/RHI/UpscalerCapabilities.hpp` | 28 |
 | `BackendSelection` | RHI | `Source/Engine/RHI/UpscalerBackend.hpp` | 28 |
 | `CameraData` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 255 |
@@ -1743,17 +1786,17 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `CameraStackSystem` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 17 |
 | `CameraStackSystem` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 12 |
 | `ChangeMaskRenderExtract` | RHI | `Source/Engine/RHI/ChangeMaskExtract.hpp` | 33 |
-| `ClusterFrame` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 914 |
+| `ClusterFrame` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 934 |
 | `ClusterGridConstants` | RHI | `Source/Engine/RHI/GpuLighting.hpp` | 46 |
 | `ClusterHeader` | RHI | `Source/Engine/RHI/GpuLighting.hpp` | 36 |
-| `ColorGradingConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 141 |
-| `ColorGradingPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 149 |
-| `ColorGradingSettings` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 129 |
-| `CookedMaterialView` | RHI | `Source/Engine/RHI/MaterialAsset.hpp` | 152 |
-| `CullFrame` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 944 |
+| `ColorGradingConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 147 |
+| `ColorGradingPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 155 |
+| `ColorGradingSettings` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 134 |
+| `CookedMaterialView` | RHI | `Source/Engine/RHI/MaterialAsset.hpp` | 153 |
+| `CullFrame` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 964 |
 | `CustomFrameGenerator` | RHI | `Source/Engine/RHI/CustomFrameGenerator.hpp` | 10 |
-| `DeviceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 49 |
-| `DeviceInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 112 |
+| `DeviceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 121 |
+| `DeviceInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 186 |
 | `DirtyRange` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 236 |
 | `DlssAdapter` | RHI | `Source/Engine/RHI/DlssAdapter.hpp` | 33 |
 | `DlssQualityMode` | RHI | `Source/Engine/RHI/DlssAdapter.hpp` | 9 |
@@ -1761,11 +1804,12 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `DlssRuntimeProbe` | RHI | `Source/Engine/RHI/DlssRuntimeProbe.hpp` | 14 |
 | `DrawBatch` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 216 |
 | `DrawIndexedIndirectCommand` | RHI | `Source/Engine/RHI/GpuVisibility.hpp` | 15 |
+| `DxAdapterInfo` | RHI | `Source/Engine/RHI/Dx/DxProbe.hpp` | 10 |
 | `DynamicResolution` | RHI | `Source/Engine/RHI/DynamicResolution.hpp` | 19 |
 | `DynamicResolutionSettings` | RHI | `Source/Engine/RHI/DynamicResolution.hpp` | 9 |
 | `Entry` | RHI | `Source/Engine/RHI/MaterialPipelineCache.hpp` | 74 |
 | `ExportStatus` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 100 |
-| `Extent2D` | RHI | `Source/Engine/RHI/RHI.hpp` | 40 |
+| `Extent2D` | RHI | `Source/Engine/RHI/RHI.hpp` | 112 |
 | `ExtractStats` | RHI | `Source/Engine/RHI/ChangeMaskExtract.hpp` | 21 |
 | `FidelityFxRuntimeAvailability` | RHI | `Source/Engine/RHI/FidelityFxRuntime.hpp` | 25 |
 | `FrameAccessibility` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 277 |
@@ -1782,31 +1826,32 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `FramePacingState` | RHI | `Source/Engine/RHI/FramePacing.hpp` | 17 |
 | `FramePacket` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 387 |
 | `FrameSink` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 85 |
-| `FrameStats` | RHI | `Source/Engine/RHI/RHI.hpp` | 277 |
-| `FrameTimestampIndex` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 76 |
+| `FrameStats` | RHI | `Source/Engine/RHI/RHI.hpp` | 356 |
+| `FrameTimestampIndex` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 80 |
 | `Fsr2Adapter` | RHI | `Source/Engine/RHI/Fsr2Adapter.hpp` | 86 |
 | `Fsr2Pass` | RHI | `Source/Engine/RHI/Fsr2Pass.hpp` | 10 |
 | `Fsr2QualityMode` | RHI | `Source/Engine/RHI/Fsr2Adapter.hpp` | 10 |
 | `Fsr3FrameGenerator` | RHI | `Source/Engine/RHI/Fsr3FrameGenerator.hpp` | 10 |
-| `GiFrame` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 960 |
+| `GiFrame` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 980 |
 | `GpuCullingConstants` | RHI | `Source/Engine/RHI/GpuVisibility.hpp` | 28 |
+| `GpuExtensionBroker` | RHI | `Source/Engine/RHI/GpuExtensionBroker.hpp` | 17 |
 | `GpuGiProbe` | RHI | `Source/Engine/RHI/GpuLighting.hpp` | 67 |
 | `GpuGiVolumeHeader` | RHI | `Source/Engine/RHI/GpuLighting.hpp` | 57 |
 | `GpuLight` | RHI | `Source/Engine/RHI/GpuLighting.hpp` | 18 |
+| `GpuTier` | RHI | `Source/Engine/RHI/RHI.hpp` | 32 |
 | `GpuVendor` | RHI | `Source/Engine/RHI/UpscalerCapabilities.hpp` | 19 |
 | `HashEntry` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 218 |
-| `HiZPushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 66 |
+| `HiZPushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 70 |
 | `IFrameGenerator` | RHI | `Source/Engine/RHI/FrameGeneration.hpp` | 27 |
-| `ImageLayout` | RHI | `Source/Engine/RHI/RHI.hpp` | 238 |
-| `ITemporalUpscaler` | RHI | `Source/Engine/RHI/TemporalUpscaler.hpp` | 28 |
+| `ImageLayout` | RHI | `Source/Engine/RHI/RHI.hpp` | 317 |
 | `JobSystem` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 24 |
 | `KeySorter` | RHI | `Source/Engine/RHI/Sort.hpp` | 14 |
 | `LoadRequest` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 241 |
 | `LoadResult` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 248 |
 | `LookupEntry` | RHI | `Source/Engine/RHI/ChangeMaskExtract.hpp` | 261 |
-| `MaterialAssetError` | RHI | `Source/Engine/RHI/MaterialAsset.hpp` | 42 |
+| `MaterialAssetError` | RHI | `Source/Engine/RHI/MaterialAsset.hpp` | 43 |
 | `MaterialCompileOptions` | RHI | `Source/Engine/RHI/MaterialGraphCompiler.hpp` | 27 |
-| `MaterialContract` | RHI | `Source/Engine/RHI/MaterialAsset.hpp` | 83 |
+| `MaterialContract` | RHI | `Source/Engine/RHI/MaterialAsset.hpp` | 84 |
 | `MaterialDomain` | RHI | `Source/Engine/RHI/MaterialGraphCompiler.hpp` | 21 |
 | `MaterialGraph` | RHI | `Source/Engine/RHI/MaterialGraph.hpp` | 555 |
 | `MaterialGraphCompiler` | RHI | `Source/Engine/RHI/MaterialGraphCompiler.hpp` | 58 |
@@ -1817,29 +1862,29 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `MaterialParam` | RHI | `Source/Engine/RHI/MaterialGraph.hpp` | 99 |
 | `MaterialParamKind` | RHI | `Source/Engine/RHI/MaterialGraph.hpp` | 88 |
 | `MaterialPin` | RHI | `Source/Engine/RHI/MaterialGraph.hpp` | 129 |
-| `MaterialPipeline` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 239 |
+| `MaterialPipeline` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 243 |
 | `MaterialPipelineCache` | RHI | `Source/Engine/RHI/MaterialPipelineCache.hpp` | 38 |
 | `MaterialPipelineCacheStats` | RHI | `Source/Engine/RHI/MaterialPipelineCache.hpp` | 18 |
 | `MaterialShaderProgram` | RHI | `Source/Engine/RHI/MaterialGraphCompiler.hpp` | 39 |
 | `MaterialValueType` | RHI | `Source/Engine/RHI/MaterialGraph.hpp` | 78 |
-| `MeshArenaRange` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 207 |
-| `MeshComputePush` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 132 |
+| `MeshArenaRange` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 211 |
+| `MeshComputePush` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 136 |
 | `MeshDesc` | RHI | `Source/Engine/RHI/Mesh.hpp` | 102 |
 | `MeshDrawData` | RHI | `Source/Engine/RHI/Mesh.hpp` | 70 |
 | `MeshDrawFlags` | RHI | `Source/Engine/RHI/Mesh.hpp` | 54 |
-| `MeshDrawRecord` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 183 |
-| `MeshFrameBuffers` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 150 |
-| `MeshGraphicsPush` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 122 |
+| `MeshDrawRecord` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 187 |
+| `MeshFrameBuffers` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 154 |
+| `MeshGraphicsPush` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 126 |
 | `MeshHandle` | RHI | `Source/Engine/RHI/Mesh.hpp` | 87 |
-| `MeshIndirectGroup` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 198 |
+| `MeshIndirectGroup` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 202 |
 | `MeshItemFlags` | RHI | `Source/Engine/RHI/Mesh.hpp` | 62 |
 | `MeshRenderItem` | RHI | `Source/Engine/RHI/Mesh.hpp` | 114 |
 | `MeshSkinRange` | RHI | `Source/Engine/RHI/Mesh.hpp` | 46 |
 | `MeshVertex` | RHI | `Source/Engine/RHI/Mesh.hpp` | 17 |
 | `MotionHistory2D` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 33 |
 | `MotionVectorItem` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 369 |
-| `NativeDeviceHandles` | RHI | `Source/Engine/RHI/RHI.hpp` | 726 |
-| `NativeTextureView` | RHI | `Source/Engine/RHI/RHI.hpp` | 244 |
+| `NativeDeviceHandles` | RHI | `Source/Engine/RHI/RHI.hpp` | 804 |
+| `NativeTextureView` | RHI | `Source/Engine/RHI/RHI.hpp` | 323 |
 | `OitPass` | RHI | `Source/Engine/RHI/OitPass.hpp` | 11 |
 | `PageSlot` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 209 |
 | `ParallelChunkRef` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 301 |
@@ -1847,11 +1892,11 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `PostFxAccessibilityEffect` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 33 |
 | `PostFxConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 97 |
 | `PostFxFlags` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 11 |
-| `PostFxPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 170 |
+| `PostFxPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 176 |
 | `PostFxSettings` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 56 |
-| `PreUploadedPacket` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 1042 |
-| `PushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 47 |
-| `RenderBlendMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 190 |
+| `PreUploadedPacket` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 1076 |
+| `PushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 51 |
+| `RenderBlendMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 269 |
 | `RenderCommandRecord` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 58 |
 | `RenderFlags` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 43 |
 | `RenderGraph` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 135 |
@@ -1861,15 +1906,15 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `RenderPassDesc` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 110 |
 | `RenderPassKind` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 27 |
 | `RenderResourceKind` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 34 |
-| `RenderTarget` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 250 |
-| `RenderTargetDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 207 |
-| `RenderTargetFormat` | RHI | `Source/Engine/RHI/RHI.hpp` | 199 |
-| `RenderTargetHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 227 |
-| `RHI` | RHI | `Source/Engine/RHI/RHI.hpp` | 348 |
+| `RenderTarget` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 260 |
+| `RenderTargetDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 286 |
+| `RenderTargetFormat` | RHI | `Source/Engine/RHI/RHI.hpp` | 278 |
+| `RenderTargetHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 306 |
+| `RHI` | RHI | `Source/Engine/RHI/RHI.hpp` | 427 |
 | `SdfCharacterRenderCache` | RHI | `Source/Engine/RHI/SdfCharacterRender.hpp` | 17 |
 | `SdfField` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 22 |
 | `SdfGiVolume` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 23 |
-| `SdfGpuBlock` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 98 |
+| `SdfGpuBlock` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 102 |
 | `SdfLightingFrame` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 325 |
 | `SdfLightingOccluder` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 317 |
 | `SdfShadowConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 37 |
@@ -1877,29 +1922,28 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `SdfShadowPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 66 |
 | `SequenceFooter` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 42 |
 | `SequenceHeader` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 31 |
-| `ShaderPipelineDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 167 |
-| `ShaderPipelineDomain` | RHI | `Source/Engine/RHI/RHI.hpp` | 161 |
-| `ShaderPipelineHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 178 |
+| `ShaderPipelineDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 242 |
+| `ShaderPipelineDomain` | RHI | `Source/Engine/RHI/RHI.hpp` | 236 |
+| `ShaderPipelineHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 257 |
 | `SkinnedVertex` | RHI | `Source/Engine/RHI/Mesh.hpp` | 30 |
 | `Slot` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 146 |
-| `SpatialUpscaleMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 90 |
+| `SpatialUpscaleMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 164 |
 | `StaticBakeCache` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 58 |
 | `StaticBakeRenderer` | RHI | `Source/Engine/RHI/StaticBakeRenderer.hpp` | 14 |
 | `StaticBakeSettings` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 10 |
 | `StaticBakeStats` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 47 |
 | `StaticBakeTileKey` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 17 |
-| `StaticMeshRecord` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 213 |
+| `StaticMeshRecord` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 217 |
 | `TemporalResolvePass` | RHI | `Source/Engine/RHI/TemporalResolvePass.hpp` | 11 |
-| `TemporalUpscaleInput` | RHI | `Source/Engine/RHI/TemporalUpscaler.hpp` | 11 |
-| `TextureArray` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 222 |
-| `TextureArrayDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 146 |
-| `TextureArrayHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 324 |
+| `TextureArray` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 226 |
+| `TextureArrayDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 221 |
+| `TextureArrayHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 403 |
 | `Tile` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 90 |
 | `TintEntry` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 81 |
 | `TransientRing` | RHI | `Source/Engine/RHI/RingBuffer.hpp` | 15 |
-| `UiBackendInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 254 |
+| `UiBackendInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 333 |
 | `UpscalerBackend` | RHI | `Source/Engine/RHI/UpscalerBackend.hpp` | 9 |
-| `UpscalerCaps` | RHI | `Source/Engine/RHI/RHI.hpp` | 98 |
+| `UpscalerCaps` | RHI | `Source/Engine/RHI/RHI.hpp` | 172 |
 | `ViewportMode` | RHI | `Source/Engine/RHI/ViewportModes.hpp` | 15 |
 | `ViewportModeDescriptor` | RHI | `Source/Engine/RHI/ViewportModes.hpp` | 46 |
 | `ViewportModeLegend` | RHI | `Source/Engine/RHI/ViewportModes.hpp` | 37 |
@@ -1912,8 +1956,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VirtualTextureDesc` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 39 |
 | `VirtualTextureHandle` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 294 |
 | `VirtualTexturePageLocation` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 11 |
-| `VirtualTextureResource` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 424 |
-| `VirtualTextureResourceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 336 |
+| `VirtualTextureResource` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 434 |
+| `VirtualTextureResourceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 415 |
 | `VirtualTextureRhiTarget` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 118 |
 | `VirtualTextureSample` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 58 |
 | `VirtualTextureStats` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 51 |
@@ -1922,7 +1966,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VirtualTextureTileId` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 98 |
 | `VirtualTextureTileUpload` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 83 |
 | `VisibleSprite` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 87 |
-| `VulkanRHI` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 440 |
+| `VulkanRHI` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 450 |
 
 ### Engine/Script (81)
 
@@ -2045,7 +2089,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `LayoutEntry` | Text | `Source/Engine/Text/TextService.hpp` | 548 |
 | `LayoutKey` | Text | `Source/Engine/Text/TextService.hpp` | 528 |
 | `MappedTextAsset` | Text | `Source/Engine/Text/TextAssetFile.hpp` | 17 |
-| `MarkupStackEntry` | Text | `Source/Engine/Text/TextMarkup.hpp` | 71 |
+| `MarkupStackEntry` | Text | `Source/Engine/Text/TextMarkup.hpp` | 76 |
 | `MarkupVariantEntry` | Text | `Source/Engine/Text/TextService.hpp` | 574 |
 | `ScriptBackend` | Text | `Source/Engine/Text/TextShapeSystem.hpp` | 124 |
 | `ScriptShaper` | Text | `Source/Engine/Text/TextShaper.hpp` | 207 |
@@ -2099,41 +2143,58 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `UnicodeBoundary` | Text | `Source/Engine/Text/UnicodeBreak.hpp` | 13 |
 | `VerticalFormEntry` | Text | `Source/Engine/Text/TextVertical.hpp` | 16 |
 
-### Engine/UI (115)
+### Engine/UI (149)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
-| `AccessibilityEditorSettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 251 |
+| `AccessibilityBridgeSettings` | UI | `Source/Engine/UI/AccessibilityBridge.hpp` | 14 |
+| `AccessibilityEditorSettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 254 |
 | `AccessibilityEffectKind` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 26 |
 | `AccessibilityEffectProfile` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 84 |
 | `AccessibilityEffectRegistry` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 122 |
 | `AccessibilityEffectTag` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 58 |
+| `AccessibilityEvent` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 107 |
+| `AccessibilityEventKind` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 98 |
 | `AccessibilityExtensionRegistry` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 103 |
-| `AccessibilityFlags` | UI | `Source/Engine/UI/Accessibility.hpp` | 209 |
-| `AccessibilityKernel` | UI | `Source/Engine/UI/Accessibility.hpp` | 305 |
+| `AccessibilityFlags` | UI | `Source/Engine/UI/Accessibility.hpp` | 212 |
+| `AccessibilityKernel` | UI | `Source/Engine/UI/Accessibility.hpp` | 316 |
+| `AccessibilityNodeView` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 82 |
 | `AccessibilityOverlay` | UI | `Source/Engine/UI/AccessibilityOverlay.hpp` | 30 |
 | `AccessibilityPaletteExtension` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 42 |
-| `AccessibilityPresentationSettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 234 |
-| `AccessibilityProfile` | UI | `Source/Engine/UI/Accessibility.hpp` | 273 |
-| `AccessibilitySettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 218 |
+| `AccessibilityPresentationSettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 237 |
+| `AccessibilityProfile` | UI | `Source/Engine/UI/Accessibility.hpp` | 276 |
+| `AccessibilityProjectionStats` | UI | `Source/Engine/UI/AccessibilityProjection.hpp` | 12 |
+| `AccessibilityRole` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 22 |
+| `AccessibilitySettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 221 |
 | `AccessibilitySlot` | UI | `Source/Engine/UI/AccessibilityTheme.hpp` | 61 |
+| `AccessibilityStateBits` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 58 |
 | `AccessibilityTemperatureBand` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 49 |
 | `AccessibilityTextStyle` | UI | `Source/Engine/UI/AccessibilityTheme.hpp` | 82 |
 | `AccessibilityTheme` | UI | `Source/Engine/UI/AccessibilityTheme.hpp` | 92 |
 | `AccessibilityThemeRegistry` | UI | `Source/Engine/UI/AccessibilityTheme.hpp` | 116 |
+| `AccessibilityTree` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 117 |
+| `ActionEvent` | UI | `Source/Engine/UI/ActionNarration.hpp` | 77 |
+| `ActionNarration` | UI | `Source/Engine/UI/ActionNarration.hpp` | 102 |
+| `ActionNarrationSettings` | UI | `Source/Engine/UI/ActionNarration.hpp` | 55 |
+| `ActionVocabulary` | UI | `Source/Engine/UI/ActionNarration.hpp` | 41 |
 | `AlcoholEffect` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 63 |
 | `AlcoholEffectLayer` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 77 |
-| `AudioSystem` | UI | `Source/Engine/UI/Accessibility.hpp` | 27 |
-| `AvSpeechTts` | UI | `Source/Engine/UI/Tts.hpp` | 60 |
-| `BuildStatus` | UI | `Source/Engine/UI/PinkUI.hpp` | 1446 |
+| `AtspiEventKind` | UI | `Source/Engine/UI/AtspiModel.hpp` | 66 |
+| `AtspiInterface` | UI | `Source/Engine/UI/AtspiModel.hpp` | 16 |
+| `AtspiState` | UI | `Source/Engine/UI/AtspiModel.hpp` | 33 |
+| `AudioSystem` | UI | `Source/Engine/UI/Accessibility.hpp` | 30 |
+| `AvSpeechTts` | UI | `Source/Engine/UI/Tts.hpp` | 88 |
+| `BuildStatus` | UI | `Source/Engine/UI/PinkUI.hpp` | 1457 |
 | `CardBoardComponent` | UI | `Source/Engine/UI/CardBoard.hpp` | 49 |
 | `CardBoardSystem` | UI | `Source/Engine/UI/CardBoard.hpp` | 74 |
-| `ColorMatrix3` | UI | `Source/Engine/UI/Accessibility.hpp` | 43 |
-| `ColorVisionDeficiency` | UI | `Source/Engine/UI/Accessibility.hpp` | 35 |
-| `Dropdown` | UI | `Source/Engine/UI/PinkUI.hpp` | 535 |
-| `FlashGuard` | UI | `Source/Engine/UI/Accessibility.hpp` | 60 |
-| `FocusDirection` | UI | `Source/Engine/UI/PinkUI.hpp` | 212 |
-| `FocusPolicy` | UI | `Source/Engine/UI/PinkUI.hpp` | 188 |
+| `ColorMatrix3` | UI | `Source/Engine/UI/Accessibility.hpp` | 46 |
+| `ColorVisionDeficiency` | UI | `Source/Engine/UI/Accessibility.hpp` | 38 |
+| `CompositeTts` | UI | `Source/Engine/UI/Tts.hpp` | 196 |
+| `DedupEntry` | UI | `Source/Engine/UI/ActionNarration.hpp` | 134 |
+| `Dropdown` | UI | `Source/Engine/UI/PinkUI.hpp` | 537 |
+| `FlashGuard` | UI | `Source/Engine/UI/Accessibility.hpp` | 63 |
+| `FocusDirection` | UI | `Source/Engine/UI/PinkUI.hpp` | 214 |
+| `FocusPolicy` | UI | `Source/Engine/UI/PinkUI.hpp` | 190 |
 | `FontAtlas` | UI | `Source/Engine/UI/FontAtlas.hpp` | 101 |
 | `FontAtlasHeader` | UI | `Source/Engine/UI/FontAtlas.hpp` | 45 |
 | `FontAtlasSet` | UI | `Source/Engine/UI/FontAtlas.hpp` | 167 |
@@ -2144,80 +2205,97 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `FontFamilyManifest` | UI | `Source/Engine/UI/FontFamilyAsset.hpp` | 17 |
 | `FontPixelFormat` | UI | `Source/Engine/UI/FontAtlas.hpp` | 37 |
 | `FontStyle` | UI | `Source/Engine/UI/FontAtlas.hpp` | 65 |
-| `FrameOutput` | UI | `Source/Engine/UI/PinkUI.hpp` | 1421 |
+| `FrameOutput` | UI | `Source/Engine/UI/PinkUI.hpp` | 1432 |
 | `GlyphRecord` | UI | `Source/Engine/UI/FontAtlas.hpp` | 80 |
-| `GridView` | UI | `Source/Engine/UI/PinkUI.hpp` | 425 |
+| `GridView` | UI | `Source/Engine/UI/PinkUI.hpp` | 427 |
 | `HyperlinkRange` | UI | `Source/Engine/UI/Hypertext.hpp` | 51 |
 | `HypertextComponent` | UI | `Source/Engine/UI/Hypertext.hpp` | 32 |
 | `HypertextFlags` | UI | `Source/Engine/UI/Hypertext.hpp` | 21 |
 | `HypertextPool` | UI | `Source/Engine/UI/Hypertext.hpp` | 74 |
 | `HypertextView` | UI | `Source/Engine/UI/Hypertext.hpp` | 67 |
 | `ITextShaper` | UI | `Source/Engine/UI/PinkUI.hpp` | 34 |
-| `LayoutCache` | UI | `Source/Engine/UI/PinkUI.hpp` | 741 |
+| `LayeredTts` | UI | `Source/Engine/UI/Tts.hpp` | 344 |
+| `LayoutCache` | UI | `Source/Engine/UI/PinkUI.hpp` | 746 |
 | `LazyFontFamily` | UI | `Source/Engine/UI/FontFamilyAsset.hpp` | 101 |
-| `ListView` | UI | `Source/Engine/UI/PinkUI.hpp` | 561 |
-| `LocalizationTable` | UI | `Source/Engine/UI/Accessibility.hpp` | 25 |
+| `ListView` | UI | `Source/Engine/UI/PinkUI.hpp` | 563 |
+| `LocalizationTable` | UI | `Source/Engine/UI/Accessibility.hpp` | 28 |
+| `LocalizationTable` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 13 |
+| `LocalizationTable` | UI | `Source/Engine/UI/ActionNarration.hpp` | 18 |
 | `LocalizationTable` | UI | `Source/Engine/UI/Hypertext.hpp` | 16 |
 | `LocalizationTable` | UI | `Source/Engine/UI/PinkUI.hpp` | 40 |
+| `NarrationCategory` | UI | `Source/Engine/UI/ActionNarration.hpp` | 23 |
 | `NarrativeArchetype` | UI | `Source/Engine/UI/NarrativeTree.hpp` | 23 |
-| `NarrativeEvent` | UI | `Source/Engine/UI/Accessibility.hpp` | 84 |
+| `NarrativeEvent` | UI | `Source/Engine/UI/Accessibility.hpp` | 87 |
 | `NarrativeGroup` | UI | `Source/Engine/UI/NarrativeTree.hpp` | 37 |
 | `NarrativeLocale` | UI | `Source/Engine/UI/NarrativeTree.hpp` | 17 |
-| `NarrativeLog` | UI | `Source/Engine/UI/Accessibility.hpp` | 100 |
+| `NarrativeLog` | UI | `Source/Engine/UI/Accessibility.hpp` | 103 |
 | `NarrativeNode` | UI | `Source/Engine/UI/NarrativeTree.hpp` | 47 |
 | `NarrativeTree` | UI | `Source/Engine/UI/NarrativeTree.hpp` | 55 |
+| `Narrator` | UI | `Source/Engine/UI/Narrator.hpp` | 66 |
+| `NarratorOwner` | UI | `Source/Engine/UI/Narrator.hpp` | 28 |
+| `NarratorPriority` | UI | `Source/Engine/UI/Narrator.hpp` | 18 |
+| `NarratorSettings` | UI | `Source/Engine/UI/Narrator.hpp` | 37 |
 | `NvgPattern` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 33 |
-| `OledShiftState` | UI | `Source/Engine/UI/PinkUI.hpp` | 464 |
+| `OledShiftState` | UI | `Source/Engine/UI/PinkUI.hpp` | 466 |
 | `PinkSdfDraw` | UI | `Source/Engine/UI/PinkSdf.hpp` | 74 |
 | `PinkSdfFlags` | UI | `Source/Engine/UI/PinkSdf.hpp` | 24 |
 | `PinkSdfGpuPrimitive` | UI | `Source/Engine/UI/PinkSdf.hpp` | 51 |
 | `PinkSdfPrimitive` | UI | `Source/Engine/UI/PinkSdf.hpp` | 33 |
 | `PinkSdfShape` | UI | `Source/Engine/UI/PinkSdf.hpp` | 15 |
-| `RadialProgress` | UI | `Source/Engine/UI/PinkUI.hpp` | 585 |
+| `RadialProgress` | UI | `Source/Engine/UI/PinkUI.hpp` | 587 |
 | `RetainedFont` | UI | `Source/Engine/UI/FontAtlas.hpp` | 293 |
-| `SapiTts` | UI | `Source/Engine/UI/Tts.hpp` | 30 |
-| `ScrollView` | UI | `Source/Engine/UI/PinkUI.hpp` | 492 |
+| `Route` | UI | `Source/Engine/UI/Tts.hpp` | 217 |
+| `SapiTts` | UI | `Source/Engine/UI/Tts.hpp` | 54 |
+| `ScrollView` | UI | `Source/Engine/UI/PinkUI.hpp` | 494 |
 | `SlotComponent` | UI | `Source/Engine/UI/CardBoard.hpp` | 27 |
 | `SlotFlags` | UI | `Source/Engine/UI/CardBoard.hpp` | 15 |
 | `SlotLayout` | UI | `Source/Engine/UI/CardBoard.hpp` | 65 |
 | `SoundCueCategory` | UI | `Source/Engine/UI/SoundCues.hpp` | 26 |
 | `SoundCueDef` | UI | `Source/Engine/UI/SoundCues.hpp` | 62 |
 | `SoundCueRegistry` | UI | `Source/Engine/UI/SoundCues.hpp` | 71 |
-| `SoundTrigger` | UI | `Source/Engine/UI/Accessibility.hpp` | 129 |
-| `StateTrack` | UI | `Source/Engine/UI/Accessibility.hpp` | 424 |
-| `SubtitleLine` | UI | `Source/Engine/UI/Accessibility.hpp` | 140 |
-| `SubtitleQueue` | UI | `Source/Engine/UI/Accessibility.hpp` | 164 |
+| `SoundTrigger` | UI | `Source/Engine/UI/Accessibility.hpp` | 132 |
+| `SpeechDispatcherTts` | UI | `Source/Engine/UI/Tts.hpp` | 128 |
+| `SpeechLanguageInfo` | UI | `Source/Engine/UI/SpeechLanguages.hpp` | 16 |
+| `StateTrack` | UI | `Source/Engine/UI/Accessibility.hpp` | 487 |
+| `SubtitleLine` | UI | `Source/Engine/UI/Accessibility.hpp` | 143 |
+| `SubtitleQueue` | UI | `Source/Engine/UI/Accessibility.hpp` | 167 |
 | `SystemContext` | UI | `Source/Engine/UI/PinkUI.hpp` | 29 |
-| `TabBar` | UI | `Source/Engine/UI/PinkUI.hpp` | 516 |
-| `TextAlign` | UI | `Source/Engine/UI/PinkUI.hpp` | 223 |
+| `TabBar` | UI | `Source/Engine/UI/PinkUI.hpp` | 518 |
+| `TextAlign` | UI | `Source/Engine/UI/PinkUI.hpp` | 225 |
 | `TextShapeParams` | UI | `Source/Engine/UI/PinkUI.hpp` | 35 |
-| `TextVerticalAlign` | UI | `Source/Engine/UI/PinkUI.hpp` | 230 |
-| `TimedSoundCue` | UI | `Source/Engine/UI/Accessibility.hpp` | 153 |
-| `TooltipPlacer` | UI | `Source/Engine/UI/PinkUI.hpp` | 596 |
-| `TtsBackend` | UI | `Source/Engine/UI/Accessibility.hpp` | 28 |
-| `TtsBackend` | UI | `Source/Engine/UI/Tts.hpp` | 19 |
-| `TtsPriority` | UI | `Source/Engine/UI/Tts.hpp` | 11 |
+| `TextVerticalAlign` | UI | `Source/Engine/UI/PinkUI.hpp` | 232 |
+| `TimedSoundCue` | UI | `Source/Engine/UI/Accessibility.hpp` | 156 |
+| `TooltipPlacer` | UI | `Source/Engine/UI/PinkUI.hpp` | 598 |
+| `TtsBackend` | UI | `Source/Engine/UI/Accessibility.hpp` | 31 |
+| `TtsBackend` | UI | `Source/Engine/UI/Tts.hpp` | 37 |
+| `TtsPriority` | UI | `Source/Engine/UI/Tts.hpp` | 12 |
+| `TtsVoiceInfo` | UI | `Source/Engine/UI/Tts.hpp` | 26 |
+| `TtsVoicePack` | UI | `Source/Engine/UI/Tts.hpp` | 295 |
 | `UiPalette` | UI | `Source/Engine/UI/UiTheme.hpp` | 41 |
 | `UiPaletteSlot` | UI | `Source/Engine/UI/UiTheme.hpp` | 18 |
 | `UiThemeAsset` | UI | `Source/Engine/UI/UiTheme.hpp` | 46 |
+| `Utterance` | UI | `Source/Engine/UI/Narrator.hpp` | 162 |
 | `VirtualFileSystem` | UI | `Source/Engine/UI/FontAtlas.hpp` | 19 |
-| `VoiceCaptionEvent` | UI | `Source/Engine/UI/Accessibility.hpp` | 194 |
-| `VoiceCaptionProvider` | UI | `Source/Engine/UI/Accessibility.hpp` | 202 |
-| `WidgetCanvas` | UI | `Source/Engine/UI/Accessibility.hpp` | 31 |
-| `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 291 |
-| `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 484 |
-| `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 608 |
-| `WidgetCanvasSystem` | UI | `Source/Engine/UI/PinkUI.hpp` | 1459 |
-| `WidgetComponent` | UI | `Source/Engine/UI/PinkUI.hpp` | 252 |
-| `WidgetComponentFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 264 |
-| `WidgetDesc` | UI | `Source/Engine/UI/PinkUI.hpp` | 310 |
+| `VoiceCaptionEvent` | UI | `Source/Engine/UI/Accessibility.hpp` | 197 |
+| `VoiceCaptionProvider` | UI | `Source/Engine/UI/Accessibility.hpp` | 205 |
+| `VoicePackInfo` | UI | `Source/Engine/UI/Tts.hpp` | 240 |
+| `VoicePackRegistry` | UI | `Source/Engine/UI/Tts.hpp` | 255 |
+| `WidgetCanvas` | UI | `Source/Engine/UI/Accessibility.hpp` | 34 |
+| `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 293 |
+| `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 486 |
+| `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 610 |
+| `WidgetCanvasSystem` | UI | `Source/Engine/UI/PinkUI.hpp` | 1470 |
+| `WidgetComponent` | UI | `Source/Engine/UI/PinkUI.hpp` | 254 |
+| `WidgetComponentFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 266 |
+| `WidgetDesc` | UI | `Source/Engine/UI/PinkUI.hpp` | 312 |
 | `WidgetFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 146 |
 | `WidgetHandle` | UI | `Source/Engine/UI/PinkUI.hpp` | 81 |
-| `WidgetHyperlink` | UI | `Source/Engine/UI/PinkUI.hpp` | 301 |
+| `WidgetHyperlink` | UI | `Source/Engine/UI/PinkUI.hpp` | 303 |
 | `WidgetKind` | UI | `Source/Engine/UI/PinkUI.hpp` | 100 |
 | `WidgetLayoutAsset` | UI | `Source/Engine/UI/WidgetLayoutAsset.hpp` | 15 |
-| `WidgetPaintContext` | UI | `Source/Engine/UI/PinkUI.hpp` | 292 |
-| `WidgetPaintContext` | UI | `Source/Engine/UI/PinkUI.hpp` | 392 |
+| `WidgetPaintContext` | UI | `Source/Engine/UI/PinkUI.hpp` | 294 |
+| `WidgetPaintContext` | UI | `Source/Engine/UI/PinkUI.hpp` | 394 |
+| `WinRtTts` | UI | `Source/Engine/UI/Tts.hpp` | 165 |
 
 ### Engine/Video (28)
 
@@ -2256,18 +2334,18 @@ Generated from the headers on every run. A symbol listed here is declared in the
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
-| `ClothSystem` | Weather | `Source/Engine/Weather/Weather.hpp` | 13 |
+| `ClothSystem` | Weather | `Source/Engine/Weather/Weather.hpp` | 14 |
 | `WeatherAtmospherePass` | Weather | `Source/Engine/Weather/WeatherPreconciliated.hpp` | 128 |
-| `WeatherContextComponent` | Weather | `Source/Engine/Weather/Weather.hpp` | 32 |
-| `WeatherDesc` | Weather | `Source/Engine/Weather/Weather.hpp` | 91 |
-| `WeatherFlags` | Weather | `Source/Engine/Weather/Weather.hpp` | 19 |
+| `WeatherContextComponent` | Weather | `Source/Engine/Weather/Weather.hpp` | 33 |
+| `WeatherDesc` | Weather | `Source/Engine/Weather/Weather.hpp` | 92 |
+| `WeatherFlags` | Weather | `Source/Engine/Weather/Weather.hpp` | 20 |
 | `WeatherGpuConstants` | Weather | `Source/Engine/Weather/WeatherPreconciliated.hpp` | 46 |
 | `WeatherGpuResources` | Weather | `Source/Engine/Weather/WeatherPreconciliated.hpp` | 18 |
 | `WeatherGpuStats` | Weather | `Source/Engine/Weather/WeatherPreconciliated.hpp` | 68 |
 | `WeatherPreconciliatedDesc` | Weather | `Source/Engine/Weather/WeatherPreconciliated.hpp` | 32 |
 | `WeatherPreconciliatedSystem` | Weather | `Source/Engine/Weather/WeatherPreconciliated.hpp` | 78 |
-| `WeatherSystem` | Weather | `Source/Engine/Weather/Weather.hpp` | 99 |
-| `WeatherWindField` | Weather | `Source/Engine/Weather/Weather.hpp` | 75 |
+| `WeatherSystem` | Weather | `Source/Engine/Weather/Weather.hpp` | 100 |
+| `WeatherWindField` | Weather | `Source/Engine/Weather/Weather.hpp` | 76 |
 
 ## 21. Appendix B - macros and platform defines
 
@@ -2306,13 +2384,11 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `FBY_PLUGIN_EXPORT` | `Source/Engine/Core/PluginAPI.h` | 33 |
 | `FBY_PLUGIN_EXPORT` | `Source/Engine/Core/PluginAPI.h` | 35 |
 | `FBY_PLUGIN_EXPORT` | `Source/Engine/Core/PluginAPI.h` | 37 |
-| `FBY_PLUGIN_EXPORT` | `Source/Engine/Core/PluginApi.hpp` | 11 |
-| `FBY_PLUGIN_EXPORT` | `Source/Engine/Core/PluginApi.hpp` | 13 |
 | `FBY_PLUGIN_INFO_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 206 |
 | `FBY_PLUGIN_LOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 207 |
 | `FBY_PLUGIN_UNLOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 208 |
-| `FBY_PROJECT_ASSETS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 130 |
-| `FBY_PROJECT_MAX_RENDER_ITEMS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 123 |
+| `FBY_PROJECT_ASSETS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 146 |
+| `FBY_PROJECT_MAX_RENDER_ITEMS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 139 |
 | `FBY_REFLECT_COMPONENT` | `Source/Engine/Core/Mirror.hpp` | 295 |
 | `FBY_REFLECT_COMPONENT_EMPTY` | `Source/Engine/Core/Mirror.hpp` | 311 |
 | `FBY_REGISTER_TYPE` | `Source/Engine/Core/Definitions.hpp` | 266 |

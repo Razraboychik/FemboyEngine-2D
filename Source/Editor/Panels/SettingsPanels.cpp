@@ -3,6 +3,7 @@
 
 #include "Editor/Infrastructure/EditorTheme.hpp"
 #include "Editor/Infrastructure/EditorTypography.hpp"
+#include "Editor/Infrastructure/TextureThumbnails.hpp"
 #include "Engine/UI/Accessibility.hpp"
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Core/Log.hpp"
@@ -413,7 +414,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 {
     if (MStore == nullptr)
     {
-        // No project store: there is nothing to edit. Do not call End() here,
+        // No project store: there is nothing to edit. Do not call End() here.
         return;
     }
     if (!BeginEditorPanel("Project Settings", InOpen))
@@ -1187,6 +1188,11 @@ void ProjectSettingsPanel::SyncFromHistory(Ecs::SystemContext& InContext)
 }
 
 // EditorSettingsPanel
+void EditorSettingsPanel::SetThumbnails(TextureThumbnailCache* InCache) noexcept
+{
+    MThumbnails = InCache;
+}
+
 void EditorSettingsPanel::Initialize(CommandStack& InCommands, ProjectConfigStore& InStore,
                                      std::uint16_t InCodec) noexcept
 {
@@ -1390,6 +1396,88 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
                       "A sprite whose overdraw times light count reaches the budget is fully red.");
     }
 
+    ImGui::SeparatorText("Appearance: striped lists and cursor");
+    ImGui::Checkbox("Stocking list theme", &ScopedValues.stockingTheme);
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Alternates two row colours in every ImGui table. The pair is editable below; "
+                      "turning it off restores the normal table colours.");
+    }
+    const char* ScopedStockingPresets[] = {"Custom", "Dark plum / teal", "Pastel pink / white",
+                                           "Rose / white", "Black / white stockings", "Green / black stockings",
+                                           "Deuteranopia-safe", "Protanopia-safe", "Tritanopia-safe",
+                                           "Astigmatism / low halation", "High contrast"};
+    int ScopedStockingPreset = static_cast<int>(std::min<std::uint8_t>(ScopedValues.stockingPreset, 10));
+    ImGui::SetNextItemWidth(260.0f);
+    if (ImGui::Combo("Pair preset", &ScopedStockingPreset, ScopedStockingPresets, 11))
+    {
+        ScopedValues.stockingPreset = static_cast<std::uint8_t>(ScopedStockingPreset);
+        if (ScopedStockingPreset > 0)
+        {
+            struct PresetColors
+            {
+                std::uint32_t RowA;
+                std::uint32_t RowB;
+                std::uint32_t Text;
+            };
+            static constexpr PresetColors kPresets[] = {
+                {0x3A2A3F, 0x2F3A35, 0xF2F2F2}, {0xF7C6DA, 0xFFFFFF, 0x1A1A1A},
+                {0xE8A5B5, 0xFFFFFF, 0x1A1A1A}, {0x1C1C1C, 0x2E2E2E, 0xF2F2F2},
+                {0x1E3A2A, 0x242424, 0xF2F2F2}, {0x1F3A5F, 0x4A3A1F, 0xF2F2F2},
+                {0x152A3A, 0x0F3A35, 0xF2F2F2}, {0x3A1F3A, 0x1F3A2A, 0xF2F2F2},
+                {0x121212, 0x1C1C1C, 0xE8E8E8}, {0x000000, 0x1A1A1A, 0xFFFFFF}};
+            const PresetColors& ScopedPreset = kPresets[ScopedStockingPreset - 1];
+            ScopedValues.stockingColorA = ScopedPreset.RowA;
+            ScopedValues.stockingColorB = ScopedPreset.RowB;
+            ScopedValues.textColor = ScopedPreset.Text;
+            ScopedValues.stockingTheme = true;
+        }
+    }
+    if (EditSymbolColor("Row A", &ScopedValues.stockingColorA))
+    {
+        ScopedValues.stockingPreset = 0;
+    }
+    ImGui::SameLine();
+    if (EditSymbolColor("Row B", &ScopedValues.stockingColorB))
+    {
+        ScopedValues.stockingPreset = 0;
+    }
+    const auto Luminance = [](std::uint32_t InRgb)
+    {
+        const auto Channel = [](std::uint32_t InValue)
+        {
+            const float Scoped = static_cast<float>(InValue & 0xFFu) / 255.0f;
+            return Scoped <= 0.03928f ? Scoped / 12.92f : std::pow((Scoped + 0.055f) / 1.055f, 2.4f);
+        };
+        return 0.2126f * Channel((InRgb >> 16u) & 0xFFu) + 0.7152f * Channel((InRgb >> 8u) & 0xFFu) +
+               0.0722f * Channel(InRgb & 0xFFu);
+    };
+    const auto Contrast = [Luminance](std::uint32_t InA, std::uint32_t InB)
+    {
+        const float ScopedA = Luminance(InA);
+        const float ScopedB = Luminance(InB);
+        return (std::max(ScopedA, ScopedB) + 0.05f) / (std::min(ScopedA, ScopedB) + 0.05f);
+    };
+    const float ScopedContrastA = Contrast(ScopedValues.textColor, ScopedValues.stockingColorA);
+    const float ScopedContrastB = Contrast(ScopedValues.textColor, ScopedValues.stockingColorB);
+    const ImVec4 ScopedContrastColor = ScopedContrastA >= 4.5f && ScopedContrastB >= 4.5f
+                                           ? ImVec4(0.4f, 0.9f, 0.5f, 1.0f)
+                                           : ImVec4(1.0f, 0.65f, 0.25f, 1.0f);
+    ImGui::TextColored(ScopedContrastColor, "Text contrast: row A %.2f:1, row B %.2f:1 (WCAG large-text 4.5:1)",
+                       static_cast<double>(ScopedContrastA), static_cast<double>(ScopedContrastB));
+    ImGui::TextDisabled("Pastel rows need a dark text colour; the contrast line turns green when both pairs pass.");
+
+    ImGui::Checkbox("Themed cursor", &ScopedValues.themedCursor);
+    ImGui::SetNextItemWidth(420.0f);
+    (void)ImGui::InputText("Cursor BMP", ScopedValues.cursorImage, sizeof(ScopedValues.cursorImage));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Use system cursor"))
+    {
+        ScopedValues.themedCursor = false;
+    }
+    ImGui::TextDisabled("32-bit BMP with a magenta key; :3, uwu and owo variants are in "
+                        "Projects/CursorThemes. Applying happens on commit.");
+
     ImGui::SeparatorText("Typography (16 px readable floor)");
     ImGui::SliderFloat("Panel titles", &ScopedValues.fontPanelTitle, 16.0f, 36.0f, "%.0f px");
     ImGui::SliderFloat("Panel text", &ScopedValues.fontPanelBody, 16.0f, 30.0f, "%.0f px");
@@ -1432,6 +1520,114 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
     ImGui::SameLine();
     ImGui::TextDisabled("Recommended: 20 files x 50,000 lines (about 6 MB per file).");
+
+    ImGui::SeparatorText("Memory and performance");
+    const char* ScopedProfileNames[] = {"Custom", "Lite", "Balanced", "High"};
+    int ScopedProfile = static_cast<int>(std::min<std::uint8_t>(ScopedValues.performanceProfile, 3));
+    if (ImGui::Combo("Performance profile", &ScopedProfile, ScopedProfileNames, 4))
+    {
+        ScopedValues.performanceProfile = static_cast<std::uint8_t>(ScopedProfile);
+        if (ScopedProfile == 1)
+        {
+            ScopedValues.undoMemoryMB = 2;
+            ScopedValues.undoCommandLimit = 128;
+            ScopedValues.thumbnailCacheLimit = 64;
+            ScopedValues.thumbnailCacheEnabled = true;
+            ScopedValues.frameRateLimit = 30;
+            ScopedValues.pauseWhenUnfocused = true;
+        }
+        else if (ScopedProfile == 2)
+        {
+            ScopedValues.undoMemoryMB = 4;
+            ScopedValues.undoCommandLimit = 256;
+            ScopedValues.thumbnailCacheLimit = 128;
+            ScopedValues.thumbnailCacheEnabled = true;
+            ScopedValues.frameRateLimit = 60;
+            ScopedValues.pauseWhenUnfocused = true;
+        }
+        else if (ScopedProfile == 3)
+        {
+            ScopedValues.undoMemoryMB = 16;
+            ScopedValues.undoCommandLimit = 512;
+            ScopedValues.thumbnailCacheLimit = 256;
+            ScopedValues.thumbnailCacheEnabled = true;
+            ScopedValues.frameRateLimit = 0;
+            ScopedValues.pauseWhenUnfocused = false;
+        }
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Lite caps the editor caches and runs at 30 FPS; Balanced is 60 FPS; High removes the "
+                      "frame limit and opens the budgets. Custom keeps the values below.");
+    }
+    ImGui::Checkbox("Texture thumbnail cache", &ScopedValues.thumbnailCacheEnabled);
+    ImGui::BeginDisabled(!ScopedValues.thumbnailCacheEnabled);
+    int ScopedThumbnailLimit = static_cast<int>(ScopedValues.thumbnailCacheLimit);
+    if (ImGui::SliderInt("Thumbnail entries", &ScopedThumbnailLimit, 0, 256))
+    {
+        ScopedValues.thumbnailCacheLimit = static_cast<std::uint16_t>(std::clamp(ScopedThumbnailLimit, 0, 256));
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Descriptors kept for the Content Browser previews. Lowering the limit frees the old "
+                      "descriptors on Apply; disabling the cache also stops new previews.");
+    }
+    int ScopedUndoMemory = static_cast<int>(ScopedValues.undoMemoryMB);
+    if (ImGui::SliderInt("Undo memory (MB)", &ScopedUndoMemory, 1, 256))
+    {
+        ScopedValues.undoMemoryMB = static_cast<std::uint32_t>(std::clamp(ScopedUndoMemory, 1, 256));
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Arena reserved for compressed undo deltas. Applying a smaller value reallocates it and "
+                      "clears the undo history.");
+    }
+    int ScopedUndoCommands = static_cast<int>(ScopedValues.undoCommandLimit);
+    if (ImGui::SliderInt("Undo commands", &ScopedUndoCommands, 16, 512))
+    {
+        ScopedValues.undoCommandLimit = static_cast<std::uint16_t>(std::clamp(ScopedUndoCommands, 16, 512));
+    }
+    if (MCommands != nullptr && MCommands->Initialized())
+    {
+        const CommandStack::Stats& ScopedStats = MCommands->GetStats();
+        ImGui::TextDisabled("Undo: %u commands, %u / %u KiB payload. Thumbnails: %u.", ScopedStats.commands,
+                            static_cast<unsigned>(ScopedStats.bytesUsed / 1024u),
+                            static_cast<unsigned>(ScopedStats.bytesCapacity / 1024u),
+                            MThumbnails != nullptr ? MThumbnails->Count() : 0u);
+    }
+    if (ImGui::Button("Free undo history and thumbnails"))
+    {
+        if (MThumbnails != nullptr)
+        {
+            MThumbnails->Clear();
+        }
+        if (MCommands != nullptr)
+        {
+            if (!MCommands->SetLimits(static_cast<std::size_t>(ScopedValues.undoMemoryMB) * (1u << 20),
+                                      ScopedValues.undoCommandLimit))
+            {
+                LogWarn("settings", "could not reallocate the undo arena; keeping the previous buffer");
+            }
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Drops the undo stack and all cached previews now.");
+    int ScopedFrameLimit = static_cast<int>(ScopedValues.frameRateLimit);
+    if (ImGui::SliderInt("Frame rate limit", &ScopedFrameLimit, 0, 240, ScopedFrameLimit == 0 ? "unlimited" : "%d FPS"))
+    {
+        ScopedValues.frameRateLimit = static_cast<std::uint16_t>(std::clamp(ScopedFrameLimit, 0, 240));
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("0 runs unthrottled. A limit sleeps the main loop and frees CPU/GPU time while the "
+                      "editor is idle; it does not change the authored frame rate.");
+    }
+    ImGui::Checkbox("Throttle when unfocused", &ScopedValues.pauseWhenUnfocused);
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("When the editor loses focus, cap the loop at 5 FPS until it returns.");
+    }
 
     ImGui::SeparatorText("Authoring");
     ImGui::Checkbox("Watch assets (OS watcher + hot reload)", &ScopedValues.watchAssets);
@@ -1611,6 +1807,21 @@ void EditorSettingsPanel::Apply(Ecs::SystemContext& InContext)
                     WindowModeName(ScopedMode));
         }
     }
+    if (InContext.window != nullptr)
+    {
+        if (ScopedValues.themedCursor)
+        {
+            if (!InContext.window->SetCursorImage(ScopedValues.cursorImage, 2, 2))
+            {
+                LogWarn("settings", "cursor image '{}' could not be loaded; keeping the current cursor",
+                        ScopedValues.cursorImage);
+            }
+        }
+        else
+        {
+            InContext.window->SetSystemCursor();
+        }
+    }
     // The font set owns the global font scale: EditorSystem reloads the atlas
     // from the new EditorSettings on the next frame, so writing FontScaleMain
     // here would race that path and break the legacy density fallback.
@@ -1618,6 +1829,21 @@ void EditorSettingsPanel::Apply(Ecs::SystemContext& InContext)
     ScopedRetention.MaxFiles = ScopedValues.logMaxFiles;
     ScopedRetention.MaxLinesPerFile = ScopedValues.logMaxLinesPerFile;
     SetLogRetention(ScopedRetention);
+    if (MThumbnails != nullptr)
+    {
+        MThumbnails->SetEnabled(ScopedValues.thumbnailCacheEnabled);
+        MThumbnails->SetLimit(ScopedValues.thumbnailCacheLimit);
+    }
+    if (MCommands != nullptr &&
+        (!MAppliedValid || MApplied.undoMemoryMB != ScopedValues.undoMemoryMB ||
+         MApplied.undoCommandLimit != ScopedValues.undoCommandLimit))
+    {
+        if (!MCommands->SetLimits(static_cast<std::size_t>(ScopedValues.undoMemoryMB) * (1u << 20),
+                                  ScopedValues.undoCommandLimit))
+        {
+            LogWarn("settings", "could not apply the undo memory budget; keeping the previous buffer");
+        }
+    }
     ApplyIdeAccessibility(MStore->Project().accessibility.editor);
     const bool ScopedThemeChanged =
         !MAppliedValid || std::strcmp(MApplied.theme, ScopedValues.theme) != 0 ||
@@ -1627,7 +1853,10 @@ void EditorSettingsPanel::Apply(Ecs::SystemContext& InContext)
         MApplied.textOutlineSize != ScopedValues.textOutlineSize ||
         MApplied.panelGlow != ScopedValues.panelGlow ||
         MApplied.customSymbolColors != ScopedValues.customSymbolColors ||
-        MApplied.symbolColors != ScopedValues.symbolColors;
+        MApplied.symbolColors != ScopedValues.symbolColors ||
+        MApplied.stockingTheme != ScopedValues.stockingTheme ||
+        MApplied.stockingColorA != ScopedValues.stockingColorA ||
+        MApplied.stockingColorB != ScopedValues.stockingColorB;
     if (ScopedThemeChanged)
     {
         ApplyEditorTheme(ScopedValues);

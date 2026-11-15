@@ -394,6 +394,122 @@ bool LoadParticlePresetToml(std::string_view InText, ParticlePresetRegistry& InR
     return true;
 }
 
+namespace
+{
+[[nodiscard]] const char* ShapeName(ParticleShape InShape) noexcept
+{
+    static constexpr std::array<const char*, kParticleShapeCount> kNames{
+        "Square", "Circle", "Ring",   "Glow", "Star",      "Diamond",
+        "Spark",  "Smoke",  "Bubble", "Leaf", "Snowflake", "Heart"};
+    const std::uint32_t ScopedIndex = static_cast<std::uint32_t>(InShape);
+    return ScopedIndex < kNames.size() ? kNames[ScopedIndex] : "Circle";
+}
+
+[[nodiscard]] const char* EmissionShapeName(ParticleEmissionShape InShape) noexcept
+{
+    static constexpr std::array<const char*, 4> kNames{"Point", "Circle", "Box", "Line"};
+    const std::uint32_t ScopedIndex = static_cast<std::uint32_t>(InShape);
+    return ScopedIndex < kNames.size() ? kNames[ScopedIndex] : "Point";
+}
+
+[[nodiscard]] std::string ColorText(Color32 InColor)
+{
+    char ScopedBuffer[11]{};
+    std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "#%02X%02X%02X%02X", static_cast<unsigned>(InColor.R()),
+                  static_cast<unsigned>(InColor.G()), static_cast<unsigned>(InColor.B()),
+                  static_cast<unsigned>(InColor.A()));
+    return ScopedBuffer;
+}
+
+[[nodiscard]] std::string EscapeToml(std::string_view InText)
+{
+    std::string ScopedText;
+    ScopedText.reserve(InText.size());
+    for (const char ScopedCharacter : InText)
+    {
+        if (ScopedCharacter == '"' || ScopedCharacter == '\\')
+        {
+            ScopedText.push_back('\\');
+        }
+        ScopedText.push_back(ScopedCharacter);
+    }
+    return ScopedText;
+}
+}
+
+bool SaveParticlePresetToml(const ParticlePresetDesc& InPreset, std::string* OutText, std::string* OutError)
+{
+    if (OutText == nullptr || InPreset.Id[0] == '\0')
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "particle preset needs an id and a destination string";
+        }
+        return false;
+    }
+    const ParticleEffectSettings& ScopedSettings = InPreset.Settings;
+    std::ostringstream ScopedText;
+    ScopedText << "[[presets]]\n"
+               << "id = \"" << EscapeToml(InPreset.Id) << "\"\n"
+               << "name = \"" << EscapeToml(InPreset.DisplayName) << "\"\n"
+               << "category = \"" << EscapeToml(InPreset.Category) << "\"\n"
+               << "shape = \"" << ShapeName(ScopedSettings.Shape) << "\"\n"
+               << "emission_shape = \"" << EmissionShapeName(ScopedSettings.EmissionShape) << "\"\n"
+               << "max_particles = " << ScopedSettings.MaxParticles << "\n"
+               << "seed = " << ScopedSettings.Seed << "\n"
+               << "direction = [" << ScopedSettings.Direction.X << ", " << ScopedSettings.Direction.Y << "]\n"
+               << "gravity = [" << ScopedSettings.Gravity.X << ", " << ScopedSettings.Gravity.Y << "]\n"
+               << "wind = [" << ScopedSettings.Wind.X << ", " << ScopedSettings.Wind.Y << "]\n"
+               << "emission_extents = [" << ScopedSettings.EmissionExtents.X << ", "
+               << ScopedSettings.EmissionExtents.Y << "]\n"
+               << "spread = " << ScopedSettings.SpreadRadians << "\n"
+               << "drag = " << ScopedSettings.Drag << "\n"
+               << "turbulence = " << ScopedSettings.Turbulence << "\n"
+               << "swirl = " << ScopedSettings.Swirl << "\n"
+               << "rate = " << ScopedSettings.EmissionRate << "\n"
+               << "burst_count = " << ScopedSettings.BurstCount << "\n"
+               << "burst_interval = " << ScopedSettings.BurstInterval << "\n"
+               << "duration = " << ScopedSettings.Duration << "\n"
+               << "loop = " << (ScopedSettings.Loop ? "true" : "false") << "\n"
+               << "additive = " << (ScopedSettings.Additive ? "true" : "false") << "\n"
+               << "speed = [" << ScopedSettings.SpeedMin << ", " << ScopedSettings.SpeedMax << "]\n"
+               << "lifetime = [" << ScopedSettings.LifetimeMin << ", " << ScopedSettings.LifetimeMax << "]\n"
+               << "size = [" << ScopedSettings.StartSize << ", " << ScopedSettings.EndSize << "]\n"
+               << "rotation = [" << ScopedSettings.StartRotation << ", " << ScopedSettings.RotationSpeed << "]\n"
+               << "colors = [\"" << ColorText(ScopedSettings.StartColor) << "\", \""
+               << ColorText(ScopedSettings.EndColor) << "\"]\n";
+    *OutText = ScopedText.str();
+    return true;
+}
+
+bool SaveParticlePresetFile(std::string_view InPath, const ParticlePresetDesc& InPreset, std::string* OutError)
+{
+    std::string ScopedText;
+    if (!SaveParticlePresetToml(InPreset, &ScopedText, OutError))
+    {
+        return false;
+    }
+    std::ofstream ScopedStream(std::string(InPath), std::ios::binary | std::ios::trunc);
+    if (!ScopedStream)
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "cannot write particle preset: " + std::string(InPath);
+        }
+        return false;
+    }
+    ScopedStream.write(ScopedText.data(), static_cast<std::streamsize>(ScopedText.size()));
+    if (!ScopedStream)
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "write failed for particle preset: " + std::string(InPath);
+        }
+        return false;
+    }
+    return true;
+}
+
 bool LoadParticlePresetFile(std::string_view InPath, ParticlePresetRegistry& InRegistry, const void* InOwner,
                             std::string* OutError)
 {

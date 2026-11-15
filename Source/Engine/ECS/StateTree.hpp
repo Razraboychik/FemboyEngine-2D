@@ -220,7 +220,7 @@ static_assert(std::is_trivially_copyable_v<StateTreeComponent>);
 static_assert(std::is_standard_layout_v<StateTreeComponent>);
 static_assert(sizeof(StateTreeComponent::ActiveStates) == kMaxStateTreeDepth * sizeof(std::uint16_t));
 
-// Raises one or more external trigger bits (gameplay event, perception system,
+// Raises one or more external trigger bits (gameplay event, perception system).
 constexpr void StateTreeRaiseTrigger(StateTreeComponent& InState, std::uint64_t InMask) noexcept
 {
     InState.Triggers |= InMask;

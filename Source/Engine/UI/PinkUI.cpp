@@ -3730,7 +3730,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
         Output.fontTextureArray = ScopedCanvasTextureArray;
     }
 
-    // One QuadWriter for the whole canvas: one pipeline, one texture array,
+    // One QuadWriter for the whole canvas: one pipeline, one texture array.
     QuadWriter ScopedWriter{Output.items, ScopedStart};
     std::uint32_t ScopedEmittedGlyphs = 0;
     for (std::uint32_t ScopedOrderIndex = 0; ScopedOrderIndex < InCanvas.widgetCount; ++ScopedOrderIndex)
@@ -4517,7 +4517,7 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
         return;
     }
 
-    // Scene placement is data, not a system service: read the entity transform,
+    // Scene placement is data, not a system service: read the entity transform.
     std::uint32_t ScopedItemCursor = Output.startCursor;
     std::uint32_t ScopedBatchCursor = 0;
     // One canvas can be referenced by several entities. Pick a deterministic

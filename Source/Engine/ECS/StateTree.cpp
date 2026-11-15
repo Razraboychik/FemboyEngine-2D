@@ -534,7 +534,7 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
             }
         }
 
-        // The leaf task runs once per fixed tick. It is a switch on a small enum,
+        // The leaf task runs once per fixed tick. It is a switch on a small enum.
         if (ScopedState.CurrentLeaf < ScopedTree->NodeCount)
         {
             RunTask(InRegistry, ScopedEntity, ScopedState, *ScopedTree,

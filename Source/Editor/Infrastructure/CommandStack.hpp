@@ -17,7 +17,7 @@ namespace Fby::Editor
 
 inline constexpr std::uint32_t kMaxCommandCodecs = 64;
 inline constexpr std::uint32_t kMaxUndoCommands = 512;
-// ProjectSettings now carries the full gameplay tag database and accessibility,
+// ProjectSettings carries the full gameplay tag database and accessibility,
 // render and build policies. Keep the external-buffer cap above that image so
 // settings undo remains a normal command-stack transaction.
 inline constexpr std::uint32_t kMaxTrackedComponentBytes = 128u * 1024u;
@@ -119,6 +119,10 @@ public:
     {
         return Initialize(Config{});
     }
+    // Replaces the undo arena and command window without touching the registry
+    // bindings. The history is cleared, which is the point: lowering the budget
+    // frees the previous memory immediately.
+    [[nodiscard]] bool SetLimits(std::size_t InPayloadBytes, std::uint32_t InMaxCommands) noexcept;
     void Shutdown() noexcept;
     [[nodiscard]] bool Initialized() const noexcept
     {
@@ -315,6 +319,7 @@ private:
     std::array<Codec, kMaxCommandCodecs> MCodecs{};
     std::uint32_t MCodecCount = 0;
     std::array<Command, kMaxUndoCommands> MCommands{};
+    std::uint32_t MMaxCommands = kMaxUndoCommands;
     std::uint32_t MCommandCount = 0;
     std::uint32_t MCursor = 0;
     std::uint32_t MArenaUsed = 0;

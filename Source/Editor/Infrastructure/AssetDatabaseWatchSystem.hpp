@@ -79,7 +79,7 @@ public:
     // Startup pass: creates .femeta rows for source files that appeared.
     std::uint32_t ScanForNewSources(std::string* InError = nullptr);
 
-    // Editor-frame entry point: drains OS changes, debounces by source hash,
+    // Editor-frame entry point: drains OS changes, debounces by source hash.
     std::uint32_t Poll();
 
     // Test/tool seam: enqueue a change as if the OS had reported it. The OS

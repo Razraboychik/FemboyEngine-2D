@@ -61,7 +61,15 @@ def FindTool(variable: str, name: str) -> str | None:
     if configured:
         candidate = pathlib.Path(configured)
         return str(candidate) if candidate.is_file() else None
-    return shutil.which(name)
+    found = shutil.which(name)
+    if found:
+        return found
+    if os.name == "nt":
+        # DjVuLibre's Windows installer does not put c44/djvm on PATH.
+        default = pathlib.Path("C:/Program Files (x86)/DjVuLibre") / f"{name}.exe"
+        if default.is_file():
+            return str(default)
+    return None
 
 
 def HasDjvuMagic(path: pathlib.Path) -> bool:

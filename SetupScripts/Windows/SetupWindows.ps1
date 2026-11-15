@@ -12,11 +12,12 @@
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -WithVendorSdks -AcceptVendorLicenses
 #
 # Versions are the ones the CI slate validates:
-#   LLVM             19.1+ (clang-cl and clang++, the validated Windows toolchain;
-#                    setup installs the pinned 19.1 when none is present)
+#   LLVM             latest stable release (clang-cl and clang++; any 19.1+ is
+#                    accepted, an installed toolchain is kept unless missing)
 #   MSVC             19.40+ (cl.exe) is detected, never downloaded by setup
 #   GCC              14.1+ (MinGW-w64, portability toolchain)
 #   SDL3              release-3.4.18
+#   Vulkan SDK       latest from winget when missing (loader/tools only)
 #   Vulkan-Headers    v1.4.366
 #   glslang           15.3.0
 #   miniaudio         0.11.23
@@ -39,7 +40,7 @@ $Downloads = Join-Path $Root "build\_deps-download"
 New-Item -ItemType Directory -Force -Path $ThirdParty, $Downloads | Out-Null
 
 $Versions = [ordered]@{
-    Llvm        = "19.1"
+    Llvm        = "23.1.4"
     Msvc        = "19.40"
     SDL         = "release-3.4.18"
     Vulkan      = "v1.4.366"
@@ -143,12 +144,25 @@ function Get-MajorVersion([string]$Text) {
     return 0
 }
 
+function Get-LatestLlvmVersion {
+    try {
+        $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/llvm/llvm-project/releases/latest" `
+            -Headers @{ "User-Agent" = "FemboyEngine2D-setup" } -TimeoutSec 20
+        if ($Release.tag_name -match "llvmorg-(\d+\.\d+\.\d+)") {
+            return $Matches[1]
+        }
+    } catch {
+        Write-Warning "  could not query the latest LLVM release: $($_.Exception.Message)"
+    }
+    return $null
+}
+
 function Ensure-Llvm {
     $VersionText = Get-ClangVersion
     $Major = Get-MajorVersion $VersionText
     if ($null -ne $VersionText -and $Major -ge 19) {
         if ($VersionText -notmatch [regex]::Escape($Versions.Llvm)) {
-            Write-Warning "  clang-cl $VersionText is installed; the pinned reference is $($Versions.Llvm). Using the installed compiler."
+            Write-Warning "  clang-cl $VersionText is installed; latest stable is $($Versions.Llvm). Using the installed compiler (run with -Force to reinstall)."
         }
         Write-Host "  clang-cl : $VersionText"
         return $true
@@ -157,6 +171,11 @@ function Ensure-Llvm {
         Write-Warning "  clang-cl 19.1+ is expected; found '$VersionText'. Continuing because -SkipSystem is set."
         return $Major -ge 19
     }
+    $Latest = Get-LatestLlvmVersion
+    if ($null -ne $Latest) {
+        $Versions.Llvm = $Latest
+    }
+    Write-Host "  installing LLVM $($Versions.Llvm) (latest stable; fallback pinned 23.1.4)"
     $Installer = Join-Path $Downloads "LLVM-$($Versions.Llvm)-win64.msi"
     if ($Force -or -not (Test-Path $Installer)) {
         $Url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$($Versions.Llvm)/LLVM-$($Versions.Llvm)-win64.msi"
@@ -329,11 +348,27 @@ if ($HasGcc) {
 }
 
 Write-Step "Vulkan SDK"
+if ($null -eq $env:VULKAN_SDK -and -not $SkipSystem) {
+    try {
+        winget install --id KhronosGroup.VulkanSDK --exact --silent `
+            --accept-source-agreements --accept-package-agreements | Out-Null
+    } catch {
+        Write-Warning "  Vulkan SDK install failed: $($_.Exception.Message)"
+    }
+    $SdkRoot = Join-Path $env:ProgramFiles "VulkanSDK"
+    if (Test-Path $SdkRoot) {
+        $LatestSdk = Get-ChildItem -Path $SdkRoot -Directory |
+            Sort-Object { [version]($_.Name) } -Descending | Select-Object -First 1
+        if ($null -ne $LatestSdk) {
+            $env:VULKAN_SDK = $LatestSdk.FullName
+        }
+    }
+}
 if ($null -ne $env:VULKAN_SDK) {
     Write-Host "  VULKAN_SDK=$env:VULKAN_SDK"
     $Lock.Add("vulkan_sdk = $env:VULKAN_SDK")
 } else {
-    Write-Warning "  VULKAN_SDK is not set. The engine can build against Vulkan-Headers and will report a clean runtime error without a loader."
+    Write-Warning "  VULKAN_SDK is not set. Install the latest Vulkan SDK or let setup install it."
 }
 
 Write-Step "SDL3 $($Versions.SDL)"

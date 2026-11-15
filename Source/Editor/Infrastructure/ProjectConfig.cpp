@@ -363,7 +363,8 @@ bool ResolveProjectPaths(const std::filesystem::path& InRootOrProjectFile, Proje
 }
 
 bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_view InProjectName,
-                   ProjectPaths* OutPaths, ProjectConfig* OutConfig, std::string* InError)
+                   ProjectPaths* OutPaths, ProjectConfig* OutConfig, std::string* InError,
+                   Assets::Scaffold::ProjectTemplate InTemplate)
 {
     if (!ValidProjectName(InProjectName))
     {
@@ -420,7 +421,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     const std::filesystem::path ScopedDefaultScene = ScopedPaths.scenes / "main.toml";
     if (!std::filesystem::exists(ScopedDefaultScene, ScopedCode))
     {
-        const std::string ScopedEmptyScene = "version = 1\nname = \"main\"\nauthor = \"FemboyEngine\"\n";
+        const std::string ScopedEmptyScene = Assets::Scaffold::ProjectTemplateScene(InTemplate);
         if (!WriteFileAtomically(ScopedDefaultScene, ScopedEmptyScene, InError))
         {
             return false;
@@ -444,6 +445,16 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     {
         if (!WriteFileAtomically(ScopedGameMain, Assets::Scaffold::GameMain(ScopedDisplayName, ScopedTargetName),
                                  InError))
+        {
+            return false;
+        }
+    }
+
+    const std::filesystem::path ScopedReadme = ScopedPaths.root / "README.md";
+    if (!std::filesystem::exists(ScopedReadme, ScopedCode))
+    {
+        if (!WriteFileAtomically(ScopedReadme,
+                                 Assets::Scaffold::ProjectTemplateReadme(InTemplate, ScopedDisplayName), InError))
         {
             return false;
         }
@@ -892,6 +903,19 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedEditorTable.insert("font_scene_text", static_cast<double>(ScopedEditor.fontSceneText));
     ScopedEditorTable.insert("log_max_files", static_cast<std::int64_t>(ScopedEditor.logMaxFiles));
     ScopedEditorTable.insert("log_max_lines", static_cast<std::int64_t>(ScopedEditor.logMaxLinesPerFile));
+    ScopedEditorTable.insert("undo_memory_mb", static_cast<std::int64_t>(ScopedEditor.undoMemoryMB));
+    ScopedEditorTable.insert("undo_command_limit", static_cast<std::int64_t>(ScopedEditor.undoCommandLimit));
+    ScopedEditorTable.insert("thumbnail_cache_limit", static_cast<std::int64_t>(ScopedEditor.thumbnailCacheLimit));
+    ScopedEditorTable.insert("thumbnail_cache_enabled", ScopedEditor.thumbnailCacheEnabled);
+    ScopedEditorTable.insert("stocking_theme", ScopedEditor.stockingTheme);
+    ScopedEditorTable.insert("stocking_preset", static_cast<std::int64_t>(ScopedEditor.stockingPreset));
+    ScopedEditorTable.insert("stocking_color_a", static_cast<std::int64_t>(ScopedEditor.stockingColorA));
+    ScopedEditorTable.insert("stocking_color_b", static_cast<std::int64_t>(ScopedEditor.stockingColorB));
+    ScopedEditorTable.insert("themed_cursor", ScopedEditor.themedCursor);
+    ScopedEditorTable.insert("cursor_image", std::string(ProjectString(ScopedEditor.cursorImage, sizeof(ScopedEditor.cursorImage))));
+    ScopedEditorTable.insert("performance_profile", static_cast<std::int64_t>(ScopedEditor.performanceProfile));
+    ScopedEditorTable.insert("frame_rate_limit", static_cast<std::int64_t>(ScopedEditor.frameRateLimit));
+    ScopedEditorTable.insert("pause_when_unfocused", ScopedEditor.pauseWhenUnfocused);
     ScopedEditorTable.insert("show_demo", ScopedEditor.showDemoWindow);
     ScopedEditorTable.insert("auto_refresh_browser", ScopedEditor.autoRefreshBrowser);
     ScopedEditorTable.insert("watch_assets", ScopedEditor.watchAssets);
@@ -1317,6 +1341,30 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             IntField(*ScopedEditor, "log_max_files", ScopedConfig.editor.logMaxFiles), 1, 512));
         ScopedConfig.editor.logMaxLinesPerFile = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
             IntField(*ScopedEditor, "log_max_lines", ScopedConfig.editor.logMaxLinesPerFile), 1000, 2000000));
+        ScopedConfig.editor.undoMemoryMB = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "undo_memory_mb", ScopedConfig.editor.undoMemoryMB), 1, 256));
+        ScopedConfig.editor.undoCommandLimit = static_cast<std::uint16_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "undo_command_limit", ScopedConfig.editor.undoCommandLimit), 16, 512));
+        ScopedConfig.editor.thumbnailCacheLimit = static_cast<std::uint16_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "thumbnail_cache_limit", ScopedConfig.editor.thumbnailCacheLimit), 0, 256));
+        ScopedConfig.editor.thumbnailCacheEnabled =
+            BoolField(*ScopedEditor, "thumbnail_cache_enabled", ScopedConfig.editor.thumbnailCacheEnabled);
+        ScopedConfig.editor.stockingTheme = BoolField(*ScopedEditor, "stocking_theme", ScopedConfig.editor.stockingTheme);
+        ScopedConfig.editor.stockingPreset = static_cast<std::uint8_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "stocking_preset", ScopedConfig.editor.stockingPreset), 0, 10));
+        ScopedConfig.editor.stockingColorA = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "stocking_color_a", ScopedConfig.editor.stockingColorA), 0, 0xFFFFFF));
+        ScopedConfig.editor.stockingColorB = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "stocking_color_b", ScopedConfig.editor.stockingColorB), 0, 0xFFFFFF));
+        ScopedConfig.editor.themedCursor = BoolField(*ScopedEditor, "themed_cursor", ScopedConfig.editor.themedCursor);
+        CopyProjectString(ScopedConfig.editor.cursorImage, sizeof(ScopedConfig.editor.cursorImage),
+                          StringField(*ScopedEditor, "cursor_image"));
+        ScopedConfig.editor.performanceProfile = static_cast<std::uint8_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "performance_profile", ScopedConfig.editor.performanceProfile), 0, 3));
+        ScopedConfig.editor.frameRateLimit = static_cast<std::uint16_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedEditor, "frame_rate_limit", ScopedConfig.editor.frameRateLimit), 0, 240));
+        ScopedConfig.editor.pauseWhenUnfocused =
+            BoolField(*ScopedEditor, "pause_when_unfocused", ScopedConfig.editor.pauseWhenUnfocused);
 
         // Readability pass: an untouched typography block still carries the old
         // 16 px body / 20 px title / 18 px node title defaults. Migrate exactly

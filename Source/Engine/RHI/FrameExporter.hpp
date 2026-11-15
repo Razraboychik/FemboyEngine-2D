@@ -177,7 +177,7 @@ private:
     bool MActive = false;
 };
 
-// Validates a finished .fbyseq image: magic, version, dimensions, frame count,
+// Validates a finished .fbyseq image: magic, version, dimensions, frame count.
 [[nodiscard]] bool ValidateSequence(std::span<const std::byte> InBytes, std::uint32_t* InFrameCount = nullptr,
                                     std::string* InError = nullptr);
 }

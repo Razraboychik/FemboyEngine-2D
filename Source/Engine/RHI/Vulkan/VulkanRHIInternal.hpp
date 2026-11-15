@@ -239,7 +239,7 @@ struct TextureArray
     bool borrowed = false;
 };
 
-// One runtime-compiled material pipeline. A VkPipeline is tied to a render pass,
+// One runtime-compiled material pipeline. A VkPipeline is tied to a render pass.
 struct MaterialPipeline
 {
     VkPipeline mainPass = VK_NULL_HANDLE;

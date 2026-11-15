@@ -12,6 +12,7 @@ The DOCX is the source for the PDF export (LibreOffice Kit CLI).
 
 from __future__ import annotations
 
+import argparse
 import os
 import pathlib
 import subprocess
@@ -645,7 +646,9 @@ def BuildDocx(blocks: list[tuple], path: pathlib.Path) -> None:
     document.save(str(path))
 
 
-def ExportPdf(docx_path: pathlib.Path, pdf_path: pathlib.Path) -> bool:
+def ExportPdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, SkipPdf: bool = False) -> bool:
+    if SkipPdf:
+        return True
     if not NODE.is_file() or not LIBREOFFICE_CLI.is_file():
         print("pdf export skipped: LibreOffice Kit is not installed")
         return False
@@ -676,6 +679,14 @@ def ExportPdf(docx_path: pathlib.Path, pdf_path: pathlib.Path) -> bool:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--skip-pdf", action="store_true", help="write Markdown and DOCX only")
+    parser.add_argument("--node", default=os.environ.get("FBY_NODE", "node"), help="node executable")
+    parser.add_argument("--lo-cli", default=os.environ.get("FBY_LO_CLI", ""), help="LibreOffice Kit cli.js")
+    arguments = parser.parse_args()
+    global NODE, LIBREOFFICE_CLI
+    NODE = pathlib.Path(arguments.node)
+    LIBREOFFICE_CLI = pathlib.Path(arguments.lo_cli)
     DocPaths.EnsureLayout()
     documents = [
         ("en", "ProjectSettingsRecommendations_EN", ContentEn()),
@@ -687,7 +698,7 @@ def main() -> int:
         docx_path = DocPaths.Docx(language, f"{name}.docx")
         BuildDocx(blocks, docx_path)
         pdf_path = DocPaths.Pdf(language, f"{name}.pdf")
-        if not ExportPdf(docx_path, pdf_path):
+        if not ExportPdf(docx_path, pdf_path, arguments.skip_pdf):
             failed = True
             continue
         docconvert.BuildDjvu(pdf_path, DocPaths.Djvu(language, f"{name}.djvu"))

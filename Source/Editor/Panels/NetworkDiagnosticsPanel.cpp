@@ -7,6 +7,9 @@
 #include "Engine/Network/NetProtocol.hpp"
 #include "Engine/Core/CryptoAead.hpp"
 
+#include <cstdlib>
+#include <ctime>
+
 #include "imgui.h"
 
 namespace Fby::Editor
@@ -17,10 +20,56 @@ const char* RoleName(Fby::Net::NetRole InRole)
 {
     return Fby::Net::NetRoleName(InRole);
 }
+
+bool ParseKeyHex(std::string_view InText, std::array<std::byte, Fby::Crypto::kEddsaPublicBytes>& OutKey)
+{
+    if (InText.size() != OutKey.size() * 2)
+    {
+        return false;
+    }
+    for (std::size_t ScopedIndex = 0; ScopedIndex < OutKey.size(); ++ScopedIndex)
+    {
+        const auto ScopedNibble = [](char InCharacter) -> int
+        {
+            if (InCharacter >= '0' && InCharacter <= '9')
+            {
+                return InCharacter - '0';
+            }
+            if (InCharacter >= 'a' && InCharacter <= 'f')
+            {
+                return InCharacter - 'a' + 10;
+            }
+            if (InCharacter >= 'A' && InCharacter <= 'F')
+            {
+                return InCharacter - 'A' + 10;
+            }
+            return -1;
+        };
+        const int ScopedHigh = ScopedNibble(InText[ScopedIndex * 2]);
+        const int ScopedLow = ScopedNibble(InText[ScopedIndex * 2 + 1]);
+        if (ScopedHigh < 0 || ScopedLow < 0)
+        {
+            return false;
+        }
+        OutKey[ScopedIndex] = static_cast<std::byte>((ScopedHigh << 4) | ScopedLow);
+    }
+    return true;
+}
+}
+
+NetworkDiagnosticsPanel::~NetworkDiagnosticsPanel()
+{
+    MLobby.Stop();
+    MLobbyTransport.Close();
 }
 
 void NetworkDiagnosticsPanel::Draw(bool* InOpen)
 {
+    // Lobby traffic uses the same datagram transport as a game session; polling
+    // while the panel is open keeps create/join/start responsive.
+    MLobbyTransport.Tick(0.016f);
+    MLobby.Tick(static_cast<std::uint64_t>(std::time(nullptr)));
+
     if (InOpen != nullptr && !*InOpen)
     {
         return;
@@ -94,6 +143,86 @@ void NetworkDiagnosticsPanel::Draw(bool* InOpen)
         }
         ImGui::EndChild();
     }
+    ImGui::SeparatorText("Lobby");
+    ImGui::SetNextItemWidth(140.0f);
+    (void)ImGui::InputText("Lobby host", MLobbyHost.data(), MLobbyHost.size());
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(70.0f);
+    (void)ImGui::InputText("Port", MLobbyPort.data(), MLobbyPort.size());
+    ImGui::SetNextItemWidth(360.0f);
+    (void)ImGui::InputText("Lobby public key", MLobbyKey.data(), MLobbyKey.size());
+    ImGui::SetNextItemWidth(140.0f);
+    (void)ImGui::InputText("Player", MLobbyName.data(), MLobbyName.size());
+    ImGui::SetNextItemWidth(140.0f);
+    (void)ImGui::InputText("Room name", MLobbyRoomName.data(), MLobbyRoomName.size());
+    if (!MLobbyStarted)
+    {
+        if (ImGui::Button("Start lobby client"))
+        {
+            std::string ScopedError;
+            if (!MLobbyTransport.Opened() && !MLobbyTransport.Open(0, &ScopedError))
+            {
+                MLobbyStatus = "transport: " + ScopedError;
+            }
+            else
+            {
+                Fby::Net::NetAddress ScopedAddress;
+                std::array<std::byte, Fby::Crypto::kEddsaPublicBytes> ScopedKey{};
+                if (!Fby::Net::ParseAddress(MLobbyHost.data(), static_cast<std::uint16_t>(std::atoi(MLobbyPort.data())),
+                                            &ScopedAddress) ||
+                    !ParseKeyHex(MLobbyKey.data(), ScopedKey))
+                {
+                    MLobbyStatus = "invalid host, port or 32-byte hex key";
+                }
+                else
+                {
+                    Fby::Net::NetLobbyClientConfig ScopedConfig;
+                    ScopedConfig.LobbyPublicKey = ScopedKey;
+                    std::snprintf(ScopedConfig.PlayerName, sizeof(ScopedConfig.PlayerName), "%s", MLobbyName.data());
+                    MLobbyStarted = MLobby.Start(Fby::Net::MakeTransportLink(&MLobbyTransport), ScopedAddress, ScopedConfig);
+                    MLobbyStatus = MLobbyStarted ? "lobby client started" : "lobby client rejected the config";
+                }
+            }
+        }
+    }
+    else
+    {
+        if (ImGui::Button("Stop lobby client"))
+        {
+            MLobby.Stop();
+            MLobbyStarted = false;
+            MLobbyStatus = "lobby client stopped";
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Create room"))
+        {
+            MLobby.CreateRoom(MLobbyRoomName.data());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Start match"))
+        {
+            MLobby.StartMatch();
+        }
+        ImGui::SetNextItemWidth(100.0f);
+        (void)ImGui::InputInt("Room id", &MLobbyRoomId);
+        ImGui::SameLine();
+        if (ImGui::Button("Join room"))
+        {
+            MLobby.JoinRoom(static_cast<std::uint32_t>(std::max(MLobbyRoomId, 0)));
+        }
+        ImGui::Text("ready %s  room %u  player %u  started %s  error %s", MLobby.Ready() ? "yes" : "no",
+                    MLobby.RoomId(), static_cast<unsigned>(MLobby.PlayerId()),
+                    MLobby.MatchStarted() ? "yes" : "no", Fby::Net::LobbyErrorName(MLobby.Error()));
+        if (MLobby.Ready())
+        {
+            ImGui::TextDisabled("ticket signed; call ApplyToSessionConfig() before creating the session");
+        }
+    }
+    if (!MLobbyStatus.empty())
+    {
+        ImGui::TextDisabled("%s", MLobbyStatus.c_str());
+    }
+
     ImGui::SeparatorText("AEAD self-test");
     if (ImGui::Button("Round-trip XChaCha20-Poly1305"))
     {

@@ -17,9 +17,9 @@ The contract has three goals:
 - Language: C++23 as enabled by the project CMake configuration.
 - Supported compilers: Clang 19.1+ (clang-cl and clang++), AppleClang 16+,
   GCC 14.1+ and MSVC 19.40+. clang-cl is the reference Windows toolchain and
-  the CI baseline; clang, GCC and AppleClang are CI-covered alternatives, and
-  MSVC is a supported local alternative. None of them is an obligation.
-- Build system: CMake 3.22+ (presets need 3.22) with Ninja.
+  the CI baseline; clang, GCC, AppleClang and MSVC are CI-covered alternatives.
+  None of them is an obligation.
+- Build system: CMake 3.22+ (presets need 3.25) with Ninja.
 - File suffixes: `.hpp` for C++ headers, `.cpp` for C++ translation units,
   `.h` and `.c` for the C plugin ABI, `.mm` for the Objective-C++ platform
   bridges, `.metal` for Metal shaders and `.comp`, `.vert`, `.frag` for GLSL.

@@ -62,6 +62,9 @@ struct CookOptions
     Fby::Cook::CookTarget target = Fby::Cook::CookTarget::Desktop;
     Fby::Cook::AstcBlock astcBlock = Fby::Cook::AstcBlock::Block4x4;
     bool srgb = true;
+    // Substring filters against the pak path or the source path. Used to keep
+    // editor-only samples, source art and test fixtures out of a shipped pak.
+    std::vector<std::string> excludes;
 };
 
 void PrintUsage()
@@ -657,6 +660,10 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
         {
             InOptions->srgb = false;
         }
+        else if (ScopedArgument == "--exclude" && ScopedI + 1 < InArgc)
+        {
+            InOptions->excludes.emplace_back(InArgv[++ScopedI]);
+        }
         else if (ScopedArgument == "--progress" && ScopedI + 1 < InArgc)
         {
             InOptions->progressPath = InArgv[++ScopedI];
@@ -705,6 +712,25 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
         {
             ScopedOptions.output = ScopedPlan.output;
         }
+    }
+
+    if (!ScopedOptions.excludes.empty())
+    {
+        const std::size_t ScopedBefore = ScopedPlan.files.size();
+        std::erase_if(ScopedPlan.files, [&](const CookFile& InFile)
+                      {
+                          const std::string ScopedSource = InFile.source.generic_string();
+                          for (const std::string& ScopedPattern : ScopedOptions.excludes)
+                          {
+                              if (InFile.destination.find(ScopedPattern) != std::string::npos ||
+                                  ScopedSource.find(ScopedPattern) != std::string::npos)
+                              {
+                                  return true;
+                              }
+                          }
+                          return false;
+                      });
+        std::printf("fempak: excluded %zu file(s) by pattern\n", ScopedBefore - ScopedPlan.files.size());
     }
 
     const char* ScopedTargetName = ScopedOptions.target == Fby::Cook::CookTarget::Astc ? "astc" : "desktop";
