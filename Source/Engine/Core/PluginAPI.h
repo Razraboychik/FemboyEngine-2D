@@ -17,6 +17,8 @@
 #ifndef FBY_PLUGIN_API_H
 #define FBY_PLUGIN_API_H
 
+#include "Engine/Core/VoiceAPI.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -181,7 +183,20 @@ extern "C"
                           void (*InTick)(void* InUser, float InDt));
         /* Optional in ABI 2; nullptr when the host has no runtime theme registry. */
         const FbyAccessibilityApi* accessibility;
+        /* Optional append-only service. nullptr when the host has no voice
+         * preset registry; detect it with FbyHostHasVoice(). */
+        const FbyVoiceApi* voice;
     } FbyHostApi;
+
+    /* Layout-safe capability probe: old hosts are shorter, so checking the
+     * structure size is valid even when the plugin was built against a newer
+     * header. */
+    static inline int FbyHostHasVoice(const FbyHostApi* InHost)
+    {
+        return InHost != NULL &&
+               InHost->struct_size >= (uint32_t)(offsetof(FbyHostApi, voice) + sizeof(InHost->voice)) &&
+               InHost->voice != NULL;
+    }
 
     typedef const FbyPluginInfo* (*FbyPluginInfoFn)(void);
     typedef int (*FbyPluginLoadFn)(FbyHostApi* InHost);

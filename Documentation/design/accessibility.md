@@ -1,10 +1,14 @@
 # Accessibility contract
 
+This document is the implementation contract: the profile, the semantic tree, the
+GPU composite path and the platform bridge. The user-facing guide — how to turn
+the narrator on, what a screen reader sees, the OLED orbit and the editor themes
+— is [Accessibility guide](accessibility-guide.md).
+
 Accessibility is one profile applied to the frame, not a set of scattered
 switches. The runtime section drives the game, the presentation section drives
 the HUD, and the editor section drives the ImGui window. Complete Reference
-chapter 13 documents the primitives; this document records the profile, the
-project keys and the GPU composite path.
+chapter 13 documents the primitives.
 
 ## One profile
 
@@ -14,11 +18,13 @@ POD sections:
 - `runtime` (`AccessibilitySettings`): blind, deaf, flash guard, colour vision
   and its strength;
 - `presentation`: OLED orbit, motion scale, HUD idle fade, minimum contrast;
+- `narration` and `bridge`: what the game speaks and what it publishes to the OS;
 - `editor`: blind/deaf/high-contrast/reduce-motion for the editor window itself;
-  the editor theme and symbol colours are separate authoring settings.
+  the editor theme and symbol colours are separate authoring settings, and the
+  editor's narrator and bridge policy live in `EditorSettings`.
 
-`DefaultAccessibilityProfile()` is the 1.0 policy: flash guard and OLED orbit on,
-no correction, full motion.
+`DefaultAccessibilityProfile()` is the default policy: flash guard and OLED orbit
+on, no colour correction, full motion, narration and the OS bridge enabled.
 
 `AccessibilityKernel::ApplyProfile()` is the single apply entry point. It copies
 the profile, clamps hostile values (strength 0..1, flash threshold 0.02..0.45,
@@ -26,16 +32,20 @@ motion 0..1, contrast 1..21), stores the runtime section and reconfigures the
 flash guard. `Profile()` returns the live profile, so individual setters and a
 saved profile cannot disagree.
 
-`ProjectSettings` carries one `AccessibilityProfile accessibility`; `EditorSettings`
-no longer duplicates the IDE switches, because they are the profile's `editor`
-section. `project.femproj` keeps the old keys (`[accessibility]`, `[editor]
-ide_*`) and adds `profile_version`, `color_vision`,
-`color_vision_strength`, `motion_scale`, `hud_fade_after_idle_seconds` and
-`minimum_contrast_ratio`, so existing projects load unchanged.
+`ProjectSettings` carries one `AccessibilityProfile accessibility` with the
+runtime, presentation, narration and bridge policy of the game. `EditorSettings`
+keeps the editor's own narrator and bridge policy (`narration`, `bridge`) next to
+the `[editor]` keys, so the editor never shares a policy with a build. The
+`editor` section of the profile still holds the `ide_*` switches. `project.femproj`
+keeps the old keys (`[accessibility]`, `[editor] ide_*`) and adds
+`profile_version`, `color_vision`, `color_vision_strength`, `motion_scale`,
+`hud_fade_after_idle_seconds` and `minimum_contrast_ratio`, so existing projects
+load unchanged.
 
 `ProjectSettingsPanel::Apply()` calls `ApplyProfile()` once and derives the Master
-mute from the same flags; `EditorSettingsPanel` edits the `editor` section and
-applies it to the ImGui palette.
+mute from the same flags; `EditorSettingsPanel` edits the `editor` section, the
+editor narrator and the editor bridge, and applies the palette to the ImGui
+window.
 
 ## Editor themes and symbol colours
 
@@ -130,18 +140,124 @@ a separate, non-shipping path.
 
 ## Tests
 
-`ui_accessibility` (defaults, clamping, live view, frame mapping, `ApplyPostFx`
-flags/matrix/gain, caption append order and batch offset) and
-`accessibility_composite` (8x8 offscreen target on a real Vulkan device:
+`accessibility_narrator` (semantic tree, PinkUI projection, roles, narrator
+priority, deduplication, chunking, language selection, owner arbitration and the
+kernel focus announcement), `ui_accessibility` (defaults, clamping, live view,
+frame mapping, `ApplyPostFx` flags/matrix/gain, caption append order and batch
+offset) and `accessibility_composite` (8x8 offscreen target on a real Vulkan device:
 baseline, deuteranopia matrix, zero-correction byte-for-byte baseline, 0.5
 residual dimming, lone flash flag, dark-to-bright clamp, unguarded control,
 flagged swapchain submit). The composite test skips without a Vulkan device.
 
-## Known limit
+## Semantic tree, projection and narrator
 
-The editor's BlindMode narrates to LogBoy but does not yet speak focused-widget
-labels; hooking ImGui's nav focus would complete it. Tracked in
-[ROADMAP.md](../ROADMAP.md).
+The accessibility output is one semantic tree shared by the game and the editor.
+Nothing describes the interface twice.
+
+- `Ui::AccessibilityTree` (`Source/Engine/UI/AccessibilityTree.hpp`) is a fixed
+  capacity SoA store: ids, parents, roles, states, screen bounds, localization
+  ids and a text pool. A rebuild keeps the focused id, so a screen reader never
+  receives a spurious focus change. A structure event is raised only when the
+  id sequence actually changed.
+- `Ui::ProjectWidgetCanvas()` projects a retained `WidgetCanvas`: `WidgetKind`
+  becomes an `AccessibilityRole`, `WidgetFlags` become state bits, the text key
+  becomes the accessible name, and the canvas focus becomes the tree focus. A
+  widget can override its spoken name with
+  `WidgetCanvas::SetAccessibleName(id, locId)`.
+- `Narrator` (`Source/Engine/UI/Narrator.hpp`) owns the speech queue: priority,
+  deduplication by node id inside a 600 ms window, sentence-bounded chunking at
+  320 bytes, and one utterance at a time so SAPI and AVSpeech never stack a
+  hundred lines. It speaks the content locale, not the OS locale.
+- `AccessibilityKernel::ProjectCanvas()` rebuilds the tree, announces a focus
+  change in Blind mode and publishes the result to the OS bridge. The game calls
+  it once per frame after building its UI canvas.
+
+## Platform bridge
+
+`Source/Engine/UI/AccessibilityBridge.hpp` is the provider seam. On Windows the
+engine installs a UI Automation fragment provider on the process window: nodes
+answer `Name`, `ControlType`, `BoundingRectangle`, `IsEnabled`,
+`IsKeyboardFocusable`, `HasKeyboardFocus`, `IsOffscreen`, `AutomationId` and
+`FrameworkId`; buttons and toggles expose `IInvokeProvider` and `IToggleProvider`;
+focus, structure and state events are raised from the tree ring. The provider
+runs on the UI thread, so no tree lock exists and a query never allocates a
+copy of the interface. Other platforms keep the stub: the narrator still works
+and the tree stays available for a future AT-SPI2 or NSAccessibility provider.
+
+The narrator's synthesis layer is separate from the bridge. On Windows it is a
+composite of desktop SAPI voices and the one-core voices exposed by the WinRT
+speech stack; ids of the latter carry a `winrt:` prefix so a stored
+`narration_voice` is unambiguous. The WinRT adapter is the only engine
+translation unit compiled with exceptions enabled, because the C++/WinRT
+projection requires them; without the SDK projection the engine logs
+"One-core speech: ... not found" and keeps SAPI only. On Linux the adapter loads
+`libspeechd` with `dlopen` and falls back to silence when the daemon is absent;
+speech-dispatcher has no enumerable voice ids, so the language tag is the whole
+voice policy there.
+
+Both OS adapters play through their own audio path (the WinRT `MediaPlayer` and
+the speech-dispatcher daemon), not through the engine mixer, so music ducking and
+spatialisation do not apply to system voices. The narrator still owns the text,
+the queue and the language policy in every case.
+
+The language policy is documented separately: the engine ships a 42-language
+catalog, normalizes BCP-47 tags and resolves voices through one fallback chain
+for every backend. See [speech languages](speech-languages.md).
+
+Gameplay events use a second, data-driven channel. `ActionNarration` resolves
+localization templates with plural variants, injects localized names and
+direction/distance words from `ActionVocabulary`, applies category and priority
+policy, and queues through the same narrator. The composed line is returned
+before it is spoken, so captions can reuse it. See
+[action narration](action-narration.md).
+
+Projects can also install voice packs. A pack is a directory with a manifest, a
+helper executable and a model; the engine starts the helper and writes a
+length-prefixed command stream to its stdin. The helper owns playback and is
+never linked into the engine, which keeps separately licensed (including GPL)
+helpers and models outside the MPL 2.0 terms of the engine. See
+[voice packs](voice-packs.md).
+
+The editor publishes one pane per visible ImGui window through the same tree,
+plus a child node for the focused widget. The widget node comes from the
+vendored ImGui patch `third_party/patches/imgui/a11y-item-labels.patch`:
+
+- `ImGuiWindow::GetID()` records the label that produced the id; `ItemAdd()`
+  consumes it only when the ids match, so an unrelated `GetID()` cannot leak a
+  label onto the next widget.
+- `ItemAdd()` captures the label, the item rect and the role of the item that
+  owns `NavId`, and `NewFrame()` clears the capture on the next frame.
+- The button, invisible button, checkbox, radio button, slider, drag, input
+  text and combo widgets call `SetAccessibilityItemRole()` right after
+  `ItemAdd()`; the application reads the result through
+  `GetAccessibilityFocusLabel()`, `GetAccessibilityFocusRole()`,
+  `GetAccessibilityFocusId()` and `GetAccessibilityFocusBounds()`.
+
+The editor narrator therefore speaks "Save, button" and not only the panel
+name, and a panel can still push a custom line through
+`EditorSystem::Announce()`. Menu items and selectables have no role of their own
+yet: they still announce their label when ImGui gives them a non-empty id.
+
+## Settings
+
+Game (project file, edited in Project Settings):
+
+| Key (`[accessibility]`) | Meaning |
+|---|---|
+| `narration_enabled` | speak the interface and world events |
+| `narration_focus`, `narration_role`, `narration_state` | what a focus announcement contains |
+| `narration_scene`, `narration_world` | on-demand scene description and Blind mode world events |
+| `narration_interrupt` | a focus move cuts the current line |
+| `narration_verbosity` | 0 silent, 1 name, 2 name and role, 3 name, role and state |
+| `narration_rate`, `narration_max_queue`, `narration_language` | voice policy (BCP-47) |
+| `narration_voice` | exact installed voice id; empty means "auto by language" |
+| `bridge_enabled`, `bridge_focus_events`, `bridge_structure_events`, `bridge_state_events` | what the game publishes to the OS |
+
+Editor (project `[editor]` section and `editor.ini`, edited in Editor Settings):
+the same narrator and bridge keys, read only by the editor window. The editor
+narrator is off by default and Blind mode turns it on; the game and the editor
+never share a policy, and a running Play In Editor session owns the voice.
+
 
 ## Project motion comfort and input policy
 

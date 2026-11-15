@@ -3,8 +3,8 @@
 [English](README.md) | [Русский перевод](README_RU.md)
 
 Этот каталог — точка входа в документацию FemboyEngine2D. Текущая публичная
-линия — **0.4.0-alpha.1**. Движок представляет собой data-oriented 2D-рантайм на
-C++26: ECS-хранилища фиксированной ёмкости, явные системы, окно SDL3,
+линия — **0.5.0**. Движок представляет собой data-oriented 2D-рантайм на
+C++23: ECS-хранилища фиксированной ёмкости, явные системы, окно SDL3,
 интерфейс рендеринга Vulkan или null, физика Box2D v3 и детерминированный
 роллбэк.
 
@@ -34,14 +34,30 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
   см. [текстовый стек](design/text-stack.md), [документы](design/documents.md)
   и [потоковые книги](design/books.md).
 - **Геймплей и скрипты** — байткод FemboyScript 2.0, LogicGraph, StateTree,
-  текстовое подмножество `.fbs`, отладчик VM и cook-time AOT-бэкенд на C++26.
+  текстовое подмножество `.fbs`, отладчик VM и cook-time AOT-бэкенд на C++23.
 - **Сеть** — надёжный транспорт, протокол v2, репликация, сетки релевантности,
   лобби и детерминированный роллбэк.
 - **Аудио и голос** — микшер и DSP-граф, пространственное аудио, захват, AEC,
   Opus, RNNoise и голосовые эффекты с условиями.
+- **Ввод и платформа** — `InputSystem` фиксированной ёмкости (actions, контексты,
+  модификаторы, триггеры), hotplug геймпадов SDL3 и C-ABI `PlatformService` с
+  провайдерами Steam, Epic Games Store и GOG для достижений и облачных сохранений.
+- **AI и навигация** — `StateTree` через командный буфер в `AIController`,
+  восприятие, A* по cost-grid на прямоугольных и гексагональных сетках, апдейт толпы.
+- **Видео и погода** — воспроизведение VP9, AV1 и WebM со звуком в texture-массивы
+  и GPU-пасс погоды (облака, тени облаков, туман, осадки, огонь, молнии, ветер).
 - **Ассеты и редактор** — база ассетов, `.femeta`, горячая перезагрузка, кукинг
-  текстур и материалов, `.fempak`/`.femarc`, PinkUI, доступность, панели
-  редактора и рабочий процесс проекта/сцены.
+  текстур и материалов, `.fempak`/`.femarc`, PinkUI, панели редактора и рабочий
+  процесс проекта/сцены.
+- **Доступность** — встроенный диктор в игре и редакторе, мост в системный
+  экранный диктор через UI Automation, субтитры, защита от вспышек, коррекция
+  цветового зрения, OLED-сдвиг и доступные темы редактора; см.
+  [Руководство по доступности](design/accessibility-guide_RU.md).
+  Озвучка игровых событий: [озвучка действий](design/action-narration_RU.md);
+  свои голоса: [голосовые паки](design/voice-packs_RU.md).
+  Языки речи: [каталог на 42 языка](design/speech-languages_RU.md);
+  игрокам: [доступность для игроков](design/accessibility-players_RU.md);
+  разработчикам: [доступность для разработчиков](design/accessibility-developers_RU.md).
 
 ## Начните здесь
 
@@ -49,6 +65,7 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 |---|---|
 | Собрать движок и открыть редактор | [Начало работы](md/ru/FemboyEngineGettingStarted_RU.md) |
 | Настроить VS Code, clangd и ручную сборку | [Рабочий процесс сборки](design/build-workflow_RU.md) |
+| Оптимизировать редактор и релизную игру | [Руководство по оптимизации](md/ru/FemboyEngineOptimization_RU.md) |
 | Проверить требования к железу редактора | [Системные требования](design/system-requirements_RU.md) |
 | Собрать и выпустить игру, Steam/EOS/GOG | [Распространение игры](design/game-distribution_RU.md) |
 | Понять chunked-хранилище FCS | [FCS](design/fcs_ru.md) |
@@ -62,6 +79,9 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 | Собрать транспортные группы, лифты и поезда | [Физика: транспортные группы](md/ru/Physics_RU.md), [физика транспорта](design/transport-physics.md) |
 | Добавить подвеску, привод или тормоза транспорта | [Колёса транспорта](design/vehicle-wheels.md) |
 | Настроить движение и искажения камеры | [Эффекты камеры](design/camera-effects.md) |
+| Добавить готовые голосовые эффекты, mumble для модерации и SFX | [Пресеты голоса](design/voice-presets.md), [Голос](design/voice.md) |
+| Добавить настраиваемые эффекты частиц | [Эффекты частиц](design/particle-effects.md) |
+| Добавить готовые пресеты частиц как data-паки | [Пресеты частиц](design/particle-presets.md) |
 | Добавить действия, контексты, геймпады и ремап | [Система ввода](design/input-system.md) |
 | Построить авторитетный ввод и репликацию | [Практическое руководство: репликация](md/ru/FemboyEngineApplicationGuide_RU.md#51-детерминированный-ввод-и-репликация-при-создании-игры) |
 | Использовать FemboyScript, LogicGraph или StateTree | [FemboyScript](md/ru/FemboyScript_RU.md), [значения LogicGraph и AOT](design/scripting.md) |
@@ -69,9 +89,10 @@ C++26: ECS-хранилища фиксированной ёмкости, явн�
 | Показывать книги и руководства с форматированием | [Потоковые книги](design/books.md), [TXT-документы](design/documents.md) |
 | Переносить проект между Windows, Linux и macOS | [Переносимость desktop-проектов](design/desktop-portability.md) |
 | Настроить проект или редактор | [Настройки проекта](md/ru/ProjectSettingsRecommendations_RU.md), [Настройки редактора](md/ru/EditorSettingsReference_RU.md) |
+| Сделать игру и редактор доступными | [Руководство по доступности](design/accessibility-guide_RU.md), [контракт реализации](design/accessibility.md) |
 | Выбрать диагностический режим вьюпорта | [Режимы вьюпорта](md/ru/ViewportModes_RU.md) |
 | Соблюдать стилевой контракт C++ | [Стиль кода](style/CodeStyle.md) |
-| Планировать дальнейшую работу | [Дорожная карта](ROADMAP.md) |
+| Сообщить об ошибке или запросить функцию | [Трекер задач](https://github.com/Razraboychik/FemboyEngine-2D/issues) |
 | Проектировать игровые теги, эффекты и навыки | [Дизайн навыков](design/skills.md) |
 | Настроить ИИ, navmesh и формы путей | [ИИ и навигация](design/ai-navigation.md) |
 | Настроить гравитацию, поля, верёвки и цепочки | [Гравитация и верёвки](design/gravity-and-ropes.md) |
@@ -139,6 +160,7 @@ Word и PDF не расходятся.
 | Настройки редактора | [EN](md/en/EditorSettingsReference_EN.md) / [RU](md/ru/EditorSettingsReference_RU.md) | [EN](docx/en/EditorSettingsReference_EN.docx) / [RU](docx/ru/EditorSettingsReference_RU.docx) | [EN](pdf/en/EditorSettingsReference_EN.pdf) / [RU](pdf/ru/EditorSettingsReference_RU.pdf) | [EN](djvu/en/EditorSettingsReference_EN.djvu) / [RU](djvu/ru/EditorSettingsReference_RU.djvu) |
 | Физика | [EN](md/en/Physics_EN.md) / [RU](md/ru/Physics_RU.md) | [EN](docx/en/Physics_EN.docx) / [RU](docx/ru/Physics_RU.docx) | [EN](pdf/en/Physics_EN.pdf) / [RU](pdf/ru/Physics_RU.pdf) | [EN](djvu/en/Physics_EN.djvu) / [RU](djvu/ru/Physics_RU.djvu) |
 | Генерация кадров | [EN](md/en/FemboyEngineFrameGeneration_EN.md) / [RU](md/ru/FemboyEngineFrameGeneration_RU.md) | [EN](docx/en/FemboyEngineFrameGeneration_EN.docx) / [RU](docx/ru/FemboyEngineFrameGeneration_RU.docx) | [EN](pdf/en/FemboyEngineFrameGeneration_EN.pdf) / [RU](pdf/ru/FemboyEngineFrameGeneration_RU.pdf) | [EN](djvu/en/FemboyEngineFrameGeneration_EN.djvu) / [RU](djvu/ru/FemboyEngineFrameGeneration_RU.djvu) |
+| Неиспользуемые алерты CodeQL | [EN](md/en/CodeQLUnusedAlerts_EN.md) / [RU](md/ru/CodeQLUnusedAlerts_RU.md) | [EN](docx/en/CodeQLUnusedAlerts_EN.docx) / [RU](docx/ru/CodeQLUnusedAlerts_RU.docx) | [EN](pdf/en/CodeQLUnusedAlerts_EN.pdf) / [RU](pdf/ru/CodeQLUnusedAlerts_RU.pdf) | [EN](djvu/en/CodeQLUnusedAlerts_EN.djvu) / [RU](djvu/ru/CodeQLUnusedAlerts_RU.djvu) |
 
 ## Перегенерация
 

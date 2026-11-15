@@ -216,7 +216,7 @@ private:
     };
 
     container_type MData;
-    // A plain member: [[no_unique_address]] is ignored by the MSVC front end and
+    // A plain member: [[no_unique_address]] is ignored by the MSVC front end.
     Compare MCompare{};
 };
 

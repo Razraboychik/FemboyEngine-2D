@@ -70,7 +70,7 @@ struct HypertextView
     std::span<const HyperlinkRange> links{};
 };
 
-// A bounded parser/pool. One instance is typically owned by the UI system; the
+// A bounded parser/pool. One instance is typically owned by the UI system.
 class HypertextPool
 {
 public:
@@ -80,7 +80,7 @@ public:
 
     void Clear() noexcept;
 
-    // Parses inline links and copies the visible text into the pool. Returns a
+    // Parses inline links and copies the visible text into the pool.
     [[nodiscard]] HypertextComponent Intern(std::string_view InMarkup, std::uint32_t InLocalizationId = 0,
                                             std::uint16_t InFlags = 0) noexcept;
     // Same parser, named for the call site that has a flatbuffers::String view.
@@ -96,7 +96,7 @@ public:
                                         const HypertextComponent& InComponent) const noexcept;
 
     [[nodiscard]] std::string_view Target(const HyperlinkRange& InLink) const noexcept;
-    // Returns nullptr when the byte is not inside a link. `byteOffset` is
+    // Returns nullptr when the byte is not inside a link.
     [[nodiscard]] const HyperlinkRange* LinkAt(const HypertextView& InView, std::uint32_t InByteOffset) const noexcept;
     [[nodiscard]] std::uint32_t LinkCount(const HypertextComponent& InComponent) const noexcept
     {

@@ -29,7 +29,7 @@ struct ExtractStats
     std::uint32_t overflowed = 0;
 };
 
-// `Capacity` is the maximum number of render-visible entities in the world. The
+// `Capacity` is the maximum number of render-visible entities in the world.
 template <std::uint32_t Capacity = 4096> class ChangeMaskRenderExtract
 {
 public:
@@ -75,7 +75,7 @@ public:
         MStats = ExtractStats{};
     }
 
-    // Runs one render-extract pass. The registry is read through a view of
+    // Runs one render-extract pass.
     [[nodiscard]] bool Extract(Ecs::Registry& InRegistry) noexcept
     {
         ++MFrame;
@@ -128,14 +128,14 @@ public:
                     ScopedOk = false;
                     continue;
                 }
-                // First sight of an entity is always a full extraction, even if
+                // First sight of an entity is always a full extraction.
                 ScopedStructural = true;
             }
             if (!ScopedNew &&
                 (ScopedConsumed & (ChangeMaskOf(ChangeMaskBit::Transform2D) | ChangeMaskOf(ChangeMaskBit::Sprite2D) |
                                    ChangeMaskOf(ChangeMaskBit::DrawOrder))) == 0)
             {
-                // Audio/animation/physics bits were consumed; the RenderItem is
+                // Audio/animation/physics bits were consumed.
                 ++MStats.skippedStatic;
                 continue;
             }
@@ -231,7 +231,7 @@ public:
     {
         return {MDirtyRanges.data(), MDirtyRangeCount};
     }
-    // Stable-slot view. A backend that owns a persistent SSBO can index this
+    // Stable-slot view. A backend that owns a persistent SSBO can index.
     [[nodiscard]] std::span<const RenderItem> SlotItems() const noexcept
     {
         return {MItems.data(), Capacity};

@@ -1,0 +1,48 @@
+diff --git a/third_party/stb/stb_image_write.h b/third_party/stb/stb_image_write.h
+index e4b32ed..cb8d29f 100644
+--- a/third_party/stb/stb_image_write.h
++++ b/third_party/stb/stb_image_write.h
+@@ -825,8 +825,8 @@ STBIWDEF int stbi_write_hdr(char const *filename, int x, int y, int comp, const
+ 
+ static void *stbiw__sbgrowf(void **arr, int increment, int itemsize)
+ {
+-   int m = *arr ? 2*stbiw__sbm(*arr)+increment : increment+1;
+-   void *p = STBIW_REALLOC_SIZED(*arr ? stbiw__sbraw(*arr) : 0, *arr ? (stbiw__sbm(*arr)*itemsize + sizeof(int)*2) : 0, itemsize * m + sizeof(int)*2);
++   size_t m = *arr ? 2*(size_t)stbiw__sbm(*arr)+(size_t)increment : (size_t)increment+1;
++   void *p = STBIW_REALLOC_SIZED(*arr ? stbiw__sbraw(*arr) : 0, *arr ? ((size_t)stbiw__sbm(*arr)*(size_t)itemsize + sizeof(int)*2) : 0, (size_t)itemsize * m + sizeof(int)*2);
+    STBIW_ASSERT(p);
+    if (p) {
+       if (!*arr) ((int *) p)[1] = 0;
+@@ -1141,8 +1141,8 @@ STBIWDEF unsigned char *stbi_write_png_to_mem(const unsigned char *pixels, int s
+       force_filter = -1;
+    }
+ 
+-   filt = (unsigned char *) STBIW_MALLOC((x*n+1) * y); if (!filt) return 0;
+-   line_buffer = (signed char *) STBIW_MALLOC(x * n); if (!line_buffer) { STBIW_FREE(filt); return 0; }
++   filt = (unsigned char *) STBIW_MALLOC(((size_t)x*n+1) * y); if (!filt) return 0;
++   line_buffer = (signed char *) STBIW_MALLOC((size_t)x * n); if (!line_buffer) { STBIW_FREE(filt); return 0; }
+    for (j=0; j < y; ++j) {
+       int filter_type;
+       if (force_filter > -1) {
+diff --git a/third_party/stb/stb_truetype.h b/third_party/stb/stb_truetype.h
+index 90a5c2e..7b78ca5 100644
+--- a/third_party/stb/stb_truetype.h
++++ b/third_party/stb/stb_truetype.h
+@@ -3739,7 +3739,7 @@ STBTT_DEF unsigned char *stbtt_GetGlyphBitmapSubpixel(const stbtt_fontinfo *info
+    if (yoff  ) *yoff   = iy0;
+ 
+    if (gbm.w && gbm.h) {
+-      gbm.pixels = (unsigned char *) STBTT_malloc(gbm.w * gbm.h, info->userdata);
++      gbm.pixels = (unsigned char *) STBTT_malloc((size_t)gbm.w * gbm.h, info->userdata);
+       if (gbm.pixels) {
+          gbm.stride = gbm.w;
+ 
+@@ -4610,7 +4610,7 @@ STBTT_DEF unsigned char * stbtt_GetGlyphSDF(const stbtt_fontinfo *info, float sc
+       float *precompute;
+       stbtt_vertex *verts;
+       int num_verts = stbtt_GetGlyphShape(info, glyph, &verts);
+-      data = (unsigned char *) STBTT_malloc(w * h, info->userdata);
++      data = (unsigned char *) STBTT_malloc((size_t)w * h, info->userdata);
+       precompute = (float *) STBTT_malloc(num_verts * sizeof(float), info->userdata);
+ 
+       for (i=0,j=num_verts-1; i < num_verts; j=i++) {

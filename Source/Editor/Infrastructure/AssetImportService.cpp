@@ -245,7 +245,7 @@ bool AssetImportService::ScheduleCook(std::string_view InSourcePath, Assets::Ass
         SetError(InError, "stale asset handle");
         return false;
     }
-    // Audio/video are copied or decoded by their own runtime paths; this
+    // Audio/video are copied or decoded by their own runtime paths.
     if (ScopedMeta->kind != AssetKind::Texture)
     {
         return true;
@@ -258,7 +258,7 @@ bool AssetImportService::ScheduleCook(std::string_view InSourcePath, Assets::Ass
     }
     if (MVfs != nullptr)
     {
-        // Windows cannot replace a mapped file. Drop both mappings on the
+        // Windows cannot replace a mapped file.
         (void)MVfs->InvalidateFile(ScopedNormalized);
         const std::string ScopedCooked = CookedPathForSource(ScopedNormalized, ScopedMeta->kind);
         if (!ScopedCooked.empty())
@@ -296,6 +296,50 @@ bool AssetImportService::ScheduleCook(std::string_view InSourcePath, Assets::Ass
     ++MStats.queued;
     MCondition.notify_one();
     return true;
+}
+
+bool AssetImportService::UpdateImportSettings(std::string_view InSourcePath,
+                                               const Assets::AssetImportSettings& InSettings, std::string* InError)
+{
+    if (!MInitialized || MDatabase == nullptr)
+    {
+        SetError(InError, "importer is not initialized");
+        return false;
+    }
+    const Assets::AssetHandle ScopedHandle = MDatabase->FindHandleBySourcePath(InSourcePath);
+    const Assets::AssetMeta* ScopedLive = MDatabase->Meta(ScopedHandle);
+    if (ScopedLive == nullptr)
+    {
+        SetError(InError, "asset has no .femeta row");
+        return false;
+    }
+    Assets::AssetImportSettings ScopedSettings = InSettings;
+    ScopedSettings.maxSize = std::clamp<std::uint32_t>(ScopedSettings.maxSize, 64u, 8192u);
+    if (ScopedSettings.textureFormat > static_cast<std::uint32_t>(Assets::TextureFormat::Astc6x6Srgb))
+    {
+        SetError(InError, "unknown texture format");
+        return false;
+    }
+    Assets::AssetMeta ScopedUpdated = *ScopedLive;
+    ScopedUpdated.import = ScopedSettings;
+    std::string ScopedTransactionError;
+    if (!MDatabase->BeginTransaction() || !MDatabase->StageMeta(ScopedHandle, ScopedUpdated, &ScopedTransactionError) ||
+        !MDatabase->CommitTransaction())
+    {
+        if (MDatabase->InTransaction())
+        {
+            MDatabase->RollbackTransaction();
+        }
+        SetError(InError, ScopedTransactionError.empty() ? "asset metadata transaction failed" : ScopedTransactionError);
+        return false;
+    }
+    std::string ScopedMetaError;
+    if (!WriteMetaBesideSource(MConfig.assetsRoot, InSourcePath, ScopedUpdated, &ScopedMetaError))
+    {
+        SetError(InError, ScopedMetaError);
+        return false;
+    }
+    return ScheduleCook(InSourcePath, ScopedHandle, InError);
 }
 
 bool AssetImportService::ScheduleCookThunk(void* InUser, std::string_view InSourcePath, Assets::AssetHandle InHandle,

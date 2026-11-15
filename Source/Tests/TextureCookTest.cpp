@@ -285,13 +285,13 @@ void TestBc7Mode6ErrorBound()
     Fby::Cook::EncodeBc7Mode6Block(ScopedFlat, std::span<std::byte, 16>(ScopedFlatBlock, 16));
     std::uint8_t ScopedFlatDecoded[16 * 4] = {};
     FBY_CHECK(Fby::Cook::DecodeBc7Mode6Block(std::span<const std::byte, 16>(ScopedFlatBlock, 16), ScopedFlatDecoded));
-    // Mode 6 stores one shared P-bit per endpoint, so an RGBA endpoint whose
+    // Mode 6 stores one shared P-bit per endpoint, so an RGBA endpoint.
     FBY_CHECK(std::abs(static_cast<int>(ScopedFlatDecoded[0]) - 200) <= 1);
     FBY_CHECK(std::abs(static_cast<int>(ScopedFlatDecoded[1]) - 100) <= 1);
     FBY_CHECK(std::abs(static_cast<int>(ScopedFlatDecoded[2]) - 50) <= 1);
     FBY_CHECK(std::abs(static_cast<int>(ScopedFlatDecoded[3]) - 255) <= 1);
 
-    // A 1D ramp lies exactly on the mode-6 interpolation axis, so only the
+    // A 1D ramp lies exactly on the mode-6 interpolation axis.
     std::uint8_t ScopedRamp[16 * 4] = {};
     for (std::uint32_t ScopedTexel = 0; ScopedTexel < 16; ++ScopedTexel)
     {
@@ -375,7 +375,6 @@ void TestBc7TextureErrorBound()
     FBY_CHECK(ScopedRmse <= 5.0);
 }
 
-// 5: JPEG rejection
 void TestJpegRejection()
 {
     const std::vector<std::uint8_t> ScopedRgba = MakeGradient(8, 8);
@@ -483,7 +482,7 @@ void TestSrgbAwareMips()
     constexpr std::uint32_t ScopedKWidth = 13;
     constexpr std::uint32_t ScopedKHeight = 7;
     const std::vector<std::uint8_t> ScopedRgba = MakeGradient(ScopedKWidth, ScopedKHeight);
-    // Caller-controlled; BuildMipChain honours it
+    // Caller-controlled; BuildMipChain honours.
     const std::uint32_t ScopedLevels = 4;
     std::vector<std::uint8_t> ScopedChain;
     FBY_CHECK(

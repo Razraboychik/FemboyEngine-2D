@@ -1,0 +1,17 @@
+guid = "0x1219658C8A459C6F"
+asset_id = "0xA44384FBF5A2A5D2"
+type = "audio"
+source = "audio/voice_sfx/bubble-big.wav"
+cooked = "audio/voice_sfx/bubble-big.fpcm"
+source_hash = "0x9CF55D3F71269A78"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

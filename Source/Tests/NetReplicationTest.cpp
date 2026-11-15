@@ -284,7 +284,12 @@ void TestLargeBaseline()
         ScopedFixture.Receiver.Tick(ScopedNow);
     }
     FBY_CHECK(ScopedFixture.Receiver.AppliedTick() == 1);
-    FBY_CHECK(ScopedFixture.Recorder.LastBytes == 12000);}
+    FBY_CHECK(ScopedFixture.Recorder.LastBytes == 12000);
+
+    // One byte past the fixed cap is rejected instead of truncated.
+    const std::vector<std::byte> ScopedTooLarge = BuildState(2, kReplicationMaxStateBytes + 1);
+    FBY_CHECK(!ScopedFixture.Sender.PublishBaseline(2, ScopedTooLarge, ScopedNow));
+}
 
 int main()
 {

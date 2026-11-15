@@ -22,7 +22,7 @@ inline constexpr std::uint32_t kMaxAnimClips = 8;
 inline constexpr std::uint32_t kMaxAnimPoseKeys = 8;
 inline constexpr std::uint32_t kMaxAnimParams = 8;
 inline constexpr std::uint16_t kNoAnimTransition = 0xFFFFu;
-// FromState sentinel: the transition may fire from any logical state. State 0 is
+// FromState sentinel: the transition may fire from any logical state.
 inline constexpr std::uint64_t kAnimAnyState = 0xFFFFFFFFFFFFFFFFull;
 
 // A transition fires when every flag selected in `Conditions` is true. A flag
@@ -45,7 +45,7 @@ enum AnimConditionFlags : std::uint32_t
     AnimConditionFloatAtMost = 1u << 6,
 };
 
-// One authored state change. `FromState == kAnimAnyState` means "from any
+// One authored state change.
 struct AnimTransition
 {
     std::uint64_t FromState = kAnimAnyState;
@@ -71,7 +71,7 @@ struct AnimTransition
 static_assert(std::is_trivially_copyable_v<AnimTransition>);
 static_assert(std::is_standard_layout_v<AnimTransition>);
 
-// One animated bone inside a clip. Absolute local pose, not a delta: a clip is
+// One animated bone inside a clip.
 struct AnimBoneKey
 {
     std::uint16_t Bone = 0;
@@ -83,7 +83,7 @@ struct AnimBoneKey
 static_assert(sizeof(AnimBoneKey) == 20);
 static_assert(std::is_trivially_copyable_v<AnimBoneKey>);
 
-// A clip is shared by every entity in the same logical state. It carries both
+// A clip is shared by every entity in the same logical state.
 struct AnimClip
 {
     std::uint64_t State = 0;
@@ -139,7 +139,7 @@ struct AnimStateComponent
 {
     // Logical state. 0 = rest pose, no clip.
     std::uint64_t CurrentState = 0;
-    // State the cross-fade is coming from
+    // State the cross-fade is coming from.
     std::uint64_t PreviousState = 0;
     // Seconds spent in CurrentState; reset on every transition
     float StateTime = 0.0f;
@@ -180,11 +180,11 @@ void AnimGraphCaptureRestPose(SkeletonComponent& InSkeleton) noexcept;
                                          const GameplayTagsComponent* InTags,
                                          const GameplayTagRegistry* InTagRegistry) noexcept;
 
-// Writes the blended local pose into the skeleton and runs one SkeletalAnimation evaluation,
+// Writes the blended local pose into the skeleton and runs one SkeletalAnimation evaluation.
 void AnimGraphApplySkeletal(AnimStateComponent& InState, const AnimGraphDefinitionComponent& InDefinition,
                             SkeletonComponent& InSkeleton) noexcept;
 
-// Switches the SpriteAnimation clip to the current state's frame range. The UV rect is
+// Switches the SpriteAnimation clip to the current state's frame range.
 void AnimGraphApplySpriteClip(const AnimStateComponent& InState, const AnimGraphDefinitionComponent& InDefinition,
                               SpriteAnimationComponent& InSpriteAnimation, const SpriteSheetComponent* InGrid,
                               Sprite2D* InSprite) noexcept;
@@ -197,7 +197,6 @@ void AnimGraphApplySpriteClip(const AnimStateComponent& InState, const AnimGraph
                                                const AnimStateComponent& InState, Vector2D InDirection,
                                                AnimStateComponent* OutPoseState) noexcept;
 
-// System
 class AnimGraphSystem
 {
 public:

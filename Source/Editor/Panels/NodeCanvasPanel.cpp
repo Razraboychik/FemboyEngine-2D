@@ -1,5 +1,6 @@
 // FemboyEngine2D - transactional ImNodes canvas implementation.
 #include "Editor/Panels/NodeCanvasPanel.hpp"
+#include "Editor/Infrastructure/EditorTheme.hpp"
 
 #include "imnodes.h"
 
@@ -238,6 +239,13 @@ void NodeCanvasPanel::Draw(const char* InWindowTitle, bool* InOpen)
                 ImNodes::SetNodeGridSpacePos(ScopedId, MModel.nodePosition(MModel.user, ScopedNode));
             }
 
+            const bool ScopedStocking = StockingRowsActive();
+            if (ScopedStocking)
+            {
+                const ImU32 ScopedRow = StockingRowColorU32(ScopedIndex);
+                ImNodes::PushColorStyle(ImNodesCol_NodeBackground, ScopedRow);
+                ImNodes::PushColorStyle(ImNodesCol_TitleBar, ScopedRow);
+            }
             ImNodes::BeginNode(ScopedId);
             if (MNodeTitleFont != nullptr)
             {
@@ -288,6 +296,11 @@ void NodeCanvasPanel::Draw(const char* InWindowTitle, bool* InOpen)
                 MModel.drawNodeBody(MModel.user, ScopedNode);
             }
             ImNodes::EndNode();
+            if (ScopedStocking)
+            {
+                ImNodes::PopColorStyle();
+                ImNodes::PopColorStyle();
+            }
         }
 
         const std::uint32_t ScopedLinkCount = MModel.linkCount(MModel.user);
@@ -472,7 +485,7 @@ void NodeCanvasPanel::ProcessEvents()
         }
     }
 
-    // Delete selected links first, then nodes: deleting a node rebuilds the
+    // Delete selected links first, then nodes: deleting a node rebuilds the link table.
     const bool ScopedDeletePressed =
         ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !ImGui::GetIO().WantTextInput &&
         (ImNodes::IsEditorHovered() || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));

@@ -1,6 +1,6 @@
 # Security notes
 
-This document records the security-relevant design of the 0.4.0-alpha.1 tree
+This document records the security-relevant design of the 0.5.0 tree
 and, where the implementation differs from a published standard, the exact
 deviations. It is the security design note under `Documentation/design/`.
 

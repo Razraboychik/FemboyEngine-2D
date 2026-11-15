@@ -54,7 +54,7 @@ enum class RenderResourceKind : std::uint8_t
 // fails the static_assert in the Make* helpers instead of being truncated.
 inline constexpr std::uint32_t kMaxRenderConstantsBytes = 768;
 
-// One recorded unit of GPU work. The RHI backend turns this into a pipeline bind,
+// One recorded unit of GPU work. The RHI backend turns this into a pipeline bind.
 struct RenderCommandRecord
 {
     const char* pipelineName = nullptr;
@@ -177,7 +177,7 @@ private:
     bool MCompiled = false;
 };
 
-// Common reset helpers shared by passes. Each pass writes its constants before
+// Common reset helpers shared by passes.
 template <typename Constants>
 [[nodiscard]] RenderCommandRecord MakeComputeRecord(const char* InPipeline, const Constants& InConstants,
                                                     std::uint32_t InGroupsX, std::uint32_t InGroupsY = 1,

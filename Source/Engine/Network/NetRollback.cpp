@@ -128,7 +128,7 @@ bool InputRingBuffer::Push(const NetInputFrame& InFrame) noexcept
     ScopedSlot.frame = InFrame;
     ScopedSlot.frame.tick = InFrame.tick;
 
-    // Recompute the window bounds. The ring is tiny (256 slots) and Push runs at
+    // Recompute the window bounds.
     MCount = 0;
     std::uint64_t ScopedOldest = kInvalidNetTick;
     std::uint64_t ScopedNewest = 0;
@@ -808,7 +808,7 @@ NetRollbackSession::Result NetRollbackSession::SubmitRemoteInput(NetPlayerId InP
     }
     if (MStarted && InInput.tick <= MCurrentTick)
     {
-        // To correct tick T we need the snapshot at T-1. T-1 must still be in
+        // To correct tick T we need the snapshot at T-1.
         if (InInput.tick == MStartTick || InInput.tick + MRollbackTicks - 2u < MCurrentTick)
         {
             return Result::RollbackTooOld;
@@ -896,7 +896,7 @@ NetRollbackSession::Result NetRollbackSession::RestoreSnapshot(std::span<const s
         return Result::RestoreFailed;
     }
 
-    // Snapshot bytes never carry a b2 handle: rebuild the native bodies now so
+    // Snapshot bytes never carry a b2 handle: rebuild the native bodies now.
     if (MPhysics != nullptr)
     {
         MPhysics->EnsureBodies(*MRegistry);
@@ -1280,7 +1280,7 @@ NetRollbackSession::Result NetRollbackSession::FilterDeltaForPlayer(const Releva
     }
 
     std::byte* const ScopedOutputBase = OutFiltered.data() + sizeof(Ecs::SnapshotHeader);
-    // The source payload size says nothing about the destination. All
+    // The source payload size says nothing about the destination.
     const std::size_t ScopedOutputPayloadCapacity = OutFiltered.size() - sizeof(Ecs::SnapshotHeader);
     std::size_t ScopedWriteOffset = 0;
     std::uint32_t ScopedRecordCount = 0;
@@ -1347,7 +1347,7 @@ NetRollbackSession::Result NetRollbackSession::FilterDeltaForPlayer(const Releva
     ScopedHeader.payloadBytes = static_cast<std::uint32_t>(ScopedWriteOffset);
     ScopedHeader.extensionBytes = static_cast<std::uint32_t>(ScopedView.extension.size());
     ScopedHeader.extensionOffset = static_cast<std::uint32_t>(ScopedWriteOffset);
-    // Keep baseChecksum/baseTick/schemaHash/tick/rng from the source delta: the
+    // Keep baseChecksum/baseTick/schemaHash/tick/rng from the source delta.
     ScopedHeader.checksum = HashFilteredBytes(std::span<const std::byte>(ScopedOutputBase, ScopedWriteOffset));
     if (!ScopedView.extension.empty())
     {

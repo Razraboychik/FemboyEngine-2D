@@ -33,7 +33,7 @@ constexpr float kInvSqrt3 = 0.57735026918962576451f;
     return SplitMixFinal(InState);
 }
 
-// Integer hash of a Worley cell. Coordinates are folded as unsigned values so a
+// Integer hash of a Worley cell.
 [[nodiscard]] std::uint64_t HashCell(int InX, int InY, int InZ, std::uint64_t InSeed) noexcept
 {
     std::uint64_t ScopedHash = InSeed ^ 0x9E3779B97F4A7C15ull;
@@ -229,7 +229,6 @@ void NoiseGenerator::BuildPermutation(std::uint64_t InSeed) noexcept
     }
 }
 
-// Perlin
 float NoiseGenerator::Perlin2D(float InX, float InY) const noexcept
 {
     const int ScopedXi = FastFloor(InX);
@@ -301,7 +300,6 @@ float NoiseGenerator::Perlin3D(float InX, float InY, float InZ) const noexcept
     return Lerp(Lerp(ScopedX00, ScopedX10, ScopedV), Lerp(ScopedX01, ScopedX11, ScopedV), ScopedW);
 }
 
-// Simplex
 float NoiseGenerator::Simplex2D(float InX, float InY) const noexcept
 {
     // 0.5 * (sqrt(3) - 1)
@@ -541,7 +539,6 @@ float NoiseGenerator::WorleyEdge3D(float InX, float InY, float InZ) const noexce
     return Clamp01(ScopedF2 - ScopedF1);
 }
 
-// fBm
 float NoiseGenerator::Fbm2D(float InX, float InY, int InOctaves, float InLacunarity, float InGain) const noexcept
 {
     if (InOctaves <= 0)

@@ -40,6 +40,10 @@ This branch now has the first slice in the engine:
     generation and five temperature bands (tag path + colour).
 - Plugin ABI **6**:
   - optional `FbyAccessibilityApi` table in `FbyHostApi`;
+  - append-only `const FbyVoiceApi* voice` at the end of `FbyHostApi`; the ABI
+    version is unchanged, old plugins ignore the field and new ones detect it
+    with `FbyHostHasVoice()`; the table has its own `struct_size`/`abi_version`
+    and only registers data (`Source/Plugins/VoicePack` is the reference pack);
   - `register_theme`, `set_theme`, `register_palette_extension`,
     `register_effect` and `set_effect`;
   - plugin-owned resources are removed when the plugin is unloaded or reloaded;
@@ -47,6 +51,9 @@ This branch now has the first slice in the engine:
     `FBY_PHASE_UI` and `FBY_PHASE_RENDER`.
 - Accessibility plugins:
   - `Source/Plugins/RainbowPalette` — 80-colour extension `Rainbow.Palette80` (8x8 hues/shades plus 8 light and 8 dark neutrals);
+  - `Source/Plugins/ThemedPalettes` — six 80-colour theme packs: `Palette.Halloween`,
+    `Palette.Winter`, `Palette.Autumn`, `Palette.Spring`, `Palette.Terminal` and
+    `Palette.Paper`; each is ten curated seed families expanded to eight shades;
   - `Source/Plugins/Nvg` — generation/pattern profiles `Nvg.Gen1.Scanlines`
     through `Nvg.Gen4.Clean`;
   - `Source/Plugins/Thermal` — standard, high-contrast, ironbow, rainbow, white-hot, black-hot and generation-1 thermal
@@ -54,11 +61,29 @@ This branch now has the first slice in the engine:
   - `Source/Plugins/Alcohol` — tipsy/drunk/wasted/stalker profiles built from a
     layered effect pool (double vision, wobble, blur, chromatic aberration,
     vignette, desaturation, afterimage, pulse, sway, scale breathing);
+  - `Source/Plugins/Radiation` — `Radiation.Low`, `Radiation.High` and
+    `Radiation.Critical` screen-noise profiles with `Vision.Radiation`,
+    `Accessibility.Vision.Radiation` and `State.Radiation` tags;
+- Voice preset packs:
+  - `Source/Plugins/VoicePack` — helium, swamp and cursed-mumble presets
+    registered through `FbyVoiceApi`; the pack is data-only, unloads cleanly and
+    stays inactive on a host without a voice registry;
 - Editor:
-  - **View > Plugin Manager** lists only the open project's plugins;
+  - **View > Plugin Manager** lists the plugin files next to the editor
+    executable and only the open project's loaded plugins;
+  - **Connect & load** copies the selected file into `<project>/plugins/`, loads
+    it and records the project-relative path in `project.femproj`;
+  - the per-entry checkbox enables or disables a plugin without removing it;
+    **Forget** unloads the plugin and deletes the copied file;
   - paths are relative to the project root and validated before loading;
   - `[[plugins]]` entries in `project.femproj` carry `path` and `enabled`;
   a new project starts with no plugin entries (all packs are opt-in);
+- Engine:
+  - `Fby::Plugin::DiscoverPluginFiles()` lists the loadable libraries in a
+    directory and `PluginHost::LoadDirectory()` loads all of them, so a game
+    can bring up its packs without an editor or a project descriptor;
+  - the editor uses the same discovery result and adds the project binding on
+    top of it.
   - opening another project unloads the previous project's plugins.
 
 The visual consumer is now wired:
@@ -217,6 +242,33 @@ The palettes are:
 
 Names are stable ids (`Rainbow.Nvg`, `Rainbow.Thermal`, `Rainbow.Traffic.Protan`,
 `Rainbow.Extended`), while display names are localisable.
+
+## Themed palettes
+
+The engine already owns the runtime theme model: `AccessibilityTheme` with its
+16 semantic slots (including slot 15, the highlight colour), text size, contrast
+and outline, and the `AccessibilityThemeRegistry` that plugins can write through
+`register_theme`. Material highlighting is a renderer/game concern; a plugin
+cannot add a render pass or a material.
+
+`ThemedPalettes` is therefore a palette-content plugin, not a second theme
+system. It registers six 80-colour extensions through
+`register_palette_extension`:
+
+| Id | Mood |
+|---|---|
+| `Palette.Halloween` | pumpkin, bone, blood, moss, candle, purple, rust, fog, ember, shadow |
+| `Palette.Winter` | ice, snow, pine, twilight, steel, frost, deep night, silver, aurora, black |
+| `Palette.Autumn` | amber, rust, gold, moss, chestnut, wine, wheat, olive, fog, charcoal |
+| `Palette.Spring` | blossom, leaf, sky, butter, lavender, mint, soil, rain, coral, warm white |
+| `Palette.Terminal` | phosphor, dark green, light green, amber, amber dark, cyan, gray, black, acid, red |
+| `Palette.Paper` | parchment, ink, cream, sepia, faded blue, brown, gray, gold, rose, black |
+
+Each family expands to eight shades, so every extension fills all 80 slots.
+Selecting one changes the palette the game and the particle presets resolve
+against; the semantic theme and its highlight slot stay in core. A theme pack is
+still possible as a content plugin (`register_theme` plus a matching palette),
+but it does not need new engine code and is separate from this palette pack.
 
 ## Alcohol effect pool
 

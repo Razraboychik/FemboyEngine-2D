@@ -108,7 +108,7 @@ bool InferAssetKindFromPath(std::string_view InSourcePath, AssetKind* OutKind) n
     if (ScopedExtension == ".toml" || ScopedExtension == ".fescene")
     {
         const std::string ScopedNormalized = Assets::NormalizePakPath(InSourcePath);
-        // The atlas manifest is a TextureArray asset. Scenes/prefabs are the
+        // The atlas manifest is a TextureArray asset.
         if (ScopedNormalized.starts_with("atlas/") || ScopedNormalized.find("/atlas/") != std::string::npos)
         {
             *OutKind = AssetKind::TextureArray;

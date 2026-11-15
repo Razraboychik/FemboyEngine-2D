@@ -52,6 +52,11 @@ struct TextStyledBlock
         return std::string_view(Text.data(), TextLength);
     }
 
+    [[nodiscard]] bool Empty() const noexcept
+    {
+        return TextLength == 0;
+    }
+
     [[nodiscard]] const TextAction* ActionAt(std::uint32_t InByteOffset) const noexcept
     {
         for (std::uint32_t ScopedIndex = 0; ScopedIndex < ActionCount; ++ScopedIndex)
@@ -310,11 +315,86 @@ struct MarkupStackEntry
                 ScopedRunBegin = OutBlock->TextLength;
                 ScopedRunOpen = true;
             }
-            if (OutBlock->TextLength >= TextStyledBlock::kMaxTextBytes)
+            const auto ScopedPut = [OutBlock](char InCharacter) noexcept
+            {
+                if (OutBlock->TextLength >= TextStyledBlock::kMaxTextBytes)
+                {
+                    return false;
+                }
+                OutBlock->Text[OutBlock->TextLength++] = InCharacter;
+                return true;
+            };
+            char ScopedCharacter = InMarkup[ScopedCursor];
+            if (ScopedCharacter == '\\' && ScopedCursor + 1 < InMarkup.size())
+            {
+                const char ScopedEscape = InMarkup[ScopedCursor + 1];
+                ScopedCursor += 2;
+                if (ScopedEscape == 't' || ScopedEscape == 'p')
+                {
+                    if (ScopedEscape == 'p' && !ScopedPut('\n'))
+                    {
+                        return TextMarkupStatus::TextTooLong;
+                    }
+                    for (std::uint32_t ScopedSpace = 0; ScopedSpace < 4; ++ScopedSpace)
+                    {
+                        if (!ScopedPut(' '))
+                        {
+                            return TextMarkupStatus::TextTooLong;
+                        }
+                    }
+                }
+                else if (ScopedEscape == 'n')
+                {
+                    if (!ScopedPut('\n'))
+                    {
+                        return TextMarkupStatus::TextTooLong;
+                    }
+                }
+                else if (ScopedEscape == '\\')
+                {
+                    if (!ScopedPut('\\'))
+                    {
+                        return TextMarkupStatus::TextTooLong;
+                    }
+                }
+                else
+                {
+                    if (!ScopedPut('\\') || !ScopedPut(ScopedEscape))
+                    {
+                        return TextMarkupStatus::TextTooLong;
+                    }
+                }
+                continue;
+            }
+            if (ScopedCharacter == '\r')
+            {
+                ++ScopedCursor;
+                if (ScopedCursor < InMarkup.size() && InMarkup[ScopedCursor] == '\n')
+                {
+                    ++ScopedCursor;
+                }
+                ScopedCharacter = '\n';
+            }
+            else if (ScopedCharacter == '\t')
+            {
+                ++ScopedCursor;
+                for (std::uint32_t ScopedSpace = 0; ScopedSpace < 4; ++ScopedSpace)
+                {
+                    if (!ScopedPut(' '))
+                    {
+                        return TextMarkupStatus::TextTooLong;
+                    }
+                }
+                continue;
+            }
+            else
+            {
+                ++ScopedCursor;
+            }
+            if (!ScopedPut(ScopedCharacter))
             {
                 return TextMarkupStatus::TextTooLong;
             }
-            OutBlock->Text[OutBlock->TextLength++] = InMarkup[ScopedCursor++];
             continue;
         }
         const std::size_t ScopedClose = InMarkup.find(']', ScopedCursor + 1);

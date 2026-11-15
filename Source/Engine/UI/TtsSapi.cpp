@@ -46,7 +46,7 @@ namespace
     return static_cast<ISpVoice*>(InRaw);
 }
 
-// Bounded enumeration: a Windows installation ships a handful of voices, and a
+// Bounded enumeration: a Windows installation ships a handful of voices.
 constexpr std::uint32_t kMaxVoiceTokens = 64;
 constexpr std::size_t kMaxLanguageTagBytes = 64;
 
@@ -141,7 +141,7 @@ void ParsePrimaryLanguage(const char* InTag, char* OutCode, std::size_t InBytes)
     return ScopedCategory;
 }
 
-// A token's Language attribute is a hexadecimal LCID string ("409", "419",
+// A token's Language attribute is a hexadecimal LCID string ("409", "419".
 [[nodiscard]] bool ReadTokenLanguage(ISpObjectToken* InToken, LCID* OutLcid) noexcept
 {
     if (InToken == nullptr || OutLcid == nullptr)
@@ -163,6 +163,38 @@ void ParsePrimaryLanguage(const char* InTag, char* OutCode, std::size_t InBytes)
     }
     *OutLcid = static_cast<LCID>(ScopedLcid);
     return true;
+}
+
+// UTF-8 copy of a wide string. Output is always terminated.
+void WideToUtf8(const wchar_t* InWide, char* OutText, std::size_t InBytes) noexcept
+{
+    if (OutText == nullptr || InBytes == 0)
+    {
+        return;
+    }
+    OutText[0] = '\0';
+    if (InWide == nullptr)
+    {
+        return;
+    }
+    (void)WideCharToMultiByte(CP_UTF8, 0, InWide, -1, OutText, static_cast<int>(InBytes), nullptr, nullptr);
+    OutText[InBytes - 1] = '\0';
+}
+
+// LCID -> BCP-47 tag ("en-US"). Unknown locales leave the tag empty.
+void LcidToBcp47(LCID InLcid, char* OutTag, std::size_t InBytes) noexcept
+{
+    if (OutTag == nullptr || InBytes == 0)
+    {
+        return;
+    }
+    OutTag[0] = '\0';
+    wchar_t ScopedName[LOCALE_NAME_MAX_LENGTH]{};
+    if (LCIDToLocaleName(InLcid, ScopedName, static_cast<int>(std::size(ScopedName)), 0) == 0)
+    {
+        return;
+    }
+    WideToUtf8(ScopedName, OutTag, InBytes);
 }
 
 // The system default voice, materialized from the category's default token id.
@@ -228,7 +260,7 @@ SapiTts::~SapiTts()
 bool SapiTts::Initialize() noexcept
 {
 #if defined(_WIN32)
-    // Creating the ISpVoice initializes the calling thread's COM apartment. A
+    // Creating the ISpVoice initializes the calling thread's COM apartment.
     if (!RequireMainThread("SapiTts::Initialize"))
     {
         return false;
@@ -533,6 +565,123 @@ void SapiTts::SetVoice(const char* InLanguageBCP47) noexcept
 #endif
 }
 
+bool SapiTts::SetVoiceById(const char* InId) noexcept
+{
+#if defined(_WIN32)
+    // The voice is a COM object of the owner thread, exactly like SetVoice().
+    if (!RequireMainThread("SapiTts::SetVoiceById") || MVoice == nullptr || InId == nullptr || InId[0] == '\0')
+    {
+        return false;
+    }
+    wchar_t ScopedWide[kTtsVoiceIdBytes]{};
+    if (MultiByteToWideChar(CP_UTF8, 0, InId, -1, ScopedWide, static_cast<int>(std::size(ScopedWide))) <= 0)
+    {
+        return false;
+    }
+    ISpObjectToken* ScopedToken = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_SpObjectToken, nullptr, CLSCTX_ALL, IID_ISpObjectToken,
+                                reinterpret_cast<void**>(&ScopedToken))) ||
+        ScopedToken == nullptr)
+    {
+        return false;
+    }
+    if (FAILED(ScopedToken->SetId(SPCAT_VOICES, ScopedWide, FALSE)))
+    {
+        ScopedToken->Release();
+        return false;
+    }
+    const HRESULT ScopedResult = Voice(MVoice)->SetVoice(ScopedToken);
+    ScopedToken->Release();
+    if (FAILED(ScopedResult))
+    {
+        LogWarn("tts", "SAPI: SetVoiceById rejected the token (HRESULT 0x{:08X})",
+                static_cast<std::uint32_t>(ScopedResult));
+        return false;
+    }
+    LogInfo("tts", "SAPI voice selected by id");
+    return true;
+#else
+    (void)InId;
+    return false;
+#endif
+}
+
+std::uint32_t SapiTts::EnumerateVoices(TtsVoiceInfo* OutVoices, std::uint32_t InCapacity) noexcept
+{
+#if defined(_WIN32)
+    if (!RequireMainThread("SapiTts::EnumerateVoices") || MVoice == nullptr || OutVoices == nullptr ||
+        InCapacity == 0)
+    {
+        return 0;
+    }
+    ISpObjectTokenCategory* ScopedCategory = OpenVoiceCategory();
+    if (ScopedCategory == nullptr)
+    {
+        return 0;
+    }
+    IEnumSpObjectTokens* ScopedEnumerator = nullptr;
+    if (FAILED(ScopedCategory->EnumTokens(nullptr, nullptr, &ScopedEnumerator)) || ScopedEnumerator == nullptr)
+    {
+        ScopedCategory->Release();
+        return 0;
+    }
+
+    std::uint32_t ScopedCount = 0;
+    while (ScopedCount < InCapacity)
+    {
+        ISpObjectToken* ScopedToken = nullptr;
+        ULONG ScopedFetched = 0;
+        if (ScopedEnumerator->Next(1, &ScopedToken, &ScopedFetched) != S_OK || ScopedToken == nullptr ||
+            ScopedFetched == 0)
+        {
+            break;
+        }
+        TtsVoiceInfo& ScopedVoice = OutVoices[ScopedCount];
+        ScopedVoice = TtsVoiceInfo{};
+
+        LPWSTR ScopedTokenId = nullptr;
+        if (SUCCEEDED(ScopedToken->GetId(&ScopedTokenId)) && ScopedTokenId != nullptr)
+        {
+            WideToUtf8(ScopedTokenId, ScopedVoice.Id, sizeof(ScopedVoice.Id));
+            CoTaskMemFree(ScopedTokenId);
+        }
+        LPWSTR ScopedName = nullptr;
+        if (SUCCEEDED(ScopedToken->GetStringValue(nullptr, &ScopedName)) && ScopedName != nullptr)
+        {
+            WideToUtf8(ScopedName, ScopedVoice.Name, sizeof(ScopedVoice.Name));
+            CoTaskMemFree(ScopedName);
+        }
+        LCID ScopedLcid = 0;
+        if (ReadTokenLanguage(ScopedToken, &ScopedLcid))
+        {
+            LcidToBcp47(ScopedLcid, ScopedVoice.Language, sizeof(ScopedVoice.Language));
+        }
+        LPWSTR ScopedGender = nullptr;
+        if (SUCCEEDED(ScopedToken->GetStringValue(L"Gender", &ScopedGender)) && ScopedGender != nullptr)
+        {
+            if (std::wcscmp(ScopedGender, L"Male") == 0)
+            {
+                ScopedVoice.Gender = 1;
+            }
+            else if (std::wcscmp(ScopedGender, L"Female") == 0)
+            {
+                ScopedVoice.Gender = 2;
+            }
+            CoTaskMemFree(ScopedGender);
+        }
+        ScopedToken->Release();
+        ++ScopedCount;
+    }
+    ScopedEnumerator->Release();
+    ScopedCategory->Release();
+    return ScopedCount;
+#else
+    (void)OutVoices;
+    (void)InCapacity;
+    return 0;
+#endif
+}
+
 TtsBackend SapiTts::Backend() noexcept
 {
     TtsBackend ScopedBackend;
@@ -544,6 +693,10 @@ TtsBackend SapiTts::Backend() noexcept
         +[](void* InUser, float InRate) noexcept { static_cast<SapiTts*>(InUser)->SetRate(InRate); };
     ScopedBackend.setVoice = +[](void* InUser, const char* InLanguage) noexcept
     { static_cast<SapiTts*>(InUser)->SetVoice(InLanguage); };
+    ScopedBackend.setVoiceById = +[](void* InUser, const char* InId) noexcept
+    { return static_cast<SapiTts*>(InUser)->SetVoiceById(InId); };
+    ScopedBackend.enumerateVoices = +[](void* InUser, TtsVoiceInfo* InVoices, std::uint32_t InCapacity) noexcept
+    { return static_cast<SapiTts*>(InUser)->EnumerateVoices(InVoices, InCapacity); };
     return ScopedBackend;
 }
 }

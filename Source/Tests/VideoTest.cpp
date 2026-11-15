@@ -137,7 +137,7 @@ constexpr std::uint32_t kBlockAdditionalId = 0xA5u;
 
 [[nodiscard]] Bytes EncodeSize(std::uint64_t InValue)
 {
-    // All-ones is the "unknown size" marker, so a known size always needs a
+    // All-ones is the "unknown size" marker, so a known size always.
     for (std::uint32_t ScopedLength = 1; ScopedLength <= 8; ++ScopedLength)
     {
         const std::uint64_t ScopedCapacity = (1ull << (7 * ScopedLength)) - 1ull;
@@ -235,7 +235,7 @@ struct WebmBuilder
     bool blockGroups = false;
 };
 
-// Builds a complete, valid-enough WebM file. Every frame payload is
+// Builds a complete, valid-enough WebM file.
 [[nodiscard]] Bytes BuildWebm(const WebmBuilder& InBuilder)
 {
     Bytes ScopedEbmlHeader;
@@ -729,7 +729,7 @@ void TestPlayerRingOrderingAndAlpha()
     FBY_CHECK(ScopedPlayer.PresentedFrames() == 3);
     FBY_CHECK(ScopedPlayer.LastPresentedTimestampNs() == 40ull * 1000000ull);
 
-    // Uploaded layers are in presentation order: the first uploaded layer is
+    // Uploaded layers are in presentation order: the first uploaded layer.
     FBY_CHECK(ScopedRhi.uploadCount == 3);
     FBY_CHECK(ScopedRhi.arrays.size() == 1);
     FBY_CHECK(ScopedRhi.arrays[0].desc.layers == Fby::Video::kVideoFramePoolSize);
@@ -738,13 +738,13 @@ void TestPlayerRingOrderingAndAlpha()
     FBY_CHECK(ScopedRhi.arrays[0].desc.mipLevels == 1);
     FBY_CHECK(ScopedRhi.arrays[0].desc.size.width == 4 && ScopedRhi.arrays[0].desc.size.height == 4);
 
-    // Alpha composition: the fake alpha decoder writes payload byte 1 into the
+    // Alpha composition: the fake alpha decoder writes payload byte.
     const auto& ScopedFirstFrame = ScopedRhi.arrays[0].layers[ScopedFirstLayer];
     FBY_CHECK(static_cast<std::uint8_t>(ScopedFirstFrame[3]) == 64);
     const auto& ScopedThirdLayer = ScopedRhi.arrays[0].layers[ScopedPlayer.CurrentLayer()];
     FBY_CHECK(static_cast<std::uint8_t>(ScopedThirdLayer[3]) == 64 + 2 * 32);
 
-    // Luma mapping: frame 0 decodes to Y=76, frame 2 to Y=196. U=V=128, so the
+    // Luma mapping: frame 0 decodes to Y=76, frame 2 to Y=196.
     const std::uint8_t ScopedFirstRed = static_cast<std::uint8_t>(ScopedFirstFrame[0]);
     const std::uint8_t ScopedThirdRed = static_cast<std::uint8_t>(ScopedThirdLayer[0]);
     FBY_CHECK(ScopedFirstRed >= 68 && ScopedFirstRed <= 72);
@@ -794,7 +794,7 @@ void TestSystemDropsAndLoops()
     FBY_CHECK((ScopedTracked.Flags & Fby::Video::kVideoFlagFinished) == 0);
     FBY_CHECK(ScopedSystem.Player(ScopedComponent.Player)->PresentedFrames() == 1);
 
-    // Jump 100 ms: both remaining frames are late. The newest (frame 2) is
+    // Jump 100 ms: both remaining frames are late.
     ScopedContext.dt = 0.1f;
     ScopedSystem.Update(ScopedContext);
     FBY_CHECK(ScopedSystem.Player(ScopedComponent.Player)->PresentedFrames() == 2);
@@ -807,7 +807,7 @@ void TestSystemDropsAndLoops()
     ScopedSystem.Update(ScopedContext);
     FBY_CHECK((ScopedRegistry.get<VideoStreamComponent>(ScopedEntity).Flags & Fby::Video::kVideoFlagFinished) != 0);
 
-    // Loop: the finished stream rewinds, decodes frame 0 again and reports no
+    // Loop: the finished stream rewinds, decodes frame 0 again and reports.
     ScopedRegistry.get<VideoStreamComponent>(ScopedEntity).Loop = true;
     // Publishes the rewind request
     ScopedSystem.Update(ScopedContext);
@@ -825,7 +825,7 @@ void TestSystemDropsAndLoops()
 
 void TestSteadyStateAllocations()
 {
-    // Twelve frames means the pump hits both ring back-pressure and the mip of
+    // Twelve frames means the pump hits both ring back-pressure and the mip.
     WebmBuilder ScopedBuilder;
     ScopedBuilder.frameCount = 12;
     ScopedBuilder.frameSpacingMs = 20;

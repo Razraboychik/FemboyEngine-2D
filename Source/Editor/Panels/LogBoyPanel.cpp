@@ -118,7 +118,7 @@ constexpr double kRateWindowSeconds = 0.5;
     return ImGui::ColorConvertU32ToFloat4(LogBoySeverityColor(InSeverity));
 }
 
-// The engine Log() bridge. A plain function pointer keeps the sink free of
+// The engine Log() bridge.
 std::atomic<LogBoyPanel*> LogBoyBridge{nullptr};
 
 void LogBoyObserver(LogLevel InLevel, std::string_view InChannel, std::string_view InMessage) noexcept

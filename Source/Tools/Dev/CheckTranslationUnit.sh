@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FemboyEngine2D 0.4.0-alpha.1 - fast syntax gate for one translation unit.
+# FemboyEngine2D - fast syntax gate for one translation unit.
 #
 # The engine's real build is a single Ninja graph in build/. Running a full
 # `ninja` from several agents at once would contend for the same object files,
@@ -60,7 +60,6 @@ INCLUDES=(
     "-I${ROOTW}/third_party/opus-master/opus-main/include"
     "-I${ROOTW}/third_party/stb"
     "-I${ROOTW}/engine/tools"
-    "-imsvc${ROOTW}/third_party/entt-main/entt-main/src"
     "-imsvc${ROOTW}/third_party/tomlplusplus-master/tomlplusplus-master"
     "-imsvc${ROOTW}/third_party/miniaudio-master/miniaudio-master"
 )
@@ -71,9 +70,11 @@ if [[ $WITH_TESTS -eq 1 ]]; then
     )
 fi
 
+VERSION="$(tr -d '\r\n' < "${ROOT}/../Version.txt")"
+
 DEFINES=(
     -DB2_ENABLE_ASSERT
-    -DFBY_ENGINE_VERSION=\"0.4.0-alpha.1\"
+    -DFBY_ENGINE_VERSION=\"${VERSION}\"
     -DFBY_PLATFORM_NAME=\"Windows\"
     -DFBY_HAS_VULKAN_HEADERS=1
     -DNOMINMAX -DTOML_ENABLE_FORMATTERS=0

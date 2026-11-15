@@ -224,7 +224,7 @@ public:
 private:
     std::array<GraphSystem, kMaxGraphSystems> MSystems{};
     std::array<std::uint32_t, kMaxGraphSystems> MOrder{};
-    // Dependency masks after `before` edges have been folded in, plus the
+    // Dependency masks after `before` edges have been folded in.
     std::array<std::uint64_t, kMaxGraphSystems> MDependencies{};
     std::array<std::uint32_t, kMaxGraphSystems> MLevels{};
     std::uint32_t MCount = 0;

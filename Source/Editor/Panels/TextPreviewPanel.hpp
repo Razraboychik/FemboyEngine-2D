@@ -5,10 +5,13 @@
 #include "Engine/Text/TextFontStack.hpp"
 #include "Engine/Text/TextRender.hpp"
 #include "Engine/Text/TextShaper.hpp"
+#include "Engine/Text/TextAssetFile.hpp"
 #include "Engine/Text/TextShapedLayout.hpp"
+#include "Engine/UI/Hypertext.hpp"
 
 #include <array>
 #include <cstdint>
+#include <string>
 
 namespace Fby
 {
@@ -68,6 +71,12 @@ private:
     std::uint32_t MAtlasBytes = 0;
     std::uint32_t MPageBuilds = 0;
     float MBuildMilliseconds = 0.0f;
+    Text::MappedTextAsset MAsset;
+    std::array<char, 256> MAssetPath{};
+    std::string MAssetStatus;
+    Ui::HypertextPool MPool;
+    Ui::HypertextComponent MHypertext{};
+    bool MHypertextMode = false;
     bool MLocalizationReady = false;
     bool MStackReady = false;
     char MStatus[192] = {};

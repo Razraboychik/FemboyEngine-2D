@@ -11,7 +11,7 @@ namespace Fby
 {
 namespace
 {
-// A namespace-scope dynamic initialiser runs on the process main thread before
+// A namespace-scope dynamic initialiser runs on the process main thread.
 std::atomic<std::thread::id> GMainThreadId{std::this_thread::get_id()};
 }
 

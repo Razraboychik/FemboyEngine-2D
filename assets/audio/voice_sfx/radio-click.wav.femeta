@@ -1,0 +1,17 @@
+guid = "0xBF9CE3419E006D20"
+asset_id = "0x167144521ECF707F"
+type = "audio"
+source = "audio/voice_sfx/radio-click.wav"
+cooked = "audio/voice_sfx/radio-click.fpcm"
+source_hash = "0x0DC56F7084947FFC"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

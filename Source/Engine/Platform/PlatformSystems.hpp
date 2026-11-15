@@ -184,10 +184,10 @@ public:
     EgsStoreSystem() = default;
 
     void Initialize(PlatformService& InService, PlatformCommandLog& InLog, std::uint64_t InStartTick = 1) noexcept;
-    // Copies a save payload into the fixed staging arena. Returns false when the
+    // Copies a save payload into the fixed staging arena.
     [[nodiscard]] bool StageWrite(std::uint64_t InSaveId, std::string_view InFileName,
                                   std::span<const std::byte> InData) noexcept;
-    // PostUpdate. Scans CloudSaveComponent, queues a bounded number of writes and
+    // PostUpdate. Scans CloudSaveComponent, queues a bounded number of writes.
     void Update(Ecs::SystemContext& InContext);
     [[nodiscard]] std::uint32_t Uploaded() const noexcept
     {
@@ -266,7 +266,7 @@ public:
     void Initialize(PlatformService& InService, PlatformCommandLog& InLog, std::uint64_t InStartTick = 1) noexcept;
     [[nodiscard]] bool StageWrite(std::uint64_t InSaveId, std::string_view InFileName,
                                   std::span<const std::byte> InData) noexcept;
-    // PostUpdate. Handles CloudSaveDirty and CloudSaveReadRequested, clears the
+    // PostUpdate. Handles CloudSaveDirty and CloudSaveReadRequested, clears the request bits.
     void Update(Ecs::SystemContext& InContext);
     [[nodiscard]] std::uint32_t Uploaded() const noexcept
     {
@@ -280,7 +280,7 @@ public:
     {
         return MFailed;
     }
-    // A staged save that overwrote a different payload with the same id. The
+    // A staged save that overwrote a different payload with the same id.
     [[nodiscard]] std::uint32_t Conflicts() const noexcept
     {
         return MConflicts;

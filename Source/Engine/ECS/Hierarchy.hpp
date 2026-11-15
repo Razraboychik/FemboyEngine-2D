@@ -15,6 +15,13 @@ namespace Fby::Ecs
 // entities keep their previous world transform.
 [[nodiscard]] bool UpdateHierarchy(Registry& InRegistry) noexcept;
 
+// Makes InParent the parent of InChild without moving the child in the world:
+// the current world transform is converted into the new parent's space. A
+// parent of kNullEntity clears the parent and keeps the world transform. The
+// components are added or removed as needed. Returns false on an invalid entity
+// or a cycle, leaving the registry unchanged.
+[[nodiscard]] bool SetParent(Registry& InRegistry, Entity InChild, Entity InParent) noexcept;
+
 // Maximum parent chain the pass follows; deeper chains are reported as broken.
 inline constexpr std::uint32_t kMaxHierarchyDepth = 64;
 }

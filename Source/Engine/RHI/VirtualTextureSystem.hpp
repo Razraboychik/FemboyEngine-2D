@@ -42,7 +42,7 @@ struct VirtualTextureDesc
     std::uint32_t pageSize = kVirtualTexturePageSize;
     std::uint32_t tileSize = kVirtualTextureTileSize;
     std::uint32_t chunkTiles = kVirtualTextureChunkTiles;
-    // World units covered by one tile. 256 world units at 64 pixels is 4 px per
+    // World units covered by one tile.
     float worldTileSize = 256.0f;
     // Extra rings of tiles loaded around the camera. 0 keeps the VRAM strictly
     std::uint32_t prefetchTiles = 0;
@@ -70,7 +70,7 @@ struct VirtualTextureCamera
     float rotation = 0.0f;
 };
 
-// Where a world tile currently lives. `resident == false` means the tile is
+// Where a world tile currently lives.
 struct VirtualTextureAddress
 {
     std::uint32_t layer = 0;
@@ -177,7 +177,7 @@ public:
         MTableUpdateCount = 0;
     }
 
-    // Residency pass for one camera. `InCamera` already carries rotation and
+    // Residency pass for one camera.
     void Update(const VirtualTextureCamera& InCamera) noexcept;
     void Update(Vector2D InCenter, Vector2D InViewSize, float InZoom, float InRotationRadians = 0.0f) noexcept;
 

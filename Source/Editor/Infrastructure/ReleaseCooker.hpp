@@ -96,6 +96,10 @@ struct ReleaseCookConfig
     std::uint32_t cipher = 1;
     bool compileAot = true;
     bool keepAotSource = true;
+    // Stages a runnable game folder next to the store archives. Vendor upscaler
+    // runtimes stay out by default; the packaging CLI selects them per feature.
+    bool stageRuntime = true;
+    bool includeVendorRuntimes = false;
 
     [[nodiscard]] bool Encrypts() const noexcept
     {
@@ -148,6 +152,7 @@ struct ReleaseCookResult
     std::uint64_t archiveBytes = 0;
     char archivePath[kReleasePathBytes] = {};
     char pluginPath[kReleasePathBytes] = {};
+    char runtimePath[kReleasePathBytes] = {};
     char message[kReleaseMessageBytes] = {};
 };
 
@@ -164,7 +169,7 @@ public:
     ReleaseCooker(const ReleaseCooker&) = delete;
     ReleaseCooker& operator=(const ReleaseCooker&) = delete;
 
-    // Builds a config from the open project. `engineRoot` and `packerPath` are
+    // Builds a config from the open project.
     [[nodiscard]] static ReleaseCookConfig FromProject(const ProjectPaths& InPaths, const ProjectSettings& InSettings,
                                                        std::string_view InEngineRoot, std::string_view InPackerPath);
 
@@ -205,8 +210,12 @@ private:
     void PollProgressFile() noexcept;
     [[nodiscard]] bool PrepareKey() noexcept;
     void WipeKey() noexcept;
-    // Copies the final archive (and plugin, when AOT ran) into
+    // Copies the final archive (and plugin, when AOT ran).
     [[nodiscard]] bool StageStoreArchives(const char* InPluginPath) noexcept;
+    // Copies the game runtime, runtime DLLs and the cooked pak into a runnable
+    // `<project>-game/` folder. Missing executables are a warning, not an asset
+    // cook failure, so editor-only builds still complete.
+    void StageRuntimeBundle(const char* InPluginPath) noexcept;
 
     mutable std::mutex MProgressMutex{};
     ReleaseCookProgress MProgress{};

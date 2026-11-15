@@ -154,30 +154,37 @@ def build_docx(markdown_path: pathlib.Path, docx_path: pathlib.Path) -> None:
     document.save(docx_path)
 
 
-def build_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path) -> int:
+def build_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, SkipPdf: bool = False) -> int:
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    if pdf_path.is_file():
-        pdf_path.unlink()
+    if SkipPdf:
+        return 0
     if not NODE.is_file() or not LIBREOFFICE_CLI.is_file():
         print("pdf export skipped: LibreOffice Kit is not installed")
         return 1
-    command = [str(NODE), str(LIBREOFFICE_CLI), "convert", "--input", str(docx_path), "--output", str(pdf_path)]
+    # Convert beside the target first: a missing converter or a failed run must
+    # leave the previously published PDF in place.
+    temporary = pdf_path.with_name(pdf_path.name + ".tmp.pdf")
+    temporary.unlink(missing_ok=True)
+    command = [str(NODE), str(LIBREOFFICE_CLI), "convert", "--input", str(docx_path), "--output", str(temporary)]
     result = subprocess.run(command, check=False)
-    if result.returncode != 0 or not pdf_path.is_file() or pdf_path.stat().st_size == 0:
+    if result.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
         print(f"pdf export failed: {docx_path}")
+        temporary.unlink(missing_ok=True)
         return 1
-    with pdf_path.open("rb") as handle:
+    with temporary.open("rb") as handle:
         if handle.read(5) != b"%PDF-":
             print(f"pdf signature missing: {pdf_path}")
+            temporary.unlink(missing_ok=True)
             return 1
+    os.replace(temporary, pdf_path)
     return 0
 
 
 def render_one(markdown_path: pathlib.Path, docx_path: pathlib.Path, pdf_path: pathlib.Path,
-               djvu_path: pathlib.Path) -> int:
+               djvu_path: pathlib.Path, SkipPdf: bool = False) -> int:
     print(f"docx {docx_path.relative_to(ROOT)}")
     build_docx(markdown_path, docx_path)
-    if build_pdf(docx_path, pdf_path) != 0:
+    if build_pdf(docx_path, pdf_path, SkipPdf) != 0:
         return 1
     print(f"pdf  {pdf_path.relative_to(ROOT)}")
     docconvert.BuildDjvu(pdf_path, djvu_path)
@@ -190,7 +197,13 @@ def main() -> int:
     parser.add_argument("--docx", help="DOCX destination")
     parser.add_argument("--pdf", help="PDF destination")
     parser.add_argument("--all", action="store_true", help="render every guide in Documentation/md")
+    parser.add_argument("--skip-pdf", action="store_true", help="write DOCX only")
+    parser.add_argument("--node", default=os.environ.get("FBY_NODE", "node"), help="node executable")
+    parser.add_argument("--lo-cli", default=os.environ.get("FBY_LO_CLI", ""), help="LibreOffice Kit cli.js")
     arguments = parser.parse_args()
+    global NODE, LIBREOFFICE_CLI
+    NODE = pathlib.Path(arguments.node)
+    LIBREOFFICE_CLI = pathlib.Path(arguments.lo_cli)
     if arguments.all:
         failures = 0
         for language, (source, stem) in GUIDES.items():
@@ -199,6 +212,7 @@ def main() -> int:
                 DOC_ROOT / "docx" / language / f"{stem}.docx",
                 DOC_ROOT / "pdf" / language / f"{stem}.pdf",
                 DOC_ROOT / "djvu" / language / f"{stem}.djvu",
+                arguments.skip_pdf,
             )
         return 1 if failures else 0
     if not arguments.input or not arguments.docx:

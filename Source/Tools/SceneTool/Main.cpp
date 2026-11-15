@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-// A test-only component with an entity reference. It lives in the tool so the
+// A test-only component with an entity reference.
 struct FollowTarget
 {
     Fby::Entity Target = Fby::kNullEntity;
@@ -184,7 +184,7 @@ void BuildRegistry(ComponentRegistry& InRegistry)
         return 1;
     }
 
-    // Apply twice into the same world and prove the ids are fresh. This is the
+    // Apply twice into the same world and prove the ids are fresh.
     Fby::Scene::Registry ScopedRegistry;
     const Entity ScopedSquatter = ScopedRegistry.create();
     Fby::Transform2D ScopedSquatterTransform;
@@ -245,7 +245,7 @@ void BuildRegistry(ComponentRegistry& InRegistry)
     return 0;
 }
 
-// selftest writes a scene whose second entity follows the first, loads it as a
+// selftest writes a scene whose second entity follows the first, loads.
 [[nodiscard]] int SelfTest(const fs::path& Output)
 {
     ComponentRegistry ScopedComponents;

@@ -806,6 +806,7 @@ bool ImGui::ButtonEx(const char* label, const ImVec2& size_arg, ImGuiButtonFlags
     ItemSize(size, style.FramePadding.y);
     if (!ItemAdd(bb, id))
         return false;
+    SetAccessibilityItemRole(ImGuiA11yRole_Button);
 
     bool hovered, held;
     bool pressed = ButtonBehavior(bb, id, &hovered, &held, flags);
@@ -860,6 +861,7 @@ bool ImGui::InvisibleButton(const char* str_id, const ImVec2& size_arg, ImGuiBut
     ItemSize(size);
     if (!ItemAdd(bb, id, NULL, (flags & ImGuiButtonFlags_EnableNav) ? ImGuiItemFlags_None : ImGuiItemFlags_NoNav))
         return false;
+    SetAccessibilityItemRole(ImGuiA11yRole_Button);
 
     bool hovered, held;
     bool pressed = ButtonBehavior(bb, id, &hovered, &held, flags);
@@ -1265,6 +1267,7 @@ bool ImGui::Checkbox(const char* label, bool* v)
     const ImRect total_bb(pos, pos + ImVec2(square_sz + (label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f), label_size.y + style.FramePadding.y * 2.0f));
     ItemSize(total_bb, style.FramePadding.y);
     const bool is_visible = ItemAdd(total_bb, id);
+    SetAccessibilityItemRole(ImGuiA11yRole_CheckBox);
     const bool is_multi_select = (g.LastItemData.ItemFlags & ImGuiItemFlags_IsMultiSelect) != 0;
     if (!is_visible)
         if (!is_multi_select || !g.BoxSelectState.UnclipMode || !g.BoxSelectState.UnclipRect.Overlaps(total_bb)) // Extra layer of "no logic clip" for box-select support
@@ -1391,6 +1394,7 @@ bool ImGui::RadioButton(const char* label, bool active)
     ItemSize(total_bb, style.FramePadding.y);
     if (!ItemAdd(total_bb, id))
         return false;
+    SetAccessibilityItemRole(ImGuiA11yRole_RadioButton);
 
     ImVec2 center = check_bb.GetCenter();
     center.x = IM_ROUND(center.x);
@@ -1970,6 +1974,7 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
     ItemSize(total_bb, style.FramePadding.y);
     if (!ItemAdd(total_bb, id, &bb))
         return false;
+    SetAccessibilityItemRole(ImGuiA11yRole_ComboBox);
 
     // Open on click
     bool hovered, held;
@@ -2773,6 +2778,7 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
     ItemSize(total_bb, style.FramePadding.y);
     if (!ItemAdd(total_bb, id, &frame_bb, temp_input_allowed ? ImGuiItemFlags_Inputable : 0))
         return false;
+    SetAccessibilityItemRole(ImGuiA11yRole_Slider);
 
     // Default format string when passing NULL
     if (format == NULL)
@@ -3389,6 +3395,7 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
     ItemSize(total_bb, style.FramePadding.y);
     if (!ItemAdd(total_bb, id, &frame_bb, temp_input_allowed ? ImGuiItemFlags_Inputable : 0))
         return false;
+    SetAccessibilityItemRole(ImGuiA11yRole_Slider);
 
     // Default format string when passing NULL
     if (format == NULL)
@@ -4837,6 +4844,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
             EndGroup();
             return false;
         }
+        SetAccessibilityItemRole(ImGuiA11yRole_TextInput);
         item_data_backup = g.LastItemData;
         window->DC.CursorPos = backup_pos;
 

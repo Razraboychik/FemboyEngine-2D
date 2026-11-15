@@ -3,6 +3,7 @@
 
 #include "Editor/Infrastructure/EditorTheme.hpp"
 #include "Editor/Infrastructure/EditorTypography.hpp"
+#include "Editor/Infrastructure/TextureThumbnails.hpp"
 #include "Engine/UI/Accessibility.hpp"
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Core/Log.hpp"
@@ -10,8 +11,11 @@
 #include "Editor/Infrastructure/CommandStack.hpp"
 #include "Engine/Core/WindowManager.hpp"
 #include "Engine/RHI/RHI.hpp"
+#include "Engine/RHI/DlssRuntimeProbe.hpp"
+#include "Engine/RHI/Dx/DxProbe.hpp"
 #include "Engine/RHI/ViewportModes.hpp"
 #include "Engine/Physics/Physics.hpp"
+#include "Engine/Platform/SystemInfo.hpp"
 #include "Engine/UI/PinkUI.hpp"
 
 #include <imgui.h>
@@ -19,10 +23,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace Fby::Editor
 {
@@ -45,6 +51,82 @@ void Persist(ProjectConfigStore& InStore)
     if (!InStore.PersistIfChanged(&ScopedError))
     {
         LogWarn("settings", "cannot persist project config: {}", ScopedError);
+    }
+}
+
+// Installed-voice cache shared by the game and the editor panels. Enumeration
+// costs a COM walk on Windows, so it runs once and on an explicit refresh.
+struct VoiceListCache
+{
+    std::array<TtsVoiceInfo, kMaxTtsVoices> Voices{};
+    std::array<std::array<char, 128>, kMaxTtsVoices> Labels{};
+    std::uint32_t Count = 0;
+    bool Loaded = false;
+};
+
+VoiceListCache& VoiceCache()
+{
+    static VoiceListCache ScopedCache;
+    return ScopedCache;
+}
+
+void RefreshVoiceCache()
+{
+    VoiceListCache& ScopedCache = VoiceCache();
+    ScopedCache.Count = EnumerateNativeTtsVoices(ScopedCache.Voices.data(), kMaxTtsVoices);
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCache.Count; ++ScopedIndex)
+    {
+        const TtsVoiceInfo& ScopedVoice = ScopedCache.Voices[ScopedIndex];
+        std::snprintf(ScopedCache.Labels[ScopedIndex].data(), ScopedCache.Labels[ScopedIndex].size(), "%s (%s)",
+                      ScopedVoice.Name[0] != '\0' ? ScopedVoice.Name : "voice",
+                      ScopedVoice.Language[0] != '\0' ? ScopedVoice.Language : "unknown");
+    }
+    ScopedCache.Loaded = true;
+}
+
+// "Auto (by language)" plus every installed voice. The id is stored verbatim;
+// an empty id means the language policy owns the choice.
+void DrawVoiceCombo(const char* InLabel, char* VoiceIdBuffer, std::size_t InCapacity)
+{
+    VoiceListCache& ScopedCache = VoiceCache();
+    if (!ScopedCache.Loaded)
+    {
+        RefreshVoiceCache();
+    }
+    const char* ScopedPreview = "Auto (by language)";
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCache.Count; ++ScopedIndex)
+    {
+        if (std::strcmp(ScopedCache.Voices[ScopedIndex].Id, VoiceIdBuffer) == 0)
+        {
+            ScopedPreview = ScopedCache.Labels[ScopedIndex].data();
+            break;
+        }
+    }
+    if (!ImGui::BeginCombo(InLabel, ScopedPreview))
+    {
+        return;
+    }
+    if (ImGui::Selectable("Auto (by language)", VoiceIdBuffer[0] == '\0'))
+    {
+        VoiceIdBuffer[0] = '\0';
+    }
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCache.Count; ++ScopedIndex)
+    {
+        const bool ScopedSelected = std::strcmp(ScopedCache.Voices[ScopedIndex].Id, VoiceIdBuffer) == 0;
+        if (ImGui::Selectable(ScopedCache.Labels[ScopedIndex].data(), ScopedSelected))
+        {
+            CopyProjectField(VoiceIdBuffer, InCapacity, ScopedCache.Voices[ScopedIndex].Id);
+        }
+    }
+    ImGui::Separator();
+    if (ImGui::Selectable("Refresh installed voices"))
+    {
+        RefreshVoiceCache();
+    }
+    ImGui::EndCombo();
+    if (ScopedCache.Count == 0)
+    {
+        ImGui::TextDisabled("No installed voice was reported; the language tag selects the voice.");
     }
 }
 
@@ -218,7 +300,7 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
 
     if (InSettings.blindMode)
     {
-        // BlindMode for the window: keyboard navigation stays on, focus is
+        // BlindMode for the window: keyboard navigation stays on, focus is drawn.
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
         ScopedStyle.Colors[ImGuiCol_NavCursor] = HexColor(kThemeAccentActive, 1.0f);
@@ -247,7 +329,7 @@ void ApplyIdeAccessibility(const AccessibilityEditorSettings& InSettings)
         ScopedPalette.flash.Reset();
     }
 
-    // Reduce motion: no blinking text caret (the single continuous animation the
+    // Reduce motion: no blinking text caret.
     ImGui::GetIO().ConfigInputTextCursorBlink = !InSettings.reduceMotion;
 }
 }
@@ -332,7 +414,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 {
     if (MStore == nullptr)
     {
-        // No project store: there is nothing to edit. Do not call End() here,
+        // No project store: there is nothing to edit. Do not call End() here.
         return;
     }
     if (!BeginEditorPanel("Project Settings", InOpen))
@@ -587,6 +669,105 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::SliderFloat("Colour vision strength", &ScopedProfile.runtime.colorVisionStrength, 0.0f, 1.0f, "%.2f");
     ImGui::EndDisabled();
 
+    // Spoken output of the shipped game. The editor keeps its own narrator in
+    // Editor Settings, so a game's speech policy never changes the editor.
+    NarratorSettings& ScopedNarration = ScopedProfile.narration;
+    ImGui::SeparatorText("Narrator (game)");
+    ImGui::Checkbox("Speak interface and world events", &ScopedNarration.Enabled);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(no speech when off; captions stay)");
+    ImGui::BeginDisabled(!ScopedNarration.Enabled);
+    ImGui::Checkbox("Announce focus", &ScopedNarration.AnnounceFocus);
+    ImGui::SameLine();
+    ImGui::Checkbox("Announce role", &ScopedNarration.AnnounceRole);
+    ImGui::SameLine();
+    ImGui::Checkbox("Announce state", &ScopedNarration.AnnounceState);
+    ImGui::Checkbox("Announce scene on demand", &ScopedNarration.AnnounceScene);
+    ImGui::SameLine();
+    ImGui::Checkbox("Announce world events", &ScopedNarration.AnnounceWorldEvents);
+    ImGui::Checkbox("Focus interrupts speech", &ScopedNarration.InterruptOnFocus);
+    const char* ScopedVerbosityNames[] = {"Silent", "Name only", "Name and role", "Name, role and state"};
+    int ScopedVerbosity = static_cast<int>(std::min<std::uint8_t>(ScopedNarration.Verbosity, 3));
+    ImGui::SetNextItemWidth(220.0f);
+    if (ImGui::Combo("Verbosity", &ScopedVerbosity, ScopedVerbosityNames, 4))
+    {
+        ScopedNarration.Verbosity = static_cast<std::uint8_t>(std::clamp(ScopedVerbosity, 0, 3));
+    }
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Speech rate", &ScopedNarration.Rate, 0.5f, 2.0f, "%.2f");
+    int ScopedQueueDepth = static_cast<int>(std::min<std::uint32_t>(ScopedNarration.MaxQueued, 16u));
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::SliderInt("Queued lines", &ScopedQueueDepth, 1, 16))
+    {
+        ScopedNarration.MaxQueued = static_cast<std::uint32_t>(std::clamp(ScopedQueueDepth, 1, 16));
+    }
+    char ScopedVoiceLanguage[16]{};
+    std::snprintf(ScopedVoiceLanguage, sizeof(ScopedVoiceLanguage), "%s",
+                  ScopedNarration.Language);
+    ImGui::SetNextItemWidth(120.0f);
+    if (ImGui::InputText("Voice language (BCP-47)", ScopedVoiceLanguage, sizeof(ScopedVoiceLanguage)))
+    {
+        std::snprintf(ScopedNarration.Language, sizeof(ScopedNarration.Language), "%s", ScopedVoiceLanguage);
+    }
+    DrawVoiceCombo("Voice", ScopedNarration.VoiceId, sizeof(ScopedNarration.VoiceId));
+    ImGui::TextDisabled("The voice follows the content locale, not the OS locale. A missing voice falls back to "
+                        "the system default and is reported in the log.");
+    ImGui::TextDisabled("Voice packs: install a pack under Saved/VoicePacks; it appears here as pack:<id>.");
+    ImGui::EndDisabled();
+
+    // Gameplay events: wording, categories and spatial grammar. The same
+    // profile section the game loads, so the editor previews the shipped policy.
+    ActionNarrationSettings& ScopedActions = ScopedProfile.actions;
+    ImGui::SeparatorText("Action narration (game)");
+    ImGui::Checkbox("Speak gameplay actions", &ScopedActions.Enabled);
+    ImGui::BeginDisabled(!ScopedActions.Enabled);
+    if (ImGui::TreeNode("Categories"))
+    {
+        const char* ScopedCategoryNames[] = {"Interaction", "Combat", "Items", "Navigation", "State", "System"};
+        for (std::uint32_t ScopedCategory = 0; ScopedCategory < kNarrationCategoryCount; ++ScopedCategory)
+        {
+            bool ScopedEnabled = (ScopedActions.Categories & (1u << ScopedCategory)) != 0;
+            if (ImGui::Checkbox(ScopedCategoryNames[ScopedCategory], &ScopedEnabled))
+            {
+                AccessibilitySetFlag(&ScopedActions.Categories, 1u << ScopedCategory, ScopedEnabled);
+            }
+        }
+        ImGui::TreePop();
+    }
+    ImGui::Checkbox("Direction words", &ScopedActions.AnnounceDirection);
+    ImGui::SameLine();
+    ImGui::Checkbox("Distance words", &ScopedActions.AnnounceDistance);
+    int ScopedActionPriority = static_cast<int>(std::min<std::uint8_t>(ScopedActions.MinimumPriority, 3));
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::SliderInt("Lowest spoken priority", &ScopedActionPriority, 0, 3))
+    {
+        ScopedActions.MinimumPriority = static_cast<std::uint8_t>(std::clamp(ScopedActionPriority, 0, 3));
+    }
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Near distance (m)", &ScopedActions.NearDistanceMeters, 0.0f, 30.0f, "%.1f");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Far distance (m)", &ScopedActions.FarDistanceMeters, 0.0f, 100.0f, "%.1f");
+    int ScopedDedup = static_cast<int>(std::min<std::uint16_t>(ScopedActions.DedupWindowMs, 5000));
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::SliderInt("Repeat suppression (ms)", &ScopedDedup, 0, 5000))
+    {
+        ScopedActions.DedupWindowMs = static_cast<std::uint16_t>(std::clamp(ScopedDedup, 0, 5000));
+    }
+    ImGui::TextDisabled("Action lines are localized templates; captions can reuse the same text.");
+    ImGui::EndDisabled();
+
+    ImGui::SeparatorText("Screen reader bridge (game)");
+    ImGui::Checkbox("Publish the interface to the OS accessibility tree", &ScopedProfile.bridge.Enabled);
+    ImGui::BeginDisabled(!ScopedProfile.bridge.Enabled);
+    ImGui::Checkbox("Focus events", &ScopedProfile.bridge.RaiseFocusEvents);
+    ImGui::SameLine();
+    ImGui::Checkbox("Structure events", &ScopedProfile.bridge.RaiseStructureEvents);
+    ImGui::SameLine();
+    ImGui::Checkbox("State events", &ScopedProfile.bridge.RaiseStateEvents);
+    ImGui::TextDisabled("Windows: UI Automation (Narrator, NVDA, JAWS). The bridge is independent from the "
+                        "narrator: either can be on without the other.");
+    ImGui::EndDisabled();
+
     ImGui::SeparatorText("Motion comfort (project)");
     ImGui::SliderFloat("Camera shake", &ScopedValues.motionComfort.cameraShakeScale, 0.0f, 1.0f, "%.2f");
     ImGui::SliderFloat("Head bob", &ScopedValues.motionComfort.headBobScale, 0.0f, 1.0f, "%.2f");
@@ -751,7 +932,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
                            "Native architecture is for local benchmarking only: the archive may trap on an older CPU.");
     }
 
-    // Collision layers. The matrix is part of ProjectSettings, so it is
+    // Collision layers. The matrix is part of ProjectSettings.
     ImGui::SeparatorText("Collision Layers");
     CollisionFilterMatrix& ScopedMatrix = ScopedValues.collision;
     if (ImGui::Button("All layers"))
@@ -1007,6 +1188,11 @@ void ProjectSettingsPanel::SyncFromHistory(Ecs::SystemContext& InContext)
 }
 
 // EditorSettingsPanel
+void EditorSettingsPanel::SetThumbnails(TextureThumbnailCache* InCache) noexcept
+{
+    MThumbnails = InCache;
+}
+
 void EditorSettingsPanel::Initialize(CommandStack& InCommands, ProjectConfigStore& InStore,
                                      std::uint16_t InCodec) noexcept
 {
@@ -1045,7 +1231,7 @@ void EditorSettingsPanel::BeginOrRecord(Ecs::SystemContext& InContext,
     {
         return;
     }
-    // Padding bytes are copied by CommandStack but must never decide whether an
+    // Padding bytes are copied by CommandStack but must never decide whether an edit happened.
     EditorSettings ScopedBeforeTyped{};
     EditorSettings ScopedCurrentTyped{};
     std::memcpy(&ScopedBeforeTyped, InBefore.data(), sizeof(EditorSettings));
@@ -1112,6 +1298,56 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         ImGui::Text("project  %s", MStore->Paths().root.string().c_str());
         ImGui::Text("ini      %s", MStore->Paths().editorIni.string().c_str());
     }
+    ImGui::SeparatorText("System");
+    // The profile walks DXGI and the volume, so it is sampled on demand rather
+    // than every frame.
+    static Fby::Platform::SystemProfile ScopedSystemProfile;
+    static bool ScopedSystemQueried = false;
+    if (ImGui::Button("Query hardware"))
+    {
+        ScopedSystemProfile =
+            Fby::Platform::SystemInfo::Query(MStore->Paths().root.string());
+        ScopedSystemQueried = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Probe DLSS runtime"))
+    {
+        Fby::Rhi::DlssRuntimeProbe ScopedDlss = Fby::Rhi::ProbeDlssRuntime(std::filesystem::current_path());
+        ImGui::Text("DLSS: present %s, loadable %s%s%s", ScopedDlss.Present ? "yes" : "no",
+                    ScopedDlss.Loadable ? "yes" : "no", ScopedDlss.Error.empty() ? "" : " - ",
+                    ScopedDlss.Error.c_str());
+    }
+    ImGui::SameLine();
+    static std::vector<Fby::Rhi::DxAdapterInfo> ScopedDxAdapters;
+    if (ImGui::Button("Probe D3D adapters"))
+    {
+        ScopedDxAdapters = Fby::Rhi::ProbeDxAdapters();
+    }
+    for (const Fby::Rhi::DxAdapterInfo& ScopedAdapter : ScopedDxAdapters)
+    {
+        ImGui::Text("D3D  %s  VRAM %.1f GiB  D3D12 %u  D3D11 %u", ScopedAdapter.Name,
+                    static_cast<double>(ScopedAdapter.DedicatedVideoMemory) / (1024.0 * 1024.0 * 1024.0),
+                    static_cast<unsigned>(ScopedAdapter.D3D12FeatureLevel),
+                    static_cast<unsigned>(ScopedAdapter.D3D11FeatureLevel));
+    }
+    if (ScopedSystemQueried)
+    {
+        constexpr double kGibibyte = 1.0 / (1024.0 * 1024.0 * 1024.0);
+        ImGui::Text("CPU  %s (%u logical cores)", ScopedSystemProfile.hardware.cpu.c_str(),
+                    ScopedSystemProfile.hardware.logicalCores);
+        ImGui::Text("GPU  %s", ScopedSystemProfile.hardware.gpu.c_str());
+        ImGui::Text("RAM  %.1f / %.1f GiB", static_cast<double>(ScopedSystemProfile.hardware.memoryAvailableBytes) *
+                                                kGibibyte,
+                    static_cast<double>(ScopedSystemProfile.hardware.memoryTotalBytes) * kGibibyte);
+        ImGui::Text("Disk %.1f / %.1f GiB free", static_cast<double>(ScopedSystemProfile.storage.freeBytes) * kGibibyte,
+                    static_cast<double>(ScopedSystemProfile.storage.totalBytes) * kGibibyte);
+        for (const Fby::Platform::DisplayInfo& ScopedDisplay : ScopedSystemProfile.displays)
+        {
+            ImGui::BulletText("%s %ux%u @ %.0f Hz %.2fx%s", ScopedDisplay.name.c_str(), ScopedDisplay.width,
+                              ScopedDisplay.height, static_cast<double>(ScopedDisplay.refreshHz),
+                              static_cast<double>(ScopedDisplay.scale), ScopedDisplay.primary ? " (primary)" : "");
+        }
+    }
     ImGui::SeparatorText("Display");
     ImGui::Checkbox("VSync", &ScopedValues.vsync);
     ImGui::SliderFloat("UI scale", &ScopedValues.uiScale, 0.75f, 2.0f, "%.2f");
@@ -1160,6 +1396,88 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
                       "A sprite whose overdraw times light count reaches the budget is fully red.");
     }
 
+    ImGui::SeparatorText("Appearance: striped lists and cursor");
+    ImGui::Checkbox("Stocking list theme", &ScopedValues.stockingTheme);
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Alternates two row colours in every ImGui table. The pair is editable below; "
+                      "turning it off restores the normal table colours.");
+    }
+    const char* ScopedStockingPresets[] = {"Custom", "Dark plum / teal", "Pastel pink / white",
+                                           "Rose / white", "Black / white stockings", "Green / black stockings",
+                                           "Deuteranopia-safe", "Protanopia-safe", "Tritanopia-safe",
+                                           "Astigmatism / low halation", "High contrast"};
+    int ScopedStockingPreset = static_cast<int>(std::min<std::uint8_t>(ScopedValues.stockingPreset, 10));
+    ImGui::SetNextItemWidth(260.0f);
+    if (ImGui::Combo("Pair preset", &ScopedStockingPreset, ScopedStockingPresets, 11))
+    {
+        ScopedValues.stockingPreset = static_cast<std::uint8_t>(ScopedStockingPreset);
+        if (ScopedStockingPreset > 0)
+        {
+            struct PresetColors
+            {
+                std::uint32_t RowA;
+                std::uint32_t RowB;
+                std::uint32_t Text;
+            };
+            static constexpr PresetColors kPresets[] = {
+                {0x3A2A3F, 0x2F3A35, 0xF2F2F2}, {0xF7C6DA, 0xFFFFFF, 0x1A1A1A},
+                {0xE8A5B5, 0xFFFFFF, 0x1A1A1A}, {0x1C1C1C, 0x2E2E2E, 0xF2F2F2},
+                {0x1E3A2A, 0x242424, 0xF2F2F2}, {0x1F3A5F, 0x4A3A1F, 0xF2F2F2},
+                {0x152A3A, 0x0F3A35, 0xF2F2F2}, {0x3A1F3A, 0x1F3A2A, 0xF2F2F2},
+                {0x121212, 0x1C1C1C, 0xE8E8E8}, {0x000000, 0x1A1A1A, 0xFFFFFF}};
+            const PresetColors& ScopedPreset = kPresets[ScopedStockingPreset - 1];
+            ScopedValues.stockingColorA = ScopedPreset.RowA;
+            ScopedValues.stockingColorB = ScopedPreset.RowB;
+            ScopedValues.textColor = ScopedPreset.Text;
+            ScopedValues.stockingTheme = true;
+        }
+    }
+    if (EditSymbolColor("Row A", &ScopedValues.stockingColorA))
+    {
+        ScopedValues.stockingPreset = 0;
+    }
+    ImGui::SameLine();
+    if (EditSymbolColor("Row B", &ScopedValues.stockingColorB))
+    {
+        ScopedValues.stockingPreset = 0;
+    }
+    const auto Luminance = [](std::uint32_t InRgb)
+    {
+        const auto Channel = [](std::uint32_t InValue)
+        {
+            const float Scoped = static_cast<float>(InValue & 0xFFu) / 255.0f;
+            return Scoped <= 0.03928f ? Scoped / 12.92f : std::pow((Scoped + 0.055f) / 1.055f, 2.4f);
+        };
+        return 0.2126f * Channel((InRgb >> 16u) & 0xFFu) + 0.7152f * Channel((InRgb >> 8u) & 0xFFu) +
+               0.0722f * Channel(InRgb & 0xFFu);
+    };
+    const auto Contrast = [Luminance](std::uint32_t InA, std::uint32_t InB)
+    {
+        const float ScopedA = Luminance(InA);
+        const float ScopedB = Luminance(InB);
+        return (std::max(ScopedA, ScopedB) + 0.05f) / (std::min(ScopedA, ScopedB) + 0.05f);
+    };
+    const float ScopedContrastA = Contrast(ScopedValues.textColor, ScopedValues.stockingColorA);
+    const float ScopedContrastB = Contrast(ScopedValues.textColor, ScopedValues.stockingColorB);
+    const ImVec4 ScopedContrastColor = ScopedContrastA >= 4.5f && ScopedContrastB >= 4.5f
+                                           ? ImVec4(0.4f, 0.9f, 0.5f, 1.0f)
+                                           : ImVec4(1.0f, 0.65f, 0.25f, 1.0f);
+    ImGui::TextColored(ScopedContrastColor, "Text contrast: row A %.2f:1, row B %.2f:1 (WCAG large-text 4.5:1)",
+                       static_cast<double>(ScopedContrastA), static_cast<double>(ScopedContrastB));
+    ImGui::TextDisabled("Pastel rows need a dark text colour; the contrast line turns green when both pairs pass.");
+
+    ImGui::Checkbox("Themed cursor", &ScopedValues.themedCursor);
+    ImGui::SetNextItemWidth(420.0f);
+    (void)ImGui::InputText("Cursor BMP", ScopedValues.cursorImage, sizeof(ScopedValues.cursorImage));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Use system cursor"))
+    {
+        ScopedValues.themedCursor = false;
+    }
+    ImGui::TextDisabled("32-bit BMP with a magenta key; :3, uwu and owo variants are in "
+                        "Projects/CursorThemes. Applying happens on commit.");
+
     ImGui::SeparatorText("Typography (16 px readable floor)");
     ImGui::SliderFloat("Panel titles", &ScopedValues.fontPanelTitle, 16.0f, 36.0f, "%.0f px");
     ImGui::SliderFloat("Panel text", &ScopedValues.fontPanelBody, 16.0f, 30.0f, "%.0f px");
@@ -1202,6 +1520,114 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
     ImGui::SameLine();
     ImGui::TextDisabled("Recommended: 20 files x 50,000 lines (about 6 MB per file).");
+
+    ImGui::SeparatorText("Memory and performance");
+    const char* ScopedProfileNames[] = {"Custom", "Lite", "Balanced", "High"};
+    int ScopedProfile = static_cast<int>(std::min<std::uint8_t>(ScopedValues.performanceProfile, 3));
+    if (ImGui::Combo("Performance profile", &ScopedProfile, ScopedProfileNames, 4))
+    {
+        ScopedValues.performanceProfile = static_cast<std::uint8_t>(ScopedProfile);
+        if (ScopedProfile == 1)
+        {
+            ScopedValues.undoMemoryMB = 2;
+            ScopedValues.undoCommandLimit = 128;
+            ScopedValues.thumbnailCacheLimit = 64;
+            ScopedValues.thumbnailCacheEnabled = true;
+            ScopedValues.frameRateLimit = 30;
+            ScopedValues.pauseWhenUnfocused = true;
+        }
+        else if (ScopedProfile == 2)
+        {
+            ScopedValues.undoMemoryMB = 4;
+            ScopedValues.undoCommandLimit = 256;
+            ScopedValues.thumbnailCacheLimit = 128;
+            ScopedValues.thumbnailCacheEnabled = true;
+            ScopedValues.frameRateLimit = 60;
+            ScopedValues.pauseWhenUnfocused = true;
+        }
+        else if (ScopedProfile == 3)
+        {
+            ScopedValues.undoMemoryMB = 16;
+            ScopedValues.undoCommandLimit = 512;
+            ScopedValues.thumbnailCacheLimit = 256;
+            ScopedValues.thumbnailCacheEnabled = true;
+            ScopedValues.frameRateLimit = 0;
+            ScopedValues.pauseWhenUnfocused = false;
+        }
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Lite caps the editor caches and runs at 30 FPS; Balanced is 60 FPS; High removes the "
+                      "frame limit and opens the budgets. Custom keeps the values below.");
+    }
+    ImGui::Checkbox("Texture thumbnail cache", &ScopedValues.thumbnailCacheEnabled);
+    ImGui::BeginDisabled(!ScopedValues.thumbnailCacheEnabled);
+    int ScopedThumbnailLimit = static_cast<int>(ScopedValues.thumbnailCacheLimit);
+    if (ImGui::SliderInt("Thumbnail entries", &ScopedThumbnailLimit, 0, 256))
+    {
+        ScopedValues.thumbnailCacheLimit = static_cast<std::uint16_t>(std::clamp(ScopedThumbnailLimit, 0, 256));
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Descriptors kept for the Content Browser previews. Lowering the limit frees the old "
+                      "descriptors on Apply; disabling the cache also stops new previews.");
+    }
+    int ScopedUndoMemory = static_cast<int>(ScopedValues.undoMemoryMB);
+    if (ImGui::SliderInt("Undo memory (MB)", &ScopedUndoMemory, 1, 256))
+    {
+        ScopedValues.undoMemoryMB = static_cast<std::uint32_t>(std::clamp(ScopedUndoMemory, 1, 256));
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("Arena reserved for compressed undo deltas. Applying a smaller value reallocates it and "
+                      "clears the undo history.");
+    }
+    int ScopedUndoCommands = static_cast<int>(ScopedValues.undoCommandLimit);
+    if (ImGui::SliderInt("Undo commands", &ScopedUndoCommands, 16, 512))
+    {
+        ScopedValues.undoCommandLimit = static_cast<std::uint16_t>(std::clamp(ScopedUndoCommands, 16, 512));
+    }
+    if (MCommands != nullptr && MCommands->Initialized())
+    {
+        const CommandStack::Stats& ScopedStats = MCommands->GetStats();
+        ImGui::TextDisabled("Undo: %u commands, %u / %u KiB payload. Thumbnails: %u.", ScopedStats.commands,
+                            static_cast<unsigned>(ScopedStats.bytesUsed / 1024u),
+                            static_cast<unsigned>(ScopedStats.bytesCapacity / 1024u),
+                            MThumbnails != nullptr ? MThumbnails->Count() : 0u);
+    }
+    if (ImGui::Button("Free undo history and thumbnails"))
+    {
+        if (MThumbnails != nullptr)
+        {
+            MThumbnails->Clear();
+        }
+        if (MCommands != nullptr)
+        {
+            if (!MCommands->SetLimits(static_cast<std::size_t>(ScopedValues.undoMemoryMB) * (1u << 20),
+                                      ScopedValues.undoCommandLimit))
+            {
+                LogWarn("settings", "could not reallocate the undo arena; keeping the previous buffer");
+            }
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Drops the undo stack and all cached previews now.");
+    int ScopedFrameLimit = static_cast<int>(ScopedValues.frameRateLimit);
+    if (ImGui::SliderInt("Frame rate limit", &ScopedFrameLimit, 0, 240, ScopedFrameLimit == 0 ? "unlimited" : "%d FPS"))
+    {
+        ScopedValues.frameRateLimit = static_cast<std::uint16_t>(std::clamp(ScopedFrameLimit, 0, 240));
+    }
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("0 runs unthrottled. A limit sleeps the main loop and frees CPU/GPU time while the "
+                      "editor is idle; it does not change the authored frame rate.");
+    }
+    ImGui::Checkbox("Throttle when unfocused", &ScopedValues.pauseWhenUnfocused);
+    if (ImGui::IsItemHovered())
+    {
+        EditorTooltip("When the editor loses focus, cap the loop at 5 FPS until it returns.");
+    }
 
     ImGui::SeparatorText("Authoring");
     ImGui::Checkbox("Watch assets (OS watcher + hot reload)", &ScopedValues.watchAssets);
@@ -1270,8 +1696,14 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     // IDE accessibility. These switches apply the engine's accessibility
     ImGui::SeparatorText("Accessibility (editor window)");
     AccessibilityEditorSettings& ScopedIde = MStore->Project().accessibility.editor;
-    ImGui::Checkbox("Blind mode: keyboard navigation, always-visible focus, LogBoy narration sink",
-                    &ScopedIde.blindMode);
+    if (ImGui::Checkbox("Blind mode: keyboard navigation, always-visible focus, LogBoy narration sink",
+                        &ScopedIde.blindMode) &&
+        ScopedIde.blindMode)
+    {
+        // Turning Blind mode on turns the editor narrator on with it: the
+        // switch exists to make the editor usable without sight.
+        MStore->Editor().narration.Enabled = true;
+    }
     ImGui::Checkbox("Deaf mode: visual status cues only (no editor audio alerts)", &ScopedIde.deafMode);
     ImGui::Checkbox("High contrast (WCAG 2.2, 4.5:1 minimum)", &ScopedIde.highContrast);
     ImGui::Checkbox("Reduce motion (no blinking caret)", &ScopedIde.reduceMotion);
@@ -1286,6 +1718,54 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         ImGui::TextWrapped("LogBoy records installed by this mode are fixed-size PODs; a screen reader can drain "
                            "them from the LogBoy panel's ring without blocking the frame.");
     }
+
+    // Editor narrator. It reads the editor's own settings, never the project's
+    // game narration policy, and it is what makes the window usable blind.
+    NarratorSettings& ScopedEditorNarration = MStore->Editor().narration;
+    ImGui::SeparatorText("Narrator (editor window)");
+    ImGui::Checkbox("Speak panels, focus, errors and PIE state", &ScopedEditorNarration.Enabled);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(off by default; Blind mode turns it on)");
+    ImGui::BeginDisabled(!ScopedEditorNarration.Enabled);
+    ImGui::Checkbox("Announce focus", &ScopedEditorNarration.AnnounceFocus);
+    ImGui::SameLine();
+    ImGui::Checkbox("Announce role", &ScopedEditorNarration.AnnounceRole);
+    ImGui::SameLine();
+    ImGui::Checkbox("Announce state", &ScopedEditorNarration.AnnounceState);
+    ImGui::Checkbox("Focus interrupts speech", &ScopedEditorNarration.InterruptOnFocus);
+    const char* ScopedEditorVerbosityNames[] = {"Silent", "Name only", "Name and role", "Name, role and state"};
+    int ScopedEditorVerbosity = static_cast<int>(std::min<std::uint8_t>(ScopedEditorNarration.Verbosity, 3));
+    ImGui::SetNextItemWidth(220.0f);
+    if (ImGui::Combo("Verbosity", &ScopedEditorVerbosity, ScopedEditorVerbosityNames, 4))
+    {
+        ScopedEditorNarration.Verbosity = static_cast<std::uint8_t>(std::clamp(ScopedEditorVerbosity, 0, 3));
+    }
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Speech rate", &ScopedEditorNarration.Rate, 0.5f, 2.0f, "%.2f");
+    char ScopedEditorLanguage[16]{};
+    std::snprintf(ScopedEditorLanguage, sizeof(ScopedEditorLanguage), "%s", ScopedEditorNarration.Language);
+    ImGui::SetNextItemWidth(120.0f);
+    if (ImGui::InputText("Voice language (BCP-47)", ScopedEditorLanguage, sizeof(ScopedEditorLanguage)))
+    {
+        std::snprintf(ScopedEditorNarration.Language, sizeof(ScopedEditorNarration.Language), "%s",
+                      ScopedEditorLanguage);
+    }
+    DrawVoiceCombo("Voice", ScopedEditorNarration.VoiceId, sizeof(ScopedEditorNarration.VoiceId));
+    ImGui::TextDisabled("The editor interface is English today; the voice is selected by the tag above and by "
+                        "the installed voices.");
+    ImGui::EndDisabled();
+
+    ImGui::SeparatorText("Screen reader bridge (editor window)");
+    AccessibilityBridgeSettings& ScopedEditorBridge = MStore->Editor().bridge;
+    ImGui::Checkbox("Publish editor panels to the OS accessibility tree", &ScopedEditorBridge.Enabled);
+    ImGui::BeginDisabled(!ScopedEditorBridge.Enabled);
+    ImGui::Checkbox("Focus events", &ScopedEditorBridge.RaiseFocusEvents);
+    ImGui::SameLine();
+    ImGui::Checkbox("Structure events", &ScopedEditorBridge.RaiseStructureEvents);
+    ImGui::SameLine();
+    ImGui::Checkbox("State events", &ScopedEditorBridge.RaiseStateEvents);
+    ImGui::TextDisabled("Windows: UI Automation. The game keeps its own bridge policy in Project Settings.");
+    ImGui::EndDisabled();
 
     if (ScopedTrackable)
     {
@@ -1327,6 +1807,21 @@ void EditorSettingsPanel::Apply(Ecs::SystemContext& InContext)
                     WindowModeName(ScopedMode));
         }
     }
+    if (InContext.window != nullptr)
+    {
+        if (ScopedValues.themedCursor)
+        {
+            if (!InContext.window->SetCursorImage(ScopedValues.cursorImage, 2, 2))
+            {
+                LogWarn("settings", "cursor image '{}' could not be loaded; keeping the current cursor",
+                        ScopedValues.cursorImage);
+            }
+        }
+        else
+        {
+            InContext.window->SetSystemCursor();
+        }
+    }
     // The font set owns the global font scale: EditorSystem reloads the atlas
     // from the new EditorSettings on the next frame, so writing FontScaleMain
     // here would race that path and break the legacy density fallback.
@@ -1334,6 +1829,21 @@ void EditorSettingsPanel::Apply(Ecs::SystemContext& InContext)
     ScopedRetention.MaxFiles = ScopedValues.logMaxFiles;
     ScopedRetention.MaxLinesPerFile = ScopedValues.logMaxLinesPerFile;
     SetLogRetention(ScopedRetention);
+    if (MThumbnails != nullptr)
+    {
+        MThumbnails->SetEnabled(ScopedValues.thumbnailCacheEnabled);
+        MThumbnails->SetLimit(ScopedValues.thumbnailCacheLimit);
+    }
+    if (MCommands != nullptr &&
+        (!MAppliedValid || MApplied.undoMemoryMB != ScopedValues.undoMemoryMB ||
+         MApplied.undoCommandLimit != ScopedValues.undoCommandLimit))
+    {
+        if (!MCommands->SetLimits(static_cast<std::size_t>(ScopedValues.undoMemoryMB) * (1u << 20),
+                                  ScopedValues.undoCommandLimit))
+        {
+            LogWarn("settings", "could not apply the undo memory budget; keeping the previous buffer");
+        }
+    }
     ApplyIdeAccessibility(MStore->Project().accessibility.editor);
     const bool ScopedThemeChanged =
         !MAppliedValid || std::strcmp(MApplied.theme, ScopedValues.theme) != 0 ||
@@ -1343,7 +1853,10 @@ void EditorSettingsPanel::Apply(Ecs::SystemContext& InContext)
         MApplied.textOutlineSize != ScopedValues.textOutlineSize ||
         MApplied.panelGlow != ScopedValues.panelGlow ||
         MApplied.customSymbolColors != ScopedValues.customSymbolColors ||
-        MApplied.symbolColors != ScopedValues.symbolColors;
+        MApplied.symbolColors != ScopedValues.symbolColors ||
+        MApplied.stockingTheme != ScopedValues.stockingTheme ||
+        MApplied.stockingColorA != ScopedValues.stockingColorA ||
+        MApplied.stockingColorB != ScopedValues.stockingColorB;
     if (ScopedThemeChanged)
     {
         ApplyEditorTheme(ScopedValues);

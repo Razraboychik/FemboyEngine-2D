@@ -154,10 +154,10 @@ public:
         return MRows;
     }
 
-    // Explicit linearised shallow-water update. dt is clamped internally to
+    // Explicit linearised shallow-water update.
     void Step(float InDt) noexcept;
 
-    // Injects a Gaussian height/velocity impulse at a world position. Used by
+    // Injects a Gaussian height/velocity impulse at a world position.
     void AddDrop(Vector2D InWorldPosition, float InRadiusCells, float InStrength) noexcept;
 
     [[nodiscard]] float SampleHeight(Vector2D InWorldPosition) const noexcept;
@@ -248,7 +248,7 @@ public:
         return MWater;
     }
 
-    // Feeds new falling bodies into the grid, then advances the field. Safe to
+    // Feeds new falling bodies into the grid, then advances the field.
     void Update(Ecs::Registry& InRegistry, float InDt) noexcept;
 
 private:

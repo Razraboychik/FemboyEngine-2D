@@ -60,7 +60,7 @@ void ClothRenderSystem::Collect(const Ecs::Registry& InRegistry) noexcept
         {
             continue;
         }
-        // Belt and braces: the bridge is the one writer that knows this is
+        // Belt and braces: the bridge is the one writer that knows the vertex count.
         ScopedItem.flags |= Rhi::MeshItemUnskinned;
         ScopedItem.boneOffset = 0;
         ScopedItem.boneCount = 0;
@@ -70,7 +70,7 @@ void ClothRenderSystem::Collect(const Ecs::Registry& InRegistry) noexcept
         ScopedKey.depth = ScopedItem.depth;
         ScopedKey.stableId = ScopedComponent.ClothID.id;
 
-        // Insertion sort over at most 64 items: deterministic draw order without
+        // Insertion sort over at most 64 items: deterministic draw order.
         std::uint32_t ScopedPosition = MCount;
         while (ScopedPosition > 0 && KeyLess(ScopedKey, ScopedKeys[ScopedPosition - 1]))
         {

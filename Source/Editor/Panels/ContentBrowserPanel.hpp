@@ -56,7 +56,7 @@ public:
         std::uint32_t generation = 0;
     };
 
-    // Plain-old-data payload copied through ImGui's drag-and-drop storage. It is
+    // Plain-old-data payload copied through ImGui's drag-and-drop storage.
     struct DragPayload
     {
         AssetId id{};
@@ -90,11 +90,11 @@ public:
     // Rebuilds the fixed entry table from disk and joins it with the database.
     void Refresh();
 
-    // Draws the panel. `open` is the window's close flag, `status` receives an
+    // Draws the panel. `open` is the window's close flag, `status` receives an error.
     void Draw(Ecs::Registry& InRegistry, const Scene::ComponentRegistry& InComponents, CommandStack& InCommands,
               VirtualFileSystem* InAssets, bool* InOpen, std::string* InStatus);
 
-    // Call immediately after ImGui::Image() in the Viewport. Returns true when a
+    // Call immediately after ImGui::Image() in the Viewport.
     [[nodiscard]] bool AcceptViewportDrop(SpawnContext& InContext, std::string* InError = nullptr);
 
     // Test/tool seam: performs the same spawn without an ImGui context.

@@ -641,7 +641,7 @@ void AIAppendTransition(std::string& InDestination, const StateTreeTransition& I
         const std::size_t ScopedEnd = InDestination.find(kAIBlockEnd, ScopedBegin);
         if (ScopedEnd == std::string::npos)
         {
-            // A truncated block means the scene was edited by hand. Refuse to
+            // A truncated block means the scene was edited by hand.
             return false;
         }
         InDestination.erase(ScopedBegin, ScopedEnd + kAIBlockEnd.size() - ScopedBegin);
@@ -1698,7 +1698,6 @@ bool AIStateTreeCanvasPanel::IsAINodePIEActive(std::uint16_t InNode) const noexc
     return InNode < kMaxStateTreeNodes && MPieActiveSet[InNode];
 }
 
-// Canvas
 void AIStateTreeCanvasPanel::Draw(const char* InWindowTitle, bool* InOpen)
 {
     if (!MInitialized || InWindowTitle == nullptr)
@@ -1898,7 +1897,7 @@ void AIStateTreeCanvasPanel::DrawCanvas()
 
 void AIStateTreeCanvasPanel::ProcessCanvasEvents()
 {
-    // A node drag is one CommandStack transaction even though ImNodes writes a
+    // A node drag is one CommandStack transaction even though ImNodes writes positions directly.
     bool ScopedMoved = false;
     for (std::uint16_t ScopedNode = 0; ScopedNode < MDocument.Tree.NodeCount; ++ScopedNode)
     {
@@ -2627,7 +2626,7 @@ void AIStateTreeCanvasPanel::DrawPIEInspector()
         ImGui::TextDisabled("%u", static_cast<unsigned>(ScopedState->ActiveStates[ScopedI]));
     }
 
-    // Mirror-driven blackboard readout: FieldDesc owns offset/kind/size, so the
+    // Mirror-driven blackboard readout: FieldDesc owns offset/kind/size.
     const auto ScopedFields = Reflect::Fields<StateTreeComponent>();
     const auto* ScopedBytes = reinterpret_cast<const std::byte*>(ScopedState);
     ImGui::SeparatorText("StateTreeComponent (Mirror)");

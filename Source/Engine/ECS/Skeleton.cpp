@@ -15,7 +15,7 @@ namespace
     return std::min(InCount, kMaxBones);
 }
 
-// Embed the 2D affine transform in a column-major Mat4 so the GPU palette is
+// Embed the 2D affine transform in a column-major Mat4 so the GPU palette matches.
 [[nodiscard]] Mat4 ToMat4(const Mat3& InMatrix) noexcept
 {
     Mat4 ScopedResult;
@@ -109,7 +109,7 @@ void Evaluate(SkeletonComponent& InSkeleton) noexcept
         return;
     }
 
-    // Five disjoint SoA arrays; the restrict qualifiers are what allow the
+    // Five disjoint SoA arrays.
     Mat3* FBY_RESTRICT ScopedGlobals = InSkeleton.GlobalMatrices.data();
     const Vector2D* FBY_RESTRICT ScopedPositions = InSkeleton.LocalPositions.data();
     const float* FBY_RESTRICT ScopedRotations = InSkeleton.LocalRotations.data();

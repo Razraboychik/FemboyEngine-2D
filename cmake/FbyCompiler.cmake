@@ -1,31 +1,41 @@
-# Toolchain configuration for FemboyEngine2D 0.4.0-alpha.1.
+# Toolchain configuration for FemboyEngine2D.
 
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Supported compilers are the newest validated releases of the 0.4 alpha line.
-# The floor is intentionally the current release, not an older compatibility
-# version: the engine uses the latest C++26 library surface.
-set(FBY_MIN_CLANG "23.1.4")
-# The macOS x64 Homebrew bottle currently ships Clang 22.1.8; Apple Silicon
-# uses the 23.x bottle. Keep the x64 validation gate runnable without weakening
-# the Windows and Linux reference toolchains.
-if(APPLE)
-    set(FBY_MIN_CLANG "22.1.8")
+# clang-cl is the reference Windows toolchain and the release gate; MSVC,
+# Clang, AppleClang and GCC are supported alternatives, never an obligation.
+# The engine targets C++23, the latest ratified standard. The floors are the
+# oldest compiler generations that provide the C++23 library surface the probes
+# below require. Newer releases are accepted without an upper bound; the
+# reference CI pins one version only to keep the gate reproducible.
+set(FBY_MIN_CLANG "19.1.0")
+set(FBY_MIN_GCC "14.1.0")
+set(FBY_MIN_MSVC "19.40")
+set(FBY_MIN_APPLECLANG "16.0")
+
+# C++23 is the contract; C++26 is an opt-in experimental mode that enables the
+# C++26 library accelerations behind feature probes. The engine never requires
+# C++26 syntax, so both modes build the same public API.
+set(FBY_CXX_STANDARD "23" CACHE STRING "C++ language standard: 23 (default) or 26 (experimental)")
+set_property(CACHE FBY_CXX_STANDARD PROPERTY STRINGS 23 26)
+if(NOT FBY_CXX_STANDARD STREQUAL "23" AND NOT FBY_CXX_STANDARD STREQUAL "26")
+    message(FATAL_ERROR "FBY_CXX_STANDARD must be 23 or 26; found '${FBY_CXX_STANDARD}'.")
 endif()
-set(FBY_MIN_GCC "16.2.0")
-set(FBY_MIN_MSVC "19.44")
-set(FBY_MIN_APPLECLANG "21.0")
 
 set(FBY_IS_MSVC FALSE)
 set(FBY_IS_CLANG_CL FALSE)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    # The project contract is Clang (clang-cl/clang++) and GCC only. clang-cl is
-    # reported as Clang with the MSVC frontend variant and keeps working.
-    message(FATAL_ERROR
-        "FemboyEngine2D does not support the Microsoft compiler; use Clang ${FBY_MIN_CLANG}+ or GCC ${FBY_MIN_GCC}+.")
+    # clang-cl stays the reference Windows toolchain. The Microsoft compiler is
+    # a supported alternative with its own CI job, never required.
+    set(FBY_IS_MSVC TRUE)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${FBY_MIN_MSVC}")
+        message(FATAL_ERROR
+            "FemboyEngine2D requires MSVC ${FBY_MIN_MSVC} or newer; "
+            "found MSVC ${CMAKE_CXX_COMPILER_VERSION}.")
+    endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${FBY_MIN_APPLECLANG}")
         message(FATAL_ERROR
@@ -55,18 +65,17 @@ else()
 endif()
 
 if(FBY_IS_CLANG_CL OR FBY_IS_MSVC)
-    # clang-cl and cl.exe spell the C++26 draft switch the Microsoft way.
+    # MSVC has no /std:c++23 switch; c++latest is the supported modern mode.
     set(FBY_CXX_STANDARD_FLAG "/std:c++latest")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    # AppleClang 21 still spells the C++26 draft as c++2c; c++26 is accepted
-    # from the upstream Clang toolchain used on Linux and by the setup scripts.
-    set(FBY_CXX_STANDARD_FLAG "-std=c++2c")
+    # AppleClang spells C++23 as c++2b and C++26 as c++2c.
+    if(FBY_CXX_STANDARD STREQUAL "26")
+        set(FBY_CXX_STANDARD_FLAG "-std=c++2c")
+    else()
+        set(FBY_CXX_STANDARD_FLAG "-std=c++2b")
+    endif()
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(FBY_CXX_STANDARD_FLAG "-std=c++26")
-else()
-    message(FATAL_ERROR
-        "FemboyEngine2D supports MSVC, Clang and GCC only; "
-        "the active compiler is '${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}'.")
+    set(FBY_CXX_STANDARD_FLAG "-std=c++${FBY_CXX_STANDARD}")
 endif()
 
 add_library(fby_compiler_flags INTERFACE)
@@ -74,6 +83,7 @@ add_library(fby::compiler_flags ALIAS fby_compiler_flags)
 
 target_compile_options(fby_compiler_flags INTERFACE
     $<$<COMPILE_LANGUAGE:CXX>:${FBY_CXX_STANDARD_FLAG}>)
+target_compile_definitions(fby_compiler_flags INTERFACE FBY_CXX_STANDARD=${FBY_CXX_STANDARD})
 
 if(FBY_IS_MSVC)
     target_compile_options(fby_compiler_flags INTERFACE
@@ -82,6 +92,7 @@ if(FBY_IS_MSVC)
         $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>
         $<$<COMPILE_LANGUAGE:CXX>:/utf-8>
         $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
+        $<$<COMPILE_LANGUAGE:CXX>:/bigobj>
         $<$<COMPILE_LANGUAGE:CXX>:/MP>)
 elseif(FBY_IS_CLANG_CL)
     target_compile_options(fby_compiler_flags INTERFACE
@@ -118,7 +129,18 @@ if(WIN32)
 endif()
 
 # Optimisation is per configuration and belongs to engine targets only.
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
+if(FBY_IS_MSVC)
+    # The Microsoft driver has no -fno-math-errno equivalent, and /fp:fast
+    # would break the determinism contract, so the default FP model stays.
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_options(fby_compiler_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/O2>)
+    elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        target_compile_options(fby_compiler_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/O2>
+            $<$<COMPILE_LANGUAGE:CXX>:/Zi>)
+    endif()
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(fby_compiler_flags INTERFACE
         $<$<COMPILE_LANGUAGE:CXX>:-O3>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-math-errno>)
@@ -131,8 +153,13 @@ endif()
 # Optional interprocedural optimisation for release measurements.
 option(FBY_ENABLE_LTO "Enable link-time optimisation" OFF)
 if(FBY_ENABLE_LTO)
-    target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-flto>)
-    target_link_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-flto>)
+    if(FBY_IS_MSVC)
+        target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:/GL>)
+        target_link_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:/LTCG>)
+    else()
+        target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-flto>)
+        target_link_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-flto>)
+    endif()
 endif()
 
 # Profile-guided builds: generate with one run, then point the use option at the
@@ -141,7 +168,13 @@ endif()
 option(FBY_PGO_GENERATE "Compile with profile instrumentation" OFF)
 set(FBY_PGO_PROFILE "" CACHE STRING "Profile data for the optimized build")
 if(FBY_PGO_GENERATE)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if(FBY_IS_MSVC)
+        # The Microsoft PGO path is /GL plus /GENPROFILE at link time.
+        target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:/GL>)
+        target_link_options(fby_compiler_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/LTCG>
+            $<$<COMPILE_LANGUAGE:CXX>:/GENPROFILE>)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(fby_compiler_flags INTERFACE
             $<$<COMPILE_LANGUAGE:CXX>:-fprofile-instr-generate>)
         target_link_options(fby_compiler_flags INTERFACE
@@ -152,7 +185,12 @@ if(FBY_PGO_GENERATE)
     endif()
 endif()
 if(FBY_PGO_PROFILE)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if(FBY_IS_MSVC)
+        target_compile_options(fby_compiler_flags INTERFACE $<$<COMPILE_LANGUAGE:CXX>:/GL>)
+        target_link_options(fby_compiler_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:/LTCG>
+            $<$<COMPILE_LANGUAGE:CXX>:/USEPROFILE:${FBY_PGO_PROFILE}>)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(fby_compiler_flags INTERFACE
             $<$<COMPILE_LANGUAGE:CXX>:-fprofile-instr-use=${FBY_PGO_PROFILE}>)
         target_link_options(fby_compiler_flags INTERFACE
@@ -213,7 +251,7 @@ function(fby_probe_feature name source)
     fby_try_compile_probe(${name} "${source}" ok)
     if(NOT ok)
         message(FATAL_ERROR
-            "FemboyEngine2D ${FBY_VERSION_STRING} requires a C++26 toolchain, but '${name}' does not compile.\n"
+            "FemboyEngine2D ${FBY_VERSION_STRING} requires a C++23 toolchain, but '${name}' does not compile.\n"
             "Probe source:\n${source}\n"
             "Use MSVC ${FBY_MIN_MSVC}+, Clang ${FBY_MIN_CLANG}+ or GCC ${FBY_MIN_GCC}+, "
             "configured from a shell where the compiler can find the platform headers "

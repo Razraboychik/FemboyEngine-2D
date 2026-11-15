@@ -1,0 +1,89 @@
+--- a/third_party/harfbuzz-download/harfbuzz-15.1.0/src/hb-ot-kern-table.hh
++++ b/third_party/harfbuzz-download/harfbuzz-15.1.0/src/hb-ot-kern-table.hh
+@@ -50,7 +50,7 @@
+     hb_array_t<const FWORD> kernValue = kernValueZ.as_array (kernValueCount);
+     hb_array_t<const HBUINT8> leftClass = StructAfter<const UnsizedArrayOf<HBUINT8>> (kernValue).as_array (glyphCount);
+     hb_array_t<const HBUINT8> rightClass = StructAfter<const UnsizedArrayOf<HBUINT8>> (leftClass).as_array (glyphCount);
+-    hb_array_t<const HBUINT8> kernIndex = StructAfter<const UnsizedArrayOf<HBUINT8>> (rightClass).as_array (leftClassCount * rightClassCount);
++    hb_array_t<const HBUINT8> kernIndex = StructAfter<const UnsizedArrayOf<HBUINT8>> (rightClass).as_array (static_cast<size_t> (leftClassCount) * rightClassCount);
+ 
+     unsigned int leftC = leftClass[left];
+     unsigned int rightC = rightClass[right];
+@@ -84,7 +84,7 @@
+ 		  c->check_range (kernValueZ,
+ 				  kernValueCount * sizeof (FWORD) +
+ 				  glyphCount * 2 +
+-				  leftClassCount * rightClassCount));
++				  static_cast<size_t> (leftClassCount) * rightClassCount));
+   }
+ 
+   template <typename set_t>
+@@ -117,7 +117,7 @@
+ 				 * Length glyphCount. */
+   UnsizedArrayOf<HBUINT8>kernIndex;
+ 				/* The indices into the kernValue array.
+-				 * Length leftClassCount * rightClassCount */
++				 * Length static_cast<size_t> (leftClassCount) * rightClassCount */
+ #endif
+   public:
+   DEFINE_SIZE_ARRAY (KernSubTableHeader::static_size + 6, kernValueZ);
+--- a/third_party/harfbuzz-download/harfbuzz-15.1.0/src/hb-open-type.hh
++++ b/third_party/harfbuzz-download/harfbuzz-15.1.0/src/hb-open-type.hh
+@@ -1327,7 +1327,7 @@
+     if (!this->count) return_trace (true);
+     if (unlikely (!c->extend (this->offSize))) return_trace (false);
+     this->offSize = off_size;
+-    if (unlikely (!c->allocate_size<HBUINT8> (off_size * (this->count + 1), false)))
++    if (unlikely (!c->allocate_size<HBUINT8> (static_cast<size_t> (off_size) * (this->count + 1), false)))
+       return_trace (false);
+ 
+     /* serialize indices */
+--- a/third_party/harfbuzz-download/harfbuzz-15.1.0/src/hb-ot-layout-common.hh
++++ b/third_party/harfbuzz-download/harfbuzz-15.1.0/src/hb-ot-layout-common.hh
+@@ -3063,7 +3063,7 @@
+   { return i >= regionIndices.len ? -1 : regionIndices[i]; }
+ 
+   size_t get_row_size () const
+-  { return (wordCount () + regionIndices.len) * (longWords () ? 2 : 1); }
++  { return static_cast<size_t> (wordCount () + regionIndices.len) * (longWords () ? 2 : 1); }
+ 
+   size_t get_size () const
+   { return hb_unsigned_add_saturate (min_size - regionIndices.min_size,
+@@ -4041,7 +4041,7 @@
+     format = MapCountT::static_size == HBUINT16::static_size ? 0 : 1;
+     entryFormat = ((width-1)<<4)|(inner_bit_count-1);
+     mapCount = output_map.length;
+-    HBUINT8 *p = c->allocate_size<HBUINT8> (width * output_map.length);
++    HBUINT8 *p = c->allocate_size<HBUINT8> (static_cast<size_t> (width) * output_map.length);
+     if (unlikely (!p)) return_trace (false);
+     for (unsigned int i = 0; i < output_map.length; i++)
+     {
+--- a/third_party/harfbuzz-download/harfbuzz-15.1.0/src/graph/pairpos-graph.hh
++++ b/third_party/harfbuzz-download/harfbuzz-15.1.0/src/graph/pairpos-graph.hh
+@@ -352,7 +352,7 @@
+ 
+     unsigned num_records = end - start;
+     unsigned prime_size = OT::Layout::GPOS_impl::PairPosFormat2_4<SmallTypes>::min_size
+-                          + num_records * split_context.class1_record_size;
++                          + static_cast<size_t> (num_records) * split_context.class1_record_size;
+ 
+     TRY_ASSIGN (unsigned pair_pos_prime_id, split_context.c.create_node (prime_size));
+ 
+@@ -430,7 +430,7 @@
+     unsigned num_records = end - start;
+     hb_memcpy (&pair_pos_prime->values[0],
+             start_addr,
+-            num_records * split_context.class1_record_size);
++            static_cast<size_t> (num_records) * split_context.class1_record_size);
+ 
+     if (!split_context.format1_device_table_indices
+         && !split_context.format2_device_table_indices)
+@@ -466,7 +466,7 @@
+     graph_t& graph = split_context.c.graph;
+     class1Count = count;
+     graph.vertices_[split_context.this_index].shrink_buffer(
+-        (old_count - count) * split_context.class1_record_size);
++        static_cast<size_t> (old_count - count) * split_context.class1_record_size);
+ 
+     TRY_ASSIGN (auto coverage,
+          graph.as_mutable_table<Coverage> (split_context.this_index, &this->coverage));

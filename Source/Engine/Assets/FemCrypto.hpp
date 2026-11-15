@@ -84,7 +84,7 @@ static_assert(sizeof(AeadTag) == 16);
 [[nodiscard]] bool ChaCha20Xor(const AeadKey& InKey, const AeadNonce& InNonce, std::uint32_t InCounter,
                                std::span<const std::byte> InInput, std::span<std::byte> OutOutput) noexcept;
 
-// Poly1305 over one contiguous message. The AEAD path uses it internally; the
+// Poly1305 over one contiguous message. The AEAD path uses it internally.
 [[nodiscard]] bool Poly1305Mac(const AeadKey& InKey, std::span<const std::byte> InMessage,
                                std::span<std::byte, kAeadTagBytes> OutTag) noexcept;
 

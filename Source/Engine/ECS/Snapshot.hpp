@@ -123,7 +123,7 @@ template <typename T>
         {
             return false;
         }
-        // Zero first: padding bytes inside the component must not leak into
+        // Zero first: padding bytes inside the component must not leak.
         std::memset(InDestination.data(), 0, sizeof(T));
         const auto* ScopedSource = reinterpret_cast<const std::byte*>(ScopedComponent);
         for (const Reflect::FieldDesc& ScopedField : Reflect::Fields<T>())
@@ -274,7 +274,7 @@ struct SnapshotRestoreExtras
     std::span<std::byte> extension{};
 };
 
-// Upper bound for the current registry: header + every live entity + every
+// Upper bound for the current registry: header + every live entity.
 [[nodiscard]] std::size_t SnapshotSize(const Registry& InRegistry, const SnapshotSchema& InSchema,
                                        std::size_t InExtensionBytes = 0) noexcept;
 
@@ -284,7 +284,7 @@ struct SnapshotRestoreExtras
                                    const DeterministicRng& InRng, std::size_t* OutBytes = nullptr,
                                    SnapshotExtras InExtras = {});
 
-// Delta against a previously captured full snapshot. Only changed components,
+// Delta against a previously captured full snapshot. Only changed components.
 [[nodiscard]] bool CaptureDelta(const Registry& InRegistry, const SnapshotSchema& InSchema,
                                 std::span<const std::byte> InBaseSnapshot, std::span<std::byte> InDestination,
                                 std::uint64_t InTick, const DeterministicRng& InRng, std::size_t* OutBytes = nullptr,

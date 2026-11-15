@@ -489,7 +489,7 @@ ctest --test-dir build-dev -R "sdf_(physics|damage|destructible|fracture|debris)
 | `TransportSurface` | `Friction`, `TangentSpeed`, `OneWay`, `AllowJump` | Политика опоры и конвейера |
 
 Все транспортные компоненты зарегистрированы и видны в инспекторе. Id группы —
-стабильное целое число, а не EnTT-хэндл. `ParentJoint` и `Joint` —
+стабильное целое число, а не runtime-хэндл. `ParentJoint` и `Joint` —
 runtime-идентификаторы Box2D: не задавайте их вручную, система проверяет и
 пересоздаёт их после загрузки сцены. `TransportPath` отдаёт в reflection только
 `Count` и `Closed`; массив точек задаётся кодом или проектным ассет-инструментом.

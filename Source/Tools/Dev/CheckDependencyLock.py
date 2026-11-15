@@ -54,7 +54,9 @@ def tree_digest(root: pathlib.Path) -> str:
             continue
         hash_object.update(path.relative_to(root).as_posix().encode("utf-8"))
         hash_object.update(b"\0")
-        hash_object.update(path.read_bytes())
+        # Windows checkouts may convert line endings; the lock must not depend
+        # on the host. Normalize CRLF so Linux and Windows hash the same tree.
+        hash_object.update(path.read_bytes().replace(b"\r\n", b"\n"))
     return hash_object.hexdigest()
 
 

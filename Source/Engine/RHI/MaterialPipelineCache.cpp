@@ -146,6 +146,8 @@ Rhi::ShaderPipelineHandle MaterialPipelineCache::Acquire(Rhi::RHI& InRhi,
     Rhi::ShaderPipelineDesc ScopedDesc;
     ScopedDesc.vertexSpirv = InMaterial.vertexSpirv;
     ScopedDesc.fragmentSpirv = InMaterial.fragmentSpirv;
+    ScopedDesc.vertexDxil = InMaterial.vertexDxil;
+    ScopedDesc.fragmentDxil = InMaterial.fragmentDxil;
     ScopedDesc.debugName = ScopedDebugName;
     ScopedDesc.domain = MaterialContractIsSprite(InMaterial.contract) ? Rhi::ShaderPipelineDomain::Sprite
                                                                       : Rhi::ShaderPipelineDomain::Mesh;

@@ -1,7 +1,7 @@
 # Voice: capture, DSP, AEC and networking
 
-Status: 0.4.0-alpha.1 tree. This is the per-subsystem voice document; the forward work
-lives in [ROADMAP.md](../ROADMAP.md), and the security status of the underlying
+Status: 0.5.0 tree. This is the per-subsystem voice document; the forward work
+lives in the project issue tracker, and the security status of the underlying
 transport lives in [security.md](security.md).
 
 ## Voice runtime
@@ -176,3 +176,5 @@ transport lives in [security.md](security.md).
   gain/pan/override, custom chains, decode sink).
 - The full settings reference and the text-chat service contract are in
   [chat.md](chat.md).
+- Preset data packs, the moderation policy, the plugin table and the reactive
+  SFX layer are described in [voice-presets.md](voice-presets.md).

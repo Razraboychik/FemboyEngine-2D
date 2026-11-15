@@ -42,18 +42,50 @@ bool VulkanRHI::CreateUploadArena(std::uint32_t InBytes)
     return true;
 }
 
-VkPipeline VulkanRHI::ResolveMaterialPipeline(std::uint32_t InId, bool InOffscreen, bool InSrgb) const noexcept
+VkPipeline VulkanRHI::ResolveMaterialPipeline(std::uint32_t InId, bool InOffscreen, bool InSrgb)
 {
+    (void)InOffscreen;
+    (void)InSrgb;
     if (InId == kDefaultMaterialPipeline || InId >= MMaterialPipelines.size() || MMaterialPipelines[InId] == nullptr ||
         !MMaterialPipelines[InId]->alive)
     {
         return VK_NULL_HANDLE;
     }
-    if (InOffscreen && InSrgb && MMaterialPipelines[InId]->srgbPass != VK_NULL_HANDLE)
+    MaterialPipeline& ScopedPipeline = *MMaterialPipelines[InId];
+    if (MActiveRenderPass == MRenderPass)
     {
-        return MMaterialPipelines[InId]->srgbPass;
+        return ScopedPipeline.mainPass;
     }
-    return InOffscreen ? MMaterialPipelines[InId]->offscreenPass : MMaterialPipelines[InId]->mainPass;
+    if (MActiveRenderPass == MOffscreenRenderPass)
+    {
+        return ScopedPipeline.offscreenPass;
+    }
+    if (MActiveRenderPass == MSrgbOffscreenRenderPass)
+    {
+        return ScopedPipeline.srgbPass;
+    }
+    // A render target with its own pass (an explicit RGBA8 sRGB or RG16F target)
+    // needs a pipeline compiled against that pass's attachment formats.
+    const auto ScopedFound = ScopedPipeline.passVariants.find(MActiveRenderPass);
+    if (ScopedFound != ScopedPipeline.passVariants.end())
+    {
+        return ScopedFound->second;
+    }
+    if (MActiveRenderPass == VK_NULL_HANDLE || ScopedPipeline.layout == VK_NULL_HANDLE ||
+        ScopedPipeline.vertexCode.empty() || ScopedPipeline.fragmentCode.empty())
+    {
+        return VK_NULL_HANDLE;
+    }
+    VkPipeline ScopedCreated = VK_NULL_HANDLE;
+    if (!CreateGraphicsPipelineForPass(MActiveRenderPass, ScopedPipeline.layout, ScopedPipeline.vertexCode.data(),
+                                       ScopedPipeline.vertexCode.size(), ScopedPipeline.fragmentCode.data(),
+                                       ScopedPipeline.fragmentCode.size(), &ScopedCreated))
+    {
+        return VK_NULL_HANDLE;
+    }
+    ScopedPipeline.passVariants.emplace(MActiveRenderPass, ScopedCreated);
+    LogInfo("vulkan", "material pipeline #{} compiled for a target-specific pass", InId);
+    return ScopedCreated;
 }
 
 ShaderPipelineHandle VulkanRHI::CreateShaderPipeline(const ShaderPipelineDesc& InDesc)
@@ -141,6 +173,13 @@ ShaderPipelineHandle VulkanRHI::CreateShaderPipeline(const ShaderPipelineDesc& I
         return {};
     }
     ScopedPipeline->alive = true;
+    ScopedPipeline->layout = ScopedLayout;
+    // Keep a copy of the cooked stage code: a target created later may have its
+    // own render pass and needs a pipeline compiled for that pass.
+    ScopedPipeline->vertexCode.assign(reinterpret_cast<const std::byte*>(ScopedVertexData),
+                                      reinterpret_cast<const std::byte*>(ScopedVertexData) + ScopedVertexBytes);
+    ScopedPipeline->fragmentCode.assign(reinterpret_cast<const std::byte*>(ScopedFragmentData),
+                                        reinterpret_cast<const std::byte*>(ScopedFragmentData) + ScopedFragmentBytes);
 
     std::uint32_t ScopedId = 0;
     if (!MFreeMaterialPipelineIds.empty())
@@ -182,6 +221,11 @@ void VulkanRHI::DestroyShaderPipeline(ShaderPipelineHandle InHandle)
         {
             ScopedApi.vkDestroyPipeline(MDevice, ScopedPipeline.srgbPass, nullptr);
         }
+        for (const auto& [ScopedPass, ScopedVariant] : ScopedPipeline.passVariants)
+        {
+            (void)ScopedPass;
+            ScopedApi.vkDestroyPipeline(MDevice, ScopedVariant, nullptr);
+        }
         ScopedPipeline = {};
     }
     MMaterialPipelines[InHandle.id].reset();
@@ -210,6 +254,11 @@ void VulkanRHI::DestroyMaterialPipelines() noexcept
             if (ScopedPipeline->srgbPass != VK_NULL_HANDLE)
             {
                 ScopedApi.vkDestroyPipeline(MDevice, ScopedPipeline->srgbPass, nullptr);
+            }
+            for (const auto& [ScopedPass, ScopedVariant] : ScopedPipeline->passVariants)
+            {
+                (void)ScopedPass;
+                ScopedApi.vkDestroyPipeline(MDevice, ScopedVariant, nullptr);
             }
             ScopedPipeline.reset();
         }
@@ -527,7 +576,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
     const VkCommandBuffer ScopedCommand = BeginOneShot();
     TransitionImage(ScopedCommand, ScopedArray->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     InDesc.layers, InDesc.mipLevels);
-    // One copy per (layer, mip). The buffer offset is the cooked layer-major,
+    // One copy per (layer, mip). The buffer offset is the cooked layer-major.
     std::uint64_t ScopedBufferOffset = 0;
     for (std::uint32_t ScopedLayer = 0; ScopedLayer < InDesc.layers; ++ScopedLayer)
     {
@@ -586,7 +635,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
     ScopedSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     ScopedSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     ScopedSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    ScopedSamplerInfo.maxLod = static_cast<float>(InDesc.mipLevels);
+    ScopedSamplerInfo.maxLod = static_cast<float>(InDesc.mipLevels > 0 ? InDesc.mipLevels - 1u : 0u);
     if (ScopedApi.vkCreateSampler(MDevice, &ScopedSamplerInfo, nullptr, &ScopedArray->sampler) != VK_SUCCESS)
     {
         LogError("vulkan", "CreateTextureArray: sampler creation failed");
@@ -1073,6 +1122,7 @@ bool VulkanRHI::BeginFrame()
     MFrameIndex = static_cast<std::uint32_t>(MFrameCounter % MFramesInFlight);
     ++MFrameCounter;
     MClusterRecordedThisFrame = false;
+    MClusterBuiltThisFrame = false;
     for (std::uint32_t ScopedView = 0; ScopedView < SdfMaxViews; ++ScopedView)
     {
         MSdfMaskPublished[MFrameIndex * SdfMaxViews + ScopedView] = false;
@@ -1225,8 +1275,12 @@ bool VulkanRHI::BeginFrame()
     MInstanceFrameCursor = 0;
     MPreUploadedPackets.clear();
     MRecordedPassIndex = 0;
+    MViewSlot = 0;
+    MMotionActiveSet = VK_NULL_HANDLE;
     MPostFxThisFrame = false;
     MPostFxRecordPending = false;
+    MBloomRequested = false;
+    MBloomRanThisFrame = false;
     MMeshFrameVertexCursor = 0;
     MMeshFrameIndexCursor = 0;
     MMeshFrameBoneCursor = 0;
@@ -1343,8 +1397,24 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
     ScopedTarget->extent = InDesc.size;
     ScopedTarget->srgb = InDesc.srgb;
     ScopedTarget->blend = InDesc.blend;
-    ScopedTarget->format =
-        InDesc.matchSwapchainFormat ? MFormat : (InDesc.srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM);
+    switch (InDesc.format)
+    {
+    case RenderTargetFormat::Rgba8Unorm:
+        ScopedTarget->format = VK_FORMAT_R8G8B8A8_UNORM;
+        break;
+    case RenderTargetFormat::Rgba8Srgb:
+        ScopedTarget->format = VK_FORMAT_R8G8B8A8_SRGB;
+        break;
+    case RenderTargetFormat::Rg16Float:
+        ScopedTarget->format = VK_FORMAT_R16G16_SFLOAT;
+        break;
+    case RenderTargetFormat::Auto:
+    default:
+        ScopedTarget->format =
+            InDesc.matchSwapchainFormat ? MFormat
+                                        : (InDesc.srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM);
+        break;
+    }
 
     const auto ScopedCleanup = [&]()
     {
@@ -1387,9 +1457,9 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
         return {};
     }
 
-    if (!IsSrgbFormat(ScopedTarget->format) && MOffscreenRenderPass != VK_NULL_HANDLE)
+    if (ScopedTarget->format == VK_FORMAT_R8G8B8A8_UNORM && MOffscreenRenderPass != VK_NULL_HANDLE)
     {
-        // Shared offscreen pass: identical attachment format and structure, so
+        // Shared offscreen pass: identical attachment format and structure.
         ScopedTarget->renderPass = MOffscreenRenderPass;
         ScopedTarget->ownsRenderPass = false;
     }
@@ -1686,10 +1756,12 @@ void VulkanRHI::DestroyRenderTarget(RenderTargetHandle InHandle)
 
 bool VulkanRHI::RcasSharpen(RenderTargetHandle InSource, RenderTargetHandle InDestination, float InSharpness)
 {
-    if (!MInFrame || MPassOpen || MRcasLayout == VK_NULL_HANDLE || MUpscaleSets[MFrameIndex] == VK_NULL_HANDLE)
+    if (!MInFrame || MPassOpen || MRcasLayout == VK_NULL_HANDLE)
     {
         return false;
     }
+    const std::uint32_t ScopedViewSlot = TakeViewSlot();
+    VkDescriptorSet ScopedRcasSet = MRcasSets[ScopedViewSlot];
     const RenderTarget* ScopedSource = FindRenderTarget(InSource.id);
     RenderTarget* ScopedDestination = FindRenderTarget(InDestination.id);
     if (ScopedSource == nullptr || ScopedDestination == nullptr)
@@ -1717,7 +1789,7 @@ bool VulkanRHI::RcasSharpen(RenderTargetHandle InSource, RenderTargetHandle InDe
     VkDescriptorImageInfo ScopedImage{MUpscaleSampler, ScopedSource->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     VkWriteDescriptorSet ScopedWrite{};
     ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    ScopedWrite.dstSet = MRcasSets[MFrameIndex];
+    ScopedWrite.dstSet = ScopedRcasSet;
     ScopedWrite.dstBinding = 0;
     ScopedWrite.descriptorCount = 1;
     ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1745,7 +1817,7 @@ bool VulkanRHI::RcasSharpen(RenderTargetHandle InSource, RenderTargetHandle InDe
     ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedScissor);
     ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedPipeline);
     ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MRcasLayout, 0, 1,
-                                      &MRcasSets[MFrameIndex], 0, nullptr);
+                                      &ScopedRcasSet, 0, nullptr);
     struct RcasPush
     {
         float texel[2];
@@ -1765,10 +1837,12 @@ bool VulkanRHI::RcasSharpen(RenderTargetHandle InSource, RenderTargetHandle InDe
 bool VulkanRHI::UpscaleRenderTarget(RenderTargetHandle InSource, RenderTargetHandle InDestination,
                                     SpatialUpscaleMode InMode)
 {
-    if (!MInFrame || MPassOpen || MUpscaleLayout == VK_NULL_HANDLE || MUpscaleSets[MFrameIndex] == VK_NULL_HANDLE)
+    if (!MInFrame || MPassOpen || MUpscaleLayout == VK_NULL_HANDLE)
     {
         return false;
     }
+    const std::uint32_t ScopedViewSlot = TakeViewSlot();
+    VkDescriptorSet ScopedUpscaleSet = MUpscaleSets[ScopedViewSlot];
     const RenderTarget* ScopedSource = FindRenderTarget(InSource.id);
     RenderTarget* ScopedDestination = FindRenderTarget(InDestination.id);
     if (ScopedSource == nullptr || ScopedDestination == nullptr || ScopedSource->view == VK_NULL_HANDLE ||
@@ -1802,7 +1876,7 @@ bool VulkanRHI::UpscaleRenderTarget(RenderTargetHandle InSource, RenderTargetHan
     ScopedImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkWriteDescriptorSet ScopedWrite{};
     ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    ScopedWrite.dstSet = MUpscaleSets[MFrameIndex];
+    ScopedWrite.dstSet = ScopedUpscaleSet;
     ScopedWrite.dstBinding = 0;
     ScopedWrite.descriptorCount = 1;
     ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1830,7 +1904,7 @@ bool VulkanRHI::UpscaleRenderTarget(RenderTargetHandle InSource, RenderTargetHan
     ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedScissor);
     ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedPipeline);
     ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MUpscaleLayout, 0,
-                                      1, &MUpscaleSets[MFrameIndex], 0, nullptr);
+                                      1, &ScopedUpscaleSet, 0, nullptr);
     struct UpscalePush
     {
         float source[4];
@@ -1840,7 +1914,8 @@ bool VulkanRHI::UpscaleRenderTarget(RenderTargetHandle InSource, RenderTargetHan
     ScopedPush.source[1] = static_cast<float>(ScopedSource->extent.height);
     ScopedPush.source[2] = 1.0f / static_cast<float>(ScopedSource->extent.width);
     ScopedPush.source[3] = 1.0f / static_cast<float>(ScopedSource->extent.height);
-    ScopedPush.params[0] = InMode == SpatialUpscaleMode::Fsr1 ? 0.0f : 0.12f;
+    // FSR1 keeps its sharpening term; the plain spatial filters must not sharpen.
+    ScopedPush.params[0] = InMode == SpatialUpscaleMode::Fsr1 ? 0.12f : 0.0f;
     ScopedPush.params[1] = static_cast<float>(InMode);
     ScopedApi.vkCmdPushConstants(MCommandBuffers[MFrameIndex], MUpscaleLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
                                  sizeof(ScopedPush), &ScopedPush);
@@ -2001,9 +2076,28 @@ bool VulkanRHI::PresentGeneratedFrame(RenderTargetHandle InHandle)
         ScopedHudScissor.extent = MExtent;
         ScopedApi.vkCmdSetScissor(ScopedCommandBuffer, 0, 1, &ScopedHudScissor);
         ScopedApi.vkCmdBindPipeline(ScopedCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MHudPipeline);
-        ScopedApi.vkCmdBindDescriptorSets(ScopedCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MHudLayout, 0, 1,
-                                          &HudSetRef(), 0, nullptr);
-        ScopedApi.vkCmdDraw(ScopedCommandBuffer, 3, 1, 0, 0);
+        // PresentGeneratedFrame runs outside BeginFrame/EndFrame, so the composite
+        // set is written here from the registered HUD target rather than reused.
+        const RenderTarget* ScopedHudTarget = FindRenderTarget(MHudTargetId);
+        if (ScopedHudTarget != nullptr && ScopedHudTarget->view != VK_NULL_HANDLE)
+        {
+            VkDescriptorSet ScopedHudSet = MHudSets[MFrameIndex * kMaxViewsPerFrame + kMaxViewsPerFrame - 1u];
+            VkDescriptorImageInfo ScopedHudImage{};
+            ScopedHudImage.sampler = MHudNearest ? MHudNearestSampler : MHudSampler;
+            ScopedHudImage.imageView = ScopedHudTarget->view;
+            ScopedHudImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            VkWriteDescriptorSet ScopedHudWrite{};
+            ScopedHudWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            ScopedHudWrite.dstSet = ScopedHudSet;
+            ScopedHudWrite.dstBinding = 0;
+            ScopedHudWrite.descriptorCount = 1;
+            ScopedHudWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            ScopedHudWrite.pImageInfo = &ScopedHudImage;
+            ScopedApi.vkUpdateDescriptorSets(MDevice, 1, &ScopedHudWrite, 0, nullptr);
+            ScopedApi.vkCmdBindDescriptorSets(ScopedCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MHudLayout, 0, 1,
+                                              &ScopedHudSet, 0, nullptr);
+            ScopedApi.vkCmdDraw(ScopedCommandBuffer, 3, 1, 0, 0);
+        }
         ScopedApi.vkCmdEndRenderPass(ScopedCommandBuffer);
     }
     VkImageMemoryBarrier ScopedPresentBarrier{};
@@ -2128,6 +2222,7 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
     ScopedBeginInfo.clearValueCount = 2;
     ScopedBeginInfo.pClearValues = ScopedClearValues;
     PreUploadInstances(ScopedCommandBuffer, InPacket);
+    UploadGiProbes(ScopedCommandBuffer, InPacket);
     ScopedApi.vkCmdBeginRenderPass(ScopedCommandBuffer, &ScopedBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     VkViewport ScopedViewport{};
@@ -2144,9 +2239,11 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
     if (!MBlindFrame)
     {
         const bool ScopedTargetSrgb = IsSrgbFormat(ScopedTarget->format);
+        MActiveRenderPass = ScopedTarget->renderPass;
         DrawPacket(ScopedCommandBuffer, ScopedTarget->pipeline, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
         DrawMeshes(ScopedCommandBuffer, ScopedTarget->meshPipeline, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
         RecordOitResolve(ScopedCommandBuffer, ScopedTarget->renderPass, InPacket);
+        MActiveRenderPass = VK_NULL_HANDLE;
     }
     ScopedApi.vkCmdEndRenderPass(ScopedCommandBuffer);
 
@@ -2620,6 +2717,35 @@ void VulkanRHI::PreUploadInstances(VkCommandBuffer InCommandBuffer, const FrameP
     MInstanceFrameCursor += ScopedCount;
 }
 
+void VulkanRHI::UploadGiProbes(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket)
+{
+    if (!MGiReady || !MClusterReady || MFrameIndex >= MGiFrames.size())
+    {
+        return;
+    }
+    GiFrame& ScopedGi = MGiFrames[MFrameIndex];
+    const std::size_t ScopedProbeCount = std::min<std::size_t>(InPacket.giProbes.size(), kMaxGiProbes);
+    MStats.giProbes = static_cast<std::uint32_t>(ScopedProbeCount);
+    if (MDesc.enableStaticCaches && ScopedGi.Version == InPacket.giVersion)
+    {
+        return;
+    }
+    if (ScopedProbeCount > 0 && ScopedGi.ProbeMapped != nullptr && InPacket.giProbes.data() != nullptr)
+    {
+        std::memcpy(ScopedGi.ProbeMapped, InPacket.giProbes.data(), ScopedProbeCount * sizeof(GpuGiProbe));
+    }
+    if (ScopedGi.HeaderMapped != nullptr)
+    {
+        std::memcpy(ScopedGi.HeaderMapped, &InPacket.giHeader, sizeof(GpuGiVolumeHeader));
+    }
+    ScopedGi.Version = InPacket.giVersion;
+    const VkMemoryBarrier ScopedGiBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_HOST_WRITE_BIT,
+                                          VK_ACCESS_SHADER_READ_BIT};
+    Vk::GetApi().vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_HOST_BIT,
+                                      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 1, &ScopedGiBarrier, 0, nullptr, 0,
+                                      nullptr);
+}
+
 void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
                            bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot, bool InDepthOnly)
 {
@@ -2646,6 +2772,30 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     VkDeviceSize ScopedFirstInstanceBase = 0;
     if (ScopedPreUploaded != nullptr)
     {
+        ScopedFirstInstanceBase = ScopedPreUploaded->base;
+    }
+    else if (MPassOpen || MInHudPass)
+    {
+        // A packet first seen while a render pass is already open cannot record
+        // its buffer copy into the frame command buffer. The copy runs on the
+        // upload command buffer instead, which is submitted and waited for
+        // before the frame submission, so the pass below reads completed data.
+        const VkCommandBuffer ScopedUpload = BeginOneShot();
+        PreUploadInstances(ScopedUpload, InPacket);
+        EndOneShot(ScopedUpload);
+        for (const PreUploadedPacket& ScopedPacket : MPreUploadedPackets)
+        {
+            if (ScopedPacket.packet == &InPacket && ScopedPacket.count == ScopedItemCount)
+            {
+                ScopedPreUploaded = &ScopedPacket;
+                break;
+            }
+        }
+        if (ScopedPreUploaded == nullptr)
+        {
+            LogError("vulkan", "packet uploaded into an open pass has no instance range");
+            return;
+        }
         ScopedFirstInstanceBase = ScopedPreUploaded->base;
     }
     else
@@ -2759,26 +2909,6 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     const std::uint32_t ScopedSdfOffset = ScopedSdfSlot * SdfBlockStride;
     ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MPipelineLayout, 0, 1,
                                       &ScopedActiveTexture, 1, &ScopedSdfOffset);
-    if (MGiReady && MClusterReady && MFrameIndex < MGiFrames.size())
-    {
-        GiFrame& ScopedGi = MGiFrames[MFrameIndex];
-        const std::size_t ScopedProbeCount = std::min<std::size_t>(InPacket.giProbes.size(), kMaxGiProbes);
-        MStats.giProbes = static_cast<std::uint32_t>(ScopedProbeCount);
-        if (!MDesc.enableStaticCaches || ScopedGi.Version != InPacket.giVersion)
-        {
-            if (ScopedProbeCount > 0)
-            {
-                std::memcpy(ScopedGi.ProbeMapped, InPacket.giProbes.data(), ScopedProbeCount * sizeof(GpuGiProbe));
-            }
-            std::memcpy(ScopedGi.HeaderMapped, &InPacket.giHeader, sizeof(GpuGiVolumeHeader));
-            ScopedGi.Version = InPacket.giVersion;
-            VkMemoryBarrier ScopedGiBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_HOST_WRITE_BIT,
-                                            VK_ACCESS_SHADER_READ_BIT};
-            ScopedApi.vkCmdPipelineBarrier(InCommandBuffer, VK_PIPELINE_STAGE_HOST_BIT,
-                                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 1, &ScopedGiBarrier, 0, nullptr, 0,
-                                           nullptr);
-        }
-    }
     if (MClusterSetLayout != VK_NULL_HANDLE)
     {
         VkDescriptorSet ScopedClusterSet = MClusterReady && MFrameIndex < MClusterFrames.size()
@@ -2813,7 +2943,9 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     ScopedConstants.frame[0] = static_cast<float>(MFrameIndex % kFeedbackSlots);
     ScopedConstants.frame[1] = static_cast<float>(InPacket.virtualTextureDebugMode);
     ScopedConstants.frame[2] = static_cast<float>(ScopedSdfSlot);
-    ScopedConstants.frame[3] = (InPacket.gpuLighting && MClusterReady && !InPacket.lights.empty()) ? 1.0f : 0.0f;
+    ScopedConstants.frame[3] = (InPacket.gpuLighting && ClusterMatchesCamera(InPacket) && !InPacket.lights.empty())
+                                   ? 1.0f
+                                   : 0.0f;
     ScopedConstants.material[0] = InPacket.timeSeconds;
     ScopedConstants.material[1] = InPacket.camera.viewport.X;
     ScopedConstants.material[2] = InPacket.camera.viewport.Y;
@@ -2863,7 +2995,7 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
         }
     }
 
-    // One draw per batch. With a texture array the only batch boundary is the
+    // One draw per batch.
     if (ScopedBatches.empty())
     {
         ScopedApi.vkCmdDrawIndexed(InCommandBuffer, kQuadIndexCount, static_cast<std::uint32_t>(InPacket.items.size()),
@@ -3058,7 +3190,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
 
             if (ScopedUnskinned)
             {
-                // CPU-deformed geometry: copy the bind-pose vertices into the
+                // CPU-deformed geometry: copy the bind-pose vertices.
                 if (ScopedSkinnedVertexBase + ScopedSkinnedVertexTotal + ScopedUnskinnedCursor + ScopedVertexCount >
                     MMeshVertexCapacity)
                 {
@@ -3194,7 +3326,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
 
     if (ScopedPassIndexCount > 0)
     {
-        // The dynamic index copy is a transfer, not a shader write. Make it
+        // The dynamic index copy is a transfer, not a shader write.
         VkMemoryBarrier ScopedIndexBarrier{};
         ScopedIndexBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         ScopedIndexBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -3204,7 +3336,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
                                        nullptr);
     }
 
-    // Group by (geometry class, texture array, layer). Within a group the
+    // Group by (geometry class, texture array, layer).
     std::sort(MMeshDrawOrder.begin(), MMeshDrawOrder.end(),
               [this](std::uint32_t InLeft, std::uint32_t InRight)
               {
@@ -3265,7 +3397,7 @@ void VulkanRHI::RecordMeshSkinning(VkCommandBuffer InCommandBuffer, const FrameP
         ScopedCommand.instanceCount = 1;
         ScopedCommand.firstIndex = ScopedRecord.firstIndex;
         ScopedCommand.vertexOffset = static_cast<std::int32_t>(ScopedRecord.vertexBase);
-        // gl_InstanceIndex = firstInstance + 0. This is the draw record index,
+        // gl_InstanceIndex = firstInstance + 0. This is the draw record index.
         ScopedCommand.firstInstance = ScopedSortedIndex;
     }
 
@@ -3301,7 +3433,7 @@ void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     }
     else
     {
-        // Legacy orthographic camera. Column-major: x' = 2*zoom/vw * x + tx,
+        // Legacy orthographic camera. Column-major: x' = 2*zoom/vw * x + tx.
         const float ScopedScaleX =
             InPacket.camera.viewport.X > 0.0f ? (2.0f * InPacket.camera.zoom) / InPacket.camera.viewport.X : 0.0f;
         const float ScopedScaleY =
@@ -3317,7 +3449,7 @@ void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
     ScopedPush.materialParams =
         Vector4D{InPacket.timeSeconds, InPacket.camera.viewport.X, InPacket.camera.viewport.Y, 0.0f};
 
-    // Static and skinned commands share this pool, so every material/layer is a
+    // Static and skinned commands share this pool, so every material/layer.
     ScopedApi.vkCmdBindIndexBuffer(InCommandBuffer, MIndexPool, 0, VK_INDEX_TYPE_UINT16);
     ScopedApi.vkCmdBindDescriptorSets(InCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, MMeshGraphicsLayout, 1, 1,
                                       &ScopedFrame.graphicsSet, 0, nullptr);
@@ -3332,7 +3464,7 @@ void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
         {
             continue;
         }
-        // MaterialGraph pipelines are created for the same pipeline layout and
+        // MaterialGraph pipelines are created for the same pipeline layout.
         VkPipeline ScopedGroupPipeline = InPipeline;
         if (ScopedGroup.materialPipeline != kDefaultMaterialPipeline)
         {
@@ -3365,7 +3497,25 @@ void VulkanRHI::DrawMeshes(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
 bool VulkanRHI::RecordComputePass(std::string_view InPipeline, const void* InConstants, std::uint32_t InConstantsBytes,
                                   Extent2D InExtent)
 {
-    if (!MInFrame || MPassOpen || MSdfComputePipeline == VK_NULL_HANDLE || MSdfMaskImage == VK_NULL_HANDLE)
+    if (!MInFrame || MPassOpen)
+    {
+        return false;
+    }
+    // Bloom runs in EndFrame after the scene pass, because the scene image does
+    // not exist yet when the render graph records its compute passes.
+    const bool ScopedIsBloom = InPipeline == "postfx_bloom_prefilter.comp" || InPipeline == "postfx_bloom_prefilter" ||
+                               InPipeline == "postfx_bloom_blur.comp" || InPipeline == "postfx_bloom_blur";
+    if (ScopedIsBloom)
+    {
+        if (!MPostFxReady || InConstants == nullptr || InConstantsBytes < sizeof(PostFxBlock))
+        {
+            return false;
+        }
+        std::memcpy(&MBloomBlock, InConstants, sizeof(PostFxBlock));
+        MBloomRequested = true;
+        return true;
+    }
+    if (MSdfComputePipeline == VK_NULL_HANDLE || MSdfMaskImage == VK_NULL_HANDLE)
     {
         return false;
     }
@@ -3395,6 +3545,10 @@ bool VulkanRHI::RecordComputePass(std::string_view InPipeline, const void* InCon
         return false;
     }
     ScopedConstants.encode.W = static_cast<float>(ScopedSlot);
+    // Temporal history reads the same view's mask from the previous frame slot.
+    const std::uint32_t ScopedFrameCount = std::max(MFramesInFlight, 1u);
+    const std::uint32_t ScopedHistoryFrame = (MFrameIndex + ScopedFrameCount - 1u) % ScopedFrameCount;
+    ScopedConstants.history.X = static_cast<float>(ScopedHistoryFrame * SdfMaxViews + ScopedView);
     std::memcpy(MSdfComputeMapped[ScopedSlot], &ScopedConstants, kSdfShadowBlockBytes);
 
     // Recorded into the frame command buffer before the sprite render pass, so
@@ -3430,6 +3584,16 @@ bool VulkanRHI::RecordGraphicsPass(std::string_view InPipeline, const void* InCo
     if (!MInFrame || MPassOpen || InConstants == nullptr || InInstanceCount != 1)
     {
         return false;
+    }
+    if (InPipeline == "color_grading.frag" || InPipeline == "color_grading")
+    {
+        if (!MColorGradeReady || InConstantsBytes < sizeof(ColorGradingConstants))
+        {
+            return false;
+        }
+        std::memcpy(&MColorGradeBlock, InConstants, sizeof(ColorGradingConstants));
+        MColorGradePending = true;
+        return true;
     }
     if (InPipeline != "postfx_composite.frag" && InPipeline != "postfx_composite")
     {
@@ -3471,8 +3635,9 @@ void VulkanRHI::Submit(const FramePacket& InPacket)
     const std::uint32_t ScopedSdfSlot = ApplySdfLighting(InPacket.sdf);
     ApplyVirtualTexture(InPacket);
     PreUploadInstances(ScopedCommandBuffer, InPacket);
+    UploadGiProbes(ScopedCommandBuffer, InPacket);
 
-    // Compute skinning must run outside the render pass. In BlindMode the
+    // Compute skinning must run outside the render pass.
     if (!MBlindFrame)
     {
         RecordMeshSkinning(ScopedCommandBuffer, InPacket);
@@ -3522,9 +3687,11 @@ void VulkanRHI::Submit(const FramePacket& InPacket)
 
     if (!MBlindFrame)
     {
+        MActiveRenderPass = MRenderPass;
         DrawPacket(ScopedCommandBuffer, MPipeline, InPacket, false, false, ScopedSdfSlot);
         DrawMeshes(ScopedCommandBuffer, MMeshPipeline, InPacket, false, false, ScopedSdfSlot);
         RecordOitResolve(ScopedCommandBuffer, MRenderPass, InPacket);
+        MActiveRenderPass = VK_NULL_HANDLE;
     }
 }
 
@@ -3580,13 +3747,14 @@ bool VulkanRHI::UploadMotionVectors(std::span<const MotionVectorItem> InItems)
         return false;
     }
     std::memcpy(MMotionMapped, InItems.data(), InItems.size() * sizeof(MotionVectorItem));
+    MMotionActiveSet = MMotionSets[TakeViewSlot()];
     VkDescriptorBufferInfo ScopedBufferInfo{};
     ScopedBufferInfo.buffer = MMotionBuffer;
     ScopedBufferInfo.offset = 0;
     ScopedBufferInfo.range = static_cast<VkDeviceSize>(InItems.size()) * sizeof(MotionVectorItem);
     VkWriteDescriptorSet ScopedWrite{};
     ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    ScopedWrite.dstSet = MMotionSets[MFrameIndex];
+    ScopedWrite.dstSet = MMotionActiveSet;
     ScopedWrite.dstBinding = 0;
     ScopedWrite.descriptorCount = 1;
     ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -3731,6 +3899,8 @@ bool VulkanRHI::TemporalResolve(RenderTargetHandle InCurrent, RenderTargetHandle
         return false;
     }
     Vk::Api& ScopedApi = Vk::GetApi();
+    const std::uint32_t ScopedViewSlot = TakeViewSlot();
+    VkDescriptorSet ScopedTemporalSet = MTemporalSets[ScopedViewSlot];
     VkDescriptorImageInfo ScopedImages[5]{};
     const VkImageView ScopedViews[5] = {ScopedCurrent->view, ScopedHistory->view, ScopedMotion->view,
                                         ScopedDepth->depthView, ScopedHistoryDepth->depthView};
@@ -3742,7 +3912,7 @@ bool VulkanRHI::TemporalResolve(RenderTargetHandle InCurrent, RenderTargetHandle
         ScopedImages[ScopedIndex].imageLayout = ScopedIndex >= 3 ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                                                                  : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         ScopedWrites[ScopedIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        ScopedWrites[ScopedIndex].dstSet = MTemporalSets[MFrameIndex];
+        ScopedWrites[ScopedIndex].dstSet = ScopedTemporalSet;
         ScopedWrites[ScopedIndex].dstBinding = ScopedIndex;
         ScopedWrites[ScopedIndex].descriptorCount = 1;
         ScopedWrites[ScopedIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -3762,7 +3932,7 @@ bool VulkanRHI::TemporalResolve(RenderTargetHandle InCurrent, RenderTargetHandle
     ScopedApi.vkCmdBeginRenderPass(MCommandBuffers[MFrameIndex], &ScopedBegin, VK_SUBPASS_CONTENTS_INLINE);
     ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedPipeline);
     ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MTemporalLayout, 0,
-                                      1, &MTemporalSets[MFrameIndex], 0, nullptr);
+                                      1, &ScopedTemporalSet, 0, nullptr);
     struct TemporalPush
     {
         float texel[2];
@@ -3804,7 +3974,7 @@ bool VulkanRHI::ClearMotionVectors(RenderTargetHandle InTarget)
     }
     Vk::Api& ScopedApi = Vk::GetApi();
     VkClearValue ScopedClear[2]{};
-    ScopedClear[0].color = {{0.5f, 0.5f, 0.0f, 1.0f}};
+    ScopedClear[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
     ScopedClear[1].depthStencil = {1.0f, 0};
     VkRenderPassBeginInfo ScopedBegin{};
     ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -3822,7 +3992,7 @@ bool VulkanRHI::RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t I
                                     Vector2D InPreviousCameraCenter, float InCameraZoom, float InPreviousCameraZoom,
                                     Vector2D InJitter, Vector2D InPreviousJitter, Vector2D InViewport)
 {
-    if (!MInFrame || InCount == 0 || MMotionLayout == VK_NULL_HANDLE || MMotionSets[MFrameIndex] == VK_NULL_HANDLE)
+    if (!MInFrame || InCount == 0 || MMotionLayout == VK_NULL_HANDLE || MMotionActiveSet == VK_NULL_HANDLE)
     {
         return false;
     }
@@ -3849,7 +4019,7 @@ bool VulkanRHI::RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t I
     }
     Vk::Api& ScopedApi = Vk::GetApi();
     VkClearValue ScopedClear[2]{};
-    ScopedClear[0].color = {{0.5f, 0.5f, 0.0f, 1.0f}};
+    ScopedClear[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
     ScopedClear[1].depthStencil = {1.0f, 0};
     VkRenderPassBeginInfo ScopedBegin{};
     ScopedBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -3869,7 +4039,7 @@ bool VulkanRHI::RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t I
     ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedScissor);
     ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, ScopedPipeline);
     ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MMotionLayout, 0,
-                                      1, &MMotionSets[MFrameIndex], 0, nullptr);
+                                      1, &MMotionActiveSet, 0, nullptr);
     struct MotionPush
     {
         float camera[2];
@@ -3965,13 +4135,15 @@ bool VulkanRHI::CompositeHud()
         return false;
     }
     Vk::Api& ScopedApi = Vk::GetApi();
+    const std::uint32_t ScopedViewSlot = TakeViewSlot();
+    VkDescriptorSet ScopedHudSet = MHudSets[ScopedViewSlot];
     VkDescriptorImageInfo ScopedImage{};
     ScopedImage.sampler = MHudNearest ? MHudNearestSampler : MHudSampler;
     ScopedImage.imageView = ScopedHud->view;
     ScopedImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkWriteDescriptorSet ScopedWrite{};
     ScopedWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    ScopedWrite.dstSet = HudSet();
+    ScopedWrite.dstSet = ScopedHudSet;
     ScopedWrite.dstBinding = 0;
     ScopedWrite.descriptorCount = 1;
     ScopedWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -3988,7 +4160,7 @@ bool VulkanRHI::CompositeHud()
     ScopedApi.vkCmdSetScissor(MCommandBuffers[MFrameIndex], 0, 1, &ScopedMainScissor);
     ScopedApi.vkCmdBindPipeline(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MHudPipeline);
     ScopedApi.vkCmdBindDescriptorSets(MCommandBuffers[MFrameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, MHudLayout, 0, 1,
-                                      &HudSetRef(), 0, nullptr);
+                                      &ScopedHudSet, 0, nullptr);
     ScopedApi.vkCmdDraw(MCommandBuffers[MFrameIndex], 3, 1, 0, 0);
     return true;
 }
@@ -4025,7 +4197,7 @@ void VulkanRHI::EndFrame()
 
     if (MPassOpen)
     {
-        // UI last: the game has already been recorded into the main pass and
+        // UI last: the game has already been recorded into the main pass.
         if (MUiRenderer != nullptr && !MBlindFrame && !MSkipMainUi && MUiVisible)
         {
             MUiRenderer(MUiUser, ScopedCommandBuffer);
@@ -4034,7 +4206,8 @@ void VulkanRHI::EndFrame()
         ScopedApi.vkCmdEndRenderPass(ScopedCommandBuffer);
         MPassOpen = false;
     }
-    if (MAccessibilitySwapActive && MAccessibilitySwapReady)
+    const bool ScopedAccessibilityComposited = MAccessibilitySwapActive && MAccessibilitySwapReady;
+    if (ScopedAccessibilityComposited)
     {
         // The scene pass ended in PRESENT_SRC_KHR because it shares MRenderPass;
         // move it to a samplable layout before the composite reads it.
@@ -4056,26 +4229,41 @@ void VulkanRHI::EndFrame()
         MAccessibilitySwapActive = false;
     }
     WriteTimestamp(ScopedCommandBuffer, TimestampPostFxStart, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
-    if (MPostFxRecordPending)
+    // The accessibility composite and the post-FX composite both write the
+    // acquired swapchain image, so exactly one of them may run.
+    if (!ScopedAccessibilityComposited && (MPostFxRecordPending || (MPostFxThisFrame && MPostFxReady)))
     {
-        RecordPostFxComposite(ScopedCommandBuffer, MPostFxRecordBlock, Extent2D{MExtent.width, MExtent.height});
-        MPostFxRecordPending = false;
-        MPostFxThisFrame = false;
+        const Extent2D ScopedExtent{MExtent.width, MExtent.height};
+        PostFxBlock ScopedBlock = MPostFxRecordPending ? MPostFxRecordBlock : BuildPostFxBlock(MPostFxSettings, ScopedExtent);
+        const bool ScopedBloomWanted = MPostFxRecordPending ? MBloomRequested : (MPostFxSettings.flags & PostFxBloom) != 0;
+        RecordPostFxSourceBarrier(ScopedCommandBuffer);
+        if (ScopedBloomWanted && MBloomReady)
+        {
+            MBloomBlock = ScopedBlock;
+            RecordBloomChain(ScopedCommandBuffer);
+        }
+        if (!MBloomRanThisFrame)
+        {
+            ScopedBlock.flagsAndCrt.X =
+                static_cast<float>(static_cast<std::uint32_t>(ScopedBlock.flagsAndCrt.X) & ~PostFxBloom);
+        }
+        RecordPostFxComposite(ScopedCommandBuffer, ScopedBlock, ScopedExtent);
     }
-    else if (MPostFxThisFrame && MPostFxReady)
+    else if (MBloomRequested)
     {
-        RecordPostFxComposite(ScopedCommandBuffer, MPostFxSettings, Extent2D{MExtent.width, MExtent.height});
-        MPostFxThisFrame = false;
+        LogWarn("vulkan", "bloom was requested without a post-FX composite; no bloom chain recorded");
     }
+    MPostFxRecordPending = false;
+    MPostFxThisFrame = false;
     WriteTimestamp(ScopedCommandBuffer, TimestampPostFxEnd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-    if (MPresentTargetId != 0xFFFFFFFFu)
+    if (MPresentTargetId != 0xFFFFFFFFu && MSwapchainTransferDst)
     {
         const RenderTarget* ScopedTarget = FindRenderTarget(MPresentTargetId);
         if (ScopedTarget != nullptr && ScopedTarget->image != VK_NULL_HANDLE && MImageIndex < MImages.size())
         {
             VkImageMemoryBarrier ScopedSourceBarrier{};
             ScopedSourceBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            ScopedSourceBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            ScopedSourceBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             ScopedSourceBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
             ScopedSourceBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             ScopedSourceBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -4096,7 +4284,9 @@ void VulkanRHI::EndFrame()
             ScopedDestinationBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
             const VkImageMemoryBarrier ScopedBarriers[] = {ScopedSourceBarrier, ScopedDestinationBarrier};
-            ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer,
+                                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                                               VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                                            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2,
                                            ScopedBarriers);
 
@@ -4112,19 +4302,22 @@ void VulkanRHI::EndFrame()
                                      VK_FILTER_LINEAR);
 
             ScopedSourceBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            ScopedSourceBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            ScopedSourceBarrier.dstAccessMask = 0;
             ScopedSourceBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             ScopedSourceBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
+                                           &ScopedSourceBarrier);
             ScopedDestinationBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
             ScopedDestinationBarrier.dstAccessMask = 0;
             ScopedDestinationBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             ScopedDestinationBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            const VkImageMemoryBarrier ScopedFinalBarriers[] = {ScopedSourceBarrier, ScopedDestinationBarrier};
             ScopedApi.vkCmdPipelineBarrier(ScopedCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                           VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 2,
-                                           ScopedFinalBarriers);
+                                           VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1,
+                                           &ScopedDestinationBarrier);
         }
     }
+    RecordColorGrade(ScopedCommandBuffer);
     WriteTimestamp(ScopedCommandBuffer, TimestampFrameEnd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
     if (ScopedApi.vkEndCommandBuffer(ScopedCommandBuffer) != VK_SUCCESS)
     {

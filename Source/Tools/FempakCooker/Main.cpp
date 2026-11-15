@@ -51,7 +51,7 @@ struct PackPlan
     std::string output;
 };
 
-// Everything the cook command accepts. The texture fields are forwarded to
+// Everything the cook command accepts.
 struct CookOptions
 {
     fs::path root = "assets";
@@ -62,6 +62,9 @@ struct CookOptions
     Fby::Cook::CookTarget target = Fby::Cook::CookTarget::Desktop;
     Fby::Cook::AstcBlock astcBlock = Fby::Cook::AstcBlock::Block4x4;
     bool srgb = true;
+    // Substring filters against the pak path or the source path. Used to keep
+    // editor-only samples, source art and test fixtures out of a shipped pak.
+    std::vector<std::string> excludes;
 };
 
 void PrintUsage()
@@ -99,7 +102,7 @@ void PrintUsage()
     return ToLower(InPath.extension().string());
 }
 
-// Every format the texture recipe may see. JPEG/BMP/WebP/HDR are routed to the
+// Every format the texture recipe may see.
 [[nodiscard]] bool IsImageSource(const fs::path& InPath)
 {
     const std::string ScopedExtension = ExtensionOf(InPath);
@@ -275,7 +278,7 @@ void PrintUsage()
         {
             continue;
         }
-        // Do not ship two generations of the same asset. A cooked file next to
+        // Do not ship two generations of the same asset.
         if (ScopedPath.starts_with("loc/") && ScopedPath.ends_with(".fbin"))
         {
             continue;
@@ -657,6 +660,10 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
         {
             InOptions->srgb = false;
         }
+        else if (ScopedArgument == "--exclude" && ScopedI + 1 < InArgc)
+        {
+            InOptions->excludes.emplace_back(InArgv[++ScopedI]);
+        }
         else if (ScopedArgument == "--progress" && ScopedI + 1 < InArgc)
         {
             InOptions->progressPath = InArgv[++ScopedI];
@@ -705,6 +712,25 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
         {
             ScopedOptions.output = ScopedPlan.output;
         }
+    }
+
+    if (!ScopedOptions.excludes.empty())
+    {
+        const std::size_t ScopedBefore = ScopedPlan.files.size();
+        std::erase_if(ScopedPlan.files, [&](const CookFile& InFile)
+                      {
+                          const std::string ScopedSource = InFile.source.generic_string();
+                          for (const std::string& ScopedPattern : ScopedOptions.excludes)
+                          {
+                              if (InFile.destination.find(ScopedPattern) != std::string::npos ||
+                                  ScopedSource.find(ScopedPattern) != std::string::npos)
+                              {
+                                  return true;
+                              }
+                          }
+                          return false;
+                      });
+        std::printf("fempak: excluded %zu file(s) by pattern\n", ScopedBefore - ScopedPlan.files.size());
     }
 
     const char* ScopedTargetName = ScopedOptions.target == Fby::Cook::CookTarget::Astc ? "astc" : "desktop";
@@ -818,7 +844,7 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
     return true;
 }
 
-// Inspection commands. They share the reader logic with the runtime, but do not
+// Inspection commands. They share the reader logic with the runtime.
 [[nodiscard]] std::optional<std::vector<std::byte>> ReadArchive(const char* InPath, std::string* InError)
 {
     std::vector<std::byte> ScopedBytes;
@@ -1016,7 +1042,7 @@ struct ListedEntry
     return true;
 }
 
-// Wraps one .fempak into the encrypted distribution container. This is the only
+// Wraps one .fempak into the encrypted distribution container.
 [[nodiscard]] bool ReadAeadKeyFile(const char* InPath, Fby::Crypto::AeadKey* OutKey)
 {
     if (InPath == nullptr || OutKey == nullptr)

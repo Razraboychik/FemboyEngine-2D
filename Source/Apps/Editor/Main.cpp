@@ -7,16 +7,25 @@
 #include "Engine/Assets/TextureArray.hpp"
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/Audio/Audio.hpp"
+#include "Engine/Audio/AudioReverb.hpp"
+#include "Engine/Audio/AudioZones.hpp"
 #include "Engine/ECS/AnimationEvents.hpp"
 #include "Engine/Physics/Cloth.hpp"
+#include "Engine/Physics/Fluid.hpp"
 #include "Engine/Physics/Gravity.hpp"
 #include "Engine/Physics/ClothRenderSystem.hpp"
 #include "Engine/Physics/Physics.hpp"
+#include "Engine/Physics/PhysicsJoints.hpp"
+#include "Engine/Physics/ProjectileSystem.hpp"
+#include "Engine/Physics/VehicleWheels.hpp"
+#include "Engine/Weather/Weather.hpp"
+#include "Engine/Weather/WeatherPreconciliated.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/Profiler.hpp"
 #include "Engine/Core/FrameArena.hpp"
 #include "Engine/ECS/CommandBuffer.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/AnimGraph.hpp"
 #include "Engine/ECS/Skeleton.hpp"
 #include "Engine/ECS/SkeletonIk.hpp"
 #include "Engine/ECS/Lighting.hpp"
@@ -27,8 +36,13 @@
 #include "Engine/Physics/SdfGi.hpp"
 #include "Engine/Physics/SdfGiAsset.hpp"
 #include "Engine/Physics/SdfSmoke.hpp"
-#include "Engine/Physics/SdfVolumeAsset.hpp"
 #include "Engine/Physics/SdfWorld.hpp"
+#include "Engine/Physics/SdfDestructible.hpp"
+#include "Engine/Physics/SdfDamage.hpp"
+#include "Engine/Physics/SdfDebris.hpp"
+#include "Engine/Physics/SdfFracture.hpp"
+#include "Engine/Physics/SdfDestructionCommands.hpp"
+#include "Engine/ECS/CommandLog.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/ECS/SpriteAnimation.hpp"
 #include "Engine/ECS/StateTree.hpp"
@@ -39,8 +53,13 @@
 #include "Engine/Navigation/NavMesh.hpp"
 #include "Engine/Navigation/Navigation.hpp"
 #include "Engine/Script/ScriptSystem.hpp"
+#include "Engine/Script/AotHost.hpp"
+#include "Engine/Script/AotScriptSystem.hpp"
+#include "Engine/Script/AotModule.hpp"
+#include "Engine/Script/AotAbi.hpp"
 #include "Engine/RHI/SkinningBridge.hpp"
 #include "Editor/Infrastructure/EditorSystem.hpp"
+#include "Editor/Infrastructure/PiePresentation.hpp"
 #include "Editor/Panels/AIStateTreeCanvasPanel.hpp"
 #include "Engine/RHI/FrameComposer.hpp"
 #include "Engine/RHI/Fsr2Pass.hpp"
@@ -49,6 +68,7 @@
 #include "Engine/RHI/CustomFrameGenerator.hpp"
 #include "Engine/RHI/FidelityFxRuntime.hpp"
 #include "Engine/RHI/Fsr3FrameGenerator.hpp"
+#include "Engine/RHI/FrameExporter.hpp"
 #include "Engine/RHI/Fsr2Adapter.hpp"
 #include "Editor/Infrastructure/ResolvedRenderSettings.hpp"
 #include "Engine/RHI/OitPass.hpp"
@@ -58,8 +78,12 @@
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/WindowManager.hpp"
 #include "Engine/Core/PluginHost.hpp"
+#include "Engine/Platform/PlatformService.hpp"
+#include "Engine/Platform/PlatformSystems.hpp"
 #include "Engine/UI/AccessibilityTheme.hpp"
+#include "Engine/UI/CardBoard.hpp"
 #include "Engine/RHI/RHI.hpp"
+#include "Engine/RHI/SdfCharacterRender.hpp"
 #include "Engine/RHI/RenderGraph.hpp"
 #include "Engine/UI/AccessibilityOverlay.hpp"
 #include "Engine/RHI/RenderPasses.hpp"
@@ -74,6 +98,8 @@
 #include "Engine/ECS/Scene.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -100,7 +126,7 @@ struct SkeletonDemo
     float time = 0.0f;
 };
 
-// State for the game systems. SystemGraph stores `void* user`, so a system that
+// State for the game systems.
 struct EditorGameSystems
 {
     Fby::SpriteAnimationEventQueue spriteAnimationEvents;
@@ -167,6 +193,361 @@ void ContactToSpriteAnimationSystem(Fby::Ecs::PhysicsSystemView& InView, void* I
 void ScriptSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
 {
     Fby::FemboyScriptSystem(InContext, *static_cast<Fby::ScriptRuntime*>(InUser));
+}
+
+// Hand-written nativized program used as a VM-free demo in the editor. It is
+// registered with the same bridge the cooked build would validate against.
+std::uint64_t GEditorAotVelocityHash = Fby::Reflect::LayoutHash<Fby::Velocity>();
+const std::uint64_t* GEditorAotHashes = &GEditorAotVelocityHash;
+
+void EditorAotNoop(Fby::Script::Aot::Context& InContext) noexcept
+{
+    (void)InContext;
+}
+
+void EditorAotHalfVelocity(Fby::Script::Aot::Context& InContext) noexcept
+{
+    std::byte* ScopedBase = InContext.Component(GEditorAotVelocityHash);
+    if (ScopedBase == nullptr)
+    {
+        return;
+    }
+    const float ScopedX = Fby::Script::Aot::Load<float>(ScopedBase, 0);
+    const float ScopedY = Fby::Script::Aot::Load<float>(ScopedBase, 4);
+    Fby::Script::Aot::Store<float>(ScopedBase, 0, ScopedX * 0.5f);
+    Fby::Script::Aot::Store<float>(ScopedBase, 4, ScopedY * 0.5f);
+}
+
+struct AotDemoRuntime
+{
+    Fby::Ecs::Registry World;
+    Fby::Script::AotHost Host;
+    Fby::Script::Aot::Module Module;
+    std::uint64_t Hash = 0;
+};
+
+void AotDemoStep(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    auto* ScopedRuntime = static_cast<AotDemoRuntime*>(InUser);
+    if (ScopedRuntime == nullptr)
+    {
+        return;
+    }
+    Fby::Ecs::SystemContext ScopedContext{ScopedRuntime->World, InContext.jobs, InContext.dt,
+                                          InContext.frameIndex};
+    Fby::FemboyAotScriptSystem(ScopedContext, ScopedRuntime->Host);
+}
+
+struct SequenceExportContext
+{
+    std::array<Fby::Rhi::RenderItem, 3> Items{};
+    std::array<Fby::Rhi::RenderKey, 3> Keys{};
+    std::array<Fby::Rhi::DrawBatch, 1> Batches{};
+    Fby::Rhi::CameraData Camera{};
+    std::uint32_t TextureArray = 0;
+};
+
+bool WriteExportSequence(void* InUser, std::string_view InPath, std::span<const std::byte> InBytes,
+                         std::string* InError)
+{
+    (void)InUser;
+    const std::filesystem::path ScopedPath(InPath);
+    std::error_code ScopedCode;
+    if (!ScopedPath.parent_path().empty())
+    {
+        std::filesystem::create_directories(ScopedPath.parent_path(), ScopedCode);
+    }
+    std::ofstream ScopedStream(ScopedPath, std::ios::binary | std::ios::trunc);
+    if (!ScopedStream)
+    {
+        if (InError != nullptr)
+        {
+            *InError = "cannot open the export file";
+        }
+        return false;
+    }
+    ScopedStream.write(reinterpret_cast<const char*>(InBytes.data()), static_cast<std::streamsize>(InBytes.size()));
+    return ScopedStream.good();
+}
+
+bool RenderExportFrame(void* InUser, std::uint32_t InFrame, Fby::Rhi::FramePacket& OutPacket)
+{
+    auto* ScopedContext = static_cast<SequenceExportContext*>(InUser);
+    if (ScopedContext == nullptr)
+    {
+        return false;
+    }
+    ScopedContext->Items[0] = Fby::Rhi::RenderItem::Quad(Fby::Vector2D{-110.0f, 0.0f},
+                                                        Fby::Vector2D{80.0f, 80.0f}, Fby::Color32::FromBytes(220, 80, 120).rgba);
+    ScopedContext->Items[1] = Fby::Rhi::RenderItem::Quad(Fby::Vector2D{0.0f, 40.0f},
+                                                        Fby::Vector2D{80.0f, 80.0f}, Fby::Color32::FromBytes(80, 200, 140).rgba);
+    ScopedContext->Items[2] = Fby::Rhi::RenderItem::Quad(Fby::Vector2D{110.0f, -20.0f},
+                                                        Fby::Vector2D{80.0f, 80.0f}, Fby::Color32::FromBytes(90, 130, 230).rgba);
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 3; ++ScopedIndex)
+    {
+        ScopedContext->Keys[ScopedIndex] = Fby::Rhi::MakeRenderKey(0, 0.1f, static_cast<std::uint8_t>(ScopedIndex));
+    }
+    ScopedContext->Batches[0] = Fby::Rhi::DrawBatch{0, 3, 0, 0};
+    OutPacket.items = ScopedContext->Items;
+    OutPacket.keys = ScopedContext->Keys;
+    OutPacket.batches = ScopedContext->Batches;
+    OutPacket.camera = ScopedContext->Camera;
+    OutPacket.previousCamera = ScopedContext->Camera;
+    OutPacket.clear = Fby::Color32::FromBytes(12, 14, 20);
+    OutPacket.textureArray = ScopedContext->TextureArray;
+    (void)InFrame;
+    return true;
+}
+
+struct ProjectileRuntime
+{
+    Fby::ProjectileSystem projectiles;
+    Fby::PhysicsSystem* physics = nullptr;
+    Fby::SdfWorld* sdfWorld = nullptr;
+    Fby::SdfDestructible* destructible = nullptr;
+    Fby::SdfDamageModel damage;
+    Fby::SdfMaterialProfile material;
+    Fby::SdfAtlasImage* sdfAtlas = nullptr;
+    Fby::SdfGiVolume* sdfGi = nullptr;
+    bool damageReady = false;
+    std::vector<Fby::Entity> debris;
+    std::vector<Fby::SdfDestructible> fracturePieces;
+    Fby::Ecs::CommandLog destructionLog;
+    Fby::Entity destructibleOwner = Fby::kNullEntity;
+};
+
+void DebrisStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    auto* ScopedRuntime = static_cast<ProjectileRuntime*>(InUser);
+    for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedRuntime->debris.size();)
+    {
+        const Fby::Entity ScopedEntity = ScopedRuntime->debris[ScopedIndex];
+        Fby::Transform2D* ScopedTransform = InContext.registry.try_get<Fby::Transform2D>(ScopedEntity);
+        Fby::Velocity* ScopedVelocity = InContext.registry.try_get<Fby::Velocity>(ScopedEntity);
+        Fby::Lifetime* ScopedLifetime = InContext.registry.try_get<Fby::Lifetime>(ScopedEntity);
+        if (ScopedTransform == nullptr || ScopedVelocity == nullptr || ScopedLifetime == nullptr)
+        {
+            ScopedRuntime->debris.erase(ScopedRuntime->debris.begin() + static_cast<std::ptrdiff_t>(ScopedIndex));
+            continue;
+        }
+        ScopedTransform->Position += ScopedVelocity->Value * InContext.dt;
+        ScopedLifetime->SecondsRemaining -= InContext.dt;
+        if (ScopedLifetime->SecondsRemaining <= 0.0f)
+        {
+            InContext.registry.destroy(ScopedEntity);
+            ScopedRuntime->debris.erase(ScopedRuntime->debris.begin() + static_cast<std::ptrdiff_t>(ScopedIndex));
+            continue;
+        }
+        ++ScopedIndex;
+    }
+}
+
+struct JointRuntime
+{
+    Fby::PhysicsJointSystem joints;
+    Fby::PhysicsSystem* physics = nullptr;
+};
+
+struct WheelRuntime
+{
+    Fby::WheelSystem wheels;
+    Fby::PhysicsSystem* physics = nullptr;
+};
+
+void FluidStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    auto* ScopedFluid = static_cast<Fby::FluidWaveSystem*>(InUser);
+    if (ScopedFluid != nullptr)
+    {
+        ScopedFluid->Update(InContext.registry, InContext.dt);
+    }
+}
+
+void WheelStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    auto* ScopedRuntime = static_cast<WheelRuntime*>(InUser);
+    if (ScopedRuntime->physics == nullptr)
+    {
+        return;
+    }
+    ScopedRuntime->wheels.Update(InContext.registry, *ScopedRuntime->physics, InContext.dt);
+}
+
+void JointSyncSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    auto* ScopedRuntime = static_cast<JointRuntime*>(InUser);
+    // CreateChain emplaces link entities, so collect the owners before the
+    // structural pass instead of walking a live view.
+    std::vector<Fby::Entity> ScopedOwners;
+    for (const Fby::Entity ScopedEntity : InContext.registry.view<Fby::JointChainComponent>())
+    {
+        ScopedOwners.push_back(ScopedEntity);
+    }
+    for (const Fby::Entity ScopedEntity : ScopedOwners)
+    {
+        Fby::JointChainComponent* ScopedChain =
+            InContext.registry.try_get<Fby::JointChainComponent>(ScopedEntity);
+        if (ScopedChain == nullptr || ScopedChain->ChainID.IsValid())
+        {
+            continue;
+        }
+        Fby::ChainError ScopedError = Fby::ChainError::None;
+        const Fby::JointChainHandle ScopedHandle =
+            ScopedRuntime->joints.CreateChain(InContext.registry, *ScopedChain, &ScopedError);
+        if (!ScopedHandle.IsValid())
+        {
+            Fby::LogWarn("editor_app", "joint chain {} failed: {}", Fby::ToIntegral(ScopedEntity),
+                         Fby::ChainErrorName(ScopedError));
+        }
+    }
+    ScopedRuntime->joints.Update(InContext.registry, InContext.dt);
+}
+
+void ProjectileStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    auto* ScopedRuntime = static_cast<ProjectileRuntime*>(InUser);
+    if (ScopedRuntime->physics == nullptr)
+    {
+        return;
+    }
+    ScopedRuntime->projectiles.Step(InContext.registry, *ScopedRuntime->physics, InContext.dt);
+    // Swept/hitscan projectiles stop at the first hit; surface it once for the
+    // demo so the result is observable from the log.
+    for (const Fby::ProjectileHitEvent& ScopedHit : ScopedRuntime->projectiles.Hits())
+    {
+        Fby::LogInfo("editor_app", "projectile {} hit entity {} at ({:.1f}, {:.1f}) speed {:.1f}",
+                     static_cast<unsigned long long>(Fby::ToIntegral(ScopedHit.projectile)),
+                     static_cast<unsigned long long>(Fby::ToIntegral(ScopedHit.target)),
+                     static_cast<double>(ScopedHit.point.X), static_cast<double>(ScopedHit.point.Y),
+                     static_cast<double>(ScopedHit.speed));
+        if (ScopedRuntime->sdfWorld != nullptr && ScopedRuntime->destructible != nullptr)
+        {
+            Fby::SdfImpact ScopedImpact;
+            ScopedImpact.Target = ScopedHit.target;
+            ScopedImpact.Point = ScopedHit.point;
+            ScopedImpact.Normal = ScopedHit.normal;
+            ScopedImpact.RelativeSpeed = ScopedHit.speed;
+            ScopedImpact.Impulse = ScopedHit.speed;
+            ScopedImpact.Mass = 1.0f;
+            ScopedImpact.KineticEnergy = 0.5f * ScopedHit.speed * ScopedHit.speed;
+            Fby::SdfImpactResult ScopedResult;
+            if (ScopedRuntime->damageReady)
+            {
+                ScopedResult = ScopedRuntime->damage.ApplyImpactAtPoint(ScopedImpact, ScopedRuntime->material);
+                Fby::LogInfo("editor_app", "destructible damage {:.3f}, integrity {:.3f}, broken {}",
+                             static_cast<double>(ScopedResult.Damage),
+                             static_cast<double>(ScopedResult.RemainingIntegrity),
+                             ScopedResult.PartBroken ? "yes" : "no");
+            }
+            if (!ScopedRuntime->damageReady || (ScopedResult.Applied && ScopedResult.Damage > 0.0f))
+            {
+                Fby::SdfCarveOp ScopedCarve;
+                ScopedCarve.Shape = Fby::SdfCarveShape::Circle;
+                ScopedCarve.Center = ScopedHit.point;
+                ScopedCarve.Radius = 14.0f;
+                if (Fby::PushCarveCommand(ScopedRuntime->destructionLog, ScopedRuntime->destructibleOwner,
+                                          ScopedCarve, InContext.frameIndex))
+                {
+                    Fby::SdfDestructible ScopedReplay;
+                    if (ScopedReplay.Configure(ScopedRuntime->destructible->Desc()))
+                    {
+                        Fby::SdfCarveReplayContext ScopedReplayContext{&ScopedReplay, 0};
+                        const std::span<const std::byte> ScopedPayload(
+                            reinterpret_cast<const std::byte*>(&ScopedCarve), sizeof(ScopedCarve));
+                        if (Fby::ReplayCarveCommand(&ScopedReplayContext, ScopedRuntime->destructibleOwner,
+                                                    ScopedPayload) &&
+                            ScopedReplayContext.Applied == 1u)
+                        {
+                            Fby::LogInfo("editor_app", "carve command replay verified ({} logged)",
+                                         ScopedRuntime->destructionLog.Count());
+                        }
+                    }
+                }
+                if (ScopedRuntime->destructible->Subtract(ScopedCarve))
+                {
+                    ScopedRuntime->sdfWorld->ClearImprints();
+                    if (ScopedRuntime->sdfWorld->Imprint(*ScopedRuntime->destructible))
+                    {
+                        if (ScopedRuntime->sdfAtlas != nullptr)
+                        {
+                            (void)Fby::PackSdfAtlas(ScopedRuntime->sdfWorld->Bricks(), ScopedRuntime->sdfAtlas);
+                        }
+                        if (ScopedRuntime->sdfGi != nullptr)
+                        {
+                            (void)ScopedRuntime->sdfGi->Build(ScopedRuntime->sdfWorld->Bricks(),
+                                                              ScopedRuntime->sdfWorld->Field().origin,
+                                                              Fby::Vector2D{64.0f, 64.0f}, 16, 12, 256.0f);
+                        }
+                        Fby::LogInfo("editor_app", "destructible carve applied at impact ({} op(s))",
+                                     ScopedRuntime->destructible->Ops().size());
+                    }
+                    std::array<Fby::SdfDebrisPiece, 24> ScopedPieces{};
+                    Fby::SdfDebrisSettings ScopedSettings;
+                    ScopedSettings.MaxPieces = static_cast<std::uint32_t>(ScopedPieces.size());
+                    ScopedSettings.Seed = static_cast<std::uint64_t>(ScopedHit.point.X * 131.0f) ^
+                                          static_cast<std::uint64_t>(ScopedHit.point.Y * 17.0f) ^
+                                          ScopedRuntime->destructible->Ops().size();
+                    const std::uint32_t ScopedDebrisCount = Fby::SpawnDebris(
+                        *ScopedRuntime->destructible, ScopedCarve, ScopedSettings, ScopedPieces);
+                    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedDebrisCount; ++ScopedIndex)
+                    {
+                        const Fby::SdfDebrisPiece& ScopedPiece = ScopedPieces[ScopedIndex];
+                        const Fby::Entity ScopedDebris = InContext.registry.create();
+                        Fby::Transform2D ScopedDebrisTransform;
+                        ScopedDebrisTransform.Position = ScopedPiece.Position;
+                        ScopedDebrisTransform.Rotation = ScopedPiece.Rotation;
+                        InContext.registry.emplace<Fby::Transform2D>(ScopedDebris, ScopedDebrisTransform);
+                        Fby::Velocity ScopedDebrisVelocity;
+                        ScopedDebrisVelocity.Value = ScopedPiece.Velocity;
+                        InContext.registry.emplace<Fby::Velocity>(ScopedDebris, ScopedDebrisVelocity);
+                        Fby::Sprite2D ScopedDebrisSprite;
+                        ScopedDebrisSprite.Size =
+                            Fby::Vector2D{ScopedPiece.HalfExtents.X * 2.0f, ScopedPiece.HalfExtents.Y * 2.0f};
+                        ScopedDebrisSprite.Layer = 3;
+                        ScopedDebrisSprite.Color = Fby::Color32::FromBytes(196, 164, 128);
+                        InContext.registry.emplace<Fby::Sprite2D>(ScopedDebris, ScopedDebrisSprite);
+                        InContext.registry.emplace<Fby::DrawOrder>(ScopedDebris, Fby::DrawOrder{3, 5.0f});
+                        InContext.registry.emplace<Fby::Lifetime>(ScopedDebris, Fby::Lifetime{ScopedPiece.Lifetime});
+                        ScopedRuntime->debris.push_back(ScopedDebris);
+                    }
+                    if (ScopedRuntime->damageReady && ScopedResult.PartBroken)
+                    {
+                        std::vector<Fby::SdfDestructible> ScopedFracture;
+                        if (Fby::FractureGrid(*ScopedRuntime->destructible, 4u, 4u, &ScopedFracture))
+                        {
+                            for (const Fby::SdfDestructible& ScopedFragment : ScopedFracture)
+                            {
+                                const Fby::SdfDestructibleDesc& ScopedFragmentDesc = ScopedFragment.Desc();
+                                const Fby::Vector2D ScopedFragmentSize{
+                                    static_cast<float>(ScopedFragmentDesc.Width) * ScopedFragmentDesc.CellSize.X,
+                                    static_cast<float>(ScopedFragmentDesc.Height) * ScopedFragmentDesc.CellSize.Y};
+                                const Fby::Vector2D ScopedFragmentCenter{
+                                    ScopedFragmentDesc.Origin.X + ScopedFragmentSize.X * 0.5f,
+                                    ScopedFragmentDesc.Origin.Y + ScopedFragmentSize.Y * 0.5f};
+                                const Fby::Entity ScopedChunk = InContext.registry.create();
+                                InContext.registry.emplace<Fby::Transform2D>(
+                                    ScopedChunk,
+                                    Fby::Transform2D{ScopedFragmentCenter, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+                                InContext.registry.emplace<Fby::Velocity>(
+                                    ScopedChunk, Fby::Velocity{Fby::Vector2D{0.0f, 0.0f}});
+                                Fby::Sprite2D ScopedChunkSprite;
+                                ScopedChunkSprite.Size = ScopedFragmentSize;
+                                ScopedChunkSprite.Layer = 3;
+                                ScopedChunkSprite.Color = Fby::Color32::FromBytes(156, 132, 108);
+                                InContext.registry.emplace<Fby::Sprite2D>(ScopedChunk, ScopedChunkSprite);
+                                InContext.registry.emplace<Fby::DrawOrder>(ScopedChunk, Fby::DrawOrder{3, 4.0f});
+                                InContext.registry.emplace<Fby::Lifetime>(ScopedChunk, Fby::Lifetime{3.0f});
+                                ScopedRuntime->debris.push_back(ScopedChunk);
+                            }
+                            Fby::LogInfo("editor_app", "destructible fractured into {} piece(s)",
+                                         ScopedFracture.size());
+                            ScopedRuntime->fracturePieces = std::move(ScopedFracture);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void IkSystem(const Fby::Ecs::CoreSystemView& InView, void*)
@@ -377,7 +758,7 @@ void SpawnFallbackWorld(Fby::Ecs::Registry& InRegistry)
     }
 }
 
-// A four-cell horizontal flipbook cut from texture-array layer 1. The
+// A four-cell horizontal flipbook cut from texture-array layer 1.
 [[nodiscard]] Fby::Entity SpawnSpriteAnimationDemo(Fby::Ecs::Registry& InRegistry,
                                                    Fby::Assets::AssetHandle InAtlasHandle)
 {
@@ -621,6 +1002,48 @@ int main(int argc, char** argv)
     Fby::LogInfo("editor_app", "backend: {} ({})", Fby::Rhi::BackendName(ScopedGpu->GetBackend()),
                  ScopedGpu->Info().name);
 
+    // Storefront provider probe. A developer can drop the Steam/EGS/GOG bridge
+    // next to the editor; without it the editor runs fully offline.
+    Fby::Platform::PlatformService ScopedPlatform;
+    Fby::Platform::PlatformCommandLog ScopedPlatformLog;
+    Fby::Platform::SteamAchievementSystem ScopedSteamAchievements;
+    bool ScopedPlatformReady = false;
+    {
+        const std::filesystem::path ScopedExeDirectory =
+            std::filesystem::absolute(argv[0] != nullptr ? argv[0] : "").parent_path();
+#if defined(_WIN32)
+        const std::filesystem::path ScopedProvider = ScopedExeDirectory / "fby_platform_steam.dll";
+#else
+        const std::filesystem::path ScopedProvider = ScopedExeDirectory / "fby_platform_steam.so";
+#endif
+        std::string ScopedPlatformError;
+        if (ScopedPlatform.Load(FbyPlatformKind_Steam, ScopedProvider.string(), &ScopedPlatformError))
+        {
+            FbyPlatformInitDesc ScopedInit{};
+            ScopedInit.kind = FbyPlatformKind_Steam;
+            const char* ScopedAppId = std::getenv("FBY_STEAM_APP_ID");
+            ScopedInit.applicationId = ScopedAppId != nullptr ? ScopedAppId : "480";
+            ScopedInit.displayName = "FemboyEngine2D Editor";
+            ScopedInit.nativeWindow = ScopedWindow.NativeWindow();
+            if (ScopedPlatform.Initialize(ScopedInit, &ScopedPlatformError))
+            {
+                ScopedPlatformReady = true;
+                Fby::LogInfo("editor_app", "platform provider ready: kind {} (app {})",
+                             static_cast<int>(ScopedPlatform.Kind()), ScopedInit.applicationId);
+            }
+            else
+            {
+                Fby::LogInfo("editor_app", "platform provider could not initialize: {}", ScopedPlatformError);
+                ScopedPlatform.Unload();
+            }
+        }
+        else
+        {
+            Fby::LogInfo("editor_app", "no storefront provider at '{}': {}", ScopedProvider.string(),
+                         ScopedPlatformError);
+        }
+    }
+
     // Diagnostic VT demo (FBY_VT_SELFTEST=1): one orange page in layer 0, slot 0,
     // and a page-table cell that makes the world tile under the camera resident.
     // The sprite built below samples it, and a captured viewport pixel proves the
@@ -676,10 +1099,33 @@ int main(int argc, char** argv)
     {
         Fby::LogWarn("editor_app", "audio device unavailable; running silent");
     }
+    if (ScopedAudio.IsValid())
+    {
+        // A quiet hall tail on the master bus gives the default scene a room
+        // without washing out the dry mix.
+        Fby::ReverbParams ScopedReverb = Fby::Audio::MakeReverbPreset(Fby::Audio::ReverbSpace::Hall);
+        ScopedReverb.wet = 0.10f;
+        (void)ScopedAudio.Mixer().SetBusReverb(Fby::kMasterBus, ScopedReverb);
+    }
+    Fby::AudioZoneSystem ScopedAudioZones;
     Fby::PhysicsSystem ScopedPhysics;
     if (!ScopedPhysics.Initialize())
     {
         Fby::LogWarn("editor_app", "Box2D world initialization failed");
+    }
+    ProjectileRuntime ScopedProjectileRuntime{};
+    ScopedProjectileRuntime.physics = &ScopedPhysics;
+    JointRuntime ScopedJointRuntime{};
+    ScopedJointRuntime.physics = &ScopedPhysics;
+    if (!ScopedJointRuntime.joints.Initialize(ScopedPhysics))
+    {
+        Fby::LogWarn("editor_app", "physics joints unavailable for this backend");
+    }
+    WheelRuntime ScopedWheelRuntime{};
+    ScopedWheelRuntime.physics = &ScopedPhysics;
+    if (!ScopedWheelRuntime.wheels.Initialize(ScopedPhysics))
+    {
+        Fby::LogWarn("editor_app", "wheel joints unavailable for this backend");
     }
     // Cloth integration: the simulation writes a CPU mesh, ClothRenderSystem
     Fby::ClothSystem ScopedCloth;
@@ -689,6 +1135,17 @@ int main(int argc, char** argv)
     }
     Fby::ClothRenderSystem ScopedClothRender;
     ScopedClothRender.Initialize(&ScopedCloth);
+    Fby::FluidWaveSystem ScopedFluid;
+    Fby::FluidDesc ScopedFluidDesc;
+    ScopedFluidDesc.origin = Fby::Vector2D{300.0f, 600.0f};
+    ScopedFluidDesc.cellSize = Fby::Vector2D{16.0f, 16.0f};
+    ScopedFluidDesc.columns = 64;
+    ScopedFluidDesc.rows = 32;
+    ScopedFluid.Initialize(ScopedFluidDesc);
+    Fby::Weather::WeatherSystem ScopedWeather;
+    ScopedWeather.Initialize();
+    Fby::Weather::WeatherPreconciliatedSystem ScopedWeatherGpu;
+    ScopedWeatherGpu.Initialize();
 
     // Scripts: the editor world and the PIE clone both run the same VM. The
     // script debugger panel owns a separate runtime so a paused session never
@@ -701,6 +1158,29 @@ int main(int argc, char** argv)
     Fby::RegisterDefaultScriptNatives(ScopedScripts);
     ScopedScripts.SetPhysics(&ScopedPhysics);
 
+    // VM-free path: a hand-written nativized program runs on its own registry so
+    // it cannot collide with interpreted ScriptComponent programs.
+    AotDemoRuntime ScopedAotDemo;
+    ScopedAotDemo.Hash = Fby::Reflect::LayoutHash<Fby::Velocity>();
+    ScopedAotDemo.Module.componentCount = 1;
+    ScopedAotDemo.Module.componentHashes = GEditorAotHashes;
+    ScopedAotDemo.Module.start = &EditorAotNoop;
+    ScopedAotDemo.Module.update = &EditorAotHalfVelocity;
+    if (ScopedAotDemo.Host.RegisterModule(ScopedAotDemo.Hash, ScopedAotDemo.Module, ScopedScripts.Bridge(),
+                                          "editor_aot_demo"))
+    {
+        const Fby::Entity ScopedAotEntity = ScopedAotDemo.World.create();
+        ScopedAotDemo.World.emplace<Fby::Velocity>(ScopedAotEntity, Fby::Velocity{Fby::Vector2D{8.0f, 4.0f}});
+        Fby::ScriptComponent ScopedAotScript;
+        ScopedAotScript.Program = 0;
+        ScopedAotScript.Flags = Fby::kScriptFlagEnabled;
+        ScopedAotDemo.World.emplace<Fby::ScriptComponent>(ScopedAotEntity, ScopedAotScript);
+    }
+    else
+    {
+        Fby::LogWarn("editor_app", "nativized script demo module rejected");
+    }
+
     Fby::JobSystem ScopedJobs;
     Fby::Ecs::Registry ScopedRegistry;
     Fby::Scene::ComponentRegistry ScopedSceneComponents;
@@ -711,19 +1191,6 @@ int main(int argc, char** argv)
         Fby::LogWarn("editor_app", "demo scene unavailable; spawning the fallback world");
         SpawnFallbackWorld(ScopedRegistry);
     }
-    const Fby::Entity ScopedSkeletalAnimationEntity = SpawnSkeletonDemo(ScopedRegistry);
-    Fby::LogInfo("editor_app", "Skeleton demo entity {}: 3 bones, 4 skinned vertices",
-                 Fby::ToIntegral(ScopedSkeletalAnimationEntity));
-    const std::string_view ScopedAtlasPath = ScopedAssetDb.Path(ScopedAtlasId);
-    const Fby::Assets::AssetHandle ScopedAtlasHandle =
-        ScopedAtlasPath.empty() ? Fby::Assets::AssetHandle{}
-                                : ScopedAssetDb.EnsureMeta(ScopedAtlasId, Fby::AssetKind::SpriteSheet, ScopedAtlasPath);
-    const Fby::Entity ScopedSpriteAnimationEntity = SpawnSpriteAnimationDemo(ScopedRegistry, ScopedAtlasHandle);
-    Fby::LogInfo("editor_app", "SpriteAnimation demo entity {}: 4 cells, 0.12 s/frame",
-                 Fby::ToIntegral(ScopedSpriteAnimationEntity));
-    const Fby::Entity ScopedPhysicsEntity = SpawnPhysicsDemo(ScopedRegistry);
-    Fby::LogInfo("editor_app", "Box2D demo entity {}: dynamic crate over static ground",
-                 Fby::ToIntegral(ScopedPhysicsEntity));
 
     Fby::Ecs::SystemGraph ScopedGraph;
     // Host-owned strict text runtime. The editor tries the same asset TTF stack
@@ -779,12 +1246,26 @@ int main(int argc, char** argv)
                           &ScopedGameSystems, kAfterEvents);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", Fby::Ecs::BindCoreSystem<&MovementSystem>(),
                           nullptr, kAfterEvents | kAfterGravity);
+    if (!ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "projectiles", &ProjectileStepSystem,
+                         &ScopedProjectileRuntime))
+    {
+        Fby::LogWarn("editor_app", "projectile graph node rejected");
+    }
+    if (!ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "wheels", &WheelStepSystem, &ScopedWheelRuntime))
+    {
+        Fby::LogWarn("editor_app", "wheel graph node rejected");
+    }
+    if (!ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "debris", &DebrisStepSystem, &ScopedProjectileRuntime))
+    {
+        Fby::LogWarn("editor_app", "debris graph node rejected");
+    }
     (void)Fby::PhysicsFixedStepSystem::Register(ScopedGraph, ScopedPhysics, kAfterMovement);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "contact_to_spriteAnimation",
                           Fby::Ecs::BindPhysicsSystem<&ContactToSpriteAnimationSystem>(), &ScopedGameSystems,
                           kAfterPhysics);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "spriteAnimation",
                           Fby::Ecs::BindCoreSystem<&SpriteAnimationStepSystem>(), &ScopedGameSystems, kAfterContacts);
+    Fby::RegisterAnimGraphSystem(ScopedGraph);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "skeletal_animate",
                           Fby::Ecs::BindCoreSystem<&SkeletalAnimateSystem>(), nullptr, kAfterSpriteAnimation);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "ik", Fby::Ecs::BindCoreSystem<&IkSystem>(), nullptr);
@@ -803,10 +1284,32 @@ int main(int argc, char** argv)
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "navigation", Fby::Ecs::BindCoreSystem<&NavigationStepSystem>(),
                           &ScopedGameSystems);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::PreUpdate, "audio", Fby::Ecs::BindAudioSystem<&AudioUpdateSystem>());
+    if (!Fby::Weather::WeatherSystem::Register(ScopedGraph, ScopedWeather))
+    {
+        Fby::LogWarn("editor_app", "weather graph node rejected");
+    }
+    if (!Fby::Weather::WeatherPreconciliatedSystem::Register(ScopedGraph, ScopedWeatherGpu))
+    {
+        Fby::LogWarn("editor_app", "preconciliated weather graph node rejected");
+    }
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "audio_zones",
+                          Fby::Ecs::BindAudioSystem<&Fby::AudioZoneSystemUpdate>(), &ScopedAudioZones);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "skeletal_evaluate",
                           Fby::Ecs::BindCoreSystem<&SkeletalEvaluateSystem>(), &ScopedGameSystems);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "physics_interpolate",
                           Fby::Ecs::BindPhysicsSystem<&PhysicsInterpolateSystem>());
+    if (!ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "joints", &JointSyncSystem, &ScopedJointRuntime))
+    {
+        Fby::LogWarn("editor_app", "joint graph node rejected");
+    }
+    if (!ScopedGraph.Add(Fby::Ecs::Phase::PostUpdate, "fluid", &FluidStepSystem, &ScopedFluid))
+    {
+        Fby::LogWarn("editor_app", "fluid graph node rejected");
+    }
+    if (!Fby::Ui::CardBoardSystem::Register(ScopedGraph))
+    {
+        Fby::LogWarn("editor_app", "card board graph node rejected");
+    }
     Fby::LightingSystem ScopedLighting;
     // The demo world field is a real `.fsdf` image: analytic sources bake it on
     // the first run, the bake is cached under Saved/Worlds, and the lighting
@@ -822,57 +1325,45 @@ int main(int argc, char** argv)
     ScopedSdfDesc.NarrowBand = 64.0f;
     ScopedSdfDesc.OutsideDistance = 1000.0f;
 
-    const std::filesystem::path ScopedSdfPath = std::filesystem::path("Saved") / "Worlds" / "demo.fsdf";
-    std::vector<std::byte> ScopedSdfBytes;
-    {
-        std::error_code ScopedCode;
-        if (std::filesystem::exists(ScopedSdfPath, ScopedCode))
-        {
-            std::ifstream ScopedStream(ScopedSdfPath, std::ios::binary | std::ios::ate);
-            if (ScopedStream)
-            {
-                const std::streamsize ScopedSize = ScopedStream.tellg();
-                if (ScopedSize > 0)
-                {
-                    ScopedSdfBytes.resize(static_cast<std::size_t>(ScopedSize));
-                    ScopedStream.seekg(0, std::ios::beg);
-                    ScopedStream.read(reinterpret_cast<char*>(ScopedSdfBytes.data()), ScopedSize);
-                }
-            }
-        }
-    }
+    // The editor owns the distance field at runtime so a destructible object can
+    // imprint its carved field back into the lighting/shadow source.
+    Fby::SdfWorld ScopedSdfWorld;
+    (void)ScopedSdfWorld.Configure(ScopedSdfDesc);
+    (void)ScopedSdfWorld.AddBox(Fby::Vector2D{900.0f, 478.0f}, Fby::Vector2D{44.0f, 8.0f});
+    (void)ScopedSdfWorld.AddBox(Fby::Vector2D{640.0f, 730.0f}, Fby::Vector2D{640.0f, 16.0f});
+    (void)ScopedSdfWorld.BakeAll();
 
-    Fby::SdfVolumeAsset ScopedSdfAsset;
-    std::string ScopedSdfError;
-    if (ScopedSdfBytes.empty() || !ScopedSdfAsset.Load(ScopedSdfBytes, &ScopedSdfError))
+    Fby::SdfDestructible ScopedDestructible;
+    Fby::SdfDestructibleDesc ScopedDestructibleDesc;
+    ScopedDestructibleDesc.Origin = Fby::Vector2D{820.0f, 420.0f};
+    ScopedDestructibleDesc.CellSize = Fby::Vector2D{2.0f, 2.0f};
+    ScopedDestructibleDesc.Width = 64;
+    ScopedDestructibleDesc.Height = 64;
+    ScopedDestructibleDesc.BaseShape = Fby::SdfCarveShape::Box;
+    ScopedDestructibleDesc.HalfExtents = Fby::Vector2D{64.0f, 64.0f};
+    ScopedDestructibleDesc.NarrowBand = 16.0f;
+    if (ScopedDestructible.Configure(ScopedDestructibleDesc))
     {
-        // First run or a stale cache: bake from the authored sources, write the
-        // image the next launch loads, then read it back through the loader.
-        Fby::SdfWorld ScopedBakeWorld;
-        (void)ScopedBakeWorld.Configure(ScopedSdfDesc);
-        (void)ScopedBakeWorld.AddBox(Fby::Vector2D{900.0f, 478.0f}, Fby::Vector2D{44.0f, 8.0f});
-        (void)ScopedBakeWorld.AddBox(Fby::Vector2D{640.0f, 730.0f}, Fby::Vector2D{640.0f, 16.0f});
-        (void)ScopedBakeWorld.BakeAll();
-        ScopedSdfBytes.clear();
-        if (ScopedBakeWorld.SaveAsset(&ScopedSdfBytes))
-        {
-            std::error_code ScopedCode;
-            std::filesystem::create_directories(ScopedSdfPath.parent_path(), ScopedCode);
-            std::ofstream ScopedStream(ScopedSdfPath, std::ios::binary | std::ios::trunc);
-            if (ScopedStream)
-            {
-                ScopedStream.write(reinterpret_cast<const char*>(ScopedSdfBytes.data()),
-                                   static_cast<std::streamsize>(ScopedSdfBytes.size()));
-            }
-        }
-        (void)ScopedSdfAsset.Load(ScopedSdfBytes, &ScopedSdfError);
+        (void)ScopedSdfWorld.Imprint(ScopedDestructible);
     }
-
-    std::vector<float> ScopedSdfSamples;
-    Fby::SdfField ScopedSdfField;
-    (void)ScopedSdfAsset.ExpandToField(&ScopedSdfSamples, &ScopedSdfField);
-    const Fby::SdfField& ScopedSdf = ScopedSdfField;
-    const Fby::SdfBrickMap& ScopedSdfBricks = ScopedSdfAsset.Bricks();
+    ScopedProjectileRuntime.sdfWorld = &ScopedSdfWorld;
+    ScopedProjectileRuntime.destructible = &ScopedDestructible;
+    ScopedProjectileRuntime.destructibleOwner = ScopedRegistry.create();
+    ScopedProjectileRuntime.damage.Clear();
+    Fby::SdfPart ScopedDamagePart;
+    ScopedDamagePart.Center = Fby::Vector2D{884.0f, 484.0f};
+    ScopedDamagePart.Radius = 128.0f;
+    ScopedDamagePart.Integrity = 1.0f;
+    ScopedDamagePart.Mass = 1.0f;
+    ScopedProjectileRuntime.damageReady = ScopedProjectileRuntime.damage.AddPart(ScopedDamagePart);
+    ScopedProjectileRuntime.material.Toughness = 1.0f;
+    ScopedProjectileRuntime.material.Hardness = 1.0f;
+    ScopedProjectileRuntime.material.EnergyToDamage = 0.001f;
+    ScopedProjectileRuntime.material.MaximumDamageFraction = 1.0f;
+    ScopedProjectileRuntime.material.Clamp();
+    const Fby::SdfField& ScopedSdf = ScopedSdfWorld.Field();
+    const Fby::SdfBrickMap& ScopedSdfBricks = ScopedSdfWorld.Bricks();
+    ScopedWeatherGpu.SetSdfField(ScopedSdf);
     Fby::SdfGiVolume ScopedSdfGi;
     (void)ScopedSdfGi.Build(ScopedSdfBricks, ScopedSdf.origin, Fby::Vector2D{64.0f, 64.0f}, 16, 12, 256.0f);
 
@@ -880,6 +1371,8 @@ int main(int argc, char** argv)
     // uploaded by the backend together with the dense field texture.
     Fby::SdfAtlasImage ScopedSdfAtlas;
     (void)Fby::PackSdfAtlas(ScopedSdfBricks, &ScopedSdfAtlas);
+    ScopedProjectileRuntime.sdfAtlas = &ScopedSdfAtlas;
+    ScopedProjectileRuntime.sdfGi = &ScopedSdfGi;
 
     // The editor bakes GI into the probe grid and caches the result next to the
     // world image. The sidecar carries the world hash, so a changed field rebakes
@@ -979,6 +1472,10 @@ int main(int argc, char** argv)
     (void)Fby::ClothRenderSystem::Register(ScopedGraph, ScopedClothRender);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "scripts", &ScriptSystem, &ScopedScripts,
                           kAfterSpriteAnimation);
+    if (!ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "aot_scripts", &AotDemoStep, &ScopedAotDemo))
+    {
+        Fby::LogWarn("editor_app", "nativized script graph node rejected");
+    }
 
     Fby::Editor::EditorSystem ScopedEditor;
     Fby::Core::Profiler ScopedProfiler;
@@ -1012,6 +1509,187 @@ int main(int argc, char** argv)
         Fby::LogError("editor_app", "editor initialization failed");
         return 3;
     }
+
+    const Fby::Entity ScopedSkeletalAnimationEntity = SpawnSkeletonDemo(ScopedRegistry);
+    Fby::SdfCharacterComponent& ScopedSdfCharacter =
+        ScopedRegistry.emplace<Fby::SdfCharacterComponent>(ScopedSkeletalAnimationEntity);
+    ScopedSdfCharacter.PartCount = 2;
+    ScopedSdfCharacter.Parts[0].Shape = Fby::MakeSdfShape(Fby::SdfShapeType::Capsule);
+    ScopedSdfCharacter.Parts[0].Shape.HalfExtents = Fby::Vector2D{24.0f, 0.0f};
+    ScopedSdfCharacter.Parts[0].Shape.Radius = 7.0f;
+    ScopedSdfCharacter.Parts[0].BoneIndex = 1;
+    ScopedSdfCharacter.Parts[1].Shape = Fby::MakeSdfShape(Fby::SdfShapeType::Capsule);
+    ScopedSdfCharacter.Parts[1].Shape.HalfExtents = Fby::Vector2D{16.0f, 0.0f};
+    ScopedSdfCharacter.Parts[1].Shape.Radius = 6.0f;
+    ScopedSdfCharacter.Parts[1].BoneIndex = 2;
+    Fby::LogInfo("editor_app", "Skeleton demo entity {}: 3 bones, 4 skinned vertices",
+                 Fby::ToIntegral(ScopedSkeletalAnimationEntity));
+    const std::string_view ScopedAtlasPath = ScopedAssetDb.Path(ScopedAtlasId);
+    const Fby::Assets::AssetHandle ScopedAtlasHandle =
+        ScopedAtlasPath.empty() ? Fby::Assets::AssetHandle{}
+                                : ScopedAssetDb.EnsureMeta(ScopedAtlasId, Fby::AssetKind::SpriteSheet, ScopedAtlasPath);
+    const Fby::Entity ScopedSpriteAnimationEntity = SpawnSpriteAnimationDemo(ScopedRegistry, ScopedAtlasHandle);
+    Fby::LogInfo("editor_app", "SpriteAnimation demo entity {}: 4 cells, 0.12 s/frame",
+                 Fby::ToIntegral(ScopedSpriteAnimationEntity));
+    const Fby::Entity ScopedPhysicsEntity = SpawnPhysicsDemo(ScopedRegistry);
+    Fby::LogInfo("editor_app", "Box2D demo entity {}: dynamic crate over static ground",
+                 Fby::ToIntegral(ScopedPhysicsEntity));
+    // The crate is also a water interactor, so FluidWaveSystem sees its entry
+    // into the shallow-water grid and injects a splash.
+    ScopedRegistry.emplace<Fby::FluidInteractorComponent>(ScopedPhysicsEntity, Fby::FluidInteractorComponent{});
+    // A swept projectile crosses the demo and stops on the crate. ProjectileSystem
+    // runs before the physics fixed step and reports the hit through Hits().
+    const Fby::Entity ScopedProjectileEntity = ScopedRegistry.create();
+    Fby::Transform2D ScopedProjectileTransform;
+    ScopedProjectileTransform.Position = {300.0f, 520.0f};
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedProjectileEntity, ScopedProjectileTransform);
+    Fby::Sprite2D ScopedProjectileSprite;
+    ScopedProjectileSprite.Size = {10.0f, 6.0f};
+    ScopedProjectileSprite.Layer = 2;
+    ScopedProjectileSprite.Color = Fby::Color32::FromBytes(255, 220, 90);
+    ScopedRegistry.emplace<Fby::Sprite2D>(ScopedProjectileEntity, ScopedProjectileSprite);
+    ScopedRegistry.emplace<Fby::DrawOrder>(ScopedProjectileEntity, Fby::DrawOrder{2, 2.0f});
+    Fby::RigidBody2D ScopedProjectileBody;
+    ScopedProjectileBody.Type = Fby::BodyType::Dynamic;
+    ScopedProjectileBody.Flags |= Fby::RigidBodyEnabled;
+    ScopedRegistry.emplace<Fby::RigidBody2D>(ScopedProjectileEntity, ScopedProjectileBody);
+    Fby::Collider2D ScopedProjectileCollider;
+    ScopedProjectileCollider.HalfExtents = {5.0f, 3.0f};
+    ScopedProjectileCollider.Density = 1.0f;
+    ScopedRegistry.emplace<Fby::Collider2D>(ScopedProjectileEntity, ScopedProjectileCollider);
+    Fby::Projectile2D ScopedProjectile;
+    ScopedProjectile.Mode = Fby::kProjectileModeSwept;
+    ScopedProjectile.Speed = 4000.0f;
+    ScopedProjectile.Direction = Fby::Vector2D{1.0f, 0.0f};
+    ScopedProjectile.MinWallThickness = 8.0f;
+    ScopedRegistry.emplace<Fby::Projectile2D>(ScopedProjectileEntity, ScopedProjectile);
+    Fby::LogInfo("editor_app", "projectile demo entity {}: swept, 4000 px/s",
+                 Fby::ToIntegral(ScopedProjectileEntity));
+    // An authored joint chain is synchronized into the joint system on the
+    // first PostUpdate; the component persists with the scene.
+    const Fby::Entity ScopedJointEntity = ScopedRegistry.create();
+    Fby::JointChainComponent ScopedJoint;
+    ScopedJoint.Start = {1200.0f, 300.0f};
+    ScopedJoint.End = {1200.0f, 500.0f};
+    ScopedJoint.SegmentCount = 10;
+    ScopedJoint.Radius = 3.0f;
+    ScopedJoint.Flags = Fby::JointChainPinStart | Fby::JointChainPinEnd;
+    ScopedRegistry.emplace<Fby::JointChainComponent>(ScopedJointEntity, ScopedJoint);
+    // Wheel joints: a chassis with two driven wheels. WheelSystem creates the
+    // Box2D joints lazily and applies the authored throttle before each step.
+    const Fby::Entity ScopedChassisEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(
+        ScopedChassisEntity, Fby::Transform2D{Fby::Vector2D{1500.0f, 640.0f}, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+    Fby::Sprite2D ScopedChassisSprite;
+    ScopedChassisSprite.Size = {120.0f, 40.0f};
+    ScopedChassisSprite.Layer = 2;
+    ScopedChassisSprite.Color = Fby::Color32::FromBytes(120, 190, 255);
+    ScopedRegistry.emplace<Fby::Sprite2D>(ScopedChassisEntity, ScopedChassisSprite);
+    ScopedRegistry.emplace<Fby::DrawOrder>(ScopedChassisEntity, Fby::DrawOrder{2, 1.0f});
+    Fby::RigidBody2D ScopedChassisBody;
+    ScopedChassisBody.Type = Fby::BodyType::Dynamic;
+    ScopedRegistry.emplace<Fby::RigidBody2D>(ScopedChassisEntity, ScopedChassisBody);
+    Fby::Collider2D ScopedChassisCollider;
+    ScopedChassisCollider.HalfExtents = {60.0f, 20.0f};
+    ScopedChassisCollider.Density = 2.0f;
+    ScopedChassisCollider.Friction = 0.4f;
+    ScopedRegistry.emplace<Fby::Collider2D>(ScopedChassisEntity, ScopedChassisCollider);
+    Fby::Vehicle2D ScopedVehicle;
+    ScopedVehicle.Throttle = 1.0f;
+    ScopedVehicle.MaxMotorTorque = 500.0f;
+    ScopedVehicle.MaxSpeed = 700.0f;
+    ScopedRegistry.emplace<Fby::Vehicle2D>(ScopedChassisEntity, ScopedVehicle);
+    for (std::uint32_t ScopedWheelIndex = 0; ScopedWheelIndex < 2; ++ScopedWheelIndex)
+    {
+        const Fby::Entity ScopedWheelEntity = ScopedRegistry.create();
+        Fby::Transform2D ScopedWheelTransform;
+        ScopedWheelTransform.Position = {1500.0f + (ScopedWheelIndex == 0 ? -40.0f : 40.0f), 658.0f};
+        ScopedRegistry.emplace<Fby::Transform2D>(ScopedWheelEntity, ScopedWheelTransform);
+        Fby::Sprite2D ScopedWheelSprite;
+        ScopedWheelSprite.Size = {36.0f, 36.0f};
+        ScopedWheelSprite.Layer = 2;
+        ScopedWheelSprite.Color = Fby::Color32::FromBytes(40, 44, 56);
+        ScopedRegistry.emplace<Fby::Sprite2D>(ScopedWheelEntity, ScopedWheelSprite);
+        ScopedRegistry.emplace<Fby::DrawOrder>(ScopedWheelEntity, Fby::DrawOrder{2, 2.0f});
+        Fby::RigidBody2D ScopedWheelBody;
+        ScopedWheelBody.Type = Fby::BodyType::Dynamic;
+        ScopedRegistry.emplace<Fby::RigidBody2D>(ScopedWheelEntity, ScopedWheelBody);
+        Fby::Collider2D ScopedWheelCollider;
+        ScopedWheelCollider.HalfExtents = {18.0f, 18.0f};
+        ScopedWheelCollider.Density = 1.0f;
+        ScopedWheelCollider.Friction = 0.9f;
+        ScopedRegistry.emplace<Fby::Collider2D>(ScopedWheelEntity, ScopedWheelCollider);
+        Fby::Wheel2D ScopedWheel;
+        ScopedWheel.Chassis = ScopedChassisEntity;
+        ScopedWheel.LocalAnchor = Fby::Vector2D{ScopedWheelIndex == 0 ? -40.0f : 40.0f, 18.0f};
+        ScopedWheel.Radius = 18.0f;
+        ScopedWheel.DriveWeight = 1.0f;
+        ScopedWheel.BrakeWeight = 1.0f;
+        ScopedWheel.Flags = Fby::kWheelFlagDrive;
+        ScopedRegistry.emplace<Fby::Wheel2D>(ScopedWheelEntity, ScopedWheel);
+    }
+
+    // Audio zones are authored as ECS data; the system resolves the listener's
+    // environment into bus filter commands every PostUpdate.
+    Fby::AudioZoneComponent ScopedDemoZone;
+    ScopedDemoZone.Min = Fby::Vector2D{-4096.0f, -4096.0f};
+    ScopedDemoZone.Max = Fby::Vector2D{4096.0f, 4096.0f};
+    ScopedDemoZone.ZoneID = 1u;
+    ScopedDemoZone.Kind = static_cast<std::uint32_t>(Fby::AudioZoneKind::Indoor);
+    ScopedDemoZone.BusMask = Fby::kAudioZoneBusAll;
+    ScopedDemoZone.Flags = Fby::kAudioZoneFlagEnabled;
+    ScopedDemoZone.ReverbGain = 1.15f;
+    ScopedDemoZone.LowPassHz = 15000.0f;
+    ScopedDemoZone.FadeSeconds = 0.6f;
+    const Fby::Entity ScopedAudioZoneEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::AudioZoneComponent>(ScopedAudioZoneEntity, ScopedDemoZone);
+    const Fby::Entity ScopedAudioContextEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::AudioListener>(ScopedAudioContextEntity,
+                                               Fby::AudioListener{Fby::Vector2D{640.0f, 360.0f}, true});
+    ScopedRegistry.emplace<Fby::AudioContextComponent>(ScopedAudioContextEntity,
+                                                       Fby::AudioContextComponent{});
+    // The weather context drives the global wind field consumed by cloth,
+    // foliage and the GPU weather passes.
+    const Fby::Entity ScopedWeatherEntity = ScopedRegistry.create();
+    Fby::Weather::WeatherContextComponent ScopedWeatherContext;
+    ScopedWeatherContext.flags = Fby::Weather::WeatherClouds | Fby::Weather::WeatherCloudShadows |
+                                 Fby::Weather::WeatherFog | Fby::Weather::WeatherWind;
+    ScopedWeatherContext.windSpeed = 24.0f;
+    ScopedWeatherContext.turbulence = 0.45f;
+    ScopedWeatherContext.rainIntensity = 0.35f;
+    ScopedRegistry.emplace<Fby::Weather::WeatherContextComponent>(ScopedWeatherEntity, ScopedWeatherContext);
+    // CardBoardSystem resolves board-space slot positions into Transform2D and
+    // DrawOrder every PostUpdate; the sprites below are the visible cards.
+    const Fby::Entity ScopedCardBoardEntity = ScopedRegistry.create();
+    Fby::Ui::CardBoardComponent ScopedCardBoard;
+    ScopedCardBoard.BoardId = 1u;
+    ScopedCardBoard.Columns = 4u;
+    ScopedCardBoard.Rows = 1u;
+    ScopedCardBoard.Origin = {260.0f, 220.0f};
+    ScopedCardBoard.CardSize = {54.0f, 76.0f};
+    ScopedCardBoard.Spacing = {10.0f, 10.0f};
+    ScopedCardBoard.BackColor = Fby::Color32::FromBytes(72, 52, 104);
+    ScopedRegistry.emplace<Fby::Ui::CardBoardComponent>(ScopedCardBoardEntity, ScopedCardBoard);
+    for (std::uint32_t ScopedSlotIndex = 0; ScopedSlotIndex < 4; ++ScopedSlotIndex)
+    {
+        const Fby::Entity ScopedSlotEntity = ScopedRegistry.create();
+        Fby::Ui::SlotComponent ScopedSlot;
+        ScopedSlot.BoardId = 1u;
+        ScopedSlot.SlotIndex = ScopedSlotIndex;
+        ScopedSlot.CardId = ScopedSlotIndex + 1u;
+        ScopedSlot.Layer = 2u;
+        ScopedSlot.Flags = Fby::Ui::SlotFaceUp;
+        ScopedRegistry.emplace<Fby::Ui::SlotComponent>(ScopedSlotEntity, ScopedSlot);
+        ScopedRegistry.emplace<Fby::Transform2D>(
+            ScopedSlotEntity, Fby::Transform2D{Fby::Vector2D{}, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+        Fby::Sprite2D ScopedCardSprite;
+        ScopedCardSprite.Size = ScopedCardBoard.CardSize;
+        ScopedCardSprite.Layer = 2;
+        ScopedCardSprite.Color = Fby::Color32::FromBytes(
+            static_cast<std::uint8_t>(150 + ScopedSlotIndex * 24u), 120, 200);
+        ScopedRegistry.emplace<Fby::Sprite2D>(ScopedSlotEntity, ScopedCardSprite);
+        ScopedRegistry.emplace<Fby::DrawOrder>(ScopedSlotEntity, Fby::DrawOrder{2, 0.0f});
+    }
     // The Profiler panel draws phase rows from the shared profiler.
     ScopedEditor.SetProfiler(&ScopedProfiler);
     ScopedGameSystems.editor = &ScopedEditor;
@@ -1022,6 +1700,14 @@ int main(int argc, char** argv)
                                             ScopedGameSystems.effects);
         ScopedContext.gameplayEffects = &ScopedGameSystems.effects;
         ScopedContext.gameplaySkills = &ScopedGameSystems.skills;
+    }
+    if (ScopedPlatformReady)
+    {
+        ScopedSteamAchievements.Initialize(ScopedPlatform, ScopedPlatformLog, 1);
+        if (!Fby::Platform::SteamAchievementSystem::Register(ScopedGraph, ScopedSteamAchievements))
+        {
+            Fby::LogWarn("editor_app", "Steam achievement graph node rejected");
+        }
     }
     if (!ScopedEditor.Register(ScopedGraph))
     {
@@ -1095,6 +1781,7 @@ int main(int argc, char** argv)
                                                           : std::filesystem::path(".");
     const std::filesystem::path ScopedPluginsDir = ScopedExecutableDir / "plugins";
     Fby::LogInfo("editor_app", "plugin directory: {}", ScopedPluginsDir.string());
+    ScopedEditor.SetPluginDirectory(ScopedPluginsDir);
 
     if (std::getenv("FBY_PLUGIN_SELFTEST") != nullptr)
     {
@@ -1128,7 +1815,7 @@ int main(int argc, char** argv)
         }
     }
 
-    // Plugins registered directly into the graph during Load(). Build once,
+    // Plugins registered directly into the graph during Load(). Build once.
     if (!ScopedGraph.Build())
     {
         Fby::LogError("editor_app", "SystemGraph build failed (cycle or phase-crossing dependency)");
@@ -1145,6 +1832,12 @@ int main(int argc, char** argv)
     std::unique_ptr<Fby::Rhi::VirtualTextureSystem> ScopedVtSystem;
     std::vector<std::uint32_t> ScopedVtTable;
     Fby::Rhi::VirtualTextureRhiTarget ScopedVtTarget;
+    // The PIE client owns a separate VT resource so its camera cannot evict the
+    // authoring viewport's pages. Only created when the VT self-test is active.
+    Fby::Rhi::VirtualTextureHandle ScopedPieVtHandle;
+    std::unique_ptr<Fby::Rhi::VirtualTextureSystem> ScopedPieVtSystem;
+    std::vector<std::uint32_t> ScopedPieVtTable;
+    Fby::Rhi::VirtualTextureRhiTarget ScopedPieVtTarget;
     std::uint64_t ScopedVtTotalUploads = 0;
     std::uint64_t ScopedVtTotalEvictions = 0;
     std::uint64_t ScopedVtTotalMisses = 0;
@@ -1270,6 +1963,32 @@ int main(int argc, char** argv)
                 ScopedVtSystem->SetPrefetchTiles(ScopedVtCfg.prefetchTiles);
                 ScopedVtTable.assign(static_cast<std::size_t>(ScopedVtTableSize) * ScopedVtTableSize,
                                      Fby::Rhi::kVirtualTexturePageTableMissing);
+                ScopedPieVtHandle = ScopedGpu->CreateVirtualTexture(ScopedVtDesc);
+                if (ScopedPieVtHandle.IsValid())
+                {
+                    ScopedPieVtTarget.Renderer = ScopedGpu.get();
+                    ScopedPieVtTarget.Handle = ScopedPieVtHandle;
+                    ScopedPieVtTarget.TileSize = ScopedVtCfg.tileSize;
+                    ScopedPieVtTarget.TilesPerAxis = ScopedVtCfg.pageSize / ScopedVtCfg.tileSize;
+                    ScopedPieVtSystem = std::make_unique<Fby::Rhi::VirtualTextureSystem>();
+                    std::string ScopedPieVtError;
+                    if (!ScopedPieVtSystem->Initialize(ScopedStreamDesc, ScopedVtVfs, ".",
+                                                      &Fby::Rhi::UploadVirtualTextureTileToRhi, &ScopedPieVtTarget))
+                    {
+                        Fby::LogWarn("editor_app", "PIE VT streaming init failed: {}", ScopedPieVtError);
+                        ScopedPieVtSystem.reset();
+                        ScopedGpu->DestroyVirtualTexture(ScopedPieVtHandle);
+                        ScopedPieVtHandle = {};
+                    }
+                    else
+                    {
+                        ScopedPieVtSystem->SetMaxLoadsPerUpdate(std::max(1u, ScopedVtCfg.budgetLoadsPerFrame));
+                        ScopedPieVtSystem->SetPrefetchTiles(ScopedVtCfg.prefetchTiles);
+                        ScopedPieVtTable.assign(static_cast<std::size_t>(ScopedVtTableSize) * ScopedVtTableSize,
+                                                Fby::Rhi::kVirtualTexturePageTableMissing);
+                        Fby::LogInfo("editor_app", "PIE VT: separate resource and page table initialized");
+                    }
+                }
                 if (const char* ScopedDebug = std::getenv("FBY_VT_DEBUG"); ScopedDebug != nullptr)
                 {
                     const std::string_view ScopedDebugText(ScopedDebug);
@@ -1326,6 +2045,8 @@ int main(int argc, char** argv)
     Fby::Rhi::SdfShadowPass ScopedShadowPass;
     Fby::Rhi::FrameComposer ScopedExtract;
     Fby::Rhi::FrameComposer ScopedPieExtract;
+    Fby::Rhi::SdfCharacterRenderCache ScopedSdfCharacters;
+    Fby::Rhi::SdfCharacterRenderCache ScopedPieSdfCharacters;
     ScopedExtract.SetJobSystem(&ScopedJobs);
     ScopedPieExtract.SetJobSystem(&ScopedJobs);
     ScopedExtract.SetInstanceDeltasEnabled(ScopedGpu->Info().framesInFlight == 1);
@@ -1381,6 +2102,7 @@ int main(int argc, char** argv)
         ScopedPieExtract.SetGpuLighting(true);
     }
     Fby::Vector4D ScopedSdfPreviousCamera{};
+    Fby::Vector4D ScopedPieSdfPreviousCamera{};
     // PIE is the shipped frame in the editor: captions compose into it and the
     // accessibility profile is applied exactly like a game applies it.
     Fby::AccessibilityOverlay ScopedPieOverlay;
@@ -1408,8 +2130,62 @@ int main(int argc, char** argv)
     bool ScopedSmokeOpenDone = false;
     bool ScopedCloseHandled = false;
 
+    // Automation hook: export a short synthetic sequence through FrameExporter.
+    if (const char* ScopedSequencePath = std::getenv("FBY_EXPORT_SEQUENCE");
+        ScopedSequencePath != nullptr && ScopedSequencePath[0] != '\0')
+    {
+        SequenceExportContext ScopedExportContext;
+        ScopedExportContext.TextureArray = ScopedTextureArray;
+        ScopedExportContext.Camera.viewport = Fby::Vector2D{640.0f, 360.0f};
+        Fby::Render::FrameExportDesc ScopedExportDesc;
+        ScopedExportDesc.size = Fby::Rhi::Extent2D{640, 360};
+        ScopedExportDesc.fps = 30;
+        ScopedExportDesc.startFrame = 0;
+        ScopedExportDesc.endFrame = 2;
+        ScopedExportDesc.step = 1;
+        ScopedExportDesc.srgb = true;
+        Fby::Render::FrameExporter ScopedExporter;
+        Fby::Render::FrameSink ScopedSink{nullptr, &WriteExportSequence};
+        std::string ScopedExportError;
+        if (!ScopedExporter.Begin(*ScopedGpu, ScopedSequencePath, ScopedExportDesc, ScopedSink, &RenderExportFrame,
+                                  &ScopedExportContext, &ScopedExportError))
+        {
+            Fby::LogWarn("editor_app", "sequence export failed to begin: {}", ScopedExportError);
+        }
+        else
+        {
+            bool ScopedComplete = false;
+            std::uint32_t ScopedRetries = 0;
+            while (!ScopedComplete && ScopedRetries < 100)
+            {
+                const Fby::Render::ExportStatus ScopedStatus = ScopedExporter.CaptureNextFrame(&ScopedExportError);
+                if (ScopedStatus == Fby::Render::ExportStatus::Complete)
+                {
+                    ScopedComplete = true;
+                }
+                else if (ScopedStatus == Fby::Render::ExportStatus::Error)
+                {
+                    break;
+                }
+                else if (ScopedStatus == Fby::Render::ExportStatus::Retry)
+                {
+                    ++ScopedRetries;
+                }
+            }
+            if (ScopedComplete && ScopedExporter.End(&ScopedExportError))
+            {
+                Fby::LogInfo("editor_app", "sequence exported to '{}'", ScopedSequencePath);
+            }
+            else
+            {
+                Fby::LogWarn("editor_app", "sequence export failed: {}", ScopedExportError);
+            }
+        }
+    }
+
     while (!ScopedEditor.ShouldQuit() && ScopedWindow.PumpEvents())
     {
+        const auto ScopedFrameStart = std::chrono::steady_clock::now();
         (void)ScopedPieWindowHost.PumpEvents();
         // The window close button goes through the editor so an unsaved scene
         // can ask Save/Discard/Cancel instead of disappearing silently.
@@ -1475,6 +2251,16 @@ int main(int argc, char** argv)
                 ? (ScopedEditor.PieHudAnimationsPaused() ? 0.0f : static_cast<float>(ScopedClock.RealDelta()))
                 : ScopedDt;
         {
+            if (ScopedPlatformReady)
+            {
+                (void)ScopedPlatform.Pump();
+            }
+            if (Fby::AudioListener* ScopedListener =
+                    ScopedRegistry.try_get<Fby::AudioListener>(ScopedAudioContextEntity);
+                ScopedListener != nullptr)
+            {
+                ScopedListener->position = ScopedEditor.Camera().center;
+            }
             auto ScopedPhaseScope = ScopedProfiler.BeginRound(0);
             ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
         }
@@ -1553,8 +2339,10 @@ int main(int argc, char** argv)
         // generation consumes them; the extract skips the history walk otherwise.
         ScopedExtract.SetTemporalState(ScopedRenderSettings.upscaleMode == Fby::Editor::UpscaleMode::Fsr2 ||
                                        ScopedRenderSettings.frameGeneration != Fby::Editor::FrameGenerationMode::Off);
+        ScopedSdfCharacters.Build(ScopedRenderWorld);
         ScopedExtract.BuildFramePacket(ScopedRenderWorld, ScopedCamera, Fby::Color32::FromBytes(12, 14, 22),
-                                       ScopedTextureArray, ScopedClothRender.Items(), ScopedTilemapRender.Quads());
+                                       ScopedTextureArray, ScopedClothRender.Items(), ScopedTilemapRender.Quads(),
+                                       Fby::Rhi::PostFxDisabled(), ScopedSdfCharacters.Meshes());
         if (ScopedEditor.ViewportMotionTarget().IsValid())
         {
             if (!ScopedExtract.Packet().historyValid)
@@ -1818,20 +2606,79 @@ int main(int argc, char** argv)
                 ScopedPieExtract.SetTemporalState(
                     ScopedPieRenderSettings.upscaleMode == Fby::Editor::UpscaleMode::Fsr2 ||
                     ScopedPieRenderSettings.frameGeneration != Fby::Editor::FrameGenerationMode::Off);
+                ScopedPieSdfCharacters.Build(*ScopedPieWorld);
                 ScopedPieExtract.BuildFramePacket(*ScopedPieWorld, ScopedPieCamera, Fby::Color32::FromBytes(12, 14, 22),
-                                                  ScopedTextureArray, {}, ScopedPieTilemapRender.Quads());
+                                                  ScopedTextureArray, {}, ScopedPieTilemapRender.Quads(),
+                                                  Fby::Rhi::PostFxDisabled(), ScopedPieSdfCharacters.Meshes());
                 // The PIE viewport is the shipped frame: it gets the project
                 // accessibility profile, while the authoring viewport keeps its
                 // own editor-window policy.
                 Fby::Rhi::FramePacket ScopedPiePacket = ScopedPieExtract.Packet();
-                // The shipped viewport inherits the virtual-texturing binding the
-                // authoring pass selected. Without this the PIE packet kept the
-                // default handle and VT sprites sampled the fallback page.
+                // A live VT self-test gives the client its own page table and
+                // resource, so its camera cannot evict the authoring viewport's
+                // pages. Without VT the packet keeps the default binding.
                 const Fby::Rhi::FramePacket& ScopedEditorPacket = ScopedExtract.Packet();
-                ScopedPiePacket.virtualTexture = ScopedEditorPacket.virtualTexture;
-                ScopedPiePacket.virtualTextureParams = ScopedEditorPacket.virtualTextureParams;
-                ScopedPiePacket.virtualTextureLayout = ScopedEditorPacket.virtualTextureLayout;
-                ScopedPiePacket.virtualTextureDebugMode = ScopedEditorPacket.virtualTextureDebugMode;
+                if (ScopedPieVtSystem != nullptr && ScopedPieVtHandle.IsValid())
+                {
+                    const Fby::Editor::VirtualTextureSettings& ScopedPieVtRuntime =
+                        ScopedEditor.VirtualTextureConfig();
+                    ScopedPieVtSystem->SetMaxLoadsPerUpdate(std::max(1u, ScopedPieVtRuntime.budgetLoadsPerFrame));
+                    ScopedPieVtSystem->SetPrefetchTiles(ScopedPieVtRuntime.prefetchTiles);
+                    ScopedPieVtSystem->BeginFrame();
+                    ScopedPieVtSystem->SetFocus(ScopedPieState.center);
+                    ScopedPieVtSystem->Update(
+                        ScopedPieState.center,
+                        Fby::Vector2D{static_cast<float>(ScopedPieViewport.width),
+                                      static_cast<float>(ScopedPieViewport.height)},
+                        ScopedPieState.zoom);
+                    ScopedPieVtSystem->PollLoads();
+                    bool ScopedPieVtTableChanged = false;
+                    for (const Fby::Rhi::VirtualTextureTableUpdate& ScopedUpdate :
+                         ScopedPieVtSystem->PendingTableUpdates())
+                    {
+                        const std::int32_t ScopedCellX = ScopedUpdate.TileX;
+                        const std::int32_t ScopedCellY = ScopedUpdate.TileY;
+                        if (ScopedCellX < 0 || ScopedCellY < 0 ||
+                            ScopedCellX >= static_cast<std::int32_t>(ScopedVtTableSize) ||
+                            ScopedCellY >= static_cast<std::int32_t>(ScopedVtTableSize))
+                        {
+                            continue;
+                        }
+                        ScopedPieVtTable[static_cast<std::size_t>(ScopedCellY) * ScopedVtTableSize +
+                                         static_cast<std::size_t>(ScopedCellX)] = ScopedUpdate.Entry;
+                        ScopedPieVtTableChanged = true;
+                    }
+                    ScopedPieVtSystem->ClearPendingTableUpdates();
+                    if (ScopedPieVtTableChanged)
+                    {
+                        (void)ScopedGpu->UpdateVirtualTexturePageTable(ScopedPieVtHandle, ScopedVtTableSize,
+                                                                       ScopedVtTableSize, ScopedPieVtTable);
+                    }
+                    ScopedPiePacket.virtualTexture = ScopedPieVtHandle;
+                    ScopedPiePacket.virtualTextureParams =
+                        Fby::Vector4D{ScopedVtWorldTile, 0.0f, 0.0f, 1.0f};
+                    ScopedPiePacket.virtualTextureLayout =
+                        Fby::Vector4D{static_cast<float>(ScopedVtTileSize), static_cast<float>(ScopedVtPageSize),
+                                      static_cast<float>(ScopedVtTableSize), static_cast<float>(ScopedVtTableSize)};
+                    ScopedPiePacket.virtualTextureDebugMode = ScopedVtDebugMode;
+                }
+                else
+                {
+                    ScopedPiePacket.virtualTexture = ScopedEditorPacket.virtualTexture;
+                    ScopedPiePacket.virtualTextureParams = ScopedEditorPacket.virtualTextureParams;
+                    ScopedPiePacket.virtualTextureLayout = ScopedEditorPacket.virtualTextureLayout;
+                    ScopedPiePacket.virtualTextureDebugMode = ScopedEditorPacket.virtualTextureDebugMode;
+                }
+                // The client world has its own dynamic SDF casters; the static
+                // field and atlas are shared with the authoring pass.
+                Fby::Rhi::SdfLightingFrame ScopedPieSdfFrame;
+                if (Fby::Editor::BuildPieClientSdfFrame(*ScopedPieWorld, &ScopedSdf, ScopedSdfAtlas,
+                                                        ScopedPieState.center, ScopedPieState.zoom,
+                                                        ScopedPieViewport, &ScopedPieSdfPreviousCamera,
+                                                        &ScopedPieSdfFrame))
+                {
+                    ScopedPiePacket.sdf = ScopedPieSdfFrame;
+                }
                 if (ScopedContext.accessibility != nullptr)
                 {
                     Fby::AccessibilityKernel& ScopedKernel = *ScopedContext.accessibility;
@@ -1976,22 +2823,36 @@ int main(int argc, char** argv)
                     Fby::Rhi::NativeTextureView ScopedMotionView;
                     Fby::Rhi::NativeTextureView ScopedOutputView;
                     Fby::Rhi::RHI::NativeDeviceHandles ScopedNativeDevice;
-                    if (ScopedGpu->GetNativeDeviceHandles(ScopedNativeDevice) &&
+                    // The FidelityFX Vulkan backend binds VkImage handles, not
+                    // VkImageView handles: the adapter wraps each resource with
+                    // ffxApiGetResourceVK, which stores the handle verbatim and
+                    // hands it to the driver. Passing a view here made the FSR2
+                    // dispatch read an image view as an image and fault inside
+                    // the GPU driver.
+                    const bool ScopedFsr2Views =
                         ScopedGpu->RenderTargetTexture(ScopedTarget, ScopedColorView) &&
                         ScopedGpu->RenderTargetDepthTexture(ScopedTarget, ScopedDepthView) &&
                         ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportMotionTarget(), ScopedMotionView) &&
-                        ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportDisplayTarget(), ScopedOutputView) &&
+                        ScopedGpu->RenderTargetTexture(ScopedEditor.ViewportDisplayTarget(), ScopedOutputView);
+                    const bool ScopedFsr2Images =
+                        ScopedFsr2Views && ScopedColorView.image != nullptr && ScopedDepthView.image != nullptr &&
+                        ScopedMotionView.image != nullptr && ScopedOutputView.image != nullptr;
+                    if (ScopedFsr2Images && ScopedGpu->GetNativeDeviceHandles(ScopedNativeDevice) &&
                         ScopedEditorFsr2Vendor.Initialize(
                             ScopedNativeDevice.Device, ScopedNativeDevice.PhysicalDevice,
                             ScopedNativeDevice.DeviceProcAddr, ScopedEditor.ViewportRenderSize().width,
                             ScopedEditor.ViewportRenderSize().height, ScopedEditor.ViewportSize().width,
                             ScopedEditor.ViewportSize().height))
                     {
+                        const Fby::Rhi::Fsr2QualityMode ScopedFsr2Quality =
+                            Fby::Rhi::Fsr2QualityForExtent(
+                                ScopedEditor.ViewportRenderSize().width, ScopedEditor.ViewportRenderSize().height,
+                                ScopedEditor.ViewportSize().width, ScopedEditor.ViewportSize().height);
                         ScopedFsr2VendorUsed = ScopedEditorFsr2Vendor.Dispatch(
-                            ScopedGpu->CurrentCommandBuffer(), ScopedColorView.view, ScopedDepthView.view,
-                            ScopedMotionView.view, nullptr, ScopedOutputView.view,
+                            ScopedGpu->CurrentCommandBuffer(), ScopedColorView.image, ScopedDepthView.image,
+                            ScopedMotionView.image, nullptr, ScopedOutputView.image,
                             ScopedEditor.ViewportRenderSize().width, ScopedEditor.ViewportRenderSize().height,
-                            ScopedEditor.ViewportSize().width, ScopedEditor.ViewportSize().height,
+                            ScopedEditor.ViewportSize().width, ScopedEditor.ViewportSize().height, ScopedFsr2Quality,
                             ScopedExtract.Packet().jitterX, ScopedExtract.Packet().jitterY,
                             !ScopedExtract.Packet().historyValid);
                     }
@@ -2071,7 +2932,7 @@ int main(int argc, char** argv)
                 }
             }
 
-            // The swapchain pass is UI-only: RenderToTarget already drew the
+            // The swapchain pass is UI-only: RenderToTarget already drew the scene.
             Fby::Rhi::FramePacket ScopedMainPass;
             if (ScopedProjectSettings.oitMode != Fby::Editor::OitMode::Off && !ScopedExtract.OitPacket().items.empty())
             {
@@ -2415,6 +3276,25 @@ int main(int argc, char** argv)
             Fby::LogInfo("editor_app", "auto-quit after {} frames", ScopedFrameIndex);
             break;
         }
+        // Optional idle throttle. The default is unthrottled, so CI and the
+        // automation hooks keep their current timing.
+        const Fby::Editor::EditorSettings& ScopedPerformance = ScopedEditor.EditorSettings().Values();
+        float ScopedTargetSeconds = 0.0f;
+        if (ScopedPerformance.frameRateLimit > 0)
+        {
+            ScopedTargetSeconds = 1.0f / static_cast<float>(ScopedPerformance.frameRateLimit);
+        }
+        if (ScopedPerformance.pauseWhenUnfocused && !ScopedWindow.Focused())
+        {
+            ScopedTargetSeconds = std::max(ScopedTargetSeconds, 0.2f);
+        }
+        if (ScopedTargetSeconds > 0.0f)
+        {
+            const auto ScopedDeadline =
+                ScopedFrameStart + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                       std::chrono::duration<float>(ScopedTargetSeconds));
+            std::this_thread::sleep_until(ScopedDeadline);
+        }
     }
 
     // Teardown timings make a slow or stuck exit diagnosable from the log: the
@@ -2433,8 +3313,16 @@ int main(int argc, char** argv)
     LogShutdownPhase("gpu idle");
     ScopedEditor.Shutdown();
     LogShutdownPhase("editor");
+    if (ScopedPlatformReady)
+    {
+        ScopedPlatform.Shutdown();
+    }
+    ScopedPlatform.Unload();
+    LogShutdownPhase("platform");
     ScopedAudio.Shutdown();
     LogShutdownPhase("audio");
+    ScopedJointRuntime.joints.Shutdown(ScopedRegistry);
+    ScopedWheelRuntime.wheels.Shutdown();
     ScopedCloth.Shutdown(ScopedRegistry);
     ScopedPhysics.Shutdown();
     LogShutdownPhase("simulation");
@@ -2491,6 +3379,18 @@ int main(int argc, char** argv)
     if (ScopedAtlas.IsValid())
     {
         ScopedAtlas.Release(*ScopedGpu);
+    }
+    ScopedPieVtSystem.reset();
+    if (ScopedPieVtHandle.IsValid())
+    {
+        ScopedGpu->DestroyVirtualTexture(ScopedPieVtHandle);
+        ScopedPieVtHandle = {};
+    }
+    ScopedVtSystem.reset();
+    if (ScopedVtHandle.IsValid())
+    {
+        ScopedGpu->DestroyVirtualTexture(ScopedVtHandle);
+        ScopedVtHandle = {};
     }
     ScopedGpu->Shutdown();
     LogShutdownPhase("gpu");

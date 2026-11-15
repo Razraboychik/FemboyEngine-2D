@@ -6,8 +6,11 @@
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/RHI/PostProcess.hpp"
 #include "Engine/RHI/RenderItem.hpp"
+#include "Engine/UI/AccessibilityBridge.hpp"
 #include "Engine/UI/AccessibilityEffects.hpp"
+#include "Engine/UI/ActionNarration.hpp"
 #include "Engine/UI/NarrativeTree.hpp"
+#include "Engine/UI/Narrator.hpp"
 #include "Engine/UI/SoundCues.hpp"
 
 #include <array>
@@ -52,7 +55,7 @@ struct ColorMatrix3
 // Blends towards the corrected image by `strength` (0 = untouched, 1 = full
 [[nodiscard]] Color32 ApplyColorVision(Color32 InColor, const ColorMatrix3& InMatrix, float InStrength = 1.0f) noexcept;
 
-// WCAG 2.2 relative luminance and contrast ratio. Use these when validating a
+// WCAG 2.2 relative luminance and contrast ratio.
 [[nodiscard]] float SrgbRelativeLuminance(Color32 InColor) noexcept;
 [[nodiscard]] float ContrastRatio(Color32 InForeground, Color32 InBackground) noexcept;
 
@@ -61,7 +64,7 @@ class FlashGuard
 {
 public:
     void Configure(float InThreshold = 0.20f, float InResidualGain = 0.35f) noexcept;
-    // Returns the gain to apply to the current frame. `meanLuminance` is the
+    // Returns the gain to apply to the current frame.
     [[nodiscard]] float Evaluate(float InMeanLuminance, float InDt) noexcept;
     void Reset() noexcept;
     [[nodiscard]] float CurrentGain() const noexcept
@@ -278,6 +281,14 @@ struct AccessibilityProfile
     AccessibilitySettings runtime{};
     AccessibilityPresentationSettings presentation{};
     AccessibilityEditorSettings editor{};
+    // Spoken output of the shipped game. The editor keeps its own narrator
+    // settings in EditorSettings, so a game's policy never changes the editor.
+    NarratorSettings narration{};
+    // Action narration: wording, categories and spatial grammar of gameplay
+    // events. Always a companion of `narration`, never of the editor's own voice.
+    ActionNarrationSettings actions{};
+    // What the game publishes to the operating system accessibility tree.
+    AccessibilityBridgeSettings bridge{};
 };
 
 // 1.0 defaults: flash guard on, OLED orbit on, no colour correction, full
@@ -373,10 +384,10 @@ public:
     // it must not be combined with ApplyPostFx on the same frame.
     void ApplyCpuColorFallback(std::span<Rhi::RenderItem> InItems, Color32& InClear) const noexcept;
 
-    // Fixed/PostUpdate call. In blind mode it emits physics contacts and
+    // Fixed/PostUpdate call. In blind mode it emits physics contacts.
     void Update(const Ecs::AccessibilitySystemView& InView) noexcept;
 
-    // Sound timeline hook: call when an audio marker becomes audible. The
+    // Sound timeline hook: call when an audio marker becomes audible.
     void PublishSoundTrigger(const SoundTrigger& InTrigger, std::string_view InText) noexcept;
 
     // Cue-driven captions. The registry maps cueId -> locId, category, priority
@@ -395,10 +406,26 @@ public:
     void AdvanceCaptionClock(float InDeltaSeconds) noexcept;
     void PollVoiceCaptions() noexcept;
 
-    // Scans a clip timeline for cues crossed in (previousTime, currentTime] and
+    // Scans a clip timeline for cues crossed.
     void ProcessTimeline(std::span<const TimedSoundCue> InCues, float InPreviousTime, float InCurrentTime) noexcept;
     void PublishNarrative(std::uint32_t InCode, Entity InEntity, Vector2D InPosition, std::string_view InText,
                           std::uint8_t InSeverity = 0) noexcept;
+
+    // Data-driven action narration. Systems publish an event and the layer owns
+    // the localization template, plural rules and spatial words.
+    void SetActionLocalization(const LocalizationTable* InTable) noexcept;
+    void SetActionVocabulary(const ActionVocabulary& InVocabulary) noexcept;
+    void SetActionNarrationSettings(const ActionNarrationSettings& InSettings) noexcept;
+    [[nodiscard]] ActionNarration& Actions() noexcept
+    {
+        return MActions;
+    }
+    [[nodiscard]] const ActionNarration& Actions() const noexcept
+    {
+        return MActions;
+    }
+    // Filters by BlindMode and narration_world, then queues through the narrator.
+    bool PublishAction(const ActionEvent& InEvent) noexcept;
 
     // Narrative Tree locale: "ru" selects Russian, everything else English.
     void SetNarrativeLocale(std::string_view InLocale) noexcept;
@@ -414,11 +441,47 @@ public:
     void SetSpeechSink(SpeechSink InSink, void* InUser) noexcept;
     // Optional native backend (SAPI/AVSpeech). When set, FlushSpeech() routes
     void SetTtsBackend(const TtsBackend* InBackend) noexcept;
-    // Main-thread only. The editor calls this from EditorSystem::Tick(); the
+    // Main-thread only. The editor calls this from EditorSystem::Tick().
     void FlushSpeech() noexcept;
 
-    // Builds the subtitle overlay into a dedicated canvas. Returns true when at
+    // Builds the subtitle overlay into a dedicated canvas.
     bool BuildSubtitleCanvas(Ui::WidgetCanvas& InCanvas) const noexcept;
+
+    // Semantic tree of the current interface. ProjectCanvas() rebuilds it from
+    // the retained PinkUI canvas; the bridge and the narrator read the same
+    // nodes, so what a screen reader announces and what the narrator speaks can
+    // never disagree.
+    [[nodiscard]] Ui::AccessibilityTree& Tree() noexcept
+    {
+        return MTree;
+    }
+    [[nodiscard]] const Ui::AccessibilityTree& Tree() const noexcept
+    {
+        return MTree;
+    }
+    [[nodiscard]] Narrator& Speech() noexcept
+    {
+        return MSpeech;
+    }
+    [[nodiscard]] const Narrator& Speech() const noexcept
+    {
+        return MSpeech;
+    }
+    void SetNarratorSettings(const NarratorSettings& InSettings) noexcept;
+    // Which side of the editor owns the voice. A standalone game sets Game once.
+    void SetSpeechOwner(NarratorOwner InOwner) noexcept
+    {
+        MSpeech.SetOwner(InOwner);
+    }
+    // Projects a PinkUI canvas into the tree, announces a focus change and
+    // publishes the result to the OS bridge.
+    void ProjectCanvas(const Ui::WidgetCanvas& InCanvas) noexcept;
+
+    // OS bridge lifecycle. The app passes its SDL window; the project bridge
+    // policy decides whether anything is published.
+    [[nodiscard]] bool StartBridge(void* InNativeWindow) noexcept;
+    void StopBridge() noexcept;
+    [[nodiscard]] bool BridgeRunning() const noexcept;
 
 private:
     struct StateTrack
@@ -445,6 +508,9 @@ private:
     bool MMainThreadKnown = false;
     // Set when SetNarrativeLocale() changed the language off the main thread.
     bool MPendingVoiceLanguage = false;
+    // Set when ApplyProfile() ran off the main thread: the narrator policy is
+    // applied by the next FlushSpeech() on the owner thread.
+    bool MPendingNarratorSettings = false;
     Ui::NarrativeTree MNarrative{};
     const GameplayTagRegistry* MTags = nullptr;
     bool MNativeTtsAttached = false;
@@ -459,5 +525,11 @@ private:
     const VoiceCaptionProvider* MVoiceCaptionProvider = nullptr;
     const Ui::AccessibilityEffectRegistry* MEffects = nullptr;
     float MCaptionClockMs = 0.0f;
+    Ui::AccessibilityTree MTree{};
+    Narrator MSpeech{};
+    ActionNarration MActions{};
+    // Native window the game bridge was started for; null when the bridge is
+    // owned by another system (the editor runs its own bridge).
+    void* MBridgeWindow = nullptr;
 };
 }

@@ -484,7 +484,7 @@ separate transform graph.
 | `TransportSurface` | `Friction`, `TangentSpeed`, `OneWay`, `AllowJump` | Standing/conveyor surface policy |
 
 All transport components are registered in the component registry and are
-visible in the inspector. Group ids are stable integers, not EnTT handles.
+visible in the inspector. Group ids are stable integers, not runtime entity handles.
 `ParentJoint` and `Joint` are runtime Box2D ids: do not author them, and the
 system validates or recreates them after a scene load. `TransportPath` exposes
 `Count` and `Closed` to reflection; its point array is authored programmatically

@@ -194,6 +194,42 @@ void TestConditions()
           "unclosed condition rejects");
 }
 
+
+void TestBreaksAndTabs()
+{
+    using namespace Fby;
+
+    auto ScopedBlock = std::make_unique<Text::TextStyledBlock>();
+    Check(Text::CompileTextMarkup(R"(a\tb)", ScopedBlock.get()) == Text::TextMarkupStatus::Ok,
+          "tab escape compiles");
+    CheckString(ScopedBlock->View(), "a    b", "tab escape expands to four spaces");
+
+    Check(Text::CompileTextMarkup(R"(a\pb)", ScopedBlock.get()) == Text::TextMarkupStatus::Ok,
+          "paragraph escape compiles");
+    Check(ScopedBlock->View().size() == 7 && ScopedBlock->View()[1] == '\n' &&
+              ScopedBlock->View().substr(2) == "    b",
+          "paragraph escape inserts a break and indent");
+
+    std::string ScopedCrlf = "a";
+    ScopedCrlf.push_back('\r');
+    ScopedCrlf.push_back('\n');
+    ScopedCrlf += "b";
+    Check(Text::CompileTextMarkup(ScopedCrlf, ScopedBlock.get()) == Text::TextMarkupStatus::Ok,
+          "crlf compiles");
+    std::string ScopedLf = "a";
+    ScopedLf.push_back('\n');
+    ScopedLf += "b";
+    CheckString(ScopedBlock->View(), ScopedLf, "crlf normalizes to lf");
+
+    std::string ScopedMarkup = "[b]a";
+    ScopedMarkup.push_back('\n');
+    ScopedMarkup += "b[/b]";
+    Check(Text::CompileTextMarkup(ScopedMarkup, ScopedBlock.get()) == Text::TextMarkupStatus::Ok,
+          "multi-line formatted text compiles");
+    CheckString(ScopedBlock->View(), ScopedLf, "multi-line formatted text keeps the break");
+    Check(ScopedBlock->SpanCount == 1, "multi-line formatted text stays one span");
+}
+
 void TestErrors()
 {
     using namespace Fby;
@@ -218,6 +254,7 @@ int main()
     TestActions();
     TestInlineKinds();
     TestConditions();
+    TestBreaksAndTabs();
     TestErrors();
 
     if (GFailures != 0)

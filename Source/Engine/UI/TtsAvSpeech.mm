@@ -166,7 +166,21 @@ bool AvSpeechTts::Speak(std::string_view InUtf8, TtsPriority InPriority) noexcep
         AVSpeechUtterance* ScopedUtterance = [AVSpeechUtterance speechUtteranceWithString:ScopedText];
         ScopedUtterance.rate = MapRate(MRate);
         ScopedUtterance.volume = 1.0f;
-        if (MLanguage[0] != '\0')
+        if (MVoiceId[0] != '\0')
+        {
+            // An explicit voice id wins over the language search: the user
+            // picked that exact voice and it must not drift with the locale.
+            NSString* ScopedWanted = [NSString stringWithUTF8String:MVoiceId];
+            for (AVSpeechSynthesisVoice* ScopedCandidate in [AVSpeechSynthesisVoice speechVoices])
+            {
+                if (ScopedWanted != nil && [ScopedCandidate.identifier isEqualToString:ScopedWanted])
+                {
+                    ScopedUtterance.voice = ScopedCandidate;
+                    break;
+                }
+            }
+        }
+        else if (MLanguage[0] != '\0')
         {
             NSString* ScopedLanguage = [NSString stringWithUTF8String:MLanguage];
             AVSpeechSynthesisVoice* ScopedVoice = [AVSpeechSynthesisVoice voiceWithLanguage:ScopedLanguage];
@@ -205,6 +219,7 @@ void AvSpeechTts::SetRate(float InRate) noexcept
 void AvSpeechTts::SetVoice(const char* InLanguageBCP47) noexcept
 {
     MLanguage[0] = '\0';
+    MVoiceId[0] = '\0';
     if (!IsMainThread())
     {
         LogError("tts", "AVSpeech: SetVoice called off the main run loop; the request was dropped");
@@ -251,6 +266,71 @@ void AvSpeechTts::SetVoice(const char* InLanguageBCP47) noexcept
     }
 }
 
+bool AvSpeechTts::SetVoiceById(const char* InId) noexcept
+{
+    MVoiceId[0] = '\0';
+    if (!IsMainThread() || InId == nullptr || InId[0] == '\0')
+    {
+        return false;
+    }
+    @autoreleasepool
+    {
+        NSString* ScopedWanted = [NSString stringWithUTF8String:InId];
+        for (AVSpeechSynthesisVoice* ScopedVoice in [AVSpeechSynthesisVoice speechVoices])
+        {
+            if (ScopedWanted != nil && [ScopedVoice.identifier isEqualToString:ScopedWanted])
+            {
+                CopyLanguage(InId, MVoiceId, sizeof(MVoiceId));
+                CopyLanguage(ScopedVoice.language.UTF8String, MLanguage, sizeof(MLanguage));
+                LogInfo("tts", "AVSpeech voice selected by id");
+                return true;
+            }
+        }
+    }
+    LogWarn("tts", "AVSpeech: the requested voice id is not installed");
+    return false;
+}
+
+std::uint32_t AvSpeechTts::EnumerateVoices(TtsVoiceInfo* OutVoices, std::uint32_t InCapacity) noexcept
+{
+    if (!IsMainThread() || OutVoices == nullptr || InCapacity == 0)
+    {
+        return 0;
+    }
+    std::uint32_t ScopedCount = 0;
+    @autoreleasepool
+    {
+        for (AVSpeechSynthesisVoice* ScopedVoice in [AVSpeechSynthesisVoice speechVoices])
+        {
+            if (ScopedCount >= InCapacity)
+            {
+                break;
+            }
+            TtsVoiceInfo& ScopedInfo = OutVoices[ScopedCount];
+            ScopedInfo = TtsVoiceInfo{};
+            CopyLanguage(ScopedVoice.identifier.UTF8String, ScopedInfo.Id, sizeof(ScopedInfo.Id));
+            CopyLanguage(ScopedVoice.name.UTF8String, ScopedInfo.Name, sizeof(ScopedInfo.Name));
+            CopyLanguage(ScopedVoice.language.UTF8String, ScopedInfo.Language, sizeof(ScopedInfo.Language));
+            if (@available(macOS 10.15, iOS 13.0, *))
+            {
+                switch (ScopedVoice.gender)
+                {
+                    case AVSpeechSynthesisVoiceGenderMale:
+                        ScopedInfo.Gender = 1;
+                        break;
+                    case AVSpeechSynthesisVoiceGenderFemale:
+                        ScopedInfo.Gender = 2;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            ++ScopedCount;
+        }
+    }
+    return ScopedCount;
+}
+
 TtsBackend AvSpeechTts::Backend() noexcept
 {
     TtsBackend ScopedBackend;
@@ -263,6 +343,10 @@ TtsBackend AvSpeechTts::Backend() noexcept
         +[](void* InUser, float InRate) noexcept { static_cast<AvSpeechTts*>(InUser)->SetRate(InRate); };
     ScopedBackend.setVoice = +[](void* InUser, const char* InLanguage) noexcept
     { static_cast<AvSpeechTts*>(InUser)->SetVoice(InLanguage); };
+    ScopedBackend.setVoiceById = +[](void* InUser, const char* InId) noexcept
+    { return static_cast<AvSpeechTts*>(InUser)->SetVoiceById(InId); };
+    ScopedBackend.enumerateVoices = +[](void* InUser, TtsVoiceInfo* InVoices, std::uint32_t InCapacity) noexcept
+    { return static_cast<AvSpeechTts*>(InUser)->EnumerateVoices(InVoices, InCapacity); };
     return ScopedBackend;
 }
 }

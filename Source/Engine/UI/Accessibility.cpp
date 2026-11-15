@@ -1,6 +1,7 @@
 // FemboyEngine2D - accessibility kernel implementation.
 #include "Engine/UI/Accessibility.hpp"
 #include "Engine/UI/AccessibilityEffectConsumer.hpp"
+#include "Engine/UI/AccessibilityProjection.hpp"
 
 #include "Engine/Assets/Localization.hpp"
 #include "Engine/Core/Assert.hpp"
@@ -295,6 +296,12 @@ AccessibilityProfile DefaultAccessibilityProfile() noexcept
     ScopedProfile.runtime.showSubtitles = false;
     ScopedProfile.presentation = AccessibilityPresentationSettings{};
     ScopedProfile.editor = AccessibilityEditorSettings{};
+    // Speech and the OS bridge are on by default: a shipped game is accessible
+    // out of the box, and a project can switch either of them off.
+    ScopedProfile.narration = NarratorSettings{};
+    std::snprintf(ScopedProfile.narration.Language, sizeof(ScopedProfile.narration.Language), "%s", "en-US");
+    ScopedProfile.actions = ActionNarrationSettings{};
+    ScopedProfile.bridge = AccessibilityBridgeSettings{};
     return ScopedProfile;
 }
 
@@ -314,6 +321,43 @@ void AccessibilityKernel::ApplyProfile(const AccessibilityProfile& InProfile) no
 
     MSettings = MProfile.runtime;
     MGuard.Configure(MSettings.flashThreshold, MSettings.flashGain);
+
+    MActions.SetSettings(MProfile.actions);
+
+    // Narration and bridge policy travel with the profile, so saving a project
+    // stores exactly what the game will speak and publish.
+    if (IsMainThread())
+    {
+        MSpeech.SetSettings(MProfile.narration);
+    }
+    else
+    {
+        MPendingNarratorSettings = true;
+    }
+
+    // A project that turns narration on together with Blind mode gets a voice
+    // without calling SetBlindMode(): the profile is the single entry point.
+    if (IsMainThread() && MProfile.narration.Enabled && BlindMode() && MTtsBackend == nullptr)
+    {
+        MTtsBackend = NativeTtsBackend();
+        MNativeTtsAttached = MTtsBackend != nullptr;
+        MSpeech.SetBackend(MTtsBackend);
+        MSpeech.ApplyVoice();
+    }
+    if (!MProfile.narration.Enabled)
+    {
+        MSpeech.Stop();
+    }
+    if (!MProfile.bridge.Enabled)
+    {
+        StopBridge();
+    }
+    else if (MBridgeWindow != nullptr && !AccessibilityBridgeRunning())
+    {
+        // Re-enabling the policy restarts the provider the app asked for; the
+        // editor never calls StartBridge, so its own provider is never touched.
+        (void)StartAccessibilityBridge(MBridgeWindow, MProfile.bridge);
+    }
 }
 
 void AccessibilityKernel::SetBlindMode(bool InEnabled) noexcept
@@ -331,6 +375,7 @@ void AccessibilityKernel::SetBlindMode(bool InEnabled) noexcept
         {
             MTtsBackend = NativeTtsBackend();
             MNativeTtsAttached = MTtsBackend != nullptr;
+            MSpeech.SetBackend(MTtsBackend);
         }
         if (!MMainThreadKnown)
         {
@@ -338,17 +383,16 @@ void AccessibilityKernel::SetBlindMode(bool InEnabled) noexcept
             MMainThreadKnown = true;
         }
         ApplyTtsLanguage();
+        MSpeech.ApplyVoice();
     }
     else
     {
         MSettings.flags &= ~AccessibilityBlindMode;
-        if (MTtsBackend != nullptr && MTtsBackend->stop != nullptr)
-        {
-            MTtsBackend->stop(MTtsBackend->user);
-        }
+        MSpeech.Stop();
         if (!MExternalTts)
         {
             MTtsBackend = nullptr;
+            MSpeech.SetBackend(nullptr);
         }
         MNativeTtsAttached = false;
     }
@@ -357,19 +401,31 @@ void AccessibilityKernel::SetBlindMode(bool InEnabled) noexcept
 void AccessibilityKernel::SetNarrativeLocale(std::string_view InLocale) noexcept
 {
     MNarrative.SetLocaleFromCode(InLocale);
-    if (InLocale.size() >= 2 && (InLocale[0] == 'r' || InLocale[0] == 'R') &&
-        (InLocale[1] == 'u' || InLocale[1] == 'U'))
+
+    // The voice follows the content locale, not the operating system locale:
+    // a game translated into Japanese speaks Japanese even on an English
+    // Windows install. The tag is normalised to BCP-47 ("pt_BR" -> "pt-BR").
+    char ScopedTag[16]{};
+    if (InLocale.size() >= 2)
     {
-        std::snprintf(MTtsLanguage, sizeof(MTtsLanguage), "%s", "ru-RU");
+        const std::size_t ScopedLength = std::min<std::size_t>(InLocale.size(), sizeof(ScopedTag) - 1);
+        for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedLength; ++ScopedIndex)
+        {
+            ScopedTag[ScopedIndex] = InLocale[ScopedIndex] == '_' ? '-' : InLocale[ScopedIndex];
+        }
     }
-    else
+    if (ScopedTag[0] == '\0')
     {
-        std::snprintf(MTtsLanguage, sizeof(MTtsLanguage), "%s", "en-US");
+        std::snprintf(ScopedTag, sizeof(ScopedTag), "%s", "en-US");
     }
-    // The narrative tree itself is thread-agnostic, but voice selection is not.
+    std::snprintf(MTtsLanguage, sizeof(MTtsLanguage), "%s", ScopedTag);
+    std::snprintf(MProfile.narration.Language, sizeof(MProfile.narration.Language), "%s", ScopedTag);
+
+    // Voice selection is a main-thread operation; a worker records the request
+    // and FlushSpeech applies it on the owner thread.
     if (IsMainThread())
     {
-        ApplyTtsLanguage();
+        MSpeech.SetSettings(MProfile.narration);
     }
     else
     {
@@ -386,7 +442,7 @@ void AccessibilityKernel::ApplyTtsLanguage() noexcept
     }
     if (!RequireMainThread("AccessibilityKernel::ApplyTtsLanguage"))
     {
-        // Keep the request pending: FlushSpeech() runs on the owner thread and
+        // Keep the request pending: FlushSpeech() runs on the owner thread.
         MPendingVoiceLanguage = true;
         return;
     }
@@ -710,6 +766,8 @@ void AccessibilityKernel::SetCueLocalization(const LocalizationTable* InTable) n
 {
     MCueTextResolver = &LocalizedCueText;
     MCueTextUser = const_cast<LocalizationTable*>(InTable);
+    // The semantic tree resolves accessible names through the same table.
+    MTree.SetLocalization(InTable);
 }
 
 void AccessibilityKernel::SetVoiceCaptionProvider(const VoiceCaptionProvider* InProvider) noexcept
@@ -833,16 +891,20 @@ void AccessibilityKernel::SetSpeechSink(SpeechSink InSink, void* InUser) noexcep
 {
     MSpeechSink = InSink;
     MSpeechUser = InUser;
+    // The narrator owns the output path: a backend when one is installed, the
+    // sink otherwise (tests, the editor log, a custom audio pipeline).
+    MSpeech.SetSink(InSink, InUser);
 }
 
 void AccessibilityKernel::SetTtsBackend(const TtsBackend* InBackend) noexcept
 {
-    // Installing a backend is a main-thread operation for the same reason as
+    // Installing a backend is a main-thread operation for the same reason.
     if (!RequireMainThread("AccessibilityKernel::SetTtsBackend"))
     {
         return;
     }
     MTtsBackend = InBackend;
+    MSpeech.SetBackend(InBackend);
     MNativeTtsAttached = false;
     MExternalTts = InBackend != nullptr;
     if (!MMainThreadKnown)
@@ -856,11 +918,11 @@ void AccessibilityKernel::SetTtsBackend(const TtsBackend* InBackend) noexcept
 
 void AccessibilityKernel::FlushSpeech() noexcept
 {
-    // Hard main-thread contract. SAPI is apartment-threaded and AVSpeech owns a
+    // Hard main-thread contract. SAPI is apartment-threaded and AVSpeech owns a queue.
     const std::thread::id ScopedCurrentThread = std::this_thread::get_id();
     if (!MMainThreadKnown)
     {
-        // The anchor comes from the process, not from this call: otherwise the
+        // The anchor comes from the process, not from this call.
         MMainThread = MainThreadId();
         MMainThreadKnown = true;
     }
@@ -868,32 +930,119 @@ void AccessibilityKernel::FlushSpeech() noexcept
     {
         return;
     }
-    // A locale change from a worker is applied here, on the owner thread, before
+    // A locale change from a worker is applied here, on the owner thread.
     if (MPendingVoiceLanguage)
     {
         ApplyTtsLanguage();
+        MSpeech.ApplyVoice();
+        MPendingVoiceLanguage = false;
     }
-    if (MTtsBackend == nullptr || MTtsBackend->speak == nullptr)
+    if (MPendingNarratorSettings)
     {
-        if (MSpeechSink == nullptr)
-        {
-            return;
-        }
-        NarrativeEvent ScopedEvent{};
-        while (MLog.Pop(ScopedEvent))
-        {
-            MSpeechSink(MSpeechUser, ScopedEvent.text, ScopedEvent.textLength);
-        }
-        return;
+        MSpeech.SetSettings(MProfile.narration);
+        MPendingNarratorSettings = false;
     }
+
+    // Simulation events become queued utterances; the narrator decides what is
+    // spoken, in which order and in which language. Severity keeps its meaning:
+    // a hit interrupts, a state change is queued.
     NarrativeEvent ScopedEvent{};
     while (MLog.Pop(ScopedEvent))
     {
-        const TtsPriority ScopedPriority =
-            ScopedEvent.severity >= 2 ? TtsPriority::Interrupt
-                                      : (ScopedEvent.severity == 1 ? TtsPriority::Normal : TtsPriority::Queued);
-        (void)MTtsBackend->speak(MTtsBackend->user, ScopedEvent.text, ScopedEvent.textLength, ScopedPriority);
+        // A project that silences world events also silences the physics and
+        // state lines that reach the same queue; the narrator focus path stays.
+        if (!MProfile.narration.AnnounceWorldEvents)
+        {
+            continue;
+        }
+        const NarratorPriority ScopedPriority = ScopedEvent.severity >= 2
+                                                    ? NarratorPriority::Critical
+                                                    : (ScopedEvent.severity == 1 ? NarratorPriority::High
+                                                                                 : NarratorPriority::Low);
+        (void)MSpeech.Enqueue(MSpeech.Owner(), ScopedPriority,
+                              std::string_view(ScopedEvent.text, ScopedEvent.textLength));
     }
+    MSpeech.Advance(0.0f);
+}
+
+void AccessibilityKernel::SetActionLocalization(const LocalizationTable* InTable) noexcept
+{
+    MActions.SetLocalization(InTable);
+}
+
+void AccessibilityKernel::SetActionVocabulary(const ActionVocabulary& InVocabulary) noexcept
+{
+    MActions.SetVocabulary(InVocabulary);
+}
+
+void AccessibilityKernel::SetActionNarrationSettings(const ActionNarrationSettings& InSettings) noexcept
+{
+    MProfile.actions = InSettings;
+    MActions.SetSettings(InSettings);
+}
+
+bool AccessibilityKernel::PublishAction(const ActionEvent& InEvent) noexcept
+{
+    if (!BlindMode() || !MProfile.narration.Enabled || !MProfile.narration.AnnounceWorldEvents)
+    {
+        return false;
+    }
+    return MActions.Publish(InEvent, MSpeech);
+}
+
+void AccessibilityKernel::SetNarratorSettings(const NarratorSettings& InSettings) noexcept
+{
+    MProfile.narration = InSettings;
+    MSpeech.SetSettings(MProfile.narration);
+}
+
+void AccessibilityKernel::ProjectCanvas(const Ui::WidgetCanvas& InCanvas) noexcept
+{
+    const std::uint32_t ScopedFocusBefore = MTree.FocusedId();
+    (void)Ui::ProjectWidgetCanvas(InCanvas, MTree);
+
+    if (BlindMode())
+    {
+        const std::uint32_t ScopedFocus = MTree.FocusedId();
+        if (ScopedFocus != 0 && ScopedFocus != ScopedFocusBefore)
+        {
+            const std::uint32_t ScopedIndex = MTree.FindIndexById(ScopedFocus);
+            if (ScopedIndex != Ui::kNoAccessibilityNode)
+            {
+                (void)MSpeech.AnnounceFocus(MTree, ScopedIndex);
+            }
+        }
+    }
+
+    // The bridge reads the same tree, so the screen reader and the narrator
+    // never describe two different interfaces.
+    UpdateAccessibilityBridge(MTree);
+}
+
+bool AccessibilityKernel::StartBridge(void* InNativeWindow) noexcept
+{
+    if (!MProfile.bridge.Enabled || InNativeWindow == nullptr)
+    {
+        return false;
+    }
+    MBridgeWindow = InNativeWindow;
+    if (!StartAccessibilityBridge(InNativeWindow, MProfile.bridge))
+    {
+        MBridgeWindow = nullptr;
+        return false;
+    }
+    return true;
+}
+
+void AccessibilityKernel::StopBridge() noexcept
+{
+    MBridgeWindow = nullptr;
+    StopAccessibilityBridge();
+}
+
+bool AccessibilityKernel::BridgeRunning() const noexcept
+{
+    return AccessibilityBridgeRunning();
 }
 
 bool AccessibilityKernel::BuildSubtitleCanvas(Ui::WidgetCanvas& InCanvas) const noexcept

@@ -35,7 +35,7 @@ public:
 
     ProjectDashboard() = default;
 
-    // The extra arguments are optional so headless tests can keep calling the
+    // The extra arguments are optional so headless tests can keep calling without a window.
     void Initialize(const ProjectPaths& InCurrentProject, const ProjectConfig& InCurrentConfig, bool InVisible,
                     WindowManager* InWindow = nullptr, VirtualFileSystem* InVfs = nullptr,
                     EditorFonts* InFonts = nullptr, float InUiScale = 1.0f);
@@ -107,6 +107,7 @@ private:
     char MOpenPath[kPathCapacity]{};
     char MLocation[kPathCapacity]{};
     char MProjectName[kNameCapacity] = "MyProject";
+    int MProjectTemplate = 0;
     Mode MMode = Mode::Welcome;
     Action MPendingAction = Action::None;
     WindowManager* MWindow = nullptr;

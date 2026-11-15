@@ -77,7 +77,7 @@ template <typename T> [[nodiscard]] bool ResolveFlat(void* InLibrary, const char
 
 [[nodiscard]] void* OpenGalaxyLibrary() noexcept
 {
-    // The official wrapper can be pointed at with GALAXY_SDK_PATH; that keeps a
+    // The official wrapper can be pointed at with GALAXY_SDK_PATH.
     if (const char* ScopedDirectory = std::getenv("GALAXY_SDK_PATH");
         ScopedDirectory != nullptr && ScopedDirectory[0] != '\0')
     {

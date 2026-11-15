@@ -1,6 +1,9 @@
 // FemboyEngine2D - FemboyScript 2.0 interpreter.
 #include "Engine/Script/Vm.hpp"
 
+#include "Engine/Script/ScriptHeap.hpp"
+
+#include <algorithm>
 #include <bit>
 #include <cstring>
 #include <limits>
@@ -25,6 +28,79 @@ void StoreRaw(std::byte* InAddress, const void* InValue, std::uint32_t InSize) n
 {
     std::memcpy(InAddress, InValue, InSize);
 }
+
+// Opcodes that always write a numeric (or entity) payload into dst. Natives,
+// moves and LoadString manage their own tags because they can carry a heap
+// handle from an argument or from the heap.
+[[nodiscard]] constexpr bool WritesNumericResult(OpCode InOp) noexcept
+{
+    switch (InOp)
+    {
+        case OpCode::LoadF32:
+        case OpCode::LoadI32:
+        case OpCode::AddF:
+        case OpCode::SubF:
+        case OpCode::MulF:
+        case OpCode::DivF:
+        case OpCode::AddI:
+        case OpCode::SubI:
+        case OpCode::MulI:
+        case OpCode::DivI:
+        case OpCode::ModI:
+        case OpCode::NegF:
+        case OpCode::NegI:
+        case OpCode::AndI:
+        case OpCode::OrI:
+        case OpCode::NotI:
+        case OpCode::LtF:
+        case OpCode::LeF:
+        case OpCode::GtF:
+        case OpCode::GeF:
+        case OpCode::EqF:
+        case OpCode::NeF:
+        case OpCode::LtI:
+        case OpCode::LeI:
+        case OpCode::GtI:
+        case OpCode::GeI:
+        case OpCode::EqI:
+        case OpCode::NeI:
+        case OpCode::LoadSelf:
+        case OpCode::LoadFieldF:
+        case OpCode::LoadFieldI:
+        case OpCode::LoadFieldVec2:
+        case OpCode::SpawnPrefab:
+        case OpCode::DespawnEntity:
+        case OpCode::RandomF:
+        case OpCode::RandomRangeF:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Natives that read or return heap handles keep the argument tags intact.
+[[nodiscard]] constexpr bool IsHeapNative(NativeId InNative) noexcept
+{
+    switch (InNative)
+    {
+        case NativeId::ArrayNew:
+        case NativeId::ArrayPush:
+        case NativeId::ArraySet:
+        case NativeId::ArrayGet:
+        case NativeId::ArrayLength:
+        case NativeId::MapNew:
+        case NativeId::MapSet:
+        case NativeId::MapGet:
+        case NativeId::MapHas:
+        case NativeId::MapLength:
+        case NativeId::StringConcat:
+        case NativeId::StringLength:
+        case NativeId::StringEquals:
+            return true;
+        default:
+            return false;
+    }
+}
 }
 
 bool ScriptVm::Fault(VmFault* InFault, VmFault::Code InCode, std::uint32_t InPc, std::uint32_t InDetail) noexcept
@@ -39,13 +115,13 @@ bool ScriptVm::Fault(VmFault* InFault, VmFault::Code InCode, std::uint32_t InPc,
 }
 
 bool ScriptVm::Run(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
-                   VmFault* InFault) noexcept
+                   VmFault* InFault, VmSuspendState* InSuspend) noexcept
 {
     if (InFault != nullptr)
     {
         *InFault = {};
     }
-    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, InFault, nullptr);
+    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, InFault, nullptr, InSuspend);
     return ScopedStop.Halt != VmHalt::Faulted;
 }
 
@@ -54,11 +130,12 @@ VmStopInfo ScriptVm::RunDebug(const BoundProgram& InProgram, ScriptEvent InEvent
 {
     VmFault ScopedFault{};
     VmDebugState* ScopedDebug = InDebug.Enabled ? &InDebug : nullptr;
-    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, &ScopedFault, ScopedDebug);
+    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, &ScopedFault, ScopedDebug, nullptr);
     if (InDebug.Enabled && ScopedStop.Halt == VmHalt::Faulted)
     {
         InDebug.Paused = false;
         InDebug.ResumeValid = false;
+        InDebug.CallDepth = 0;
         InDebug.LastReason = VmPauseReason::None;
     }
     return ScopedStop;
@@ -68,6 +145,7 @@ void ScriptVm::RequestPauseAtEntry(VmDebugState& InDebug) noexcept
 {
     InDebug.Paused = false;
     InDebug.ResumeValid = false;
+    InDebug.CallDepth = 0;
     InDebug.SkipOnce = false;
     InDebug.PauseRequested = true;
     InDebug.StepRequested = false;
@@ -94,6 +172,11 @@ VmStopInfo ScriptVm::PauseStop(VmDebugState& InDebug, VmPauseReason InReason) no
     InDebug.ResumeValid = true;
     InDebug.ResumePc = InDebug.CurrentPc;
     InDebug.PausePc = InDebug.CurrentPc;
+    InDebug.CallDepth = MCallDepth;
+    for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+    {
+        InDebug.CallStack[ScopedI] = MCalls[ScopedI];
+    }
     InDebug.LastReason = InReason;
     InDebug.SkipOnce = true;
     InDebug.SkipPc = InDebug.CurrentPc;
@@ -106,7 +189,7 @@ VmStopInfo ScriptVm::PauseStop(VmDebugState& InDebug, VmPauseReason InReason) no
 }
 
 VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf, VmContext& InContext,
-                             VmFault* InFault, VmDebugState* InDebug) noexcept
+                             VmFault* InFault, VmDebugState* InDebug, VmSuspendState* InSuspend) noexcept
 {
     VmStopInfo ScopedStop;
     if (InFault != nullptr)
@@ -132,12 +215,47 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
 
     const std::uint32_t ScopedRegisters = InProgram.program.header.registerHighWater;
     const bool ScopedResume = InDebug != nullptr && InDebug->ResumeValid;
-    if (!ScopedResume)
+    const bool ScopedCoroutineResume =
+        InSuspend != nullptr && InSuspend->Valid && InSuspend->Event == InEvent && InSuspend->Self == InSelf;
+    if (!ScopedResume && !ScopedCoroutineResume)
     {
         for (std::uint32_t ScopedI = 0; ScopedI < ScopedRegisters; ++ScopedI)
         {
             MRegisters[ScopedI].u = 0;
+            MTags[ScopedI] = ValueTag::Float;
         }
+    }
+    else if (ScopedCoroutineResume)
+    {
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedRegisters; ++ScopedI)
+        {
+            MRegisters[ScopedI] = InSuspend->Registers[ScopedI];
+            MTags[ScopedI] = InSuspend->Tags[ScopedI];
+        }
+    }
+    if (InSuspend != nullptr)
+    {
+        InSuspend->Valid = false;
+    }
+    if (ScopedResume)
+    {
+        MCallDepth = std::min(InDebug->CallDepth, kMaxCallDepth);
+        for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+        {
+            MCalls[ScopedI] = InDebug->CallStack[ScopedI];
+        }
+    }
+    else if (ScopedCoroutineResume)
+    {
+        MCallDepth = std::min(InSuspend->CallDepth, kMaxCallDepth);
+        for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+        {
+            MCalls[ScopedI] = InSuspend->CallStack[ScopedI];
+        }
+    }
+    else
+    {
+        MCallDepth = 0;
     }
     if (InDebug != nullptr)
     {
@@ -146,7 +264,9 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
 
     const auto& ScopedCode = InProgram.program.code;
     const auto& ScopedConstants = InProgram.program.constants;
-    std::uint32_t ScopedPc = ScopedResume ? InDebug->ResumePc : ScopedEntry->codeOffset;
+    std::uint32_t ScopedPc = ScopedCoroutineResume
+                                 ? InSuspend->Pc
+                                 : (ScopedResume ? InDebug->ResumePc : ScopedEntry->codeOffset);
     std::uint32_t ScopedSteps = 0;
 
     // One lambda, not std::function: the compiler inlines both field helpers
@@ -203,6 +323,15 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
         const Instruction ScopedInstruction = ScopedCode[ScopedPc];
         ++MExecuted;
         std::uint32_t ScopedNext = ScopedPc + 1;
+        if (WritesNumericResult(ScopedInstruction.Code()))
+        {
+            MTags[ScopedInstruction.dst] = ValueTag::Float;
+            if (ScopedInstruction.Code() == OpCode::LoadFieldVec2 &&
+                ScopedInstruction.dst + 1 < kMaxVmRegisters)
+            {
+                MTags[ScopedInstruction.dst + 1] = ValueTag::Float;
+            }
+        }
 
         switch (ScopedInstruction.Code())
         {
@@ -216,6 +345,7 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 {
                     InDebug->Paused = false;
                     InDebug->ResumeValid = false;
+                    InDebug->CallDepth = 0;
                 }
                 return ScopedStop;
             }
@@ -231,9 +361,11 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 break;
             case OpCode::MoveF:
                 MRegisters[ScopedInstruction.dst].f = MRegisters[ScopedInstruction.src].f;
+                MTags[ScopedInstruction.dst] = MTags[ScopedInstruction.src];
                 break;
             case OpCode::MoveI:
                 MRegisters[ScopedInstruction.dst].u = MRegisters[ScopedInstruction.src].u;
+                MTags[ScopedInstruction.dst] = MTags[ScopedInstruction.src];
                 break;
 
             case OpCode::AddF:
@@ -463,7 +595,19 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                 {
                     return FaultStop(InFault, VmFault::Code::BadNative, ScopedPc, ScopedId);
                 }
+                if (!IsHeapNative(static_cast<NativeId>(ScopedId)))
+                {
+                    MTags[ScopedInstruction.dst] = ValueTag::Float;
+                }
                 MNatives[ScopedId](*this, InContext, ScopedInstruction.dst);
+                if (MPendingFault != VmFault::Code::None)
+                {
+                    const VmFault::Code ScopedFault = MPendingFault;
+                    const std::uint32_t ScopedDetail = MPendingFaultDetail;
+                    MPendingFault = VmFault::Code::None;
+                    MPendingFaultDetail = 0;
+                    return FaultStop(InFault, ScopedFault, ScopedPc, ScopedDetail);
+                }
                 break;
             }
 
@@ -523,6 +667,94 @@ VmStopInfo ScriptVm::Execute(const BoundProgram& InProgram, ScriptEvent InEvent,
                         ScopedMinimum + (ScopedMaximum - ScopedMinimum) * InContext.rng->NextFloat();
                 }
                 break;
+
+            case OpCode::LoadString:
+            {
+                if (InContext.heap == nullptr)
+                {
+                    return FaultStop(InFault, VmFault::Code::NoHeap, ScopedPc);
+                }
+                std::string_view ScopedText;
+                if (!InProgram.program.StringAt(ScopedInstruction.operand, &ScopedText))
+                {
+                    return FaultStop(InFault, VmFault::Code::BadString, ScopedPc, ScopedInstruction.operand);
+                }
+                const std::uint32_t ScopedHandle = InContext.heap->InternString(ScopedText);
+                if (ScopedHandle == ScriptHeap::kInvalidHandle)
+                {
+                    return FaultStop(InFault, VmFault::Code::HeapFull, ScopedPc, ScopedInstruction.operand);
+                }
+                MRegisters[ScopedInstruction.dst].u = ScopedHandle;
+                MTags[ScopedInstruction.dst] = ValueTag::String;
+                break;
+            }
+
+            case OpCode::CallFunction:
+            {
+                if (ScopedInstruction.operand >= InProgram.program.functions.size())
+                {
+                    return FaultStop(InFault, VmFault::Code::BadCall, ScopedPc, ScopedInstruction.operand);
+                }
+                const FunctionEntry& ScopedTarget = InProgram.program.functions[ScopedInstruction.operand];
+                if ((ScopedTarget.event & kUserFunctionFlag) == 0 || MCallDepth >= kMaxCallDepth)
+                {
+                    return FaultStop(InFault, VmFault::Code::BadCall, ScopedPc, ScopedInstruction.operand);
+                }
+                for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+                {
+                    if (MCalls[ScopedI].Function == ScopedInstruction.operand)
+                    {
+                        return FaultStop(InFault, VmFault::Code::Recursion, ScopedPc, ScopedInstruction.operand);
+                    }
+                }
+                VmCallFrame& ScopedFrame = MCalls[MCallDepth++];
+                ScopedFrame.ReturnPc = ScopedNext;
+                ScopedFrame.ResultDst = ScopedInstruction.dst;
+                ScopedFrame.Function = ScopedInstruction.operand;
+                ScopedFrame.Base = ScopedTarget.registerHighWater;
+                ScopedNext = ScopedTarget.codeOffset;
+                break;
+            }
+            case OpCode::Return:
+            {
+                if (MCallDepth == 0)
+                {
+                    return FaultStop(InFault, VmFault::Code::BadCall, ScopedPc);
+                }
+                const VmCallFrame ScopedFrame = MCalls[--MCallDepth];
+                MRegisters[ScopedFrame.Base].u = MRegisters[ScopedInstruction.src].u;
+                MTags[ScopedFrame.Base] = MTags[ScopedInstruction.src];
+                MRegisters[ScopedFrame.ResultDst].u = MRegisters[ScopedFrame.Base].u;
+                MTags[ScopedFrame.ResultDst] = MTags[ScopedFrame.Base];
+                ScopedNext = ScopedFrame.ReturnPc;
+                break;
+            }
+
+            case OpCode::Yield:
+            {
+                if (InSuspend != nullptr)
+                {
+                    InSuspend->Event = InEvent;
+                    InSuspend->Self = InSelf;
+                    InSuspend->Pc = ScopedNext;
+                    InSuspend->Valid = true;
+                    InSuspend->WakeFrame =
+                        InContext.frameIndex + (ScopedInstruction.operand == 0 ? 1u : ScopedInstruction.operand);
+                    InSuspend->CallDepth = MCallDepth;
+                    for (std::uint32_t ScopedI = 0; ScopedI < MCallDepth; ++ScopedI)
+                    {
+                        InSuspend->CallStack[ScopedI] = MCalls[ScopedI];
+                    }
+                    for (std::uint32_t ScopedI = 0; ScopedI < kMaxVmRegisters; ++ScopedI)
+                    {
+                        InSuspend->Registers[ScopedI] = MRegisters[ScopedI];
+                        InSuspend->Tags[ScopedI] = MTags[ScopedI];
+                    }
+                }
+                ScopedStop.Halt = VmHalt::Yielded;
+                ScopedStop.Pc = ScopedNext;
+                return ScopedStop;
+            }
 
             case OpCode::Count:
             default:

@@ -3,12 +3,20 @@
 
 #include "Engine/Audio/AudioDevices.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 
 namespace Fby
 {
 class AudioSystem;
+class VoiceSession;
+class VoiceSystem;
+class VoicePresetRegistry;
+struct VoicePresetChoice;
+struct VoicePresetSelection;
+struct VoiceEffectPolicy;
+struct VoiceReactiveSfxSettings;
 }
 
 namespace Fby::Editor
@@ -25,7 +33,10 @@ public:
     // `[audio]` section and persists the project when the selection changes.
     // `InAudio` is optional; when present, "Apply output" reopens playback on
     // the selected device without restarting the editor.
-    void Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSystem* InAudio = nullptr);
+    void Draw(bool* InOpen, ProjectConfigStore* InStore, AudioSystem* InAudio = nullptr, VoiceSystem* InVoice = nullptr,
+              VoiceSession* InSession = nullptr, VoicePresetRegistry* InPresets = nullptr,
+              VoicePresetSelection* InSelection = nullptr, VoiceEffectPolicy* InPolicy = nullptr,
+              VoiceReactiveSfxSettings* InSfxSettings = nullptr);
 
     // Live output path without ImGui: resolves the preferred id (default when
     // empty) and reopens playback. Exposed so the panel path has a test.
@@ -39,6 +50,7 @@ protected:
     AudioDeviceEnumerator MDevices;
     AudioCaptureMonitor MMonitor;
     std::string MStatus;
+    std::array<char, 512> MPresetPath{};
     std::uint64_t MLastRefreshMs = 0;
     std::int32_t MInputIndex = -1;
     std::int32_t MOutputIndex = -1;

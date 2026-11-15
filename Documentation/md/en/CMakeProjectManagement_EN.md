@@ -1,17 +1,18 @@
 # CMake Project and Engine Management
 
-Applies to FemboyEngine2D 0.3.0-alpha.1 and CMake 3.28 or newer.
+Applies to FemboyEngine2D 0.5.0 and CMake 3.22 or newer.
 
 ## Toolchain
 
-The engine requires C++26:
+The engine requires C++23:
 
-- Windows: clang-cl 19+ with the MSVC STL.
-- Linux: Clang 19+ or GCC 16+.
-- macOS: Apple Clang with C++26 support.
+- Windows: clang-cl 19.1+ (reference) or MSVC 19.40+ (supported alternative with a dedicated CI job), both with the MSVC STL.
+- Linux: Clang 19.1+ or GCC 14.1+.
+- macOS: Apple Clang with C++23 support.
 
-Ninja is the supported generator for the validated build. Visual Studio is used
-only as an IDE and as the source of the Windows SDK and headers.
+Ninja is the supported generator for the validated build. Visual Studio can be
+used as an IDE or for the MSVC build; it provides the Windows SDK and the STL
+headers in both cases.
 
 ## Configure a standalone build
 
@@ -39,6 +40,7 @@ video tests become an order of magnitude slower and can hit CI timeouts.
 | `FBY_BUILD_TOOLS` | `ON` | `fby_fempak`, `fby_aotc`, `fby_fontc`, `fby_scene_tool`. |
 | `FBY_BUILD_PLATFORM_PROVIDERS` | `ON` | Steam/EGS/GOG provider shared libraries. |
 | `FBY_RHI_BACKEND` | `auto` | `auto`, `vulkan`, `metal`, or `null`. |
+| `FBY_CXX_STANDARD` | `23` | `23` is the contract; `26` enables the experimental C++26 library accelerations. |
 | `FBY_WITH_ASAN`, `FBY_WITH_UBSAN` | `OFF` | Sanitizer instrumentation for the engine and tests. |
 | `FBY_ASAN_LEAKS` | `ON` | LeakSanitizer at exit on Linux and macOS. |
 | `FBY_WITH_SCRIPT_VM` | `ON` | FemboyScript VM for editor and development builds. |
@@ -74,7 +76,7 @@ must not be used as a public contract. There are no `FemboyEngine::*` or
 ## Consume the engine with add_subdirectory
 
 ```cmake
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 project(MyGame LANGUAGES CXX)
 
 set(FBY_ENGINE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "FemboyEngine2D root")
@@ -193,4 +195,4 @@ Metal on macOS and Vulkan on Windows and Linux when headers are available.
 - Legacy alias errors: replace `FemboyEngine::*` and
   `FemboyEngine2D::Runtime` with `FemboyEngine2D::Engine`.
 - Tests time out: use `RelWithDebInfo`, not `Debug`.
-- C++26 errors: update the compiler. C++23 is not supported.
+- C++23 errors: update the compiler; older standards are not supported.

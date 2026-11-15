@@ -35,6 +35,6 @@ struct SpriteAnimationInspectorState
     TextureThumbnailCache* thumbnails = nullptr;
 };
 
-// Draws the Play/Pause/scrub/duration controls for the selected entity. Safe to
+// Draws the Play/Pause/scrub/duration controls for the selected entity.
 void DrawSpriteAnimationInspector(Ecs::SystemContext& InContext, Entity InEntity, SpriteAnimationInspectorState& InState);
 }

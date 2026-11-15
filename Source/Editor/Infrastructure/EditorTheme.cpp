@@ -10,6 +10,13 @@ namespace Fby::Editor
 {
 namespace
 {
+bool GStockingActive = false;
+ImU32 GStockingColorA = 0;
+ImU32 GStockingColorB = 0;
+}
+
+namespace
+{
 std::uint64_t GThemeGeneration = 1;
 EditorPalette GCurrentPalette{};
 
@@ -453,5 +460,38 @@ void ApplyEditorTheme(const EditorSettings& InSettings) noexcept
     ScopedStyle.TextLetterSpacing = std::clamp(InSettings.textLetterSpacing, -2.0f, 12.0f);
     ScopedStyle.TextWordSpacing = std::clamp(InSettings.textWordSpacing, -4.0f, 24.0f);
     ScopedStyle.TextBorderColor = HexColor(InSettings.textOutlineColor);
+    ApplyStockingRows(InSettings);
+}
+
+void ApplyStockingRows(const EditorSettings& InSettings) noexcept
+{
+    ImGuiStyle& ScopedStyle = ImGui::GetStyle();
+    GStockingActive = InSettings.stockingTheme;
+    if (!InSettings.stockingTheme)
+    {
+        ScopedStyle.Colors[ImGuiCol_TableRowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+        ScopedStyle.Colors[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.06f);
+        return;
+    }
+    const auto ToColor = [](std::uint32_t InRgb)
+    {
+        return ImVec4(static_cast<float>((InRgb >> 16u) & 0xFFu) / 255.0f,
+                      static_cast<float>((InRgb >> 8u) & 0xFFu) / 255.0f,
+                      static_cast<float>(InRgb & 0xFFu) / 255.0f, 1.0f);
+    };
+    ScopedStyle.Colors[ImGuiCol_TableRowBg] = ToColor(InSettings.stockingColorA);
+    ScopedStyle.Colors[ImGuiCol_TableRowBgAlt] = ToColor(InSettings.stockingColorB);
+    GStockingColorA = ImGui::ColorConvertFloat4ToU32(ToColor(InSettings.stockingColorA));
+    GStockingColorB = ImGui::ColorConvertFloat4ToU32(ToColor(InSettings.stockingColorB));
+}
+
+bool StockingRowsActive() noexcept
+{
+    return GStockingActive;
+}
+
+ImU32 StockingRowColorU32(std::size_t InIndex) noexcept
+{
+    return (InIndex & 1u) == 0u ? GStockingColorA : GStockingColorB;
 }
 }

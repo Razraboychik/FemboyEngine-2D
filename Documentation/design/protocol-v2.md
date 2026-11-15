@@ -90,14 +90,15 @@ The record-layer test is `record_layer_v2`. Official Noise vectors and the
 
 ## 4. Versioning and deprecation
 
-- v2 is opt-in per `SecureChannelConfig`; the default stays v1 until the official
-  vectors and the differential pass.
-- A v1 channel rejects a v2 message with `BadVersion` (and vice versa); there is
-  no negotiation that can fall back from v2 to v1.
-- Planned deprecation window: v1 accepted by the session server for one release
-  after v2 becomes the default; the server logs and counts v1 sessions; after the
-  window, v1 is rejected with a clear `BadVersion`.
-- The envelope magic is not changed; the version field carries the decision.
+- v2 is the default since 0.5.0. A peer that still needs the frozen transcript
+  sets `SecureChannelConfig::ProtocolV2 = false`; there is no automatic
+  negotiation that can fall back from v2 to v1.
+- A v1 channel rejects a v2 message with `BadVersion` (and vice versa).
+- `SecureChannel::ProtocolV2()` exposes the transcript selected by `Start()` so
+  session diagnostics can tag v1 traffic during the deprecation window.
+- Planned window: v1 accepted for one release after v2 became the default, then
+  rejected with a clear `BadVersion`. The server-side count of v1 sessions is
+  still an operational task; the channel accessor is the hook for it.
 
 ## 5. Ticket signatures: Ed25519 v2
 

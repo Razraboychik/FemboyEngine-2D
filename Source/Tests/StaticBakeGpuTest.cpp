@@ -7,6 +7,9 @@
 #include "Engine/RHI/TemporalResolvePass.hpp"
 #include "Engine/RHI/Fsr2Pass.hpp"
 #include "Engine/RHI/CustomFrameGenerator.hpp"
+#include "Engine/RHI/DlssAdapter.hpp"
+#include "Engine/RHI/Fsr2Adapter.hpp"
+#include "Engine/RHI/Fsr3FrameGenerator.hpp"
 
 #include <array>
 #include <cstdio>
@@ -29,7 +32,7 @@ void HudTestRender(void*, void*)
 
 int main()
 {
-    Fby::SetLogLevel(Fby::LogLevel::Warn);
+    Fby::SetLogLevel(std::getenv("FBY_GPU_LOG") != nullptr ? Fby::LogLevel::Info : Fby::LogLevel::Warn);
     Fby::WindowManager ScopedWindow;
     if (!ScopedWindow.Initialize())
     {
@@ -66,11 +69,55 @@ int main()
                 ScopedGpu->Info().upscalers.fsr1 ? 1 : 0, ScopedGpu->Info().upscalers.fsr2 ? 1 : 0,
                 ScopedGpu->Info().upscalers.motionVectors ? 1 : 0,
                 ScopedGpu->Info().upscalers.frameGeneration ? 1 : 0);
+    if (std::getenv("FBY_GPU_MOTION_ONLY") != nullptr)
+    {
+        std::array<Fby::Rhi::MotionVectorItem, 2> ScopedMotionItems{};
+        ScopedMotionItems[0].position = {10.0f, 0.0f};
+        ScopedMotionItems[1].position = {20.0f, 0.0f};
+        const Fby::Rhi::RenderTargetHandle ScopedMotionTarget =
+            ScopedGpu->CreateMotionVectorTarget({320, 180});
+        bool ScopedMotionRendered = false;
+        if (ScopedMotionTarget.IsValid() && ScopedGpu->UploadMotionVectors(ScopedMotionItems) &&
+            ScopedGpu->BeginFrame())
+        {
+            ScopedMotionRendered = ScopedGpu->RenderMotionVectors(
+                ScopedMotionTarget, 2, {0.0f, 0.0f}, {0.0f, 0.0f}, 1.0f, 1.0f, {0.0f, 0.0f},
+                {0.0f, 0.0f}, {320.0f, 180.0f});
+            ScopedGpu->EndFrame();
+            ScopedGpu->WaitIdle();
+        }
+        std::printf("static_bake_gpu: RG16 motion target=%d pass=%d\n", ScopedMotionTarget.IsValid() ? 1 : 0,
+                    ScopedMotionRendered ? 1 : 0);
+        if (ScopedMotionTarget.IsValid())
+        {
+            ScopedGpu->DestroyRenderTarget(ScopedMotionTarget);
+        }
+        return ScopedMotionRendered ? 0 : 1;
+    }
     if (!ScopedGpu->Info().upscalers.motionVectors || !ScopedGpu->Info().upscalers.fsr2 ||
         !ScopedGpu->Info().upscalers.frameGeneration)
     {
         std::fprintf(stderr, "Vulkan temporal capabilities are not reported\n");
         return 1;
+    }
+    Fby::Rhi::RHI::NativeDeviceHandles ScopedAdapterHandles;
+    if (ScopedGpu->GetNativeDeviceHandles(ScopedAdapterHandles))
+    {
+        Fby::Rhi::Fsr2Adapter ScopedFsr2;
+        const bool ScopedFsr2Ready = ScopedFsr2.Initialize(
+            ScopedAdapterHandles.Device, ScopedAdapterHandles.PhysicalDevice, ScopedAdapterHandles.DeviceProcAddr,
+            1920, 1080, 3840, 2160);
+        std::printf("static_bake_gpu: FSR2 vendor adapter=%d\n", ScopedFsr2Ready ? 1 : 0);
+        ScopedFsr2.Shutdown();
+        Fby::Rhi::Fsr3FrameGenerator ScopedFsr3;
+        const bool ScopedFsr3Ready = ScopedFsr3.Initialize(*ScopedGpu, {160, 90}, {320, 180});
+        std::printf("static_bake_gpu: FSR3 vendor frame generator=%d\n", ScopedFsr3Ready ? 1 : 0);
+        ScopedFsr3.Shutdown(*ScopedGpu);
+        Fby::Rhi::DlssAdapter ScopedDlss;
+        const bool ScopedDlssReady = ScopedDlss.Initialize(*ScopedGpu);
+        std::printf("static_bake_gpu: DLSS vendor adapter=%d fg=%d\n", ScopedDlssReady ? 1 : 0,
+                    ScopedDlss.IsFrameGenerationAvailable() ? 1 : 0);
+        ScopedDlss.Shutdown(*ScopedGpu);
     }
     std::printf("static_bake_gpu: native handles=%d\n",
                 ScopedGpu->GetNativeDeviceHandles(ScopedNative) && ScopedNative.Device != nullptr ? 1 : 0);

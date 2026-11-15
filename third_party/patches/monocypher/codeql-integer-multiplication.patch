@@ -1,0 +1,21 @@
+diff --git a/third_party/monocypher/monocypher.c b/third_party/monocypher/monocypher.c
+index 0dd85e0..0e1d966 100644
+--- a/third_party/monocypher/monocypher.c
++++ b/third_party/monocypher/monocypher.c
+@@ -336,11 +336,11 @@ static void poly_blocks(crypto_poly1305_ctx *ctx, const u8 *in,
+ 		const u32 s4 =      h4 + end;
+ 
+ 		// (h + c) * r, without carry propagation
+-		const u64 x0 = s0*r0+ s1*rr3+ s2*rr2+ s3*rr1+ (u64)s4*rr0;
+-		const u64 x1 = s0*r1+ s1*r0 + s2*rr3+ s3*rr2+ (u64)s4*rr1;
+-		const u64 x2 = s0*r2+ s1*r1 + s2*r0 + s3*rr3+ (u64)s4*rr2;
+-		const u64 x3 = s0*r3+ s1*r2 + s2*r1 + s3*r0 + (u64)s4*rr3;
+-		const u32 x4 =                                s4*rr4;
++		const u64 x0 = (u64)s0*r0+ (u64)s1*rr3+ (u64)s2*rr2+ (u64)s3*rr1+ (u64)s4*rr0;
++		const u64 x1 = (u64)s0*r1+ (u64)s1*r0 + (u64)s2*rr3+ (u64)s3*rr2+ (u64)s4*rr1;
++		const u64 x2 = (u64)s0*r2+ (u64)s1*r1 + (u64)s2*r0 + (u64)s3*rr3+ (u64)s4*rr2;
++		const u64 x3 = (u64)s0*r3+ (u64)s1*r2 + (u64)s2*r1 + (u64)s3*r0 + (u64)s4*rr3;
++		const u32 x4 = (u32)((u64)s4 * (u64)rr4);
+ 
+ 		// partial reduction modulo 2^130 - 5
+ 		const u32 u5 = (u32)(x3 >> 32) + x4; // u5 <= 7ffffff5

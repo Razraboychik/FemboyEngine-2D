@@ -1,7 +1,7 @@
 # LogicGraph values, messages and AOT
 
 LogicGraph is a visual front end for the same bytecode the text compiler emits.
-The editor runs the bytecode in the VM; a release cook transpiles it to C++26 and
+The editor runs the bytecode in the VM; a release cook transpiles it to C++23 and
 builds a native module. `FemboyScriptSystem` prefers the AOT module for a program
 hash and only falls back to the VM when the host allows it.
 
@@ -15,10 +15,42 @@ hash and only falls back to the VM when the host allows it.
   until a native explicitly converts it.
 - `LogInt` uses `LogIntFromFloat`, which reads the float register and casts only
   at logging time. There is no silent truncation on the graph path.
-- Strings are not register values. `LogMessage` stores a localization/message id
-  in `LogicNode::param`; the VM and AOT host resolve it through
-  `LocalizationTable::FindWithFallback`. This keeps the graph POD, deterministic
-  and free of owning strings.
+- Strings, arrays and maps are heap handles stored in a register payload and
+  tagged with `ValueTag`. `LogMessage` still stores a localization/message id in
+  `LogicNode::param`; the VM and AOT host resolve it through
+  `LocalizationTable::FindWithFallback`.
+
+## Collections
+
+- `ScriptHeap` is a fixed-capacity, allocation-free-after-construction store for
+  strings, arrays and maps. It is owned by `ScriptRuntime`; one heap is shared by
+  the VM and the AOT host for the lifetime of the script world.
+- The runtime exposes natives instead of new collection opcodes:
+  `array_new`, `array_push`, `array_set`, `array_get`, `array_length`,
+  `map_new`, `map_set`, `map_get`, `map_has`, `map_length`, `string_concat`,
+  `string_length` and `string_equals`.
+- `LoadString` (bytecode version 2) interns a cooked UTF-8 literal from the
+  program string table. Version 1 programs still parse with an empty table.
+- Register tags are mirrored by the generated AOT `Registers` struct; the heap
+  is reached through `HostApi` callbacks, so a native plugin never allocates and
+  the VM and released build see the same strings, arrays and maps.
+- Overflow returns a script fault (`no-heap`, `heap-full`, `bad-collection`,
+  `out-of-range`, `missing-key`) rather than growing the heap.
+- User functions are textual-only in 0.5.0: `function name(a, b) { ... }` before
+  the events. Each function owns an 8-register window at
+  `64 + index * 8`; calls are depth-limited to 16 and recursion is rejected at
+  runtime. `CallFunction` stores the result register, `Return` moves the result
+  to the function window base, and the call site copies it back.
+- The AOT backend emits one `fby_fn_<index>` per function with the same absolute
+  register window, a `ctx.callDepth` guard and prototypes for every function.
+- Forward function references are resolved by a pre-scan of the textual function
+  block. `yield;` / `yield N;` suspends the VM; the script system owns a fixed
+  slot per `(entity, program, event)` and restores registers, tags, call frames
+  and pc on the wake frame.
+- The AOT backend lowers `Yield` to a resume switch over a host-owned
+  `Aot::CoroutineState` (bounded frame stack, PC, wake frame, registers, tags).
+  Nested user-function yields resume at the saved call frame up to the VM call
+  depth; the generated function returns a suspend flag through each caller.
 
 ## Nodes added for parity
 

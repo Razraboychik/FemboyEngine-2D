@@ -426,7 +426,7 @@ ArchiveStatus FemArchiver::Build(std::span<const ArchiveInput> InEntries, std::s
             return ArchiveStatus::InvalidArgument;
         }
     }
-    // Insertion sort keeps the output deterministic without an allocation and
+    // Insertion sort keeps the output deterministic without an allocation.
     for (std::uint32_t ScopedI = 1; ScopedI < InEntries.size(); ++ScopedI)
     {
         const std::uint32_t ScopedValue = ScopedOrder[ScopedI];
@@ -820,7 +820,7 @@ ArchiveStatus ArchiveReader::Extract(std::uint32_t InIndex, std::span<std::byte>
     ArchiveStatus ScopedResult = ArchiveStatus::Ok;
     if (ScopedEntry.codec == ArchiveCodec::Store)
     {
-        // a Store codec carries the plain bytes verbatim, so the stored and
+        // A Store codec carries the plain bytes verbatim, so the stored size must match the raw size.
         if (ScopedEntry.stored.size() != ScopedEntry.rawSize)
         {
             return ArchiveStatus::Corrupt;

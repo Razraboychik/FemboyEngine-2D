@@ -103,14 +103,14 @@ struct ArchiveBuildOptions
 {
     ArchiveCodec codec = ArchiveCodec::FbyLz;
     ArchiveCipher cipher = ArchiveCipher::None;
-    // Required when cipher != None. The key is copied into the local scope and
+    // Required when cipher != None.
     const Crypto::AeadKey* key = nullptr;
     Crypto::AeadNonce nonce{};
     // 0 = fastest, 9 = best. Used by the LZMA SDK path only.
     std::uint32_t level = 5;
     // Compression scratch. FbyLz needs at least 256 KiB; the LZMA SDK path needs
     std::span<std::byte> scratch{};
-    // Optional progress sink. Build() calls it once per compressed entry, then
+    // Optional progress sink. Build() calls it once per compressed entry.
     ArchiveProgressFn progress = nullptr;
     void* progressUser = nullptr;
 };
@@ -135,12 +135,12 @@ public:
     [[nodiscard]] static std::size_t MaxArchiveBytes(std::span<const ArchiveInput> InEntries,
                                                      ArchiveCodec InCodec) noexcept;
 
-    // Builds a complete .femarc. `OutArchive` receives the header followed by
+    // Builds a complete .femarc.
     [[nodiscard]] static ArchiveStatus Build(std::span<const ArchiveInput> InEntries,
                                              std::span<std::byte> OutArchive, const ArchiveBuildOptions& InOptions,
                                              std::size_t* OutBytes) noexcept;
 
-    // Opens an archive. Encrypted archives are decrypted into `InDecryptBuffer`, which
+    // Opens an archive. Encrypted archives are decrypted into `InDecryptBuffer`.
     [[nodiscard]] static ArchiveStatus Open(std::span<const std::byte> InArchive, const Crypto::AeadKey* InKey,
                                             std::span<std::byte> InDecryptBuffer, ArchiveReader& OutReader) noexcept;
 };
@@ -195,7 +195,7 @@ private:
     ArchiveCipher MCipher = ArchiveCipher::None;
 };
 
-// In-tree fallback codec. Public so the cooker test can verify it against a
+// In-tree fallback codec. Public so the cooker test can verify it against LZMA output.
 [[nodiscard]] bool FbyLzCompress(std::span<const std::byte> InPlain, std::span<std::byte> OutCompressed,
                                  std::span<std::byte> InScratch, std::size_t* OutBytes) noexcept;
 [[nodiscard]] bool FbyLzDecompress(std::span<const std::byte> InCompressed, std::span<std::byte> OutPlain) noexcept;

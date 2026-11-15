@@ -129,7 +129,7 @@ bool RenderGraph::Compile() noexcept
         }
     }
 
-    // Kahn's algorithm with an explicit stack. Insertion order is the tie-break,
+    // Kahn's algorithm with an explicit stack. Insertion order is the tie-break.
     std::array<bool, kMaxRenderPasses> ScopedDone{};
     for (std::uint32_t ScopedStep = 0; ScopedStep < MPassCount; ++ScopedStep)
     {

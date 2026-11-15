@@ -43,7 +43,7 @@ public:
     VideoPlayer(VideoPlayer&&) = delete;
     VideoPlayer& operator=(VideoPlayer&&) = delete;
 
-    // Binds the device that streaming uploads go through. May be null for a
+    // Binds the device that streaming uploads go through.
     void SetRenderer(Rhi::RHI* InGpu) noexcept
     {
         MGpu = InGpu;
@@ -184,7 +184,7 @@ private:
 
     [[nodiscard]] bool CreateTexture(std::string* InError);
     void DestroyTexture() noexcept;
-    // Converts the YUV planes of the just-decoded frame into the pool buffer,
+    // Converts the YUV planes of the just-decoded frame into the pool buffer.
     void ConvertRgba(std::uint32_t InBufferIndex) noexcept;
     void BuildColorTables(bool InFullRange) noexcept;
     void ThreadMain(std::stop_token InStopToken);
@@ -216,7 +216,7 @@ private:
     YuvFrameView MMainView{};
     YuvFrameView MAlphaView{};
 
-    // BT.709 (limited range) lookup tables, filled in Open(). One entry per
+    // BT.709 (limited range) lookup tables, filled in Open().
     std::array<std::int32_t, 256> MLumaTerm{};
     std::array<std::int32_t, 256> MCrToR{};
     std::array<std::int32_t, 256> MCbToG{};

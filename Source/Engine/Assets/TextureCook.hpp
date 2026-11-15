@@ -60,7 +60,7 @@ struct CookedTexture
 
 // Codec building blocks (also used directly by tests)
 void EncodeBc7Mode6Block(const std::uint8_t* InRgba8Block, std::span<std::byte, 16> Out);
-// Decodes one BC7 block. Returns false when the block is not mode 6 (the
+// Decodes one BC7 block.
 [[nodiscard]] bool DecodeBc7Mode6Block(std::span<const std::byte, 16> InBlock, std::uint8_t* InRgba8Block);
 
 // Emits one ASTC LDR void-extent constant-colour block. `rgba8` holds
@@ -72,7 +72,7 @@ void EncodeAstcConstantBlock(std::span<const std::uint8_t> InRgba8, std::span<st
 [[nodiscard]] bool BuildMipChain(const std::uint8_t* InRgba8, std::uint32_t InWidth, std::uint32_t InHeight,
                                  std::uint32_t InMipLevels, bool InSrgb, std::vector<std::uint8_t>& OutRgba8);
 
-// Highest-quality ASTC encoder seam. Returns false to fall back to the
+// Highest-quality ASTC encoder seam.
 using AstcEncoder = bool (*)(const std::uint8_t* InRgba8, std::uint32_t InWidth, std::uint32_t InHeight,
                              const TextureCookOptions& InOptions, std::vector<std::byte>& OutBlocks);
 void SetAstcEncoder(AstcEncoder InEncoder) noexcept;

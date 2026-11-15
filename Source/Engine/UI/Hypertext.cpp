@@ -198,7 +198,7 @@ HypertextView HypertextPool::Resolve(const LocalizationTable& InTable,
     }
     HypertextView ScopedView{};
     ScopedView.text = ScopedLocalized;
-    // The link table is authored against the source string. A translation that
+    // The link table is authored against the source string.
     if (ScopedLocalized.size() == InComponent.PlainLength)
     {
         const HypertextView ScopedAuthored = View(InComponent);

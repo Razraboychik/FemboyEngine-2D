@@ -62,7 +62,7 @@ typedef struct FbyPlatformInitDesc
     const char* sandboxId;
     const char* deploymentId;
     const char* displayName;
-    // Optional native platform options. On EGS this is a pointer to an
+    // Optional native platform options.
     const void* providerOptions;
     uint32_t providerOptionsSize;
     // SDL_Window* on desktop; opaque to the provider
@@ -110,10 +110,10 @@ typedef struct FbyPlatformApi
 
 typedef const FbyPlatformApi*(FBY_PLATFORM_CALL* FbyPlatformGetApiFn)(uint32_t hostAbiVersion);
 
-// Every provider shared library exports this symbol. A mismatch returns null so
+// Every provider shared library exports this symbol.
 FBY_PLATFORM_EXPORT const FbyPlatformApi* FBY_PLATFORM_CALL fby_platform_get_api(uint32_t hostAbiVersion);
 
-// Provider-specific entry points. They are optional; the generic table above is
+// Provider-specific entry points. They are optional.
 FBY_PLATFORM_EXPORT FbyPlatformResult FBY_PLATFORM_CALL fby_steam_initialize(const FbyPlatformInitDesc* desc,
                                                                              const FbyPlatformCallbacks* callbacks);
 FBY_PLATFORM_EXPORT FbyPlatformResult FBY_PLATFORM_CALL fby_egs_initialize(const FbyPlatformInitDesc* desc,

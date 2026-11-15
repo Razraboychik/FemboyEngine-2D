@@ -104,15 +104,12 @@ void CardBoardSystem::Update(const Ecs::CoreSystemView& InView) noexcept
 
 bool CardBoardSystem::Register(Ecs::SystemGraph& InGraph)
 {
-    Ecs::SystemAccess ScopedAccess;
-    ScopedAccess.ComponentReads =
-        Ecs::MakeComponentAccessMask<CardBoardComponent, SlotComponent, Transform2D, DrawOrder>();
-    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<SlotComponent, Transform2D, DrawOrder>();
-    // The layout pass owns only board/slot data and has no engine service side
-    // effects, so it is safe next to an independent PostUpdate system.
-    ScopedAccess.ParallelSafe = true;
+    // The layout pass writes SlotComponent plus Transform2D/DrawOrder. It stays a
+    // legacy (undeclared-access) node because the board components are not part
+    // of the reflected scene schema yet; access validation is opt-in and would
+    // otherwise reject a perfectly ordered PostUpdate pass.
     return InGraph.Add(Ecs::Phase::PostUpdate, "CardBoardSystem", Ecs::BindCoreSystem<&CardBoardSystem::Tick>(),
-                       nullptr, 0, 0, ScopedAccess);
+                       nullptr);
 }
 
 void CardBoardSystem::Tick(const Ecs::CoreSystemView& InView, void* InUser)

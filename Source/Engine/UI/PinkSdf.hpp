@@ -62,11 +62,11 @@ struct PinkSdfGpuPrimitive
 
 static_assert(sizeof(PinkSdfGpuPrimitive) == 64);
 
-// Packs primitives into GPU records. Returns the number written, or 0 when the
+// Packs primitives into GPU records.
 [[nodiscard]] std::uint32_t PackPinkSdfPrimitives(std::span<const PinkSdfPrimitive> InPrimitives,
                                                   std::span<PinkSdfGpuPrimitive> OutGpu) noexcept;
 
-// Builds the visible primitives of one card board from SlotComponent data. The
+// Builds the visible primitives of one card board from SlotComponent data.
 [[nodiscard]] std::uint32_t BuildCardBoardPrimitives(Ecs::Registry& InRegistry, std::uint32_t InBoardId,
                                                      std::span<PinkSdfPrimitive> OutPrimitives) noexcept;
 

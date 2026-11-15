@@ -17,6 +17,7 @@ void FemboyAotScriptSystem(Ecs::SystemContext& InContext, const Script::AotHost&
     ScopedContext.decimals = &InHost.Decimals();
     ScopedContext.dt = InContext.dt;
     ScopedContext.frameIndex = InContext.frameIndex;
+    InHost.PruneCoroutines(InContext.registry);
 
     auto ScopedView = InContext.registry.view<ScriptComponent>();
     for (const Entity ScopedEntity : ScopedView)
@@ -39,19 +40,45 @@ void FemboyAotScriptSystem(Ecs::SystemContext& InContext, const Script::AotHost&
             continue;
         }
         InHost.ResetTransientNumbers();
-        std::string ScopedError;
+        const auto ScopedRunEvent = [&](Script::ScriptEvent InEvent, bool& OutSuspended)
+        {
+            OutSuspended = false;
+            Script::Aot::CoroutineState* ScopedState =
+                InHost.CoroutineFor(ScopedEntity, ScopedComponent.Program, InEvent);
+            if (ScopedState != nullptr && ScopedState->Active != 0 &&
+                ScopedState->WakeFrame > ScopedContext.frameIndex)
+            {
+                OutSuspended = true;
+                return;
+            }
+            std::string ScopedError;
+            ScopedContext.aotCoroutine = ScopedState;
+            const bool ScopedOk = InHost.Run(ScopedHash, InEvent, ScopedEntity, ScopedContext, &ScopedError);
+            ScopedContext.aotCoroutine = nullptr;
+            OutSuspended = ScopedState != nullptr && ScopedState->Active != 0;
+            if (!ScopedOk)
+            {
+                LogWarn("script", "AOT {} failed for {:016x}: {}", InEvent == Script::ScriptEvent::Start ? "start" : "update",
+                        ScopedHash, ScopedError);
+            }
+            if (ScopedState != nullptr && !OutSuspended)
+            {
+                InHost.ReleaseCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+            }
+        };
+
         if ((ScopedComponent.Flags & kScriptFlagStarted) == 0)
         {
-            if (!InHost.Run(ScopedHash, Script::ScriptEvent::Start, ScopedEntity, ScopedContext, &ScopedError))
+            bool ScopedStartSuspended = false;
+            ScopedRunEvent(Script::ScriptEvent::Start, ScopedStartSuspended);
+            if (!ScopedStartSuspended)
             {
-                LogWarn("script", "AOT start failed for {:016x}: {}", ScopedHash, ScopedError);
+                ScopedComponent.Flags |= kScriptFlagStarted;
             }
-            ScopedComponent.Flags |= kScriptFlagStarted;
         }
-        if (!InHost.Run(ScopedHash, Script::ScriptEvent::Update, ScopedEntity, ScopedContext, &ScopedError))
-        {
-            LogWarn("script", "AOT update failed for {:016x}: {}", ScopedHash, ScopedError);
-        }
+        bool ScopedUpdateSuspended = false;
+        ScopedRunEvent(Script::ScriptEvent::Update, ScopedUpdateSuspended);
+        (void)ScopedUpdateSuspended;
     }
 }
 }

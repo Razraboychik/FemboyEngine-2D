@@ -1,7 +1,15 @@
 // FemboyEngine2D - per-instance prefab overrides.
 #include "Engine/Core/FrameArena.hpp"
+#include "Engine/Assets/AssetDatabase.hpp"
+#include "Engine/Assets/VFS.hpp"
 #include "Engine/ECS/CommandBuffer.hpp"
+#include "Engine/ECS/ComponentRegistry.hpp"
+#include "Engine/ECS/PrefabInstance.hpp"
 #include "Engine/ECS/PrefabSystem.hpp"
+#include "Engine/ECS/Scene.hpp"
+
+#include <filesystem>
+#include <fstream>
 
 #include <array>
 #include <cstdio>
@@ -78,6 +86,111 @@ int main()
     ScopedCommands.Play(ScopedRegistry);
     const Transform2D& ScopedPlain = ScopedRegistry.get<Transform2D>(ScopedPlainSpawned[0]);
     Check(ScopedPlain.Position.X == 10.0f && ScopedPlain.Position.Y == 20.0f, "the plain spawn keeps prefab values");
+
+    // Persistent instance: proxy + transient children, scene captures only the proxy.
+    Ecs::Registry ScopedInstanceRegistry;
+    std::vector<std::byte> ScopedInstanceStorage(1u << 20);
+    FrameArena ScopedInstanceArena;
+    ScopedInstanceArena.Initialize(ScopedInstanceStorage);
+    Ecs::CommandBuffer ScopedInstanceCommands;
+    ScopedInstanceCommands.Initialize(&ScopedInstanceArena);
+    const Entity ScopedInstance = ScopedInstanceRegistry.create();
+    PrefabInstanceComponent ScopedLink;
+    ScopedLink.Origin = Vector2D{5.0f, 5.0f};
+    ScopedInstanceRegistry.emplace<PrefabInstanceComponent>(ScopedInstance, ScopedLink);
+    PrefabEntityOverride ScopedInstanceOverride;
+    ScopedInstanceOverride.entityIndex = 0;
+    ScopedInstanceOverride.overridePosition = true;
+    ScopedInstanceOverride.position = Vector2D{50.0f, 60.0f};
+    ScopedInstanceOverride.overrideScale = true;
+    ScopedInstanceOverride.scale = Vector2D{2.0f, 2.0f};
+    ScopedInstanceOverride.overrideRotation = true;
+    ScopedInstanceOverride.rotation = 0.25f;
+    Check(PrefabInstance::SetOverride(ScopedInstanceRegistry, ScopedInstance, ScopedInstanceOverride),
+          "the persistent instance stores overrides");
+    std::array<Entity, 4> ScopedInstanceChildren{};
+    Check(PrefabInstance::Expand(ScopedInstanceRegistry, ScopedInstanceCommands, ScopedInstance, ScopedAsset,
+                                 ScopedInstanceChildren),
+          "the prefab instance expands");
+    ScopedInstanceCommands.Play(ScopedInstanceRegistry);
+    Check(ScopedInstanceRegistry.get<PrefabInstanceMemberComponent>(ScopedInstanceChildren[0]).Instance ==
+                  ScopedInstance &&
+              ScopedInstanceRegistry.get<PrefabInstanceMemberComponent>(ScopedInstanceChildren[1]).PrefabIndex == 1,
+          "instance children carry the link and prefab index");
+    const Transform2D& ScopedInstanceChild = ScopedInstanceRegistry.get<Transform2D>(ScopedInstanceChildren[0]);
+    Check(ScopedInstanceChild.Position.X == 55.0f && ScopedInstanceChild.Position.Y == 65.0f,
+          "persistent position override applies relative to the origin");
+    Check(ScopedInstanceChild.Scale.X == 2.0f && ScopedInstanceChild.Rotation == 0.25f,
+          "persistent scale and rotation overrides apply");
+
+    Scene::ComponentRegistry ScopedComponents;
+    Scene::RegisterBuiltInComponents(ScopedComponents);
+    const Scene::SceneData ScopedCaptured = Scene::CaptureScene(ScopedInstanceRegistry, ScopedComponents);
+    Check(ScopedCaptured.entities.size() == 1, "scene capture skips transient prefab children");
+    PrefabInstance::ClearChildren(ScopedInstanceRegistry, ScopedInstance);
+    Check(!ScopedInstanceRegistry.valid(ScopedInstanceChildren[0]) &&
+              !ScopedInstanceRegistry.valid(ScopedInstanceChildren[1]),
+          "clearing an instance destroys its children");
+
+    // Save/load: only the proxy is serialized, children come back from the asset.
+    const std::filesystem::path ScopedRoot =
+        std::filesystem::current_path() / "fby_prefab_instance_roundtrip";
+    std::error_code ScopedFsError;
+    std::filesystem::remove_all(ScopedRoot, ScopedFsError);
+    std::filesystem::create_directories(ScopedRoot, ScopedFsError);
+    const std::filesystem::path ScopedPrefabPath = ScopedRoot / "prefab.fbpref";
+    std::vector<std::byte> ScopedPrefabBytes(PrefabSystem::BinarySize(ScopedAsset));
+    std::size_t ScopedPrefabSize = 0;
+    Check(PrefabSystem::SaveBinary(ScopedAsset, ScopedPrefabBytes, &ScopedPrefabSize),
+          "the prefab binary encodes");
+    {
+        std::ofstream ScopedOut(ScopedPrefabPath, std::ios::binary | std::ios::trunc);
+        ScopedOut.write(reinterpret_cast<const char*>(ScopedPrefabBytes.data()),
+                        static_cast<std::streamsize>(ScopedPrefabSize));
+    }
+    Assets::AssetDatabase ScopedDb;
+    const Assets::AssetHandle ScopedPrefabHandle = ScopedDb.EnsureMeta(
+        AssetId::FromPath("prefab.fbpref", AssetKind::Scene), AssetKind::Scene, "prefab.fbpref");
+    Check(ScopedPrefabHandle.IsValid(), "the prefab asset registers");
+    VirtualFileSystem ScopedVfs;
+    Check(ScopedVfs.MountDirectory(ScopedRoot.string(), 0), "the prefab directory mounts");
+    Ecs::Registry ScopedSavedRegistry;
+    const Entity ScopedSavedInstance = ScopedSavedRegistry.create();
+    PrefabInstanceComponent ScopedSavedLink;
+    ScopedSavedLink.Prefab = ScopedPrefabHandle;
+    ScopedSavedLink.Origin = Vector2D{2.0f, 3.0f};
+    ScopedSavedRegistry.emplace<PrefabInstanceComponent>(ScopedSavedInstance, ScopedSavedLink);
+    PrefabEntityOverride ScopedSavedOverride;
+    ScopedSavedOverride.entityIndex = 0;
+    ScopedSavedOverride.overridePosition = true;
+    ScopedSavedOverride.position = Vector2D{50.0f, 60.0f};
+    Check(PrefabInstance::SetOverride(ScopedSavedRegistry, ScopedSavedInstance, ScopedSavedOverride),
+          "the saved instance stores the override");
+    const std::string ScopedSceneText = Scene::SaveSceneToml(ScopedSavedRegistry, ScopedComponents);
+    Ecs::Registry ScopedLoadedRegistry;
+    Scene::SceneLoadOptions ScopedOptions;
+    ScopedOptions.assets = &ScopedVfs;
+    ScopedOptions.assetDb = &ScopedDb;
+    const Scene::SceneLoadResult ScopedLoaded =
+        Scene::LoadSceneToml(ScopedLoadedRegistry, ScopedComponents, ScopedSceneText, ScopedOptions);
+    Check(ScopedLoaded.has_value(), "the scene with a prefab instance reloads");
+    std::size_t ScopedChildCount = 0;
+    auto ScopedLoadedView = ScopedLoadedRegistry.view<PrefabInstanceMemberComponent>();
+    for (const Entity ScopedChild : ScopedLoadedView)
+    {
+        (void)ScopedChild;
+        ++ScopedChildCount;
+    }
+    Check(ScopedChildCount == 2, "scene load rebuilds the prefab children");
+    for (const Entity ScopedChild : ScopedLoadedView)
+    {
+        if (ScopedLoadedView.get<PrefabInstanceMemberComponent>(ScopedChild).PrefabIndex == 0)
+        {
+            Check(ScopedLoadedRegistry.get<Transform2D>(ScopedChild).Position.X == 52.0f,
+                  "scene load restores the persistent position override");
+        }
+    }
+    std::filesystem::remove_all(ScopedRoot, ScopedFsError);
 
     if (GFailures == 0)
     {

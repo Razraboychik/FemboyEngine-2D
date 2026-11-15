@@ -163,7 +163,7 @@ private:
     std::span<const std::byte> MPixels{};
 };
 
-// Fixed registry: one Inter and one JetBrains Mono is the normal case, and a
+// Fixed registry: one Inter and one JetBrains Mono is the normal case.
 class FontAtlasSet
 {
 public:
@@ -206,7 +206,7 @@ public:
     [[nodiscard]] std::uint32_t CatalogueGlyphs(std::uint32_t InFontId, std::span<std::uint32_t> OutGlyphs) const noexcept;
     void Clear() noexcept;
 
-    // One-call GPU mount: takes the already-mapped atlases, expands them into the
+    // One-call GPU mount: takes the already-mapped atlases, expands them.
     [[nodiscard]] bool MountToTextureArray(Rhi::RHI& InRhi);
     // Waits for the device before releasing the array: a frame in flight may
     void UnmountFromTextureArray(Rhi::RHI& InRhi);

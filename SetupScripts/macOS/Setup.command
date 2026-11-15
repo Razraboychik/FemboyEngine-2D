@@ -51,7 +51,7 @@ fi
 if [[ "${SKIP_SYSTEM:-0}" -eq 0 ]]; then
     echo "==> Homebrew packages"
     brew update
-    # Xcode provides clang++; LLVM 23.1.4+ and GCC 16.2+ are installed as the pinned
+    # Xcode provides clang++; LLVM 19.1+ and GCC 14.1+ are installed as the pinned
     # second-opinion toolchains.
     brew install cmake ninja git p7zip glslang vulkan-headers vulkan-loader molten-vk llvm gcc
 fi
@@ -99,6 +99,10 @@ echo "==> glslang 15.3.0"
 extract "$(download "https://github.com/KhronosGroup/glslang/archive/refs/tags/15.3.0.tar.gz" glslang.tar.gz)" \
     "${THIRD}/glslang-src"
 echo "glslang = 15.3.0" >> "${THIRD}/dependencies.lock"
+
+echo "==> SPIRV-Cross vulkan-sdk-1.4.363.0"
+extract "$(download "https://github.com/KhronosGroup/SPIRV-Cross/archive/refs/tags/vulkan-sdk-1.4.363.0.tar.gz" SPIRV-Cross.tar.gz)"     "${THIRD}/spirv-cross"
+echo "spirv_cross = vulkan-sdk-1.4.363.0" >> "${THIRD}/dependencies.lock"
 
 echo "==> miniaudio 0.11.23"
 extract "$(download "https://github.com/mackron/miniaudio/archive/refs/tags/0.11.23.tar.gz" miniaudio.tar.gz)" \

@@ -118,7 +118,7 @@ namespace
         return -1;
     }
 
-    // A process started from a POSIX shell on Windows can inherit TMP=/tmp,
+    // A process started from a POSIX shell on Windows can inherit TMP=/tmp.
     static std::mutex ScopedEnvironmentMutex;
     const std::filesystem::path ScopedTempDirectory = InLogPath.parent_path() / ".tmp";
     std::error_code ScopedDirectoryError;

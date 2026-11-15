@@ -54,7 +54,7 @@ struct AssetId
     }
     [[nodiscard]] friend constexpr bool operator==(AssetId, AssetId) = default;
 
-    // Deterministic: kind is mixed as a 16-bit prefix, the path is normalized to
+    // Deterministic: kind is mixed as a 16-bit prefix, the path is normalized.
     [[nodiscard]] static AssetId FromPath(std::string_view InPath, AssetKind InKind)
     {
         std::uint64_t ScopedHash = 1469598103934665603ull;
@@ -66,7 +66,7 @@ struct AssetId
         ScopedMix(static_cast<std::uint8_t>(static_cast<std::uint16_t>(InKind) & 0xFFu));
         ScopedMix(static_cast<std::uint8_t>((static_cast<std::uint16_t>(InKind) >> 8) & 0xFFu));
         ScopedMix(static_cast<std::uint8_t>(':'));
-        // NormalizePakPath allocates, but this runs at import/registration,
+        // NormalizePakPath allocates, but this runs at import/registration.
         const std::string ScopedNormalized = Assets::NormalizePakPath(InPath);
         for (const char ScopedCharacter : ScopedNormalized)
         {

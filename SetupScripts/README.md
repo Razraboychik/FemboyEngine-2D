@@ -9,6 +9,14 @@ will build the engine; there is no cross-OS launcher.
 | Linux | `Linux/` | `Linux/Setup.sh` |
 | macOS | `macOS/` | `macOS/Setup.command` |
 
+## Toolchain and SDK policy
+
+Compilers, the Vulkan SDK and the archiver are installed from their latest
+stable channel when missing (LLVM's latest GitHub release, the distro/Homebrew
+package, winget). The third-party **source** archives stay pinned in
+`dependencies.lock`; bumping SDL/Vulkan-Headers/glslang is a lock update, not a
+setup side effect.
+
 ## Compilers installed or checked
 
 | Host | Supported frontends |
@@ -17,9 +25,10 @@ will build the engine; there is no cross-OS launcher.
 | Linux | clang++ and GCC `g++` |
 | macOS | AppleClang `clang++`, Homebrew LLVM `clang++`, GCC `g++` |
 
-Windows deliberately installs both compiler families because clang-cl is the
-primary gate and MSVC/GCC are the portability gates. Linux and macOS do not
-reference MSVC, clang-cl or any Windows-only toolchain.
+Windows installs Clang and MinGW GCC. MSVC is detected when Visual Studio
+Build Tools are already present but setup never downloads a Microsoft
+toolchain; Clang and GCC have priority. Linux and macOS do not reference MSVC,
+clang-cl or any Windows-only toolchain.
 
 ## Component entry points
 
@@ -39,9 +48,10 @@ all-in-one macOS setup. Vendor SDK download is no longer a separate script: use
 
 - C++ setup installs the pinned toolchain (or checks it), downloads the pinned
   third-party sources into `third_party/`, and writes
-  `third_party/dependencies.lock`. On Windows it installs/checks clang-cl,
-  clang++, MSVC Build Tools and MinGW-w64 GCC; on Linux it installs/checks
-  clang++ and GCC; on macOS it installs/checks AppleClang, Homebrew LLVM and GCC.
+  `third_party/dependencies.lock`. On Windows it installs LLVM (clang-cl and
+  clang++, reference pin 23.1.4) and MinGW-w64 GCC, and checks an existing MSVC
+  without downloading it; on Linux it installs/checks clang++ and GCC; on macOS
+  it installs/checks AppleClang, Homebrew LLVM and GCC.
 - The archiver setup installs 7-Zip/p7zip for `.fempak` compression.
 - Vendor SDK setup is part of the all-in-one Setup: it verifies local DLSS,
   FidelityFX and XeSS SDKs and can download them from GitHub only with an
@@ -77,3 +87,45 @@ SetupScripts\Windows\Package.ps1
 ```
 
 Pass `--skip-build` to package the existing `build-<platform>-release` tree.
+Pass `--max-size-mb <size>` to fail the package when the unpacked bundle exceeds
+the cap; the script prints the bundle total and its five largest files.
+`PackageDesktop.py --game` builds a runtime-only bundle (sandbox, server and
+runtime DLLs, no editor or tools); `--features none|fsr|dlss|xess|all` chooses
+which vendor runtimes ship, and `--assets <dir>` cooks a `game/assets.fempak`
+with `fby_fempak` into the same bundle.
+
+Shipped game paks are filtered with `fby_fempak cook --exclude <substring>` (one
+flag per pattern). The match is against both the pak path and the source path,
+which keeps editor-only samples, source art and test fixtures out of release
+archives without changing the project manifest.
+
+## Vendor release
+
+Vendor SDKs remain optional and are never committed or redistributed by the
+setup scripts. After accepting the licences:
+
+```text
+Windows: SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
+Linux:   SetupScripts/Linux/Setup.sh --with-vendor-sdks --accept-vendor-licenses
+macOS:   SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
+```
+
+Then configure the separate vendor preset (not the normal release preset):
+
+```text
+cmake --preset release-vendor-clang
+cmake --build --preset release-vendor-clang
+ctest --preset release-vendor-clang
+```
+
+CMake copies the signed FidelityFX runtime DLLs into `bin/` and `bin/tests/`.
+`PackageDesktop.py` automatically adds any `amd_fidelityfx_*`, `nvngx_dlss*`
+and `libxess*` runtime found in the build `bin/` to the desktop bundle.
+
+The D3D12 validation layer is an optional Windows "Graphics Tools" feature and
+is not required by the normal build or by the vendor preset.
+
+SPIRV-Cross is downloaded as an **offline material-cook dependency** only. It is
+linked into `fby_matc` (`--dx12` writes HLSL), never into the engine or a game
+runtime. If the checkout is absent, `fby_matc` still builds the Vulkan path and
+reports that DX HLSL cooking is disabled.

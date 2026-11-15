@@ -68,6 +68,6 @@ struct UiThemeAsset
 static_assert(std::is_trivially_copyable_v<UiThemeAsset>);
 
 [[nodiscard]] UiThemeAsset DefaultUiTheme() noexcept;
-// Load-time import for tools. The shipping runtime copies a UiThemeAsset from a
+// Load-time import for tools.
 [[nodiscard]] bool LoadUiThemeToml(std::string_view InText, UiThemeAsset& OutTheme, std::string* OutError = nullptr);
 }

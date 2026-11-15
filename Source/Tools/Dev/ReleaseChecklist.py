@@ -8,7 +8,7 @@ or partial build.
 
     python Source/Tools/Dev/ReleaseChecklist.py \
         --artifacts build/bin --require fby_editor.exe --require tools/fby_fempak.exe \
-        --forbid Documentation/FEATURE_NOTES.md --version 0.4.0-alpha.1 \
+        --forbid Documentation/FEATURE_NOTES.md \
         --out build/release-manifest.json
 """
 
@@ -23,6 +23,7 @@ import sys
 sys.dont_write_bytecode = True
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+VERSION = (ROOT / "Version.txt").read_text(encoding="utf-8").strip()
 
 
 def digest(path: pathlib.Path) -> str:
@@ -38,7 +39,7 @@ def main() -> int:
     parser.add_argument("--artifacts", action="append", default=[], help="directory containing build outputs")
     parser.add_argument("--require", action="append", default=[], help="artifact path relative to a root")
     parser.add_argument("--forbid", action="append", default=[], help="path that must not exist")
-    parser.add_argument("--version", default="0.4.0-alpha.1")
+    parser.add_argument("--version", default=VERSION)
     parser.add_argument("--out", default="release-manifest.json")
     args = parser.parse_args()
 

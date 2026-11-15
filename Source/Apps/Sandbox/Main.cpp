@@ -12,17 +12,28 @@
 #include "Engine/Core/Splash.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/Components.hpp"
+#include "Engine/ECS/ChangeMask.hpp"
+#include "Engine/RHI/ChangeMaskExtract.hpp"
+#include "Engine/Navigation/CrowdPool.hpp"
+#include "Engine/Navigation/CrowdRender.hpp"
+#include "Engine/Navigation/PagedNavGrid.hpp"
+#include "Engine/Effects/ParticleScene.hpp"
 #include "Engine/ECS/ParallelForEach.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
+#include "Engine/ECS/Hierarchy.hpp"
+#include "Engine/Animation/Tween.hpp"
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/WindowManager.hpp"
+#include "Engine/Input/InputSystem.hpp"
 #include "Engine/RHI/RHI.hpp"
 #include "Engine/RHI/RenderItem.hpp"
 #include "Engine/RHI/Sort.hpp"
 #include "Engine/Text/TextFontStack.hpp"
 #include "Engine/Text/TextRender.hpp"
+#include "Engine/Text/TextRenderSystem.hpp"
 #include "Engine/Text/TextRuntime.hpp"
 #include "Engine/Text/TextShapedLayout.hpp"
+#include "Engine/Text/TextShapeSystem.hpp"
 #include "Engine/UI/Accessibility.hpp"
 #include "Engine/UI/AccessibilityOverlay.hpp"
 #include "Engine/UI/PinkUI.hpp"
@@ -52,7 +63,6 @@ constexpr int kMaxFixedStepsPerFrame = 8;
 constexpr float kMaxFrameTime = 0.25f;
 constexpr std::uint32_t kChunkSize = 4096;
 
-// Render extract
 class RenderExtract
 {
 public:
@@ -186,6 +196,8 @@ struct World
     Fby::Ecs::Registry registry;
     // Stable while no entity is destroyed
     std::vector<Fby::Entity> sprites;
+    // The player sprite is the first entity bound to InputSystem user 0.
+    Fby::Entity player = Fby::kNullEntity;
     Fby::Vector2D bounds{4000.0f, 2400.0f};
     Fby::Vector2D cameraCenter{2000.0f, 1200.0f};
     float zoom = 0.42f;
@@ -229,10 +241,42 @@ void SpawnSprites(World& InWorld, std::uint32_t InCount, std::uint32_t InSeed)
     }
 }
 
+void SpawnParticleEffect(Fby::Fcs::Registry& InRegistry, const char* InPreset, Fby::Vector2D InPosition)
+{
+    const Fby::Entity ScopedEntity = InRegistry.create();
+    InRegistry.emplace<Fby::Transform2D>(ScopedEntity, Fby::Transform2D{InPosition, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+    Fby::ParticleEffectComponent ScopedComponent{};
+    if (FillParticleEffectComponent(ScopedComponent, InPreset))
+    {
+        InRegistry.emplace<Fby::ParticleEffectComponent>(ScopedEntity, ScopedComponent);
+    }
+}
+
+void SpawnPlayer(World& InWorld, Fby::Vector2D InPosition)
+{
+    const Fby::Entity ScopedEntity = InWorld.registry.create();
+    InWorld.registry.emplace<Fby::Transform2D>(
+        ScopedEntity, Fby::Transform2D{InPosition, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+    InWorld.registry.emplace<Fby::Velocity>(ScopedEntity, Fby::Velocity{Fby::Vector2D{0.0f, 0.0f}});
+    InWorld.registry.emplace<Fby::Sprite2D>(
+        ScopedEntity, Fby::Sprite2D{Fby::Vector2D{44.0f, 44.0f}, Fby::Vector2D{0.0f, 0.0f},
+                                    Fby::Vector2D{1.0f, 1.0f}, 0u, Fby::Color32::FromBytes(255, 210, 120)});
+    InWorld.registry.emplace<Fby::DrawOrder>(ScopedEntity, Fby::DrawOrder{3u, 0.0f});
+    InWorld.registry.emplace<Fby::InputUserComponent>(ScopedEntity, Fby::InputUserComponent{0u, 0u, 0u});
+    InWorld.player = ScopedEntity;
+    InWorld.sprites.push_back(ScopedEntity);
+}
+
 struct SandboxSystems
 {
     World* world = nullptr;
     RenderExtract* extract = nullptr;
+    Fby::ParticleSceneSystem* particles = nullptr;
+    Fby::InputSystem* input = nullptr;
+    std::uint16_t moveAction = Fby::kInvalidInputId;
+    Fby::Rhi::ChangeMaskRenderExtract<64>* maskExtract = nullptr;
+    Fby::Ecs::Registry* maskWorld = nullptr;
+    Fby::Navigation::CrowdPool* crowd = nullptr;
 };
 
 void MovementSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
@@ -270,6 +314,27 @@ void MovementSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
                                });
 }
 
+void PlayerControlSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
+{
+    SandboxSystems& ScopedSystems = *static_cast<SandboxSystems*>(InUser);
+    if (ScopedSystems.input == nullptr || ScopedSystems.world->player == Fby::kNullEntity)
+    {
+        return;
+    }
+    const Fby::InputActionState* ScopedAction = ScopedSystems.input->Action(0u, ScopedSystems.moveAction);
+    Fby::Velocity* ScopedVelocity = InContext.registry.try_get<Fby::Velocity>(ScopedSystems.world->player);
+    if (ScopedAction == nullptr || ScopedVelocity == nullptr)
+    {
+        return;
+    }
+    // The action is the sum of the keyboard and gamepad mappings; clamp so a
+    // diagonal keyboard chord cannot exceed the authored speed.
+    const float ScopedX = std::clamp(ScopedAction->X, -1.0f, 1.0f);
+    const float ScopedY = std::clamp(ScopedAction->Y, -1.0f, 1.0f);
+    constexpr float kPlayerSpeed = 420.0f;
+    ScopedVelocity->Value = Fby::Vector2D{ScopedX * kPlayerSpeed, ScopedY * kPlayerSpeed};
+}
+
 void RenderExtractSystem(const Fby::Ecs::ConstRenderSystemView& InView, void* InUser)
 {
     SandboxSystems& ScopedSystems = *static_cast<SandboxSystems*>(InUser);
@@ -296,6 +361,67 @@ void RenderExtractSystem(const Fby::Ecs::ConstRenderSystemView& InView, void* In
                                     ScopedKeys[ScopedI] = Fby::Rhi::MakeRenderKey(ScopedOrder.Layer, ScopedOrder.Depth);
                                 }
                             });
+
+    std::uint32_t ScopedParticleCount = 0;
+    if (ScopedSystems.particles != nullptr)
+    {
+        static const Fby::ParticleShapeAtlas ScopedParticleAtlas = []
+        {
+            Fby::ParticleShapeAtlas ScopedAtlas = Fby::ParticleShapeAtlas::Defaults();
+            for (Fby::ParticleShapeFrame& ScopedFrame : ScopedAtlas.Frames)
+            {
+                ScopedFrame.Layer = 0;
+            }
+            return ScopedAtlas;
+        }();
+        const std::uint32_t ScopedTail =
+            static_cast<std::uint32_t>(ScopedSystems.extract->Capacity() - static_cast<std::size_t>(ScopedCount));
+        ScopedParticleCount = ScopedSystems.particles->BuildRenderItems(
+            std::span<Fby::Rhi::RenderItem>(ScopedItems + ScopedCount, ScopedTail), ScopedParticleAtlas);
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedParticleCount; ++ScopedI)
+        {
+            ScopedKeys[ScopedCount + ScopedI] = Fby::Rhi::MakeRenderKey(8, 0);
+        }
+        ScopedSystems.extract->Begin(ScopedCount + ScopedParticleCount);
+    }
+    if (ScopedSystems.maskExtract != nullptr && ScopedSystems.maskWorld != nullptr &&
+        ScopedSystems.maskExtract->Extract(*ScopedSystems.maskWorld))
+    {
+        const std::span<const Fby::Rhi::RenderItem> ScopedMaskItems = ScopedSystems.maskExtract->Items();
+        const std::span<const Fby::Rhi::RenderKey> ScopedMaskKeys = ScopedSystems.maskExtract->Keys();
+        const std::uint32_t ScopedBase = static_cast<std::uint32_t>(ScopedSystems.extract->Count());
+        if (ScopedBase + ScopedMaskItems.size() <= ScopedSystems.extract->Capacity())
+        {
+            Fby::Rhi::RenderItem* ScopedOutputItems = ScopedSystems.extract->Items();
+            Fby::Rhi::RenderKey* ScopedOutputKeys = ScopedSystems.extract->Keys();
+            for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedMaskItems.size(); ++ScopedIndex)
+            {
+                ScopedOutputItems[ScopedBase + ScopedIndex] = ScopedMaskItems[ScopedIndex];
+                ScopedOutputKeys[ScopedBase + ScopedIndex] = ScopedMaskKeys[ScopedIndex];
+            }
+            ScopedSystems.extract->Begin(ScopedBase + ScopedMaskItems.size());
+        }
+    }
+    if (ScopedSystems.crowd != nullptr)
+    {
+        const std::uint32_t ScopedBase = static_cast<std::uint32_t>(ScopedSystems.extract->Count());
+        const std::size_t ScopedTail = ScopedSystems.extract->Capacity() - ScopedBase;
+        if (ScopedTail > 0)
+        {
+            Fby::Navigation::CrowdRenderSettings ScopedCrowdRender;
+            ScopedCrowdRender.Size = Fby::Vector2D{10.0f, 10.0f};
+            ScopedCrowdRender.Layer = 6;
+            const std::uint32_t ScopedCrowdCount = Fby::Navigation::BuildCrowdRenderItems(
+                *ScopedSystems.crowd, ScopedCrowdRender,
+                std::span<Fby::Rhi::RenderItem>(ScopedSystems.extract->Items() + ScopedBase, ScopedTail));
+            Fby::Rhi::RenderKey* ScopedCrowdKeys = ScopedSystems.extract->Keys();
+            for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCrowdCount; ++ScopedIndex)
+            {
+                ScopedCrowdKeys[ScopedBase + ScopedIndex] = Fby::Rhi::MakeRenderKey(6, 0.0f);
+            }
+            ScopedSystems.extract->Begin(ScopedBase + ScopedCrowdCount);
+        }
+    }
 }
 
 void ExtractRegistry(const Fby::Ecs::Registry& InRegistry, RenderExtract& InExtract)
@@ -584,16 +710,70 @@ int main(int argc, char** argv)
     }
 
     World ScopedWorld;
+    Fby::Animation::Tween ScopedZoomTween;
+    // A separate registry drives the change-mask extractor; its output is
+    // appended to the main extract, so the demo does not duplicate entities.
+    Fby::Ecs::Registry ScopedMaskWorld;
+    Fby::Rhi::ChangeMaskRenderExtract<64> ScopedMaskExtract;
+    std::array<Fby::Entity, 3> ScopedMaskEntities{};
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 3; ++ScopedIndex)
+    {
+        const Fby::Entity ScopedEntity = ScopedMaskWorld.create();
+        Fby::Transform2D ScopedTransform;
+        ScopedTransform.Position = Fby::Vector2D{2000.0f + static_cast<float>(ScopedIndex) * 90.0f, 1200.0f};
+        ScopedMaskWorld.emplace<Fby::Transform2D>(ScopedEntity, ScopedTransform);
+        Fby::Sprite2D ScopedSprite;
+        ScopedSprite.Size = Fby::Vector2D{42.0f, 42.0f};
+        ScopedSprite.Color = Fby::Color32::FromBytes(120, 210, 255);
+        ScopedMaskWorld.emplace<Fby::Sprite2D>(ScopedEntity, ScopedSprite);
+        ScopedMaskWorld.emplace<Fby::DrawOrder>(ScopedEntity, Fby::DrawOrder{5u, 0.0f});
+        ScopedMaskWorld.emplace<Fby::ComponentChangeMask>(ScopedEntity, Fby::ComponentChangeMask{});
+        ScopedMaskEntities[ScopedIndex] = ScopedEntity;
+    }
+    Fby::Navigation::CrowdPool ScopedCrowd;
+    Fby::Navigation::PagedNavGrid ScopedNav;
+    Fby::Navigation::CrowdSettings ScopedCrowdSettings;
+    (void)ScopedCrowd.Configure(48, 24.0f);
+    Fby::Navigation::PagedNavGridDesc ScopedNavDesc;
+    ScopedNavDesc.Origin = Fby::Vector2D{1500.0f, 800.0f};
+    ScopedNavDesc.CellSize = Fby::Vector2D{8.0f, 8.0f};
+    ScopedNavDesc.PagesX = 2;
+    ScopedNavDesc.PagesY = 2;
+    (void)ScopedNav.Configure(ScopedNavDesc);
+    (void)ScopedNav.BuildFlow(80, 60);
+    ScopedCrowdSettings.Field = &ScopedNav.Field();
+    ScopedCrowdSettings.FieldOrigin = Fby::Vector2D{
+        ScopedNavDesc.Origin.X + static_cast<float>(ScopedNav.WindowOriginX()) * ScopedNavDesc.CellSize.X,
+        ScopedNavDesc.Origin.Y + static_cast<float>(ScopedNav.WindowOriginY()) * ScopedNavDesc.CellSize.Y};
+    ScopedCrowdSettings.FieldCellSize = ScopedNavDesc.CellSize.X;
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < 48; ++ScopedIndex)
+    {
+        const float ScopedAngle = static_cast<float>(ScopedIndex) * 0.261799f;
+        const Fby::Vector2D ScopedStart{2000.0f + std::cos(ScopedAngle) * 240.0f,
+                                        1200.0f + std::sin(ScopedAngle) * 180.0f};
+        (void)ScopedCrowd.Add(ScopedStart, ScopedIndex % 4u, Fby::Vector2D{2000.0f, 1200.0f}, 70.0f);
+    }
     SpawnSprites(ScopedWorld, ScopedOptions.SpriteCount, 0xC0FFEEu);
+    SpawnPlayer(ScopedWorld, ScopedWorld.cameraCenter);
+
+    std::unique_ptr<Fby::ParticleSceneSystem> ScopedParticles = std::make_unique<Fby::ParticleSceneSystem>();
+    SpawnParticleEffect(ScopedWorld.registry, "Particle.Fire", Fby::Vector2D{2000.0f, 1200.0f});
+    SpawnParticleEffect(ScopedWorld.registry, "Particle.Snow", Fby::Vector2D{1800.0f, 900.0f});
+    SpawnParticleEffect(ScopedWorld.registry, "Particle.Bubbles", Fby::Vector2D{2200.0f, 1400.0f});
 
     RenderExtract ScopedExtract;
-    ScopedExtract.Resize(ScopedWorld.sprites.size());
+    ScopedExtract.Resize(ScopedWorld.sprites.size() + Fby::kParticleEffectMaxParticles + ScopedMaskEntities.size() +
+                         ScopedCrowd.Capacity());
 
     // Accessibility is a frame policy, not a postscript: the profile is applied
     // once and every frame receives the flags the RHI already understands.
     Fby::AccessibilityKernel ScopedAccessibility;
     Fby::AccessibilityProfile ScopedProfile = Fby::DefaultAccessibilityProfile();
     ScopedAccessibility.ApplyProfile(ScopedProfile);
+    // A standalone game owns the voice and publishes its semantic tree to the
+    // operating system. Both are project policy and can be switched off.
+    ScopedAccessibility.SetSpeechOwner(Fby::NarratorOwner::Game);
+    (void)ScopedAccessibility.StartBridge(ScopedWindow.NativeWindow());
 
     // Caption overlay: the class owns the canvas and the storage, the vectors are
     // reserved once so the frame path never reallocates.
@@ -625,6 +805,19 @@ int main(int argc, char** argv)
         Fby::LogWarn("sandbox", "UI text font stack unavailable ({}); using the codepoint shaper", ScopedUiFontError);
         ScopedTextRuntime.SetShaper(&ScopedUiFallbackShaper);
     }
+    // ECS text demo: the world-space label goes through TextShapeSystem and
+    // TextRenderSystem exactly like a game label would.
+    const Fby::AssetId ScopedTextAsset{0x4659425954455854ull};
+    if (!ScopedTextRuntime.Service().AddMarkupAsset(ScopedTextAsset, "[b]FemboyEngine2D[/b]\nECS text pipeline"))
+    {
+        Fby::LogWarn("sandbox", "text asset could not be compiled");
+    }
+    const Fby::Entity ScopedWorldTextEntity = ScopedWorld.registry.create();
+    ScopedWorld.registry.emplace<Fby::Transform2D>(
+        ScopedWorldTextEntity, Fby::Transform2D{Fby::Vector2D{2000.0f, 1350.0f}, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+    Fby::TextComponent ScopedWorldTextComponent;
+    ScopedWorldTextComponent.SetRef(ScopedTextRuntime.Service().MakeRef(ScopedTextAsset));
+    ScopedWorld.registry.emplace<Fby::TextComponent>(ScopedWorldTextEntity, ScopedWorldTextComponent);
     Fby::Assets::TextureArrayAsset ScopedSplashAtlas;
     {
         const std::string ScopedManifest = "name = \"splash\"\nwidth = 1024\nheight = 1024\nsrgb = false\n"
@@ -669,12 +862,69 @@ int main(int argc, char** argv)
     {
         ScopedContext.fonts = &ScopedUiFontStack.Fonts();
     }
-    SandboxSystems ScopedSystems{&ScopedWorld, &ScopedExtract};
+    Fby::InputSystem ScopedInputMapper;
+    const std::uint16_t ScopedMoveAction =
+        ScopedInputMapper.RegisterAction("Move", Fby::InputActionType::Axis2D);
+    const std::uint16_t ScopedGameplayContext = ScopedInputMapper.RegisterContext("Gameplay", 0, false);
+    (void)ScopedInputMapper.BindUser(ScopedWorld.player, 0u, 0u);
+    (void)ScopedInputMapper.PushContext(0u, ScopedGameplayContext);
+    const auto ScopedAddKey = [&](Fby::Key InKey, bool InVertical, float InSign)
+    {
+        Fby::InputMappingDesc ScopedMapping;
+        ScopedMapping.Action = ScopedMoveAction;
+        ScopedMapping.Context = ScopedGameplayContext;
+        ScopedMapping.Source.Kind = Fby::InputSourceKind::Key;
+        ScopedMapping.Source.Code = static_cast<std::uint16_t>(InKey);
+        if (InSign < 0.0f)
+        {
+            ScopedMapping.Modifiers[ScopedMapping.ModifierCount++] =
+                Fby::InputModifier{Fby::InputModifierKind::Scale, -1.0f, 0.0f};
+        }
+        if (InVertical)
+        {
+            ScopedMapping.Modifiers[ScopedMapping.ModifierCount++] =
+                Fby::InputModifier{Fby::InputModifierKind::Swizzle, 0.0f, 0.0f};
+        }
+        (void)ScopedInputMapper.AddMapping(ScopedMapping);
+    };
+    ScopedAddKey(Fby::Key::A, false, -1.0f);
+    ScopedAddKey(Fby::Key::D, false, 1.0f);
+    ScopedAddKey(Fby::Key::S, true, -1.0f);
+    ScopedAddKey(Fby::Key::W, true, 1.0f);
+    const auto ScopedAddPadAxis = [&](std::uint16_t InCode, bool InVertical)
+    {
+        Fby::InputMappingDesc ScopedMapping;
+        ScopedMapping.Action = ScopedMoveAction;
+        ScopedMapping.Context = ScopedGameplayContext;
+        ScopedMapping.Source.Kind = Fby::InputSourceKind::GamepadAxis;
+        ScopedMapping.Source.Code = InCode;
+        ScopedMapping.Modifiers[ScopedMapping.ModifierCount++] =
+            Fby::InputModifier{Fby::InputModifierKind::Deadzone, 0.18f, 0.0f};
+        if (InVertical)
+        {
+            ScopedMapping.Modifiers[ScopedMapping.ModifierCount++] =
+                Fby::InputModifier{Fby::InputModifierKind::Swizzle, 0.0f, 0.0f};
+        }
+        (void)ScopedInputMapper.AddMapping(ScopedMapping);
+    };
+    ScopedAddPadAxis(0u, false);
+    ScopedAddPadAxis(1u, true);
 
+    SandboxSystems ScopedSystems{&ScopedWorld, &ScopedExtract, ScopedParticles.get(), &ScopedInputMapper,
+                                 ScopedMoveAction};
+    ScopedSystems.maskExtract = &ScopedMaskExtract;
+    ScopedSystems.maskWorld = &ScopedMaskWorld;
+    ScopedSystems.crowd = &ScopedCrowd;
+
+    (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "player_input", &PlayerControlSystem, &ScopedSystems);
     (void)ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "movement", &MovementSystem, &ScopedSystems);
     Fby::Ecs::SystemAccess ScopedExtractAccess;
     ScopedExtractAccess.ComponentReads =
-        Fby::Ecs::MakeComponentAccessMask<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder>();
+        Fby::Ecs::MakeComponentAccessMask<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder,
+                                          Fby::ComponentChangeMask>();
+    ScopedExtractAccess.ComponentWrites =
+        Fby::Ecs::MakeComponentAccessMask<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder,
+                                          Fby::ComponentChangeMask>();
     ScopedExtractAccess.Writes = Fby::Ecs::kServiceRenderer;
     ScopedExtractAccess.ParallelSafe = true;
     (void)ScopedGraph.Add(Fby::Ecs::Phase::Render, "render_extract",
@@ -690,6 +940,7 @@ int main(int argc, char** argv)
     Fby::Core::PauseController ScopedPause;
     float ScopedAccumulator = 0.0f;
     std::uint64_t ScopedFrameIndex = 0;
+    std::uint64_t ScopedTickIndex = 0;
 
     double ScopedStatsTimer = 0.0;
     std::uint32_t ScopedStatsFrames = 0;
@@ -697,6 +948,9 @@ int main(int argc, char** argv)
     std::array<Fby::Rhi::RenderItem, Fby::Text::kMaxShapedGlyphs> ScopedSplashTextItems{};
     std::array<Fby::Rhi::RenderKey, Fby::Text::kMaxShapedGlyphs> ScopedSplashTextKeys{};
     std::uint32_t ScopedSplashTextCount = 0;
+    std::array<Fby::Rhi::RenderItem, Fby::Text::kMaxShapedGlyphs> ScopedWorldTextItems{};
+    std::array<Fby::Rhi::RenderKey, Fby::Text::kMaxShapedGlyphs> ScopedWorldTextKeys{};
+    std::uint32_t ScopedWorldTextCount = 0;
 
     while (ScopedWindow.PumpEvents() && !ScopedWindow.ShouldClose())
     {
@@ -774,7 +1028,7 @@ int main(int argc, char** argv)
             ScopedAccessibility.ApplyProfile(ScopedProfile);
         }
 
-        // Camera: arrow keys pan, wheel zooms. The camera is plain data in the
+        // Camera: arrow keys pan, wheel zooms.
         const Fby::InputState& ScopedInput = ScopedWindow.Input();
         const float ScopedPanSpeed = 900.0f / std::max(ScopedWorld.zoom, 0.05f) * ScopedDt;
         if (ScopedInput.IsDown(Fby::Key::Left))
@@ -795,10 +1049,20 @@ int main(int argc, char** argv)
         }
         if (ScopedInput.wheel != 0.0f)
         {
-            ScopedWorld.zoom = std::clamp(ScopedWorld.zoom * (1.0f + ScopedInput.wheel * 0.1f), 0.05f, 4.0f);
+            Fby::Animation::TweenDesc ScopedZoomDesc;
+            ScopedZoomDesc.from = ScopedWorld.zoom;
+            ScopedZoomDesc.to = std::clamp(ScopedWorld.zoom * (1.0f + ScopedInput.wheel * 0.1f), 0.05f, 4.0f);
+            ScopedZoomDesc.durationSeconds = 0.20f;
+            ScopedZoomDesc.easing = Fby::Animation::Ease::CubicOut;
+            (void)ScopedZoomTween.Start(ScopedZoomDesc);
+        }
+        if (ScopedZoomTween.Running())
+        {
+            (void)ScopedZoomTween.Update(ScopedDt, ScopedPause.Paused(), 1.0f);
+            ScopedWorld.zoom = ScopedZoomTween.Value();
         }
 
-        // The swapchain and the RHI size follow the drawable size, not the
+        // The swapchain and the RHI size follow the drawable size.
         const Fby::WindowExtent ScopedSize = ScopedWindow.Size();
         if (ScopedSize.width > 0 && ScopedSize.height > 0 &&
             (ScopedSize.width != ScopedDeviceDesc.size.width || ScopedSize.height != ScopedDeviceDesc.size.height))
@@ -816,13 +1080,36 @@ int main(int argc, char** argv)
         {
             ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
 
-            // Fixed step: gameplay sees a constant dt, presentation sees the
+            // Fixed step: gameplay sees a constant dt while presentation interpolates.
             ScopedAccumulator += ScopedDt;
             int ScopedSteps = 0;
+            Fby::InputState ScopedTickInput = ScopedWindow.Input();
+            bool ScopedFirstFixedStep = true;
             while (ScopedAccumulator >= kFixedStep && ScopedSteps < kMaxFixedStepsPerFrame)
             {
+                // A frame may run several fixed steps with one device snapshot.
+                // Edge flags belong to the first step only, so a single press
+                // cannot fire twice inside the same frame.
+                if (!ScopedFirstFixedStep)
+                {
+                    ScopedTickInput.pressed.fill(false);
+                    ScopedTickInput.released.fill(false);
+                    ScopedTickInput.mousePressed.fill(false);
+                    ScopedTickInput.mouseReleased.fill(false);
+                    for (Fby::GamepadState& ScopedPad : ScopedTickInput.gamepads)
+                    {
+                        ScopedPad.pressed.fill(false);
+                        ScopedPad.released.fill(false);
+                    }
+                }
+                const std::uint64_t ScopedTimestamp =
+                    static_cast<std::uint64_t>(ScopedClock.Elapsed() * 1.0e9);
+                ScopedInputMapper.Update(ScopedTickInput, ScopedTickIndex, ScopedTimestamp, kFixedStep);
+                ++ScopedTickIndex;
+                ScopedFirstFixedStep = false;
                 ScopedContext.dt = kFixedStep;
                 ScopedGraph.Run(Fby::Ecs::Phase::FixedUpdate, ScopedContext);
+                (void)Fby::Ecs::UpdateHierarchy(ScopedWorld.registry);
                 ScopedAccumulator -= kFixedStep;
                 ++ScopedSteps;
             }
@@ -832,10 +1119,47 @@ int main(int argc, char** argv)
             }
 
             ScopedContext.dt = ScopedDt;
+            ScopedParticles->Update(ScopedWorld.registry, ScopedDt);
             ScopedGraph.Run(Fby::Ecs::Phase::PostUpdate, ScopedContext);
             ScopedGraph.Run(Fby::Ecs::Phase::Ui, ScopedContext);
+            ScopedCrowd.Step(ScopedDt, ScopedCrowdSettings);
+            const float ScopedMaskTime = static_cast<float>(ScopedClock.Elapsed());
+            for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedMaskEntities.size(); ++ScopedIndex)
+            {
+                const Fby::Entity ScopedEntity = ScopedMaskEntities[ScopedIndex];
+                Fby::Transform2D* ScopedTransform = ScopedMaskWorld.try_get<Fby::Transform2D>(ScopedEntity);
+                Fby::ComponentChangeMask* ScopedMask = ScopedMaskWorld.try_get<Fby::ComponentChangeMask>(ScopedEntity);
+                if (ScopedTransform == nullptr || ScopedMask == nullptr)
+                {
+                    continue;
+                }
+                const float ScopedAngle = ScopedMaskTime * 0.8f + static_cast<float>(ScopedIndex) * 2.0943951f;
+                ScopedTransform->Position = Fby::Vector2D{
+                    2000.0f + std::cos(ScopedAngle) * 180.0f, 1200.0f + std::sin(ScopedAngle) * 120.0f};
+                Fby::Change::Mark(*ScopedMask,
+                                  Fby::ChangeMaskBit::Transform2D | Fby::ChangeMaskBit::Sprite2D |
+                                      Fby::ChangeMaskBit::DrawOrder,
+                                  ScopedContext.frameIndex);
+            }
             ScopedGraph.Run(Fby::Ecs::Phase::Render, ScopedContext);
             ScopedExtract.FinishSorted();
+            ScopedWorldTextCount = 0;
+            if (ScopedUiFontsReady)
+            {
+                Fby::Text::TextLayoutParams ScopedTextLayout;
+                ScopedTextLayout.Fonts = &ScopedUiFontStack.Fonts();
+                ScopedTextLayout.FontId = 0;
+                ScopedTextLayout.FontSize = 32.0f;
+                ScopedTextLayout.MaxWidth = 800.0f;
+                (void)Fby::Text::UpdateTextShapes(ScopedWorld.registry, ScopedTextRuntime.Service(),
+                                                  ScopedUiFontStack.Shaper(), ScopedTextRuntime.Shapes(), 0u, 32.0f,
+                                                  ScopedTextLayout);
+                const Fby::Text::TextRenderSystemStats ScopedWorldTextStats = Fby::Text::ExtractTextItems(
+                    ScopedWorld.registry, ScopedTextRuntime.Service(), ScopedUiFontStack.Fonts(), 0u, 32.0f,
+                    ScopedTextLayout, std::span<Fby::Rhi::RenderItem>(ScopedWorldTextItems), nullptr,
+                    &ScopedUiFontStack.Shaper(), &ScopedTextRuntime.Shapes());
+                ScopedWorldTextCount = ScopedWorldTextStats.Items;
+            }
         }
 
         if (ScopedGpu->BeginFrame())
@@ -899,6 +1223,9 @@ int main(int argc, char** argv)
             (void)ScopedOverlay.Build(ScopedContext.UiView(), ScopedAccessibility,
                                       Fby::Vector2D{static_cast<float>(ScopedDeviceDesc.size.width),
                                                     static_cast<float>(ScopedDeviceDesc.size.height)});
+            // The caption canvas is the sandbox's semantic surface: projected
+            // nodes feed the screen-reader bridge and the narrator.
+            ScopedAccessibility.ProjectCanvas(ScopedOverlay.Canvas());
             ScopedFrameItems.resize(ScopedFrame.items.size() + Fby::AccessibilityOverlay::kMaxOverlayItems);
             ScopedFrameKeys.resize(ScopedFrame.keys.size() + Fby::AccessibilityOverlay::kMaxOverlayItems);
             ScopedFrameBatches.resize(ScopedFrame.batches.size() + Fby::AccessibilityOverlay::kMaxOverlayBatches);
@@ -909,6 +1236,19 @@ int main(int argc, char** argv)
             ScopedAccessibility.ApplyPostFx(ScopedFrame.postFx);
             ScopedFrame.postFxEnabled = true;
             ScopedGpu->Submit(ScopedFrame);
+            if (ScopedWorldTextCount > 0u && ScopedUiFontStack.Fonts().TextureArray().IsValid())
+            {
+                Fby::Rhi::FramePacket ScopedWorldText;
+                ScopedWorldText.camera = ScopedCamera;
+                ScopedWorldText.textureArray = ScopedUiFontStack.Fonts().TextureArray().id;
+                ScopedWorldText.items =
+                    std::span<const Fby::Rhi::RenderItem>(ScopedWorldTextItems.data(), ScopedWorldTextCount);
+                ScopedWorldText.keys =
+                    std::span<const Fby::Rhi::RenderKey>(ScopedWorldTextKeys.data(), ScopedWorldTextCount);
+                const Fby::Rhi::DrawBatch ScopedWorldTextBatch{0, ScopedWorldTextCount, 0, 0};
+                ScopedWorldText.batches = std::span<const Fby::Rhi::DrawBatch>(&ScopedWorldTextBatch, 1);
+                (void)ScopedGpu->DrawOverlay(ScopedWorldText);
+            }
             if (!ScopedSplash.Done() && ScopedSplashTextCount > 0u &&
                 ScopedUiFontStack.Fonts().TextureArray().IsValid())
             {
@@ -944,6 +1284,7 @@ int main(int argc, char** argv)
         }
     }
 
+    ScopedAccessibility.StopBridge();
     ScopedGpu->WaitIdle();
     ScopedGpu->Shutdown();
     ScopedWindow.Destroy();

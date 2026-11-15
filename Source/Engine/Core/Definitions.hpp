@@ -21,7 +21,7 @@
 #define FORCEINLINE inline
 #endif
 
-// The non-aliasing promise the vectoriser needs on the bone SoA blend. It
+// The non-aliasing promise the vectoriser needs on the bone SoA blend.
 #if defined(__clang__) || defined(__GNUC__) || defined(_MSC_VER)
 #define FBY_RESTRICT __restrict
 #else
@@ -83,7 +83,7 @@ template <typename T> [[nodiscard]] consteval std::string_view StableName() noex
     }
 }
 
-// Flat parent table. Registration happens during static initialisation, before
+// Flat parent table. Registration happens during static initialisation.
 struct TypeRecord
 {
     TypeId Id = kInvalidTypeId;

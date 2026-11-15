@@ -33,22 +33,43 @@ vec3 Cubic(sampler2D tex, vec2 uv, vec2 texel)
 void main()
 {
     const vec2 ScopedTexel = upsample.sourceSize.zw;
-    vec3 ScopedColor = Cubic(uSource, vUv, ScopedTexel);
+    const int ScopedMode = int(upsample.params.y + 0.5);
+    vec3 ScopedColor;
+    if (ScopedMode == 0)
+    {
+        // Nearest: one texel per destination pixel, no filtering at all.
+        const ivec2 ScopedPixel =
+            ivec2(floor(vUv * vec2(upsample.sourceSize.xy)));
+        ScopedColor = texelFetch(uSource, ScopedPixel, 0).rgb;
+    }
+    else if (ScopedMode == 1)
+    {
+        // Bilinear: the sampler is created with linear filtering.
+        ScopedColor = texture(uSource, vUv).rgb;
+    }
+    else if (ScopedMode == 2)
+    {
+        ScopedColor = Cubic(uSource, vUv, ScopedTexel);
+    }
+    else
+    {
+        ScopedColor = Cubic(uSource, vUv, ScopedTexel);
 
-    // Prefer the diagonal with the smaller luminance spread. This keeps edges
-    // from being softened across the dominant direction.
-    const vec3 ScopedNw = texture(uSource, vUv + vec2(-ScopedTexel.x, -ScopedTexel.y)).rgb;
-    const vec3 ScopedNe = texture(uSource, vUv + vec2(ScopedTexel.x, -ScopedTexel.y)).rgb;
-    const vec3 ScopedSw = texture(uSource, vUv + vec2(-ScopedTexel.x, ScopedTexel.y)).rgb;
-    const vec3 ScopedSe = texture(uSource, vUv + vec2(ScopedTexel.x, ScopedTexel.y)).rgb;
-    const vec3 ScopedLumaWeights = vec3(0.299, 0.587, 0.114);
-    const float ScopedDiagA = abs(dot(ScopedNw - ScopedSe, ScopedLumaWeights));
-    const float ScopedDiagB = abs(dot(ScopedNe - ScopedSw, ScopedLumaWeights));
-    const float ScopedEdge = min(ScopedDiagA, ScopedDiagB);
-    const float ScopedBlend = clamp(ScopedEdge * 1.5, 0.0, 0.5);
-    const vec3 ScopedDirectional = ScopedDiagA < ScopedDiagB ? (ScopedNw + ScopedSe) * 0.5
-                                                             : (ScopedNe + ScopedSw) * 0.5;
-    ScopedColor = mix(ScopedColor, ScopedDirectional, ScopedBlend);
+        // Prefer the diagonal with the smaller luminance spread. This keeps edges
+        // from being softened across the dominant direction.
+        const vec3 ScopedNw = texture(uSource, vUv + vec2(-ScopedTexel.x, -ScopedTexel.y)).rgb;
+        const vec3 ScopedNe = texture(uSource, vUv + vec2(ScopedTexel.x, -ScopedTexel.y)).rgb;
+        const vec3 ScopedSw = texture(uSource, vUv + vec2(-ScopedTexel.x, ScopedTexel.y)).rgb;
+        const vec3 ScopedSe = texture(uSource, vUv + vec2(ScopedTexel.x, ScopedTexel.y)).rgb;
+        const vec3 ScopedLumaWeights = vec3(0.299, 0.587, 0.114);
+        const float ScopedDiagA = abs(dot(ScopedNw - ScopedSe, ScopedLumaWeights));
+        const float ScopedDiagB = abs(dot(ScopedNe - ScopedSw, ScopedLumaWeights));
+        const float ScopedEdge = min(ScopedDiagA, ScopedDiagB);
+        const float ScopedBlend = clamp(ScopedEdge * 1.5, 0.0, 0.5);
+        const vec3 ScopedDirectional = ScopedDiagA < ScopedDiagB ? (ScopedNw + ScopedSe) * 0.5
+                                                                 : (ScopedNe + ScopedSw) * 0.5;
+        ScopedColor = mix(ScopedColor, ScopedDirectional, ScopedBlend);
+    }
     if (upsample.params.x > 0.0)
     {
         const vec3 ScopedNeighbours =

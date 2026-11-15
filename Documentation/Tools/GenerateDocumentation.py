@@ -68,11 +68,11 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "FemboyEngine2D is a C++26, data-oriented 2D engine at release-candidate status. "
+                    "FemboyEngine2D is a C++23, data-oriented 2D engine at release-candidate status. "
                     "The runtime is split into one static library per shipping role: a game links the engine, "
                     "an editor links the engine plus the editor UI library, and the offline cooker links only the "
                     "asset libraries. A shipped game never pulls in Dear ImGui, ImGuizmo, ImPlot or the TOML parser.",
-                    "FemboyEngine2D — двумерный движок на C++26, построенный вокруг data-oriented design и "
+                    "FemboyEngine2D — двумерный движок на C++23, построенный вокруг data-oriented design и "
                     "находящийся в статусе Release. Рантайм разделён на отдельные статические библиотеки "
                     "по роли поставки: игра линкует движок, редактор — движок и библиотеку UI редактора, а офлайн-кукер "
                     "линкует только библиотеки ассетов. В поставку игры не попадают Dear ImGui, ImGuizmo, ImPlot и "
@@ -112,9 +112,9 @@ SECTIONS: list[dict] = [
             (
                 "bullets",
                 B(
-                    "ECS and physics: EnTT registry, declarative SystemGraph, Snapshot v4, Box2D v3 bridge, joint "
+                    "ECS and physics: FCS registry, declarative SystemGraph, Snapshot v5, Box2D v3 bridge, joint "
                     "chains, Verlet cloth and two water models.",
-                    "ECS и физика: реестр EnTT, декларативный SystemGraph, Snapshot v4, мост Box2D v3, цепочки "
+                    "ECS и физика: реестр FCS, декларативный SystemGraph, Snapshot v5, мост Box2D v3, цепочки "
                     "суставов, Verlet-ткань и две модели воды.",
                 ),
             ),
@@ -420,16 +420,16 @@ SECTIONS: list[dict] = [
     },
     {
         "number": "5",
-        "title": B("ECS, schedule and Snapshot v4", "ECS, планировщик и Snapshot v4"),
+        "title": B("ECS, schedule and Snapshot v5", "ECS, планировщик и Snapshot v5"),
         "blocks": [
             (
                 "p",
                 B(
-                    "The ECS is EnTT's registry with a strict component contract: trivially copyable, standard layout, "
+                    "The ECS is the FCS chunked registry with a strict component contract: trivially copyable, standard layout, "
                     "no string, no container, no vtable. Components are data; behaviour lives in systems. The frame "
                     "has four phases: PreUpdate (variable dt, input and streaming), FixedUpdate (constant dt, gameplay "
                     "and physics), PostUpdate (camera, culling, audio) and Render (extract and editor).",
-                    "ECS — это реестр EnTT со строгим контрактом компонентов: trivially copyable, standard layout, без "
+                    "ECS — это реестр FCS со строгим контрактом компонентов: trivially copyable, standard layout, без "
                     "строк, контейнеров и vtable. Компоненты — данные; поведение живёт в системах. Кадр имеет четыре "
                     "фазы: PreUpdate (переменный dt, ввод и стриминг), FixedUpdate (постоянный dt, геймплей и физика), "
                     "PostUpdate (камера, куллинг, аудио) и Render (извлечение и редактор).",
@@ -470,13 +470,13 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "Snapshot v4 is a canonical, checksummed byte image. The 104-byte header carries magic, version, "
+                    "Snapshot v5 is a canonical, checksummed byte image. The 104-byte header carries magic, version, "
                     "entity/component counts, tick/baseTick, payload bytes, FNV-1a checksum, base checksum, schema "
                     "hash, the RNG state and the v3 world-extension fields. ECS records come first, field-by-field "
                     "through Mirror; the extension bytes for chains, cloth, water and emitter clocks follow and are "
                     "addressed by stable subsystem ids, never by Box2D handles. A delta snapshot stores only changed "
                     "records and still checksums the base it was derived from.",
-                    "Snapshot v4 — канонический образ байтов с контрольной суммой. 104-байтный заголовок содержит "
+                    "Snapshot v5 — канонический образ байтов с контрольной суммой. 104-байтный заголовок содержит "
                     "magic, версию, число сущностей/компонентов, tick/baseTick, размер payload, FNV-1a-сумму, сумму "
                     "базы, хеш схемы, состояние RNG и поля мирового расширения v3. Сначала идут ECS-записи, поле за "
                     "полем через Mirror; затем байты расширения для цепочек, ткани, воды и часов эмиттеров, "
@@ -649,21 +649,21 @@ SECTIONS: list[dict] = [
     },
     {
         "number": "7",
-        "title": B("Network rollback and Snapshot v4", "Сетевой роллбэк и Snapshot v4"),
+        "title": B("Network rollback and Snapshot v5", "Сетевой роллбэк и Snapshot v5"),
         "blocks": [
             (
                 "p",
                 B(
-                    "NetRollbackSession is the glue between Snapshot v4, CommandLog, Pcg32 and the gameplay components "
+                    "NetRollbackSession is the glue between Snapshot v5, CommandLog, Pcg32 and the gameplay components "
                     "(tags, attributes, effects and skills). A session "
                     "owns a fixed ring of full snapshots (one per simulated tick), one input ring per player, a stable "
-                    "NetEntityId to local EnTT id map and the replay loop. Everything after Initialize() is "
+                    "NetEntityId to local entity id map and the replay loop. Everything after Initialize() is "
                     "allocation-free: the snapshot arena, entity tables, input rings and frame metadata are fixed "
                     "capacity. The simulation callback is a function pointer plus void*, never std::function.",
-                    "NetRollbackSession связывает Snapshot v4, CommandLog, Pcg32 и геймплейные компоненты "
+                    "NetRollbackSession связывает Snapshot v5, CommandLog, Pcg32 и геймплейные компоненты "
                     "(теги, атрибуты, эффекты и скиллы). Сессия владеет "
                     "фиксированным кольцом полных снапшотов (один на симулированный тик), кольцом ввода на игрока, "
-                    "картой стабильных NetEntityId в локальные EnTT id и циклом повтора. Всё после Initialize() не "
+                    "картой стабильных NetEntityId в локальные runtime entity id и циклом повтора. Всё после Initialize() не "
                     "аллоцирует память: арена снапшотов, таблицы сущностей, кольца ввода и метаданные кадров имеют "
                     "фиксированную ёмкость. Колбэк симуляции — указатель на функцию плюс void*, а не std::function.",
                 ),
@@ -717,13 +717,13 @@ SECTIONS: list[dict] = [
                 "p",
                 B(
                     "NetEntityId is assigned by the authority (or by the local peer for locally owned objects) and is "
-                    "never derived from an EnTT id. A restored snapshot, a different spawn order or a different "
+                    "never derived from a runtime entity id. A restored snapshot, a different spawn order or a different "
                     "allocator must not change it. The replicated gameplay state is a compact tag mask plus fixed "
                     "attribute, effect and skill records; the checksum folds each of them per mapped entity. "
                     "CommandLog records structural "
                     "spawn/despawn/add/remove, so a rollback can replay structure as well as values.",
                     "NetEntityId назначается авторитетом (или локальным пиром для локально принадлежащих объектов) и "
-                    "никогда не выводится из EnTT id. Восстановленный снапшот, другой порядок спавна или другой "
+                    "никогда не выводится из runtime entity id. Восстановленный снапшот, другой порядок спавна или другой "
                     "аллокатор не должны его менять. Реплицируемое геймплейное состояние — компактная маска тегов "
                     "плюс фиксированные записи атрибутов, эффектов и скиллов; контрольная сумма сворачивает каждую "
                     "из них на сущность. CommandLog фиксирует структурные spawn/despawn/add/remove, поэтому роллбэк повторяет и "
@@ -826,7 +826,7 @@ SECTIONS: list[dict] = [
                         B("Texture/audio/localization cooker; byte-identical with the editor importer", "Кукер текстур/аудио/локализации; байт-в-байт совпадает с импортёром редактора"),
                         B("Localization TOML -> FlatBuffers pack", "TOML локализации -> пакет FlatBuffers"),
                         B("Scene/prefab compiler and round-trip verifier", "Компилятор сцен/префабов и проверка round-trip"),
-                        B("Bytecode -> C++26 -> native plugin at cook time", "Байткод -> C++26 -> нативный плагин во время кукинга"),
+                        B("Bytecode -> C++23 -> native plugin at cook time", "Байткод -> C++23 -> нативный плагин во время кукинга"),
                     ],
                 },
             ),
@@ -894,14 +894,14 @@ SECTIONS: list[dict] = [
                 B(
                     "VisualScript compiles the LogicGraph to canonical bytecode with a Kahn topological pass; cycles "
                     "are a compile error, never a runtime stack overflow. The VM executes the exact artifact the "
-                    "cooker ships. For release, AotTranspiler emits one flat C++26 translation unit with one function "
+                    "cooker ships. For release, AotTranspiler emits one flat C++23 translation unit with one function "
                     "per event and zero engine dependencies beyond AotAbi.hpp; AotBuilder runs clang/g++ -O3 -shared "
                     "on a background jthread and the editor polls its state without blocking the frame. The generated "
                     "module carries the graph hash and every component LayoutHash; the loader validates them before "
                     "the first call.",
                     "VisualScript компилирует LogicGraph в канонический байткод с топологической проходкой Кана; цикл — "
                     "ошибка компиляции, а не переполнение стека в рантайме. VM исполняет ровно тот артефакт, который "
-                    "поставляет кукер. Для релиза AotTranspiler генерирует одну плоскую единицу трансляции C++26 с "
+                    "поставляет кукер. Для релиза AotTranspiler генерирует одну плоскую единицу трансляции C++23 с "
                     "одной функцией на событие и без зависимостей от движка, кроме AotAbi.hpp; AotBuilder запускает "
                     "clang/g++ -O3 -shared в фоновом jthread, а редактор опрашивает его состояние, не блокируя кадр. "
                     "Сгенерированный модуль несёт хеш графа и каждый LayoutHash компонента; загрузчик проверяет их до "
@@ -912,10 +912,10 @@ SECTIONS: list[dict] = [
                 "code",
                 B(
                     "LogicGraph -> GraphCompiler -> bytecode -> VM (PIE)\n"
-                    "                         \\-> AotTranspiler -> C++26 -> clang/g++ -O3 -shared -> plugin\n\n"
+                    "                         \\-> AotTranspiler -> C++23 -> clang/g++ -O3 -shared -> plugin\n\n"
                     "MaterialGraph -> type-check -> GLSL -> glslang -> SPIR-V -> VkPipeline",
                     "LogicGraph -> GraphCompiler -> байткод -> VM (PIE)\n"
-                    "                         \\-> AotTranspiler -> C++26 -> clang/g++ -O3 -shared -> плагин\n\n"
+                    "                         \\-> AotTranspiler -> C++23 -> clang/g++ -O3 -shared -> плагин\n\n"
                     "MaterialGraph -> проверка типов -> GLSL -> glslang -> SPIR-V -> VkPipeline",
                 ),
             ),
@@ -1072,10 +1072,10 @@ SECTIONS: list[dict] = [
             (
                 "bullets",
                 B(
-                    "Add a public C++ API stability policy: frozen component layouts, Snapshot v4 compatibility tests "
+                    "Add a public C++ API stability policy: frozen component layouts, Snapshot v5 compatibility tests "
                     "and an ABI-version matrix for plugins.",
                     "Добавить политику стабильности публичного C++ API: замороженные layout компонентов, тесты "
-                    "совместимости Snapshot v4 и матрицу ABI-версий для плагинов.",
+                    "совместимости Snapshot v5 и матрицу ABI-версий для плагинов.",
                 ),
             ),
             (
@@ -1599,7 +1599,7 @@ def add_cover(document: Document, language: str) -> None:
     note = document.add_paragraph(style="FBY Note")
     note.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = note.add_run(
-        "Data-Oriented Design · Vulkan MDI · Compute LBS · EnTT · Box2D v3 · Rollback v3 · ImNodes · AOT"
+        "Data-Oriented Design · Vulkan MDI · Compute LBS · FCS · Box2D v3 · Rollback v3 · ImNodes · AOT"
     )
     run.font.Size = Pt(9)
     run.font.color.rgb = ACCENT
@@ -1735,20 +1735,24 @@ def export_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, node: str, lo_cl
         print("pdf: LibreOffice Kit CLI not found; use --lo-cli or FBY_LO_CLI", file=sys.stderr)
         return False
     log_path = pathlib.Path(tempfile.gettempdir()) / "fby_architecture_pdf.log"
-    pdf_path.unlink(missing_ok=True)
+    temporary = pdf_path.with_name(pdf_path.name + ".tmp.pdf")
+    temporary.unlink(missing_ok=True)
     with log_path.open("w", encoding="utf-8") as log:
         completed = subprocess.run(
-            [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(pdf_path)],
+            [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(temporary)],
             stdout=log,
             stderr=log,
         )
-    if completed.returncode != 0 or not pdf_path.is_file() or pdf_path.stat().st_size == 0:
+    if completed.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
         print(f"pdf: export failed; see {log_path}", file=sys.stderr)
+        temporary.unlink(missing_ok=True)
         return False
-    signature = pdf_path.read_bytes()[:5]
+    signature = temporary.read_bytes()[:5]
     if signature != b"%PDF-":
         print("pdf: output does not have a %PDF- signature", file=sys.stderr)
+        temporary.unlink(missing_ok=True)
         return False
+    os.replace(temporary, pdf_path)
     return True
 
 

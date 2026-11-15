@@ -8,7 +8,7 @@ All values live in `ProjectSettings` and are serialized under `[render]`.
 | `upscale_mode` | `1` | `0 Nearest`, `1 Bilinear`, `2 Bicubic`, `3 FSR1`, `4 FSR2`. Prefer `upscale_policy` for player-facing control. |
 | `upscale_policy` | `auto` | `auto`, `universal`, `off`. Auto prefers DLSS on NVIDIA, then FSR2/FSR1. |
 | `frame_generation_policy` | `auto` | `auto`, `universal`, `off`. Auto prefers DLSS FG, then FSR3 FG, then custom. |
-| `oit_mode` | `0` | `0 Off`, `1 Weighted`, `2 Accurate`. Stored in `FramePacket`; render pass pending. |
+| `oit_mode` | `0` | `0 Off`, `1 Weighted`, `2 Accurate`. Travels in `FramePacket`; `OitPass` renders the weighted pass. |
 | `opaque_mode` | `2` | `0 Off`, `1 On`, `2 Auto`. Auto requires atlas cutout metadata. |
 | `opaque_art_cutout` | `false` | Manual cutout override for projects without cooked alpha metadata. |
 | `opaque_alpha_cutoff` | `0.5` | Alpha-test threshold for the opaque blendless pipeline. |

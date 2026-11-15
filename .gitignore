@@ -52,6 +52,14 @@ CMakeFiles/
 /Projects/*
 !/Projects/.gitkeep
 
+# Downloaded dependency trees. Setup extracts these into third_party; only the
+# pinned subset that is already tracked belongs to the repository.
+/third_party/spirv-cross/
+/third_party/harfbuzz-download/
+
+# Test output of fby_png_writer_test.
+/fby_png_writer_test.png
+
 # Optional vendor upscaler/frame-generation SDKs. They are multi-gigabyte
 # snapshots fetched locally for capability work; setup or a feature build
 # materialises them without committing them to the engine source.

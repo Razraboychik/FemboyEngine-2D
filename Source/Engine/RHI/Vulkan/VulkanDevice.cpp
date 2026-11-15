@@ -1,6 +1,12 @@
 // FemboyEngine2D - Vulkan backend definitions.
 #include "VulkanRHIInternal.hpp"
 
+#include "Engine/RHI/DlssExtensions.hpp"
+#include "Engine/RHI/GpuExtensionBroker.hpp"
+
+#include <cstdlib>
+#include <cstring>
+
 #if defined(FBY_HAS_VULKAN_HEADERS)
 namespace Fby::Rhi::Impl
 {
@@ -34,7 +40,32 @@ bool VulkanRHI::Initialize(const DeviceDesc& InDesc)
         LogError("vulkan", "no Vulkan loader on this system");
         return false;
     }
-    if (!CreateInstance(InDesc) || !PickPhysicalDevice() || !CreateDevice())
+    if (!CreateInstance(InDesc) || !PickPhysicalDevice())
+    {
+        return false;
+    }
+    if (const char* ScopedApiOverride = std::getenv("FBY_VULKAN_API"); ScopedApiOverride != nullptr)
+    {
+        std::uint32_t ScopedCap = 0;
+        if (std::strcmp(ScopedApiOverride, "1.2") == 0)
+        {
+            ScopedCap = VK_API_VERSION_1_2;
+        }
+        else if (std::strcmp(ScopedApiOverride, "1.3") == 0)
+        {
+            ScopedCap = VK_API_VERSION_1_3;
+        }
+        else if (std::strcmp(ScopedApiOverride, "1.4") == 0)
+        {
+            ScopedCap = VK_API_VERSION_1_4;
+        }
+        if (ScopedCap != 0 && MInfo.apiVersion > ScopedCap)
+        {
+            MInfo.apiVersion = ScopedCap;
+            MInfo.tier = VulkanTier(ScopedCap);
+        }
+    }
+    if (!CreateDevice())
     {
         return false;
     }
@@ -68,6 +99,8 @@ bool VulkanRHI::Initialize(const DeviceDesc& InDesc)
     else
     {
         MInfo.upscalers.fsr1 = true;
+        // The spatial pass also provides nearest, bilinear and bicubic filters.
+        MInfo.upscalers.bicubic = true;
     }
     if (!CreateHudResources())
     {
@@ -81,7 +114,11 @@ bool VulkanRHI::Initialize(const DeviceDesc& InDesc)
     {
         MInfo.upscalers.motionVectors = true;
     }
-    if (!CreateTemporalResources())
+    if (MInfo.tier != GpuTier::Temporal)
+    {
+        LogInfo("vulkan", "temporal resolve requires the temporal (Vulkan 1.4) tier");
+    }
+    else if (!CreateTemporalResources())
     {
         LogInfo("vulkan", "temporal resolve unavailable");
     }
@@ -125,13 +162,39 @@ bool VulkanRHI::CreateInstance(const DeviceDesc& InDesc)
         return false;
     }
 
-    std::vector<const char*> ScopedExtensions(ScopedSdlExtensions, ScopedSdlExtensions + ScopedSdlExtensionCount);
     const std::vector<VkExtensionProperties> ScopedAvailable = QueryInstanceExtensions();
-    if (InDesc.enableValidation && HasExtension(ScopedAvailable, VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+    GpuExtensionBroker ScopedBroker;
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedSdlExtensionCount; ++ScopedIndex)
     {
-        ScopedExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        ScopedBroker.AddInstance(ScopedSdlExtensions[ScopedIndex]);
     }
-
+    for (const std::string& ScopedName : DlssRequiredInstanceExtensions())
+    {
+        ScopedBroker.AddInstance(ScopedName);
+    }
+    if (InDesc.enableValidation)
+    {
+        ScopedBroker.AddInstance(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+    std::vector<std::string> ScopedAvailableInstanceNames;
+    ScopedAvailableInstanceNames.reserve(ScopedAvailable.size());
+    for (const VkExtensionProperties& ScopedExtension : ScopedAvailable)
+    {
+        ScopedAvailableInstanceNames.emplace_back(ScopedExtension.extensionName);
+    }
+    std::vector<std::string> ScopedMissingInstanceExtensions;
+    const GpuExtensionBroker ScopedFilteredInstance =
+        ScopedBroker.Filter(ScopedAvailableInstanceNames, {}, &ScopedMissingInstanceExtensions);
+    for (const std::string& ScopedName : ScopedMissingInstanceExtensions)
+    {
+        LogWarn("vulkan", "unsupported instance extension '{}'", ScopedName);
+    }
+    std::vector<const char*> ScopedExtensions;
+    ScopedExtensions.reserve(ScopedFilteredInstance.Instance().size());
+    for (const std::string& ScopedName : ScopedFilteredInstance.Instance())
+    {
+        ScopedExtensions.push_back(ScopedName.c_str());
+    }
     std::vector<const char*> ScopedLayers;
     if (InDesc.enableValidation)
     {
@@ -259,10 +322,14 @@ bool VulkanRHI::PickPhysicalDevice()
     ScopedApi.vkEnumeratePhysicalDevices(MInstance, &ScopedCount, ScopedDevices.data());
 
     int ScopedBestScore = -1;
+    const char* ScopedPreferred = std::getenv("FBY_VULKAN_DEVICE");
     for (VkPhysicalDevice ScopedCandidate : ScopedDevices)
     {
         VkPhysicalDeviceProperties ScopedProperties{};
         ScopedApi.vkGetPhysicalDeviceProperties(ScopedCandidate, &ScopedProperties);
+        LogInfo("vulkan", "candidate '{}' api {}.{}.{}, type {}", ScopedProperties.deviceName,
+                VK_API_VERSION_MAJOR(ScopedProperties.apiVersion), VK_API_VERSION_MINOR(ScopedProperties.apiVersion),
+                VK_API_VERSION_PATCH(ScopedProperties.apiVersion), static_cast<int>(ScopedProperties.deviceType));
 
         std::uint32_t ScopedFamilyCount = 0;
         ScopedApi.vkGetPhysicalDeviceQueueFamilyProperties(ScopedCandidate, &ScopedFamilyCount, nullptr);
@@ -282,10 +349,10 @@ bool VulkanRHI::PickPhysicalDevice()
             {
                 continue;
             }
-            // Vulkan 1.4 is the minimum validated driver for the 0.4 alpha line.
-            if (ScopedProperties.apiVersion < VK_API_VERSION_1_4)
+            // Tiered support: 1.2 is the baseline, 1.3 enhanced, 1.4 temporal.
+            if (ScopedProperties.apiVersion < VK_API_VERSION_1_2)
             {
-                LogWarn("vulkan", "device '{}' reports Vulkan {}.{}.{}; 1.4 is required",
+                LogWarn("vulkan", "device '{}' reports Vulkan {}.{}.{}; 1.2 is required",
                         ScopedProperties.deviceName, VK_API_VERSION_MAJOR(ScopedProperties.apiVersion),
                         VK_API_VERSION_MINOR(ScopedProperties.apiVersion),
                         VK_API_VERSION_PATCH(ScopedProperties.apiVersion));
@@ -293,12 +360,20 @@ bool VulkanRHI::PickPhysicalDevice()
             }
 
             int ScopedScore = ScopedProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 1000 : 100;
+            ScopedScore += static_cast<int>(VK_API_VERSION_MINOR(ScopedProperties.apiVersion)) * 10;
+            if (ScopedPreferred != nullptr && std::strstr(ScopedProperties.deviceName, ScopedPreferred) != nullptr)
+            {
+                ScopedScore += 10000;
+            }
             if (ScopedScore > ScopedBestScore)
             {
                 ScopedBestScore = ScopedScore;
                 MPhysical = ScopedCandidate;
                 MQueueFamily = ScopedFamily;
-                MInfo.apiVersion = ScopedProperties.apiVersion;
+                // The device is created at the instance version, so the tier must
+                // never promise more than the instance was created with.
+                MInfo.apiVersion = std::min(ScopedProperties.apiVersion, MInstanceApiVersion);
+                MInfo.tier = VulkanTier(MInfo.apiVersion);
                 MInfo.discrete = ScopedProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
                 std::snprintf(MInfo.name, sizeof(MInfo.name), "%s", ScopedProperties.deviceName);
                 MInfo.gpuVendor = ScopedProperties.vendorID == 0x10DE ? 1
@@ -319,9 +394,12 @@ bool VulkanRHI::PickPhysicalDevice()
 
     if (MPhysical == VK_NULL_HANDLE)
     {
-        LogError("vulkan", "no Vulkan 1.4 device with a graphics queue that can present to this surface");
+        LogError("vulkan", "no Vulkan 1.2+ device with a graphics queue that can present to this surface");
         return false;
     }
+    LogInfo("vulkan", "selected device '{}' (discrete={}, api {}.{}, tier {})", MInfo.name,
+            MInfo.discrete ? 1 : 0, VK_API_VERSION_MAJOR(MInfo.apiVersion), VK_API_VERSION_MINOR(MInfo.apiVersion),
+            GpuTierName(MInfo.tier));
     return true;
 }
 
@@ -336,9 +414,46 @@ bool VulkanRHI::CreateDevice()
     ScopedQueueInfo.queueCount = 1;
     ScopedQueueInfo.pQueuePriorities = &ScopedPriority;
 
-    const char* ScopedDeviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    std::vector<const char*> ScopedDeviceExtensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    const auto ScopedEnumerateDeviceExtensions =
+        reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(
+            ScopedApi.GetInstanceProcAddr(MInstance, "vkEnumerateDeviceExtensionProperties"));
+    std::vector<VkExtensionProperties> ScopedAvailableDeviceExtensions;
+    if (ScopedEnumerateDeviceExtensions != nullptr)
+    {
+        std::uint32_t ScopedDeviceExtensionCount = 0;
+        ScopedEnumerateDeviceExtensions(MPhysical, nullptr, &ScopedDeviceExtensionCount, nullptr);
+        ScopedAvailableDeviceExtensions.resize(ScopedDeviceExtensionCount);
+        ScopedEnumerateDeviceExtensions(MPhysical, nullptr, &ScopedDeviceExtensionCount,
+                                        ScopedAvailableDeviceExtensions.data());
+    }
+    const auto ScopedHasDeviceExtension = [&ScopedAvailableDeviceExtensions](const char* InName)
+    {
+        for (const VkExtensionProperties& ScopedExtension : ScopedAvailableDeviceExtensions)
+        {
+            if (std::strcmp(ScopedExtension.extensionName, InName) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    std::vector<std::string> ScopedDlssDeviceNames = DlssRequiredDeviceExtensions(MInstance, MPhysical);
+    for (const std::string& ScopedName : ScopedDlssDeviceNames)
+    {
+        if (ScopedHasDeviceExtension(ScopedName.c_str()))
+        {
+            ScopedDeviceExtensions.push_back(ScopedName.c_str());
+        }
+        else
+        {
+            LogWarn("vulkan", "NGX requested unsupported device extension '{}'", ScopedName);
+        }
+    }
 
-    // The indirect mesh path uses firstInstance as the draw-record index, which
+
+
+    // The indirect mesh path uses firstInstance as the draw-record index.
     VkPhysicalDeviceVulkan11Features ScopedVulkan11{};
     ScopedVulkan11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
     VkPhysicalDeviceVulkan12Features ScopedVulkan12{};
@@ -375,11 +490,65 @@ bool VulkanRHI::CreateDevice()
     ScopedVulkan12.timelineSemaphore = MInfo.timelineSemaphores ? VK_TRUE : VK_FALSE;
     ScopedVulkan13.synchronization2 = MInfo.synchronization2 ? VK_TRUE : VK_FALSE;
 
-    // Texture compression: BC7 is core, ASTC LDR is optional. Enable the ASTC
-    MDeviceFeatures = ScopedAvailable.features;
-    MAstcLdrSupported = ScopedAvailable.features.textureCompressionASTC_LDR == VK_TRUE;
-    MDeviceFeatures.textureCompressionASTC_LDR = MAstcLdrSupported ? VK_TRUE : VK_FALSE;
-    MDeviceFeatures.samplerAnisotropy = ScopedAvailable.features.samplerAnisotropy;
+    // Texture compression: the desktop cooker always emits BC7, ASTC LDR is
+    // optional. The sprite fragment shader stores to a storage image (virtual
+    // texture feedback), indexes an array of storage images dynamically and the
+    // mesh path relies on indirect draws with firstInstance/multi-draw, so those
+    // core features are hard requirements rather than wholesale device copies.
+    const VkPhysicalDeviceFeatures& ScopedCore = ScopedAvailable.features;
+    const auto ScopedRequireCore = [](VkBool32 InSupported, const char* InName)
+    {
+        if (InSupported == VK_FALSE)
+        {
+            LogError("vulkan", "device lacks the '{}' feature required by the engine shaders", InName);
+        }
+        return InSupported != VK_FALSE;
+    };
+    if (!ScopedRequireCore(ScopedCore.textureCompressionBC, "textureCompressionBC") ||
+        !ScopedRequireCore(ScopedCore.fragmentStoresAndAtomics, "fragmentStoresAndAtomics") ||
+        !ScopedRequireCore(ScopedCore.shaderStorageImageArrayDynamicIndexing,
+                           "shaderStorageImageArrayDynamicIndexing") ||
+        !ScopedRequireCore(ScopedCore.drawIndirectFirstInstance, "drawIndirectFirstInstance") ||
+        !ScopedRequireCore(ScopedCore.multiDrawIndirect, "multiDrawIndirect"))
+    {
+        return false;
+    }
+
+    MDeviceFeatures = VkPhysicalDeviceFeatures{};
+    MDeviceFeatures.textureCompressionBC = VK_TRUE;
+    MDeviceFeatures.textureCompressionASTC_LDR = ScopedCore.textureCompressionASTC_LDR;
+    MDeviceFeatures.samplerAnisotropy = ScopedCore.samplerAnisotropy;
+    MDeviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
+    MDeviceFeatures.shaderStorageImageArrayDynamicIndexing = VK_TRUE;
+    MDeviceFeatures.drawIndirectFirstInstance = VK_TRUE;
+    MDeviceFeatures.multiDrawIndirect = VK_TRUE;
+    MDeviceFeatures.occlusionQueryPrecise = ScopedCore.occlusionQueryPrecise;
+    MDeviceFeatures.fillModeNonSolid = ScopedCore.fillModeNonSolid;
+    MAstcLdrSupported = MDeviceFeatures.textureCompressionASTC_LDR == VK_TRUE;
+
+    // The SDF shadow mask compute pass uses subgroup vote and arithmetic
+    // operations; without them the backend keeps the per-pixel march.
+    MSubgroupSupported = false;
+    const auto ScopedGetProperties2 = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(
+        ScopedApi.GetInstanceProcAddr(MInstance, "vkGetPhysicalDeviceProperties2"));
+    if (ScopedGetProperties2 != nullptr)
+    {
+        VkPhysicalDeviceSubgroupProperties ScopedSubgroup{};
+        ScopedSubgroup.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+        VkPhysicalDeviceProperties2 ScopedProperties2{};
+        ScopedProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        ScopedProperties2.pNext = &ScopedSubgroup;
+        ScopedGetProperties2(MPhysical, &ScopedProperties2);
+        const VkSubgroupFeatureFlags ScopedRequired =
+            VK_SUBGROUP_FEATURE_BASIC_BIT | VK_SUBGROUP_FEATURE_VOTE_BIT | VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
+        MSubgroupSupported = ScopedSubgroup.subgroupSize > 0 &&
+                             (ScopedSubgroup.supportedOperations & ScopedRequired) == ScopedRequired &&
+                             (ScopedSubgroup.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0;
+    }
+    if (!MSubgroupSupported)
+    {
+        LogInfo("vulkan", "subgroup vote/arithmetic unavailable; SDF shadows use the per-pixel fallback");
+    }
 
     VkDeviceCreateInfo ScopedCreateInfo{};
     ScopedCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -389,8 +558,8 @@ bool VulkanRHI::CreateDevice()
                                                             : static_cast<void*>(&ScopedVulkan11));
     ScopedCreateInfo.queueCreateInfoCount = 1;
     ScopedCreateInfo.pQueueCreateInfos = &ScopedQueueInfo;
-    ScopedCreateInfo.enabledExtensionCount = 1;
-    ScopedCreateInfo.ppEnabledExtensionNames = ScopedDeviceExtensions;
+    ScopedCreateInfo.enabledExtensionCount = static_cast<std::uint32_t>(ScopedDeviceExtensions.size());
+    ScopedCreateInfo.ppEnabledExtensionNames = ScopedDeviceExtensions.data();
     ScopedCreateInfo.pEnabledFeatures = &MDeviceFeatures;
 
     if (ScopedApi.vkCreateDevice(MPhysical, &ScopedCreateInfo, nullptr, &MDevice) != VK_SUCCESS ||
@@ -707,6 +876,29 @@ bool VulkanRHI::CreateSwapchain(Extent2D InSize)
     ScopedCreateInfo.imageExtent = ScopedExtent;
     ScopedCreateInfo.imageArrayLayers = 1;
     ScopedCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    // PresentRenderTarget blits a render target into the acquired image, and the
+    // colour-grading path copies the swapchain, so both transfer usages are
+    // requested when the surface exposes them.
+    if ((ScopedCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0)
+    {
+        ScopedCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        MSwapchainTransferSrc = true;
+    }
+    else
+    {
+        MSwapchainTransferSrc = false;
+        LogWarn("vulkan", "swapchain does not support TRANSFER_SRC; colour grading is disabled");
+    }
+    if ((ScopedCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0)
+    {
+        ScopedCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        MSwapchainTransferDst = true;
+    }
+    else
+    {
+        MSwapchainTransferDst = false;
+        LogWarn("vulkan", "swapchain does not support TRANSFER_DST; PresentRenderTarget is disabled");
+    }
     ScopedCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     ScopedCreateInfo.preTransform = ScopedCapabilities.currentTransform;
     ScopedCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -2950,6 +3142,14 @@ bool VulkanRHI::CreateSdfComputeResources()
 {
     Vk::Api& ScopedApi = Vk::GetApi();
 
+    // sdf_shadow.comp relies on subgroup vote and arithmetic operations. The
+    // per-pixel march in quad.frag is the fallback when they are unavailable.
+    if (!MSubgroupSupported)
+    {
+        LogInfo("vulkan", "subgroup operations unavailable; SDF compute mask disabled");
+        return false;
+    }
+
     // r16f is the mask format; when the device cannot use it as a storage image,
     // the sprite shader keeps its per-pixel fallback instead of failing startup.
     VkFormatProperties ScopedFormat{};
@@ -3085,8 +3285,6 @@ bool VulkanRHI::CreateSdfComputeResources()
 void VulkanRHI::DestroySdfShadowResources() noexcept
 {
     Vk::Api& ScopedApi = Vk::GetApi();
-    LogInfo("vulkan", "EnsureSdfMask enter: tableView={} pagesView={}",
-            static_cast<const void*>(MVtFallbackTableView), static_cast<const void*>(MVtFallbackPagesView));
     DestroySdfMaskResources();
     if (MSdfComputePipeline != VK_NULL_HANDLE)
     {

@@ -19,6 +19,7 @@ inline constexpr std::uint32_t kMaterialGraphMagic = 0x47594246u;
 inline constexpr std::uint32_t kMaterialAssetMagic = 0x4D594246u;
 inline constexpr std::uint16_t kMaterialGraphVersion = 1;
 inline constexpr std::uint16_t kMaterialAssetVersion = 1;
+inline constexpr std::uint16_t kMaterialAssetVersionDxil = 2;
 
 // Fixed headers. The runtime rejects a payload whose size does not match the
 // counts before it touches any node, pin or stage byte.
@@ -159,6 +160,9 @@ struct CookedMaterialView
     std::span<const std::byte> vertexSpirv{};
     // Always present for a cooked material.
     std::span<const std::byte> fragmentSpirv{};
+    // Optional DX12 payload from `fby_matc --dx12`; empty for Vulkan-only cooks.
+    std::span<const std::byte> vertexDxil{};
+    std::span<const std::byte> fragmentDxil{};
 
     [[nodiscard]] bool IsValid() const noexcept
     {
@@ -171,6 +175,13 @@ struct CookedMaterialView
 [[nodiscard]] bool EncodeCookedMaterial(std::uint64_t InGraphHash, std::uint16_t InContract,
                                         std::span<const std::byte> InVertexSpirv,
                                         std::span<const std::byte> InFragmentSpirv,
+                                        std::vector<std::byte>* OutBytes) noexcept;
+// Version 2 payload: the same SPIR-V plus optional DXIL stages for D3D12.
+[[nodiscard]] bool EncodeCookedMaterial(std::uint64_t InGraphHash, std::uint16_t InContract,
+                                        std::span<const std::byte> InVertexSpirv,
+                                        std::span<const std::byte> InFragmentSpirv,
+                                        std::span<const std::byte> InVertexDxil,
+                                        std::span<const std::byte> InFragmentDxil,
                                         std::vector<std::byte>* OutBytes) noexcept;
 
 // Validates and views a .femmat payload without allocating. Returns false and

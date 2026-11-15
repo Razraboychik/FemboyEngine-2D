@@ -24,7 +24,7 @@ the same reference project.
 | GPU | Vulkan 1.4 driver or Metal 2, 2 GB VRAM, e.g. GTX 1050, RX 560, Iris Xe |
 | Storage | 10 GB free on an SSD; the build tree adds 2-6 GB |
 | Display | 1920x1080 |
-| OS | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 13+ |
+| OS | Windows 10 22H2+/11, Ubuntu 22.04+/24.04, macOS 14+ |
 
 ## Recommended
 

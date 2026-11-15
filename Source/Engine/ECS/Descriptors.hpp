@@ -72,7 +72,7 @@ inline constexpr std::uint32_t kPrefabMaxEntities = 32;
 inline constexpr std::uint32_t kPrefabNameBytes = 32;
 inline constexpr std::uint32_t kPrefabAssetNameBytes = 64;
 
-// A fixed-size prefab record. `flags` bit 0 = physics, bit 1 = character,
+// A fixed-size prefab record. `flags` bit 0 = physics, bit 1 = character.
 struct PrefabEntityDesc
 {
     char name[kPrefabNameBytes] = {};

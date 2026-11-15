@@ -22,7 +22,7 @@ constexpr std::uint32_t AlignUp(std::uint32_t InValue, std::uint32_t InAlignment
     return static_cast<std::uint32_t>(Reflect::Fnv1a(InLabel));
 }
 
-// Coalesces adjacent/near-adjacent changed bytes so a struct edit stores tens of
+// Coalesces adjacent changed bytes so a struct edit stores tens of bytes, not the whole struct.
 template <typename Consumer>
 void ForEachChangedRange(std::span<const std::byte> InOldBytes, std::span<const std::byte> InNewBytes,
                          Consumer&& InConsumer) noexcept
@@ -75,12 +75,34 @@ bool CommandStack::Initialize(const Config& InConfig)
     MPending.fill(PendingEdit{});
     MPendingSpawns.fill(PendingSpawn{});
     MCodecCount = 0;
+    MMaxCommands = std::min<std::uint32_t>(std::max(InConfig.maxCommands, 1u), kMaxUndoCommands);
     MCommandCount = 0;
     MCursor = 0;
     MArenaUsed = 0;
     MPendingCount = 0;
     MPendingSpawnCount = 0;
     MTransactionOpen = false;
+    MStats = {};
+    MStats.bytesCapacity = static_cast<std::uint32_t>(MPayloadCapacity);
+    return true;
+}
+
+bool CommandStack::SetLimits(std::size_t InPayloadBytes, std::uint32_t InMaxCommands) noexcept
+{
+    const std::size_t ScopedCapacity = std::max(InPayloadBytes, static_cast<std::size_t>(64u << 10));
+    std::byte* ScopedPayload = new (std::nothrow) std::byte[ScopedCapacity];
+    if (ScopedPayload == nullptr)
+    {
+        return false;
+    }
+    delete[] MPayload;
+    MPayload = ScopedPayload;
+    MPayloadCapacity = ScopedCapacity;
+    MMaxCommands = std::min<std::uint32_t>(std::max(InMaxCommands, 1u), kMaxUndoCommands);
+    MCommandCount = 0;
+    MCursor = 0;
+    MArenaUsed = 0;
+    MTransactionStart = 0;
     MStats = {};
     MStats.bytesCapacity = static_cast<std::uint32_t>(MPayloadCapacity);
     return true;
@@ -334,6 +356,60 @@ CommandStack::Result CommandStack::Record(Entity InEntity, std::uint16_t InCodec
     return Result::Ok;
 }
 
+CommandStack::Result CommandStack::RecordPresence(Entity InEntity, std::uint16_t InCodec, bool InOldPresent,
+                                                  std::span<const std::byte> InOldBytes, bool InNewPresent,
+                                                  std::span<const std::byte> InNewBytes) noexcept
+{
+    if (!MTransactionOpen)
+    {
+        return Result::NoOpenTransaction;
+    }
+    const Codec* ScopedEntry = CodecAt(InCodec);
+    if (ScopedEntry == nullptr)
+    {
+        return Result::UnknownCodec;
+    }
+    if (InOldBytes.size() != ScopedEntry->size || InNewBytes.size() != ScopedEntry->size)
+    {
+        return Result::InvalidArgument;
+    }
+    if (ScopedEntry->external == nullptr && (MRegistry == nullptr || !MRegistry->valid(InEntity)))
+    {
+        return Result::StaleEntity;
+    }
+    for (std::uint32_t ScopedI = 0; ScopedI < MPendingCount; ++ScopedI)
+    {
+        if (MPending[ScopedI].active && MPending[ScopedI].entity == InEntity &&
+            MPending[ScopedI].codec == InCodec)
+        {
+            return Result::InvalidArgument;
+        }
+    }
+    if (MPendingCount >= kMaxTransactionEdits)
+    {
+        return Result::StackFull;
+    }
+    const std::uint32_t ScopedOldOffset = AlignUp(static_cast<std::uint32_t>(MArenaUsed), 16);
+    const std::uint32_t ScopedNewOffset = ScopedOldOffset + ScopedEntry->size;
+    if (static_cast<std::size_t>(ScopedNewOffset) + ScopedEntry->size > MPayloadCapacity)
+    {
+        return Result::PayloadFull;
+    }
+    PendingEdit& ScopedPending = MPending[MPendingCount++];
+    ScopedPending.entity = InEntity;
+    ScopedPending.codec = InCodec;
+    ScopedPending.oldOffset = ScopedOldOffset;
+    ScopedPending.newOffset = ScopedNewOffset;
+    ScopedPending.presence = true;
+    ScopedPending.oldPresent = InOldPresent;
+    ScopedPending.newPresent = InNewPresent;
+    ScopedPending.active = true;
+    MArenaUsed = ScopedNewOffset + ScopedEntry->size;
+    std::memcpy(MPayload + ScopedOldOffset, InOldBytes.data(), ScopedEntry->size);
+    std::memcpy(MPayload + ScopedNewOffset, InNewBytes.data(), ScopedEntry->size);
+    return Result::Ok;
+}
+
 CommandStack::Result CommandStack::RecordAfterMutation(Entity InEntity, std::uint16_t InCodec,
                                                        std::span<const std::byte> InOldBytes) noexcept
 {
@@ -524,7 +600,7 @@ CommandStack::Result CommandStack::PushCommand(const Command& InCommand, std::sp
 {
     // A new command discards the redo tail.
     MCommandCount = MCursor;
-    if (MCommandCount >= MCommands.size())
+    if (MCommandCount >= MMaxCommands || MCommandCount >= MCommands.size())
     {
         return Result::StackFull;
     }
@@ -577,7 +653,7 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
         return Result::Ok;
     }
 
-    // Build each command payload after the scratch region, then compact the
+    // Build each command payload after the scratch region, then compact the payloads.
     std::array<Command, kMaxTransactionEdits + kMaxSpawnedEntitiesPerTransaction * 2> ScopedBuilt{};
     std::uint32_t ScopedBuiltCount = 0;
     std::size_t ScopedFirstPayload = MArenaUsed;
@@ -626,6 +702,33 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
         const Codec& ScopedCodec = MCodecs[ScopedPending.codec];
         const std::span<const std::byte> ScopedOldBytes(MPayload + ScopedPending.oldOffset, ScopedCodec.size);
         const std::span<const std::byte> ScopedNewBytes(MPayload + ScopedPending.newOffset, ScopedCodec.size);
+        if (ScopedPending.presence)
+        {
+            const std::size_t ScopedPayloadSize = static_cast<std::size_t>(ScopedCodec.size) * 2u;
+            if (MArenaUsed + ScopedPayloadSize > MPayloadCapacity || ScopedBuiltCount >= ScopedBuilt.size())
+            {
+                CancelTransaction();
+                return Result::PayloadFull;
+            }
+            std::byte* ScopedOldRegion = MPayload + MArenaUsed;
+            std::byte* ScopedNewRegion = ScopedOldRegion + ScopedCodec.size;
+            std::memcpy(ScopedOldRegion, ScopedOldBytes.data(), ScopedCodec.size);
+            std::memcpy(ScopedNewRegion, ScopedNewBytes.data(), ScopedCodec.size);
+            Command& ScopedCommand = ScopedBuilt[ScopedBuiltCount++];
+            ScopedCommand.entity = ScopedPending.entity;
+            ScopedCommand.codec = ScopedPending.codec;
+            ScopedCommand.rangeCount = 0;
+            ScopedCommand.groupSize = 0;
+            ScopedCommand.kind = CommandKind::Presence;
+            ScopedCommand.oldPresent = ScopedPending.oldPresent ? 1u : 0u;
+            ScopedCommand.newPresent = ScopedPending.newPresent ? 1u : 0u;
+            ScopedCommand.payloadOffset = static_cast<std::uint32_t>(MArenaUsed);
+            ScopedCommand.payloadSize = static_cast<std::uint32_t>(ScopedPayloadSize);
+            ScopedCommand.labelHash = HashLabel(MTransactionLabel);
+            std::memcpy(ScopedCommand.label, MTransactionLabel, sizeof(ScopedCommand.label));
+            MArenaUsed += ScopedPayloadSize;
+            continue;
+        }
 
         std::uint32_t ScopedRangeCount = 0;
         std::uint32_t ScopedByteCount = 0;
@@ -664,6 +767,9 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
         ScopedCommand.entity = ScopedPending.entity;
         ScopedCommand.codec = ScopedPending.codec;
         ScopedCommand.rangeCount = static_cast<std::uint16_t>(ScopedRangeCount);
+        ScopedCommand.kind = CommandKind::Component;
+        ScopedCommand.oldPresent = 1;
+        ScopedCommand.newPresent = 1;
         ScopedCommand.payloadOffset = static_cast<std::uint32_t>(MArenaUsed);
         ScopedCommand.payloadSize = static_cast<std::uint32_t>(ScopedPayloadSize);
         ScopedCommand.groupSize = 0;
@@ -677,7 +783,7 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
         CancelTransaction();
         return Result::Ok;
     }
-    // One committed transaction is one undo step: the first command records the
+    // One committed transaction is one undo step: the first command records the group size.
     ScopedBuilt[0].groupSize = static_cast<std::uint16_t>(ScopedBuiltCount);
     // Compact command payloads from firstPayload down to transactionStart_.
     std::size_t ScopedCompact = MTransactionStart;
@@ -709,7 +815,7 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
             return ScopedResult;
         }
     }
-    // PushCommand truncated the redo tail; payloads were already copied in place,
+    // PushCommand truncated the redo tail; payloads were already copied in place.
     MArenaUsed = ScopedCompact;
     MPendingCount = 0;
     MPendingSpawnCount = 0;
@@ -826,6 +932,65 @@ bool CommandStack::ApplyCommand(const Command& InCommand, bool InUseNewBytes) no
     {
         return ApplyDestroy(InCommand, InUseNewBytes);
     }
+    if (InCommand.kind == CommandKind::Presence)
+    {
+        const Codec* ScopedCodec = CodecAt(InCommand.codec);
+        if (ScopedCodec == nullptr || ScopedCodec->size != InCommand.payloadSize / 2u)
+        {
+            return false;
+        }
+        const bool ScopedPresent = (InUseNewBytes ? InCommand.newPresent : InCommand.oldPresent) != 0;
+        const std::byte* ScopedSource =
+            MPayload + InCommand.payloadOffset + (InUseNewBytes ? ScopedCodec->size : 0u);
+        if (ScopedCodec->external != nullptr)
+        {
+            if (ScopedPresent)
+            {
+                std::memcpy(ScopedCodec->external, ScopedSource, ScopedCodec->size);
+            }
+        }
+        else
+        {
+            if (MRegistry == nullptr || !MRegistry->valid(InCommand.entity))
+            {
+                return false;
+            }
+            if (ScopedPresent)
+            {
+                if (ScopedCodec->has == nullptr || ScopedCodec->emplaceBytes == nullptr ||
+                    ScopedCodec->getMutable == nullptr)
+                {
+                    return false;
+                }
+                if (!ScopedCodec->has(*MRegistry, InCommand.entity))
+                {
+                    ScopedCodec->emplaceBytes(*MRegistry, InCommand.entity, ScopedSource);
+                }
+                else if (void* ScopedComponent = ScopedCodec->getMutable(*MRegistry, InCommand.entity);
+                         ScopedComponent != nullptr)
+                {
+                    std::memcpy(ScopedComponent, ScopedSource, ScopedCodec->size);
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else if (ScopedCodec->has != nullptr && ScopedCodec->has(*MRegistry, InCommand.entity))
+            {
+                if (ScopedCodec->remove == nullptr)
+                {
+                    return false;
+                }
+                ScopedCodec->remove(*MRegistry, InCommand.entity);
+            }
+        }
+        if (MObserver != nullptr)
+        {
+            MObserver(MObserverUser, InCommand.entity, InCommand.codec);
+        }
+        return true;
+    }
     const Codec* ScopedCodec = CodecAt(InCommand.codec);
     if (ScopedCodec == nullptr)
     {
@@ -887,7 +1052,7 @@ bool CommandStack::Undo() noexcept
     std::uint32_t ScopedGroup = MCommands[MCursor - 1].groupSize;
     if (ScopedGroup == 0)
     {
-        // The group size is stored on the first command; the cursor sits on the
+        // The group size is stored on the first command.
         std::uint32_t ScopedHead = MCursor - 1;
         while (ScopedHead > 0 && MCommands[ScopedHead].groupSize == 0)
         {

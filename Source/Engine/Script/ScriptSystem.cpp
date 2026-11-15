@@ -35,7 +35,7 @@ void NativeLogVec2(Script::ScriptVm& InVm, Script::VmContext&, std::uint8_t InBa
 
 void NativeLogMessage(Script::ScriptVm& InVm, Script::VmContext&, std::uint8_t InBase)
 {
-    // The message id is a compiler-assigned constant; the string table lives in
+    // The message id is a compiler-assigned constant.
     LogInfo("script", "log.message #{}", InVm.U(InBase));
 }
 
@@ -640,7 +640,7 @@ void NativeDecimalRelease(Script::ScriptVm& InVm, Script::VmContext& InContext, 
 
 void RegisterScriptableComponents(Script::EcsBridge& InBridge)
 {
-    // Built-ins a visual graph can read/write today. Every registration is a
+    // Built-ins a visual graph can read/write today.
     (void)InBridge.RegisterComponent<Transform2D>("Transform2D");
     (void)InBridge.RegisterComponent<Velocity>("Velocity");
     (void)InBridge.RegisterComponent<TransportGroupComponent>("TransportGroupComponent");
@@ -649,6 +649,226 @@ void RegisterScriptableComponents(Script::EcsBridge& InBridge)
     (void)InBridge.RegisterComponent<DrawOrder>("DrawOrder");
     (void)InBridge.RegisterComponent<Lifetime>("Lifetime");
     (void)InBridge.RegisterComponent<ScriptComponent>("ScriptComponent");
+}
+
+void NativeArrayNew(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const std::uint32_t ScopedHandle = InContext.heap->NewArray();
+    if (ScopedHandle == Script::ScriptHeap::kInvalidHandle)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::HeapFull);
+        return;
+    }
+    InVm.SetU(InBase, ScopedHandle);
+    InVm.SetTag(InBase, Script::ValueTag::Array);
+}
+
+void NativeArrayPush(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedValue{InVm.U(InBase + 1), InVm.Tag(InBase + 1)};
+    if (!InContext.heap->ArrayPush(InVm.U(InBase), ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadCollection);
+        return;
+    }
+    InVm.SetU(InBase, 1);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeArraySet(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedValue{InVm.U(InBase + 2), InVm.Tag(InBase + 2)};
+    if (!InContext.heap->ArraySet(InVm.U(InBase), InVm.U(InBase + 1), ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::OutOfRange);
+        return;
+    }
+    InVm.SetU(InBase, 1);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeArrayGet(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    Script::ScriptValue ScopedValue;
+    if (!InContext.heap->ArrayGet(InVm.U(InBase), InVm.U(InBase + 1), &ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::OutOfRange);
+        return;
+    }
+    InVm.SetU(InBase, ScopedValue.Bits);
+    InVm.SetTag(InBase, ScopedValue.Tag);
+}
+
+void NativeArrayLength(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::uint32_t ScopedLength = 0;
+    if (!InContext.heap->ArrayLength(InVm.U(InBase), &ScopedLength))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadCollection);
+        return;
+    }
+    InVm.SetU(InBase, ScopedLength);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeMapNew(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const std::uint32_t ScopedHandle = InContext.heap->NewMap();
+    if (ScopedHandle == Script::ScriptHeap::kInvalidHandle)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::HeapFull);
+        return;
+    }
+    InVm.SetU(InBase, ScopedHandle);
+    InVm.SetTag(InBase, Script::ValueTag::Map);
+}
+
+void NativeMapSet(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedKey{InVm.U(InBase + 1), InVm.Tag(InBase + 1)};
+    const Script::ScriptValue ScopedValue{InVm.U(InBase + 2), InVm.Tag(InBase + 2)};
+    if (!InContext.heap->MapSet(InVm.U(InBase), ScopedKey, ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadCollection);
+        return;
+    }
+    InVm.SetU(InBase, 1);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeMapGet(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedKey{InVm.U(InBase + 1), InVm.Tag(InBase + 1)};
+    Script::ScriptValue ScopedValue;
+    if (!InContext.heap->MapGet(InVm.U(InBase), ScopedKey, &ScopedValue))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::MissingKey);
+        return;
+    }
+    InVm.SetU(InBase, ScopedValue.Bits);
+    InVm.SetTag(InBase, ScopedValue.Tag);
+}
+
+void NativeMapHas(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    const Script::ScriptValue ScopedKey{InVm.U(InBase + 1), InVm.Tag(InBase + 1)};
+    InVm.SetU(InBase, InContext.heap->MapHas(InVm.U(InBase), ScopedKey) ? 1 : 0);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeMapLength(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::uint32_t ScopedLength = 0;
+    if (!InContext.heap->MapLength(InVm.U(InBase), &ScopedLength))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadCollection);
+        return;
+    }
+    InVm.SetU(InBase, ScopedLength);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeStringConcat(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::uint32_t ScopedHandle = Script::ScriptHeap::kInvalidHandle;
+    if (!InContext.heap->ConcatStrings(InVm.U(InBase), InVm.U(InBase + 1), &ScopedHandle))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadString);
+        return;
+    }
+    InVm.SetU(InBase, ScopedHandle);
+    InVm.SetTag(InBase, Script::ValueTag::String);
+}
+
+void NativeStringLength(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::string_view ScopedText;
+    if (!InContext.heap->StringView(InVm.U(InBase), &ScopedText))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadString);
+        return;
+    }
+    InVm.SetU(InBase, static_cast<std::uint32_t>(ScopedText.size()));
+    InVm.SetTag(InBase, Script::ValueTag::Int);
+}
+
+void NativeStringEquals(Script::ScriptVm& InVm, Script::VmContext& InContext, std::uint8_t InBase)
+{
+    if (InContext.heap == nullptr)
+    {
+        InVm.RaiseFault(Script::VmFault::Code::NoHeap);
+        return;
+    }
+    std::string_view ScopedLeft;
+    std::string_view ScopedRight;
+    if (!InContext.heap->StringView(InVm.U(InBase), &ScopedLeft) ||
+        !InContext.heap->StringView(InVm.U(InBase + 1), &ScopedRight))
+    {
+        InVm.RaiseFault(Script::VmFault::Code::BadString);
+        return;
+    }
+    InVm.SetU(InBase, ScopedLeft == ScopedRight ? 1 : 0);
+    InVm.SetTag(InBase, Script::ValueTag::Int);
 }
 
 void RegisterDefaultScriptNatives(ScriptRuntime& InRuntime)
@@ -698,6 +918,19 @@ void RegisterDefaultScriptNatives(ScriptRuntime& InRuntime)
     InRuntime.SetNative(Script::NativeId::CameraRoll, &NativeCameraRoll);
     InRuntime.SetNative(Script::NativeId::CameraClearEffects, &NativeCameraClearEffects);
     InRuntime.SetNative(Script::NativeId::CameraSetMotionScale, &NativeCameraSetMotionScale);
+    InRuntime.SetNative(Script::NativeId::ArrayNew, &NativeArrayNew);
+    InRuntime.SetNative(Script::NativeId::ArrayPush, &NativeArrayPush);
+    InRuntime.SetNative(Script::NativeId::ArraySet, &NativeArraySet);
+    InRuntime.SetNative(Script::NativeId::ArrayGet, &NativeArrayGet);
+    InRuntime.SetNative(Script::NativeId::ArrayLength, &NativeArrayLength);
+    InRuntime.SetNative(Script::NativeId::MapNew, &NativeMapNew);
+    InRuntime.SetNative(Script::NativeId::MapSet, &NativeMapSet);
+    InRuntime.SetNative(Script::NativeId::MapGet, &NativeMapGet);
+    InRuntime.SetNative(Script::NativeId::MapHas, &NativeMapHas);
+    InRuntime.SetNative(Script::NativeId::MapLength, &NativeMapLength);
+    InRuntime.SetNative(Script::NativeId::StringConcat, &NativeStringConcat);
+    InRuntime.SetNative(Script::NativeId::StringLength, &NativeStringLength);
+    InRuntime.SetNative(Script::NativeId::StringEquals, &NativeStringEquals);
 }
 
 bool ScriptRuntime::Initialize()
@@ -715,11 +948,82 @@ bool ScriptRuntime::Initialize()
     }
     RegisterDefaultScriptNatives(*this);
     MRng = DeterministicRng::FromSeed(0x4642334C4F4C49ull);
+    MHeap->Reset();
+    MCoroutines.fill(CoroutineSlot{});
     MActiveScriptCount = 0;
     MActiveStamp = 0;
     MDroppedDestroyEvents = 0;
     MInitialized = true;
     return true;
+}
+
+Script::VmSuspendState* ScriptRuntime::FindCoroutine(Entity InEntity, std::uint32_t InProgram,
+                                                     Script::ScriptEvent InEvent) noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.EntityId == InEntity && ScopedSlot.Program == InProgram &&
+            ScopedSlot.Event == InEvent)
+        {
+            return &ScopedSlot.State;
+        }
+    }
+    return nullptr;
+}
+
+void ScriptRuntime::StoreCoroutine(Entity InEntity, std::uint32_t InProgram, Script::ScriptEvent InEvent,
+                                   const Script::VmSuspendState& InState) noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.EntityId == InEntity && ScopedSlot.Program == InProgram &&
+            ScopedSlot.Event == InEvent)
+        {
+            ScopedSlot.State = InState;
+            return;
+        }
+    }
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (!ScopedSlot.Used)
+        {
+            ScopedSlot.Used = true;
+            ScopedSlot.EntityId = InEntity;
+            ScopedSlot.Program = InProgram;
+            ScopedSlot.Event = InEvent;
+            ScopedSlot.State = InState;
+            return;
+        }
+    }
+}
+
+void ScriptRuntime::RemoveCoroutine(Entity InEntity, std::uint32_t InProgram, Script::ScriptEvent InEvent) noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.EntityId == InEntity && ScopedSlot.Program == InProgram &&
+            ScopedSlot.Event == InEvent)
+        {
+            ScopedSlot = CoroutineSlot{};
+            return;
+        }
+    }
+}
+
+void ScriptRuntime::ClearCoroutines() noexcept
+{
+    MCoroutines.fill(CoroutineSlot{});
+}
+
+void ScriptRuntime::PruneCoroutines(const Ecs::Registry& InRegistry) noexcept
+{
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && (!InRegistry.valid(ScopedSlot.EntityId) || Program(ScopedSlot.Program) == nullptr))
+        {
+            ScopedSlot = CoroutineSlot{};
+        }
+    }
 }
 
 std::uint16_t ScriptRuntime::LoadProgram(std::span<const std::byte> InCooked, std::string* InError)
@@ -779,6 +1083,13 @@ bool ScriptRuntime::UnloadProgram(std::uint32_t InHandle) noexcept
     }
     MSlots[InHandle] = {};
     MFaultReported[InHandle] = false;
+    for (CoroutineSlot& ScopedSlot : MCoroutines)
+    {
+        if (ScopedSlot.Used && ScopedSlot.Program == InHandle)
+        {
+            ScopedSlot = CoroutineSlot{};
+        }
+    }
     if (MProgramCount > 0)
     {
         --MProgramCount;
@@ -925,12 +1236,14 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
         return;
     }
     InRuntime.BeginScriptFrame();
+    InRuntime.PruneCoroutines(InContext.registry);
 
     Script::VmContext ScopedVmContext{InContext.registry};
     ScopedVmContext.commands = InContext.commands;
     ScopedVmContext.rng = &InRuntime.Rng();
     ScopedVmContext.bigNumbers = &InRuntime.BigNumbers();
     ScopedVmContext.decimals = &InRuntime.Decimals();
+    ScopedVmContext.heap = &InRuntime.Heap();
     ScopedVmContext.dt = InContext.dt;
     ScopedVmContext.frameIndex = InContext.frameIndex;
     ScopedVmContext.transport = InRuntime.TransportGroups();
@@ -993,24 +1306,63 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
             continue;
         }
 
-        if ((ScopedComponent.Flags & kScriptFlagStarted) == 0)
+        const auto ScopedRunEvent = [&](Script::ScriptEvent InEvent, bool& OutSuspended)
         {
+            OutSuspended = false;
+            if (const Script::VmSuspendState* ScopedPending =
+                    InRuntime.FindCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+                ScopedPending != nullptr && ScopedPending->WakeFrame > ScopedVmContext.frameIndex)
+            {
+                OutSuspended = true;
+                return;
+            }
             Script::VmFault ScopedFault;
-            if (!InRuntime.Vm().Run(*ScopedProgram, Script::ScriptEvent::Start, ScopedEntity, ScopedVmContext,
-                                    &ScopedFault))
+            if (Script::VmSuspendState* ScopedState =
+                    InRuntime.FindCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+                ScopedState != nullptr)
+            {
+                const bool ScopedOk =
+                    InRuntime.Vm().Run(*ScopedProgram, InEvent, ScopedEntity, ScopedVmContext, &ScopedFault,
+                                       ScopedState);
+                OutSuspended = ScopedState->Valid;
+                if (!OutSuspended)
+                {
+                    InRuntime.RemoveCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+                }
+                if (!ScopedOk)
+                {
+                    InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
+                }
+                return;
+            }
+            Script::VmSuspendState ScopedState;
+            const bool ScopedOk =
+                InRuntime.Vm().Run(*ScopedProgram, InEvent, ScopedEntity, ScopedVmContext, &ScopedFault, &ScopedState);
+            OutSuspended = ScopedState.Valid;
+            if (OutSuspended)
+            {
+                InRuntime.StoreCoroutine(ScopedEntity, ScopedComponent.Program, InEvent, ScopedState);
+            }
+            if (!ScopedOk)
             {
                 InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
             }
-            // Mark started even after a fault: retrying a broken Start every
-            ScopedComponent.Flags |= kScriptFlagStarted;
+        };
+
+        if ((ScopedComponent.Flags & kScriptFlagStarted) == 0)
+        {
+            bool ScopedStartSuspended = false;
+            ScopedRunEvent(Script::ScriptEvent::Start, ScopedStartSuspended);
+            // A yielding Start keeps the flag clear so the next frame resumes it.
+            if (!ScopedStartSuspended)
+            {
+                ScopedComponent.Flags |= kScriptFlagStarted;
+            }
         }
 
-        Script::VmFault ScopedFault;
-        if (!InRuntime.Vm().Run(*ScopedProgram, Script::ScriptEvent::Update, ScopedEntity, ScopedVmContext,
-                                &ScopedFault))
-        {
-            InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedFault);
-        }
+        bool ScopedUpdateSuspended = false;
+        ScopedRunEvent(Script::ScriptEvent::Update, ScopedUpdateSuspended);
+        (void)ScopedUpdateSuspended;
     }
     InRuntime.RunDestroyForInactive(InContext.registry, ScopedVmContext, InAllowVmFallback);
 }

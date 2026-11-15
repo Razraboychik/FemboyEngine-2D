@@ -55,7 +55,7 @@ struct SceneData
     std::vector<SceneEntity> entities;
 };
 
-// serialized index -> live entity. Built by ApplyScene and returned to the
+// serialized index -> live entity.
 struct EntityRemap
 {
     std::vector<Entity> entities;

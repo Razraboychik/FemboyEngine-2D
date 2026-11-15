@@ -13,7 +13,7 @@
 namespace Fby::Editor
 {
 
-// Cheap extension policy. Returns false for cooked artifacts, .femeta and
+// Cheap extension policy. Returns false for cooked artifacts, .femeta files and unknown extensions.
 [[nodiscard]] bool InferAssetKindFromPath(std::string_view InSourcePath, AssetKind* OutKind) noexcept;
 
 // "textures/hero.png" -> "textures/hero.ftex"; audio -> .fpcm; video/scene

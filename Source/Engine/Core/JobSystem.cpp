@@ -22,11 +22,11 @@ namespace
 
 // Every thread the engine creates is tagged once, so debug tooling and log
 thread_local bool ThreadLocalWorker = false;
-// The storage owns the characters; the view is only a cheap read handle, so a
+// The storage owns the characters; the view is only a cheap read handle.
 thread_local std::string ThreadLocalNameStorage = "main";
 thread_local std::string_view ThreadLocalName = ThreadLocalNameStorage;
 
-// Shared state of one ParallelFor call. It lives on the caller's stack; the
+// Shared state of one ParallelFor call. It lives on the caller's stack.
 struct ParallelShared
 {
     std::atomic<std::uint32_t> next{0};
@@ -239,7 +239,7 @@ void JobSystem::DispatchParallel(std::uint32_t InCount, std::uint32_t InGrain, v
     std::counting_semaphore<JobSystem::kMaxThreadSlots> ScopedCompleted{0};
     ScopedShared.completed = &ScopedCompleted;
 
-    // The caller keeps one chunk, so a one-worker pool still makes progress and
+    // The caller keeps one chunk, so a one-worker pool still makes progress.
     const std::uint32_t ScopedHelpers = std::min<std::uint32_t>(ScopedChunks - 1, ThreadCount());
 
     ScopedShared.owner = this;

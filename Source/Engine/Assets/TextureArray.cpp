@@ -180,7 +180,7 @@ bool TextureArrayAsset::LoadFromManifest(VirtualFileSystem& InVfs, Rhi::RHI& InG
         }
         if (!ScopedFormatKnown)
         {
-            // The first layer defines the array: every layer must match its
+            // The first layer defines the array: every layer must match.
             ScopedFormat = ScopedCooked->format;
             ScopedMipLevels = ScopedCooked->mipLevels;
             ScopedFormatKnown = true;
@@ -237,7 +237,7 @@ bool TextureArrayAsset::LoadFromManifest(VirtualFileSystem& InVfs, Rhi::RHI& InG
     ScopedTextureDesc.layers = static_cast<std::uint32_t>(ScopedDesc.layers.size());
     ScopedTextureDesc.mipLevels = ScopedMipLevels;
     ScopedTextureDesc.srgb = ScopedSrgb;
-    // The cooked payload uploads verbatim: the RHI copies BC7/ASTC blocks into
+    // The cooked payload uploads verbatim: the RHI copies BC7/ASTC blocks.
     ScopedTextureDesc.format = ScopedFormat;
 
     const Rhi::TextureArrayHandle ScopedHandle = InGpu.CreateTextureArray(ScopedTextureDesc, ScopedPixels);

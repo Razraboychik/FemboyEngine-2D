@@ -86,7 +86,7 @@ inline constexpr std::uint32_t kOptimizationLevelCount = static_cast<std::uint32
     return "-O2";
 }
 
-// MSVC / clang-cl spell the same intent differently. /O1 is "favour size" and
+// MSVC / clang-cl spell the same intent differently.
 [[nodiscard]] constexpr std::string_view OptimizationFlagMsvc(OptimizationLevel InLevel) noexcept
 {
     switch (InLevel)
@@ -107,7 +107,7 @@ inline constexpr std::uint32_t kOptimizationLevelCount = static_cast<std::uint32
     return "/O2";
 }
 
-// Ofast is the only preset that relaxes IEEE semantics. The AOT cook and the
+// Ofast is the only preset that relaxes IEEE semantics.
 [[nodiscard]] constexpr bool RelaxesFloatingPoint(OptimizationLevel InLevel) noexcept
 {
     return InLevel == OptimizationLevel::Ofast;
@@ -138,19 +138,19 @@ struct BuildProfile
     [[nodiscard]] friend constexpr bool operator==(const BuildProfile&, const BuildProfile&) noexcept = default;
 
     OptimizationLevel optimization = OptimizationLevel::O2;
-    // Whole-program optimisation. Off by default for iteration builds because
+    // Whole-program optimisation. Off by default for iteration builds.
     bool linkTimeOptimization = false;
     // Debug info stripped from the final archive, never from a development one
     bool stripDebugInfo = true;
-    // Batch translation units into one. Strongly recommended for the ~120
+    // Batch translation units into one.
     bool unityBuild = true;
-    // Build for the host CPU (-march=native / /arch:AVX2). Never enable for a
+    // Build for the host CPU (-march=native / /arch:AVX2).
     bool nativeArch = false;
 };
 
 static_assert(sizeof(BuildProfile) <= 8, "BuildProfile is stored in every project file and must stay compact");
 
-// The advice is deliberately written as three short lines, not as prose: the
+// The advice is deliberately written as three short lines, not as prose.
 struct OptimizationAdvice
 {
     std::string_view headline;

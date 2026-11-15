@@ -135,7 +135,7 @@ void AudioZoneSystem::Update(Ecs::Registry& InRegistry, AudioSystem* InAudio, fl
         }
         if (!ScopedAllQueued)
         {
-            // Retry the whole context next frame instead of remembering a
+            // Retry the whole context next frame instead of remembering a partial update.
             continue;
         }
         ScopedContext.LastBusMask = ScopedMask;

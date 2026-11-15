@@ -12,6 +12,7 @@
 #include <memory>
 #include <span>
 #include <type_traits>
+#include <vector>
 
 namespace Fby::Rhi
 {
@@ -21,7 +22,74 @@ enum class Backend : std::uint8_t
     Null = 0,
     Vulkan,
     Metal,
+    D3D12,
+    D3D11,
 };
+
+// Capability tier, independent of the graphics API name. Legacy is rejected by
+// the current Vulkan path; Baseline starts at Vulkan 1.2, Enhanced at 1.3 and
+// Temporal at 1.4.
+enum class GpuTier : std::uint8_t
+{
+    Legacy = 0,
+    Baseline,
+    Enhanced,
+    Temporal,
+};
+
+[[nodiscard]] constexpr const char* GpuTierName(GpuTier InTier) noexcept
+{
+    switch (InTier)
+    {
+        case GpuTier::Legacy:
+            return "legacy";
+        case GpuTier::Baseline:
+            return "baseline";
+        case GpuTier::Enhanced:
+            return "enhanced";
+        case GpuTier::Temporal:
+            return "temporal";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] constexpr GpuTier VulkanTier(std::uint32_t InApiVersion) noexcept
+{
+    if (InApiVersion >= (1u << 22) + (4u << 12))
+    {
+        return GpuTier::Temporal;
+    }
+    if (InApiVersion >= (1u << 22) + (3u << 12))
+    {
+        return GpuTier::Enhanced;
+    }
+    if (InApiVersion >= (1u << 22) + (2u << 12))
+    {
+        return GpuTier::Baseline;
+    }
+    return GpuTier::Legacy;
+}
+
+[[nodiscard]] constexpr Backend BackendFromName(std::string_view InName) noexcept
+{
+    if (InName == "vulkan")
+    {
+        return Backend::Vulkan;
+    }
+    if (InName == "metal")
+    {
+        return Backend::Metal;
+    }
+    if (InName == "d3d12")
+    {
+        return Backend::D3D12;
+    }
+    if (InName == "d3d11")
+    {
+        return Backend::D3D11;
+    }
+    return Backend::Null;
+}
 
 [[nodiscard]] constexpr const char* BackendName(Backend InBackend) noexcept
 {
@@ -33,6 +101,10 @@ enum class Backend : std::uint8_t
             return "vulkan";
         case Backend::Metal:
             return "metal";
+        case Backend::D3D12:
+            return "d3d12";
+        case Backend::D3D11:
+            return "d3d11";
     }
     return "unknown";
 }
@@ -50,12 +122,14 @@ struct DeviceDesc
 {
     Backend backend = Backend::Null;
     void* nativeWindow = nullptr;
-    Extent2D size{1280, 720};
+    // Zero asks RHI::Create to take the client size from nativeWindow, or
+    // 1280x720 when the device is headless.
+    Extent2D size{};
     bool vsync = true;
     bool enableValidation = false;
     // Triple buffering by default: the CPU may be one frame ahead of the GPU
     std::uint32_t framesInFlight = 3;
-    // Upper bound for one frame's instance data, in items. 1M items * 48 B is
+    // Upper bound for one frame's instance data, in items.
     std::uint32_t maxItemsPerFrame = 1u << 20;
     std::uint32_t maxTextureLayers = 256;
     // Mesh path ring capacities, per frame slice. The defaults cover ~1000
@@ -115,6 +189,7 @@ struct DeviceInfo
     char name[256] = {};
     char driver[128] = {};
     std::uint32_t apiVersion = 0;
+    GpuTier tier = GpuTier::Legacy;
     std::uint32_t framesInFlight = 0;
     std::uint32_t maxItemsPerFrame = 0;
     std::uint32_t maxTextureLayers = 0;
@@ -170,8 +245,12 @@ struct ShaderPipelineDesc
     std::span<const std::byte> vertexSpirv;
     // Empty: engine mesh.frag
     std::span<const std::byte> fragmentSpirv;
+    // Optional DX12 DXIL stages from a cooked material; when present the D3D12
+    // backend prefers them over SPIR-V.
+    std::span<const std::byte> vertexDxil;
+    std::span<const std::byte> fragmentDxil;
     const char* debugName = nullptr;
-    // Layout and vertex stage contract the pipeline is built for
+    // Layout and vertex stage contract the pipeline is built.
     ShaderPipelineDomain domain = ShaderPipelineDomain::Mesh;
 };
 
@@ -194,15 +273,35 @@ enum class RenderBlendMode : std::uint8_t
     Reveal = 2
 };
 
+// Explicit colour formats for targets that are not plain RGBA8. Motion vectors
+// need RG16F so FSR2 receives signed pixel deltas without a 0..1 bias.
+enum class RenderTargetFormat : std::uint8_t
+{
+    Auto = 0,
+    Rgba8Unorm,
+    Rgba8Srgb,
+    Rg16Float
+};
+
 struct RenderTargetDesc
 {
     Extent2D size{};
     bool srgb = false;
     RenderBlendMode blend = RenderBlendMode::Opaque;
+    RenderTargetFormat format = RenderTargetFormat::Auto;
     // Use the swapchain format so the target's render pass stays compatible with
     // pipelines created for the main pass (the HUD is drawn by the same UI pipeline).
     bool matchSwapchainFormat = false;
 };
+
+[[nodiscard]] constexpr RenderTargetDesc MotionVectorTargetDesc(Extent2D InSize) noexcept
+{
+    RenderTargetDesc ScopedDesc;
+    ScopedDesc.size = InSize;
+    ScopedDesc.srgb = false;
+    ScopedDesc.format = RenderTargetFormat::Rg16Float;
+    return ScopedDesc;
+}
 
 struct RenderTargetHandle
 {
@@ -250,10 +349,10 @@ struct UiBackendInfo
     bool dynamicRendering = false;
 };
 
-// `nativeCommandBuffer` is a VkCommandBuffer on Vulkan. The callback runs while
+// `nativeCommandBuffer` is a VkCommandBuffer on Vulkan.
 using UiRenderCallback = void (*)(void* InUser, void* InNativeCommandBuffer);
 
-// Per-frame counters. The renderer exposes these instead of leaving the game to
+// Per-frame counters. The renderer exposes these instead of leaving the game.
 struct FrameStats
 {
     std::uint64_t frameIndex = 0;
@@ -300,7 +399,7 @@ struct FrameStats
 template <typename T>
 concept PodPayload = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T> && sizeof(T) <= 128;
 
-// A single texture-array handle owns `layers` slices. Items reference a layer by
+// A single texture-array handle owns `layers` slices.
 struct TextureArrayHandle
 {
     static constexpr std::uint32_t kInvalid32 = 0xFFFFFFFFu;
@@ -447,7 +546,7 @@ public:
         return false;
     }
 
-    // Streaming path for media and for editor re-cooks. Writes one layer/mip of
+    // Streaming path for media and for editor re-cooks.
     virtual bool UpdateTextureArrayLayer(TextureArrayHandle InHandle, std::uint32_t InLayer, std::uint32_t InMipLevel,
                                          std::span<const std::byte> InData)
     {
@@ -518,7 +617,6 @@ public:
     {
         (void)InHandle;
     }
-    // Records a sprite pass into the target and leaves it in a sampleable
     // Presents the target on the swapchain with a blit. Used by offscreen
     // benchmarks and by a cached static frame, so the window never shows a
     // black placeholder.
@@ -652,13 +750,10 @@ public:
         return CreateRenderTarget(ScopedDesc);
     }
 
-    // A non-sRGB target reserved for screen-space motion vectors.
+    // A signed RG16 target for screen-space motion vectors.
     virtual RenderTargetHandle CreateMotionVectorTarget(Extent2D InSize)
     {
-        RenderTargetDesc ScopedDesc;
-        ScopedDesc.size = InSize;
-        ScopedDesc.srgb = false;
-        return CreateRenderTarget(ScopedDesc);
+        return CreateRenderTarget(MotionVectorTargetDesc(InSize));
     }
 
     // Spatial upscale from a completed source target into a display target.
@@ -764,6 +859,13 @@ protected:
 [[nodiscard]] std::unique_ptr<RHI> CreateVulkanRHI();
 [[nodiscard]] std::unique_ptr<RHI> CreateMetalRHI();
 
-// Selects a backend for the current platform at runtime. On Windows/Linux the
+// CPU pixels for the built-in four-layer atlas: white, checker, radial shade and
+// a soft disc. Layer 0 is the white texel every solid rectangle samples, which is
+// why a backend that owns an atlas must expose it to 0xFFFFFFFF packets.
+[[nodiscard]] std::vector<std::byte> BuildBuiltInAtlasPixels(std::uint32_t InSize, std::uint32_t InLayers);
+
+// Selects a backend for the current platform at runtime.
+// Returns Null, which asks RHI::Create to probe Vulkan first and fall back to the
+// platform backend. Games should normally leave DeviceDesc::backend untouched.
 [[nodiscard]] Backend SelectDefaultBackend() noexcept;
 }

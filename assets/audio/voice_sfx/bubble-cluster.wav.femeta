@@ -1,0 +1,17 @@
+guid = "0x0C9FCCA1CB542C7F"
+asset_id = "0x9ED385B5783A23A6"
+type = "audio"
+source = "audio/voice_sfx/bubble-cluster.wav"
+cooked = "audio/voice_sfx/bubble-cluster.fpcm"
+source_hash = "0xDF14BF26CD89A159"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

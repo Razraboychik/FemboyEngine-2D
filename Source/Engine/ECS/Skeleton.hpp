@@ -150,7 +150,7 @@ struct SkinComponent
     std::uint32_t VertexCount = 0;
 };
 
-// Render-facing data for a skinned quad. Kept separate from SkinComponent so
+// Render-facing data for a skinned quad.
 struct SkinnedSprite
 {
     Vector2D UVMin{0.0f, 0.0f};
@@ -189,7 +189,7 @@ void SkeletonReset(SkeletonComponent& InSkeleton) noexcept;
                                            float InLocalScale = 1.0f) noexcept;
 [[nodiscard]] std::int16_t SkeletonFindBone(const SkeletonComponent& InSkeleton, std::uint64_t InNameHash) noexcept;
 
-// Stores the current local pose as the bind pose: computes global matrices and
+// Stores the current local pose as the bind pose: computes global matrices.
 void SkeletonBindPose(SkeletonComponent& InSkeleton) noexcept;
 
 // SkeletalAnimation evaluation
@@ -205,7 +205,7 @@ void Deform(const SkeletonComponent& InSkeleton, SkinComponent& InSkin) noexcept
 class SkeletonSystem
 {
 public:
-    // GPU skinning is the default: Run() evaluates the hierarchy and fills the
+    // GPU skinning is the default: Run() evaluates the hierarchy and fills the palette.
     bool deformOnCpu = false;
 
     // Runs Evaluate (and optionally Deform) for every entity with a skeleton.

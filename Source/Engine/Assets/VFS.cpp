@@ -601,7 +601,7 @@ bool VirtualFileSystem::WriteFile(std::string_view InPath, std::span<const std::
         }
     }
 
-    // Write beside the target and replace it in one operation. On Windows the
+    // Write beside the target and replace it in one operation.
     const fs::path ScopedTemporary = ScopedPhysical.string() + ".fbtmp";
     {
         std::ofstream ScopedStream(ScopedTemporary, std::ios::binary | std::ios::trunc);
@@ -619,7 +619,7 @@ bool VirtualFileSystem::WriteFile(std::string_view InPath, std::span<const std::
         }
     }
 
-    // The old mapping must be closed before the target is replaced. Erasing the
+    // The old mapping must be closed before the target is replaced.
     if (MLazyMappings.contains(ScopedKey))
     {
         MLazyMappings.erase(ScopedKey);
@@ -713,7 +713,7 @@ bool VirtualFileSystem::ReloadFile(std::string_view InPath, std::string* InError
         return ScopedFail("file does not exist: " + ScopedPhysical.string());
     }
 
-    // Open the replacement before touching the old mapping. If the new file is
+    // Open the replacement before touching the old mapping.
     std::shared_ptr<MappedFile> ScopedFreshMapping = MappedFile::Open(Utf8String(ScopedPhysical), InError);
     if (!ScopedFreshMapping)
     {
@@ -731,7 +731,7 @@ bool VirtualFileSystem::ReloadFile(std::string_view InPath, std::string* InError
 void VirtualFileSystem::Unmount(std::uint32_t InMount)
 {
     const std::scoped_lock ScopedLock(MMutex);
-    // Collect first: erasing while iterating a sorted vector invalidates the
+    // Collect first: erasing while iterating a sorted vector invalidates the iterators.
     std::vector<std::string> ScopedDoomed;
     for (const auto& [ScopedPath, ScopedEntry] : MEntries)
     {

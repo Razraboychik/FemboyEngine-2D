@@ -9,6 +9,7 @@
 #include "Engine/RHI/DlssAdapter.hpp"
 #include "Engine/RHI/FidelityFxRuntime.hpp"
 #include "Engine/RHI/Fsr2Adapter.hpp"
+#include "Engine/RHI/RHI.hpp"
 #include "Engine/RHI/DlssRuntime.hpp"
 #include "Engine/RHI/DlssRuntimeProbe.hpp"
 
@@ -26,7 +27,7 @@ int GFailures = 0;
         if (!(condition))                                                                                              \
         {                                                                                                              \
             std::fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, #condition);                                  \
-            ++GFailures;                                                                                              \
+            ++GFailures;                                                                                               \
         }                                                                                                              \
     } while (0)
 }
@@ -81,12 +82,10 @@ int main()
     ScopedPolicy.BackendCompiled = true;
     ScopedPolicy.DeviceSupported = true;
     ScopedPolicy.HudSeparated = true;
-    FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 30.0f, false) ==
-              Fby::Rhi::FrameGenerationStatus::LowFps);
+    FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 30.0f, false) == Fby::Rhi::FrameGenerationStatus::LowFps);
     FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 60.0f, true) ==
               Fby::Rhi::FrameGenerationStatus::ResetHistory);
-    FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 60.0f, false) ==
-              Fby::Rhi::FrameGenerationStatus::Ready);
+    FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 60.0f, false) == Fby::Rhi::FrameGenerationStatus::Ready);
 
     const std::filesystem::path ScopedDlssDir = "build-audit/fby_dlss_test";
     std::error_code ScopedDlssCreateError;
@@ -101,15 +100,13 @@ int main()
     FBY_CHECK(ScopedDlss.Upscaling);
     FBY_CHECK(!ScopedDlss.FrameGeneration);
 
-
     Fby::Rhi::DeviceInfo ScopedDevice;
     ScopedDevice.backend = Fby::Rhi::Backend::Vulkan;
     ScopedDevice.platform = 0;
     ScopedDevice.gpuVendor = 1;
     ScopedDevice.upscalers.dlss = true;
     ScopedDevice.upscalers.motionVectors = true;
-    const Fby::Rhi::BackendCapabilities ScopedDeviceCaps =
-        Fby::Rhi::CapabilitiesFromDevice(ScopedDevice);
+    const Fby::Rhi::BackendCapabilities ScopedDeviceCaps = Fby::Rhi::CapabilitiesFromDevice(ScopedDevice);
     FBY_CHECK(ScopedDeviceCaps.Vendor == Fby::Rhi::GpuVendor::Nvidia);
     FBY_CHECK(ScopedDeviceCaps.Platform == Fby::Rhi::PlatformKind::Windows);
     Fby::Rhi::DeviceInfo ScopedMacInfo;
@@ -127,8 +124,7 @@ int main()
         std::fputc('x', ScopedFfxHandle);
         std::fclose(ScopedFfxHandle);
     }
-    const Fby::Rhi::FidelityFxRuntimeAvailability ScopedFfx =
-        Fby::Rhi::DetectFidelityFxRuntime(ScopedFfxDir);
+    const Fby::Rhi::FidelityFxRuntimeAvailability ScopedFfx = Fby::Rhi::DetectFidelityFxRuntime(ScopedFfxDir);
     FBY_CHECK(ScopedFfx.Upscaling);
     FBY_CHECK(!ScopedFfx.FrameGeneration);
     Fby::Rhi::DeviceInfo ScopedFfxInfo;
@@ -159,6 +155,24 @@ int main()
 
     FBY_CHECK(Fby::Rhi::Fsr2RenderScale(Fby::Rhi::Fsr2QualityMode::Quality) > 0.5f);
     FBY_CHECK(Fby::Rhi::Fsr2RenderScale(Fby::Rhi::Fsr2QualityMode::UltraPerformance) < 0.5f);
+    FBY_CHECK(Fby::Rhi::Fsr2QualityForExtent(1286, 724, 1920, 1080) == Fby::Rhi::Fsr2QualityMode::Quality);
+    FBY_CHECK(Fby::Rhi::Fsr2QualityForExtent(1114, 626, 1920, 1080) == Fby::Rhi::Fsr2QualityMode::Balanced);
+    FBY_CHECK(Fby::Rhi::Fsr2QualityForExtent(960, 540, 1920, 1080) == Fby::Rhi::Fsr2QualityMode::Performance);
+    FBY_CHECK(Fby::Rhi::Fsr2QualityForExtent(634, 356, 1920, 1080) ==
+              Fby::Rhi::Fsr2QualityMode::UltraPerformance);
+    FBY_CHECK(Fby::Rhi::Fsr2RenderSizeMatches(Fby::Rhi::Fsr2QualityMode::Quality, 1286, 724, 1920, 1080));
+    FBY_CHECK(!Fby::Rhi::Fsr2RenderSizeMatches(Fby::Rhi::Fsr2QualityMode::Quality, 960, 540, 1920, 1080));
+    FBY_CHECK(!Fby::Rhi::Fsr2RenderSizeMatches(Fby::Rhi::Fsr2QualityMode::Quality, 1921, 1081, 1920, 1080));
+    const Fby::Rhi::RenderTargetDesc ScopedMotionDesc = Fby::Rhi::MotionVectorTargetDesc({640, 360});
+    FBY_CHECK(ScopedMotionDesc.format == Fby::Rhi::RenderTargetFormat::Rg16Float);
+    FBY_CHECK(!ScopedMotionDesc.srgb);
+
+    Fby::Rhi::Fsr2Adapter ScopedFsr2;
+    FBY_CHECK(!ScopedFsr2.Initialize(nullptr, nullptr, nullptr, 1280, 720, 1920, 1080));
+    FBY_CHECK(!ScopedFsr2.Initialize(nullptr, nullptr, nullptr, 1920, 1080, 1280, 720));
+    FBY_CHECK(!ScopedFsr2.IsAvailable());
+    FBY_CHECK(!ScopedFsr2.Dispatch(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 1286, 724, 1920, 1080,
+                                   Fby::Rhi::Fsr2QualityMode::Quality, 0.0f, 0.0f, true));
     FBY_CHECK(Fby::Rhi::DlssRenderScale(Fby::Rhi::DlssQualityMode::Quality) > 0.5f);
     FBY_CHECK(Fby::Rhi::DlssRenderScale(Fby::Rhi::DlssQualityMode::UltraPerformance) < 0.5f);
 
@@ -216,14 +230,18 @@ int main()
     FBY_CHECK(!Fby::Rhi::BackendAvailable(ScopedCaps, Fby::Rhi::UpscalerBackend::Dlss));
     ScopedCaps.MetalFx = true;
     FBY_CHECK(Fby::Rhi::BackendAvailable(ScopedCaps, Fby::Rhi::UpscalerBackend::MetalFx));
-    FBY_CHECK(Fby::Rhi::ChooseUpscaler(ScopedCaps, Fby::Rhi::UpscalerBackend::Dlss) ==
-              Fby::Rhi::UpscalerBackend::Fsr1);
+    FBY_CHECK(Fby::Rhi::ChooseUpscaler(ScopedCaps, Fby::Rhi::UpscalerBackend::Dlss) == Fby::Rhi::UpscalerBackend::Fsr1);
     ScopedCaps.Fsr2 = true;
     ScopedCaps.MotionVectors = true;
-    FBY_CHECK(Fby::Rhi::ChooseUpscaler(ScopedCaps, Fby::Rhi::UpscalerBackend::Dlss) ==
-              Fby::Rhi::UpscalerBackend::Fsr2);
+    FBY_CHECK(Fby::Rhi::ChooseUpscaler(ScopedCaps, Fby::Rhi::UpscalerBackend::Dlss) == Fby::Rhi::UpscalerBackend::Fsr2);
     FBY_CHECK(Fby::Rhi::ChooseFrameGen(ScopedCaps, Fby::Rhi::FrameGenBackend::DlssFg) ==
               Fby::Rhi::FrameGenBackend::Off);
+    FBY_CHECK(Fby::Rhi::UpscalerUnavailableReason(ScopedCaps, Fby::Rhi::UpscalerBackend::Fsr2) == nullptr);
+    FBY_CHECK(Fby::Rhi::UpscalerUnavailableReason(ScopedCaps, Fby::Rhi::UpscalerBackend::Dlss) != nullptr);
+    FBY_CHECK(Fby::Rhi::FrameGenUnavailableReason(ScopedCaps, Fby::Rhi::FrameGenBackend::Fsr3) != nullptr);
+    ScopedCaps.MotionVectors = false;
+    FBY_CHECK(Fby::Rhi::UpscalerUnavailableReason(ScopedCaps, Fby::Rhi::UpscalerBackend::Fsr2) != nullptr);
+    ScopedCaps.MotionVectors = true;
     ScopedCaps.Fsr1 = true;
     ScopedCaps.Fsr2 = false;
     FBY_CHECK(ChooseUpscaleMode(UpscaleMode::Fsr2, ScopedCaps) == UpscaleMode::Fsr1);
@@ -231,11 +249,9 @@ int main()
     FBY_CHECK(ChooseUpscaleMode(UpscaleMode::Fsr1, ScopedCaps) == UpscaleMode::Bilinear);
     ScopedCaps.Fsr1 = true;
     ScopedUser.upscalerBackend = UpscalerBackendSetting::Fsr1;
-    FBY_CHECK(ResolveRenderSettings(ScopedProject, ScopedUser, {}, &ScopedCaps).upscaleMode ==
-              UpscaleMode::Fsr1);
+    FBY_CHECK(ResolveRenderSettings(ScopedProject, ScopedUser, {}, &ScopedCaps).upscaleMode == UpscaleMode::Fsr1);
     ScopedUser.upscalerBackend = UpscalerBackendSetting::Dlss;
-    FBY_CHECK(ResolveRenderSettings(ScopedProject, ScopedUser, {}, &ScopedCaps).upscaleMode ==
-              UpscaleMode::Fsr1);
+    FBY_CHECK(ResolveRenderSettings(ScopedProject, ScopedUser, {}, &ScopedCaps).upscaleMode == UpscaleMode::Fsr1);
     ScopedUser.upscalerBackend = UpscalerBackendSetting::Auto;
 
     Fby::Rhi::FramePacingConfig ScopedPacing;
@@ -249,8 +265,7 @@ int main()
 
     ScopedUser.upscalerBackend = UpscalerBackendSetting::Dlss;
     ScopedUser.dlssQuality = Fby::Rhi::DlssQualityMode::Performance;
-    FBY_CHECK(ResolveRenderSettings(ScopedProject, ScopedUser).upscalerBackend ==
-              UpscalerBackendSetting::Dlss);
+    FBY_CHECK(ResolveRenderSettings(ScopedProject, ScopedUser).upscalerBackend == UpscalerBackendSetting::Dlss);
     FBY_CHECK(ScopedUser.dlssQuality == Fby::Rhi::DlssQualityMode::Performance);
     ScopedUser.upscalerBackend = UpscalerBackendSetting::Auto;
 
@@ -307,9 +322,17 @@ int main()
     ScopedUser.fsr1Sharpness = 2.0f;
     FBY_CHECK(ClampUserSettings(ScopedUser).fsr1Sharpness <= 1.0f);
     ScopedUser.fsr1Sharpness = 0.35f;
+    ScopedUser.fsr2Quality = static_cast<Fby::Rhi::Fsr2QualityMode>(9);
+    FBY_CHECK(static_cast<std::uint8_t>(ClampUserSettings(ScopedUser).fsr2Quality) <= 3);
+    ScopedUser.fsr2Quality = Fby::Rhi::Fsr2QualityMode::UltraPerformance;
     ScopedUser.windowWidth = 99999;
     ScopedUser.renderScale = 4.0f;
     ScopedUser.hudRenderScale = 4.0f;
+    std::snprintf(ScopedUser.voicePresetId, sizeof(ScopedUser.voicePresetId), "%s", "Fby.Voice.Underwater");
+    ScopedUser.voicePresetIntensity = 0.6f;
+    ScopedUser.voiceModerationMumble = false;
+    ScopedUser.voiceReactiveSfx = false;
+    ScopedUser.voiceReactiveSfxGain = 0.3f;
     const UserSettings ScopedClamped = ClampUserSettings(ScopedUser);
     FBY_CHECK(ScopedClamped.windowWidth <= 16384u);
     FBY_CHECK(ScopedClamped.renderScale <= 1.0f);

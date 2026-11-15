@@ -413,7 +413,7 @@ void AssetDatabaseWatchSystem::ProcessMetaFile(std::string_view InRelativePath)
         LogWarn("watch", "invalid metadata '{}': {}", InRelativePath, ScopedError);
         return;
     }
-    // A .femeta written by this system triggers a change notification for
+    // A .femeta written by this system triggers a change notification.
     if (MDatabase->FindHandleByGuid(ScopedMeta.guid).IsValid())
     {
         return;

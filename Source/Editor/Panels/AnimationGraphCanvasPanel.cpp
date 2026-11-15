@@ -105,7 +105,7 @@ constexpr std::string_view kBlockEnd = "# === FBY ANIM GRAPH END ===";
     return ScopedDx * ScopedDx + ScopedDy * ScopedDy <= kPositionEpsilon * kPositionEpsilon;
 }
 
-// The PIE hand-off is a seqlock over two fixed slots. Every payload member is
+// The PIE hand-off is a seqlock over two fixed slots.
 template <typename T> void PIEStoreRelaxed(T& InDestination, T InValue) noexcept
 {
     std::atomic_ref<T>(InDestination).store(InValue, std::memory_order_relaxed);
@@ -1209,7 +1209,7 @@ bool AnimationGraphCanvasPanel::ValidateCompiledCycles(const AnimGraphDefinition
         return -1;
     };
 
-    // Adjacency of the "immediately hot" transitions: no tag/float dependency and
+    // Adjacency of the "immediately hot" transitions: no tag/float dependency.
     std::array<std::uint32_t, kMaxAnimClips> ScopedHotEdges{};
     constexpr std::uint32_t kTimeBits = AnimConditionStateTimeAtLeast | AnimConditionStateTimeAtMost;
     constexpr std::uint32_t kExternalBits = AnimConditionTagsAny | AnimConditionTagsAll | AnimConditionTagsNone |
@@ -1262,7 +1262,7 @@ bool AnimationGraphCanvasPanel::ValidateCompiledCycles(const AnimGraphDefinition
         }
     }
 
-    // Iterative three-colour DFS over at most kMaxAnimClips == 8 vertices. The
+    // Iterative three-colour DFS over at most kMaxAnimClips == 8 vertices.
     const std::array<std::uint32_t, kMaxAnimClips> ScopedHotOriginal = ScopedHotEdges;
     std::array<std::uint8_t, kMaxAnimClips> ScopedColor{};
     std::array<std::uint16_t, kMaxAnimClips> ScopedStack{};
@@ -1372,7 +1372,7 @@ bool AnimationGraphCanvasPanel::ValidateCompiledCycles(const AnimGraphDefinition
                                 static_cast<unsigned long long>(
                                     ScopedStateIds[ScopedStack[static_cast<std::size_t>(ScopedCycleStart)]]));
             SetStatus("Anim compile: dead blend cycle without an exit: %s", ScopedPath);
-            // LogBoy subscribes to the engine log; LogLine is allocation-free and
+            // LogBoy subscribes to the engine log.
             LogLine(LogLevel::Warn, "AnimGraph", MStatus);
             return false;
         }
@@ -1766,10 +1766,10 @@ bool AnimationGraphCanvasPanel::CompileGraph() noexcept
     }
 
     ScopedDefinition.ClipCount = ScopedClipCount;
-    // Authored transitions are counted by MAuthoredTransitionCount. The
+    // Authored transitions are counted by MAuthoredTransitionCount.
     ScopedDefinition.TransitionCount = ScopedTransitionCount;
     ScopedCompiled.TransitionCount = 0;
-    // Topology gate: iterative, fixed-stack, no recursion and no allocation. It
+    // Topology gate: iterative, fixed-stack, no recursion and no allocation.
     if (!ValidateCompiledCycles(ScopedDefinition, ScopedTransitionCount))
     {
         return false;
@@ -1827,7 +1827,7 @@ void AnimationGraphCanvasPanel::InvalidatePIEState() noexcept
 
 void AnimationGraphCanvasPanel::PublishPIEState(const AnimStateComponent& InState) noexcept
 {
-    // The previous slot stays readable while this one is filled. The writer is
+    // The previous slot stays readable while this one is filled.
     const std::uint32_t ScopedWrite = MPieWriteSlot.load(std::memory_order_relaxed);
     const std::uint32_t ScopedNext = ScopedWrite ^ 1u;
     PIEFrameSlot& ScopedSlot = MPieSlots[ScopedNext];
@@ -1973,7 +1973,7 @@ std::uint32_t AnimationGraphCanvasPanel::RefreshPIEState() noexcept
     {
         return 0;
     }
-    // No registry and no AnimStateComponent access on this path. The only
+    // No registry and no AnimStateComponent access on this path.
     PIEAnimFrame ScopedFrame;
     if (!TryReadPIEState(ScopedFrame))
     {
@@ -1994,7 +1994,6 @@ std::uint32_t AnimationGraphCanvasPanel::RefreshPIEState() noexcept
     return MPieActiveNode != 0xFFFFu ? (MPiePreviousNode != 0xFFFFu ? 2u : 1u) : 0u;
 }
 
-// Canvas
 void AnimationGraphCanvasPanel::Draw(const char* InWindowTitle, bool* InOpen)
 {
     if (!MInitialized || InWindowTitle == nullptr)
@@ -2436,7 +2435,7 @@ void AnimationGraphCanvasPanel::ProcessCanvasEvents()
         {
             if (BeginEdit("Delete animation links", EditSource::CanvasCommand))
             {
-                // RemoveLink() compacts the table, so decode every id first and
+                // RemoveLink() compacts the table, so decode every id first.
                 std::array<std::uint16_t, kMaxAnimationGraphLinks> ScopedIds{};
                 std::size_t ScopedIdCount = 0;
                 for (int ScopedI = 0; ScopedI < ScopedLinkCount; ++ScopedI)

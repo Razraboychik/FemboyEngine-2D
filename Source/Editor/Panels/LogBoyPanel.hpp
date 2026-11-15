@@ -199,7 +199,7 @@ public:
 
     [[nodiscard]] static constexpr std::uint64_t HashSystem(std::string_view InName) noexcept
     {
-        // FNV-1a 64 with the published offset basis and prime, so a tool in any
+        // FNV-1a 64 with the published offset basis and prime, so a tool can hash names.
         std::uint64_t ScopedHash = 14695981039346656037ull;
         for (const char ScopedCharacter : InName)
         {
@@ -367,7 +367,7 @@ private:
             std::format_to_n(ScopedRecord.text, kLogBoyTextBytes - 1, InFormat, std::forward<Args>(InArgs)...);
         if (ScopedResult.size > kLogBoyTextBytes - 1)
         {
-            // Keep the head, mark the truncation: a silent cut loses the
+            // Keep the head, mark the truncation: a silent cut loses the error line.
             std::memcpy(ScopedRecord.text + kLogBoyTextBytes - 4, "...", 3);
             ScopedRecord.text[kLogBoyTextBytes - 1] = '\0';
             ScopedRecord.textLength = static_cast<std::uint16_t>(kLogBoyTextBytes - 1);

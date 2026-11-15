@@ -123,7 +123,7 @@ public:
     ClothSystem(const ClothSystem&) = delete;
     ClothSystem& operator=(const ClothSystem&) = delete;
 
-    // `physics` may be null for an offline/headless cloth; collisions are then
+    // `physics` may be null for an offline/headless cloth.
     [[nodiscard]] bool Initialize(PhysicsSystem* InPhysics = nullptr);
     void Shutdown(Ecs::Registry& InRegistry) noexcept;
     [[nodiscard]] bool IsInitialized() const noexcept;
@@ -134,12 +134,12 @@ public:
     void SetGravity(ClothHandle InHandle, Vector2D InGravity) noexcept;
     void SetWind(ClothHandle InHandle, Vector2D InWind) noexcept;
     void SetSolverIterations(ClothHandle InHandle, std::uint32_t InIterations) noexcept;
-    // Weather hook: applies one wind vector to every active cloth that opted into
+    // Weather hook: applies one wind vector to every active cloth that opted.
     void SetAmbientWind(Vector2D InWind) noexcept;
 
     // Fixed-step simulation. Collisions are resolved against PhysicsSystem's
     void Step(float InDt) noexcept;
-    // ECS-facing convenience: uses context.dt if positive. Does not touch the
+    // ECS-facing convenience: uses context.dt if positive.
     void Update(Ecs::PhysicsSystemView& InView) noexcept;
 
     [[nodiscard]] bool IsValid(ClothHandle InHandle) const noexcept;

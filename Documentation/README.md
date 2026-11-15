@@ -3,7 +3,7 @@
 [English](README.md) | [Русский перевод](README_RU.md)
 
 This directory is the entry point to the FemboyEngine2D documentation set. The
-current public line is **0.4.0-alpha.1**. The engine is a C++26, data-oriented 2D
+current public line is **0.5.0**. The engine is a C++23, data-oriented 2D
 runtime: fixed-capacity ECS storage, explicit systems, an SDL3 window, a Vulkan or
 null render hardware interface, Box2D v3 physics and deterministic rollback.
 
@@ -31,14 +31,31 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
   book format; see [text stack](design/text-stack.md),
   [documents](design/documents.md) and [streaming books](design/books.md).
 - **Gameplay and scripting** — FemboyScript 2.0 bytecode, LogicGraph, StateTree,
-  the textual `.fbs` subset, the VM debugger and the cook-time C++26 AOT backend.
+  the textual `.fbs` subset, the VM debugger and the cook-time C++23 AOT backend.
 - **Networking** — reliable transport, protocol v2, replication, relevance grids,
   lobby and deterministic rollback.
 - **Audio and voice** — mixer and DSP graph, spatial audio, capture, AEC, Opus,
   RNNoise and voice effects with conditions.
+- **Input and platform** — fixed-capacity `InputSystem` actions, contexts,
+  modifiers and triggers, SDL3 gamepad hotplug, and the C-ABI `PlatformService`
+  with Steam, Epic Games Store and GOG providers for achievements and cloud saves.
+- **AI and navigation** — `StateTree` to command buffer to `AIController`,
+  perception, cost-grid A* on rectangle and hex layouts, and crowd updates.
+- **Video and weather** — VP9, AV1 and WebM playback with audio into texture
+  arrays, and the GPU weather pass (clouds, cloud shadows, fog, precipitation,
+  fire, lightning and wind).
 - **Assets and editor** — asset database, `.femeta`, hot reload, texture and
-  material cooking, `.fempak`/`.femarc`, PinkUI, accessibility, the editor panels
-  and the project/scene workflow.
+  material cooking, `.fempak`/`.femarc`, PinkUI, the editor panels and the
+  project/scene workflow.
+- **Accessibility** — a self-voicing narrator in the game and in the editor, a
+  UI Automation screen-reader bridge, captions, flash guard, colour-vision
+  correction, the OLED orbit and accessible editor themes; see the
+  [Accessibility guide](design/accessibility-guide.md).
+  Spoken gameplay events: [action narration](design/action-narration.md);
+  own voices: [voice packs](design/voice-packs.md).
+  Speech languages: [42-language catalog](design/speech-languages.md);
+  players: [accessibility for players](design/accessibility-players.md);
+  developers: [accessibility for developers](design/accessibility-developers.md).
 
 ## Start here
 
@@ -46,6 +63,7 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 |---|---|
 | Build the engine and open the editor | [Getting Started](md/en/FemboyEngineGettingStarted_EN.md) |
 | Set up VS Code, clangd and manual builds | [Build Workflow](design/build-workflow.md) |
+| Tune the editor and a shipped game | [Optimization guide](md/en/FemboyEngineOptimization_EN.md) |
 | Check editor hardware targets | [Editor system requirements](design/system-requirements.md) |
 | Build and ship a game, Steam/EOS/GOG | [Game distribution](design/game-distribution.md) |
 | Understand the FCS chunked storage | [FCS](design/fcs.md) |
@@ -60,6 +78,9 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Add vehicle suspension, drive or brakes | [Vehicle wheels](design/vehicle-wheels.md) |
 | Tune camera motion and distortion | [Camera effects](design/camera-effects.md) |
 | Add radiation screen noise | [Radiation effect](design/radiation.md) |
+| Add ready-made voice effects, moderation mumble and voice SFX | [Voice presets](design/voice-presets.md), [Voice](design/voice.md) |
+| Add configurable particle effects | [Particle effects](design/particle-effects.md) |
+| Add ready-made particle presets as data packs | [Particle presets](design/particle-presets.md) |
 | Add actions, contexts, gamepads and rebinding | [Input system](design/input-system.md) |
 | Build authoritative input and replication | [Application Guide: replication](md/en/FemboyEngineApplicationGuide_EN.md#51-deterministic-input-and-replication-while-building-the-game) |
 | Use FemboyScript, LogicGraph or StateTree | [FemboyScript](md/en/FemboyScript_EN.md), [LogicGraph values and AOT](design/scripting.md) |
@@ -67,9 +88,10 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Show formatted books and manuals | [Streaming books](design/books.md), [TXT documents](design/documents.md) |
 | Move a project between Windows, Linux and macOS | [Desktop portability](design/desktop-portability.md) |
 | Tune project or editor settings | [Project Settings](md/en/ProjectSettingsRecommendations_EN.md), [Editor Settings](md/en/EditorSettingsReference_EN.md) |
+| Make the game and the editor accessible | [Accessibility guide](design/accessibility-guide.md), [implementation contract](design/accessibility.md) |
 | Choose a viewport diagnostic mode | [Viewport Modes](md/en/ViewportModes_EN.md) |
 | Follow the C++ style contract | [Code Style](style/CodeStyle.md) |
-| Plan future work | [Roadmap](ROADMAP.md) |
+| Report a bug or request a feature | [Issue tracker](https://github.com/Razraboychik/FemboyEngine-2D/issues) |
 | Design gameplay tags, effects and skills | [Skills design](design/skills.md) |
 | Configure AI, navmesh and path shaping | [AI and navigation](design/ai-navigation.md) |
 | Tune gravity, fields, ropes and chains | [Gravity and ropes](design/gravity-and-ropes.md) |
@@ -88,7 +110,7 @@ Every generated document is produced as two independent editions:
   `<Name>_RU.djvu`
 
 There is no combined bilingual output. The generators write only to `en/` and
-`ru/` below each format directory. The generated manuals are bilingual; the
+`ru/` below each format directory. The generated manuals are published in both languages; the
 hand-written `design/` notes are mostly developer-facing English source documents
 and are not part of the four-format deliverable set; `build-workflow` has an
 English and a Russian edition. `CheckDocs.py` rejects a stale `bilingual/`
@@ -98,9 +120,10 @@ mixed-language file.
 
 Four formats are produced from one source: Markdown, Word, PDF and DjVu. DjVu is
 converted from the matching PDF. The preferred converter is `pdf2djvu`; when it
-is unavailable, the tooling rasterises the pages with `pdftoppm` and packages
-them with DjVuLibre's `c44` and `djvm`. Without either path the run skips only
-DjVu and leaves the other three formats intact.
+is unavailable, the tooling rasterises the pages with `pdftoppm` (or PyMuPDF when
+poppler is not installed) and packages them with DjVuLibre's `c44` and `djvm`.
+Without a working path the run skips only DjVu and leaves the other three formats
+intact.
 
 The DOCX editions use named, language-neutral styles (`FBY Title`, `FBY Body`,
 `FBY Code`, and so on), and every run carries an explicit `w:lang` tag. The PDF is
@@ -136,6 +159,8 @@ FemboyEngine2D.
 | Editor Settings | [EN](md/en/EditorSettingsReference_EN.md) / [RU](md/ru/EditorSettingsReference_RU.md) | [EN](docx/en/EditorSettingsReference_EN.docx) / [RU](docx/ru/EditorSettingsReference_RU.docx) | [EN](pdf/en/EditorSettingsReference_EN.pdf) / [RU](pdf/ru/EditorSettingsReference_RU.pdf) | [EN](djvu/en/EditorSettingsReference_EN.djvu) / [RU](djvu/ru/EditorSettingsReference_RU.djvu) |
 | Physics | [EN](md/en/Physics_EN.md) / [RU](md/ru/Physics_RU.md) | [EN](docx/en/Physics_EN.docx) / [RU](docx/ru/Physics_RU.docx) | [EN](pdf/en/Physics_EN.pdf) / [RU](pdf/ru/Physics_RU.pdf) | [EN](djvu/en/Physics_EN.djvu) / [RU](djvu/ru/Physics_RU.djvu) |
 | Frame Generation | [EN](md/en/FemboyEngineFrameGeneration_EN.md) / [RU](md/ru/FemboyEngineFrameGeneration_RU.md) | [EN](docx/en/FemboyEngineFrameGeneration_EN.docx) / [RU](docx/ru/FemboyEngineFrameGeneration_RU.docx) | [EN](pdf/en/FemboyEngineFrameGeneration_EN.pdf) / [RU](pdf/ru/FemboyEngineFrameGeneration_RU.pdf) | [EN](djvu/en/FemboyEngineFrameGeneration_EN.djvu) / [RU](djvu/ru/FemboyEngineFrameGeneration_RU.djvu) |
+| Optimization | [EN](md/en/FemboyEngineOptimization_EN.md) / [RU](md/ru/FemboyEngineOptimization_RU.md) | [EN](docx/en/FemboyEngineOptimization_EN.docx) / [RU](docx/ru/FemboyEngineOptimization_RU.docx) | [EN](pdf/en/FemboyEngineOptimization_EN.pdf) / [RU](pdf/ru/FemboyEngineOptimization_RU.pdf) | [EN](djvu/en/FemboyEngineOptimization_EN.djvu) / [RU](djvu/ru/FemboyEngineOptimization_RU.djvu) |
+| CodeQL unused alerts | [EN](md/en/CodeQLUnusedAlerts_EN.md) / [RU](md/ru/CodeQLUnusedAlerts_RU.md) | [EN](docx/en/CodeQLUnusedAlerts_EN.docx) / [RU](docx/ru/CodeQLUnusedAlerts_RU.docx) | [EN](pdf/en/CodeQLUnusedAlerts_EN.pdf) / [RU](pdf/ru/CodeQLUnusedAlerts_RU.pdf) | [EN](djvu/en/CodeQLUnusedAlerts_EN.djvu) / [RU](djvu/ru/CodeQLUnusedAlerts_RU.djvu) |
 
 ## Regenerate
 
@@ -189,5 +214,6 @@ update cross-references in the same edit. Regenerate Markdown first, then DOCX a
 PDF, and run `CheckDocs.py` before committing.
 
 For an authored Markdown document, edit the `_EN.md` and `_RU.md` pair, then run
-the matching generator. Do not edit files under `md/`, `docx/`, `pdf/` or `djvu/`
-by hand; the next run overwrites them.
+the matching generator. `Getting Started`, `CMakeProjectManagement` and
+`FemboyScript` are authored sources that live under `md/`; every other file under
+`md/`, `docx/`, `pdf/` and `djvu/` is generated and is overwritten by the next run.

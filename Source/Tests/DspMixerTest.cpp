@@ -26,7 +26,7 @@ int GFailures = 0;
         }                                                                                                              \
     } while (false)
 
-// Allocation tracking. The override is process-wide, but only counts while the
+// Allocation tracking. The override is process-wide, but only counts.
 std::atomic<bool> GTrackAllocations{false};
 std::atomic<std::size_t> GAllocationCount{0};
 
@@ -128,7 +128,6 @@ void TestRoutingAndGains()
     ScopedGraph.Shutdown();
 }
 
-// 3: cycle rejection
 void TestCycleRejection()
 {
     Fby::DspGraph ScopedGraph;
@@ -161,7 +160,6 @@ void TestCycleRejection()
     ScopedGraph.Shutdown();
 }
 
-// 4: ducking
 void TestDucking()
 {
     Fby::DspGraph ScopedGraph;
@@ -189,7 +187,7 @@ void TestDucking()
     ScopedDucking.releaseSeconds = 0.02f;
     FBY_CHECK(ScopedGraph.SetBusDucking(Fby::kMusicBus, ScopedDucking) == Fby::DspResult::Ok);
 
-    // Two blocks: the first contains the attack ramp (the peak of a block is its
+    // Two blocks: the first contains the attack ramp.
     ScopedGraph.Process(ScopedOutput, 256);
     ScopedGraph.Process(ScopedOutput, 256);
     const float ScopedDuckedPeak = ScopedGraph.BusPeak(Fby::kMusicBus);
@@ -348,7 +346,6 @@ void TestCommandRingConcurrency()
     FBY_CHECK(ScopedQueue.Size() == 0u);
 }
 
-// 7: full-ring rejection
 void TestFullRingRejection()
 {
     Fby::CommandQueue ScopedQueue;

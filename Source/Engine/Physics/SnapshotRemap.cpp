@@ -22,7 +22,7 @@ bool RebuildPhysicsBodies(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, P
     }
     InRemap.Clear();
 
-    // Capture the old ids for diagnostics and for a sidecar that still refers to
+    // Capture the old ids for diagnostics and for a sidecar that still refers to them.
     for (auto [ScopedEntity, ScopedBody] : ScopedView.each())
     {
         const std::uint64_t ScopedOldBody = ScopedBody.Body;

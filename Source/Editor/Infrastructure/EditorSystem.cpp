@@ -1,17 +1,28 @@
 #include "Editor/Infrastructure/EditorSystem.hpp"
 
 #include "Engine/RHI/CameraStack.hpp"
+#include "Engine/RHI/Fsr2Adapter.hpp"
 
 #include "Engine/Audio/Audio.hpp"
+#include "Engine/Audio/VoicePreset.hpp"
+#include "Engine/Audio/VoiceReactiveSfx.hpp"
+#include "Engine/Audio/VoiceSfxSynth.hpp"
 #include "Engine/Audio/VoiceSystem.hpp"
 #include "Engine/Core/PluginHost.hpp"
 #include "Engine/UI/Accessibility.hpp"
 #include "Engine/Text/TextService.hpp"
+#include "Engine/Assets/ProjectBundle.hpp"
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/Profiler.hpp"
+#include "Engine/ECS/CoreComponents.hpp"
+#include "Engine/ECS/PrefabInstance.hpp"
+#include "Engine/ECS/PrefabSystem.hpp"
 #include "Engine/Core/ProfilerPanel.hpp"
+#include "Engine/Core/ProfilerTrace.hpp"
+#include "Engine/Core/StoragePaths.hpp"
 #include "Engine/ECS/Skeleton.hpp"
+#include "Engine/ECS/Hierarchy.hpp"
 #include "Engine/ECS/Lighting.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
@@ -29,6 +40,8 @@
 #include "Editor/Infrastructure/AssetImportService.hpp"
 #include "Editor/Infrastructure/CommandStack.hpp"
 #include "Editor/Panels/ContentBrowserPanel.hpp"
+#include "Editor/Panels/CrashDiagnosticsPanel.hpp"
+#include "Editor/Panels/AccessibilityQaPanel.hpp"
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/EditorFonts.hpp"
 #include "Editor/Infrastructure/EditorTypography.hpp"
@@ -36,13 +49,21 @@
 #include "Editor/Infrastructure/EditorWidgets.hpp"
 #include "Editor/Panels/LogBoyPanel.hpp"
 #include "Editor/Panels/LicensesPanel.hpp"
+#include "Editor/Panels/DocumentsPanel.hpp"
+#include "Editor/Panels/BooksPanel.hpp"
+#include "Editor/Panels/RenderTuningPanel.hpp"
+#include "Editor/Panels/VideoPanel.hpp"
+#include "Editor/Panels/UiLayoutPanel.hpp"
+#include "Editor/Panels/DataTablePanel.hpp"
 #include "Editor/Panels/NetworkDiagnosticsPanel.hpp"
 #include "Editor/Panels/PieClientViewport.hpp"
+#include "Editor/Panels/ParticleFxPanel.hpp"
 #include "Editor/Panels/VoiceDevicePanel.hpp"
 #include "Editor/Panels/MaterialGraphPanel.hpp"
 #include "Editor/Infrastructure/PlayInEditor.hpp"
 #include "Editor/Infrastructure/PhysicsDebugDraw.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
+#include "Editor/Infrastructure/ProjectPlugins.hpp"
 #include "Editor/Infrastructure/UserSettings.hpp"
 #include "Editor/Infrastructure/ResolvedRenderSettings.hpp"
 #include "Editor/Panels/UserSettingsPanel.hpp"
@@ -50,6 +71,7 @@
 #include "Editor/Infrastructure/TextureThumbnails.hpp"
 #include "Editor/Panels/ProjectDashboard.hpp"
 #include "Editor/Panels/SdfCharacterPanel.hpp"
+#include "Editor/Panels/SdfLightingPanel.hpp"
 #include "Editor/Panels/SceneDiagnosticsPanel.hpp"
 #include "Editor/Panels/ScriptDebuggerPanel.hpp"
 #include "Editor/Panels/SettingsPanels.hpp"
@@ -97,7 +119,7 @@ namespace Fby::Editor
 {
 namespace
 {
-// Fixed PIE snapshot arena. It is allocated once in Initialize(), never on
+// Fixed PIE snapshot arena.
 inline constexpr std::size_t kPieArenaBytes = 32u * 1024u * 1024u;
 // Bump when the default dock layout changes materially (new panel, new split).
 // The marker next to the ImGui ini then forces one rebuild, so an old saved
@@ -433,7 +455,7 @@ void ApplyModelMatrix(const float* InModel, Transform2D& InTransform)
                                  std::sqrt(InModel[4] * InModel[4] + InModel[5] * InModel[5])};
 }
 
-// Viewport camera + image rectangle, handed to the physics debug visualizer as
+// Viewport camera + image rectangle, handed to the physics debug visualizer.
 struct PhysicsDebugView
 {
     Vector2D center{};
@@ -472,7 +494,7 @@ struct EditorSystem::Impl
     ImFont* fontRegular = nullptr;
     ImFont* fontMono = nullptr;
 
-    // Style geometry is scaled relative to the last applied factor, never by
+    // Style geometry is scaled relative to the last applied factor, never to the raw factor.
     float styleUiScale = 1.0f;
     float appliedStyleScale = 0.0f;
 
@@ -532,6 +554,7 @@ struct EditorSystem::Impl
     std::mutex sceneDialogMutex;
     std::string pendingNewScenePath;
     std::string pendingPrefabPath;
+    std::string pendingSpawnPrefabPath;
     // Dirty tracking is derived from the command stack each frame, so undo back
     // to the saved state clears the marker again.
     std::uint32_t savedCommandCount = 0;
@@ -543,13 +566,19 @@ struct EditorSystem::Impl
     float autoSaveTimer = 0.0f;
     bool titleDirty = false;
 
-    // Panels keep their transient state here: the path being edited,
+    // Panels keep their transient state here: the path being edited.
     SkeletonInspectorState skeletonPanel;
     SpriteAnimationInspectorState spriteAnimationPanel;
+    Assets::AssetHandle prefabInspectorHandle{};
+    PrefabAsset prefabInspectorAsset{};
+    std::uint32_t prefabInspectorGeneration = 0xFFFFFFFFu;
+    std::string prefabInspectorError;
     AnimationTimelinePanel timelinePanel;
     CommandStack commands;
     InteractionTransaction interaction;
     std::uint16_t transformCodec = 0xFFFFu;
+    std::uint16_t parentCodec = 0xFFFFu;
+    std::uint16_t localTransformCodec = 0xFFFFu;
     char hierarchySearch[64] = {};
     Entity renamingEntity = Fby::kNullEntity;
     bool renameFocusTaken = false;
@@ -597,6 +626,17 @@ struct EditorSystem::Impl
     bool piePauseHud = true;
     bool pieInitialized = false;
     bool pieVoicePushToTalk = false;
+
+    // Editor narrator and OS bridge. Both read EditorSettings only; the game's
+    // policy lives in the project accessibility profile and never leaks here.
+    Fby::Narrator editorSpeech;
+    Fby::NarratorSettings appliedSpeech{};
+    Fby::AccessibilityBridgeSettings appliedBridge{};
+    Fby::Ui::AccessibilityTree editorTree;
+    bool speechApplied = false;
+    bool bridgeStarted = false;
+    ImGuiID lastFocusWindow = 0;
+    ImGuiID lastFocusItem = 0;
     enum class PieCommand : std::uint8_t
     {
         None = 0,
@@ -625,6 +665,7 @@ struct EditorSystem::Impl
     UserSettings userSettings{};
     Rhi::BackendCapabilities backendCaps{};
     ReleaseCooker releaseCooker;
+    bool stageRuntimeBundle = true;
     AssetImportService importer;
     AssetDatabaseWatchSystem watcher;
     // Fallback kernel for hosts that do not create one. The editor's settings
@@ -635,6 +676,12 @@ struct EditorSystem::Impl
     bool showSceneText = true;
     LogBoyPanel logBoy;
     LicensesPanel licenses;
+    DocumentsPanel documents;
+    DataTablePanel dataTables;
+    BooksPanel books;
+    UiLayoutPanel uiLayout;
+    RenderTuningPanel renderTuning;
+    VideoPanel video;
     NetworkDiagnosticsPanel networkDiagnostics;
     Fby::SdfComposerSession sdfComposer;
     std::vector<float> composerPreviewSamples;
@@ -644,9 +691,19 @@ struct EditorSystem::Impl
     Fby::Core::ProfilerPanel profilerPanel;
     const std::array<std::string_view, 5> profilerNames{"PreUpdate", "FixedUpdate", "PostUpdate", "Render", "Frame"};
     VoiceDevicePanel voiceDevices;
+    ParticleFxPanel particleFx;
     TransportGroupPanel transportGroups;
     std::unique_ptr<VoiceSystem> voiceRuntime;
     VoiceSession voiceSession;
+    Fby::VoicePresetRegistry voicePresets;
+    Fby::VoicePresetSelection voiceSelection;
+    Fby::VoiceEffectPolicy voicePolicy;
+    Fby::VoicePresetApplier voiceApplier;
+    Fby::VoiceReactiveSfxSettings voiceSfxSettings{};
+    Fby::VoiceReactiveSfxSettings voiceSfxApplied{};
+    Fby::VoiceReactiveSfx voiceSfx;
+    std::array<Fby::AssetId, static_cast<std::size_t>(Fby::VoiceSfxKind::Count)> voiceSfxClips{};
+    bool voiceSfxClipsReady = false;
     AudioDeviceEnumerator voiceDevicesEnumerator;
     bool voiceDevicesReady = false;
     bool voiceAttempted = false;
@@ -666,13 +723,23 @@ struct EditorSystem::Impl
     Ui::AccessibilityEffectRegistry* effectRegistry = nullptr;
     std::array<char, 192> pluginPath{};
     std::string pluginStatus;
+    std::filesystem::path pluginDirectory;
+    std::vector<std::filesystem::path> availablePlugins;
+    std::uint32_t selectedPlugin = 0;
+    bool pluginDirectoryScanned = false;
     bool showUserSettings = false;
 
     bool showHierarchy = true;
     bool showInspector = true;
     bool showViewport = true;
     bool showProfiler = false;
+    bool showCrashDiagnostics = false;
+    CrashDiagnosticsPanel crashDiagnostics;
+    bool showAccessibilityQa = false;
+    AccessibilityQaPanel accessibilityQa;
     bool showSdfComposer = false;
+    bool showSdfLighting = false;
+    SdfLightingPanel sdfLighting;
     bool showStats = false;
     bool showLogBoy = true;
     bool showSceneDiagnostics = true;
@@ -683,8 +750,15 @@ struct EditorSystem::Impl
     bool showAssets = true;
     bool showConsole = true;
     bool showLicenses = false;
+    bool showDocuments = false;
+    bool showDataTables = false;
+    bool showBooks = false;
+    bool showUiLayout = std::getenv("FBY_EDITOR_OPEN_UI_LAYOUT") != nullptr;
+    bool showRenderTuning = std::getenv("FBY_EDITOR_OPEN_RENDER_TUNING") != nullptr;
+    bool showVideo = std::getenv("FBY_EDITOR_OPEN_VIDEO") != nullptr;
     bool showNetworkDiagnostics = false;
     bool showVoiceDevices = false;
+    bool showParticleFx = false;
     bool showTransportGroups = false;
     bool showMaterialGraph = true;
     bool showVisualScript = true;
@@ -817,6 +891,7 @@ struct EditorSystem::Impl
             ReleaseCooker::FromProject(projectConfig.Paths(), projectConfig.Project(),
                                        ScopedEngineRoot.generic_string(), ScopedPacker.generic_string());
         ScopedConfig.compileAot = visualScript.Initialized() && visualScript.Graph().nodeCount != 0;
+        ScopedConfig.stageRuntime = stageRuntimeBundle;
         char ScopedError[kReleaseMessageBytes]{};
         Script::LogicGraph* ScopedGraph = ScopedConfig.compileAot ? &visualScript.Graph() : nullptr;
         if (!releaseCooker.Start(ScopedConfig, ScopedGraph, ScopedError, sizeof(ScopedError)))
@@ -838,7 +913,24 @@ struct EditorSystem::Impl
         consoleScrollToBottom = true;
     }
 
-    // Fonts live in the .fempak. The VFS returns spans into an mmap; ImGui is
+    void ScanPluginDirectory()
+    {
+        availablePlugins.clear();
+        for (const std::filesystem::path& ScopedPath : Plugin::DiscoverPluginFiles(pluginDirectory))
+        {
+            // The ABI fixtures exist to test load failures; they are not packs a
+            // project should connect.
+            if (ScopedPath.filename().string().starts_with("fby_hello_mod"))
+            {
+                continue;
+            }
+            availablePlugins.push_back(ScopedPath);
+        }
+        selectedPlugin = 0;
+        pluginDirectoryScanned = true;
+    }
+
+    // Fonts live in the .fempak. The VFS returns spans into an mmap.
     [[nodiscard]] EditorFontSpec MakeFontSpec(float InUiScale) const
     {
         EditorFontSpec ScopedSpec;
@@ -876,7 +968,7 @@ struct EditorSystem::Impl
 
     void StopProjectSystems()
     {
-        // Stop the producer first; the worker thread is then joined before the
+        // Stop the producer first.
         watcher.Shutdown();
         importer.Shutdown();
         watcherStarted = false;
@@ -952,7 +1044,7 @@ struct EditorSystem::Impl
         return true;
     }
 
-    // Bind both ImNodes canvases to the same runtime world. PIE owns the
+    // Bind both ImNodes canvases to the same runtime world.
     void SyncCanvasWorlds(Ecs::SystemContext& InContext)
     {
         const Ecs::Registry* ScopedRuntime = pie.Active() ? &pie.World() : aiPlayWorld;
@@ -1110,7 +1202,7 @@ struct EditorSystem::Impl
         {
             return;
         }
-        // Bind before the step so PublishPIEStateFromWorlds() resolves the
+        // Bind before the step so PublishPIEStateFromWorlds() resolves.
         SyncCanvasWorlds(InContext);
         if (piePaused)
         {
@@ -1151,7 +1243,7 @@ struct EditorSystem::Impl
                                                      : pie.Step(*graph, InContext.dt, ScopedFixedStep);
         if (ScopedStepped)
         {
-            // The step joined every system-graph worker before returning. The
+            // The step joined every system-graph worker before returning.
             SyncCanvasWorlds(InContext);
             (void)animationGraph.PublishPIEStateFromWorlds();
         }
@@ -1258,7 +1350,18 @@ struct EditorSystem::Impl
             std::clamp(static_cast<std::uint32_t>(std::lround(InWidth)), 1u, 4096u);
         const std::uint32_t ScopedDisplayHeight =
             std::clamp(static_cast<std::uint32_t>(std::lround(InHeight)), 1u, 4096u);
-        const float ScopedScale = std::clamp(userSettings.renderScale, 0.25f, 1.0f);
+        const UpscalePolicy ScopedUpscalePolicy = userSettings.upscalePolicy == UpscalePolicy::Auto
+                                                       ? projectConfig.Project().upscalePolicy
+                                                       : userSettings.upscalePolicy;
+        const bool ScopedAutoPicksFsr2 =
+            ScopedUpscalePolicy == UpscalePolicy::Auto && !backendCaps.Dlss;
+        const bool ScopedFsr2Selected =
+            backendCaps.Fsr2 && ScopedUpscalePolicy != UpscalePolicy::Off &&
+            (userSettings.upscaleMode == UpscaleMode::Fsr2 ||
+             userSettings.upscalerBackend == UpscalerBackendSetting::Fsr2 ||
+             ScopedUpscalePolicy == UpscalePolicy::Universal || ScopedAutoPicksFsr2);
+        const float ScopedScale =
+            ScopedFsr2Selected ? Rhi::Fsr2RenderScale(userSettings.fsr2Quality) : userSettings.renderScale;
         const std::uint32_t ScopedPixelWidth =
             std::max(1u, static_cast<std::uint32_t>(std::lround(static_cast<float>(ScopedDisplayWidth) * ScopedScale)));
         const std::uint32_t ScopedPixelHeight = std::max(
@@ -1768,7 +1871,7 @@ struct EditorSystem::Impl
             }
             case Reflect::FieldKind::String:
             {
-                // Asset paths and other fixed-capacity strings. The buffer is
+                // Asset paths and other fixed-capacity strings.
                 std::array<char, 256> ScopedBuffer{};
                 const std::string ScopedCurrent = ReadStringField(ScopedComponent, InField);
                 std::snprintf(ScopedBuffer.data(), ScopedBuffer.size(), "%s", ScopedCurrent.c_str());
@@ -1900,6 +2003,79 @@ struct EditorSystem::Impl
             ImGui::TreePop();
         }
         ImGui::PopID();
+    }
+
+    void ReparentEntity(Ecs::Registry& InRegistry, Entity InChild, Entity InParent)
+    {
+        const Parent2D* ScopedOldParent = InRegistry.try_get<Parent2D>(InChild);
+        const LocalTransform2D* ScopedOldLocal = InRegistry.try_get<LocalTransform2D>(InChild);
+        Parent2D ScopedParentBefore{};
+        LocalTransform2D ScopedLocalBefore{};
+        if (ScopedOldParent != nullptr)
+        {
+            ScopedParentBefore = *ScopedOldParent;
+        }
+        if (ScopedOldLocal != nullptr)
+        {
+            ScopedLocalBefore = *ScopedOldLocal;
+        }
+        const bool ScopedParentBeforePresent = ScopedOldParent != nullptr;
+        const bool ScopedLocalBeforePresent = ScopedOldLocal != nullptr;
+
+        if (!commands.Initialized() || parentCodec == 0xFFFFu || localTransformCodec == 0xFFFFu ||
+            commands.BeginTransaction("Reparent") != CommandStack::Result::Ok)
+        {
+            if (!Ecs::SetParent(InRegistry, InChild, InParent))
+            {
+                SetStatus("reparent rejected: invalid entity or a parent chain cycle");
+                return;
+            }
+            SetStatus(InParent == Fby::kNullEntity ? "parent cleared" : "reparented");
+            return;
+        }
+        if (!Ecs::SetParent(InRegistry, InChild, InParent))
+        {
+            commands.CancelTransaction();
+            SetStatus("reparent rejected: invalid entity or a parent chain cycle");
+            return;
+        }
+
+        const Parent2D* ScopedNewParent = InRegistry.try_get<Parent2D>(InChild);
+        const LocalTransform2D* ScopedNewLocal = InRegistry.try_get<LocalTransform2D>(InChild);
+        Parent2D ScopedParentAfter{};
+        LocalTransform2D ScopedLocalAfter{};
+        if (ScopedNewParent != nullptr)
+        {
+            ScopedParentAfter = *ScopedNewParent;
+        }
+        if (ScopedNewLocal != nullptr)
+        {
+            ScopedLocalAfter = *ScopedNewLocal;
+        }
+        bool ScopedRecorded = true;
+        if (ScopedParentBeforePresent || ScopedNewParent != nullptr)
+        {
+            ScopedRecorded =
+                commands.RecordPresence(InChild, parentCodec, ScopedParentBeforePresent,
+                                        std::as_bytes(std::span{&ScopedParentBefore, 1}), ScopedNewParent != nullptr,
+                                        std::as_bytes(std::span{&ScopedParentAfter, 1})) == CommandStack::Result::Ok &&
+                ScopedRecorded;
+        }
+        if (ScopedLocalBeforePresent || ScopedNewLocal != nullptr)
+        {
+            ScopedRecorded =
+                commands.RecordPresence(InChild, localTransformCodec, ScopedLocalBeforePresent,
+                                        std::as_bytes(std::span{&ScopedLocalBefore, 1}), ScopedNewLocal != nullptr,
+                                        std::as_bytes(std::span{&ScopedLocalAfter, 1})) == CommandStack::Result::Ok &&
+                ScopedRecorded;
+        }
+        if (!ScopedRecorded || commands.CommitTransaction() != CommandStack::Result::Ok)
+        {
+            commands.CancelTransaction();
+            SetStatus("reparent applied but not recorded for undo");
+            return;
+        }
+        SetStatus(InParent == Fby::kNullEntity ? "parent cleared (undo available)" : "reparented (undo available)");
     }
 
     void DrawHierarchy(Ecs::SystemContext& InContext)
@@ -2039,6 +2215,29 @@ struct EditorSystem::Impl
             {
                 ImGui::SetItemDefaultFocus();
             }
+            if (ImGui::BeginDragDropSource())
+            {
+                ImGui::SetDragDropPayload("FBY_HIERARCHY_ENTITY", &ScopedEntity, sizeof(Entity));
+                ImGui::TextUnformatted(ScopedLabel.c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* ScopedPayload = ImGui::AcceptDragDropPayload("FBY_HIERARCHY_ENTITY"))
+                {
+                    const Entity ScopedDropped = *static_cast<const Entity*>(ScopedPayload->Data);
+                    ReparentEntity(ScopedRegistry, ScopedDropped, ScopedEntity);
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (ImGui::BeginPopupContextItem())
+            {
+                if (ImGui::MenuItem("Clear parent", nullptr, false, ScopedRegistry.all_of<Parent2D>(ScopedEntity)))
+                {
+                    ReparentEntity(ScopedRegistry, ScopedEntity, Fby::kNullEntity);
+                }
+                ImGui::EndPopup();
+            }
 
             if (const auto* ScopedSkeleton = ScopedRegistry.try_get<SkeletonComponent>(ScopedEntity))
             {
@@ -2166,11 +2365,12 @@ struct EditorSystem::Impl
             ImGui::PopID();
         }
 
-        // The skeleton is a large SoA block whose persistent form is
+        // The skeleton is a large SoA block whose persistent form is the asset, not the component.
         DrawSkeletonAssetInspector(InContext, ScopedEntity, skeletonPanel);
         spriteAnimationPanel.textureArray = textureArray;
         spriteAnimationPanel.thumbnails = &thumbnails;
         DrawSpriteAnimationInspector(InContext, ScopedEntity, spriteAnimationPanel);
+        DrawPrefabOverridesInspector(InContext, ScopedEntity);
 
         if (!ScopedMissing.empty())
         {
@@ -2188,13 +2388,174 @@ struct EditorSystem::Impl
                 ImGui::EndCombo();
             }
         }
-        // A drag ends when ImGui no longer has an active item (mouse release or
+        // A drag ends when ImGui no longer has an active item.
         if (interaction.Active() && interaction.GetSource() == InteractionTransaction::Source::InspectorField &&
             !ImGui::IsAnyItemActive())
         {
             CommitInteraction();
         }
         EndEditorPanel();
+    }
+
+    void DrawPrefabOverridesInspector(Ecs::SystemContext& InContext, Entity InEntity)
+    {
+        PrefabInstanceComponent* ScopedLink = InContext.registry.try_get<PrefabInstanceComponent>(InEntity);
+        if (ScopedLink == nullptr || InContext.assetDb == nullptr)
+        {
+            return;
+        }
+        const Assets::AssetMeta* ScopedMeta = InContext.assetDb->Meta(ScopedLink->Prefab);
+        if (ScopedMeta == nullptr)
+        {
+            ImGui::SeparatorText("Prefab");
+            ImGui::TextDisabled("The prefab row is missing; the instance cannot be expanded.");
+            return;
+        }
+        if (!(prefabInspectorHandle == ScopedLink->Prefab) ||
+            prefabInspectorGeneration != ScopedMeta->contentGeneration)
+        {
+            prefabInspectorHandle = ScopedLink->Prefab;
+            prefabInspectorGeneration = ScopedMeta->contentGeneration;
+            prefabInspectorError.clear();
+            const std::filesystem::path ScopedSource =
+                std::filesystem::path(ScopedMeta->sourcePath).is_absolute()
+                    ? std::filesystem::path(ScopedMeta->sourcePath)
+                    : AssetPhysicalPath(ScopedMeta->sourcePath);
+            if (!PrefabSystem::LoadTomlFile(ScopedSource.string(), prefabInspectorAsset, &prefabInspectorError))
+            {
+                prefabInspectorError = "cannot load prefab: " + prefabInspectorError;
+            }
+        }
+        ImGui::SeparatorText("Prefab overrides");
+        ImGui::TextDisabled("%s", ScopedMeta->sourcePath);
+        if (!prefabInspectorError.empty())
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", prefabInspectorError.c_str());
+            return;
+        }
+        if (ImGui::SmallButton("Clear all overrides"))
+        {
+            PrefabInstance::ClearOverrides(InContext.registry, InEntity);
+            prefabInspectorGeneration = 0xFFFFFFFFu;
+        }
+        bool ScopedChanged = false;
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < prefabInspectorAsset.count; ++ScopedIndex)
+        {
+            const PrefabEntityDesc& ScopedDesc = prefabInspectorAsset.entities[ScopedIndex];
+            ImGui::PushID(static_cast<int>(ScopedIndex));
+            const std::string ScopedLabel =
+                ScopedDesc.name[0] != '\0' ? ScopedDesc.name : std::format("Entity {}", ScopedIndex);
+            if (ImGui::TreeNodeEx(ScopedLabel.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                const std::uint32_t ScopedBit = 1u << ScopedIndex;
+                bool ScopedPosition = (ScopedLink->PositionMask & ScopedBit) != 0;
+                bool ScopedScale = (ScopedLink->ScaleMask & ScopedBit) != 0;
+                bool ScopedRotation = (ScopedLink->RotationMask & ScopedBit) != 0;
+                bool ScopedColor = (ScopedLink->ColorMask & ScopedBit) != 0;
+                if (ImGui::Checkbox("Position", &ScopedPosition))
+                {
+                    ScopedLink->PositionMask = ScopedPosition ? (ScopedLink->PositionMask | ScopedBit)
+                                                              : (ScopedLink->PositionMask & ~ScopedBit);
+                    if (ScopedPosition)
+                    {
+                        ScopedLink->PositionOverrides[ScopedIndex] = ScopedDesc.transform.Position;
+                    }
+                    ScopedChanged = true;
+                }
+                if (ScopedPosition)
+                {
+                    float ScopedPositionValue[2] = {ScopedLink->PositionOverrides[ScopedIndex].X,
+                                                    ScopedLink->PositionOverrides[ScopedIndex].Y};
+                    if (ImGui::DragFloat2("##position", ScopedPositionValue, 0.5f))
+                    {
+                        ScopedLink->PositionOverrides[ScopedIndex] =
+                            Vector2D{ScopedPositionValue[0], ScopedPositionValue[1]};
+                        ScopedChanged = true;
+                    }
+                }
+                if (ImGui::Checkbox("Scale", &ScopedScale))
+                {
+                    ScopedLink->ScaleMask = ScopedScale ? (ScopedLink->ScaleMask | ScopedBit)
+                                                        : (ScopedLink->ScaleMask & ~ScopedBit);
+                    if (ScopedScale)
+                    {
+                        ScopedLink->ScaleOverrides[ScopedIndex] = ScopedDesc.transform.Scale;
+                    }
+                    ScopedChanged = true;
+                }
+                if (ScopedScale)
+                {
+                    float ScopedScaleValue[2] = {ScopedLink->ScaleOverrides[ScopedIndex].X,
+                                                 ScopedLink->ScaleOverrides[ScopedIndex].Y};
+                    if (ImGui::DragFloat2("##scale", ScopedScaleValue, 0.01f))
+                    {
+                        ScopedLink->ScaleOverrides[ScopedIndex] = Vector2D{ScopedScaleValue[0], ScopedScaleValue[1]};
+                        ScopedChanged = true;
+                    }
+                }
+                if (ImGui::Checkbox("Rotation", &ScopedRotation))
+                {
+                    ScopedLink->RotationMask = ScopedRotation ? (ScopedLink->RotationMask | ScopedBit)
+                                                              : (ScopedLink->RotationMask & ~ScopedBit);
+                    if (ScopedRotation)
+                    {
+                        ScopedLink->RotationOverrides[ScopedIndex].X = ScopedDesc.transform.Rotation;
+                    }
+                    ScopedChanged = true;
+                }
+                if (ScopedRotation)
+                {
+                    float ScopedRotationValue = ScopedLink->RotationOverrides[ScopedIndex].X;
+                    if (ImGui::DragFloat("##rotation", &ScopedRotationValue, 0.01f))
+                    {
+                        ScopedLink->RotationOverrides[ScopedIndex].X = ScopedRotationValue;
+                        ScopedChanged = true;
+                    }
+                }
+                if (ImGui::Checkbox("Color", &ScopedColor))
+                {
+                    ScopedLink->ColorMask = ScopedColor ? (ScopedLink->ColorMask | ScopedBit)
+                                                        : (ScopedLink->ColorMask & ~ScopedBit);
+                    if (ScopedColor)
+                    {
+                        const Color32 ScopedBase = ScopedDesc.sprite.Color;
+                        ScopedLink->ColorOverrides[ScopedIndex] =
+                            Vector2D{static_cast<float>(ScopedBase.R()) / 255.0f,
+                                     static_cast<float>(ScopedBase.G()) / 255.0f};
+                        ScopedLink->RotationOverrides[ScopedIndex].Y =
+                            static_cast<float>(ScopedBase.B()) / 255.0f;
+                    }
+                    ScopedChanged = true;
+                }
+                if (ScopedColor)
+                {
+                    const Vector2D& ScopedStored = ScopedLink->ColorOverrides[ScopedIndex];
+                    float ScopedColorValue[4] = {ScopedStored.X, ScopedStored.Y,
+                                                 ScopedLink->RotationOverrides[ScopedIndex].Y, 1.0f};
+                    if (ImGui::ColorEdit4("##color", ScopedColorValue))
+                    {
+                        ScopedLink->ColorOverrides[ScopedIndex] = Vector2D{ScopedColorValue[0], ScopedColorValue[1]};
+                        ScopedLink->RotationOverrides[ScopedIndex].Y = ScopedColorValue[2];
+                        ScopedChanged = true;
+                    }
+                }
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+        if (ScopedChanged)
+        {
+            PrefabInstance::ClearChildren(InContext.registry, InEntity);
+            if (InContext.commands != nullptr)
+            {
+                std::array<Entity, kPrefabMaxEntities> ScopedChildren{};
+                if (PrefabInstance::Expand(InContext.registry, *InContext.commands, InEntity, prefabInspectorAsset,
+                                           ScopedChildren))
+                {
+                    InContext.commands->Play(InContext.registry);
+                }
+            }
+        }
     }
 
     // Physical path of a VFS-relative asset inside the project.
@@ -2789,7 +3150,7 @@ struct EditorSystem::Impl
             ScopedDraw->PopClipRect();
         }
 
-        // Physics debug overlay: Box2D outlines, rope links, Verlet cloth and
+        // Physics debug overlay: Box2D outlines, rope links, Verlet cloth.
         if (showPhysicsDebug)
         {
             PhysicsDebugView ScopedDebugView;
@@ -3059,7 +3420,7 @@ struct EditorSystem::Impl
             ScopedDraw->PopClipRect();
         }
 
-        // Content Browser -> Viewport drop. The panel turns this into a
+        // Content Browser -> Viewport drop.
         {
             ContentBrowserPanel::SpawnContext ScopedSpawn;
             ScopedSpawn.commands = &commands;
@@ -3211,6 +3572,13 @@ struct EditorSystem::Impl
             StartReleaseCook();
         }
         ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::Checkbox("Stage runnable game", &stageRuntimeBundle);
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip("Also copy the sandbox/server, runtime DLLs and cooked pak into\n"
+                              "<project>-game/ next to the store archives.");
+        }
         ImGui::SameLine();
         if (releaseCooker.Running())
         {
@@ -4116,6 +4484,25 @@ struct EditorSystem::Impl
             {
                 ImGui::Text("%u more categories", profilerPanel.HiddenCount());
             }
+            if (ImGui::Button("Export Chrome trace"))
+            {
+                const std::filesystem::path ScopedTracePath =
+                    Fby::Core::StorageRoot() / "Profiler" / "trace.json";
+                std::error_code ScopedError;
+                std::filesystem::create_directories(ScopedTracePath.parent_path(), ScopedError);
+                std::ofstream ScopedTraceFile(ScopedTracePath, std::ios::binary | std::ios::trunc);
+                if (ScopedTraceFile)
+                {
+                    const std::string ScopedTrace =
+                        Fby::Core::ToChromeTraceJson(*profiler, profilerNames);
+                    ScopedTraceFile.write(ScopedTrace.data(), static_cast<std::streamsize>(ScopedTrace.size()));
+                    status = std::format("Profiler trace written to {}", ScopedTracePath.string());
+                }
+                else
+                {
+                    status = std::format("Profiler trace could not be written to {}", ScopedTracePath.string());
+                }
+            }
         }
         PopMono();
         EndEditorPanel();
@@ -4302,6 +4689,21 @@ struct EditorSystem::Impl
                 {
                     ScopedDirtyShortcut = true;
                 }
+                if (ImGui::MenuItem("Export Project Bundle...", nullptr, false, projectOpen))
+                {
+                    const std::filesystem::path ScopedRoot = projectConfig.Paths().root;
+                    const std::filesystem::path ScopedArchive =
+                        ScopedRoot.parent_path() / (ScopedRoot.filename().string() + ".fbyproj");
+                    std::string ScopedBundleError;
+                    if (Fby::Assets::ExportProjectBundle(ScopedRoot, ScopedArchive, &ScopedBundleError))
+                    {
+                        SetStatus("project bundle written to " + ScopedArchive.string());
+                    }
+                    else
+                    {
+                        SetStatus("project bundle failed: " + ScopedBundleError);
+                    }
+                }
                 if (ImGui::MenuItem("Reload Scene", "F5", false, !currentScene.empty()))
                 {
                     std::string ScopedError;
@@ -4371,6 +4773,25 @@ struct EditorSystem::Impl
                         },
                         ScopedPrefabs.string(), ScopedName);
                 }
+                if (ImGui::MenuItem("Spawn Prefab...", nullptr, false,
+                                    projectOpen && window != nullptr && !pie.Active()))
+                {
+                    const std::filesystem::path ScopedPrefabs = projectConfig.Paths().assets / "prefabs";
+                    std::error_code ScopedCode;
+                    std::filesystem::create_directories(ScopedPrefabs, ScopedCode);
+                    FileFilter ScopedFilter{"FemboyEngine prefab", "toml"};
+                    window->ShowOpenFile(
+                        "Spawn Prefab", std::span<const FileFilter>(&ScopedFilter, 1),
+                        [this](std::vector<std::string> InPaths)
+                        {
+                            if (InPaths.empty())
+                            {
+                                return;
+                            }
+                            std::lock_guard<std::mutex> ScopedLock(sceneDialogMutex);
+                            pendingSpawnPrefabPath = InPaths.front();
+                        });
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Build"))
@@ -4407,7 +4828,10 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("Viewport", nullptr, &showViewport);
                 ImGui::MenuItem("PIE Client", nullptr, &showPieClient);
                 ImGui::MenuItem("Profiler", "F7", &showProfiler);
+                ImGui::MenuItem("Crash Diagnostics", nullptr, &showCrashDiagnostics);
+                ImGui::MenuItem("Accessibility QA", nullptr, &showAccessibilityQa);
                 ImGui::MenuItem("SDF Composer", "F8", &showSdfComposer);
+                ImGui::MenuItem("SDF Lighting", nullptr, &showSdfLighting);
                 ImGui::MenuItem("Scene Diagnostics", nullptr, &showSceneDiagnostics);
                 ImGui::MenuItem("SDF Character", nullptr, &showSdfCharacters);
                 ImGui::MenuItem("Plugin Manager", nullptr, &showPluginManager);
@@ -4457,8 +4881,15 @@ struct EditorSystem::Impl
                 ImGui::MenuItem("Editor Settings", nullptr, &showEditorSettings);
                 ImGui::MenuItem("Player Settings", nullptr, &showUserSettings);
                 ImGui::MenuItem("Licenses", nullptr, &showLicenses);
+                ImGui::MenuItem("Documents", nullptr, &showDocuments);
+                ImGui::MenuItem("Data Table", nullptr, &showDataTables);
+                ImGui::MenuItem("Books", nullptr, &showBooks);
+                ImGui::MenuItem("UI Layout", nullptr, &showUiLayout);
+                ImGui::MenuItem("Render Tuning", nullptr, &showRenderTuning);
+                ImGui::MenuItem("Video", nullptr, &showVideo);
                 ImGui::MenuItem("Network Diagnostics", nullptr, &showNetworkDiagnostics);
                 ImGui::MenuItem("Voice Devices", nullptr, &showVoiceDevices);
+                ImGui::MenuItem("Particle FX", nullptr, &showParticleFx);
                 ImGui::MenuItem("Transport Groups", nullptr, &showTransportGroups);
                 ImGui::MenuItem("ImGui demo", nullptr, &showDemo);
                 ImGui::EndMenu();
@@ -4572,6 +5003,12 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     {
         return true;
     }
+    if (MImpl->voicePresets.Empty())
+    {
+        MImpl->voicePresets.RegisterBuiltIns();
+    }
+    MImpl->voiceSfx.Configure(MImpl->voiceSfxSettings);
+    MImpl->voiceSfxApplied = MImpl->voiceSfxSettings;
     if (InContext.renderer == nullptr || InContext.window == nullptr)
     {
         LogError("editor", "EditorSystem::Initialize needs SystemContext::renderer and ::window");
@@ -4606,6 +5043,16 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
         {
             LogInfo("editor", "user settings not loaded: {}", ScopedUserError);
         }
+        if (MImpl->userSettings.voicePresetId[0] != '\0')
+        {
+            MImpl->voiceSelection.Local.Set(MImpl->userSettings.voicePresetId,
+                                            MImpl->userSettings.voicePresetIntensity);
+        }
+        MImpl->voicePolicy.MumbleWhenModerated = MImpl->userSettings.voiceModerationMumble;
+        MImpl->voiceSfxSettings.Enabled = MImpl->userSettings.voiceReactiveSfx;
+        MImpl->voiceSfxSettings.MasterGain = MImpl->userSettings.voiceReactiveSfxGain;
+        MImpl->voiceSfx.Configure(MImpl->voiceSfxSettings);
+        MImpl->voiceSfxApplied = MImpl->voiceSfxSettings;
     }
     Scene::RegisterBuiltInComponents(MImpl->components);
     MImpl->textureArray = InDesc.textureArray;
@@ -4705,6 +5152,15 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     MImpl->layoutMarker = ScopedLayoutMarker;
     MImpl->initialized = true;
 
+    // The editor narrator is installed once; the policy is applied every frame
+    // from EditorSettings, so a change in the settings panel takes effect
+    // immediately and never needs a restart.
+    MImpl->editorSpeech.SetBackend(NativeTtsBackend());
+    MImpl->appliedSpeech = MImpl->projectConfig.Editor().narration;
+    MImpl->editorSpeech.SetSettings(MImpl->appliedSpeech);
+    MImpl->editorSpeech.SetLanguage(MImpl->appliedSpeech.Language);
+    MImpl->speechApplied = true;
+
     // Authoring services: the command stack is bound to the editor registry
     (void)MImpl->commands.Initialize();
     MImpl->commands.Bind(&InContext.registry, &MImpl->components);
@@ -4716,6 +5172,8 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
         }
     }
     MImpl->transformCodec = MImpl->commands.CodecForLayoutHash(Reflect::LayoutHash<Transform2D>());
+    MImpl->parentCodec = MImpl->commands.CodecForLayoutHash(Reflect::LayoutHash<Parent2D>());
+    MImpl->localTransformCodec = MImpl->commands.CodecForLayoutHash(Reflect::LayoutHash<LocalTransform2D>());
 
     // Settings are external CommandStack targets so a slider drag has the same
     MImpl->projectSettingsCodec =
@@ -4726,6 +5184,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
                                                static_cast<std::uint32_t>(sizeof(Fby::Editor::EditorSettings)));
     MImpl->projectSettings.Initialize(MImpl->commands, MImpl->projectConfig, MImpl->projectSettingsCodec);
     MImpl->editorSettings.Initialize(MImpl->commands, MImpl->projectConfig, MImpl->editorSettingsCodec);
+    MImpl->editorSettings.SetThumbnails(&MImpl->thumbnails);
 
     // Both visual editors share the CommandStack with the Inspector.
     (void)MImpl->materialGraph.Initialize(MImpl->commands, MImpl->gpu);
@@ -4744,7 +5203,7 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     (void)MImpl->directionalBlendSpace.Initialize(MImpl->commands);
     MImpl->animationGraph.SetGameplayTagRegistry(&MImpl->gameplayTags);
 
-    // Allocate the PIE arena once, at editor startup. Play/Step/Stop then
+    // Allocate the PIE arena once, at editor startup.
     MImpl->pieArena.resize(kPieArenaBytes);
     if (!MImpl->pie.Initialize(MImpl->pieArena, Ecs::SnapshotSchema::BuiltIns(), MImpl->pieArena.size()))
     {
@@ -4855,6 +5314,219 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     return true;
 }
 
+void EditorSystem::Announce(std::string_view InText, bool InUrgent) noexcept
+{
+    if (MImpl == nullptr || InText.empty())
+    {
+        return;
+    }
+    // The narrator drops the line when the running game owns the voice, which
+    // is exactly the arbitration the editor needs during Play In Editor.
+    (void)MImpl->editorSpeech.Enqueue(NarratorOwner::Editor,
+                                      InUrgent ? NarratorPriority::Critical : NarratorPriority::Normal, InText);
+}
+
+namespace
+{
+// ImGui's accessibility roles use a small, stable vocabulary; the engine tree
+// speaks the same vocabulary so the narrator and the bridge agree.
+[[nodiscard]] Ui::AccessibilityRole AccessibilityRoleOfImGui(ImGuiA11yRole InRole) noexcept
+{
+    switch (InRole)
+    {
+        case ImGuiA11yRole_Button:
+            return Ui::AccessibilityRole::Button;
+        case ImGuiA11yRole_CheckBox:
+            return Ui::AccessibilityRole::CheckBox;
+        case ImGuiA11yRole_RadioButton:
+            return Ui::AccessibilityRole::RadioButton;
+        case ImGuiA11yRole_Slider:
+            return Ui::AccessibilityRole::Slider;
+        case ImGuiA11yRole_TextInput:
+            return Ui::AccessibilityRole::TextInput;
+        case ImGuiA11yRole_ComboBox:
+            return Ui::AccessibilityRole::ComboBox;
+        case ImGuiA11yRole_ListItem:
+            return Ui::AccessibilityRole::ListItem;
+        case ImGuiA11yRole_MenuItem:
+            return Ui::AccessibilityRole::MenuItem;
+        case ImGuiA11yRole_TreeItem:
+            return Ui::AccessibilityRole::TreeItem;
+        case ImGuiA11yRole_None:
+        default:
+            break;
+    }
+    return Ui::AccessibilityRole::Unknown;
+}
+}
+
+void EditorSystem::BuildEditorTree() noexcept
+{
+    ImGuiContext* ScopedContext = ImGui::GetCurrentContext();
+    if (ScopedContext == nullptr)
+    {
+        return;
+    }
+
+    MImpl->editorTree.Reset();
+    const ImVec2 ScopedDisplay = ImGui::GetIO().DisplaySize;
+    const std::uint32_t ScopedRoot = MImpl->editorTree.AddNode(
+        1u, Ui::AccessibilityRole::Window, Ui::kNoAccessibilityNode, Vector4D{0.0f, 0.0f, ScopedDisplay.x, ScopedDisplay.y},
+        Ui::AccessibilityStateEnabled, 0, "FemboyEngine2D editor");
+    if (ScopedRoot == Ui::kNoAccessibilityNode)
+    {
+        return;
+    }
+
+    // One node per visible top-level ImGui window. Child windows are part of
+    // their parent's semantics, so they are deliberately not published: a
+    // screen reader walks panels, not every nested draw list.
+    ImGuiWindow* ScopedFocusWindow = ScopedContext->NavWindow;
+    std::uint32_t ScopedFocusPaneNode = Ui::kNoAccessibilityNode;
+    for (ImGuiWindow* ScopedWindow : ScopedContext->Windows)
+    {
+        // Active is only meaningful while the window is current; between frames
+        // the stable flag is WasActive, which records the last drawn frame.
+        if (ScopedWindow == nullptr || ScopedWindow->Hidden || !ScopedWindow->WasActive)
+        {
+            continue;
+        }
+        if ((ScopedWindow->Flags & ImGuiWindowFlags_ChildWindow) != 0 || ScopedWindow->Name == nullptr)
+        {
+            continue;
+        }
+
+        // ImGui names carry an "###id" suffix; the spoken name stops at the
+        // first '#' so a panel never reads its internal identifier.
+        char ScopedName[96]{};
+        const char* ScopedSource = ScopedWindow->Name;
+        std::size_t ScopedLength = 0;
+        while (ScopedSource[ScopedLength] != '\0' && ScopedSource[ScopedLength] != '#' &&
+               ScopedLength + 1 < sizeof(ScopedName))
+        {
+            ScopedName[ScopedLength] = ScopedSource[ScopedLength];
+            ++ScopedLength;
+        }
+        if (ScopedLength == 0)
+        {
+            std::snprintf(ScopedName, sizeof(ScopedName), "panel");
+        }
+
+        std::uint32_t ScopedStates = Ui::AccessibilityStateEnabled;
+        if (ScopedWindow == ScopedFocusWindow)
+        {
+            ScopedStates |= Ui::AccessibilityStateFocused;
+        }
+        std::uint32_t ScopedId = static_cast<std::uint32_t>(ScopedWindow->ID) | 1u;
+        const std::uint32_t ScopedPaneNode =
+            MImpl->editorTree.AddNode(ScopedId, Ui::AccessibilityRole::Pane, ScopedRoot,
+                                      Vector4D{ScopedWindow->Pos.x, ScopedWindow->Pos.y,
+                                               ScopedWindow->Pos.x + ScopedWindow->Size.x,
+                                               ScopedWindow->Pos.y + ScopedWindow->Size.y},
+                                      ScopedStates, 0, ScopedName);
+        if (ScopedWindow == ScopedFocusWindow)
+        {
+            ScopedFocusPaneNode = ScopedPaneNode;
+        }
+
+    }
+
+    // A focused widget is a child of its panel: a screen reader can then answer
+    // "which control" and not only "which panel". The label and the role come
+    // from the ImGui item-label patch.
+    const ImGuiID ScopedFocusId = ScopedFocusWindow != nullptr ? ScopedFocusWindow->ID : 0u;
+    std::uint32_t ScopedFocusIndex = Ui::kNoAccessibilityNode;
+    std::uint32_t ScopedItemNode = Ui::kNoAccessibilityNode;
+    const char* ScopedFocusLabel = ImGui::GetAccessibilityFocusLabel();
+    ImGuiID ScopedFocusItemId = 0;
+    if (ScopedFocusLabel != nullptr && ScopedFocusPaneNode != Ui::kNoAccessibilityNode)
+    {
+        ImVec2 ScopedMin(0.0f, 0.0f);
+        ImVec2 ScopedMax(0.0f, 0.0f);
+        (void)ImGui::GetAccessibilityFocusBounds(&ScopedMin, &ScopedMax);
+        ScopedFocusItemId = ImGui::GetAccessibilityFocusId();
+        const std::uint32_t ScopedStableId =
+            (static_cast<std::uint32_t>(ScopedFocusItemId) ^ 0x5A5A0000u) | 2u;
+        ScopedItemNode = MImpl->editorTree.AddNode(
+            ScopedStableId, AccessibilityRoleOfImGui(ImGui::GetAccessibilityFocusRole()), ScopedFocusPaneNode,
+            Vector4D{ScopedMin.x, ScopedMin.y, ScopedMax.x, ScopedMax.y},
+            Ui::AccessibilityStateEnabled | Ui::AccessibilityStateFocused, 0, ScopedFocusLabel);
+        if (ScopedItemNode != Ui::kNoAccessibilityNode)
+        {
+            ScopedFocusIndex = ScopedItemNode;
+        }
+    }
+    if (ScopedFocusIndex == Ui::kNoAccessibilityNode && ScopedFocusId != 0u)
+    {
+        ScopedFocusIndex = MImpl->editorTree.FindIndexById(static_cast<std::uint32_t>(ScopedFocusId) | 1u);
+    }
+    MImpl->editorTree.SetFocusedId(ScopedFocusIndex != Ui::kNoAccessibilityNode
+                                       ? MImpl->editorTree.At(ScopedFocusIndex).Id
+                                       : 0u);
+
+    const bool ScopedFocusChanged =
+        ScopedFocusId != MImpl->lastFocusWindow || ScopedFocusItemId != MImpl->lastFocusItem;
+    if (ScopedFocusChanged)
+    {
+        MImpl->lastFocusWindow = ScopedFocusId;
+        MImpl->lastFocusItem = ScopedFocusItemId;
+        if (ScopedFocusIndex != Ui::kNoAccessibilityNode)
+        {
+            (void)MImpl->editorSpeech.AnnounceFocus(MImpl->editorTree, ScopedFocusIndex);
+        }
+    }
+
+    if (MImpl->bridgeStarted)
+    {
+        UpdateAccessibilityBridge(MImpl->editorTree);
+    }
+}
+
+void EditorSystem::UpdateSpeech(Ecs::SystemContext& InContext)
+{
+    if (MImpl == nullptr || !MImpl->speechApplied)
+    {
+        return;
+    }
+
+    const Fby::Editor::EditorSettings& ScopedSettings = MImpl->projectConfig.Editor();
+    if (!(MImpl->appliedSpeech == ScopedSettings.narration))
+    {
+        MImpl->appliedSpeech = ScopedSettings.narration;
+        MImpl->editorSpeech.SetSettings(MImpl->appliedSpeech);
+        MImpl->editorSpeech.SetLanguage(MImpl->appliedSpeech.Language);
+    }
+
+    // A running game owns the voice. The editor keeps building its tree for the
+    // bridge but queues no speech until the play session stops.
+    MImpl->editorSpeech.SetOwner(MImpl->pie.Active() ? NarratorOwner::Game : NarratorOwner::Editor);
+
+    const bool ScopedWantsBridge = ScopedSettings.bridge.Enabled && InContext.window != nullptr;
+    if (ScopedWantsBridge && (!MImpl->bridgeStarted || !(MImpl->appliedBridge == ScopedSettings.bridge)))
+    {
+        if (MImpl->bridgeStarted)
+        {
+            Fby::StopAccessibilityBridge();
+            MImpl->bridgeStarted = false;
+        }
+        MImpl->appliedBridge = ScopedSettings.bridge;
+        MImpl->bridgeStarted =
+            Fby::StartAccessibilityBridge(InContext.window->NativeWindow(), MImpl->appliedBridge);
+    }
+    else if (!ScopedWantsBridge && MImpl->bridgeStarted)
+    {
+        Fby::StopAccessibilityBridge();
+        MImpl->bridgeStarted = false;
+    }
+
+    if (MImpl->bridgeStarted || MImpl->appliedSpeech.Enabled)
+    {
+        BuildEditorTree();
+    }
+
+    MImpl->editorSpeech.Advance(InContext.dt);
+}
+
 void EditorSystem::Shutdown()
 {
     if (MImpl == nullptr)
@@ -4866,11 +5538,17 @@ void EditorSystem::Shutdown()
         return;
     }
     MImpl->initialized = false;
+    MImpl->editorSpeech.Stop();
+    if (MImpl->bridgeStarted)
+    {
+        Fby::StopAccessibilityBridge();
+        MImpl->bridgeStarted = false;
+    }
 
     // Thumbnail descriptors reference ImGui's Vulkan backend; drop the cache
     // before the ImGui context and the renderer go away.
     MImpl->thumbnails.Clear();
-    // Persist the final settings image before the background threads and the
+    // Persist the final settings image before the background threads and the device shut down.
     if (MImpl->projectConfig.Loaded())
     {
         std::string ScopedPersistError;
@@ -4952,7 +5630,7 @@ void EditorSystem::Shutdown()
                 ScopedMainViewport->PlatformHandleRaw = nullptr;
             }
         }
-        // Detach the Log() observer before the ImGui context and the panel that
+        // Detach the Log() observer before the ImGui context and the panel are destroyed.
         MImpl->logBoy.Shutdown();
         if (MImpl->plotContext != nullptr)
         {
@@ -4999,10 +5677,12 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     // thread, before any ImGui window is built for this frame.
     std::string ScopedPendingScene;
     std::string ScopedPendingPrefab;
+    std::string ScopedPendingSpawnPrefab;
     {
         std::lock_guard<std::mutex> ScopedLock(MImpl->sceneDialogMutex);
         ScopedPendingScene.swap(MImpl->pendingNewScenePath);
         ScopedPendingPrefab.swap(MImpl->pendingPrefabPath);
+        ScopedPendingSpawnPrefab.swap(MImpl->pendingSpawnPrefabPath);
     }
     if (InContext.cameraStack != nullptr)
     {
@@ -5025,6 +5705,70 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             MImpl->SetStatus("prefab failed: " + ScopedPrefabError);
         }
     }
+    if (!ScopedPendingSpawnPrefab.empty())
+    {
+        Fby::PrefabAsset ScopedAsset;
+        std::string ScopedPrefabError;
+        if (!Fby::PrefabSystem::LoadTomlFile(ScopedPendingSpawnPrefab, ScopedAsset, &ScopedPrefabError))
+        {
+            MImpl->SetStatus("prefab spawn failed: " + ScopedPrefabError);
+        }
+        else if (InContext.commands == nullptr || InContext.assetDb == nullptr)
+        {
+            MImpl->SetStatus("prefab spawn failed: no command buffer or asset database");
+        }
+        else
+        {
+            std::error_code ScopedRelativeCode;
+            const std::filesystem::path ScopedRelative =
+                std::filesystem::relative(ScopedPendingSpawnPrefab, MImpl->projectConfig.Paths().assets,
+                                          ScopedRelativeCode);
+            const std::string ScopedRelativePath = ScopedRelative.generic_string();
+            Assets::AssetHandle ScopedHandle =
+                InContext.assetDb->FindHandleBySourcePath(ScopedRelativePath);
+            if (!ScopedHandle.IsValid() && !ScopedRelativePath.empty())
+            {
+                ScopedHandle = InContext.assetDb->EnsureMeta(
+                    AssetId::FromPath(ScopedRelativePath, AssetKind::Scene), AssetKind::Scene, ScopedRelativePath,
+                    &ScopedPrefabError);            }
+            if (!ScopedHandle.IsValid())
+            {
+                MImpl->SetStatus("prefab spawn failed: asset is not registered: " + ScopedPrefabError);
+            }
+            else
+            {
+                const Entity ScopedInstance = InContext.registry.create();
+                PrefabInstanceComponent ScopedLink;
+                ScopedLink.Prefab = ScopedHandle;
+                ScopedLink.Origin = MImpl->camera.center;
+                InContext.registry.emplace<PrefabInstanceComponent>(ScopedInstance, ScopedLink);
+                std::array<Entity, Fby::kPrefabMaxEntities> ScopedChildren{};
+                if (!PrefabInstance::Expand(InContext.registry, *InContext.commands, ScopedInstance, ScopedAsset,
+                                            ScopedChildren))
+                {
+                    InContext.registry.destroy(ScopedInstance);
+                    MImpl->SetStatus("prefab spawn failed: instantiation rejected");
+                }
+                else
+                {
+                    InContext.commands->Play(InContext.registry);
+                    if (MImpl->commands.BeginTransaction("Spawn Prefab Instance") == CommandStack::Result::Ok)
+                    {
+                        (void)MImpl->commands.RecordSpawn(ScopedInstance);
+                        for (std::uint32_t ScopedI = 0; ScopedI < ScopedAsset.count; ++ScopedI)
+                        {
+                            (void)MImpl->commands.RecordSpawn(ScopedChildren[ScopedI]);
+                        }
+                        (void)MImpl->commands.CommitTransaction();
+                    }
+                    MImpl->SetStatus("prefab instance spawned: " + ScopedPendingSpawnPrefab);
+                }
+            }
+        }
+    }
+    // Compose the opt-in local/world transform hierarchy after the authoring
+    // edits, so the viewport and the inspector see the resolved world transform.
+    (void)Ecs::UpdateHierarchy(InContext.registry);
     // Dirty marker and autosave. The marker is derived from the command stack, so
     // undoing back to the saved state clears it again.
     const CommandStack::Stats ScopedCommandStats = MImpl->commands.GetStats();
@@ -5097,19 +5841,98 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         if (MImpl->voiceRuntime != nullptr)
         {
             MImpl->voiceRuntime->Tick(InContext.dt, MImpl->voiceSession);
+            if (MImpl->voicePresets.Empty())
+            {
+                MImpl->voicePresets.RegisterBuiltIns();
+            }
+            MImpl->voiceApplier.Apply(*MImpl->voiceRuntime, MImpl->voiceSession, MImpl->voicePresets,
+                                      MImpl->voicePolicy, MImpl->voiceSelection);
+            std::snprintf(MImpl->userSettings.voicePresetId, sizeof(MImpl->userSettings.voicePresetId), "%s",
+                          MImpl->voiceSelection.Local.Enabled ? MImpl->voiceSelection.Local.Id : "");
+            MImpl->userSettings.voicePresetIntensity = MImpl->voiceSelection.Local.Intensity;
+            MImpl->userSettings.voiceModerationMumble = MImpl->voicePolicy.MumbleWhenModerated;
+            MImpl->userSettings.voiceReactiveSfx = MImpl->voiceSfxSettings.Enabled;
+            MImpl->userSettings.voiceReactiveSfxGain = MImpl->voiceSfxSettings.MasterGain;
+            if (!(MImpl->voiceSfxSettings == MImpl->voiceSfxApplied))
+            {
+                MImpl->voiceSfx.Configure(MImpl->voiceSfxSettings);
+                MImpl->voiceSfxApplied = MImpl->voiceSfxSettings;
+            }
+            if (InContext.audio != nullptr && InContext.audio->IsValid() && !MImpl->voiceSfxClipsReady)
+            {
+                std::array<float, Fby::kVoiceSfxMaxSamples> ScopedBuffer{};
+                for (std::uint8_t ScopedKind = 1; ScopedKind < static_cast<std::uint8_t>(Fby::VoiceSfxKind::Count);
+                     ++ScopedKind)
+                {
+                    const auto ScopedValue = static_cast<Fby::VoiceSfxKind>(ScopedKind);
+                    const std::uint32_t ScopedSamples =
+                        Fby::SynthesizeVoiceSfx(ScopedValue, 48000, std::span<float>(ScopedBuffer));
+                    if (ScopedSamples == 0)
+                    {
+                        continue;
+                    }
+                    const std::string ScopedPath = std::string("voice_sfx/") + Fby::VoiceSfxKindName(ScopedValue);
+                    const Fby::AssetId ScopedClip = Fby::AssetId::FromPath(ScopedPath, Fby::AssetKind::AudioClip);
+                    if (InContext.audio->RegisterClip(
+                            ScopedClip, std::span<const float>(ScopedBuffer.data(), ScopedSamples), 1, 48000))
+                    {
+                        MImpl->voiceSfxClips[ScopedKind] = ScopedClip;
+                    }
+                }
+                MImpl->voiceSfxClipsReady = true;
+            }
+
+            Fby::VoiceReactiveSfxInput ScopedSfxInput{};
+            for (std::uint8_t ScopedPlayer = 0; ScopedPlayer < static_cast<std::uint8_t>(Fby::kVoiceMaxPeers);
+                 ++ScopedPlayer)
+            {
+                const Fby::VoiceParticipant* ScopedParticipant = MImpl->voiceSession.Participant(ScopedPlayer);
+                if (ScopedParticipant == nullptr || !ScopedParticipant->Present)
+                {
+                    continue;
+                }
+                Fby::VoiceReactiveSfxPlayer& ScopedSource = ScopedSfxInput.Players[ScopedPlayer];
+                ScopedSource.Present = true;
+                ScopedSource.Talking = ScopedParticipant->Talking;
+                ScopedSource.LocallyMuted = ScopedParticipant->LocalMuted;
+                ScopedSource.Position = ScopedParticipant->SourcePosition;
+                ScopedSource.Pan = ScopedParticipant->SpatialPan;
+                const Fby::VoiceConditionOutput* ScopedCondition =
+                    MImpl->voiceRuntime->ParticipantCondition(ScopedPlayer);
+                ScopedSource.Submerged = ScopedCondition != nullptr && ScopedCondition->Submerged;
+            }
+            std::array<Fby::VoiceSfxEvent, 8> ScopedSfxEvents{};
+            const std::uint32_t ScopedSfxCount = MImpl->voiceSfx.Update(InContext.dt, ScopedSfxInput, ScopedSfxEvents);
+            if (InContext.audio != nullptr)
+            {
+                for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedSfxCount; ++ScopedIndex)
+                {
+                    const Fby::VoiceSfxEvent& ScopedEvent = ScopedSfxEvents[ScopedIndex];
+                    const Fby::AssetId ScopedClip = MImpl->voiceSfxClips[static_cast<std::size_t>(ScopedEvent.Kind)];
+                    if (ScopedClip.IsValid())
+                    {
+                        (void)Fby::PlayVoiceSfx(*InContext.audio, ScopedClip, ScopedEvent);
+                    }
+                }
+            }
         }
     }
 
-    // Main-thread speech pump: SAPI is apartment-threaded and AVSpeech owns a
+    // Main-thread speech pump: SAPI is apartment-threaded and AVSpeech owns a queue.
     if (InContext.accessibility != nullptr)
     {
         InContext.accessibility->FlushSpeech();
     }
+
     if (!MImpl->initialized || !MImpl->visible)
     {
         return;
     }
     ImGui::SetCurrentContext(MImpl->imguiContext);
+
+    // Editor voice and bridge. Runs with the ImGui context current because the
+    // semantic tree is built from the live window list.
+    UpdateSpeech(InContext);
 
     // Typography changes and font-file hot reload both mutate the ImGui atlas,
     // so both are applied before NewFrame.
@@ -5142,7 +5965,7 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     }
     if (MImpl->fonts.DetectFontChanges())
     {
-        // ImGui::FontAtlas::Clear() destroys the dynamic font texture. Wait for
+        // ImGui::FontAtlas::Clear() destroys the dynamic font texture.
         if (MImpl->gpu != nullptr)
         {
             MImpl->gpu->WaitIdle();
@@ -5167,10 +5990,10 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     ImGui::NewFrame();
     ImGuizmo::BeginFrame();
 
-    // Follow the monitor the window is on. Glyph re-baking is automatic on the
+    // Follow the monitor the window is on.
     MImpl->fonts.RefreshDisplayScale(ImGui::GetIO(), MImpl->window);
 
-    // Watcher -> importer -> RHI. Poll() only enqueues the background cook; the
+    // Watcher -> importer -> RHI. Poll() only enqueues the background cook.
     if (MImpl->watcherStarted)
     {
         (void)MImpl->watcher.Poll();
@@ -5290,7 +6113,7 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         return;
     }
 
-    // PIE state machine, once per editor frame, before any panel reads the
+    // PIE state machine, once per editor frame, before any panel reads the world.
     MImpl->ProcessPIE(InContext);
 
     // Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) drive the transactional command stack.
@@ -5437,6 +6260,82 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             Fby::Editor::ProjectSettings& ScopedProjectSettings = MImpl->projectConfig.Config().project;
             const bool ScopedProjectOpen = MImpl->projectConfig.Loaded() && !MImpl->projectConfig.Paths().root.empty();
             ImGui::BeginDisabled(!ScopedProjectOpen);
+            if (MImpl->availablePlugins.empty())
+            {
+                if (MImpl->pluginDirectory.empty())
+                {
+                    ImGui::TextDisabled("No plugin directory configured.");
+                }
+                else
+                {
+                    ImGui::TextDisabled("No plugin files in %s", MImpl->pluginDirectory.string().c_str());
+                }
+            }
+            else
+            {
+                if (MImpl->selectedPlugin >= MImpl->availablePlugins.size())
+                {
+                    MImpl->selectedPlugin = 0;
+                }
+                const std::string ScopedChoice = MImpl->availablePlugins[MImpl->selectedPlugin].filename().string();
+                ImGui::SetNextItemWidth(420.0f);
+                if (ImGui::BeginCombo("##plugin_choice", ScopedChoice.c_str()))
+                {
+                    for (std::uint32_t ScopedI = 0; ScopedI < MImpl->availablePlugins.size(); ++ScopedI)
+                    {
+                        const std::string ScopedName = MImpl->availablePlugins[ScopedI].filename().string();
+                        const bool ScopedSelected = ScopedI == MImpl->selectedPlugin;
+                        if (ImGui::Selectable(ScopedName.c_str(), ScopedSelected))
+                        {
+                            MImpl->selectedPlugin = ScopedI;
+                        }
+                        if (ScopedSelected)
+                        {
+                            ImGui::SetItemDefaultFocus();
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Connect & load") && MImpl->pluginHost != nullptr && ScopedProjectOpen)
+                {
+                    const std::filesystem::path ScopedSource = MImpl->availablePlugins[MImpl->selectedPlugin];
+                    const std::filesystem::path ScopedRoot = MImpl->projectConfig.Paths().root;
+                    std::string ScopedRelative;
+                    std::string ScopedConnectError;
+                    if (!ConnectProjectPlugin(ScopedRoot, ScopedSource, ScopedProjectSettings, &ScopedRelative,
+                                              &ScopedConnectError))
+                    {
+                        MImpl->pluginStatus = "connect failed: " + ScopedConnectError;
+                    }
+                    else
+                    {
+                        const std::string ScopedTarget = (ScopedRoot / ScopedRelative).string();
+                        bool ScopedLoaded = false;
+                        for (const auto& ScopedPlugin : MImpl->pluginHost->Plugins())
+                        {
+                            ScopedLoaded = ScopedLoaded || ScopedPlugin->path == ScopedTarget;
+                        }
+                        std::string ScopedLoadError;
+                        if (!ScopedLoaded && !MImpl->pluginHost->Load(ScopedTarget, &ScopedLoadError))
+                        {
+                            MImpl->pluginStatus = "load failed: " + ScopedLoadError;
+                        }
+                        else
+                        {
+                            std::string ScopedPersistError;
+                            (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                            MImpl->pluginStatus = "connected and saved to project: " + ScopedRelative;
+                        }
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Refresh"))
+                {
+                    MImpl->ScanPluginDirectory();
+                }
+            }
+            ImGui::SeparatorText("Or add from a project path");
             ImGui::SetNextItemWidth(420.0f);
             ImGui::InputText("##plugin_path", MImpl->pluginPath.data(), MImpl->pluginPath.size());
             ImGui::SameLine();
@@ -5489,33 +6388,116 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             {
                 Fby::Editor::ProjectPluginEntry& ScopedEntry = ScopedProjectSettings.plugins[ScopedI];
                 ImGui::PushID(static_cast<int>(ScopedI));
-                ImGui::TextUnformatted(ScopedEntry.Path);
+                bool ScopedEnabled = ScopedEntry.Enabled;
+                if (ImGui::Checkbox("##plugin_enabled", &ScopedEnabled))
+                {
+                    ScopedEntry.Enabled = ScopedEnabled;
+                    if (MImpl->pluginHost != nullptr)
+                    {
+                        const std::string ScopedFull = (MImpl->projectConfig.Paths().root / ScopedEntry.Path).string();
+                        std::string ScopedError;
+                        if (ScopedEnabled)
+                        {
+                            (void)MImpl->pluginHost->Load(ScopedFull, &ScopedError);
+                        }
+                        else
+                        {
+                            (void)MImpl->pluginHost->Unload(ScopedFull, &ScopedError);
+                        }
+                    }
+                    std::string ScopedPersistError;
+                    (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                }
+                ImGui::SameLine();
+                ImGui::Text("%s%s", ScopedEntry.Path, ScopedEntry.Enabled ? "" : " (disabled)");
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Load") && MImpl->pluginHost != nullptr)
                 {
                     std::string ScopedLoadError;
                     const std::string ScopedFull = (MImpl->projectConfig.Paths().root / ScopedEntry.Path).string();
-                    MImpl->pluginStatus = MImpl->pluginHost->Load(ScopedFull, &ScopedLoadError)
-                                              ? "loaded " + std::string(ScopedEntry.Path)
-                                              : "load failed: " + ScopedLoadError;
+                    if (MImpl->pluginHost->Load(ScopedFull, &ScopedLoadError))
+                    {
+                        ScopedEntry.Enabled = true;
+                        std::string ScopedPersistError;
+                        (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                        MImpl->pluginStatus = "loaded " + std::string(ScopedEntry.Path);
+                    }
+                    else
+                    {
+                        MImpl->pluginStatus = "load failed: " + ScopedLoadError;
+                    }
                 }
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Forget"))
                 {
-                    for (std::uint32_t ScopedMove = ScopedI + 1; ScopedMove < ScopedProjectSettings.pluginCount;
-                         ++ScopedMove)
+                    const std::string ScopedPath = ScopedEntry.Path;
+                    if (MImpl->pluginHost != nullptr)
                     {
-                        ScopedProjectSettings.plugins[ScopedMove - 1] = ScopedProjectSettings.plugins[ScopedMove];
+                        std::string ScopedUnloadError;
+                        const std::string ScopedFull = (MImpl->projectConfig.Paths().root / ScopedPath).string();
+                        (void)MImpl->pluginHost->Unload(ScopedFull, &ScopedUnloadError);
                     }
-                    --ScopedProjectSettings.pluginCount;
-                    std::string ScopedPersistError;
-                    (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                    std::string ScopedRemoveError;
+                    if (!RemoveProjectPlugin(MImpl->projectConfig.Paths().root, ScopedProjectSettings, ScopedI,
+                                             &ScopedRemoveError))
+                    {
+                        MImpl->pluginStatus = "remove failed: " + ScopedRemoveError;
+                    }
+                    else
+                    {
+                        std::string ScopedPersistError;
+                        (void)MImpl->projectConfig.PersistIfChanged(&ScopedPersistError);
+                        MImpl->pluginStatus = "removed " + ScopedPath;
+                    }
                     ImGui::PopID();
                     break;
                 }
                 ImGui::PopID();
             }
             ImGui::EndDisabled();
+            ImGui::SeparatorText("Compatibility");
+            if (MImpl->pluginHost != nullptr)
+            {
+                ImGui::TextDisabled("host ABI %u, %zu known component types", FBY_PLUGIN_ABI_VERSION,
+                                    MImpl->pluginHost->Components().Size());
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Write plugin report"))
+                {
+                    const std::filesystem::path ScopedDirectory =
+                        std::filesystem::current_path() / "Saved" / "Plugins";
+                    std::error_code ScopedError;
+                    std::filesystem::create_directories(ScopedDirectory, ScopedError);
+                    std::ofstream ScopedReport(ScopedDirectory / "plugin-report.md",
+                                               std::ios::binary | std::ios::trunc);
+                    if (ScopedReport)
+                    {
+                        ScopedReport << "# Plugin compatibility report\n\n"
+                                     << "- host ABI: " << FBY_PLUGIN_ABI_VERSION << "\n"
+                                     << "- host component types: " << MImpl->pluginHost->Components().Size() << "\n\n";
+                        for (const auto& ScopedPlugin : MImpl->pluginHost->Plugins())
+                        {
+                            ScopedReport << "## " << ScopedPlugin->name << " " << ScopedPlugin->version << "\n\n"
+                                         << "- path: " << ScopedPlugin->path << "\n"
+                                         << "- author: " << ScopedPlugin->author << "\n"
+                                         << "- build: " << ScopedPlugin->buildInfo << "\n"
+                                         << "- components: " << ScopedPlugin->components.size() << "\n"
+                                         << "- systems: " << ScopedPlugin->systems.size() << "\n"
+                                         << "- ABI and component layout validated during load\n\n";
+                            for (const Plugin::ComponentType& ScopedComponent : ScopedPlugin->components)
+                            {
+                                ScopedReport << "  - " << ScopedComponent.name << " size " << ScopedComponent.size
+                                             << " hash " << std::format("{:016x}", ScopedComponent.layoutHash) << "\n";
+                            }
+                        }
+                        MImpl->pluginStatus =
+                            "plugin report: " + (ScopedDirectory / "plugin-report.md").generic_string();
+                    }
+                    else
+                    {
+                        MImpl->pluginStatus = "could not write the plugin report";
+                    }
+                }
+            }
             ImGui::SeparatorText("Loaded in this project");
             if (MImpl->pluginHost == nullptr)
             {
@@ -5598,6 +6580,36 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
         ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
         MImpl->licenses.Draw(&MImpl->showLicenses);
     }
+    if (MImpl->showDocuments)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->documents.Draw(InContext, &MImpl->showDocuments);
+    }
+    if (MImpl->showDataTables)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->dataTables.Draw(InContext, &MImpl->showDataTables);
+    }
+    if (MImpl->showVideo)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->video.Draw(InContext, &MImpl->showVideo);
+    }
+    if (MImpl->showRenderTuning)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->renderTuning.Draw(InContext, &MImpl->showRenderTuning);
+    }
+    if (MImpl->showUiLayout)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->uiLayout.Draw(InContext, &MImpl->showUiLayout);
+    }
+    if (MImpl->showBooks)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->books.Draw(InContext, &MImpl->showBooks);
+    }
     if (MImpl->showNetworkDiagnostics)
     {
         ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
@@ -5606,7 +6618,14 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     if (MImpl->showVoiceDevices)
     {
         ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
-        MImpl->voiceDevices.Draw(&MImpl->showVoiceDevices, &MImpl->projectConfig, InContext.audio);
+        MImpl->voiceDevices.Draw(&MImpl->showVoiceDevices, &MImpl->projectConfig, InContext.audio,
+                                 MImpl->voiceRuntime.get(), &MImpl->voiceSession, &MImpl->voicePresets,
+                                 &MImpl->voiceSelection, &MImpl->voicePolicy, &MImpl->voiceSfxSettings);
+    }
+    if (MImpl->showParticleFx)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->particleFx.Draw(&MImpl->showParticleFx);
     }
     if (MImpl->showTransportGroups)
     {
@@ -5615,7 +6634,25 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
                                     SelectedEntity(InContext.registry));
     }
     MImpl->DrawProfiler(InContext);
+    if (MImpl->showAccessibilityQa)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Console"), ImGuiCond_FirstUseEver);
+        MImpl->accessibilityQa.Draw(MImpl->editorTree, MImpl->projectConfig.Project().accessibility,
+                                    &MImpl->showAccessibilityQa);
+    }
+    if (MImpl->showCrashDiagnostics)
+    {
+        MImpl->crashDiagnostics.SetProject(MImpl->projectConfig.Project().name,
+                                           MImpl->projectConfig.Paths().root.string());
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Console"), ImGuiCond_FirstUseEver);
+        MImpl->crashDiagnostics.Draw(&MImpl->showCrashDiagnostics);
+    }
     MImpl->DrawSdfComposer();
+    if (MImpl->showSdfLighting)
+    {
+        ImGui::SetNextWindowDockID(MImpl->DockHostFor("Inspector"), ImGuiCond_FirstUseEver);
+        MImpl->sdfLighting.Draw(InContext.registry, MImpl->camera.center, &MImpl->showSdfLighting);
+    }
     MImpl->logBoy.SetFrame(static_cast<std::uint32_t>(InContext.frameIndex));
     if (MImpl->showLogBoy)
     {
@@ -5664,7 +6701,7 @@ void EditorSystem::OnPlatformEvent(const void* InSdlEvent)
     }
     ImGui::SetCurrentContext(MImpl->imguiContext);
     const SDL_Event* ScopedEvent = static_cast<const SDL_Event*>(InSdlEvent);
-    // A window can move between monitors or its content scale can change while
+    // A window can move between monitors or its content scale can change.
     if (ScopedEvent->type == SDL_EVENT_WINDOW_DISPLAY_CHANGED ||
         ScopedEvent->type == SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED)
     {
@@ -5726,10 +6763,15 @@ void EditorSystem::SetEffectRegistry(Ui::AccessibilityEffectRegistry* InEffects)
     }
 }
 
+void EditorSystem::SetPluginDirectory(const std::filesystem::path& InDirectory) noexcept
+{
+    MImpl->pluginDirectory = InDirectory;
+    MImpl->ScanPluginDirectory();
+}
+
 void EditorSystem::SetPluginHost(Plugin::PluginHost* InHost) noexcept
 {
-    MImpl->pluginHost = InHost;
-    if (MImpl->initialized && MImpl->projectConfig.Loaded())
+    MImpl->pluginHost = InHost;    if (MImpl->initialized && MImpl->projectConfig.Loaded())
     {
         try
         {
@@ -6237,7 +7279,7 @@ bool EditorSystem::SaveScene(Ecs::SystemContext& InContext, const std::filesyste
     MImpl->aiStateTree.SetScenePath(InPath);
     if (MImpl->aiStateTree.HasCompiledImage())
     {
-        // SaveSceneFileToml rewrites the whole file, so the marked AI block is
+        // SaveSceneFileToml rewrites the whole file, so the marked AI block must be merged back first.
         (void)MImpl->aiStateTree.SaveCompiledToSceneToml();
     }
     MImpl->animationGraph.SetScenePath(InPath);

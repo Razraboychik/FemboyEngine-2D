@@ -13,34 +13,46 @@ add_library(fby_editor STATIC
     Infrastructure/EditorWidgets.cpp
     Infrastructure/MaterialGraphRuntime.cpp
     Infrastructure/PhysicsDebugDraw.cpp
+    Infrastructure/PiePresentation.cpp
     Infrastructure/PlayInEditor.cpp
     Infrastructure/ProjectConfig.cpp
+    Infrastructure/ProjectPlugins.cpp
     Infrastructure/UserSettings.cpp
     Infrastructure/ReleaseCooker.cpp
     Infrastructure/TextureThumbnails.cpp
     Panels/AIStateTreeCanvasPanel.cpp
+    Panels/AccessibilityQaPanel.cpp
     Panels/LevelSettingsPanel.cpp
     Panels/AnimationGraphCanvasPanel.cpp
     Panels/AnimationTimelinePanel.cpp
     Panels/DirectionalBlendFile.cpp
     Panels/DirectionalBlendSpacePanel.cpp
+    Panels/BooksPanel.cpp
     Panels/ContentBrowserPanel.cpp
+    Panels/CrashDiagnosticsPanel.cpp
+    Panels/DataTablePanel.cpp
+    Panels/DocumentsPanel.cpp
     Panels/LogBoyPanel.cpp
     Panels/LicensesPanel.cpp
     Panels/NetworkDiagnosticsPanel.cpp
     Panels/PieClientViewport.cpp
     Panels/SdfCharacterPanel.cpp
     Panels/VoiceDevicePanel.cpp
+    Panels/ParticleFxPanel.cpp
     Panels/MaterialGraphPanel.cpp
     Panels/NodeCanvasPanel.cpp
     Panels/ProjectDashboard.cpp
     Panels/SceneDiagnosticsPanel.cpp
+    Panels/SdfLightingPanel.cpp
     Panels/ScriptDebuggerPanel.cpp
     Panels/SettingsPanels.cpp
     Panels/SkeletonAssetPanel.cpp
     Panels/SpriteAnimationPanel.cpp
     Panels/TilemapEditorPanel.cpp
+    Panels/RenderTuningPanel.cpp
     Panels/TextPreviewPanel.cpp
+    Panels/VideoPanel.cpp
+    Panels/UiLayoutPanel.cpp
     Panels/TransportGroupPanel.cpp
     Panels/VirtualTexturePanel.cpp
     Panels/VisualScriptPanel.cpp)

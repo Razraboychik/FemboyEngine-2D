@@ -2,6 +2,7 @@
 #include "Engine/Audio/DspGraph.hpp"
 
 #include "Engine/Audio/AudioStream.hpp"
+#include "Engine/Core/Simd.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,7 +18,7 @@ constexpr std::uint32_t kReverbCombBase[4] = {1116, 1188, 1277, 1356};
 constexpr std::uint32_t kReverbAllpassBase[2] = {556, 441};
 constexpr std::uint32_t kReverbBaseSampleRate = 44100;
 
-// Gain clamps match the legacy AudioSystem::SetBusVolume contract (0..8) so a
+// Gain clamps match the legacy AudioSystem::SetBusVolume contract (0..8).
 constexpr float kMaxBusGain = 8.0f;
 
 [[nodiscard]] float ClampGain(float InGain) noexcept
@@ -153,7 +154,7 @@ bool DspGraph::Initialize(std::uint32_t InSampleRate)
     }
     MSampleRate = InSampleRate;
 
-    // Reverb memory is sized here, once. Four combs + two allpasses per bus,
+    // Reverb memory is sized here, once. Four combs + two allpasses per bus.
     std::uint32_t ScopedSamplesPerBus = 0;
     for (std::uint32_t ScopedComb = 0; ScopedComb < 4; ++ScopedComb)
     {
@@ -173,13 +174,13 @@ bool DspGraph::Initialize(std::uint32_t InSampleRate)
         return false;
     }
 
-    // Reset every slot, then create the three built-in buses. This is the only
+    // Reset every slot, then create the three built-in buses.
     for (std::uint32_t ScopedBus = 0; ScopedBus < kMaxBuses; ++ScopedBus)
     {
         ResetBusSlot(static_cast<BusId>(ScopedBus));
         MShadow[ScopedBus] = BusShadow{};
         MLastBlockPeak[ScopedBus] = 0.0f;
-        // The reverb indices are a property of the slot and the sample rate,
+        // The reverb indices are a property of the slot and the sample rate.
         ReverbState& ScopedReverb = MBuses[ScopedBus].reverb;
         std::uint32_t ScopedOffset = ScopedBus * ScopedSamplesPerBus;
         for (std::uint32_t ScopedComb = 0; ScopedComb < 4; ++ScopedComb)
@@ -339,7 +340,7 @@ DspResult DspGraph::SetBusGain(BusId InBus, float InGain) noexcept
     {
         return DspResult::InvalidArgument;
     }
-    // Direct atomic write: a volume slider must not be one buffer late, and a
+    // Direct atomic write: a volume slider must not be one buffer late.
     MBusAtomics[InBus].gain.store(ClampGain(InGain), std::memory_order_relaxed);
     return DspResult::Ok;
 }
@@ -995,7 +996,7 @@ void DspGraph::RebuildOrder() noexcept
         return;
     }
 
-    // Iterative post-order DFS from Master. A tree has at most kMaxBuses nodes,
+    // Iterative post-order DFS from Master. A tree has at most kMaxBuses nodes.
     struct Frame
     {
         BusId bus;
@@ -1047,7 +1048,7 @@ void DspGraph::DestroyBusOnAudioThread(BusId InBus) noexcept
     {
         RemoveChild(ScopedParent, InBus);
     }
-    // Reparent the children to the destroyed bus's parent, matching the
+    // Reparent the children to the destroyed bus's parent, matching the bus tree.
     for (std::uint8_t ScopedIndex = 0; ScopedIndex < MBuses[InBus].childCount; ++ScopedIndex)
     {
         const BusId ScopedChild = MBuses[InBus].children[ScopedIndex];
@@ -1072,7 +1073,7 @@ bool DspGraph::IsBusInGraph(BusId InBus) const noexcept
 
 bool DspGraph::WouldCycle(BusId InParent, BusId InChild) const noexcept
 {
-    // Walk from the proposed parent to the root: if the child is on that path,
+    // Walk from the proposed parent to the root: if the child is on that path.
     BusId ScopedCursor = InParent;
     for (std::uint32_t ScopedGuard = 0; ScopedGuard < kMaxBuses && ScopedCursor != kInvalidBus; ++ScopedGuard)
     {
@@ -1155,15 +1156,7 @@ void DspGraph::ProcessBlock(float* Output, std::uint32_t InFrameCount) noexcept
         }
         ApplyBusGain(ScopedBus, ScopedBuffer, InFrameCount);
 
-        float ScopedPeak = 0.0f;
-        for (std::uint32_t ScopedSample = 0; ScopedSample < ScopedFloats; ++ScopedSample)
-        {
-            const float ScopedMagnitude = std::fabs(ScopedBuffer[ScopedSample]);
-            if (ScopedMagnitude > ScopedPeak)
-            {
-                ScopedPeak = ScopedMagnitude;
-            }
-        }
+        const float ScopedPeak = Simd::PeakAbs(ScopedBuffer, ScopedFloats);
         MBusAtomics[ScopedBus].peak.store(ScopedPeak, std::memory_order_relaxed);
         MLastBlockPeak[ScopedBus] = ScopedPeak;
         ScopedRendered[ScopedBus] = true;
@@ -1400,7 +1393,7 @@ void DspGraph::ApplyDucking(BusId InBus, float* InBuffer, std::uint32_t InFrameC
     {
         return;
     }
-    // The sidechain detector prefers the source bus's per-frame output of this
+    // The sidechain detector prefers the source bus's per-frame output.
     const bool ScopedHaveSource = InRendered[ScopedDucking.sourceBus] && MBuses[ScopedDucking.sourceBus].active;
     const float* ScopedSource = ScopedHaveSource ? MBusOut[ScopedDucking.sourceBus] : nullptr;
     const float ScopedFallback = MLastBlockPeak[ScopedDucking.sourceBus];

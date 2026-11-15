@@ -10,7 +10,7 @@
 namespace Fby::Shaderc
 {
 
-// SPIR-V's first word. Tests and the runtime use this to reject a compiler that
+// SPIR-V's first word. Tests and the runtime use this to reject a compiler.
 inline constexpr std::uint32_t kSpirvMagic = 0x07230203u;
 // Smallest legal module: magic, version, generator, bound, schema.
 inline constexpr std::uint32_t kSpirvMinimumWords = 5;
@@ -39,7 +39,7 @@ enum class ShaderStage : std::uint8_t
     return "?";
 }
 
-// True for a structurally plausible SPIR-V module. Used by the runtime before it
+// True for a structurally plausible SPIR-V module.
 [[nodiscard]] bool IsSpirvModule(const std::uint32_t* InWords, std::size_t InWordCount) noexcept;
 
 // Compiles one GLSL 450 shader stage to SPIR-V. Returns false and fills `error`

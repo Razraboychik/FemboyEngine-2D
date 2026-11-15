@@ -50,7 +50,7 @@ struct ComponentOps
     std::span<const Reflect::FieldDesc> fields;
     // Editor-only markers (selection, hover, ...) must not be written to disk.
     bool serializable = true;
-    // A marker component (Hidden, ...) has no storage to hand out a
+    // A marker component (Hidden, ...) has no storage to hand out.
     bool empty = false;
 
     void (*emplaceDefault)(Registry&, Entity) = nullptr;
@@ -182,7 +182,7 @@ public:
     }
 
 private:
-    // deque, not vector: SceneData and the plugin table hold ComponentOps* for
+    // deque, not vector: SceneData and the plugin table hold ComponentOps* across inserts.
     std::deque<ComponentOps> MOps;
     Fby::FlatMap<std::string, std::size_t> MIndex;
 };

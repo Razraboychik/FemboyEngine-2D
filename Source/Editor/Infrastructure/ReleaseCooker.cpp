@@ -298,7 +298,7 @@ ReleaseCookConfig ReleaseCooker::FromProject(const ProjectPaths& InPaths, const 
     CopyText(ScopedConfig.projectName, sizeof(ScopedConfig.projectName), InSettings.name);
     CopyText(ScopedConfig.projectRoot, sizeof(ScopedConfig.projectRoot), InPaths.root.generic_string());
     CopyText(ScopedConfig.assetsRoot, sizeof(ScopedConfig.assetsRoot), InPaths.assets.generic_string());
-    // Output is project-local: <root>/build/release for intermediates, while the
+    // Output is project-local: <root>/build/release for intermediates.
     const std::string ScopedOutput = InPaths.release.generic_string();
     const std::string ScopedArchives = InPaths.archives.generic_string();
     CopyText(ScopedConfig.outputRoot, sizeof(ScopedConfig.outputRoot), ScopedOutput);
@@ -662,6 +662,92 @@ bool ReleaseCooker::RunChild(const char* InCommandLine, ReleaseCookStage InStage
     *OutExitCode = static_cast<std::uint32_t>(WEXITSTATUS(ScopedStatus));
     return *OutExitCode == 0;
 #endif
+}
+
+void ReleaseCooker::StageRuntimeBundle(const char* InPluginPath) noexcept
+{
+    (void)InPluginPath;
+    if (!MConfig.stageRuntime || MConfig.outputRoot[0] == '\0' || MConfig.packerPath[0] == '\0')
+    {
+        return;
+    }
+    const std::filesystem::path ScopedBinaryDir =
+        std::filesystem::path(MConfig.packerPath).parent_path().parent_path();
+    const std::filesystem::path ScopedRuntimeDir =
+        std::filesystem::path(MConfig.outputRoot) / (std::string(MConfig.projectName) + "-game");
+    std::error_code ScopedError;
+    std::filesystem::create_directories(ScopedRuntimeDir / "bin", ScopedError);
+    std::filesystem::create_directories(ScopedRuntimeDir / "game", ScopedError);
+    if (ScopedError)
+    {
+        SetStage(ReleaseCookStage::Packing, "assets packed; cannot create the runtime folder");
+        return;
+    }
+#if defined(_WIN32)
+    const std::string ScopedSuffix = ".exe";
+#else
+    const std::string ScopedSuffix;
+#endif
+    bool ScopedHasExecutable = false;
+    for (const char* ScopedName : {"fby_sandbox", "fby_server"})
+    {
+        const std::filesystem::path ScopedSource = ScopedBinaryDir / (std::string(ScopedName) + ScopedSuffix);
+        if (!std::filesystem::is_regular_file(ScopedSource, ScopedError))
+        {
+            continue;
+        }
+        std::filesystem::copy_file(ScopedSource, ScopedRuntimeDir / "bin" / ScopedSource.filename(),
+                                   std::filesystem::copy_options::overwrite_existing, ScopedError);
+        ScopedHasExecutable = !ScopedError;
+        if (ScopedError)
+        {
+            break;
+        }
+    }
+    if (!ScopedHasExecutable)
+    {
+        SetStage(ReleaseCookStage::Packing, "assets packed; runtime executable not found in the build tree");
+        return;
+    }
+    for (const std::filesystem::directory_entry& ScopedEntry : std::filesystem::directory_iterator(ScopedBinaryDir, ScopedError))
+    {
+        if (ScopedError || !ScopedEntry.is_regular_file(ScopedError))
+        {
+            continue;
+        }
+        const std::string ScopedName = ScopedEntry.path().filename().string();
+        if (ScopedEntry.path().extension() != ".dll")
+        {
+            continue;
+        }
+        const bool ScopedVendor = ScopedName.starts_with("amd_fidelityfx_") || ScopedName.starts_with("nvngx_dlss") ||
+                                  ScopedName.starts_with("libxess");
+        if (ScopedVendor && !MConfig.includeVendorRuntimes)
+        {
+            continue;
+        }
+        std::filesystem::copy_file(ScopedEntry.path(), ScopedRuntimeDir / "bin" / ScopedEntry.path().filename(),
+                                   std::filesystem::copy_options::overwrite_existing, ScopedError);
+        if (ScopedError)
+        {
+            break;
+        }
+    }
+    std::filesystem::copy_file(MConfig.packPath, ScopedRuntimeDir / "game" / "assets.fempak",
+                               std::filesystem::copy_options::overwrite_existing, ScopedError);
+    if (!ScopedError)
+    {
+        std::filesystem::copy_file(MConfig.archivePath, ScopedRuntimeDir / "game" / "assets.femarc",
+                                   std::filesystem::copy_options::overwrite_existing, ScopedError);
+    }
+    if (ScopedError)
+    {
+        SetStage(ReleaseCookStage::Packing, "assets packed; runtime bundle copy failed");
+        return;
+    }
+    (void)WriteStoreNotices(ScopedRuntimeDir);
+    CopyText(MResult.runtimePath, sizeof(MResult.runtimePath), ScopedRuntimeDir.generic_string());
+    SetStage(ReleaseCookStage::Packing, "runtime bundle staged");
 }
 
 bool ReleaseCooker::StageStoreArchives(const char* InPluginPath) noexcept
@@ -1049,7 +1135,7 @@ void ReleaseCooker::Run(std::stop_token InStop) noexcept
             }
         }
 
-        // A release is not complete until every store directory contains the
+        // A release is not complete until every store directory contains its archive.
         if (!StageStoreArchives(ScopedPluginPath))
         {
             Fail("cannot stage the per-store archives");
@@ -1057,6 +1143,9 @@ void ReleaseCooker::Run(std::stop_token InStop) noexcept
             WipeKey();
             return;
         }
+
+        // One-click export: the same cook also produces a runnable game folder.
+        StageRuntimeBundle(ScopedPluginPath);
 
         std::error_code ScopedSizeError;
         const auto ScopedArchiveSize = std::filesystem::file_size(MConfig.archivePath, ScopedSizeError);

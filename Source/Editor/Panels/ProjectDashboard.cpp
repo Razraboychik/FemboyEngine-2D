@@ -72,7 +72,7 @@ void ProjectDashboard::Initialize(const ProjectPaths& InCurrentProject, const Pr
     MError.clear();
     MStatus.clear();
 
-    // Typography first: this window is the first surface the user sees, and it
+    // Typography first: this window is the first surface the user sees.
     if (MFonts != nullptr && ImGui::GetCurrentContext() != nullptr)
     {
         EditorFontSpec ScopedSpec;
@@ -87,7 +87,7 @@ void ProjectDashboard::Initialize(const ProjectPaths& InCurrentProject, const Pr
     CopyFixed(MOpenPath, sizeof(MOpenPath),
               MCurrentProject.projectFile.empty() ? std::string{} : PathText(MCurrentProject.projectFile));
 
-    // The default working directory is engine-owned, never the process CWD and
+    // The default working directory is engine-owned, never the process CWD.
     std::string ScopedLocationError;
     MDefaultProjectsRoot = DefaultProjectsRoot(true, &ScopedLocationError);
     if (!ScopedLocationError.empty())
@@ -173,7 +173,9 @@ void ProjectDashboard::CreateFromFields()
         MError = "Project name must be a plain folder name: no separators, no ':', no '..'.";
         return;
     }
-    if (!CreateProject(MLocation, MProjectName, &MPendingProject, &MPendingConfig, &MPendingError))
+    if (!CreateProject(MLocation, MProjectName, &MPendingProject, &MPendingConfig, &MPendingError,
+                       static_cast<Assets::Scaffold::ProjectTemplate>(
+                           std::clamp(MProjectTemplate, 0, static_cast<int>(Assets::Scaffold::ProjectTemplate::Count) - 1))))
     {
         MError = MPendingError;
         return;
@@ -211,7 +213,7 @@ void ProjectDashboard::Draw(WindowManager* InWindow)
         return;
     }
 
-    // The DPI can change while the dashboard is open (dragging the window to a
+    // The DPI can change while the dashboard is open.
     RefreshTypography(MLastUiScale);
 
     ImFont* ScopedFont = MFonts != nullptr ? MFonts->Regular() : nullptr;
@@ -401,6 +403,9 @@ void ProjectDashboard::DrawNew(WindowManager* InWindow)
         UseDefaultLocation();
     }
 
+    const char* ScopedTemplateNames[] = {"Empty", "2D Platformer", "Top-Down", "UI App"};
+    ImGui::SetNextItemWidth(-120.0f);
+    (void)ImGui::Combo("Template", &MProjectTemplate, ScopedTemplateNames, 4);
     ImGui::Spacing();
     ImGui::TextDisabled("Creates:");
     ImGui::BulletText("assets/textures, assets/audio, assets/scenes");

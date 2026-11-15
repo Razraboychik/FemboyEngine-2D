@@ -26,7 +26,7 @@ public:
     void Add(std::string_view InPath, std::span<const std::byte> InBytes, std::uint32_t InAlignment = kPakAlignment);
     void Add(std::string_view InPath, std::vector<std::byte> InBytes, std::uint32_t InAlignment = kPakAlignment);
 
-    // Adds every regular file under a directory, recursively. `virtualRoot` is
+    // Adds every regular file under a directory, recursively.
     bool AddDirectory(std::string_view InDirectory, std::string_view InVirtualRoot, std::string* InError = nullptr);
 
     [[nodiscard]] std::size_t Size() const noexcept
@@ -42,7 +42,7 @@ public:
         return MEntries;
     }
 
-    // Serializes the archive. The result can be written straight to disk or
+    // Serializes the archive. The result can be written straight to disk.
     [[nodiscard]] std::vector<std::byte> Build(std::string* InError = nullptr) const;
 
 private:

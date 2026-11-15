@@ -1,14 +1,14 @@
 # FemboyEngine2D
 
-[English](README.md) | [Русский перевод](README_RU.md)
+[English](README.md) | [Русский перевод](READMEs/README_RU.md)
 
-**A data-oriented 2D game engine written from scratch in C++26.**
+**A data-oriented 2D game engine written from scratch in C++23.**
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
-[![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
-[![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
+[![C++23](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
+[![CMake 3.22+](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.4.0-alpha.1](https://img.shields.io/badge/status-0.4.0--alpha.1-blue.svg)]()
+[![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D is a compact, deterministic, data-oriented engine for 2D games:
@@ -22,7 +22,7 @@ path, no JSON in the shipped runtime and no hidden object graph. Components are
 trivially copyable data; systems are free functions; the frame is a flat
 `RenderItem` array submitted through one RHI packet.
 
-**Status: 0.4.0-alpha.1.** FemboyEngine2D is in the public 0.4 alpha line. Its
+**Status: 0.5.0.** FemboyEngine2D is in the public 0.5 release line. Its
 runtime includes the FemboyScript debugger (source spans, breakpoints, stepping,
 locals and self fields), isometric and tile-based maps with a map editor,
 skeletal IK, retargeting and clip compression (`.fanim`), grid navigation, 2D
@@ -100,6 +100,7 @@ memory model.
 | Domain | Core pieces | Memory and execution contract |
 |---|---|---|
 | Core | `Definitions.hpp`, `FemCast<>`, checked `Cast<>`, `FORCEINLINE`, vectors, Mirror reflection, jobs, SDL3 platform, plugin ABI | Value types, checked casts compile away, no RTTI in hot paths, worker pool with latched task-fault containment |
+| Effects | Fixed-capacity CPU particle pool, 16 editable presets, 12 white-mask shape slots, deterministic gravity/wind/drag/turbulence/swirl | One span of `RenderItem`s per frame, no allocation, the caller owns the mask atlas and palette |
 | RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, engine-side `Rhi::FrameComposer`, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts | One flat packet per frame, explicit frame lifetime, no per-item allocations, bindless-style keys |
 | ECS | FCS chunked registry, trivially copyable components, four-phase schedule, `SystemGraph` with opt-in parallel waves and declared service/component access, Snapshot v5 | Archetype/chunk storage, systems borrow spans instead of owning objects, snapshots are explicit copies; v4 snapshots are rejected |
 | Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input | No heap in the input path; bounded events and mapping tables; deterministic per-tick sampling |
@@ -114,10 +115,10 @@ memory model.
 | Isometry | `Grid::ProjectionMode` side/top-down/iso-rect/iso-hex, cell/world conversion, depth keys, `TilemapComponent` with a culled render bridge and a tilemap editor | Integer grid math and packed depth keys; tile rendering uses a culled span, not per-tile objects |
 | Navigation | Cost-grid A* on rect and hex layouts, tilemap-derived maps, authored `NavAgentSettings` separated from runtime paths, per-frame repath budget | Cost grids are contiguous arrays; path storage is bounded and reused across frames |
 | Lighting | `Light2DComponent` radial lights, ambient, emissive targets, optional Reinhard tonemap, screen-space SDF shadow mask, static `SdfField` and dynamic `Light2DOccluderComponent` casters | Static SDF is uploaded once per version; dynamic casters live in a bounded UBO; the shadow pass samples textures, not scene objects |
-| Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise and uplink/downlink effects with conditions | Preallocated voices and buses, no per-frame graph construction, explicit capture buffers |
+| Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise, uplink/downlink effects with conditions, `.fbyvoice` preset packs, a plugin preset table and listener-side reaction cues | Preallocated voices and buses, no per-frame graph construction, explicit capture buffers |
 | UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, widget kit, Unicode boundaries through libunibreak, opt-in Tab/arrow focus, CPU clip rects, HarfBuzz text stack, accessibility kernel | Retained data, per-frame command spans, clipped quads and SDF primitives instead of one allocation per widget |
 | Editor | Transactional `CommandStack`, ImNodes canvases, project manager, PIE Play/Pause/Stop, Play (Multiplayer), script debugger, tilemap editor, texture thumbnails, Transport Groups panel, borderless fullscreen | Authoring commands are explicit transactions; PIE owns an isolated world and releases it on Stop |
-| Script | LogicGraph to bytecode VM and to C++26 AOT plugin, physics/capability nodes and natives, debug info, VM breakpoints and stepping, `Compile + Nativize`, AOT manifest cook gate | Fixed VM stack and register file, native modules for cooked builds, no script allocation in the fixed step |
+| Script | LogicGraph to bytecode VM and to C++23 AOT plugin, physics/capability nodes and natives, debug info, VM breakpoints and stepping, `Compile + Nativize`, AOT manifest cook gate | Fixed VM stack and register file, native modules for cooked builds, no script allocation in the fixed step |
 
 ---
 
@@ -249,18 +250,25 @@ upscaler SDKs are optional and are not part of the archive; see
 
 ## Build
 
-Requirements: CMake 3.28+, Ninja, and one of **MSVC 19.44+**, **Clang 23.1.4+**
-(clang-cl on Windows, clang++ on Unix), **AppleClang 21+** or **GCC 16.2.0+**.
+Requirements: CMake 3.22+ (presets need 3.25), Ninja, and one of **Clang 19.1+**
+(clang-cl on Windows, clang++ on Unix), **MSVC 19.40+**, **AppleClang 16+** or
+**GCC 14.1+**. clang-cl is the reference toolchain; the others are supported
+alternatives, never an obligation.
 On Windows, run from a shell that provides the Windows SDK headers and
 libraries. The setup scripts install clang-cl / clang++ as the reference
-toolchain and GCC 16.2.0 (MinGW-w64 UCRT) as the second opinion. On Windows,
+toolchain and GCC 14.1 (MinGW-w64 UCRT) as the second opinion. On Windows,
 `SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI
-and verifies the `clang-cl` version.
+(the reference pin; any 19.1+ is accepted) and verifies the `clang-cl` version.
 
-The validated build uses **clang-cl 23.1.4 on Windows and clang++ elsewhere**;
-that is what CI and the release gate run. **MSVC 19.44+**, **GCC 16.2.0** and
-**AppleClang 21+** are supported alternatives; the compiler-selection matrix is
-in [build-workflow.md](Documentation/design/build-workflow.md).
+The default language mode is C++23.
+`-DFBY_CXX_STANDARD=26` enables the experimental C++26 library accelerations
+behind feature probes.
+
+The reference CI pins **LLVM 23.1.4** on Windows and **LLVM 23.1.x** on Linux;
+19.1 is the supported floor. That toolchain is what the release gate runs.
+**MSVC 19.40+**, **GCC 14.1** and **AppleClang 16+** are supported alternatives;
+the compiler-selection matrix is in
+[build-workflow.md](Documentation/design/build-workflow.md).
 
 ```bat
 set PATH=C:\Program Files\LLVM\bin;%PATH%
@@ -291,6 +299,8 @@ Main executables:
 ```text
 build/bin/fby_sandbox
 build/bin/fby_editor
+build/bin/fby_server
+build/bin/fby_lobby
 build/bin/tools/fby_fempak
 build/bin/tools/fby_scene_tool
 build/bin/tools/fby_aotc
@@ -301,6 +311,11 @@ Install the SDK locally and pass `-DFBY_WITH_DLSS=ON -DFBY_DLSS_ROOT=<path>` or
 `-DFBY_WITH_FIDELITYFX=ON -DFBY_FIDELITYFX_ROOT=<path>`; portable FSR1/FSR2 and
 custom frame generation do not require either SDK. See
 [Frame Generation](Documentation/md/en/FemboyEngineFrameGeneration_EN.md).
+
+Applications look for `assets` in `FBY_ASSET_DIR`, `cwd/assets` or the
+executable's own directory and up to three parents, so a run from `build/bin`
+works without copying files. `Saved/` (logs, config, cache) follows the working
+directory; `FBY_STORAGE_DIR` moves it.
 
 The apps resolve `assets` from `FBY_ASSET_DIR`, `cwd/assets`, or the executable's
 parent directories, so an IDE launch from `build/bin` works without copying
@@ -340,10 +355,11 @@ count that changes with every package.
 ctest --test-dir build --output-on-failure
 ```
 
-The style gate is machine-checked:
+The style and version gates are machine-checked:
 
 ```bash
 python Source/Tools/Dev/CheckStyle.py
+python Source/Tools/Dev/CheckVersion.py
 ```
 
 ---
@@ -434,7 +450,7 @@ are written to the log file in both cases.
 The documentation set is published as English and Russian translation, with
 independent Markdown, Word, PDF and DjVu editions. Start at
 [Documentation](Documentation/README.md); the Russian translation of this README
-is [README_RU.md](README_RU.md).
+is [the Russian README](READMEs/README_RU.md).
 
 - [Architecture specification (EN)](Documentation/md/en/FemboyEngineArchitecture_EN.md)
 - [Application guide (EN)](Documentation/md/en/FemboyEngineApplicationGuide_EN.md)
@@ -449,7 +465,6 @@ is [README_RU.md](README_RU.md).
 - [Project settings recommendations (EN)](Documentation/md/en/ProjectSettingsRecommendations_EN.md)
 - [Code style](Documentation/style/CodeStyle.md)
 - [Naming conventions](Documentation/style/NAMING.md)
-- [Roadmap](Documentation/ROADMAP.md)
 - [Virtual texturing contract](Documentation/design/virtual-texturing.md)
 - [Editor workflows and scene authoring](Documentation/design/editor-workflows.md)
 - [Play-In-Editor and the client viewport](Documentation/design/pie-multiplayer.md)
@@ -461,6 +476,7 @@ is [README_RU.md](README_RU.md).
 - [Physics backends design](Documentation/design/physics-backends.md)
 - [CodeQL audit](Documentation/design/codeql-audit.md)
 - [Time, timers and dates](Documentation/design/time.md)
+- [Accessibility guide](Documentation/design/accessibility-guide.md)
 - [Accessibility contract](Documentation/design/accessibility.md)
 - [World systems: tilemaps, IK and navigation](Documentation/design/world-systems.md)
 - [Lighting and SDF shadows](Documentation/design/lighting.md)
@@ -482,14 +498,15 @@ FemboyEngine2D.
 ```text
 FemboyEngine2D/
 ├─ CMakeLists.txt, cmake/        build configuration and dependency pins
+├─ Version.txt                   single source of the engine version
 ├─ Source/
 │  ├─ Engine/                    Core, RHI, ECS, Physics, Audio, Network,
-│  │                             Assets, Script, UI, Video, Weather
+│  │                             Assets, Script, Text, UI, Video, Weather
 │  ├─ Editor/                    Panels + Infrastructure
-│  ├─ Apps/                      Editor + Sandbox executables
+│  ├─ Apps/                      Editor, Sandbox, Server and Lobby executables
 │  ├─ Tests/                     plain CTest executables
-│  ├─ Tools/                     shader compiler, cooker, AOT, docs tools
-│  └─ Plugins/                   C-ABI fixtures and storefront providers
+│  ├─ Tools/                     shader/material/text/audio cookers, AOT compiler, dev gates
+│  └─ Plugins/                   example plugins, C-ABI fixtures and storefront providers
 ├─ Documentation/                MD/DOCX/PDF/DjVu editions, design notes, generators
 ├─ assets/                       source assets and cooked samples
 └─ third_party/                  vendored dependencies
@@ -548,11 +565,11 @@ The build uses Vulkan-Headers **1.4.366**. The RHI requests the highest Vulkan
 version the loader offers, capped at 1.4, and enables 1.2/1.3 features only when
 the device exposes them; **Vulkan 1.4 is the minimum supported driver**. A
 machine at or above the recommended column runs the editor and the full CTest
-suite without hardware-specific workarounds. The 0.4 alpha smoke run on an
+suite without hardware-specific workarounds. The first alpha smoke run on an
 RTX 4060 Laptop (Vulkan 1.4.341) executed the mesh/SDF path at 2560x1600 with
 three frames in flight. Vulkan is used on Windows/Linux; Metal is used on macOS;
 the null RHI keeps headless CI machines usable.
 
 ---
 
-[Русский перевод](README_RU.md)
+[Русский перевод](READMEs/README_RU.md)

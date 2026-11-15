@@ -312,11 +312,74 @@ void TestFieldAccess()
 }
 }
 
+void TestUserFunctionStack()
+{
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    constexpr std::string_view ScopedSource = R"FBY(
+function inner(x) {
+    return x + 1.0;
+}
+function outer(x) {
+    return inner(x) * 2.0;
+}
+event update {
+    self.Transform2D.Rotation = outer(1.0);
+}
+)FBY";
+    std::vector<std::byte> ScopedBytes;
+    std::string ScopedError;
+    FBY_CHECK(Fby::Script::CompileTextScript(ScopedSource, ScopedComponents, {}, &ScopedBytes, &ScopedError));
+    if (ScopedBytes.empty())
+    {
+        std::fprintf(stderr, "debug stack compile error: %s\n", ScopedError.c_str());
+        return;
+    }
+    Fby::Script::CompiledProgram ScopedParsed;
+    FBY_CHECK(Fby::Script::ParseProgram(ScopedBytes, &ScopedParsed, &ScopedError));
+
+    Fby::ScriptRuntime ScopedRuntime;
+    FBY_CHECK(ScopedRuntime.Initialize());
+    const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedBytes, &ScopedError);
+    FBY_CHECK(ScopedHandle != Fby::kScriptNoProgram);
+    const Fby::Script::BoundProgram* ScopedBound = ScopedRuntime.Program(ScopedHandle);
+    FBY_CHECK(ScopedBound != nullptr);
+    if (ScopedBound == nullptr)
+    {
+        return;
+    }
+
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
+    Fby::Script::VmContext ScopedContext{ScopedRegistry};
+    Fby::Script::VmDebugState ScopedDebug;
+    ScopedDebug.Enabled = true;
+    const std::uint32_t ScopedInnerPc = Fby::Script::FirstPcForLine(ScopedParsed, 3);
+    ScopedDebug.SetBreakpoint(ScopedInnerPc);
+    const Fby::Script::VmStopInfo ScopedStop =
+        ScopedRuntime.Vm().RunDebug(*ScopedBound, Fby::Script::ScriptEvent::Update, ScopedEntity, ScopedContext,
+                                    ScopedDebug);
+    FBY_CHECK(ScopedStop.Paused() && ScopedStop.Reason == Fby::Script::VmPauseReason::Breakpoint);
+    FBY_CHECK(ScopedDebug.CallDepth == 2);
+    FBY_CHECK(ScopedDebug.CallStack[0].Function == 1);
+    FBY_CHECK(ScopedDebug.CallStack[1].Function == 0);
+
+    // Resuming inside `inner` must restore both frames; without persisted call
+    // frames the Return instruction faults with bad-call.
+    const Fby::Script::VmStopInfo ScopedResumed =
+        ScopedRuntime.Vm().RunDebug(*ScopedBound, Fby::Script::ScriptEvent::Update, ScopedEntity, ScopedContext,
+                                    ScopedDebug);
+    FBY_CHECK(ScopedResumed.Halt == Fby::Script::VmHalt::Completed);
+    FBY_CHECK(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 4.0f);
+}
+
 int main()
 {
     TestDebugSection();
     TestBreakpointsAndResume();
     TestStepping();
+    TestUserFunctionStack();
     TestGraphSpansAndFields();
     TestFieldAccess();
 

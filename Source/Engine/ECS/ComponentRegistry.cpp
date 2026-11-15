@@ -1,11 +1,13 @@
 #include "Engine/ECS/ComponentRegistry.hpp"
 
 #include "Engine/Audio/Audio.hpp"
+#include "Engine/Audio/AudioZones.hpp"
 #include "Engine/ECS/AnimGraph.hpp"
 #include "Engine/ECS/BoneAttachment.hpp"
 #include "Engine/ECS/Lighting.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
+#include "Engine/ECS/PrefabInstance.hpp"
 #include "Engine/ECS/SkeletonAssetRef.hpp"
 #include "Engine/ECS/SkeletonIk.hpp"
 #include "Engine/ECS/Tilemap.hpp"
@@ -13,6 +15,7 @@
 #include "Engine/ECS/StateTree.hpp"
 #include "Engine/ECS/SpriteAnimation.hpp"
 #include "Engine/Physics/Particles.hpp"
+#include "Engine/Effects/ParticleScene.hpp"
 #include "Engine/Physics/Cloth.hpp"
 #include "Engine/Physics/Fluid.hpp"
 #include "Engine/Physics/Physics.hpp"
@@ -30,6 +33,7 @@
 #include "Engine/UI/Hypertext.hpp"
 #include "Engine/UI/PinkUI.hpp"
 #include "Engine/Video/VideoStream.hpp"
+#include "Engine/Weather/Weather.hpp"
 
 namespace Fby::Scene
 {
@@ -61,6 +65,8 @@ bool ComponentRegistry::SetTomlCodec(std::string_view InName, TomlCapture InCapt
 void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
 {
     InRegistry.Register<Transform2D>();
+    InRegistry.Register<LocalTransform2D>();
+    InRegistry.Register<Parent2D>();
     InRegistry.Register<NameComponent>();
     InRegistry.Register<Velocity>();
     InRegistry.Register<TransportGroupComponent>();
@@ -106,18 +112,25 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<TextFormatComponent>();
     InRegistry.Register<TextConditionComponent>();
     InRegistry.Register<Hidden>();
+    InRegistry.Register<PrefabInstanceComponent>();
+    // Transient child marker: rebuilt from PrefabInstanceComponent on load.
+    InRegistry.Register<PrefabInstanceMemberComponent>(false);
 
-    // Persisted components. SkeletonComponent/SkinComponent are
+    // Persisted components. SkeletonComponent/SkinComponent.
     InRegistry.Register<SkeletonAssetRef>();
     InRegistry.Register<SpriteAnimationComponent>();
     InRegistry.Register<SpriteSheetComponent>();
 
-    // Multimedia ecosystem components. Everything below is a flat POD with a
+    // Multimedia ecosystem components. Everything below is a flat POD.
     InRegistry.Register<ScriptComponent>();
     InRegistry.Register<Video::VideoStreamComponent>();
     InRegistry.Register<Ui::WidgetComponent>();
     InRegistry.Register<AudioBusComponent>();
     InRegistry.Register<AudioSourceComponent>();
+    InRegistry.Register<AudioZoneComponent>();
+    // The resolved zone state is runtime-only; it is rebuilt from the zones.
+    InRegistry.Register<AudioContextComponent>(false);
+    InRegistry.Register<Weather::WeatherContextComponent>();
 
     // Physics/media authoring. RigidBody2D/Collider2D stay inspector-editable
     InRegistry.Register<RigidBody2D>(false);
@@ -140,6 +153,7 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<ClothComponent>(false);
     InRegistry.Register<FluidInteractorComponent>();
     InRegistry.Register<ParticleEmitterComponent>();
+    InRegistry.Register<ParticleEffectComponent>();
     InRegistry.Register<Ui::HypertextComponent>();
 
     // High-level gameplay authoring. The animation state graph and the State

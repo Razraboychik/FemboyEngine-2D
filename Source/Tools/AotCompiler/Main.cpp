@@ -202,7 +202,7 @@ int main(int argc, char** argv)
         }
         else
         {
-            ScopedCommand += " -std=c++26 ";
+            ScopedCommand += " -std=c++23 ";
             ScopedCommand += std::string(Build::OptimizationFlag(ScopedOptimization));
             if (ScopedLto)
             {

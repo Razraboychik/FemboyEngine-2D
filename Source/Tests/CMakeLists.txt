@@ -72,6 +72,8 @@ fby_add_engine_test(fby_sim_math_test sim_math SimMathTest.cpp)
 fby_add_engine_test(fby_job_system_test job_system JobSystemTest.cpp)
 # System graph: dependency order, cycle rejection, mask validation, removal.
 fby_add_engine_test(fby_system_graph_test system_graph SystemGraphTest.cpp)
+# ParallelSafe audit: AI/state/physics stay serial, animation opt-in and masks.
+fby_add_engine_test(fby_parallel_safe_audit_test parallel_safe_audit ParallelSafeAuditTest.cpp)
 fby_add_engine_test(fby_pause_test pause PauseTest.cpp)
 # Parser mutation sweep: input packet, .femarc and the FbyLz codec.
 fby_add_engine_test(fby_fuzz_parsers_test fuzz_parsers FuzzParsersTest.cpp)
@@ -110,21 +112,84 @@ fby_add_engine_test(fby_fcs_world_test fcs_world FcsWorldTest.cpp)
 fby_add_engine_test(fby_fcs_registry_test fcs_registry FcsRegistryTest.cpp)
 # Per-instance prefab overrides.
 fby_add_engine_test(fby_prefab_override_test prefab_overrides PrefabOverrideTest.cpp)
+# DXGI/D3D11/D3D12 adapter capability probe.
+fby_add_engine_test(fby_dx_probe_test dx_probe DxProbeTest.cpp)
+# Backend extension requirements: dedupe/merge/filter.
+fby_add_engine_test(fby_gpu_extension_broker_test gpu_extension_broker GpuExtensionBrokerTest.cpp)
+# D3D12 swapchain clear/present smoke (Windows only; no-op elsewhere).
+if(WIN32)
+    fby_add_engine_test(fby_d3d12_smoke_test d3d12_smoke D3D12SmokeTest.cpp)
+    fby_add_engine_test(fby_d3d11_smoke_test d3d11_smoke D3D11SmokeTest.cpp)
+    fby_add_engine_test(fby_d3d12_rhi_test d3d12_rhi D3D12RhiTest.cpp)
+    fby_add_engine_test(fby_auto_backend_test auto_backend AutoBackendTest.cpp)
+    fby_add_engine_test(fby_system_info_test system_info SystemInfoTest.cpp)
+    fby_add_engine_test(fby_tween_test tween TweenTest.cpp)
+    fby_add_engine_test(fby_reverb_preset_test reverb_preset ReverbPresetTest.cpp)
+    fby_add_engine_test(fby_data_table_test data_table DataTableTest.cpp)
+    fby_add_engine_test(fby_websocket_test websocket WebSocketTest.cpp)
+    fby_add_engine_test(fby_websocket_loopback_test websocket_loopback WebSocketLoopbackTest.cpp)
+    fby_add_engine_test(fby_fsr2_dx_test fsr2_dx Fsr2DxTest.cpp)
+    fby_add_engine_test(fby_d3d11_rhi_fl10 d3d11_rhi_fl10 D3D11RhiTest.cpp)
+    if(WIN32)
+        fby_add_engine_test(fby_material_dx12_e2e material_dx12_e2e MaterialDx12E2ETest.cpp)
+        target_compile_definitions(fby_material_dx12_e2e PRIVATE FBY_MATC_PATH="${FBY_OUTPUT_DIR}/tools/fby_matc${CMAKE_EXECUTABLE_SUFFIX}")
+        if(TARGET fby_matc)
+            add_dependencies(fby_material_dx12_e2e fby_matc)
+        endif()
+    endif()
+    set_tests_properties(d3d11_rhi_fl10 PROPERTIES ENVIRONMENT "FBY_D3D11_FORCE_FL10=1")
+    if(WIN32 AND FBY_WITH_FIDELITYFX)
+        fby_add_engine_test(fby_fsr3_d3d12_test fsr3_d3d12 Fsr3D3D12Smoke.cpp)
+    endif()
+    if(WIN32 AND FBY_WITH_FIDELITYFX)
+        add_executable(fby_ffx_dx12_sample FfxDx12Sample.cpp)
+        target_compile_definitions(fby_ffx_dx12_sample PRIVATE FBY_WITH_FIDELITYFX=1)
+        target_include_directories(fby_ffx_dx12_sample PRIVATE
+            "${FBY_FIDELITYFX_ROOT}/api/include"
+            "${FBY_FIDELITYFX_ROOT}/framegeneration/include"
+            "${FBY_FIDELITYFX_ROOT}/backend/vk")
+        target_link_libraries(fby_ffx_dx12_sample PRIVATE fby_engine dxgi d3d12)
+        set_target_properties(fby_ffx_dx12_sample PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tests")
+        add_test(NAME fby_ffx_dx12_sample COMMAND fby_ffx_dx12_sample 0)
+    endif()
+    fby_add_engine_test(fby_frame_composer_dx_test frame_composer_dx FrameComposerDxTest.cpp)
+    add_test(NAME fby_frame_composer_dx_d3d11 COMMAND fby_frame_composer_dx_test)
+    set_tests_properties(fby_frame_composer_dx_d3d11 PROPERTIES ENVIRONMENT "FBY_FRAME_COMPOSER_BACKEND=d3d11")
+    fby_add_engine_test(fby_custom_fg_dx_test custom_fg_dx CustomFgDxTest.cpp)
+    add_test(NAME fby_custom_fg_d3d11 COMMAND fby_custom_fg_dx_test)
+    set_tests_properties(fby_custom_fg_d3d11 PROPERTIES ENVIRONMENT "FBY_FG_BACKEND=d3d11")
+    add_test(NAME fby_fsr2_dx_d3d11 COMMAND fby_fsr2_dx_test)
+    set_tests_properties(fby_fsr2_dx_d3d11 PROPERTIES ENVIRONMENT "FBY_FSR2_BACKEND=d3d11")
+    fby_add_engine_test(fby_d3d11_rhi_test d3d11_rhi D3D11RhiTest.cpp)
+    fby_add_engine_test(fby_vulkan_rhi_test vulkan_rhi VulkanRhiTest.cpp)
+    fby_add_engine_test(fby_gpu_matrix_test gpu_matrix GpuMatrixTest.cpp)
+    add_test(NAME fby_vulkan_rhi_legacy_1_2 COMMAND fby_vulkan_rhi_test)
+    set_tests_properties(fby_vulkan_rhi_legacy_1_2 PROPERTIES ENVIRONMENT "FBY_VULKAN_API=1.2")
+endif()
 
 # Plugin hot reload needs the editor-gated plugin fixtures.
 if(TARGET fby_hello_mod)
     fby_add_engine_test(fby_plugin_reload_test plugin_reload PluginReloadTest.cpp)
     target_compile_definitions(fby_plugin_reload_test PRIVATE
         FBY_TEST_PLUGIN_PATH="$<TARGET_FILE:fby_hello_mod>"
-        FBY_TEST_BAD_PLUGIN_PATH="$<TARGET_FILE:fby_hello_mod_bad>")
+        FBY_TEST_BAD_PLUGIN_PATH="$<TARGET_FILE:fby_hello_mod_bad>"
+        FBY_TEST_PLUGIN_DIR="$<TARGET_FILE_DIR:fby_hello_mod>")
     add_dependencies(fby_plugin_reload_test fby_hello_mod fby_hello_mod_bad)
     if(TARGET fby_rainbow_palette)
         target_compile_definitions(fby_plugin_reload_test PRIVATE
             FBY_TEST_RAINBOW_PALETTE_PATH="$<TARGET_FILE:fby_rainbow_palette>"
             FBY_TEST_NVG_PATH="$<TARGET_FILE:fby_nvg>"
             FBY_TEST_THERMAL_PATH="$<TARGET_FILE:fby_thermal>"
-            FBY_TEST_ALCOHOL_PATH="$<TARGET_FILE:fby_alcohol>")
-        add_dependencies(fby_plugin_reload_test fby_rainbow_palette fby_nvg fby_thermal fby_alcohol)
+            FBY_TEST_ALCOHOL_PATH="$<TARGET_FILE:fby_alcohol>"
+            FBY_TEST_RADIATION_PATH="$<TARGET_FILE:fby_radiation>"
+            FBY_TEST_THEMED_PALETTES_PATH="$<TARGET_FILE:fby_themed_palettes>")
+        add_dependencies(fby_plugin_reload_test fby_rainbow_palette fby_nvg fby_thermal fby_alcohol fby_radiation fby_themed_palettes)
+    endif()
+    if(TARGET fby_voice_pack)
+        target_compile_definitions(fby_plugin_reload_test PRIVATE
+            FBY_TEST_VOICE_PACK_PATH="$<TARGET_FILE:fby_voice_pack>")
+        add_dependencies(fby_plugin_reload_test fby_voice_pack)
     endif()
 endif()
 # Runtime storage layout, log file sink, rotation and crash reports.
@@ -368,6 +433,15 @@ set_target_properties(fby_voice_effects_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 add_test(NAME voice_effects COMMAND fby_voice_effects_test)
 
+# Voice preset data pack, moderation policy and the reactive SFX layer.
+fby_add_engine_test(fby_voice_preset_test voice_presets VoicePresetTest.cpp)
+fby_add_engine_test(fby_voice_reactive_sfx_test voice_reactive_sfx VoiceReactiveSfxTest.cpp)
+fby_add_engine_test(fby_particle_effects_test particle_effects ParticleEffectsTest.cpp)
+fby_add_engine_test(fby_particle_scene_test particle_scene ParticleSceneTest.cpp)
+fby_add_engine_test(fby_particle_preset_test particle_presets ParticlePresetTest.cpp)
+target_compile_definitions(fby_particle_preset_test PRIVATE
+    FBY_TEST_PARTICLE_PACKS_DIR="${FBY_SOURCE_ROOT}/../assets/particles")
+
 # Shipped attribution: the generated Fby::Notices table and its license texts.
 fby_add_engine_test(fby_notices_test notices NoticesTest.cpp)
 
@@ -398,10 +472,13 @@ fby_add_engine_test(fby_mesh_indirect_smoke_test mesh_indirect_smoke MeshIndirec
 # FemboyScript 2.0: bytecode validation, the VM, the ECS bridge, the graph
 fby_add_engine_test(fby_script_vm_test script_vm ScriptVmTest.cpp)
 
+# Fixed-capacity script heap: strings, arrays and maps for the VM and AOT host.
+fby_add_engine_test(fby_script_heap_test script_heap ScriptHeapTest.cpp)
+
 # FemboyScript debug data: source spans, locals, breakpoints, stepping, fields.
 fby_add_engine_test(fby_script_debug_test script_debug ScriptDebugTest.cpp)
 
-# AOT backend: bytecode -> C++26 source, LayoutHash validation and the
+# AOT backend: bytecode -> C++23 source, LayoutHash validation and the
 add_executable(fby_script_aot_test ScriptAotTest.cpp)
 target_link_libraries(fby_script_aot_test PRIVATE FemboyEngine2D::Engine)
 target_compile_definitions(fby_script_aot_test PRIVATE
@@ -826,6 +903,41 @@ fby_add_engine_test(fby_pinkui_font_mount_test pinkui_font_mount PinkUIFontMount
 
 # TTS: FlushSpeech is main-thread-only; setVoice follows the narrative locale.
 fby_add_engine_test(fby_tts_thread_test tts_thread TtsThreadTest.cpp)
+
+# Semantic tree, PinkUI projection, narrator queue and the accessibility
+# bridge policy shared by the game and the editor.
+fby_add_engine_test(fby_accessibility_narrator_test accessibility_narrator AccessibilityNarratorTest.cpp)
+
+# Action narration: localized templates, plural variants, spatial grammar and
+# the category/priority gates.
+fby_add_engine_test(fby_action_narration_test action_narration ActionNarrationTest.cpp)
+
+# Speech language catalog, BCP-47 normalization and the 42-language voice
+# fallback policy shared by every backend.
+fby_add_engine_test(fby_speech_languages_test speech_languages SpeechLanguagesTest.cpp)
+
+# AT-SPI2 mapping used by the Linux bridge: roles, interfaces and state bits.
+fby_add_engine_test(fby_atspi_model_test atspi_model AtspiModelTest.cpp)
+
+# C++23 batch primitives: SSE2/NEON/std::simd backend equivalence and a local
+# microbenchmark; FunctionRef is the non-allocating callback view.
+fby_add_engine_test(fby_simd_test simd SimdTest.cpp)
+fby_add_engine_test(fby_function_ref_test function_ref FunctionRefTest.cpp)
+
+# Voice packs: manifest discovery, the helper process protocol and the layered
+# OS/pack routing. The helper is a plain test program, not a shipped TTS.
+add_executable(fby_tts_voicepack_helper TtsVoicePackHelper.cpp)
+set_target_properties(fby_tts_voicepack_helper PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+fby_add_engine_test(fby_tts_voicepack_test tts_voicepack TtsVoicePackTest.cpp)
+add_dependencies(fby_tts_voicepack_test fby_tts_voicepack_helper)
+
+# Linux system voice: the speech-dispatcher adapter must fail closed without the
+# daemon and stay bounded with it. The test also compiles on other platforms as
+# a skip, so the CMake target stays portable.
+if(UNIX AND NOT APPLE)
+    fby_add_engine_test(fby_tts_speech_dispatcher_test tts_speech_dispatcher TtsSpeechDispatcherTest.cpp)
+endif()
 
 # Cloth render bridge: ClothRenderSystem emits a CPU-deformed MeshRenderItem and
 fby_add_engine_test(fby_cloth_render_test cloth_render ClothRenderTest.cpp)

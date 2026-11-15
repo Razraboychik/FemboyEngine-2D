@@ -12,10 +12,12 @@
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -WithVendorSdks -AcceptVendorLicenses
 #
 # Versions are the ones the CI slate validates:
-#   LLVM             23.1.4 (clang-cl and clang++, the validated Windows toolchain)
-#   MSVC             19.44+ (cl.exe, Visual Studio Build Tools)
-#   GCC              16.2+ (MinGW-w64, portability toolchain)
+#   LLVM             latest stable release (clang-cl and clang++; any 19.1+ is
+#                    accepted, an installed toolchain is kept unless missing)
+#   MSVC             19.40+ (cl.exe) is detected, never downloaded by setup
+#   GCC              14.1+ (MinGW-w64, portability toolchain)
 #   SDL3              release-3.4.18
+#   Vulkan SDK       latest from winget when missing (loader/tools only)
 #   Vulkan-Headers    v1.4.366
 #   glslang           15.3.0
 #   miniaudio         0.11.23
@@ -39,10 +41,11 @@ New-Item -ItemType Directory -Force -Path $ThirdParty, $Downloads | Out-Null
 
 $Versions = [ordered]@{
     Llvm        = "23.1.4"
-    Msvc        = "19.44"
+    Msvc        = "19.40"
     SDL         = "release-3.4.18"
     Vulkan      = "v1.4.366"
     Glslang     = "15.3.0"
+    SpirvCross  = "vulkan-sdk-1.4.363.0"
     Miniaudio   = "0.11.23"
     Box2D       = "v3.2.0"
     Monocypher  = "4.0.3"
@@ -134,16 +137,45 @@ function Get-ClangVersion {
     return (& $Command.Source --version 2>$null | Select-Object -First 1)
 }
 
+function Get-MajorVersion([string]$Text) {
+    if ($Text -match '(\d+)\.\d+') {
+        return [int]$Matches[1]
+    }
+    return 0
+}
+
+function Get-LatestLlvmVersion {
+    try {
+        $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/llvm/llvm-project/releases/latest" `
+            -Headers @{ "User-Agent" = "FemboyEngine2D-setup" } -TimeoutSec 20
+        if ($Release.tag_name -match "llvmorg-(\d+\.\d+\.\d+)") {
+            return $Matches[1]
+        }
+    } catch {
+        Write-Warning "  could not query the latest LLVM release: $($_.Exception.Message)"
+    }
+    return $null
+}
+
 function Ensure-Llvm {
     $VersionText = Get-ClangVersion
-    if ($null -ne $VersionText -and $VersionText -match [regex]::Escape($Versions.Llvm)) {
+    $Major = Get-MajorVersion $VersionText
+    if ($null -ne $VersionText -and $Major -ge 19) {
+        if ($VersionText -notmatch [regex]::Escape($Versions.Llvm)) {
+            Write-Warning "  clang-cl $VersionText is installed; latest stable is $($Versions.Llvm). Using the installed compiler (run with -Force to reinstall)."
+        }
         Write-Host "  clang-cl : $VersionText"
         return $true
     }
     if ($SkipSystem) {
-        Write-Warning "  clang-cl $($Versions.Llvm) is expected; found '$VersionText'. Continuing because -SkipSystem is set."
-        return $null -ne $VersionText
+        Write-Warning "  clang-cl 19.1+ is expected; found '$VersionText'. Continuing because -SkipSystem is set."
+        return $Major -ge 19
     }
+    $Latest = Get-LatestLlvmVersion
+    if ($null -ne $Latest) {
+        $Versions.Llvm = $Latest
+    }
+    Write-Host "  installing LLVM $($Versions.Llvm) (latest stable; fallback pinned 23.1.4)"
     $Installer = Join-Path $Downloads "LLVM-$($Versions.Llvm)-win64.msi"
     if ($Force -or -not (Test-Path $Installer)) {
         $Url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$($Versions.Llvm)/LLVM-$($Versions.Llvm)-win64.msi"
@@ -159,8 +191,8 @@ function Ensure-Llvm {
     }
     $env:Path = "C:\Program Files\LLVM\bin;$env:Path"
     $VersionText = Get-ClangVersion
-    if ($null -eq $VersionText -or $VersionText -notmatch [regex]::Escape($Versions.Llvm)) {
-        throw "LLVM $($Versions.Llvm) was installed, but clang-cl reports '$VersionText'"
+    if ($null -eq $VersionText -or (Get-MajorVersion $VersionText) -lt 19) {
+        throw "LLVM was installed, but clang-cl reports '$VersionText' (19.1+ required)"
     }
     Write-Host "  clang-cl : $VersionText"
     return $true
@@ -203,21 +235,10 @@ function Ensure-Msvc {
         Write-Warning "  MSVC Build Tools are missing. Install 'Visual Studio Build Tools' with the C++ workload."
         return $false
     }
-    Write-Host "  installing Visual Studio Build Tools via winget (Microsoft.VisualStudio.2022.BuildTools)"
-    winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --silent `
-        --accept-source-agreements --accept-package-agreements `
-        --override "--wait --quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-    $MachinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $env:Path = "$MachinePath;$UserPath"
-    $InstallPath = Get-MsvcInstallPath
-    if ($null -eq $InstallPath) {
-        Write-Warning "  MSVC Build Tools installation did not register the C++ workload."
-        return $false
-    }
-    $Version = Get-MsvcVersion $InstallPath
-    Write-Host "  cl        : $Version ($InstallPath)"
-    return $true
+    # Setup never downloads a Microsoft toolchain: Clang and GCC have priority,
+    # and MSVC is supported only when the machine already has it.
+    Write-Warning "  MSVC Build Tools are missing. Setup does not install Microsoft toolchains; use clang-cl or install Visual Studio Build Tools manually."
+    return $false
 }
 
 function Report-Compiler([string]$Name, [string]$VersionText, [int]$MinimumMajor) {
@@ -295,18 +316,18 @@ if (-not ($HasCMake -and $HasNinja -and $HasGit)) {
 }
 if ($HasClang) {
     $ClangVersion = (& clang-cl --version 2>$null | Select-Object -First 1)
-    Report-Compiler "clang-cl" $ClangVersion 23
+    Report-Compiler "clang-cl" $ClangVersion 19
     $Lock.Add("clang = $ClangVersion")
     $ClangXx = Get-Command clang++ -ErrorAction SilentlyContinue
     if ($null -ne $ClangXx) {
         $ClangXxVersion = (& $ClangXx.Source --version 2>$null | Select-Object -First 1)
-        Report-Compiler "clang++" $ClangXxVersion 23
+        Report-Compiler "clang++" $ClangXxVersion 19
         $Lock.Add("clangxx = $ClangXxVersion")
     } else {
         Write-Warning "clang++ is missing; LLVM installs it next to clang-cl."
     }
 } else {
-    Write-Warning "clang-cl is missing. Install LLVM 23.1.4+ or re-run without -SkipSystem."
+    Write-Warning "clang-cl is missing. Install LLVM 19.1+ or re-run without -SkipSystem."
 }
 if ($HasMsvc) {
     $MsvcInstallPath = Get-MsvcInstallPath
@@ -316,22 +337,38 @@ if ($HasMsvc) {
     Report-Compiler "cl" $MsvcDisplay 19
     $Lock.Add("msvc = $MsvcDisplay")
 } else {
-    Write-Warning "cl is missing. Install Visual Studio Build Tools 19.44+ with the C++ workload."
+    Write-Warning "cl is missing. Install Visual Studio Build Tools 19.40+ with the C++ workload if you want the MSVC alternative."
 }
 if ($HasGcc) {
     $GccVersion = (& g++ -dumpfullversion 2>$null)
-    Report-Compiler "g++" $GccVersion 16
+    Report-Compiler "g++" $GccVersion 14
     $Lock.Add("gcc = $GccVersion")
 } else {
-    Write-Warning "g++ is missing. Install MinGW-w64 GCC 16.2+ or re-run without -SkipSystem."
+    Write-Warning "g++ is missing. Install MinGW-w64 GCC 14.1+ or re-run without -SkipSystem."
 }
 
 Write-Step "Vulkan SDK"
+if ($null -eq $env:VULKAN_SDK -and -not $SkipSystem) {
+    try {
+        winget install --id KhronosGroup.VulkanSDK --exact --silent `
+            --accept-source-agreements --accept-package-agreements | Out-Null
+    } catch {
+        Write-Warning "  Vulkan SDK install failed: $($_.Exception.Message)"
+    }
+    $SdkRoot = Join-Path $env:ProgramFiles "VulkanSDK"
+    if (Test-Path $SdkRoot) {
+        $LatestSdk = Get-ChildItem -Path $SdkRoot -Directory |
+            Sort-Object { [version]($_.Name) } -Descending | Select-Object -First 1
+        if ($null -ne $LatestSdk) {
+            $env:VULKAN_SDK = $LatestSdk.FullName
+        }
+    }
+}
 if ($null -ne $env:VULKAN_SDK) {
     Write-Host "  VULKAN_SDK=$env:VULKAN_SDK"
     $Lock.Add("vulkan_sdk = $env:VULKAN_SDK")
 } else {
-    Write-Warning "  VULKAN_SDK is not set. The engine can build against Vulkan-Headers and will report a clean runtime error without a loader."
+    Write-Warning "  VULKAN_SDK is not set. Install the latest Vulkan SDK or let setup install it."
 }
 
 Write-Step "SDL3 $($Versions.SDL)"
@@ -348,6 +385,11 @@ Write-Step "glslang $($Versions.Glslang)"
 $GlslangArchive = Get-Archive "https://github.com/KhronosGroup/glslang/archive/refs/tags/$($Versions.Glslang).tar.gz" "glslang.tar.gz"
 Expand-Tar $GlslangArchive (Join-Path $ThirdParty "glslang-src") $true
 $Lock.Add("glslang = $($Versions.Glslang)")
+
+Write-Step "SPIRV-Cross $($Versions.SpirvCross)"
+$SpirvCrossArchive = Get-Archive "https://github.com/KhronosGroup/SPIRV-Cross/archive/refs/tags/$($Versions.SpirvCross).tar.gz" "SPIRV-Cross.tar.gz"
+Expand-Tar $SpirvCrossArchive (Join-Path $ThirdParty "spirv-cross") $true
+$Lock.Add("spirv_cross = $($Versions.SpirvCross)")
 
 Write-Step "miniaudio $($Versions.Miniaudio)"
 $MiniaudioArchive = Get-Archive "https://github.com/mackron/miniaudio/archive/refs/tags/$($Versions.Miniaudio).tar.gz" "miniaudio.tar.gz"
@@ -426,7 +468,7 @@ Write-Host "  pinned lock : $LockPath"
 Write-Host "  clang-cl    : validated toolchain for the default build"
 Write-Host "  clang++     : LLVM C++ frontend (same install as clang-cl)"
 Write-Host "  cl          : MSVC portability toolchain (VS 2022 Build Tools)"
-Write-Host "  g++         : MinGW-w64 portability toolchain (GCC 16.2+)"
+Write-Host "  g++         : MinGW-w64 portability toolchain (GCC 14.1+)"
 Write-Host "  configure   : cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON"
 Write-Host "  build       : cmake --build build"
 Write-Host "  test        : ctest --test-dir build --output-on-failure"

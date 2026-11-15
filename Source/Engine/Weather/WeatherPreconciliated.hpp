@@ -12,7 +12,7 @@
 namespace Fby::Weather
 {
 
-// The weather passes are written against the RHI vocabulary (RenderGraph,
+// The weather passes are written against the RHI vocabulary (RenderGraph.
 using namespace Fby::Rhi;
 
 struct WeatherGpuResources
@@ -124,7 +124,7 @@ private:
     std::uint64_t MSdfResource = 0;
 };
 
-// Clouds, moving cloud shadows, volumetric fog and fire/smoke. All four are
+// Clouds, moving cloud shadows, volumetric fog and fire/smoke.
 class WeatherAtmospherePass
 {
 public:

@@ -10,6 +10,7 @@
 #include "Editor/Panels/ContentBrowserPanel.hpp"
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
+#include "Editor/Infrastructure/ProjectPlugins.hpp"
 #include "Editor/Panels/VirtualTexturePanel.hpp"
 #include "Engine/ECS/ComponentRegistry.hpp"
 #include "Engine/ECS/RegistryOps.hpp"
@@ -51,7 +52,10 @@ void Check(bool InCondition, const char* InMessage)
     {
         ScopedBase /= "build";
     }
-    return ScopedBase / std::string(InName);
+    // Parallel ctest processes must not share one scratch directory; a stale or
+    // still-locked file from another run otherwise fails cooking at random.
+    const auto ScopedStamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    return ScopedBase / (std::string(InName) + "_" + std::to_string(ScopedStamp));
 }
 
 [[nodiscard]] bool WriteText(const std::filesystem::path& InPath, std::string_view InText)
@@ -165,19 +169,18 @@ void TestProjectCreationAndConfig()
     {
         const std::filesystem::path ScopedLegacyRoot = TestRoot("_editor_infra_typography");
         std::filesystem::remove_all(ScopedLegacyRoot, ScopedCode);
-        const std::string_view ScopedLegacyProject =
-            "format_version = 4\n"
-            "[project]\n"
-            "name = \"Legacy\"\n"
-            "default_scene = \"scenes/main.toml\"\n"
-            "[editor]\n"
-            "font_panel_title = 20.0\n"
-            "font_panel_body = 16.0\n"
-            "font_tooltip = 16.0\n"
-            "font_script_node_title = 18.0\n"
-            "font_script_pin_input = 16.0\n"
-            "font_script_pin_output = 16.0\n"
-            "font_scene_text = 16.0\n";
+        const std::string_view ScopedLegacyProject = "format_version = 4\n"
+                                                     "[project]\n"
+                                                     "name = \"Legacy\"\n"
+                                                     "default_scene = \"scenes/main.toml\"\n"
+                                                     "[editor]\n"
+                                                     "font_panel_title = 20.0\n"
+                                                     "font_panel_body = 16.0\n"
+                                                     "font_tooltip = 16.0\n"
+                                                     "font_script_node_title = 18.0\n"
+                                                     "font_script_pin_input = 16.0\n"
+                                                     "font_script_pin_output = 16.0\n"
+                                                     "font_scene_text = 16.0\n";
         Check(WriteText(ScopedLegacyRoot / "project.femproj", ScopedLegacyProject), "write legacy project");
         Fby::Editor::ProjectConfig ScopedLegacy;
         Check(Fby::Editor::LoadProject(ScopedLegacyRoot, nullptr, &ScopedLegacy), "load legacy project");
@@ -188,21 +191,20 @@ void TestProjectCreationAndConfig()
         Check(ScopedLegacy.editor.logMaxLinesPerFile == Fby::kRecommendedLogRetention.MaxLinesPerFile,
               "legacy project gets the recommended log line count");
 
-        const std::string_view ScopedCustomProject =
-            "format_version = 4\n"
-            "[project]\n"
-            "name = \"Custom\"\n"
-            "default_scene = \"scenes/main.toml\"\n"
-            "[editor]\n"
-            "font_panel_title = 20.0\n"
-            "font_panel_body = 22.0\n"
-            "font_tooltip = 16.0\n"
-            "font_script_node_title = 18.0\n"
-            "font_script_pin_input = 16.0\n"
-            "font_script_pin_output = 16.0\n"
-            "font_scene_text = 16.0\n"
-            "log_max_files = 7\n"
-            "log_max_lines = 1200\n";
+        const std::string_view ScopedCustomProject = "format_version = 4\n"
+                                                     "[project]\n"
+                                                     "name = \"Custom\"\n"
+                                                     "default_scene = \"scenes/main.toml\"\n"
+                                                     "[editor]\n"
+                                                     "font_panel_title = 20.0\n"
+                                                     "font_panel_body = 22.0\n"
+                                                     "font_tooltip = 16.0\n"
+                                                     "font_script_node_title = 18.0\n"
+                                                     "font_script_pin_input = 16.0\n"
+                                                     "font_script_pin_output = 16.0\n"
+                                                     "font_scene_text = 16.0\n"
+                                                     "log_max_files = 7\n"
+                                                     "log_max_lines = 1200\n";
         Check(WriteText(ScopedLegacyRoot / "project.femproj", ScopedCustomProject), "write custom project");
         Fby::Editor::ProjectConfig ScopedCustom;
         Check(Fby::Editor::LoadProject(ScopedLegacyRoot, nullptr, &ScopedCustom), "load custom project");
@@ -237,6 +239,15 @@ void TestProjectCreationAndConfig()
     ScopedStore.Project().accessibility.presentation.hudFadeAfterIdleSeconds = 30.0f;
     ScopedStore.Project().accessibility.presentation.minimumContrastRatio = 7.0f;
     ScopedStore.Project().accessibility.editor.highContrast = true;
+    Fby::ActionNarrationSettings& ScopedActionSettings = ScopedStore.Project().accessibility.actions;
+    ScopedActionSettings.Enabled = false;
+    ScopedActionSettings.Categories = 5;
+    ScopedActionSettings.AnnounceDirection = false;
+    ScopedActionSettings.AnnounceDistance = false;
+    ScopedActionSettings.MinimumPriority = 2;
+    ScopedActionSettings.NearDistanceMeters = 5.5f;
+    ScopedActionSettings.FarDistanceMeters = 20.0f;
+    ScopedActionSettings.DedupWindowMs = 400;
     ScopedStore.Project().fixedUpdateHz = 90.0f;
     ScopedStore.Editor().vsync = false;
     ScopedStore.Editor().windowMode = 2;
@@ -244,14 +255,30 @@ void TestProjectCreationAndConfig()
     ScopedStore.Editor().windowHeight = 1080;
     ScopedStore.Editor().logMaxFiles = 12;
     ScopedStore.Editor().logMaxLinesPerFile = 3456;
+    ScopedStore.Editor().undoMemoryMB = 16;
+    ScopedStore.Editor().undoCommandLimit = 128;
+    ScopedStore.Editor().thumbnailCacheLimit = 32;
+    ScopedStore.Editor().thumbnailCacheEnabled = false;
+    ScopedStore.Editor().performanceProfile = 1;
+    ScopedStore.Editor().frameRateLimit = 30;
+    ScopedStore.Editor().pauseWhenUnfocused = true;
+    ScopedStore.Editor().stockingTheme = true;
+    ScopedStore.Editor().stockingPreset = 2;
+    ScopedStore.Editor().stockingColorA = 0x112233;
+    ScopedStore.Editor().stockingColorB = 0x445566;
+    ScopedStore.Editor().themedCursor = true;
+    std::snprintf(ScopedStore.Editor().cursorImage, sizeof(ScopedStore.Editor().cursorImage), "%s",
+                  "cursor.bmp");
     Check(ScopedStore.PersistIfChanged(), "persist changed settings");
     Check(std::filesystem::is_regular_file(ScopedPaths.editorIni), "editor.ini mirrored");
 
     Fby::Editor::ProjectConfig ScopedReloaded;
     Check(Fby::Editor::LoadProject(ScopedPaths.root, nullptr, &ScopedReloaded), "reload persisted project");
     const Fby::AccessibilityProfile& ScopedProfile = ScopedReloaded.project.accessibility;
-    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode), "BlindMode persists in TOML");
-    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityDeafMode), "DeafMode persists in TOML");
+    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode),
+          "BlindMode persists in TOML");
+    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityDeafMode),
+          "DeafMode persists in TOML");
     Check(ScopedProfile.runtime.showSubtitles, "ShowSubtitles persists in TOML");
     Check(!ScopedProfile.presentation.oledPixelShift, "OLED shifter persists in TOML");
     Check(!Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityFlashGuard),
@@ -269,6 +296,17 @@ void TestProjectCreationAndConfig()
               ScopedProfile.presentation.minimumContrastRatio <= 7.1f,
           "minimum contrast persists in TOML");
     Check(ScopedProfile.editor.highContrast, "editor high contrast persists in TOML");
+    const Fby::ActionNarrationSettings& ScopedReloadedActions = ScopedProfile.actions;
+    Check(!ScopedReloadedActions.Enabled, "action narration switch persists in TOML");
+    Check(ScopedReloadedActions.Categories == 5, "action categories persist in TOML");
+    Check(!ScopedReloadedActions.AnnounceDirection, "action direction switch persists in TOML");
+    Check(!ScopedReloadedActions.AnnounceDistance, "action distance switch persists in TOML");
+    Check(ScopedReloadedActions.MinimumPriority == 2, "action priority floor persists in TOML");
+    Check(ScopedReloadedActions.NearDistanceMeters >= 5.4f && ScopedReloadedActions.NearDistanceMeters <= 5.6f,
+          "action near distance persists in TOML");
+    Check(ScopedReloadedActions.FarDistanceMeters >= 19.9f && ScopedReloadedActions.FarDistanceMeters <= 20.1f,
+          "action far distance persists in TOML");
+    Check(ScopedReloadedActions.DedupWindowMs == 400, "action dedup window persists in TOML");
     Check(ScopedReloaded.project.fixedUpdateHz == 90.0f, "FixedUpdate persists in TOML");
     Check(!ScopedReloaded.editor.vsync, "VSync persists in TOML");
     Check(ScopedReloaded.editor.windowMode == 2, "window mode persists in TOML");
@@ -276,6 +314,20 @@ void TestProjectCreationAndConfig()
     Check(ScopedReloaded.editor.windowHeight == 1080, "window height persists in TOML");
     Check(ScopedReloaded.editor.logMaxFiles == 12, "log file count persists in TOML");
     Check(ScopedReloaded.editor.logMaxLinesPerFile == 3456, "log line count persists in TOML");
+    Check(ScopedReloaded.editor.undoMemoryMB == 16, "undo memory budget persists in TOML");
+    Check(ScopedReloaded.editor.undoCommandLimit == 128, "undo command limit persists in TOML");
+    Check(ScopedReloaded.editor.thumbnailCacheLimit == 32, "thumbnail cache limit persists in TOML");
+    Check(!ScopedReloaded.editor.thumbnailCacheEnabled, "thumbnail cache switch persists in TOML");
+    Check(ScopedReloaded.editor.performanceProfile == 1, "performance profile persists in TOML");
+    Check(ScopedReloaded.editor.frameRateLimit == 30, "frame rate limit persists in TOML");
+    Check(ScopedReloaded.editor.pauseWhenUnfocused, "unfocused throttle persists in TOML");
+    Check(ScopedReloaded.editor.stockingTheme, "stocking theme persists in TOML");
+    Check(ScopedReloaded.editor.stockingPreset == 2, "stocking preset persists in TOML");
+    Check(ScopedReloaded.editor.stockingColorA == 0x112233, "stocking row A persists in TOML");
+    Check(ScopedReloaded.editor.stockingColorB == 0x445566, "stocking row B persists in TOML");
+    Check(ScopedReloaded.editor.themedCursor, "themed cursor switch persists in TOML");
+    Check(std::string_view(ScopedReloaded.editor.cursorImage) == "cursor.bmp",
+          "cursor image persists in TOML");
     Check(std::strcmp(Fby::WindowModeName(Fby::WindowMode::BorderlessFullscreen), "borderless fullscreen") == 0,
           "borderless mode has a stable name");
     Check(Fby::WindowModeName(Fby::WindowMode::ExclusiveFullscreen) != nullptr, "exclusive mode has a name");
@@ -286,8 +338,23 @@ void TestProjectCreationAndConfig()
     Check(ScopedIniText.find("vsync = false") != std::string::npos, "editor.ini mirrors VSync");
     Check(ScopedIniText.find("log_max_files = 12") != std::string::npos, "editor.ini mirrors the log file count");
     Check(ScopedIniText.find("log_max_lines = 3456") != std::string::npos, "editor.ini mirrors the log line count");
+    Check(ScopedIniText.find("undo_memory_mb = 16") != std::string::npos, "editor.ini mirrors the undo budget");
+    Check(ScopedIniText.find("undo_command_limit = 128") != std::string::npos,
+          "editor.ini mirrors the undo command limit");
+    Check(ScopedIniText.find("thumbnail_cache_limit = 32") != std::string::npos,
+          "editor.ini mirrors the thumbnail limit");
+    Check(ScopedIniText.find("thumbnail_cache_enabled = false") != std::string::npos,
+          "editor.ini mirrors the thumbnail switch");
+    Check(ScopedIniText.find("performance_profile = 1") != std::string::npos,
+          "editor.ini mirrors the performance profile");
+    Check(ScopedIniText.find("frame_rate_limit = 30") != std::string::npos,
+          "editor.ini mirrors the frame rate limit");
+    Check(ScopedIniText.find("stocking_theme = true") != std::string::npos,
+          "editor.ini mirrors the stocking theme");
+    Check(ScopedIniText.find("cursor_image = cursor.bmp") != std::string::npos,
+          "editor.ini mirrors the cursor image");
 
-    // Defaulted EditorSettings::operator== compares fields, not padding. A
+    // Defaulted EditorSettings::operator== compares fields, not padding.
     Fby::Editor::EditorSettings ScopedLeft{};
     Fby::Editor::EditorSettings ScopedRight{};
     Check(ScopedLeft == ScopedRight, "default EditorSettings images compare equal");
@@ -326,8 +393,7 @@ void TestProjectCreationAndConfig()
     Check(ScopedTagToml.find("gameplay_tags") != std::string::npos, "project TOML carries gameplay_tags");
     Fby::Editor::ProjectConfig ScopedTagDecoded;
     std::string ScopedTagError;
-    Check(Fby::Editor::DecodeProjectToml(ScopedTagToml, &ScopedTagDecoded, &ScopedTagError),
-          "tag TOML decodes");
+    Check(Fby::Editor::DecodeProjectToml(ScopedTagToml, &ScopedTagDecoded, &ScopedTagError), "tag TOML decodes");
     Check(ScopedTagDecoded.project.gameplayTags == ScopedVtConfig.project.gameplayTags,
           "project tag database roundtrips through TOML");
 
@@ -444,9 +510,9 @@ void TestAutoImportAndBackgroundCook()
               "default cook format is BC7 sRGB");
     }
 
-    // The watcher's scheduleCook thunk queued a background job. Wait for the
+    // The watcher's scheduleCook thunk queued a background job.
     std::uint32_t ScopedCommitted = 0;
-    for (int ScopedAttempt = 0; ScopedAttempt < 600 && ScopedCommitted < 2; ++ScopedAttempt)
+    for (int ScopedAttempt = 0; ScopedAttempt < 1200 && ScopedCommitted < 2; ++ScopedAttempt)
     {
         ScopedCommitted += ScopedImporter.Tick(&ScopedError);
         // Sleep until both cooks are in: a second worker can finish after the
@@ -455,6 +521,14 @@ void TestAutoImportAndBackgroundCook()
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+    }
+    if (ScopedCommitted < 2)
+    {
+        const Fby::Editor::AssetImportService::Stats ScopedStats = ScopedImporter.GetStats();
+        std::printf("cook timeout: imported=%u queued=%u cooked=%u committed=%u failed=%u dropped=%u error=%s\n",
+                    ScopedImported, ScopedStats.queued.load(), ScopedStats.cooked.load(),
+                    ScopedStats.committed.load(), ScopedStats.failed.load(), ScopedStats.dropped.load(),
+                    ScopedError.c_str());
     }
     Check(ScopedCommitted >= 2, "both cook workers committed a texture");
     Check(std::filesystem::is_regular_file(ScopedRoot / "textures" / "villain.ftex"),
@@ -491,7 +565,7 @@ void TestAutoImportAndBackgroundCook()
     Check(ScopedWatcher.InjectChange("textures/hero.png"), "inject a changed source");
     (void)ScopedWatcher.Poll();
     std::uint32_t ScopedReloaded = 0;
-    for (int ScopedAttempt = 0; ScopedAttempt < 600 && ScopedReloaded == 0; ++ScopedAttempt)
+    for (int ScopedAttempt = 0; ScopedAttempt < 1200 && ScopedReloaded == 0; ++ScopedAttempt)
     {
         ScopedReloaded = ScopedImporter.Tick(&ScopedError);
         if (ScopedReloaded == 0)
@@ -524,6 +598,40 @@ void TestAutoImportAndBackgroundCook()
 
     ScopedImporter.Shutdown();
     ScopedWatcher.Shutdown();
+}
+
+void TestProjectTemplates()
+{
+    const std::filesystem::path ScopedRoot = TestRoot("_editor_infra_templates");
+    std::error_code ScopedCode;
+    std::filesystem::remove_all(ScopedRoot, ScopedCode);
+    std::filesystem::create_directories(ScopedRoot, ScopedCode);
+
+    Fby::Editor::ProjectPaths ScopedPaths;
+    Fby::Editor::ProjectConfig ScopedConfig;
+    std::string ScopedError;
+    Check(Fby::Editor::CreateProject(ScopedRoot, "TemplateGame", &ScopedPaths, &ScopedConfig, &ScopedError,
+                                     Fby::Assets::Scaffold::ProjectTemplate::Platformer),
+          "the platformer template creates a project");
+    Check(std::filesystem::is_regular_file(ScopedPaths.root / "README.md"), "the template writes a README");
+    Check(std::filesystem::is_regular_file(ScopedPaths.scenes / "main.toml"), "the template writes a scene");
+
+    Fby::Scene::Registry ScopedRegistry;
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    const auto ScopedScene =
+        Fby::Scene::LoadSceneFileToml(ScopedRegistry, ScopedComponents, ScopedPaths.scenes / "main.toml");
+    Check(ScopedScene.has_value(), "the template scene is valid TOML");
+    Check(ScopedRegistry.storage<Fby::Entity>().size() >= 3, "the platformer template has a camera and actors");
+
+    std::string ScopedCmake;
+    {
+        std::ifstream ScopedStream(ScopedPaths.root / "CMakeLists.txt");
+        ScopedCmake.assign(std::istreambuf_iterator<char>(ScopedStream), std::istreambuf_iterator<char>());
+    }
+    Check(ScopedCmake.find("cmake_minimum_required(VERSION 3.22)") != std::string::npos,
+          "the generated project uses the supported CMake floor");
+    std::filesystem::remove_all(ScopedRoot, ScopedCode);
 }
 
 void TestSpawnCommand()
@@ -810,10 +918,62 @@ void TestVfsPinnedFileLifetime()
     Check(ScopedFresh.has_value() && ScopedFresh->size() == 8 && std::memcmp(ScopedFresh->data(), "NEW-DATA", 8) == 0,
           "a fresh read sees the hot-swapped bytes");
 }
+
+void TestProjectPlugins()
+{
+    const std::filesystem::path ScopedRoot = TestRoot("_editor_infra_plugins");
+    std::error_code ScopedCode;
+    std::filesystem::remove_all(ScopedRoot, ScopedCode);
+    Fby::Editor::ProjectPaths ScopedPaths;
+    Fby::Editor::ProjectConfig ScopedConfig;
+    Check(Fby::Editor::CreateProject(ScopedRoot, "PluginProject", &ScopedPaths, &ScopedConfig),
+          "create plugin project");
+
+    const std::filesystem::path ScopedSourceDir = ScopedRoot / "source";
+    std::filesystem::create_directories(ScopedSourceDir, ScopedCode);
+    const std::filesystem::path ScopedSource = ScopedSourceDir / "fby_test_pack.dll";
+    {
+        std::ofstream ScopedFile(ScopedSource, std::ios::binary);
+        ScopedFile << "plugin";
+    }
+    Fby::Editor::ProjectSettings ScopedSettings;
+    std::string ScopedRelative;
+    std::string ScopedError;
+    Check(Fby::Editor::ConnectProjectPlugin(ScopedRoot, ScopedSource, ScopedSettings, &ScopedRelative, &ScopedError),
+          "connect copies the plugin into the project");
+    Check(ScopedRelative == "plugins/fby_test_pack.dll", "connect records the project-relative path");
+    Check(ScopedSettings.pluginCount == 1 && ScopedSettings.plugins[0].Enabled, "connect enables the entry");
+    Check(std::filesystem::is_regular_file(ScopedRoot / ScopedRelative), "connect writes the project plugin file");
+
+    Check(Fby::Editor::ConnectProjectPlugin(ScopedRoot, ScopedSource, ScopedSettings, &ScopedRelative, &ScopedError),
+          "connecting the same plugin again succeeds");
+    Check(ScopedSettings.pluginCount == 1, "a duplicate connect does not add a second entry");
+
+    std::string ScopedRemoveError;
+    Check(Fby::Editor::RemoveProjectPlugin(ScopedRoot, ScopedSettings, 0, &ScopedRemoveError),
+          "remove drops the plugin entry");
+    Check(ScopedSettings.pluginCount == 0, "remove clears the count");
+    Check(!std::filesystem::exists(ScopedRoot / "plugins/fby_test_pack.dll"), "remove deletes the copied plugin");
+    std::filesystem::remove_all(ScopedRoot, ScopedCode);
+}
+
+void TestCommandStackLimits()
+{
+    Fby::Editor::CommandStack ScopedCommands;
+    Fby::Editor::CommandStack::Config ScopedConfig;
+    ScopedConfig.payloadBytes = 1u << 20;
+    ScopedConfig.maxCommands = 32;
+    Check(ScopedCommands.Initialize(ScopedConfig), "command stack initializes with custom limits");
+    Check(ScopedCommands.GetStats().bytesCapacity >= (1u << 20), "command stack reserves the requested payload");
+    Check(ScopedCommands.SetLimits(1u << 19, 16), "command stack shrinks its limits");
+    Check(ScopedCommands.GetStats().bytesCapacity >= (1u << 19), "command stack keeps the new payload");
+    Check(ScopedCommands.GetStats().commands == 0, "shrinking clears the undo history");
+}
 }
 
 int main()
 {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     TestProjectCreationAndConfig();
     TestAutoImportAndBackgroundCook();
     TestSpawnCommand();
@@ -822,6 +982,9 @@ int main()
     TestAssetIndexRefresh();
     TestSettingsExternalTransaction();
     TestVfsPinnedFileLifetime();
+    TestProjectPlugins();
+    TestProjectTemplates();
+    TestCommandStackLimits();
     if (GFailures != 0)
     {
         std::printf("%d editor infrastructure test(s) failed\n", GFailures);

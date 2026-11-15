@@ -80,8 +80,8 @@ used unchanged, which is also what the Null backend does.
 
 The composite record and `sdf_shadow_composite.frag` were removed: the mask is
 sampled directly by the sprite shader, so there was nothing to composite. A
-graphics consumer for full-screen post-processing is still tracked in
-[ROADMAP.md](../ROADMAP.md).
+graphics consumer for full-screen post-processing is still open work tracked in
+the project issue tracker.
 
 ## Tests
 

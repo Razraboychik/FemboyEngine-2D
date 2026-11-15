@@ -282,6 +282,46 @@ void TextPreviewPanel::Draw(VirtualFileSystem* InVfs, bool* InOpen)
         }
     }
     ImGui::InputTextMultiline("##text_preview", MText, sizeof(MText), ImVec2(-1.0f, 90.0f));
+    ImGui::SetNextItemWidth(280.0f);
+    (void)ImGui::InputText("Asset path", MAssetPath.data(), MAssetPath.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Load text asset"))
+    {
+        std::string ScopedError;
+        if (InVfs == nullptr)
+        {
+            MAssetStatus = "VFS is unavailable";
+        }
+        else if (!MAsset.Open(*InVfs, MAssetPath.data(), &ScopedError))
+        {
+            MAssetStatus = "asset failed: " + ScopedError;
+        }
+        else
+        {
+            const std::string_view ScopedBlock = MAsset.Block(0);
+            std::snprintf(MText, sizeof(MText), "%.*s", static_cast<int>(ScopedBlock.size()), ScopedBlock.data());
+            MBuiltKey = 0;
+            MAssetStatus = "loaded " + std::string(MAssetPath.data());
+        }
+    }
+    if (!MAssetStatus.empty())
+    {
+        ImGui::TextDisabled("%s", MAssetStatus.c_str());
+    }
+    (void)ImGui::Checkbox("Hypertext links", &MHypertextMode);
+    if (MHypertextMode)
+    {
+        MPool.Clear();
+        MHypertext = MPool.Intern(MText);
+        const Fby::Ui::HypertextView ScopedLinks = MPool.View(MHypertext);
+        ImGui::TextWrapped("%.*s", static_cast<int>(ScopedLinks.text.size()), ScopedLinks.text.data());
+        for (const Fby::Ui::HyperlinkRange& ScopedLink : ScopedLinks.links)
+        {
+            const std::string_view ScopedTarget = MPool.Target(ScopedLink);
+            ImGui::BulletText("link byte %u -> %.*s", static_cast<unsigned>(ScopedLink.begin),
+                              static_cast<int>(ScopedTarget.size()), ScopedTarget.data());
+        }
+    }
     const char* const ScopedDirections[] = {"Auto", "LTR", "RTL", "Vertical"};
     (void)ImGui::Combo("Direction", &MDirection, ScopedDirections, 4);
     const char* const ScopedScripts[] = {"Auto", "Latin", "Arabic", "Hebrew", "Devanagari", "Thai", "Han"};

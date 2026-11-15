@@ -1,15 +1,30 @@
-# FemboyEngine2D 0.4.0-alpha.1 - public alpha build
-cmake_minimum_required(VERSION 3.28)
+# FemboyEngine2D - public release build
+cmake_minimum_required(VERSION 3.22)
+
+# Version.txt is the single source of truth for the engine version. It may carry
+# a SemVer pre-release suffix, which CMake keeps out of the numeric project
+# version and appends back for the engine string, logs and artifacts.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Version.txt" FBY_VERSION_TEXT)
+string(STRIP "${FBY_VERSION_TEXT}" FBY_VERSION_STRING)
+string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" FBY_VERSION_NUMERIC "${FBY_VERSION_STRING}")
+if(NOT FBY_VERSION_NUMERIC)
+    message(FATAL_ERROR "Version.txt must start with a numeric MAJOR.MINOR.PATCH version")
+endif()
+string(REGEX REPLACE "^[0-9]+\\.[0-9]+\\.[0-9]+" "" FBY_VERSION_SUFFIX "${FBY_VERSION_STRING}")
+# Build trees configured before Version.txt existed may still carry the retired
+# suffix in the cache; CMake ignores cache entries that no longer match.
+unset(FBY_VERSION_SUFFIX CACHE)
 
 project(FemboyEngine2D
-    VERSION 0.4.0
+    VERSION ${FBY_VERSION_NUMERIC}
     DESCRIPTION "Data-oriented 2D game engine"
     LANGUAGES C CXX)
 
-# CMake accepts a numeric project version only. The SemVer pre-release suffix is
-# kept separately for the engine string, logs, manifests and artifact names.
-set(FBY_VERSION_SUFFIX "-alpha.1" CACHE STRING "Pre-release suffix appended to the engine version")
-set(FBY_VERSION_STRING "${PROJECT_VERSION}${FBY_VERSION_SUFFIX}")
+# One compile definition carries the version string to the engine, the apps and
+# the plugin fixtures, so no source file hardcodes it.
+add_library(fby_version INTERFACE)
+add_library(FemboyEngine2D::Version ALIAS fby_version)
+target_compile_definitions(fby_version INTERFACE FBY_ENGINE_VERSION="${FBY_VERSION_STRING}")
 
 if(APPLE)
     enable_language(OBJCXX)
@@ -17,7 +32,7 @@ if(APPLE)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
     set(CMAKE_OBJCXX_EXTENSIONS OFF)
     # The macOS SDK's CoreFoundation headers use opaque fixed-base enums that
-    # Clang 19+ diagnoses in C++26 parsing. They are valid API declarations.
+    # Clang 19+ diagnoses in C++23 parsing. They are valid API declarations.
     add_compile_options(-Wno-elaborated-enum-base)
 endif()
 
@@ -111,8 +126,8 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
     if(WIN32 AND FBY_WITH_ASAN AND FBY_WITH_UBSAN)
         message(FATAL_ERROR "ASan and UBSan cannot be combined on Windows (different CRT runtimes)")
     endif()
-    # clang-cl rejects the GCC spelling; its driver keeps frame pointers through
-    # /Oy- instead. The Microsoft compiler itself is rejected in FbyCompiler.cmake.
+    # clang-cl and cl.exe keep frame pointers through /Oy- rather than the GCC
+    # -fno-omit-frame-pointer spelling.
     if(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         list(APPEND FBY_ASAN_COMPILE_OPTIONS -fno-omit-frame-pointer)
     else()
@@ -284,10 +299,10 @@ if (FBY_BUILD_TESTS)
 endif()
 
 message(STATUS "")
-message(STATUS "FemboyEngine2D ${FBY_VERSION_STRING} (Alpha)")
+message(STATUS "FemboyEngine2D ${FBY_VERSION_STRING}")
 message(STATUS "  platform : ${CMAKE_SYSTEM_NAME}")
 message(STATUS "  compiler : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
-message(STATUS "  language : C++26 (${FBY_CXX_STANDARD_FLAG})")
+message(STATUS "  language : C++${FBY_CXX_STANDARD} (${FBY_CXX_STANDARD_FLAG})")
 message(STATUS "  rhi      : ${FBY_RHI_BACKEND}")
 message(STATUS "  source   : ${FBY_SOURCE_ROOT}")
 message(STATUS "  output   : ${FBY_OUTPUT_DIR}")

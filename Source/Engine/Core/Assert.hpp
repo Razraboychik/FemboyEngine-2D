@@ -5,7 +5,7 @@
 
 namespace Fby
 {
-// Reports a failed assertion and terminates. Defined in core/Log.cpp so there is
+// Reports a failed assertion and terminates.
 [[noreturn]] void FailAssert(const char* InExpression, const char* InFile, int InLine, const char* InMessage) noexcept;
 }
 
@@ -32,7 +32,7 @@ namespace Fby
 #define FBY_ASSERT_MSG(expression, message) ((void)0)
 #endif
 
-// Always evaluates and always throws on failure, debug or not: used for
+// Always evaluates and always throws on failure, debug or not: used by the checked cast.
 #define FBY_VERIFY(expression)                                                                                         \
     do                                                                                                                 \
     {                                                                                                                  \

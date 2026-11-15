@@ -36,6 +36,19 @@ void AvSpeechTts::SetVoice(const char* InLanguageBCP47) noexcept
     (void)InLanguageBCP47;
 }
 
+bool AvSpeechTts::SetVoiceById(const char* InId) noexcept
+{
+    (void)InId;
+    return false;
+}
+
+std::uint32_t AvSpeechTts::EnumerateVoices(TtsVoiceInfo* OutVoices, std::uint32_t InCapacity) noexcept
+{
+    (void)OutVoices;
+    (void)InCapacity;
+    return 0;
+}
+
 TtsBackend AvSpeechTts::Backend() noexcept
 {
     return TtsBackend{};

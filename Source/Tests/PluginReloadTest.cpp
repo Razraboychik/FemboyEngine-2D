@@ -1,6 +1,7 @@
 // FemboyEngine2D - plugin load/unload hot reload while jobs run.
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/ECS/ComponentRegistry.hpp"
+#include "Engine/Audio/VoicePreset.hpp"
 #include "Engine/Core/PluginHost.hpp"
 #include "Engine/UI/AccessibilityTheme.hpp"
 #include "Engine/UI/AccessibilityEffects.hpp"
@@ -8,7 +9,9 @@
 
 #include <atomic>
 #include <cstdio>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -113,12 +116,43 @@ int main()
         ScopedHost.UnloadAll();
     }
 
+#if defined(FBY_TEST_PLUGIN_DIR)
+    const std::vector<std::filesystem::path> ScopedDiscovered =
+        Plugin::DiscoverPluginFiles(FBY_TEST_PLUGIN_DIR);
+    Check(!ScopedDiscovered.empty(), "plugin discovery finds the built fixtures");
+    bool ScopedFoundFixture = false;
+    for (const std::filesystem::path& ScopedPath : ScopedDiscovered)
+    {
+        ScopedFoundFixture = ScopedFoundFixture || ScopedPath.filename().string().starts_with("fby_hello_mod");
+    }
+    Check(ScopedFoundFixture, "plugin discovery lists the fixture library");
+#endif
+
+#if defined(FBY_TEST_VOICE_PACK_PATH)
+    VoicePresetRegistry ScopedVoicePresets;
+    ScopedVoicePresets.RegisterBuiltIns();
+    const std::uint32_t ScopedBuiltInCount = ScopedVoicePresets.Count();
+    ScopedHost.BindVoicePresets(&ScopedVoicePresets);
+    Check(ScopedHost.Load(FBY_TEST_VOICE_PACK_PATH, &ScopedError), "Voice FX Pack loads");
+    Check(ScopedVoicePresets.Count() == ScopedBuiltInCount + 3, "Voice FX Pack registers three presets");
+    Check(ScopedVoicePresets.Find("Pack.Voice.Helium") != nullptr, "Voice FX Pack registers helium");
+    Check(ScopedVoicePresets.Find("Pack.Voice.Swamp") != nullptr, "Voice FX Pack registers swamp");
+    Check(ScopedVoicePresets.Find("Pack.Voice.CursedMumble") != nullptr, "Voice FX Pack registers cursed mumble");
+    ScopedHost.UnloadAll();
+    Check(ScopedVoicePresets.Count() == ScopedBuiltInCount, "unload removes plugin-owned voice presets");
+    ScopedHost.BindVoicePresets(nullptr);
+    Check(ScopedHost.Load(FBY_TEST_VOICE_PACK_PATH, &ScopedError), "Voice FX Pack loads without a voice registry");
+    Check(ScopedVoicePresets.Count() == ScopedBuiltInCount, "no presets register without a registry");
+    ScopedHost.UnloadAll();
+#endif
+
 #if defined(FBY_TEST_RAINBOW_PALETTE_PATH)
     ScopedThemes.Clear();
     Check(ScopedHost.Load(FBY_TEST_RAINBOW_PALETTE_PATH, &ScopedError), "Rainbow Palette plugin loads");
     const Ui::AccessibilityPaletteExtension* ScopedPalette = ScopedAccessibilityExtensions.Find("Rainbow.Palette80");
     Check(ScopedPalette != nullptr, "Rainbow Palette registers 80 colours");
-    Check(ScopedPalette != nullptr && ScopedPalette->Colors[79].A() != 0, "palette extension ends with a visible colour");
+    Check(ScopedPalette != nullptr && ScopedPalette->Colors[79].A() != 0,
+          "palette extension ends with a visible colour");
     ScopedHost.UnloadAll();
     Check(ScopedAccessibilityExtensions.Count() == 0, "Rainbow Palette unload removes its extension");
 
@@ -141,6 +175,31 @@ int main()
     Check(ScopedAlcohol != nullptr && ScopedAlcohol->AlcoholEffectCount >= 7, "Alcohol profile has an effect pool");
     ScopedHost.UnloadAll();
     Check(ScopedAccessibilityEffects.Count() == 0, "Alcohol unload removes effect profiles");
+
+    Check(ScopedHost.Load(FBY_TEST_RADIATION_PATH, &ScopedError), "Radiation plugin loads");
+    const Ui::AccessibilityEffectProfile* ScopedRadiationLow = ScopedAccessibilityEffects.Find("Radiation.Low");
+    Check(ScopedRadiationLow != nullptr, "Radiation registers the low dose");
+    Check(ScopedRadiationLow != nullptr && ScopedRadiationLow->TagCount == 3, "Radiation tags the low dose");
+    Check(ScopedAccessibilityEffects.Find("Radiation.High") != nullptr, "Radiation registers the high dose");
+    Check(ScopedAccessibilityEffects.Find("Radiation.Critical") != nullptr, "Radiation registers the critical dose");
+    ScopedHost.UnloadAll();
+    Check(ScopedAccessibilityEffects.Count() == 0, "Radiation unload removes effect profiles");
+
+    Check(ScopedHost.Load(FBY_TEST_THEMED_PALETTES_PATH, &ScopedError), "Themed Palettes plugin loads");
+    Check(ScopedAccessibilityExtensions.Count() == 6, "Themed Palettes registers six palettes");
+    const Ui::AccessibilityPaletteExtension* ScopedHalloween = ScopedAccessibilityExtensions.Find("Palette.Halloween");
+    Check(ScopedHalloween != nullptr, "Themed Palettes registers Halloween");
+    Check(ScopedHalloween != nullptr && ScopedHalloween->Colors[79].A() != 0, "themed palette fills all 80 colours");
+    Check(ScopedAccessibilityExtensions.Find("Palette.Terminal") != nullptr, "Themed Palettes registers Terminal");
+    ScopedHost.UnloadAll();
+    Check(ScopedAccessibilityExtensions.Count() == 0, "Themed Palettes unload removes its extensions");
+#endif
+
+#if defined(FBY_TEST_PLUGIN_DIR)
+    const std::uint32_t ScopedDirectoryLoaded = ScopedHost.LoadDirectory(FBY_TEST_PLUGIN_DIR);
+    Check(ScopedDirectoryLoaded >= 3, "the host loads a plugin directory");
+    ScopedHost.UnloadAll();
+    Check(ScopedHost.Plugins().empty(), "directory unload clears the host");
 #endif
 
     if (GFailures == 0)

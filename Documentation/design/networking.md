@@ -46,7 +46,7 @@ the ECS:
 - `FilterReplicationDelta` wraps `NetRollbackSession::FilterDeltaForPlayer` with a
   `RelevancePlan` built from the relevance grid.
 
-The PIE transport uses the same bridge with a 4096-byte state cap; the cap and
+The PIE transport uses the same bridge with a 16 KiB state cap; the cap and
 the PIE-specific behaviour are in [pie-multiplayer.md](pie-multiplayer.md).
 
 ## Tests
@@ -61,9 +61,12 @@ Transform2D/Velocity, relevance plan filter call).
 
 ## Known constraints
 
-- The replication state cap is 4096 bytes (`kReplicationMaxStateBytes`), and the
-  chunk budget (16 x 448) is larger than the cap, so several chunk slots are
-  unreachable.
-- `CaptureReplicationBaseline` uses the bare ECS restore, so a physics world
-  attached to a replicated baseline inherits the native-body lifetime problem
-  tracked in [ROADMAP.md](../ROADMAP.md).
+- The replication state cap is 16384 bytes (`kReplicationMaxStateBytes`) with a
+  48 x 448-byte chunk budget. `net_replication` publishes a 12000-byte baseline
+  in one state; a state above the cap falls back to the local client instead of
+  silently truncating.
+- `RestoreSnapshot` clears the registry through `Scene::DestroyAllEntities`, so a
+  physics world must call `PhysicsSystem::BindToRegistry` once. The cleanup hook
+  releases Box2D bodies before the components disappear; the next step recreates
+  them from the restored components. `physics_backend` covers this round trip.
+  A world that skips `BindToRegistry` still owns stale native bodies.

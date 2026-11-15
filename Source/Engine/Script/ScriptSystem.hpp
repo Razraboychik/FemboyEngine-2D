@@ -5,10 +5,12 @@
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/Script/EcsBridge.hpp"
 #include "Engine/Script/ScriptComponent.hpp"
+#include "Engine/Script/ScriptHeap.hpp"
 #include "Engine/Script/Vm.hpp"
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 
@@ -35,7 +37,7 @@ public:
     // Registers the built-in components and the default native table. Returns
     [[nodiscard]] bool Initialize();
 
-    // Registers a cooked program. `cooked` must stay alive (a .fempak mapping or
+    // Registers a cooked program.
     [[nodiscard]] std::uint16_t LoadProgram(std::span<const std::byte> InCooked, std::string* InError = nullptr);
 
     // Releases a cooked program slot so the editor can hot-reload a script
@@ -82,6 +84,11 @@ public:
     {
         return MDecimals;
     }
+    // Strings, arrays and maps live for the whole script world, not one event.
+    [[nodiscard]] Script::ScriptHeap& Heap() noexcept
+    {
+        return *MHeap;
+    }
     // Script values are event-local. Clearing at the event boundary keeps the
     // token pools bounded even when a script creates numbers in a loop.
     void ResetTransientNumbers() noexcept
@@ -124,7 +131,7 @@ public:
         return MCamera;
     }
 
-    // Called by the system when Run() reports a fault. Logs at most once per
+    // Called by the system when Run() reports a fault.
     void ReportFault(std::uint32_t InHandle, Entity InEntity, const Script::VmFault& InFault) noexcept;
     // Cooked builds run without the VM. A program with no AOT module is a build
     // error; report it once per program instead of once per entity per tick.
@@ -150,6 +157,18 @@ public:
         return MInitialized;
     }
 
+    // Coroutine scheduling. A slot key is (entity, program, event); the VM
+    // snapshots its registers and pc on Yield and restores them on the next
+    // frame. The table is fixed-capacity and allocation-free.
+    static constexpr std::uint32_t kMaxCoroutines = 128;
+    [[nodiscard]] Script::VmSuspendState* FindCoroutine(Entity InEntity, std::uint32_t InProgram,
+                                                        Script::ScriptEvent InEvent) noexcept;
+    void StoreCoroutine(Entity InEntity, std::uint32_t InProgram, Script::ScriptEvent InEvent,
+                        const Script::VmSuspendState& InState) noexcept;
+    void RemoveCoroutine(Entity InEntity, std::uint32_t InProgram, Script::ScriptEvent InEvent) noexcept;
+    void ClearCoroutines() noexcept;
+    void PruneCoroutines(const Ecs::Registry& InRegistry) noexcept;
+
 private:
     struct Slot
     {
@@ -166,6 +185,8 @@ private:
     Script::ScriptVm MVm{};
     Script::BigNumberPool MBigNumbers{};
     Script::DecimalPool MDecimals{};
+    // The heap is a megabyte-scale fixed buffer; keep it off the call stack.
+    std::unique_ptr<Script::ScriptHeap> MHeap = std::make_unique<Script::ScriptHeap>();
     DeterministicRng MRng{};
     std::uint32_t MProgramCount = 0;
     std::uint64_t MAotRunCount = 0;
@@ -183,13 +204,22 @@ private:
     std::uint32_t MActiveScriptCount = 0;
     std::uint32_t MActiveStamp = 0;
     std::uint32_t MDroppedDestroyEvents = 0;
+    struct CoroutineSlot
+    {
+        Entity EntityId = Fby::kNullEntity;
+        std::uint32_t Program = 0;
+        Script::ScriptEvent Event = Script::ScriptEvent::Update;
+        Script::VmSuspendState State{};
+        bool Used = false;
+    };
+    std::array<CoroutineSlot, kMaxCoroutines> MCoroutines{};
     TransportGroupSystem* MTransportGroups = nullptr;
     PhysicsSystem* MPhysics = nullptr;
     CameraStackSystem* MCamera = nullptr;
     bool MInitialized = false;
 };
 
-// Registers the components a script graph can touch today. New components are
+// Registers the components a script graph can touch today.
 void RegisterScriptableComponents(Script::EcsBridge& InBridge);
 
 // Installs LogFloat/LogInt/LogVec2/DespawnSelf/RandomFloat/RandomRange.

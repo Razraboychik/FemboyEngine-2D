@@ -18,6 +18,47 @@ namespace
 constexpr float kSdfEncodeScale = 1.0f;
 }
 
+PostFxConstants BuildPostFxConstants(const PostFxSettings& InSettings, Extent2D InExtent, std::uint32_t InTimeSeed)
+{
+    PostFxConstants ScopedBlock;
+    ScopedBlock.flagsAndCrt = Vector4D{static_cast<float>(InSettings.flags), InSettings.crtCurvature,
+                                       InSettings.scanlineStrength, static_cast<float>(InTimeSeed % 1024u)};
+    ScopedBlock.vignetteAndBloom = Vector4D{InSettings.vignetteStrength, InSettings.bloomThreshold,
+                                            InSettings.bloomIntensity, InSettings.exposure};
+    ScopedBlock.exposureAndChromatic = Vector4D{InSettings.chromaticAberration, InSettings.filmGrain,
+                                                InSettings.flashGuardGain, InSettings.colorVisionStrength};
+    ScopedBlock.grainAndFlash = Vector4D{static_cast<float>(InExtent.width), static_cast<float>(InExtent.height), 0.0f,
+                                         0.0f};
+    const ColorMatrix3 ScopedMatrix =
+        ColorVisionMatrix(static_cast<ColorVisionDeficiency>(std::min<std::uint32_t>(InSettings.colorVision, 3u)));
+    ScopedBlock.colorRow0 = Vector4D{ScopedMatrix.m[0], ScopedMatrix.m[1], ScopedMatrix.m[2], 0.0f};
+    ScopedBlock.colorRow1 = Vector4D{ScopedMatrix.m[3], ScopedMatrix.m[4], ScopedMatrix.m[5], 0.0f};
+    ScopedBlock.colorRow2 = Vector4D{ScopedMatrix.m[6], ScopedMatrix.m[7], ScopedMatrix.m[8], 0.0f};
+    const auto ScopedEffectColor = [](std::uint32_t InColor)
+    {
+        return Vector4D{static_cast<float>(InColor & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 8u) & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 16u) & 0xFFu) / 255.0f,
+                        static_cast<float>((InColor >> 24u) & 0xFFu) / 255.0f};
+    };
+    const PostFxAccessibilityEffect& ScopedEffect = InSettings.accessibility;
+    ScopedBlock.effect0 = Vector4D{static_cast<float>(ScopedEffect.kind), ScopedEffect.intensity,
+                                   static_cast<float>(ScopedEffect.pattern), ScopedEffect.patternScale};
+    const Vector4D ScopedTint = ScopedEffectColor(ScopedEffect.tint);
+    ScopedBlock.effect1 = Vector4D{ScopedTint.X, ScopedTint.Y, ScopedTint.Z, ScopedEffect.blur};
+    ScopedBlock.effect2 = Vector4D{ScopedEffect.sharpness, ScopedEffect.doubleVision, ScopedEffect.wobble,
+                                   ScopedEffect.wobbleFrequency};
+    ScopedBlock.effect3 = Vector4D{ScopedEffect.chromatic, ScopedEffect.vignette, ScopedEffect.desaturation,
+                                   ScopedEffect.afterimage};
+    ScopedBlock.effect4 = Vector4D{ScopedEffect.pulse, ScopedEffect.sway, ScopedEffect.scaleBreathing, 0.0f};
+    ScopedBlock.palette0 = ScopedEffectColor(ScopedEffect.palette[0]);
+    ScopedBlock.palette1 = ScopedEffectColor(ScopedEffect.palette[1]);
+    ScopedBlock.palette2 = ScopedEffectColor(ScopedEffect.palette[2]);
+    ScopedBlock.palette3 = ScopedEffectColor(ScopedEffect.palette[3]);
+    ScopedBlock.palette4 = ScopedEffectColor(ScopedEffect.palette[4]);
+    return ScopedBlock;
+}
+
 bool SdfShadowPass::Build(RenderGraph& InGraph, std::string_view InSdfResource,
                           std::string_view InShadowResource) noexcept
 {
@@ -78,6 +119,10 @@ void SdfShadowPass::RefreshConstants(const RenderGraphContext& InContext) noexce
                                  ScopedSdf.occlusionRadius, ScopedSdf.occlusionStrength};
     MConstants.encode = Vector4D{kSdfEncodeScale, ScopedSdf.enabled ? 1.0f : 0.0f,
                                  static_cast<float>(ScopedSdf.viewId), 0.0f};
+    // history.x is the absolute mask layer and is filled by the backend, which
+    // owns the frame-slot layout. The pass supplies validity, blend and camera.
+    MConstants.history = Vector4D{0.0f, ScopedSdf.temporal ? 1.0f : 0.0f, 0.5f, 0.0f};
+    MConstants.historyCamera = ScopedSdf.previousCamera;
     const std::uint32_t ScopedCount = std::min(ScopedSdf.occluderCount, kMaxSdfGpuOccluders);
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
     {

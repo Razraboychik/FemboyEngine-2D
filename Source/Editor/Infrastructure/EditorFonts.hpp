@@ -58,7 +58,7 @@ struct EditorFontSpec
     // UI scale from EditorSettings. Multiplied by the window content scale in
     // ApplyUiScale, so a 150% display renders text at 1.5x of this size.
     float uiScale = 1.0f;
-    // True when the editor is allowed to draw the embedded vector font if the
+    // True when the editor is allowed to draw the embedded vector font.
     bool allowEmbeddedVectorFallback = true;
 
     [[nodiscard]] friend bool operator==(const EditorFontSpec&, const EditorFontSpec&) noexcept = default;
@@ -91,7 +91,7 @@ public:
     // Idempotent. Safe to call from both the dashboard and EditorSystem.
     bool Initialize(ImGuiIO& InIo, VirtualFileSystem* InVfs, WindowManager* InWindow, const EditorFontSpec& InSpec);
 
-    // Re-reads SDL_GetWindowDisplayScale() and logs a DPI transition. Glyphs are
+    // Re-reads SDL_GetWindowDisplayScale() and logs a DPI transition.
     void RefreshDisplayScale(ImGuiIO& InIo, WindowManager* InWindow);
 
     // Applies the UI scale through the supported 1.92+ path.
@@ -99,10 +99,10 @@ public:
     // Replaces the logical pixel sizes used by the next ReloadFonts().
     void SetSpec(const EditorFontSpec& InSpec);
 
-    // Rebuilds the ImGui atlas in place. The stable TTF copies are dropped, the
+    // Rebuilds the ImGui atlas in place.
     [[nodiscard]] bool ReloadFonts(ImGuiIO& InIo);
 
-    // Detection pass only: stats/reloads the VFS mapping but does NOT rebuild the
+    // Detection pass only: stats/reloads the VFS mapping but does NOT rebuild the atlas.
     [[nodiscard]] bool DetectFontChanges() noexcept;
 
     [[nodiscard]] std::uint32_t Generation() const noexcept

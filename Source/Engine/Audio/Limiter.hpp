@@ -46,7 +46,7 @@ public:
         return MSampleRate != 0;
     }
 
-    // Interleaved float samples in [-1, 1] by convention; values above the
+    // Interleaved float samples in [-1, 1] by convention.
     void Process(float* InInterleaved, std::uint32_t InFrameCount, std::uint32_t InChannels) noexcept
     {
         if (InInterleaved == nullptr || InFrameCount == 0 || InChannels == 0)

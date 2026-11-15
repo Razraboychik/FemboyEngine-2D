@@ -76,7 +76,7 @@ void SetError(std::string* InError, std::string InMessage)
     return true;
 }
 
-// A TGA file has no magic; validate the 18-byte header enough that an
+// A TGA file has no magic.
 [[nodiscard]] bool LooksLikeTga(std::span<const std::byte> InBytes) noexcept
 {
     if (InBytes.size() < 18)
@@ -101,7 +101,7 @@ void SetError(std::string* InError, std::string InMessage)
     return ScopedBitsPerPixel == 8 || ScopedBitsPerPixel == 24 || ScopedBitsPerPixel == 32;
 }
 
-// sRGB transfer functions. RGB filtering happens in linear light; alpha is
+// sRGB transfer functions. RGB filtering happens in linear light.
 [[nodiscard]] float SrgbToLinearScalar(std::uint8_t InValue) noexcept
 {
     const float ScopedChannel = static_cast<float>(InValue) / 255.0f;
@@ -245,7 +245,7 @@ struct Bc7Block
     std::uint64_t error = std::numeric_limits<std::uint64_t>::max();
 };
 
-// Quantizes one float endpoint to the mode-6 representation, choosing the
+// Quantizes one float endpoint to the mode-6 representation, choosing the best p-bit.
 void QuantizeEndpoint(const float InEndpoint[4], std::int32_t InValues[4], std::int32_t& InPbit)
 {
     std::int32_t ScopedBestValues[4] = {};
@@ -637,7 +637,7 @@ void PackBc7Mode6(const Bc7Block& InBlock, std::span<std::byte, 16> Out)
     ScopedWrite(56, 7, static_cast<std::uint64_t>(InBlock.v1[3]));
     ScopedWrite(63, 1, static_cast<std::uint64_t>(InBlock.p0));
     ScopedWrite(64, 1, static_cast<std::uint64_t>(InBlock.p1));
-    // Anchor index (texel 0) has its top bit implied; the fit already made it
+    // Anchor index (texel 0) has its top bit implied.
     ScopedWrite(65, 3, static_cast<std::uint64_t>(InBlock.indices[0] & 0x7));
     for (std::uint32_t ScopedTexel = 1; ScopedTexel < 16; ++ScopedTexel)
     {
@@ -651,7 +651,7 @@ void PackBc7Mode6(const Bc7Block& InBlock, std::span<std::byte, 16> Out)
     }
 }
 
-// Gathers one 4x4 block from an image, clamping at the edges: the block is
+// Gathers one 4x4 block from an image, clamping at the edges.
 void GatherBlock(const std::uint8_t* InImage, std::uint32_t InWidth, std::uint32_t InHeight, std::uint32_t InBlockX,
                  std::uint32_t InBlockY, std::uint32_t InBlockWidth, std::uint32_t InBlockHeight, std::uint8_t* Out)
 {
@@ -780,7 +780,7 @@ bool DecodeBc7Mode6Block(std::span<const std::byte, 16> InBlock, std::uint8_t* I
 
 void EncodeAstcConstantBlock(std::span<const std::uint8_t> InRgba8, std::span<std::byte, 16> Out)
 {
-    // Constant-colour LDR void-extent block, exactly what astcenc emits for
+    // Constant-colour LDR void-extent block, exactly what astcenc emits.
     constexpr std::uint8_t ScopedKHeader[8] = {0xFC, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     std::memcpy(Out.data(), ScopedKHeader, sizeof(ScopedKHeader));
 

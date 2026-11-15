@@ -12,7 +12,7 @@
 namespace Fby
 {
 
-// The transform the renderer and the game both use. Rotation is radians,
+// The transform the renderer and the game both use. Rotation is radians.
 struct Transform2D
 {
     // World units (pixels at zoom 1)
@@ -43,7 +43,7 @@ struct Velocity
     Vector2D Value{};
 };
 
-// Everything needed to emit one RenderItem. Kept separate from Transform2D so a
+// Everything needed to emit one RenderItem.
 struct Sprite2D
 {
     // World-space extent before scale
@@ -137,6 +137,13 @@ static_assert(std::is_trivially_copyable_v<Camera2D>);
 // Mirror registration
 FBY_REFLECT_COMPONENT(Fby::Transform2D, "Transform2D", FBY_FIELD(Fby::Transform2D, Position, Vector2D),
                       FBY_FIELD(Fby::Transform2D, Scale, Vector2D), FBY_FIELD(Fby::Transform2D, Rotation, Float))
+
+FBY_REFLECT_COMPONENT(Fby::LocalTransform2D, "LocalTransform2D",
+                      FBY_FIELD(Fby::LocalTransform2D, Position, Vector2D),
+                      FBY_FIELD(Fby::LocalTransform2D, Scale, Vector2D),
+                      FBY_FIELD(Fby::LocalTransform2D, Rotation, Float))
+
+FBY_REFLECT_COMPONENT(Fby::Parent2D, "Parent2D", FBY_FIELD(Fby::Parent2D, Parent, Entity))
 
 FBY_REFLECT_COMPONENT(Fby::Velocity, "Velocity", FBY_FIELD(Fby::Velocity, Value, Vector2D))
 

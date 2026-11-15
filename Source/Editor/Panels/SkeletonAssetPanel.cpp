@@ -19,7 +19,7 @@ namespace Fby::Editor
 {
 namespace
 {
-// The same FieldDesc vocabulary Mirror generates for ECS components, but
+// The same FieldDesc vocabulary Mirror generates for ECS components.
 struct BoneColumn
 {
     const char* label;
@@ -83,7 +83,7 @@ inline constexpr std::array<BoneColumn, 3> kBoneColumns = MakeBoneColumns();
     const bool ScopedOpen = ImGui::TreeNodeEx("##bone", ScopedFlags, "%s", ScopedLabel.c_str());
     if (ImGui::IsItemClicked())
     {
-        // Keep the existing editor selection model: clicking a bone selects its
+        // Keep the existing editor selection model: clicking a bone selects.
         InRegistry.clear<EditorSelected>();
         InRegistry.emplace<EditorSelected>(InEntity);
     }
@@ -150,7 +150,7 @@ inline constexpr std::array<BoneColumn, 3> kBoneColumns = MakeBoneColumns();
         }
 
         int ScopedParent = static_cast<int>(InSkeleton.ParentIndices[InBone]);
-        // BoneLabel returns a temporary: keep a stable string alive for the
+        // BoneLabel returns a temporary: keep a stable string alive.
         std::string ScopedPreviewStorage =
             ScopedParent < 0 ? std::string("root")
                              : BoneLabel(InSkeleton, InState.names, static_cast<std::uint16_t>(ScopedParent));
@@ -399,7 +399,7 @@ void DrawSkeletonAssetInspector(Ecs::SystemContext& InContext, Entity InEntity, 
     }
     if (ScopedEdited)
     {
-        // The local pose is the rest pose in this panel: rebinding once after
+        // The local pose is the rest pose in this panel: rebinding once after load is enough.
         SkeletonBindPose(*ScopedSkeleton);
         InState.dirty = true;
     }

@@ -1,6 +1,6 @@
 # Справочник настроек редактора
 
-Этот документ — полный справочник по собственным настройкам редактора FemboyEngine2D 0.3.0-alpha.1: каждый ключ, его тип, значение по умолчанию, ограничение, что он меняет и где хранится. Здесь описаны таблица `[editor]` файла `project.femproj`, единственный ключ `[render]`, которым владеет редактор, и зеркало `[FemboyEditor]` в `editor.ini`.
+Этот документ — полный справочник по собственным настройкам редактора FemboyEngine2D 0.5.0: каждый ключ, его тип, значение по умолчанию, ограничение, что он меняет и где хранится. Здесь описаны таблица `[editor]` файла `project.femproj`, единственный ключ `[render]`, которым владеет редактор, и зеркало `[FemboyEditor]` в `editor.ini`.
 
 Эти настройки — предпочтения окружения, а не геймплей. Они хранятся рядом с проектом, чтобы команда воспроизводила одинаковую среду авторинга, дублируются в INI редактора для людей и старых читателей и никогда не влияют на поведение релизной игры. Ни один релизный рантайм их не читает.
 
@@ -45,6 +45,19 @@
 | `[editor] font_scene_text` | `fontSceneText` | `font_scene_text` | float | 18.0 | от 16 до 64 px | Размер шрифта текста, нарисованного в сцене |
 | `[editor] log_max_files` | `logMaxFiles` | `log_max_files` | int | 20 | от 1 до 512 | Сколько новейших файлов журнала хранится на категорию; более старые удаляются при открытии sink или применении настройки |
 | `[editor] log_max_lines` | `logMaxLinesPerFile` | `log_max_lines` | int | 50000 | от 1000 до 2000000 | Порог строк, при котором файл журнала уплотняется на месте; сохраняются новейшие 90 процентов |
+| `[editor] undo_memory_mb` | `undoMemoryMB` | `undo_memory_mb` | int | 4 | от 1 до 256 МиБ | Арена undo для сжатых дельт; меньшее значение перераспределяет её и очищает историю |
+| `[editor] undo_command_limit` | `undoCommandLimit` | `undo_command_limit` | int | 512 | от 16 до 512 | Максимум команд в окне undo |
+| `[editor] thumbnail_cache_limit` | `thumbnailCacheLimit` | `thumbnail_cache_limit` | int | 256 | от 0 до 256 | Дескрипторы превью текстур для Content Browser; снижение лимита освобождает старые |
+| `[editor] thumbnail_cache_enabled` | `thumbnailCacheEnabled` | `thumbnail_cache_enabled` | bool | true | true или false | Главный переключатель превью; отключение освобождает уже закэшированные дескрипторы |
+| `[editor] performance_profile` | `performanceProfile` | `performance_profile` | int | 0 | от 0 до 3 | 0 Custom, 1 Lite, 2 Balanced, 3 High; панель применяет пресет к бюджетам и лимиту кадров |
+| `[editor] frame_rate_limit` | `frameRateLimit` | `frame_rate_limit` | int | 0 | от 0 до 240 | Ограничение кадров главного цикла; 0 — без ограничения. Редактор досыпает остаток кадра |
+| `[editor] pause_when_unfocused` | `pauseWhenUnfocused` | `pause_when_unfocused` | bool | false | true или false | Ограничить цикл до 5 FPS, пока окно без фокуса |
+| `[editor] stocking_theme` | `stockingTheme` | `stocking_theme` | bool | false | true или false | Чередовать два цвета строк в таблицах редактора |
+| `[editor] stocking_preset` | `stockingPreset` | `stocking_preset` | int | 0 | 0..10 | Пресет пары: 0 Custom, 1 тёмный сливовый, 2 пастельный розовый, 3 розовый, 4 чёрно-белые чулки, 5 зелёный/чёрный, 6 дейтеранопия, 7 протанопия, 8 тританопия, 9 астигматизм, 10 высокий контраст |
+| `[editor] stocking_color_a` | `stockingColorA` | `stocking_color_a` | int | 0x3A2A3F | от 0 до 0xFFFFFF | Первый цвет строки |
+| `[editor] stocking_color_b` | `stockingColorB` | `stocking_color_b` | int | 0x2F3A35 | от 0 до 0xFFFFFF | Второй цвет строки |
+| `[editor] themed_cursor` | `themedCursor` | `themed_cursor` | bool | false | true или false | Включить тематический курсор |
+| `[editor] cursor_image` | `cursorImage` | `cursor_image` | string | "" | до 255 байт | BMP с magenta-ключом |
 | `[editor] show_demo` | `showDemoWindow` | `show_demo` | bool | false | true или false | Показывает демо-окно Dear ImGui; инструмент разработки, а не релизная функция |
 | `[editor] auto_refresh_browser` | `autoRefreshBrowser` | `auto_refresh_browser` | bool | true | true или false | Обновляет Content Browser при изменении базы ассетов |
 | `[editor] watch_assets` | `watchAssets` | `watch_assets` | bool | true | true или false | Включает файловый наблюдатель ОС и путь горячей перезагрузки |
@@ -56,6 +69,16 @@
 | `[editor] window_height` | `windowHeight` | `window_height` | int | 900 | от 240 до 16384 | Высота окна в пикселях для режимов 0 и 1 |
 | `[editor] save_ini_on_commit` | `saveEditorIniOnCommit` | `save_ini_on_commit` | bool | true | true или false | Перезаписывать секцию `[FemboyEditor]` в `editor.ini` после коммита настроек |
 | `[editor] theme` | `theme` | `theme` | string | "graphite" | до 31 байта | Имя пресета палитры редактора |
+| `[editor] text_color` | `textColor` | `text_color` | int | 0xF2F2F2 | от 0 до 0xFFFFFF | Авторский sRGB-цвет текста редактора |
+| `[editor] text_opacity` | `textOpacity` | `text_opacity` | float | 1.0 | от 0.2 до 1.0 | Прозрачность текста редактора |
+| `[editor] text_contrast` | `textContrast` | `text_contrast` | float | 1.0 | от 0.5 до 2.0 | Множитель контраста относительно фона панели |
+| `[editor] text_outline` | `textOutline` | `text_outline` | bool | false | true или false | Рисует обводку вокруг глифов |
+| `[editor] text_outline_color` | `textOutlineColor` | `text_outline_color` | int | 0x000000 | от 0 до 0xFFFFFF | Цвет обводки |
+| `[editor] text_outline_size` | `textOutlineSize` | `text_outline_size` | float | 1.0 | от 0.5 до 4.0 | Ширина обводки в логических пикселях |
+| `[editor] panel_glow` | `panelGlow` | `panel_glow` | float | 0.15 | от 0.0 до 1.0 | Акцентное свечение панелей; 0 отключает |
+| `[editor] custom_symbol_colors` | `customSymbolColors` | `custom_symbol_colors` | bool | false | true или false | Включает переопределения цветов символов |
+| `[editor] symbol_*` | `symbolColors.*` | `symbol_*` | int | 0 | от 0 до 0xFFFFFF | Одно переопределение на символ; 0 следует теме |
+| `[editor] symbol_plot_0` ... `symbol_plot_3` | `symbolColors.Plot` | `symbol_plot_*` | int | 0 | от 0 до 0xFFFFFF | Цвета серий графиков |
 | `[editor] ide_blind_mode` | - | `ide_blind_mode` | bool | false | true или false | Клавиатурная навигация, всегда видимый фокус и приёмник повествования для окна редактора |
 | `[editor] ide_deaf_mode` | - | `ide_deaf_mode` | bool | false | true или false | Только визуальные сигналы статуса; без звуковых оповещений редактора |
 | `[editor] ide_flash_guard` | - | `ide_flash_guard` | bool | true | true или false | FlashGuard на фоне редактора |
@@ -96,12 +119,15 @@
 | `font_script_pin_input` | 18 | от 16 до 28 | Подписи пинов плотные; держите их на минимуме или выше |
 | `font_script_pin_output` | 18 | от 16 до 28 | То же, что и для входных пинов |
 | `font_scene_text` | 18 | от 16 до 40 | Текст в сцене читается на фоне арта, поэтому нужен запас |
+| `text_line_spacing` | 0 | от -4 до 24 | Дополнительный интервал между строками; 0 сохраняет метрики шрифта |
+| `text_letter_spacing` | 0 | от -2 до 12 | Дополнительный интервал после каждого глифа; полезен для плотных UI-шрифтов |
+| `text_word_spacing` | 0 | от -4 до 24 | Дополнительный интервал после пробела; ширину самого пробела не меняет |
 
 Диапазоны панели уже ограничений файла: панель держит безопасную полосу, файл допускает предельное значение под конкретный дисплей.
 
 В декодировщик встроена миграция устаревшей типографики. Проект, который всё ещё несёт ровно старую комбинацию (заголовок 20 px, текст 16 px, подсказка 16 px, заголовок узла 18 px, пины 16 px, текст сцены 16 px), один раз обновляется до значений 24/18/18/21/18/18/18, и миграция пишется в журнал. Проект, изменивший хотя бы одно значение, сохраняет авторские размеры, поэтому миграция никогда не затрёт осознанный выбор.
 
-Изменения размера шрифта вступают в силу при перезагрузке атласа шрифтов, то есть при следующем запуске или горячей перезагрузке.
+Изменения размера шрифта вступают в силу при перезагрузке атласа шрифтов, то есть при следующем запуске или горячей перезагрузке. Межстрочный, межбуквенный и межсловный интервалы применяются рендерером текста сразу и не требуют перестройки атласа.
 
 ### 3.3 Диагностика вьюпорта
 
@@ -124,6 +150,13 @@
 | `log_max_files` | 20 | Хранятся новейшие файлы каждой категории; более старые удаляются при открытии sink или применении настройки |
 | `log_max_lines` | 50000 | Файл, достигший этого числа строк, уплотняется на месте: старые строки отбрасываются, новейшие 90 процентов остаются |
 
+Арена undo и кэш превью — две cache-структуры редактора, которые растут при
+авторинге. `undo_memory_mb` и `undo_command_limit` резервируют бюджет undo
+заранее; снижение любого значения перераспределяет арену и очищает историю.
+`thumbnail_cache_limit` и `thumbnail_cache_enabled` управляют дескрипторами
+превью текстур; снижение лимита освобождает их при следующем Apply, а кнопка
+"Free undo history and thumbnails" освобождает оба кэша сразу.
+
 Панель предлагает те же диапазоны, что и файловый кодек: ползунок от 1 до 512
 файлов и числовое поле от 1 000 до 2 000 000 строк. Рекомендуемые 20 файлов по
 50 000 строк — примерно 6 МБ на файл. Живой retention применяется к sink
@@ -133,7 +166,26 @@
 
 `theme` хранит имя пресета палитры. Редактор 1.0 поставляет встроенную палитру `graphite`; значение сохраняется и дублируется, чтобы будущий набор палитр мог его прочитать без изменения формата.
 
-### 3.7 Доступность редактора
+### 3.7 Чулочные списки и тематический курсор
+
+**Stocking list theme** чередует два редактируемых цвета строк во всех таблицах
+ImGui (журналы, профайлер, таблицы данных, сетевые слоты, отчёты crash/QA) и в
+node-canvas (Visual Script, material, animation, AI): фон узла и заголовок
+чередуются. Пресеты: *Dark plum / teal*, *Pastel pink / white*, *Rose / white*,
+*Black / white stockings* (тёмно-серые, не чистый чёрный), *Green / black
+stockings*, *Deuteranopia-safe*, *Protanopia-safe*, *Tritanopia-safe*,
+*Astigmatism / low halation*, *High contrast*. Изменение цвета переключает пресет
+в *Custom*; выбор пресета также задаёт подходящий цвет текста. Панель считает
+WCAG-контраст текста к обеим строкам и предупреждает ниже 4.5:1. Выключение
+возвращает обычные цвета таблиц и узлов.
+
+**Themed cursor** загружает 32-битный BMP с magenta-ключом; путь задаёт
+пользователь, движок не поставляет арт курсоров. Выключение вызывает
+`WindowManager::SetSystemCursor()` и возвращает системную стрелку. В
+`assets/cursors/PROMPTS.md` — промпты (включая negative prompts и варианты для
+доступности) и конвертация magenta-ключа.
+
+### 3.8 Доступность редактора
 
 Восемь ключей `ide_*` настраивают только окно редактора; собственный профиль игры — отдельная часть файла проекта.
 
@@ -149,6 +201,74 @@
 | `ide_flash_threshold` | 0.20 | Максимальное изменение яркости за кадр; ползунок панели покрывает 0.02—0.45, а ограничение файла допускает до 1.0 |
 
 `ide_flash_threshold` — единственный ключ доступности с условным виджетом: ползунок отключён, пока выключен `ide_flash_guard`, потому что без защиты порог не имеет смысла.
+
+### 3.7.1 Диктор и мост в экранный диктор
+
+Редактор говорит через собственный диктор и публикует своё дерево через
+собственный мост. Обе политики — поля `EditorSettings` (`narration` и `bridge`)
+и никогда не меняют политику, которую собранная игра читает из `[accessibility]`.
+
+| Ключ | По умолчанию | Действие |
+|---|---|---|
+| `narration_enabled` | false | Озвучивать панели, фокус, ошибки и состояние Play In Editor; Blind mode включает его |
+| `narration_focus` | true | Объявлять переход фокуса |
+| `narration_role` | true | Добавлять роль виджета («кнопка», «ползунок») |
+| `narration_state` | true | Добавлять «включено», «недоступно», «только чтение» |
+| `narration_interrupt` | true | Переход фокуса обрывает текущую фразу |
+| `narration_verbosity` | 2 | 0 молчание, 1 только имя, 2 имя и роль, 3 имя, роль и состояние |
+| `narration_rate` | 1.0 | Темп речи, ограничен 0.5—2.0 |
+| `narration_max_queue` | 4 | Длина очереди, ограничена 1—16 |
+| `narration_language` | `en-US` | BCP-47-тег голоса редактора |
+| `narration_voice` | пусто | Точный id установленного голоса; пусто выбирает голос по языку |
+| `narration_actions_enabled` | true | Озвучивать игровые действия (подбор, двери, боевые события) |
+| `narration_action_categories` | 63 | Битовая маска категорий действий (0 взаимодействие, 1 бой, 2 предметы, 3 навигация, 4 состояние, 5 система) |
+| `narration_action_direction` | true | Подставлять в `{direction}` локализованное слово сектора |
+| `narration_action_distance` | true | Подставлять в `{distance}` слово «близко/средне/далеко» |
+| `narration_action_min_priority` | 0 | Минимальный приоритет озвучиваемых действий; 3 — только критические |
+| `narration_action_near` | 3.0 | Расстояние в метрах, ниже которого звучит «близко» |
+| `narration_action_far` | 12.0 | Расстояние в метрах, отделяющее «средне» от «далеко» |
+| `narration_action_dedup_ms` | 1200 | Окно, в котором повтор действия с тем же ключом подавляется |
+| `bridge_enabled` | true | Публиковать панели редактора и сфокусированный виджет в ОС |
+| `bridge_focus_events` | true | Поднимать события смены фокуса |
+| `bridge_structure_events` | true | Поднимать изменения структуры при смене набора панелей или виджетов |
+| `bridge_state_events` | true | Поднимать изменения свойств состояния |
+
+Диктор редактора намеренно тише игрового: он стартует выключенным и держит
+очередь из четырёх фраз. Пока идёт Play In Editor, голосом владеет игра, и
+редактор ничего не ставит в очередь; мост при этом продолжает публиковать дерево
+редактора.
+
+### 3.8 Оформление текста и цвета символов
+
+Оформление текста не зависит от палитры панелей: цвет задаётся в sRGB,
+прозрачность и множитель контраста применяются относительно выбранного фона
+панели, а обводка рисуется поверх покрытия глифов. Таблица символов — это слой
+переопределений: `customSymbolColors` включает его, а сохранённый ноль всегда
+означает «следовать выбранной теме».
+
+| Ключ | По умолчанию | Действие |
+|---|---|---|
+| `text_color` | 0xF2F2F2 | Базовый цвет текста |
+| `text_opacity` | 1.0 | Прозрачность текста; ограничение не даёт опуститься ниже 0.2 |
+| `text_contrast` | 1.0 | Множитель относительно фона панели |
+| `text_outline` | false | Включает проход обводки |
+| `text_outline_color` | 0x000000 | Цвет обводки |
+| `text_outline_size` | 1.0 | Ширина обводки в логических пикселях |
+| `panel_glow` | 0.15 | Акцентное свечение панелей; 0 отключает |
+| `custom_symbol_colors` | false | Включает переопределения ниже |
+| `symbol_axis_x`, `symbol_axis_y` | 0 | Цвета осей |
+| `symbol_grid` | 0 | Цвет сетки |
+| `symbol_play`, `symbol_pause`, `symbol_step`, `symbol_stop` | 0 | Глифы панели воспроизведения |
+| `symbol_rotate` | 0 | Глиф поворота |
+| `symbol_multiplayer` | 0 | Глиф Play (Multiplayer) |
+| `symbol_plot_0` ... `symbol_plot_3` | 0 | Цвета серий графиков |
+
+Панель показывает те же диапазоны, что и файловый кодек, для прозрачности,
+контраста, размера обводки и свечения, поэтому в разделе 6 для них нет
+расхождений. Три ключа интервалов (`text_line_spacing`, `text_letter_spacing`,
+`text_word_spacing`, поля `textLineSpacing`, `textLetterSpacing` и
+`textWordSpacing`) есть только в `project.femproj`: зеркало INI из раздела 5
+никогда не читается обратно, а рендерер берёт их напрямую из `EditorSettings`.
 
 ## 4. Два ключа вьюпорта
 
@@ -211,6 +331,19 @@ font_script_pin_output = 18.000000
 font_scene_text = 18.000000
 log_max_files = 20
 log_max_lines = 50000
+undo_memory_mb = 4
+undo_command_limit = 512
+thumbnail_cache_limit = 256
+thumbnail_cache_enabled = true
+performance_profile = 0
+frame_rate_limit = 0
+pause_when_unfocused = false
+stocking_theme = false
+stocking_preset = 0
+stocking_color_a = 3819583
+stocking_color_b = 3095093
+themed_cursor = false
+cursor_image = (user-supplied)
 vsync = true
 show_demo = false
 auto_refresh_browser = true
@@ -231,6 +364,27 @@ ide_color_vision = 0
 ide_color_vision_strength = 1.000000
 ide_flash_threshold = 0.200000
 theme = "graphite"
+text_color = 15921906
+text_opacity = 1.000000
+text_contrast = 1.000000
+panel_glow = 0.150000
+text_outline = false
+text_outline_color = 0
+text_outline_size = 1.000000
+custom_symbol_colors = false
+symbol_axis_x = 0
+symbol_axis_y = 0
+symbol_grid = 0
+symbol_play = 0
+symbol_pause = 0
+symbol_step = 0
+symbol_stop = 0
+symbol_rotate = 0
+symbol_multiplayer = 0
+symbol_plot_0 = 0
+symbol_plot_1 = 0
+symbol_plot_2 = 0
+symbol_plot_3 = 0
 ```
 
 Дробные числа пишутся с шестью знаками после запятой преобразованием, которое использует зеркало, логические значения — как `true` и `false`, тема — как строка в кавычках. Зеркало отражает уже ограниченные значения: `window_mode` записывается не больше 2, а `viewport_view_mode` проходит через `ClampViewportViewMode`, поэтому зеркало не может показать значение, которое редактор отверг бы.

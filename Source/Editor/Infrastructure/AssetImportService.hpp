@@ -112,13 +112,20 @@ public:
     [[nodiscard]] bool ScheduleCook(std::string_view InSourcePath, Assets::AssetHandle InHandle,
                                     std::string* InError = nullptr);
 
+    // Updates the authored .femeta import settings and re-cooks the asset. The
+    // texture path uses the normal background queue, so the editor keeps the old
+    // texture until the new layer is uploaded (hot reload, not a blocking stall).
+    [[nodiscard]] bool UpdateImportSettings(std::string_view InSourcePath,
+                                            const Assets::AssetImportSettings& InSettings,
+                                            std::string* InError = nullptr);
+
     // Editor-frame entry point. Drains finished cooks, commits the asset
     std::uint32_t Tick(std::string* InError = nullptr);
 
     // Binds an AssetId to a fixed Vulkan texture-array layer. The editor's atlas
     void BindTextureAsset(AssetId InId, std::uint32_t InLayer) noexcept;
     [[nodiscard]] std::uint32_t LayerFor(AssetId InId) const noexcept;
-    // Project Settings can change the cook target without restarting the
+    // Project Settings can change the cook target without restarting.
     void SetTextureFormat(Assets::TextureFormat InFormat) noexcept
     {
         MConfig.textureFormat = InFormat;

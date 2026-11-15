@@ -1,6 +1,6 @@
 # Editor Settings Reference
 
-This document is the complete reference for the editor's own settings in FemboyEngine2D 0.3.0-alpha.1: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
+This document is the complete reference for the editor's own settings in FemboyEngine2D 0.5.0: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
 
 The settings are environment preferences, not gameplay. They are stored next to the project so a team reproduces the same authoring environment, they are mirrored to the editor INI for humans and legacy readers, and they never change how a shipped game behaves. No shipped runtime reads them.
 
@@ -45,6 +45,19 @@ Types are the TOML types written by the encoder and accepted by the decoder. "De
 | `[editor] font_scene_text` | `fontSceneText` | `font_scene_text` | float | 18.0 | 16 through 64 px | Font size of text drawn in the scene view |
 | `[editor] log_max_files` | `logMaxFiles` | `log_max_files` | int | 20 | 1 through 512 | Newest journal files kept per log category; older files are deleted when the sink opens or the setting is applied |
 | `[editor] log_max_lines` | `logMaxLinesPerFile` | `log_max_lines` | int | 50000 | 1000 through 2000000 | Line count at which a journal file is compacted in place; the newest 90 percent are kept |
+| `[editor] undo_memory_mb` | `undoMemoryMB` | `undo_memory_mb` | int | 4 | 1 through 256 MiB | Undo arena reserved for compressed deltas; applying a smaller value reallocates it and clears the undo history |
+| `[editor] undo_command_limit` | `undoCommandLimit` | `undo_command_limit` | int | 512 | 16 through 512 | Maximum number of commands kept in the undo window |
+| `[editor] thumbnail_cache_limit` | `thumbnailCacheLimit` | `thumbnail_cache_limit` | int | 256 | 0 through 256 | Texture preview descriptors kept for the Content Browser; lowering the limit frees the old descriptors |
+| `[editor] thumbnail_cache_enabled` | `thumbnailCacheEnabled` | `thumbnail_cache_enabled` | bool | true | true or false | Master switch for texture previews; disabling it also frees the descriptors already cached |
+| `[editor] performance_profile` | `performanceProfile` | `performance_profile` | int | 0 | 0 through 3 | 0 Custom, 1 Lite, 2 Balanced, 3 High; the panel applies the preset to the budgets and frame limit |
+| `[editor] frame_rate_limit` | `frameRateLimit` | `frame_rate_limit` | int | 0 | 0 through 240 | Main-loop frame cap; 0 is unthrottled. The editor sleeps the remainder of each frame |
+| `[editor] pause_when_unfocused` | `pauseWhenUnfocused` | `pause_when_unfocused` | bool | false | true or false | Throttle the loop to 5 FPS while the window does not own focus |
+| `[editor] stocking_theme` | `stockingTheme` | `stocking_theme` | bool | false | true or false | Alternate two colours in editor table rows |
+| `[editor] stocking_preset` | `stockingPreset` | `stocking_preset` | int | 0 | 0 through 10 | Row pair preset: 0 Custom, 1 dark plum, 2 pastel pink, 3 rose, 4 black/white stockings, 5 green/black, 6 deuteranopia, 7 protanopia, 8 tritanopia, 9 astigmatism, 10 high contrast |
+| `[editor] stocking_color_a` | `stockingColorA` | `stocking_color_a` | int | 0x3A2A3F | 0 through 0xFFFFFF | First row colour |
+| `[editor] stocking_color_b` | `stockingColorB` | `stocking_color_b` | int | 0x2F3A35 | 0 through 0xFFFFFF | Second row colour |
+| `[editor] themed_cursor` | `themedCursor` | `themed_cursor` | bool | false | true or false | Use the themed cursor |
+| `[editor] cursor_image` | `cursorImage` | `cursor_image` | string | "" | up to 255 bytes | BMP with a magenta key |
 | `[editor] show_demo` | `showDemoWindow` | `show_demo` | bool | false | true or false | Shows the Dear ImGui demo window; a development aid, not a shipping feature |
 | `[editor] auto_refresh_browser` | `autoRefreshBrowser` | `auto_refresh_browser` | bool | true | true or false | Refreshes the Content Browser when the asset database changes |
 | `[editor] watch_assets` | `watchAssets` | `watch_assets` | bool | true | true or false | Runs the OS file watcher and the hot-reload path |
@@ -56,6 +69,16 @@ Types are the TOML types written by the encoder and accepted by the decoder. "De
 | `[editor] window_height` | `windowHeight` | `window_height` | int | 900 | 240 through 16384 | Windowed height in pixels, used by modes 0 and 1 |
 | `[editor] save_ini_on_commit` | `saveEditorIniOnCommit` | `save_ini_on_commit` | bool | true | true or false | Rewrites the `[FemboyEditor]` section of `editor.ini` after a settings commit |
 | `[editor] theme` | `theme` | `theme` | string | "graphite" | Up to 31 bytes | Preset name of the editor palette |
+| `[editor] text_color` | `textColor` | `text_color` | int | 0xF2F2F2 | 0 through 0xFFFFFF | Authored sRGB colour of editor text |
+| `[editor] text_opacity` | `textOpacity` | `text_opacity` | float | 1.0 | 0.2 through 1.0 | Alpha of editor text |
+| `[editor] text_contrast` | `textContrast` | `text_contrast` | float | 1.0 | 0.5 through 2.0 | Contrast multiplier against the panel background |
+| `[editor] text_outline` | `textOutline` | `text_outline` | bool | false | true or false | Draws an outline around glyphs |
+| `[editor] text_outline_color` | `textOutlineColor` | `text_outline_color` | int | 0x000000 | 0 through 0xFFFFFF | Outline colour |
+| `[editor] text_outline_size` | `textOutlineSize` | `text_outline_size` | float | 1.0 | 0.5 through 4.0 | Outline width in logical pixels |
+| `[editor] panel_glow` | `panelGlow` | `panel_glow` | float | 0.15 | 0.0 through 1.0 | Accent glow around panels; 0 disables it |
+| `[editor] custom_symbol_colors` | `customSymbolColors` | `custom_symbol_colors` | bool | false | true or false | Enables the per-symbol colour overrides |
+| `[editor] symbol_*` | `symbolColors.*` | `symbol_*` | int | 0 | 0 through 0xFFFFFF | One override per symbol; 0 follows the theme |
+| `[editor] symbol_plot_0` ... `symbol_plot_3` | `symbolColors.Plot` | `symbol_plot_*` | int | 0 | 0 through 0xFFFFFF | Plot series colours |
 | `[editor] ide_blind_mode` | - | `ide_blind_mode` | bool | false | true or false | Keyboard navigation, always-visible focus and the narration sink for the editor window |
 | `[editor] ide_deaf_mode` | - | `ide_deaf_mode` | bool | false | true or false | Visual status cues only; no editor audio alerts |
 | `[editor] ide_flash_guard` | - | `ide_flash_guard` | bool | true | true or false | FlashGuard on the editor background |
@@ -96,12 +119,15 @@ The typography block is a readability contract: 18 px body text is the floor on 
 | `font_script_pin_input` | 18 | 16 through 28 | Pin labels are dense; keep them at or above the floor |
 | `font_script_pin_output` | 18 | 16 through 28 | Same as input pins |
 | `font_scene_text` | 18 | 16 through 40 | Scene text is read against art, so it needs more headroom |
+| `text_line_spacing` | 0 | -4 through 24 | Extra space between lines; 0 keeps the font metrics |
+| `text_letter_spacing` | 0 | -2 through 12 | Extra space after every glyph; useful for dense UI fonts |
+| `text_word_spacing` | 0 | -4 through 24 | Extra space after a space glyph; does not change the space character width |
 
 The panel ranges are narrower than the file clamps: the panel keeps a safe band, the file accepts an extreme for a specific display.
 
 A legacy migration is part of the decoder. A project that still carries exactly the old combination (20 px title, 16 px body, 16 px tooltip, 18 px node title, 16 px pins, 16 px scene text) is upgraded once to the 24/18/18/21/18/18/18 defaults and the migration is logged. A project that changed any single value keeps its authored sizes, so the migration can never overwrite a deliberate choice.
 
-Font size changes take effect when the font atlas is reloaded, which is the next launch or a hot reload.
+Font size changes take effect when the font atlas is reloaded, which is the next launch or a hot reload. Line, letter and word spacing are applied by the text renderer immediately; they do not require an atlas rebuild.
 
 ### 3.3 Viewport diagnostics
 
@@ -124,6 +150,13 @@ These are the two keys introduced with the diagnostic viewport modes. Both are d
 | `log_max_files` | 20 | The newest files of each category are kept; older files are deleted when the sink opens or the setting is applied |
 | `log_max_lines` | 50000 | A file that reaches this many lines is compacted in place: the oldest lines are dropped and the newest 90 percent stay |
 
+The undo arena and the thumbnail cache are the two editor caches that grow while
+authoring. `undo_memory_mb` and `undo_command_limit` reserve the undo budget up
+front; lowering either value reallocates the arena and clears the undo history.
+`thumbnail_cache_limit` and `thumbnail_cache_enabled` control the texture-preview
+descriptors; lowering the limit frees the descriptors at the next Apply, and the
+"Free undo history and thumbnails" button releases both caches immediately.
+
 The panel exposes the same ranges as the file codec: a slider from 1 through 512
 files and a numeric field from 1,000 through 2,000,000 lines. The recommended
 20 files by 50,000 lines is roughly 6 MB per file. The live retention is applied
@@ -133,7 +166,27 @@ to the engine sink on commit; the project file remains the source of truth.
 
 `theme` stores the palette preset name. The 1.0 editor ships the built-in `graphite` palette; the value is persisted and mirrored so a future palette set can read it without a format change.
 
-### 3.7 Editor accessibility
+### 3.7 Stocking lists and themed cursor
+
+The **Stocking list theme** alternates two editable row colours in every ImGui
+table (logs, profiler, data tables, network slots, crash and QA reports) and in
+the node canvases (Visual Script, material, animation and AI graphs), where the
+node background and title bar alternate. The pair presets are *Dark plum /
+teal*, *Pastel pink / white*, *Rose / white*, *Black / white stockings* (dark
+greys, not pure black), *Green / black stockings*, *Deuteranopia-safe*,
+*Protanopia-safe*, *Tritanopia-safe*, *Astigmatism / low halation* and *High
+contrast*; editing a colour switches the preset to *Custom*. Selecting a preset
+also sets the matching text colour. The panel computes the WCAG contrast of the
+current text colour against both rows and warns below 4.5:1. Turning the
+checkbox off restores the normal table and node colours.
+
+The **Themed cursor** switch loads a 32-bit BMP with a magenta transparent key;
+the path is user-supplied because the engine ships no cursor art. Unchecking it
+calls `WindowManager::SetSystemCursor()` and restores the platform arrow.
+`assets/cursors/PROMPTS.md` contains model prompts (including negative prompts
+and accessibility variants) and the magenta-key conversion.
+
+### 3.8 Editor accessibility
 
 The eight `ide_*` keys configure the editor window only; the game's own profile is a separate part of the project file.
 
@@ -149,6 +202,73 @@ The eight `ide_*` keys configure the editor window only; the game's own profile 
 | `ide_flash_threshold` | 0.20 | Largest allowed luminance change per frame; the panel slider covers 0.02 through 0.45 and the file clamp allows up to 1.0 |
 
 `ide_flash_threshold` is the only accessibility key with a conditional widget: the slider is disabled while `ide_flash_guard` is off, because the threshold has no meaning without the guard.
+
+### 3.7.1 Narrator and screen-reader bridge
+
+The editor speaks through its own narrator and publishes its tree through its own
+bridge. Both policies are fields of `EditorSettings` (`narration` and `bridge`)
+and never change the policy a shipped game reads from `[accessibility]`.
+
+| Key | Default | Effect |
+|---|---|---|
+| `narration_enabled` | false | Speak panels, focus, errors and Play In Editor state; Blind mode turns it on |
+| `narration_focus` | true | Announce a focus move |
+| `narration_role` | true | Include the widget role ("button", "slider") |
+| `narration_state` | true | Include checked, disabled and read-only |
+| `narration_interrupt` | true | A focus move cuts the current line |
+| `narration_verbosity` | 2 | 0 silent, 1 name only, 2 name and role, 3 name, role and state |
+| `narration_rate` | 1.0 | Speech rate, clamped to 0.5 through 2.0 |
+| `narration_max_queue` | 4 | Queued utterances, clamped to 1 through 16 |
+| `narration_language` | `en-US` | BCP-47 tag of the editor voice |
+| `narration_voice` | empty | Exact installed voice id; empty selects the voice by language |
+| `narration_actions_enabled` | true | Speak gameplay actions (pickups, doors, combat callouts) |
+| `narration_action_categories` | 63 | Bit mask of enabled action categories (bit 0 interaction, 1 combat, 2 item, 3 navigation, 4 state, 5 system) |
+| `narration_action_direction` | true | Replace `{direction}` with the localized word for the clock sector |
+| `narration_action_distance` | true | Replace `{distance}` with the localized near/medium/far word |
+| `narration_action_min_priority` | 0 | Lowest spoken action priority; 3 keeps critical only |
+| `narration_action_near` | 3.0 | Distance in metres that still maps to the near word |
+| `narration_action_far` | 12.0 | Distance in metres that separates medium from far |
+| `narration_action_dedup_ms` | 1200 | Window in which a repeated action key is dropped |
+| `bridge_enabled` | true | Publish editor panes and the focused widget to the OS |
+| `bridge_focus_events` | true | Raise focus-changed events |
+| `bridge_structure_events` | true | Raise structure changes when the pane or widget set changes |
+| `bridge_state_events` | true | Raise state property changes |
+
+The editor narrator is deliberately quieter than the game default: it starts off
+and keeps a queue of four. While Play In Editor runs, the game owns the voice and
+the editor queues nothing; the bridge keeps publishing the editor tree.
+
+### 3.8 Text appearance and symbol colours
+
+Text styling is independent of the panel palette: the colour is authored in
+sRGB, the opacity and the contrast multiplier are applied against the selected
+panel background, and the outline is drawn over the glyph coverage. The symbol
+table is an override layer: `customSymbolColors` enables it, and a stored zero
+always means "follow the selected theme".
+
+| Key | Default | Effect |
+|---|---|---|
+| `text_color` | 0xF2F2F2 | Base text colour |
+| `text_opacity` | 1.0 | Text alpha; the clamp keeps the value at or above 0.2 |
+| `text_contrast` | 1.0 | Multiplier against the panel background |
+| `text_outline` | false | Enables the outline pass |
+| `text_outline_color` | 0x000000 | Outline colour |
+| `text_outline_size` | 1.0 | Outline width in logical pixels |
+| `panel_glow` | 0.15 | Accent glow around panels; 0 disables it |
+| `custom_symbol_colors` | false | Enables the overrides below |
+| `symbol_axis_x`, `symbol_axis_y` | 0 | Axis colours |
+| `symbol_grid` | 0 | Grid colour |
+| `symbol_play`, `symbol_pause`, `symbol_step`, `symbol_stop` | 0 | Playback bar glyphs |
+| `symbol_rotate` | 0 | Rotate gizmo glyph |
+| `symbol_multiplayer` | 0 | Play (Multiplayer) glyph |
+| `symbol_plot_0` through `symbol_plot_3` | 0 | Plot series colours |
+
+The panel exposes the same ranges as the file codec for opacity, contrast,
+outline size and glow, so section 6 lists no divergence for them. The three
+spacing keys (`text_line_spacing`, `text_letter_spacing`, `text_word_spacing`,
+fields `textLineSpacing`, `textLetterSpacing` and `textWordSpacing`) exist only in
+`project.femproj`: the INI mirror described in section 5 is never read back, and
+the renderer takes them from `EditorSettings` directly.
 
 ## 4. The two viewport keys
 
@@ -211,6 +331,19 @@ font_script_pin_output = 18.000000
 font_scene_text = 18.000000
 log_max_files = 20
 log_max_lines = 50000
+undo_memory_mb = 4
+undo_command_limit = 512
+thumbnail_cache_limit = 256
+thumbnail_cache_enabled = true
+performance_profile = 0
+frame_rate_limit = 0
+pause_when_unfocused = false
+stocking_theme = false
+stocking_preset = 0
+stocking_color_a = 3819583
+stocking_color_b = 3095093
+themed_cursor = false
+cursor_image = (user-supplied)
 vsync = true
 show_demo = false
 auto_refresh_browser = true
@@ -231,6 +364,27 @@ ide_color_vision = 0
 ide_color_vision_strength = 1.000000
 ide_flash_threshold = 0.200000
 theme = "graphite"
+text_color = 15921906
+text_opacity = 1.000000
+text_contrast = 1.000000
+panel_glow = 0.150000
+text_outline = false
+text_outline_color = 0
+text_outline_size = 1.000000
+custom_symbol_colors = false
+symbol_axis_x = 0
+symbol_axis_y = 0
+symbol_grid = 0
+symbol_play = 0
+symbol_pause = 0
+symbol_step = 0
+symbol_stop = 0
+symbol_rotate = 0
+symbol_multiplayer = 0
+symbol_plot_0 = 0
+symbol_plot_1 = 0
+symbol_plot_2 = 0
+symbol_plot_3 = 0
 ```
 
 Floats are written with six decimal places by the string conversion used for the mirror, booleans as `true` and `false`, and the theme as a quoted string. The mirror reflects the clamped values: `window_mode` is written as at most 2 and `viewport_view_mode` goes through `ClampViewportViewMode`, so the mirror can never advertise a value the editor would refuse.

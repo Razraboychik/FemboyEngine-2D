@@ -635,7 +635,7 @@ int main(int InArgumentCount, char** InArguments)
     std::vector<std::byte> ScopedOutput(ScopedHeader.pixelOffset + ScopedPixelBytes, std::byte{0});
     std::memcpy(ScopedOutput.data(), &ScopedHeader, sizeof(ScopedHeader));
     std::memcpy(ScopedOutput.data() + ScopedHeader.glyphTableOffset, ScopedGlyphs.data(), ScopedGlyphBytes);
-    // White RGB with the stb coverage mask in A: WidgetCanvasSystem tints the
+    // White RGB with the stb coverage mask in A: WidgetCanvasSystem tints.
     unsigned char* ScopedPixels = reinterpret_cast<unsigned char*>(ScopedOutput.data() + ScopedHeader.pixelOffset);
     for (std::size_t ScopedPixel = 0; ScopedPixel < static_cast<std::size_t>(ScopedWidth) * ScopedHeight;
          ++ScopedPixel)

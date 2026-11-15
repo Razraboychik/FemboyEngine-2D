@@ -16,14 +16,18 @@ upstream-тесты, демо и утилиты:
 | `third_party/opus-master/opus-main/celt/tests/**` | upstream unit-тесты Opus |
 | `third_party/opus-master/opus-main/celt/opus_custom_demo.c` | демо Opus |
 | `third_party/opus-master/opus-main/src/opus_compare.c` | утилита сравнения Opus |
-| `third_party/opus-master/opus-main/dnn/adaconvtest.c` | тестовая утилита Opus DNN |
-| `third_party/opus-master/opus-main/dnn/parse_lpcnet_weights.c` | утилита разбора весов Opus DNN |
-| `third_party/opus-master/opus-main/dnn/dump_data.c` | утилита дампа Opus DNN |
+| `third_party/opus-master/opus-main/src/*_demo.c`, `src/*_compare.c`, `src/extensions.c` | исходники программ Opus, собираемые только при `OPUS_BUILD_PROGRAMS` или `OPUS_BUILD_TESTING`; движок принудительно отключает оба |
+| файлы `third_party/opus-master/opus-main/dnn/*.c` с `main()` (`adaconvtest`, `bwe_demo`, `dred_compare`, `dump_data`, `dump_lpcnet_tables`, `fargan_demo`, `lossgen`, `lossgen_demo`, `osce`, `parse_lpcnet_weights`, `test_vec`, `write_lpcnet_weights`) | программы-утилиты Opus DNN; исходники самой библиотеки DNN остаются видимыми и разбираются |
 | `third_party/flatbuffers-master/flatbuffers-master/tests/**` | upstream-тесты FlatBuffers |
 
-Исключение лежит в `.github/codeql/codeql-config.yml`. Оно намеренно узкое: оно
-не скрывает кодек Opus, HarfBuzz, ImGui, ImPlot, Monocypher, реальный header
-miniaudio или любой другой компилируемый вендорный исходник.
+Список исключений лежит в `.github/codeql/codeql-config.yml`. Он намеренно
+узкий: он не скрывает кодек Opus, HarfBuzz, ImGui, ImPlot, Monocypher, реальный
+header miniaudio или любой другой компилируемый вендорный исходник.
+
+Default setup **не читает** этот файл автоматически. Его читают advanced setup
+и organization-свойство `github-codeql-config-file`; этот user-owned репозиторий
+не использует ни то, ни другое, поэтому текущие неиспользуемые алерты закрыты
+по одному с причиной `won't fix`. См. audit со счётом и историей ветки/сканов.
 
 ## Правила для разработчиков
 
@@ -40,17 +44,19 @@ miniaudio или любой другой компилируемый вендор
 
 ## Как проверить исключение
 
-Конфигурацию читает CodeQL-workflow, который сканирует `main`. Проверь анализ и
-убедись, что каждый оставшийся результат находится в компилируемом вендорном
-файле:
+Проверь текущий анализ и убедись, что каждый оставшийся результат находится в
+компилируемом вендорном файле:
 
 ```text
 .github/codeql/codeql-config.yml
 Documentation/design/codeql-audit.md
 ```
 
-В audit-документе записаны последний анализ, правило и разделение между
-компилируемыми и неиспользуемыми вендорными алертами.
+В audit-документе записаны последний анализ, правило, число dismissals и
+разделение между компилируемыми и неиспользуемыми вендорными алертами. Если
+default-setup скан снова показывает исключённый путь, значит dismiss был
+сброшен из-за сдвига строк; проверь путь и закрой его снова или переведи
+репозиторий на advanced setup.
 
 ## Когда политику менять
 

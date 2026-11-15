@@ -19,6 +19,9 @@ set(FBY_ENGINE_SOURCES
     Assets/SpriteAtlas.cpp
     Assets/VFS.cpp
     Documents/Document.cpp
+    Effects/ParticleEffects.cpp
+    Effects/ParticleScene.cpp
+    Effects/ParticlePreset.cpp
     Audio/Audio.cpp
     Audio/AudioDevices.cpp
     Audio/AudioStream.cpp
@@ -33,12 +36,18 @@ set(FBY_ENGINE_SOURCES
     Audio/VoiceCodec.cpp
     Audio/VoiceDsp.cpp
     Audio/VoiceEffects.cpp
+    Audio/VoicePreset.cpp
+    Audio/VoicePresetIo.cpp
+    Audio/VoiceReactiveSfx.cpp
     Audio/VoiceSession.cpp
+    Audio/VoiceSfxSynth.cpp
     Core/CryptoAead.cpp
     Core/CryptoAsymmetric.cpp
     Core/CryptoKdf.cpp
     Core/Sha256.cpp
+    Core/Simd.cpp
     Core/JobSystem.cpp
+    Core/DataTable.cpp
     Core/CrashHandler.cpp
     Core/BuildInfo.cpp
     Core/Log.cpp
@@ -62,6 +71,7 @@ set(FBY_ENGINE_SOURCES
     ECS/Lighting.cpp
     ECS/LightSource.cpp
     ECS/Presentation.cpp
+    ECS/PrefabInstance.cpp
     ECS/PrefabSystem.cpp
     ECS/ComponentRegistry.cpp
     ECS/SceneBinary.cpp
@@ -102,6 +112,7 @@ set(FBY_ENGINE_SOURCES
     Network/Session.cpp
     Network/Ticket.cpp
     Network/Transport.cpp
+    Network/WebSocket.cpp
     Navigation/CrowdPool.cpp
     Navigation/FlowField.cpp
     Navigation/PagedNavGrid.cpp
@@ -124,6 +135,7 @@ set(FBY_ENGINE_SOURCES
     Physics/SnapshotRemap.cpp
     Physics/TransportGroups.cpp
     Platform/PlatformService.cpp
+    Platform/SystemInfo.cpp
     Platform/PlatformSystems.cpp
     RHI/CameraStack.cpp
     RHI/DynamicResolution.cpp
@@ -141,8 +153,13 @@ set(FBY_ENGINE_SOURCES
     RHI/Fsr2Pass.cpp
     RHI/CustomFrameGenerator.cpp
     RHI/DlssAdapter.cpp
+    RHI/Dx/DxProbe.cpp
+    RHI/D3D12/D3D12RHI.cpp
+    RHI/D3D11/D3D11RHI.cpp
+    RHI/DlssExtensions.cpp
     RHI/Fsr2Adapter.cpp
     RHI/Fsr3FrameGenerator.cpp
+    RHI/Fsr3Dx12.cpp
     RHI/SkinningBridge.cpp
     RHI/StaticBake.cpp
     RHI/StaticBakeRenderer.cpp
@@ -162,6 +179,7 @@ set(FBY_ENGINE_SOURCES
     Script/Bytecode.cpp
     Script/EcsBridge.cpp
     Script/GraphCompiler.cpp
+    Script/ScriptHeap.cpp
     Script/TextScript.cpp
     Text/BookAsset.cpp
     Text/BookCook.cpp
@@ -170,11 +188,18 @@ set(FBY_ENGINE_SOURCES
     Text/TextShapeCache.cpp
     Text/TextShaper.cpp
     Text/UnicodeBreak.cpp
+    UI/ActionNarration.cpp
     UI/Accessibility.cpp
     UI/AccessibilityTheme.cpp
     UI/AccessibilityEffects.cpp
     UI/AccessibilityEffectConsumer.cpp
     UI/AccessibilityOverlay.cpp
+    UI/AccessibilityProjection.cpp
+    UI/AccessibilityTree.cpp
+    UI/AccessibilityBridge.cpp
+    UI/Narrator.cpp
+    UI/AtspiModel.cpp
+    UI/SpeechLanguages.cpp
     UI/CardBoard.cpp
     UI/FontAtlas.cpp
     UI/FontBuilder.cpp
@@ -186,6 +211,7 @@ set(FBY_ENGINE_SOURCES
     UI/WidgetLayoutAsset.cpp
     UI/SoundCues.cpp
     UI/TtsSapi.cpp
+    UI/VoicePack.cpp
     UI/TtsNative.cpp
     Video/VideoPlayer.cpp
     Video/VideoSystem.cpp
@@ -204,6 +230,41 @@ if(APPLE)
     set_source_files_properties(UI/TtsAvSpeech.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 else()
     list(APPEND FBY_ENGINE_SOURCES UI/TtsAvSpeechStub.cpp)
+endif()
+
+# Linux speech-dispatcher: loaded at runtime with dlopen, so the engine has no
+# hard dependency on the daemon or on the LGPL client library.
+if(UNIX AND NOT APPLE)
+    list(APPEND FBY_ENGINE_SOURCES UI/TtsSpeechDispatcher.cpp)
+endif()
+
+# Windows one-core voices: the modern speech stack lives behind C++/WinRT, so
+# the adapter is a Windows-only translation unit.
+if(WIN32)
+    list(APPEND FBY_ENGINE_SOURCES UI/TtsWinRt.cpp)
+endif()
+
+# OS accessibility provider. Windows exposes UI Automation, macOS exposes
+# NSAccessibility; Linux (AT-SPI2) is the remaining provider and keeps the stub
+# until its D-Bus adapter lands.
+if(WIN32)
+    list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeWindows.cpp)
+elseif(APPLE)
+    list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeMac.mm)
+    set_source_files_properties(UI/AccessibilityBridgeMac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+else()
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(DBUS1 QUIET dbus-1)
+    endif()
+    if(DBUS1_FOUND)
+        list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeLinux.cpp)
+        set(FBY_DBUS_BRIDGE ON)
+        message(STATUS "AT-SPI2 bridge: dbus-1 ${DBUS1_VERSION} found")
+    else()
+        list(APPEND FBY_ENGINE_SOURCES UI/AccessibilityBridgeStub.cpp)
+        message(STATUS "AT-SPI2 bridge disabled: dbus-1 development files not found")
+    endif()
 endif()
 
 # Shaders: GLSL -> SPIR-V -> embedded header
@@ -453,6 +514,7 @@ target_include_directories(fby_engine
 target_link_libraries(fby_engine
     PUBLIC
         fby::compiler_flags
+        fby_version
         fby::toml
     PRIVATE
         ${FBY_SDL_TARGET}
@@ -527,18 +589,60 @@ endif()
 if (WIN32)
 # winmm is for the miniaudio backend; ole32/uuid for WASAPI; bcrypt is the
 # entropy/AEAD backend; crypt32 is the DPAPI identity store.
-    target_link_libraries(fby_engine PRIVATE user32 gdi32 shell32 ole32 oleaut32 uuid winmm bcrypt crypt32 ws2_32)
+    target_link_libraries(fby_engine PRIVATE user32 gdi32 shell32 ole32 oleaut32 uuid winmm bcrypt crypt32 ws2_32 uiautomationcore)
+
+# One-core speech needs the C++/WinRT projection shipped with the Windows SDK.
+# The SDK root is not exposed by the Ninja generator, so the environment variable
+# (present in a VS developer prompt) is preferred and the default install path is
+# the fallback. Without the projection the engine keeps the desktop SAPI voices.
+if(WIN32)
+    set(FBY_CPPWINRT_DIR "")
+    if(DEFINED ENV{WindowsSdkDir})
+        file(GLOB FBY_CPPWINRT_CANDIDATES "$ENV{WindowsSdkDir}Include/*/cppwinrt")
+    else()
+        file(GLOB FBY_CPPWINRT_CANDIDATES "C:/Program Files (x86)/Windows Kits/10/Include/*/cppwinrt")
+    endif()
+    list(SORT FBY_CPPWINRT_CANDIDATES)
+    list(REVERSE FBY_CPPWINRT_CANDIDATES)
+    foreach(FBY_CPPWINRT_CANDIDATE IN LISTS FBY_CPPWINRT_CANDIDATES)
+        if(EXISTS "${FBY_CPPWINRT_CANDIDATE}/winrt/Windows.Media.SpeechSynthesis.h")
+            set(FBY_CPPWINRT_DIR "${FBY_CPPWINRT_CANDIDATE}")
+            break()
+        endif()
+    endforeach()
+    if(FBY_CPPWINRT_DIR)
+        message(STATUS "One-core speech: C++/WinRT projection at ${FBY_CPPWINRT_DIR}")
+        target_include_directories(fby_engine SYSTEM PRIVATE "${FBY_CPPWINRT_DIR}")
+        target_compile_definitions(fby_engine PRIVATE FBY_HAS_WINRT=1)
+        target_link_libraries(fby_engine PRIVATE windowsapp)
+        # C++/WinRT uses exceptions; the engine policy is -fno-exceptions, so the
+        # single adapter translation unit opts back in. MSVC enables exceptions
+        # through /EHsc and rejects the GCC-style switches.
+        if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+            set_source_files_properties(UI/TtsWinRt.cpp PROPERTIES COMPILE_OPTIONS "-fexceptions;-frtti")
+        endif()
+    else()
+        message(STATUS "One-core speech: C++/WinRT projection not found; SAPI voices only")
+    endif()
+endif()
 elseif (APPLE)
     target_link_libraries(fby_engine PRIVATE
         "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework Foundation")
     target_compile_definitions(fby_engine PRIVATE FBY_HAS_METAL=1)
 else()
     target_link_libraries(fby_engine PRIVATE dl pthread m)
+    if(FBY_DBUS_BRIDGE)
+        target_include_directories(fby_engine PRIVATE ${DBUS1_INCLUDE_DIRS})
+        target_link_libraries(fby_engine PRIVATE ${DBUS1_LIBRARIES})
+    endif()
 endif()
 
 if (UNIX AND NOT APPLE)
 # mmap, dlopen and the POSIX file layer.
     target_link_libraries(fby_engine PRIVATE dl)
+endif()
+if(WIN32)
+    target_link_libraries(fby_engine PRIVATE dxgi)
 endif()
 
 if (FBY_WITH_FIDELITYFX)
@@ -572,6 +676,27 @@ if (FBY_WITH_FIDELITYFX)
             message(STATUS
                 "FidelityFX runtime DLL is absent; the compiled backend will fall back at runtime")
         endif()
+        foreach(FfxRuntime
+                amd_fidelityfx_framegeneration_dx12.dll
+                amd_fidelityfx_framegeneration_vk.dll
+                amd_fidelityfx_loader_dx12.dll
+                amd_fidelityfx_loader_vk.dll)
+            if(EXISTS "${FBY_FIDELITYFX_ROOT}/signedbin/${FfxRuntime}")
+                add_custom_command(TARGET fby_engine POST_BUILD
+                    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                        "${FBY_FIDELITYFX_ROOT}/signedbin/${FfxRuntime}"
+                        "${CMAKE_BINARY_DIR}/bin/${FfxRuntime}"
+                    VERBATIM)
+                if(FBY_BUILD_TESTS)
+                    add_custom_command(TARGET fby_engine POST_BUILD
+                        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/bin/tests"
+                        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                            "${FBY_FIDELITYFX_ROOT}/signedbin/${FfxRuntime}"
+                            "${CMAKE_BINARY_DIR}/bin/tests/${FfxRuntime}"
+                        VERBATIM)
+                endif()
+            endif()
+        endforeach()
     endif()
 endif()
 
@@ -600,8 +725,11 @@ if (FBY_WITH_DLSS)
     endif()
 endif()
 
+if(WIN32)
+    target_link_libraries(fby_engine PRIVATE dxgi d3d12 d3d11 d3dcompiler)
+endif()
+
 target_compile_definitions(fby_engine PUBLIC
-    FBY_ENGINE_VERSION="${FBY_VERSION_STRING}"
     FBY_PLATFORM_NAME="${CMAKE_SYSTEM_NAME}")
 
 # Test-only conformance hooks (transport key export) are compiled only for test

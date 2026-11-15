@@ -5,12 +5,12 @@ It has two authoring surfaces and two execution backends:
 
 - visual LogicGraph and StateTree editors in the editor;
 - a compact register bytecode executed by the editor VM;
-- a cook-time C++26 AOT backend that produces a native plugin for builds.
+- a cook-time C++23 AOT backend that produces a native plugin for builds.
 
-This document describes the 0.3.0-alpha.1 behavior. FemboyScript 2.0 is the bytecode and
-graph format; the engine version is 0.3.0-alpha.1.
+This document describes the 0.5.0 behavior. FemboyScript 2.0 is the bytecode and
+graph format; the engine version is 0.5.0.
 
-## What exists in 0.3.0-alpha.1
+## What exists in 0.5.0
 
 | Layer | Status |
 |---|---|
@@ -18,10 +18,36 @@ graph format; the engine version is 0.3.0-alpha.1.
 | StateTree visual scripting | Editor canvas plus TOML persistence in the scene |
 | Bytecode compiler | `CompileLogicGraph()` produces canonical bytecode |
 | Editor VM | `ScriptVm::Run()` executes bytecode without allocation |
-| AOT transpiler | Bytecode to C++26, then a native plugin |
+| AOT transpiler | Bytecode to C++23, then a native plugin |
 | Runtime AOT loader | `AotModule` validates ABI and component hashes |
 | Standalone textual `.fbs` parser | `CompileTextScript()` text subset |
-| Arrays, strings, maps, user functions, coroutines | Not present in 0.3.0-alpha.1 |
+| Arrays, strings, maps | Collection natives (`array_new`, `array_push`, `array_get`, `array_length`, `map_new`, `map_set`, `map_get`, `map_has`, `map_length`, `string_concat`, `string_length`, `string_equals`) over a bounded heap |
+| User functions | Textual `function name(a, b) { ... }` with fixed 8-register windows and depth-limited calls |
+| Coroutines | `yield;` / `yield N;` at any event or user-function depth; VM and AOT frame stacks |
+
+Collections live in a fixed-capacity `ScriptHeap` owned by the script runtime.
+Handles are 32-bit register payloads tagged as strings, arrays or maps; the VM
+and the nativized AOT path share the same heap through host callbacks, so a
+cooked build and the editor observe identical values. There is no reference
+counting: the heap resets with the script world, and an allocation past a
+capacity reports a script fault instead of growing.
+
+User functions are declared before the events that call them: `function add(a, b)
+{ return a + b; }`. Each function owns an 8-register window above the event
+registers, so nested calls do not clobber the caller; arguments move into the
+callee window and the return value moves back into the caller's destination
+register. Calls are depth-limited and may not recurse. A function may call one
+declared later; the compiler pre-scans the function block, but declarations must
+still precede the events. LogicGraph nodes for user functions are not part of
+0.5.0.
+
+A coroutine yields with `yield;` or `yield N;` to skip N script frames. The script
+system owns one fixed-capacity slot per `(entity, program, event)` and saves the
+VM register file, tags, call frames and resume pc; the next eligible script frame
+restores that state and continues after the yield. Event-top-level yields are
+lowered by the AOT backend to a resume switch over a host-owned
+`Aot::CoroutineState`; nested user-function yields use its bounded frame stack, so
+a cooked build can suspend and resume at any call depth up to the VM limit.
 
 The visual graph is the default authoring surface for designers. The textual
 front-end is an optional power surface for version control, CI, mods and dense
@@ -79,7 +105,7 @@ canonical FemboyScript bytecode (.fembak payload)
         |
         +--> ParseProgram() -> BindProgram() -> ScriptVm::Run()  editor/runtime
         |
-        +--> TranspileProgramToCpp() -> C++26 -> native plugin       build
+        +--> TranspileProgramToCpp() -> C++23 -> native plugin       build
 ```
 
 `ParseProgram()` is the trust boundary. It checks magic, version, table sizes,
@@ -214,7 +240,7 @@ marked started even after a fault, so a broken Start does not flood the log at
 `AotBuilder` runs on a worker:
 
 1. `TranspileLogicGraphToCpp()` compiles the graph to bytecode, validates it and
-   emits a flat C++26 function per event;
+   emits a flat C++23 function per event;
 2. generated code includes only `Engine/Script/AotAbi.hpp`;
 3. component access goes through `Aot::Context::Component(LayoutHash)`;
 4. the plugin exports `fby_aot_module()`, a `Module` record with component
@@ -242,7 +268,7 @@ of failing silently.
    a state tree.
 2. Compile the graph and inspect the reported node/instruction/register counts.
 3. Save the StateTree block to the scene TOML; the LogicGraph is an editor asset
-   payload in 0.3.0-alpha.1.
+   payload in 0.5.0.
 4. Assign a `ScriptComponent` program handle to the entity.
 5. Run PIE; faults appear in the Console/LogBoy panel with program, entity and
    pc.
@@ -330,18 +356,21 @@ fields (resolved against the scene schema), and read/write live field values.
 
 The editor's **Script Debugger** panel compiles the text script, shows the source
 with clickable breakpoints, Continue/Step/Pause/Reset, a Locals table, editable
-Self fields, a one-frame stack and program counters. `ScriptDebuggerPanelTest`
-covers compile errors, a line breakpoint, resume and fault reporting without an
-ImGui frame.
+Self fields, a call stack for nested user functions and program counters.
+`ScriptDebuggerPanelTest` covers compile errors, a line breakpoint, resume, the
+persisted function frames and fault reporting without an ImGui frame.
 
 ## Roadmap
 
-The next language features, in dependency order:
+Collections (`ScriptHeap`, bytecode v2 strings) and user functions with fixed
+register windows are shipped in 0.5.0; forward function references are resolved
+by the pre-scan. The next language features, in dependency order:
 
-1. Arrays, strings, maps and user functions with a fixed call stack.
-2. Coroutines/timers and deterministic scheduling.
-3. Debugger views for the StateTree canvas (the VM-side breakpoints, spans and
-   the LogicGraph "Debug graph" view already exist).
+1. LogicGraph call/return nodes for user functions.
+2. Timer syntax (`yield;`/`yield N;` already work in VM and AOT, including nested
+   user-function frames).
+3. Debugger views for the StateTree canvas (the nested user-function call stack
+   is shipped in 0.5.0).
 
 The flat VM contract is not extended by adding heap objects to the
 8-byte instruction. Any new object model needs a new bytecode version and a

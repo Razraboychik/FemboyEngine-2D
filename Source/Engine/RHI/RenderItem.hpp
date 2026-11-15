@@ -45,7 +45,7 @@ enum class RenderFlags : std::uint32_t
     None = 0,
     FlipX = 1u << 0,
     FlipY = 1u << 1,
-    // Blending: the default is straight alpha. Additive and premultiplied are
+    // Blending: the default is straight alpha.
     Additive = 1u << 2,
     Premultiplied = 1u << 3,
     // Snap the quad to whole pixels after the camera transform. Pixel-art
@@ -251,7 +251,7 @@ struct DirtyRange
 static_assert(std::is_trivially_copyable_v<DirtyRange>);
 static_assert(sizeof(DirtyRange) == 8);
 
-// Camera state for one frame: world-space centre, drawable size in pixels and
+// Camera state for one frame: world-space centre, drawable size in pixels.
 struct CameraData
 {
     Vector2D center{};
@@ -410,7 +410,7 @@ struct FramePacket
     std::span<const MeshRenderItem> meshItems{};
     std::span<const Mat4> boneMatrices{};
 
-    // Optional full 2.5D view-projection for the mesh path. When
+    // Optional full 2.5D view-projection for the mesh path.
     Mat4 meshViewProjection = Mat4::Identity();
     bool meshUseViewProjection = false;
     // Seconds since engine start. Feeds the material push-constant block

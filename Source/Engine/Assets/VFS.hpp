@@ -108,7 +108,7 @@ public:
 
     // Writable overlay (editor only, never used by the shipped game loop).
     [[nodiscard]] std::optional<std::string> ResolveWritablePath(std::string_view InPath) const;
-    // Writes through the overlay, remaps the file and updates the index, so a
+    // Writes through the overlay, remaps the file and updates the index.
     [[nodiscard]] bool WriteFile(std::string_view InPath, std::span<const std::byte> InBytes,
                                  std::string* InError = nullptr);
 
@@ -127,7 +127,7 @@ public:
         return MMounts.size();
     }
 
-    // Canonical form used for lookup: forward slashes, no leading slash, no
+    // Canonical form used for lookup: forward slashes, no leading slash.
     [[nodiscard]] static std::string Normalize(std::string_view InPath);
 
 private:

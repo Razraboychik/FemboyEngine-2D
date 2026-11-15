@@ -80,7 +80,7 @@ public:
             std::swap(ScopedSource, ScopedDestination);
         }
 
-        // An even number of passes leaves the result in the caller's buffer; the
+        // An even number of passes leaves the result in the caller's buffer.
         if (ScopedSource != InOrder.data())
         {
             std::copy(ScopedSource, ScopedSource + ScopedCount, InOrder.data());

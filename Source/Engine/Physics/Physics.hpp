@@ -190,13 +190,13 @@ public:
     // Creates missing bodies/shapes, steps the world once at fixedDt and copies
     void Step(Ecs::Registry& InRegistry, float InFixedDt);
 
-    // Writes lerp(previous, current, alpha) into Transform2D. Call from
+    // Writes lerp(previous, current, alpha) into Transform2D.
     void Interpolate(Ecs::Registry& InRegistry, float InAlpha) const;
 
     // Creates bodies/shapes for every RigidBody2D whose runtime handle is null.
     void EnsureBodies(Ecs::Registry& InRegistry);
 
-    // Ownership tracking. CreateMissingBodies() calls TrackBody() itself; an
+    // Ownership tracking. CreateMissingBodies() calls TrackBody() itself.
     void TrackBody(Entity InEntity, std::uint64_t InPackedBody);
     void UntrackBody(std::uint64_t InPackedBody) noexcept;
 
@@ -241,7 +241,7 @@ public:
         return MWorld;
     }
 
-    // Applies a linear impulse in pixel-space units (converted internally to
+    // Applies a linear impulse in pixel-space units.
     void ApplyImpulse(Ecs::Registry& InRegistry, Entity InEntity, Vector2D InImpulse, bool InWake = true);
 
     // Sets the body velocity directly, in pixel-space units. Carrier groups use
@@ -284,7 +284,7 @@ public:
         return MTimeScale;
     }
 
-    // Rewrites every live b2Shape filter from the project's layer matrix. The
+    // Rewrites every live b2Shape filter from the project's layer matrix.
     void ApplyCollisionFilterMatrix(Ecs::Registry& InRegistry, const CollisionFilterMatrix& InMatrix) noexcept;
     [[nodiscard]] const CollisionFilterMatrix& CollisionFilter() const noexcept
     {

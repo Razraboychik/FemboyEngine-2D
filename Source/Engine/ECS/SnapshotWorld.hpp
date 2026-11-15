@@ -104,7 +104,7 @@ static_assert(std::is_trivially_copyable_v<WorldSnapshotV3>);
     return sizeof(WorldSnapshotV3);
 }
 
-// Canonical copy. The struct is zero-initialised by the caller before fields are
+// Canonical copy. The struct is zero-initialised by the caller before fields are set.
 [[nodiscard]] bool EncodeWorldSnapshot(const WorldSnapshotV3& InState, std::span<std::byte> InDestination,
                                        std::size_t* OutBytes = nullptr) noexcept;
 [[nodiscard]] bool DecodeWorldSnapshot(std::span<const std::byte> InBytes, WorldSnapshotV3& InState,

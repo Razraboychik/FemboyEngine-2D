@@ -8,7 +8,7 @@
 namespace Fby::Video
 {
 
-// One decoded image in planar 8-bit I420 (4:2:0), written into buffers the
+// One decoded image in planar 8-bit I420 (4:2:0), written into buffers.
 struct YuvFrameView
 {
     std::uint8_t* luma = nullptr;
@@ -26,7 +26,7 @@ struct YuvFrameView
     }
 };
 
-// The function table. `user` is the backend's own state (in the libvpx case the
+// The function table. `user` is the backend's own state.
 struct Vp9Backend
 {
     const char* name = "none";
@@ -38,13 +38,13 @@ struct Vp9Backend
     // Decodes exactly one compressed VP9 frame into `target`. The decoder does
     bool (*decodeFrame)(void* InUser, void* InDecoder, std::span<const std::byte> InCompressed,
                         const YuvFrameView& InTarget) = nullptr;
-    // Last error string, or "" - the pointed-to bytes are static or owned by
+    // Last error string, or "" - the pointed-to bytes are static or owned.
     const char* (*lastError)(void* InUser) = nullptr;
 };
 
-// The libvpx-backed table, resolved once and cached. Returns nullptr when the
+// The libvpx-backed table, resolved once and cached.
 [[nodiscard]] const Vp9Backend* LibvpxBackend() noexcept;
 
-// True when LibvpxBackend() would return a usable table. A file path probe is
+// True when LibvpxBackend() would return a usable table.
 [[nodiscard]] bool LibvpxAvailable() noexcept;
 }

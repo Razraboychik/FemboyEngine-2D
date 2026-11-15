@@ -120,7 +120,7 @@ bool FrameExporter::BeginCommon(Rhi::RHI& InGpu, std::string_view InPath, const 
         return false;
     }
 
-    // One allocation for the whole sequence: header, every frame, footer. The
+    // One allocation for the whole sequence: header, every frame, footer.
     MImage.assign(static_cast<std::size_t>(ScopedTotalBytes64), std::byte{0});
 
     MDesc = InDesc;
@@ -143,7 +143,7 @@ bool FrameExporter::BeginCommon(Rhi::RHI& InGpu, std::string_view InPath, const 
     MHeader.reserved = 0;
     std::memcpy(MImage.data(), &MHeader, sizeof(MHeader));
 
-    // A deterministic packet base. The render callback fills the item spans,
+    // A deterministic packet base. The render callback fills the item spans.
     MPacket = Rhi::FramePacket{};
     MPacket.camera.viewport = {static_cast<float>(InDesc.size.width), static_cast<float>(InDesc.size.height)};
     MPacket.textureArray = 0xFFFFFFFFu;
@@ -170,7 +170,7 @@ ExportStatus FrameExporter::CaptureNextFrame(std::string* InError)
     const std::uint32_t ScopedFrameIndex = MDesc.startFrame + MCaptured * MDesc.step;
     if (!MGpu->BeginFrame())
     {
-        // Minimised window / out-of-date swapchain. The deterministic counter is
+        // Minimised window / out-of-date swapchain.
         return ExportStatus::Retry;
     }
 

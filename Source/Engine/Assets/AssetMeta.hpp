@@ -41,7 +41,7 @@ static_assert(sizeof(AssetHandle) == 8);
 static_assert(std::is_trivially_copyable_v<AssetHandle>);
 static_assert(std::is_standard_layout_v<AssetHandle>);
 
-// Import settings the cooker consumes. Kept POD so a .femeta can be hashed and
+// Import settings the cooker consumes.
 struct AssetImportSettings
 {
     std::uint32_t textureFormat = static_cast<std::uint32_t>(TextureFormat::Bc7Srgb);

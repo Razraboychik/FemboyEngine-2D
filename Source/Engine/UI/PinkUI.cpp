@@ -320,7 +320,7 @@ constexpr std::array<std::array<std::uint8_t, 8>, kFontGlyphCount> kGlyphTable =
     return ScopedCode - kFontFirstChar;
 }
 
-// Pen advance for one glyph. The cell is square but the pencil moves 0.75 of a
+// Pen advance for one glyph.
 [[nodiscard]] constexpr float Advance(std::uint32_t InFontSize) noexcept
 {
     return static_cast<float>(InFontSize) * kGlyphAdvanceRatio;
@@ -500,7 +500,7 @@ bool EmitCustomQuad(void* InState, Rect InLocal, std::uint32_t InLayer, std::uin
     return ScopedHeight > 0.0f ? ScopedHeight : 0.0f;
 }
 
-// Reference box an anchor resolves inside: the cached grid cell for a
+// Reference box an anchor resolves inside: the cached grid cell.
 [[nodiscard]] Rect ReferenceRect(const WidgetCanvas& InCanvas, std::uint32_t InWidget) noexcept
 {
     if (InCanvas.cellColumns[InWidget] != kNoCellTrack)
@@ -902,7 +902,7 @@ void WidgetCanvas::AdvanceOledShift(float InDt) noexcept
         // Clamp pathological dt
         oled.accumulator = 0.0f;
     }
-    // Only change the visual offset when a step actually elapsed; otherwise a
+    // Only change the visual offset when a step actually elapsed.
     if (ScopedAdvances > 0)
     {
         oled.offset = OledOrbitOffset(oled.step);
@@ -1210,6 +1210,7 @@ std::int32_t WidgetCanvas::AddWidget(const WidgetDesc& InDesc) noexcept
         InDesc.parent == kNoWidget ? 0
                                    : static_cast<std::uint16_t>(childCounts[static_cast<std::uint32_t>(InDesc.parent)]);
     switcherActive[ScopedSlot] = WidgetHandle{};
+    accessibleNameIds[ScopedSlot] = 0;
     customPaints[ScopedSlot] = InDesc.customPaint;
     customUsers[ScopedSlot] = InDesc.customUser;
     customParams[ScopedSlot] = InDesc.customParams;
@@ -1432,6 +1433,24 @@ std::uint32_t WidgetCanvas::TextKey(std::int32_t InWidget) const noexcept
     }
     const std::uint32_t ScopedStored = textKeys[static_cast<std::uint32_t>(InWidget)];
     return ScopedStored == 0 ? 0xFFFFFFFFu : ScopedStored - 1u;
+}
+
+void WidgetCanvas::SetAccessibleName(std::int32_t InWidget, std::uint32_t InNameId) noexcept
+{
+    if (!ValidWidget(InWidget))
+    {
+        return;
+    }
+    accessibleNameIds[static_cast<std::uint32_t>(InWidget)] = InNameId;
+}
+
+std::uint32_t WidgetCanvas::AccessibleName(std::int32_t InWidget) const noexcept
+{
+    if (!ValidWidget(InWidget))
+    {
+        return 0;
+    }
+    return accessibleNameIds[static_cast<std::uint32_t>(InWidget)];
 }
 
 std::uint32_t WidgetCanvas::ApplyLocalization(const LocalizationTable& InTable) noexcept
@@ -2359,7 +2378,6 @@ float WidgetCanvas::SliderValueAt(std::int32_t InWidget, Vector2D InCanvasPoint)
     return ScopedValue < 0.0f ? 0.0f : (ScopedValue > 1.0f ? 1.0f : ScopedValue);
 }
 
-// Layout
 void GridLayoutPass(const WidgetCanvas& InCanvas) noexcept
 {
     if (InCanvas.gridColumnCount == 0 || InCanvas.gridRowCount == 0)
@@ -2367,7 +2385,7 @@ void GridLayoutPass(const WidgetCanvas& InCanvas) noexcept
         return;
     }
 
-    // A row track <= 0 means "as tall as the tallest explicit-height widget in
+    // A row track <= 0 means "as tall as the tallest explicit-height widget".
     std::array<float, WidgetCanvas::kTrackCapacity> ScopedRowHeights = InCanvas.tracks[1];
     for (std::uint32_t ScopedRow = 0; ScopedRow < InCanvas.gridRowCount; ++ScopedRow)
     {
@@ -2388,7 +2406,7 @@ void GridLayoutPass(const WidgetCanvas& InCanvas) noexcept
         ScopedRowHeights[ScopedRow] = ScopedTallest;
     }
 
-    // offsets[i] is the canvas-local offset of track i's leading edge, so a
+    // offsets[i] is the canvas-local offset of track i's leading edge.
     std::array<float, kMaxGridColumns + 1> ScopedColumnOffsets{};
     ScopedColumnOffsets[0] = 0.0f;
     for (std::uint32_t ScopedColumn = 0; ScopedColumn < InCanvas.gridColumnCount; ++ScopedColumn)
@@ -2482,7 +2500,7 @@ void ResolveLayout(const WidgetCanvas& InCanvas) noexcept
     GridLayoutPass(InCanvas);
     ResolveAnchors(InCanvas);
 
-    // Insertion sort on <= 512 uint16s; run once per invalidation, not per
+    // Insertion sort on <= 512 uint16s.
     auto& ScopedOrder = InCanvas.layout.drawOrder;
     for (std::uint32_t ScopedWidget = 0; ScopedWidget < InCanvas.widgetCount; ++ScopedWidget)
     {
@@ -2689,7 +2707,7 @@ const WidgetHyperlink* HitTestHyperlink(const WidgetCanvas& InCanvas, Vector2D I
 
 std::int32_t PointerDown(WidgetCanvas& InCanvas, Vector2D InCanvasPoint) noexcept
 {
-    // One press at a time: clear the old one before testing, otherwise a
+    // One press at a time: clear the old one before testing.
     for (std::uint32_t ScopedWidget = 0; ScopedWidget < InCanvas.widgetCount; ++ScopedWidget)
     {
         InCanvas.flags[ScopedWidget] &= ~static_cast<std::uint32_t>(WidgetFlags::Pressed);
@@ -3188,7 +3206,7 @@ std::int32_t ActivateFocused(WidgetCanvas& InCanvas) noexcept
 // WidgetCanvasSystem - render extraction
 bool WidgetCanvasSystem::MountFonts(Rhi::RHI& InRhi)
 {
-    // Mandatory cold-start stage. Every failure here is fatal UI-host state: a
+    // Mandatory cold-start stage. Every failure here is fatal UI-host state.
     const auto ScopedPanic = [](const char* InReason) noexcept
     {
         LogError("pinkui",
@@ -3470,7 +3488,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
                 if (ScopedCount > 0)
                 {
                     ScopedHasText = true;
-                    // A label is drawable only through the mounted font array. Any
+                    // A label is drawable only through the mounted font array.
                     const FontAtlas* ScopedAtlas = InView.text.fonts != nullptr
                                                        ? InView.text.fonts->At(InCanvas.fontAtlasIndices[ScopedWidget])
                                                        : nullptr;
@@ -3635,7 +3653,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
         return BuildStatus::Overflow;
     }
 
-    // Text is atlas-only. There is no 8x8 fallback in any build: a canvas with
+    // Text is atlas-only. There is no 8x8 fallback in any build.
     if (ScopedHasText)
     {
         const bool ScopedFontsUsable =
@@ -3712,7 +3730,7 @@ BuildStatus WidgetCanvasSystem::BuildFrame(const Ecs::UiSystemView& InView, cons
         Output.fontTextureArray = ScopedCanvasTextureArray;
     }
 
-    // One QuadWriter for the whole canvas: one pipeline, one texture array,
+    // One QuadWriter for the whole canvas: one pipeline, one texture array.
     QuadWriter ScopedWriter{Output.items, ScopedStart};
     std::uint32_t ScopedEmittedGlyphs = 0;
     for (std::uint32_t ScopedOrderIndex = 0; ScopedOrderIndex < InCanvas.widgetCount; ++ScopedOrderIndex)
@@ -4499,7 +4517,7 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
         return;
     }
 
-    // Scene placement is data, not a system service: read the entity transform,
+    // Scene placement is data, not a system service: read the entity transform.
     std::uint32_t ScopedItemCursor = Output.startCursor;
     std::uint32_t ScopedBatchCursor = 0;
     // One canvas can be referenced by several entities. Pick a deterministic

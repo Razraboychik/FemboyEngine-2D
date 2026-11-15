@@ -17,7 +17,7 @@ namespace Fby::Editor
 
 inline constexpr std::uint32_t kMaxCommandCodecs = 64;
 inline constexpr std::uint32_t kMaxUndoCommands = 512;
-// ProjectSettings now carries the full gameplay tag database and accessibility,
+// ProjectSettings carries the full gameplay tag database and accessibility,
 // render and build policies. Keep the external-buffer cap above that image so
 // settings undo remains a normal command-stack transaction.
 inline constexpr std::uint32_t kMaxTrackedComponentBytes = 128u * 1024u;
@@ -38,6 +38,8 @@ public:
         // before the entity was destroyed, so undo recreates it and redo removes
         // it again.
         Destroy = 2,
+        // Component presence change (add/remove) with full old/new images.
+        Presence = 3,
     };
 
     enum class Result : std::uint8_t
@@ -103,7 +105,7 @@ public:
         std::uint32_t rejectedCommands = 0;
     };
 
-    // Observer runs after Undo/Redo applied a component (e.g. re-evaluate a
+    // Observer runs after Undo/Redo applied a component.
     using ApplyObserver = void (*)(void* InUser, Entity InEntity, std::uint16_t InCodec) noexcept;
 
     CommandStack() = default;
@@ -117,6 +119,10 @@ public:
     {
         return Initialize(Config{});
     }
+    // Replaces the undo arena and command window without touching the registry
+    // bindings. The history is cleared, which is the point: lowering the budget
+    // frees the previous memory immediately.
+    [[nodiscard]] bool SetLimits(std::size_t InPayloadBytes, std::uint32_t InMaxCommands) noexcept;
     void Shutdown() noexcept;
     [[nodiscard]] bool Initialized() const noexcept
     {
@@ -151,7 +157,7 @@ public:
         }
         else
         {
-            // Derived components (SkeletonComponent, ...) are intentionally not
+            // Derived components (SkeletonComponent, ...) are intentionally not registered here.
             ScopedOps.layoutHash = Reflect::Fnv1a(ScopedLabel);
         }
         ScopedOps.get = &Scene::Detail::ComponentOpsFor<T>::Get;
@@ -167,13 +173,19 @@ public:
 
     [[nodiscard]] std::uint16_t CodecForLayoutHash(std::uint64_t InLayoutHash) const noexcept;
     [[nodiscard]] const char* CodecName(std::uint16_t InCodec) const noexcept;
-    // Canonical byte size of a codec, or 0 for an unknown codec. The
+    // Canonical byte size of a codec, or 0 for an unknown codec.
     [[nodiscard]] std::uint32_t CodecSize(std::uint16_t InCodec) const noexcept;
 
     [[nodiscard]] Result BeginTransaction(std::string_view InLabel) noexcept;
     // Records one component edit. `oldBytes`/`newBytes` must have codec size;
     [[nodiscard]] Result Record(Entity InEntity, std::uint16_t InCodec, std::span<const std::byte> InOldBytes,
                                 std::span<const std::byte> InNewBytes) noexcept;
+    // Records an add/remove (or a presence-preserving rewrite if both flags are
+    // equal). Full old/new images are stored so undo can recreate a component
+    // that was absent.
+    [[nodiscard]] Result RecordPresence(Entity InEntity, std::uint16_t InCodec, bool InOldPresent,
+                                        std::span<const std::byte> InOldBytes, bool InNewPresent,
+                                        std::span<const std::byte> InNewBytes) noexcept;
     // Convenience: reads the component's current bytes as the "new" side.
     [[nodiscard]] Result RecordAfterMutation(Entity InEntity, std::uint16_t InCodec,
                                              std::span<const std::byte> InOldBytes) noexcept;
@@ -241,7 +253,8 @@ private:
         // >0 only on the first command of a transaction
         std::uint16_t groupSize = 1;
         CommandKind kind = CommandKind::Component;
-        std::uint8_t reserved = 0;
+        std::uint8_t oldPresent = 1;
+        std::uint8_t newPresent = 1;
         std::uint32_t payloadOffset = 0;
         std::uint32_t payloadSize = 0;
         std::uint32_t labelHash = 0;
@@ -264,6 +277,9 @@ private:
         std::uint16_t codec = 0;
         std::uint32_t oldOffset = 0;
         std::uint32_t newOffset = 0;
+        bool presence = false;
+        bool oldPresent = true;
+        bool newPresent = true;
         bool active = false;
     };
 
@@ -303,6 +319,7 @@ private:
     std::array<Codec, kMaxCommandCodecs> MCodecs{};
     std::uint32_t MCodecCount = 0;
     std::array<Command, kMaxUndoCommands> MCommands{};
+    std::uint32_t MMaxCommands = kMaxUndoCommands;
     std::uint32_t MCommandCount = 0;
     std::uint32_t MCursor = 0;
     std::uint32_t MArenaUsed = 0;

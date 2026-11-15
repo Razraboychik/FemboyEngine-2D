@@ -51,7 +51,7 @@ MaterialGraph BuildTintedGraph()
     return ScopedGraph;
 }
 
-// A minimal module: magic plus the four header words. The loader only checks the
+// A minimal module: magic plus the four header words.
 std::vector<std::uint32_t> MinimalSpirv()
 {
     return {kSpirvMagicWord, 0u, 0u, 0u, 0u};

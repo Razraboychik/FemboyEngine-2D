@@ -1,17 +1,18 @@
 # Управление проектом и движком через CMake
 
-Применимо к FemboyEngine2D 0.3.0-alpha.1 и CMake 3.28 или новее.
+Применимо к FemboyEngine2D 0.5.0 и CMake 3.22 или новее.
 
 ## Требования к инструментам
 
-Движку нужен C++26:
+Движку нужен C++23:
 
-- Windows: clang-cl 19+ с MSVC STL.
-- Linux: Clang 19+ или GCC 16+.
-- macOS: Apple Clang с поддержкой C++26.
+- Windows: clang-cl 19.1+ (эталон) или MSVC 19.40+ (поддерживаемая альтернатива с отдельной CI-джобой), оба со STL MSVC.
+- Linux: Clang 19.1+ или GCC 14.1+.
+- macOS: Apple Clang с поддержкой C++23.
 
-Поддерживаемый генератор проверенной сборки — Ninja. Visual Studio используется
-только как IDE и источник Windows SDK и заголовков.
+Поддерживаемый генератор проверенной сборки — Ninja. Visual Studio можно
+использовать как IDE или как MSVC-сборку; Windows SDK и заголовки STL он
+предоставляет в обоих случаях.
 
 ## Настройка отдельной сборки
 
@@ -40,6 +41,7 @@ GPU- и video-тестов становится на порядок медлен
 | `FBY_BUILD_TOOLS` | `ON` | `fby_fempak`, `fby_aotc`, `fby_fontc`, `fby_scene_tool`. |
 | `FBY_BUILD_PLATFORM_PROVIDERS` | `ON` | Общие библиотеки провайдеров Steam/EGS/GOG. |
 | `FBY_RHI_BACKEND` | `auto` | `auto`, `vulkan`, `metal` или `null`. |
+| `FBY_CXX_STANDARD` | `23` | `23` — контракт; `26` — экспериментальные библиотечные ускорения C++26. |
 | `FBY_WITH_ASAN`, `FBY_WITH_UBSAN` | `OFF` | Санитайзеры для движка и тестов. |
 | `FBY_ASAN_LEAKS` | `ON` | LeakSanitizer при выходе на Linux и macOS. |
 | `FBY_WITH_SCRIPT_VM` | `ON` | VM FemboyScript для редактора и dev-сборок. |
@@ -76,7 +78,7 @@ null-RHI для headless CI. Если заголовки Vulkan недоступ
 ## Подключение через add_subdirectory
 
 ```cmake
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 project(MyGame LANGUAGES CXX)
 
 set(FBY_ENGINE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "FemboyEngine2D root")
@@ -197,4 +199,4 @@ macOS и Vulkan на Windows и Linux при наличии заголовков
 - Ошибки legacy-алиасов: замените `FemboyEngine::*` и
   `FemboyEngine2D::Runtime` на `FemboyEngine2D::Engine`.
 - Тесты упираются в таймаут: используйте `RelWithDebInfo`, а не `Debug`.
-- Ошибки C++26: обновите компилятор. C++23 не поддерживается.
+- Ошибки C++23: обновите компилятор; более старые стандарты не поддерживаются.

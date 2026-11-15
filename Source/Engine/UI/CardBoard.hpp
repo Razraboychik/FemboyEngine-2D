@@ -38,7 +38,7 @@ struct SlotComponent
     float Rotation = 0.0f;
     std::uint16_t Layer = 0;
     std::uint16_t Reserved = 0;
-    // Resolved board-space position and occupancy. An anchored slot uses this
+    // Resolved board-space position and occupancy.
     Vector2D Position{};
     bool IsOccupied = false;
 };
@@ -68,7 +68,7 @@ struct SlotLayout
     float Rotation = 0.0f;
 };
 
-// Pure layout function shared by the ECS system and the UI packer. `slotIndex` is
+// Pure layout function shared by the ECS system and the UI packer.
 [[nodiscard]] SlotLayout ComputeSlotLayout(const CardBoardComponent& InBoard, const SlotComponent& InSlot) noexcept;
 
 class CardBoardSystem

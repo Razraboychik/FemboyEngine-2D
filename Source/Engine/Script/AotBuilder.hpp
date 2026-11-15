@@ -51,7 +51,7 @@ struct AotBuildOptions
     std::string moduleName = "logic_graph";
     // Keep the generated .cpp next to the native library for inspection.
     bool keepSource = true;
-    // Header force-included before the generated unit. ReleaseCooker uses it to
+    // Header force-included before the generated unit.
     std::filesystem::path forceIncludeHeader{};
     // Extra flags appended after the standard ones. Kept explicit so a cook can
     std::string extraFlags{};

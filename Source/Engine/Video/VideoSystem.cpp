@@ -1,4 +1,4 @@
-// FemboyEngine2D - VideoSystem: the fixed player-slot array and the
+// FemboyEngine2D - VideoSystem: the fixed player-slot array.
 #include "Engine/Video/VideoStream.hpp"
 
 #include "Engine/Assets/AssetDatabase.hpp"
@@ -48,7 +48,7 @@ bool VideoSystem::Initialize(Rhi::RHI* InGpu, VirtualFileSystem* InVfs, const Vp
         MBackend = LibvpxBackend();
         if (MBackend == nullptr)
         {
-            // Not fatal: a headless editor or a test injects a backend later,
+            // Not fatal: a headless editor or a test injects a backend later.
             LogWarn("video", "libvpx (vpx.dll / libvpx.so) not found; VideoSystem opens without a VP9 decoder");
         }
     }
@@ -90,7 +90,7 @@ bool VideoSystem::Open(VideoStreamComponent& InComponent, std::string_view InPat
         SetError(InError, "VideoSystem is not initialized with a VirtualFileSystem");
         return false;
     }
-    // Pin() is the owning read: if the asset watcher reloads this clip while the
+    // Pin() is the owning read: if the asset watcher reloads this clip.
     const auto ScopedPinned = MVfs->Pin(InPath);
     if (!ScopedPinned)
     {

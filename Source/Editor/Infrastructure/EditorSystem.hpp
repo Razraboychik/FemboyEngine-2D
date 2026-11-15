@@ -88,7 +88,7 @@ struct EditorDesc
     bool showProjectDashboard = true;
     // OS watcher + background importer. The editor still works with it off.
     bool watchAssets = true;
-    // Texture array a hot-reloaded atlas layer writes into. Invalid = the
+    // Texture array a hot-reloaded atlas layer writes into.
     Rhi::TextureArrayHandle textureArray{};
     Assets::TextureFormat textureArrayFormat = Assets::TextureFormat::Rgba8;
     Assets::TextureFormat defaultTextureFormat = Assets::TextureFormat::Bc7Srgb;
@@ -121,10 +121,10 @@ public:
     void Shutdown();
     [[nodiscard]] bool IsInitialized() const noexcept;
 
-    // Adds Tick as a Render-phase node. The graph is built once after every
+    // Adds Tick as a Render-phase node.
     [[nodiscard]] bool Register(Ecs::SystemGraph& InGraph);
 
-    // The Render-phase system body. Builds one ImGui frame and updates the
+    // The Render-phase system body.
     void Tick(Ecs::SystemContext& InContext);
 
     // Optional frame profiler. The host records phase scopes into it and the
@@ -133,6 +133,9 @@ public:
     // Runtime plugin host owned by the app. Plugins are project-scoped; the
     // editor only displays and loads paths from the current project.
     void SetPluginHost(Plugin::PluginHost* InHost) noexcept;
+    // Directory scanned for loadable plugin files. The list is an engine-side
+    // discovery result; the editor only binds a selected file to the project.
+    void SetPluginDirectory(const std::filesystem::path& InDirectory) noexcept;
     // Runtime accessibility effect catalog consumed by the PIE frame.
     void SetEffectRegistry(Ui::AccessibilityEffectRegistry* InEffects) noexcept;
     // Reloads only the current project's plugin list. The host is unloaded
@@ -141,6 +144,10 @@ public:
 
     // SDL_Event* from WindowManager's observer.
     void OnPlatformEvent(const void* InSdlEvent);
+
+    // Speaks one line through the editor narrator. Panels call it for events a
+    // screen reader cannot see: commits, selections, build results, PIE state.
+    void Announce(std::string_view InText, bool InUrgent = false) noexcept;
 
     [[nodiscard]] bool WantsMouse() const noexcept;
     [[nodiscard]] bool WantsKeyboard() const noexcept;
@@ -172,7 +179,7 @@ public:
     [[nodiscard]] AnimationGraphCanvasPanel& AnimationGraph() noexcept;
     // PIE world seam shared by both ImNodes debug canvases.
     void BindAIPlayInEditor(const Ecs::Registry* InPlayWorld, bool InActive) noexcept;
-    // The registry the viewport/render extract should sample. When PIE is
+    // The registry the viewport/render extract should sample.
     [[nodiscard]] Ecs::Registry* ActiveWorld() noexcept;
     [[nodiscard]] const Ecs::Registry* ActiveWorld() const noexcept;
     // PIE client viewport: the second offscreen target that presents
@@ -198,14 +205,14 @@ public:
     [[nodiscard]] AssetImportService& Importer() noexcept;
     [[nodiscard]] AssetDatabaseWatchSystem& Watcher() noexcept;
     [[nodiscard]] bool ProjectOpen() const noexcept;
-    // Set by the Project Dashboard's Quit action; the host checks it in its
+    // Set by the Project Dashboard's Quit action.
     [[nodiscard]] bool ShouldQuit() const noexcept;
 
     // Asks the editor to quit. A dirty scene opens the save/discard/cancel
     // prompt first; a clean scene or the dashboard quits immediately.
     void RequestQuit();
 
-    // Applies an already validated project: mounts its assets folder, loads the
+    // Applies an already validated project: mounts its assets folder and loads the config.
     [[nodiscard]] bool OpenProject(Ecs::SystemContext& InContext, const ProjectPaths& InPaths,
                                    const ProjectConfig& InConfig, std::string* InError = nullptr,
                                    bool InLoadDefaultScene = false);
@@ -213,7 +220,7 @@ public:
     // Appends a line to the editor console. Useful for gameplay/plugin messages
     void PrintLine(std::string_view InLine);
 
-    // Scene IO. The editor's component table is used; custom components can be
+    // Scene IO. The editor's component table is used.
     [[nodiscard]] bool LoadScene(Ecs::SystemContext& InContext, const std::filesystem::path& InPath,
                                  std::string* InError = nullptr);
     [[nodiscard]] bool SaveScene(Ecs::SystemContext& InContext, const std::filesystem::path& InPath,
@@ -238,6 +245,12 @@ public:
     void ResolveTilemapRefs(Ecs::Registry& InRegistry, VirtualFileSystem* InVfs);
 
 private:
+    // Applies the editor narrator and bridge policy and advances the speech
+    // queue. Runs once per frame before the ImGui frame starts.
+    void UpdateSpeech(Ecs::SystemContext& InContext);
+    // Rebuilds the semantic tree from the live ImGui windows.
+    void BuildEditorTree() noexcept;
+
     struct Impl;
     std::unique_ptr<Impl> MImpl;
 };

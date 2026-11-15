@@ -30,7 +30,7 @@ constexpr std::uint16_t kInvalidIndex = 0xFFFFu;
     const float ScopedY2 = ScopedV1 + InTo.inTangent.Y;
     const float ScopedY3 = ScopedV1;
 
-    // Solve x(u) = time by bisection. Eight iterations on a per-segment basis is
+    // Solve x(u) = time by bisection.
     float ScopedLow = 0.0f;
     float ScopedHigh = 1.0f;
     float ScopedU = 0.0f;

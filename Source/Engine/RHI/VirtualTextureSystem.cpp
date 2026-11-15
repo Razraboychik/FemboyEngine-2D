@@ -321,7 +321,7 @@ std::uint32_t VirtualTextureSystem::ChooseVictim(std::uint32_t InLayer) noexcept
         }
         ScopedCursor = (ScopedCursor + 1u) % MSlotsPerLayer;
     }
-    // Every page in this pool is visible this frame. Skip the request instead of
+    // Every page in this pool is visible this frame.
     ++MStats.spills;
     return std::numeric_limits<std::uint32_t>::max();
 }
