@@ -68,7 +68,19 @@ void UiTick(void* InUser, float InDt)
 }
 }
 
-FBY_DEFINE_PLUGIN(kPluginName, kPluginVersion, "FemboyEngine test suite", "clang " __VERSION__, kComponents,
+// MSVC has no __VERSION__; report its toolset version instead so the plugin
+// descriptor stays valid with both supported Windows compilers.
+#if defined(__VERSION__)
+#define FBY_HELLO_COMPILER "clang " __VERSION__
+#elif defined(_MSC_FULL_VER)
+#define FBY_HELLO_STRINGIFY_IMPL(InValue) #InValue
+#define FBY_HELLO_STRINGIFY(InValue) FBY_HELLO_STRINGIFY_IMPL(InValue)
+#define FBY_HELLO_COMPILER "msvc " FBY_HELLO_STRINGIFY(_MSC_FULL_VER)
+#else
+#define FBY_HELLO_COMPILER "unknown compiler"
+#endif
+
+FBY_DEFINE_PLUGIN(kPluginName, kPluginVersion, "FemboyEngine test suite", FBY_HELLO_COMPILER, kComponents,
                   {
                       GHost = rawHost;
                       Log("loaded; component layout hashes accepted");
