@@ -27,6 +27,11 @@ ERROR_MARKERS = (
     "The following tests FAILED",
     "FAIL ",
     "Assertion",
+    "Exception",
+    "Access violation",
+    "Timeout",
+    "timeout",
+    "Segmentation",
 )
 MAX_ANNOTATIONS = 60
 

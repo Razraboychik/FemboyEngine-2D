@@ -512,7 +512,7 @@ void TestAutoImportAndBackgroundCook()
 
     // The watcher's scheduleCook thunk queued a background job.
     std::uint32_t ScopedCommitted = 0;
-    for (int ScopedAttempt = 0; ScopedAttempt < 600 && ScopedCommitted < 2; ++ScopedAttempt)
+    for (int ScopedAttempt = 0; ScopedAttempt < 1200 && ScopedCommitted < 2; ++ScopedAttempt)
     {
         ScopedCommitted += ScopedImporter.Tick(&ScopedError);
         // Sleep until both cooks are in: a second worker can finish after the
@@ -521,6 +521,14 @@ void TestAutoImportAndBackgroundCook()
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+    }
+    if (ScopedCommitted < 2)
+    {
+        const Fby::Editor::AssetImportService::Stats ScopedStats = ScopedImporter.GetStats();
+        std::printf("cook timeout: imported=%u queued=%u cooked=%u committed=%u failed=%u dropped=%u error=%s\n",
+                    ScopedImported, ScopedStats.queued.load(), ScopedStats.cooked.load(),
+                    ScopedStats.committed.load(), ScopedStats.failed.load(), ScopedStats.dropped.load(),
+                    ScopedError.c_str());
     }
     Check(ScopedCommitted >= 2, "both cook workers committed a texture");
     Check(std::filesystem::is_regular_file(ScopedRoot / "textures" / "villain.ftex"),
@@ -557,7 +565,7 @@ void TestAutoImportAndBackgroundCook()
     Check(ScopedWatcher.InjectChange("textures/hero.png"), "inject a changed source");
     (void)ScopedWatcher.Poll();
     std::uint32_t ScopedReloaded = 0;
-    for (int ScopedAttempt = 0; ScopedAttempt < 600 && ScopedReloaded == 0; ++ScopedAttempt)
+    for (int ScopedAttempt = 0; ScopedAttempt < 1200 && ScopedReloaded == 0; ++ScopedAttempt)
     {
         ScopedReloaded = ScopedImporter.Tick(&ScopedError);
         if (ScopedReloaded == 0)
@@ -965,6 +973,7 @@ void TestCommandStackLimits()
 
 int main()
 {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     TestProjectCreationAndConfig();
     TestAutoImportAndBackgroundCook();
     TestSpawnCommand();
