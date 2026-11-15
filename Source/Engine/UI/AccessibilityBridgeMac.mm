@@ -242,9 +242,11 @@ namespace
     FbyAccessibilityElement* ScopedElement = [MElements objectForKey:ScopedKey];
     if (ScopedElement == nil)
     {
-        ScopedElement = [[FbyAccessibilityElement alloc] initWithRole:NSAccessibilityGroupRole
-                                                                 frame:NSZeroRect
-                                                                 label:@""];
+        ScopedElement = [[FbyAccessibilityElement alloc] init];
+        ScopedElement.NodeId = InId;
+        [ScopedElement setAccessibilityRole:NSAccessibilityGroupRole];
+        [ScopedElement setAccessibilityFrame:NSZeroRect];
+        [ScopedElement setAccessibilityLabel:@""];
         ScopedElement.NodeId = InId;
         [MElements setObject:ScopedElement forKey:ScopedKey];
     }

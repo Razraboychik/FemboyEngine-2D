@@ -1532,7 +1532,7 @@ RenderTargetHandle MetalRHI::CreateHudTarget(Extent2D InSize)
 {
     RenderTargetDesc desc;
     desc.size = InSize;
-    desc.format = RenderTargetFormat::Rgba8;
+    desc.format = RenderTargetFormat::Rgba8Unorm;
     return CreateRenderTarget(desc);
 }
 
