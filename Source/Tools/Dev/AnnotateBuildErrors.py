@@ -28,7 +28,7 @@ ERROR_MARKERS = (
     "FAIL ",
     "Assertion",
 )
-MAX_ANNOTATIONS = 30
+MAX_ANNOTATIONS = 60
 
 
 def escape(text: str) -> str:
@@ -47,20 +47,25 @@ def main() -> int:
         return 0
 
     text = root.read_text(encoding="utf-8", errors="replace")
-    emitted = 0
+    candidates = []
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or not any(marker in stripped for marker in ERROR_MARKERS):
             continue
-        # A bare "error:" inside a command echo is noise; keep real compiler
-        # diagnostics and linker failures.
-        match = re.search(r"error:|fatal error:|FAILED:|CMake Error|undefined reference|\*\*\*Failed|The following tests FAILED|FAIL |Assertion", stripped)
-        if match is None:
-            continue
-        print(f"::error::{escape(stripped[:900])}")
+        candidates.append(stripped)
+
+    # Compiler diagnostics and assertion lines explain the failure; ctest's
+    # "***Failed" summary only names the test. Annotate the explanations first.
+    primary = [
+        line
+        for line in candidates
+        if "error:" in line or "FAIL " in line or "Assertion" in line or "fatal error" in line
+    ]
+    secondary = [line for line in candidates if line not in primary]
+    emitted = 0
+    for line in (primary + secondary)[: args.limit]:
+        print(f"::error::{escape(line[:900])}")
         emitted += 1
-        if emitted >= args.limit:
-            break
 
     if emitted == 0:
         print("::error::build failed without a recognizable compiler error; see the job log")
