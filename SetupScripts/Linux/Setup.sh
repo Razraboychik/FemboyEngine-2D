@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # FemboyEngine 2.0 - one-click Linux dependency setup.
 #
-# Installs the pinned toolchain (CMake, Ninja, a C++26 compiler, Vulkan loader,
+# Installs the pinned toolchain (CMake, Ninja, a C++23 compiler, Vulkan loader,
 # glslang) and materialises the exact dependency sources into third_party/.
 # CMake prefers those local checkouts, so a clean configure after this script
 # needs no network access.
@@ -114,10 +114,12 @@ install_system_linux() {
         sudo apt-get update
         if [[ "${RUN_CPP}" -eq 1 ]]; then
             sudo apt-get install -y --no-install-recommends ${CPP_APT}
-            if apt-cache show g++-16 >/dev/null 2>&1; then
+            if apt-cache show g++-14 >/dev/null 2>&1; then
+                sudo apt-get install -y --no-install-recommends g++-14 gcc-14
+            elif apt-cache show g++-16 >/dev/null 2>&1; then
                 sudo apt-get install -y --no-install-recommends g++-16 gcc-16
             else
-                warn "g++-16 is not packaged here; the distribution g++ is installed instead"
+                warn "g++-14 is not packaged here; the distribution g++ is installed instead"
             fi
         fi
         if [[ "${RUN_ARCHIVER}" -eq 1 ]]; then
@@ -180,8 +182,9 @@ CMKE_OK=0
 if need cmake; then
     CMAKE_VERSION="$(cmake --version | head -n1 | awk '{print $3}')"
     CMAKE_MAJOR="${CMAKE_VERSION%%.*}"
-    if [[ "${CMAKE_MAJOR}" -lt 3 ]]; then
-        warn "CMake ${CMAKE_VERSION} is too old; 3.28+ is required"
+    CMAKE_MINOR="$(printf '%s' "${CMAKE_VERSION}" | cut -d. -f2)"
+    if [[ "${CMAKE_MAJOR}" -lt 3 ]] || { [[ "${CMAKE_MAJOR}" -eq 3 ]] && [[ "${CMAKE_MINOR}" -lt 22 ]]; }; then
+        warn "CMake ${CMAKE_VERSION} is too old; 3.22+ is required"
     else
         CMKE_OK=1
     fi
@@ -192,23 +195,23 @@ if command -v clang++ >/dev/null 2>&1; then
     CLANG_VERSION="$(clang++ --version | head -n1)"
     CLANG_MAJOR="$(printf '%s\n' "${CLANG_VERSION}" | awk '{print $3}' | cut -d. -f1)"
     echo "  clang++ : ${CLANG_VERSION}"
-    if [[ "${CLANG_MAJOR}" =~ ^[0-9]+$ ]] && [[ "${CLANG_MAJOR}" -lt 23 ]]; then
-        warn "clang++ ${CLANG_MAJOR} is below the supported minimum 23"
+    if [[ "${CLANG_MAJOR}" =~ ^[0-9]+$ ]] && [[ "${CLANG_MAJOR}" -lt 19 ]]; then
+        warn "clang++ ${CLANG_MAJOR} is below the supported minimum 19"
     fi
     printf 'clang = %s\n' "${CLANG_VERSION}" >> "${LOCK}"
 else
-    warn "clang++ is missing; Clang 23.1.4+ is the validated toolchain"
+    warn "clang++ is missing; Clang 19.1+ is the validated toolchain"
 fi
 if command -v g++ >/dev/null 2>&1; then
     GCC_VERSION="$(g++ -dumpfullversion 2>/dev/null || g++ -dumpversion)"
     GCC_MAJOR="${GCC_VERSION%%.*}"
     echo "  g++     : ${GCC_VERSION}"
-    if [[ "${GCC_MAJOR}" -lt 16 ]]; then
-        warn "g++ ${GCC_MAJOR} is below the supported minimum 16"
+    if [[ "${GCC_MAJOR}" -lt 14 ]]; then
+        warn "g++ ${GCC_MAJOR} is below the supported minimum 14"
     fi
     printf 'gcc = %s\n' "${GCC_VERSION}" >> "${LOCK}"
 else
-    warn "g++ is missing; GCC 16.2+ is the second-opinion toolchain"
+    warn "g++ is missing; GCC 14.1+ is the second-opinion toolchain"
 fi
 if [[ -n "${VULKAN_SDK:-}" ]]; then
     echo "  VULKAN_SDK=${VULKAN_SDK}"

@@ -1,4 +1,4 @@
-// FemboyEngine2D - cook-time FemboyScript -> C++26 transpiler.
+// FemboyEngine2D - cook-time FemboyScript -> C++23 transpiler.
 #pragma once
 
 #include "Engine/Script/Bytecode.hpp"
@@ -16,7 +16,7 @@ struct AotTranspileOptions
     bool emitComments = true;
 };
 
-// Produces a complete C++26 translation unit. Returns false when the program
+// Produces a complete C++23 translation unit. Returns false when the program
 [[nodiscard]] bool TranspileProgramToCpp(const CompiledProgram& InProgram, const AotTranspileOptions& InOptions,
                                          std::string* InSource, std::string* InError = nullptr);
 

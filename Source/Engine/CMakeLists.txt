@@ -45,6 +45,7 @@ set(FBY_ENGINE_SOURCES
     Core/CryptoAsymmetric.cpp
     Core/CryptoKdf.cpp
     Core/Sha256.cpp
+    Core/Simd.cpp
     Core/JobSystem.cpp
     Core/DataTable.cpp
     Core/CrashHandler.cpp
@@ -615,8 +616,11 @@ if(WIN32)
         target_compile_definitions(fby_engine PRIVATE FBY_HAS_WINRT=1)
         target_link_libraries(fby_engine PRIVATE windowsapp)
         # C++/WinRT uses exceptions; the engine policy is -fno-exceptions, so the
-        # single adapter translation unit opts back in.
-        set_source_files_properties(UI/TtsWinRt.cpp PROPERTIES COMPILE_OPTIONS "-fexceptions;-frtti")
+        # single adapter translation unit opts back in. MSVC enables exceptions
+        # through /EHsc and rejects the GCC-style switches.
+        if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+            set_source_files_properties(UI/TtsWinRt.cpp PROPERTIES COMPILE_OPTIONS "-fexceptions;-frtti")
+        endif()
     else()
         message(STATUS "One-core speech: C++/WinRT projection not found; SAPI voices only")
     endif()

@@ -2,11 +2,11 @@
 
 [English](../README.md) | [Русский перевод](README_RU.md)
 
-**Data-oriented 2D-движок для игр, написанный с нуля на C++26.**
+**Data-oriented 2D-движок для игр, написанный с нуля на C++23.**
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](../LICENSE)
-[![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
-[![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
+[![C++23](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
+[![CMake 3.22+ (presets need 3.25)](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
@@ -116,7 +116,7 @@ FemboyEngine2D построен вокруг трёх идей: **ECS** отве
 | Аудио | DSP-граф с шинами/ducking/reverb, зоны, лимитер, Ogg/Opus, живое пространственное усиление и панорама, захват голоса/AEC/RNNoise, uplink/downlink-эффекты с условиями, паки пресетов `.fbyvoice`, плагинная таблица пресетов и локальные реакции-звуки | Голоса и шины предаллоцированы, граф не строится заново на кадр, capture-буферы явные |
 | UI | Процедурные SDF-примитивы PinkUI, DPI-масштабирование, темы, гипертекст, widget kit, Unicode-границы через libunibreak, опциональный Tab/arrow-фокус, CPU clip rects, стек текста HarfBuzz, accessibility kernel | Retained-данные, span’ы команд на кадр, клипнутые квады и SDF-примитивы вместо аллокации на виджет |
 | Редактор | Транзакционный `CommandStack`, канвасы ImNodes, менеджер проектов, PIE Play/Pause/Stop, Play (Multiplayer), отладчик скриптов, редактор тайлмапов, превью текстур, панель Transport Groups, borderless fullscreen | Команды авторинга — явные транзакции; PIE владеет изолированным миром и освобождает его на Stop |
-| Скрипты | LogicGraph в bytecode VM и в C++26 AOT-плагин, physics/capability-узлы и нативы, debug info, breakpoints и stepping, `Compile + Nativize`, AOT manifest cook gate | Фиксированный стек и регистровый файл VM, нативные модули для cooked-сборок, без аллокаций скрипта в фиксированном шаге |
+| Скрипты | LogicGraph в bytecode VM и в C++23 AOT-плагин, physics/capability-узлы и нативы, debug info, breakpoints и stepping, `Compile + Nativize`, AOT manifest cook gate | Фиксированный стек и регистровый файл VM, нативные модули для cooked-сборок, без аллокаций скрипта в фиксированном шаге |
 
 ---
 
@@ -252,19 +252,19 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 ## Сборка
 
-Требования: CMake 3.28+, Ninja и один из компиляторов: **Clang 23.1.4+**
-(clang-cl на Windows, clang++ на Unix), **MSVC 19.44+**, **AppleClang 21+** или
-**GCC 16.2.0+**. clang-cl — эталонный тулчейн, остальные поддерживаются как
+Требования: CMake 3.22+ (presets need 3.25), Ninja и один из компиляторов: **Clang 19.1+**
+(clang-cl на Windows, clang++ на Unix), **MSVC 19.40+**, **AppleClang 16+** или
+**GCC 14.1+**. clang-cl — эталонный тулчейн, остальные поддерживаются как
 альтернативы и никогда не обязательны. На Windows запускайте из оболочки,
 которая предоставляет
 заголовки и библиотеки Windows SDK. Скрипты установки ставят clang-cl / clang++
-как эталонный тулчейн и GCC 16.2.0 (MinGW-w64 UCRT) как второй компилятор. На
+как эталонный тулчейн и GCC 14.1 (MinGW-w64 UCRT) как второй компилятор. На
 Windows `SetupScripts/Windows/SetupCpp.bat` скачивает официальный MSI
-**LLVM 23.1.4** и проверяет версию `clang-cl`.
+**LLVM 19.1** и проверяет версию `clang-cl`.
 
-Проверенная сборка использует **clang-cl 23.1.4 на Windows и clang++ на других
-платформах**; именно её запускают CI и release gate. **MSVC 19.44+**,
-**GCC 16.2.0** и **AppleClang 21+** поддерживаются как альтернативы; матрица
+Проверенная сборка использует **clang-cl 19.1 на Windows и clang++ на других
+платформах**; именно её запускают CI и release gate. **MSVC 19.40+**,
+**GCC 14.1** и **AppleClang 16+** поддерживаются как альтернативы; матрица
 выбора компилятора — в [build-workflow_RU.md](../Documentation/design/build-workflow_RU.md).
 
 ```bat

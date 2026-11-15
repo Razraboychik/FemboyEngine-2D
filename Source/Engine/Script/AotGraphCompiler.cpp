@@ -1,4 +1,4 @@
-// FemboyEngine2D - LogicGraph -> canonical bytecode -> C++26.
+// FemboyEngine2D - LogicGraph -> canonical bytecode -> C++23.
 #include "Engine/Script/AotGraphCompiler.hpp"
 
 #include <utility>

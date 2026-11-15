@@ -48,7 +48,7 @@ public:
     // PIE path: graph -> canonical bytecode. Safe to call every edit; the panel
     [[nodiscard]] bool Compile();
     [[nodiscard]] bool CompileText();
-    // Release path: graph -> C++26 -> native library on a background jthread.
+    // Release path: graph -> C++23 -> native library on a background jthread.
     [[nodiscard]] bool StartAotBuild();
 
     [[nodiscard]] Script::LogicGraph& Graph() noexcept

@@ -478,7 +478,7 @@ fby_add_engine_test(fby_script_heap_test script_heap ScriptHeapTest.cpp)
 # FemboyScript debug data: source spans, locals, breakpoints, stepping, fields.
 fby_add_engine_test(fby_script_debug_test script_debug ScriptDebugTest.cpp)
 
-# AOT backend: bytecode -> C++26 source, LayoutHash validation and the
+# AOT backend: bytecode -> C++23 source, LayoutHash validation and the
 add_executable(fby_script_aot_test ScriptAotTest.cpp)
 target_link_libraries(fby_script_aot_test PRIVATE FemboyEngine2D::Engine)
 target_compile_definitions(fby_script_aot_test PRIVATE
@@ -918,6 +918,11 @@ fby_add_engine_test(fby_speech_languages_test speech_languages SpeechLanguagesTe
 
 # AT-SPI2 mapping used by the Linux bridge: roles, interfaces and state bits.
 fby_add_engine_test(fby_atspi_model_test atspi_model AtspiModelTest.cpp)
+
+# C++23 batch primitives: SSE2/NEON/std::simd backend equivalence and a local
+# microbenchmark; FunctionRef is the non-allocating callback view.
+fby_add_engine_test(fby_simd_test simd SimdTest.cpp)
+fby_add_engine_test(fby_function_ref_test function_ref FunctionRefTest.cpp)
 
 # Voice packs: manifest discovery, the helper process protocol and the layered
 # OS/pack routing. The helper is a plain test program, not a shipped TTS.

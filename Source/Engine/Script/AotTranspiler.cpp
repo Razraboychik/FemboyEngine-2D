@@ -1,4 +1,4 @@
-// FemboyEngine2D - FemboyScript bytecode -> C++26 transpiler.
+// FemboyEngine2D - FemboyScript bytecode -> C++23 transpiler.
 #include "Engine/Script/AotTranspiler.hpp"
 
 #include "Engine/Script/AotAbi.hpp"

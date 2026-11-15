@@ -7,18 +7,23 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # clang-cl is the reference Windows toolchain and the release gate; MSVC,
 # Clang, AppleClang and GCC are supported alternatives, never an obligation.
-# The floor is the release this line validates, not an older compatibility
-# version: the engine uses the latest C++26 library surface.
-set(FBY_MIN_CLANG "23.1.4")
-# The macOS x64 Homebrew bottle currently ships Clang 22.1.8; Apple Silicon
-# uses the 23.x bottle. Keep the x64 validation gate runnable without weakening
-# the Windows and Linux reference toolchains.
-if(APPLE)
-    set(FBY_MIN_CLANG "22.1.8")
+# The engine targets C++23, the latest ratified standard. The floors are the
+# oldest compiler generations that provide the C++23 library surface the probes
+# below require. Newer releases are accepted without an upper bound; the
+# reference CI pins one version only to keep the gate reproducible.
+set(FBY_MIN_CLANG "19.1.0")
+set(FBY_MIN_GCC "14.1.0")
+set(FBY_MIN_MSVC "19.40")
+set(FBY_MIN_APPLECLANG "16.0")
+
+# C++23 is the contract; C++26 is an opt-in experimental mode that enables the
+# C++26 library accelerations behind feature probes. The engine never requires
+# C++26 syntax, so both modes build the same public API.
+set(FBY_CXX_STANDARD "23" CACHE STRING "C++ language standard: 23 (default) or 26 (experimental)")
+set_property(CACHE FBY_CXX_STANDARD PROPERTY STRINGS 23 26)
+if(NOT FBY_CXX_STANDARD STREQUAL "23" AND NOT FBY_CXX_STANDARD STREQUAL "26")
+    message(FATAL_ERROR "FBY_CXX_STANDARD must be 23 or 26; found '${FBY_CXX_STANDARD}'.")
 endif()
-set(FBY_MIN_GCC "16.2.0")
-set(FBY_MIN_MSVC "19.44")
-set(FBY_MIN_APPLECLANG "21.0")
 
 set(FBY_IS_MSVC FALSE)
 set(FBY_IS_CLANG_CL FALSE)
@@ -60,18 +65,17 @@ else()
 endif()
 
 if(FBY_IS_CLANG_CL OR FBY_IS_MSVC)
-    # clang-cl and cl.exe spell the C++26 draft switch the Microsoft way.
+    # MSVC has no /std:c++23 switch; c++latest is the supported modern mode.
     set(FBY_CXX_STANDARD_FLAG "/std:c++latest")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    # AppleClang 21 still spells the C++26 draft as c++2c; c++26 is accepted
-    # from the upstream Clang toolchain used on Linux and by the setup scripts.
-    set(FBY_CXX_STANDARD_FLAG "-std=c++2c")
+    # AppleClang spells C++23 as c++2b and C++26 as c++2c.
+    if(FBY_CXX_STANDARD STREQUAL "26")
+        set(FBY_CXX_STANDARD_FLAG "-std=c++2c")
+    else()
+        set(FBY_CXX_STANDARD_FLAG "-std=c++2b")
+    endif()
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(FBY_CXX_STANDARD_FLAG "-std=c++26")
-else()
-    message(FATAL_ERROR
-        "FemboyEngine2D supports MSVC, Clang and GCC only; "
-        "the active compiler is '${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}'.")
+    set(FBY_CXX_STANDARD_FLAG "-std=c++${FBY_CXX_STANDARD}")
 endif()
 
 add_library(fby_compiler_flags INTERFACE)
@@ -79,6 +83,7 @@ add_library(fby::compiler_flags ALIAS fby_compiler_flags)
 
 target_compile_options(fby_compiler_flags INTERFACE
     $<$<COMPILE_LANGUAGE:CXX>:${FBY_CXX_STANDARD_FLAG}>)
+target_compile_definitions(fby_compiler_flags INTERFACE FBY_CXX_STANDARD=${FBY_CXX_STANDARD})
 
 if(FBY_IS_MSVC)
     target_compile_options(fby_compiler_flags INTERFACE
@@ -245,7 +250,7 @@ function(fby_probe_feature name source)
     fby_try_compile_probe(${name} "${source}" ok)
     if(NOT ok)
         message(FATAL_ERROR
-            "FemboyEngine2D ${FBY_VERSION_STRING} requires a C++26 toolchain, but '${name}' does not compile.\n"
+            "FemboyEngine2D ${FBY_VERSION_STRING} requires a C++23 toolchain, but '${name}' does not compile.\n"
             "Probe source:\n${source}\n"
             "Use MSVC ${FBY_MIN_MSVC}+, Clang ${FBY_MIN_CLANG}+ or GCC ${FBY_MIN_GCC}+, "
             "configured from a shell where the compiler can find the platform headers "

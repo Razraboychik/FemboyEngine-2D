@@ -1,5 +1,5 @@
 # FemboyEngine2D - public release build
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 
 # Version.txt is the single source of truth for the engine version. It may carry
 # a SemVer pre-release suffix, which CMake keeps out of the numeric project
@@ -32,7 +32,7 @@ if(APPLE)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
     set(CMAKE_OBJCXX_EXTENSIONS OFF)
     # The macOS SDK's CoreFoundation headers use opaque fixed-base enums that
-    # Clang 19+ diagnoses in C++26 parsing. They are valid API declarations.
+    # Clang 19+ diagnoses in C++23 parsing. They are valid API declarations.
     add_compile_options(-Wno-elaborated-enum-base)
 endif()
 
@@ -302,7 +302,7 @@ message(STATUS "")
 message(STATUS "FemboyEngine2D ${FBY_VERSION_STRING}")
 message(STATUS "  platform : ${CMAKE_SYSTEM_NAME}")
 message(STATUS "  compiler : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
-message(STATUS "  language : C++26 (${FBY_CXX_STANDARD_FLAG})")
+message(STATUS "  language : C++${FBY_CXX_STANDARD} (${FBY_CXX_STANDARD_FLAG})")
 message(STATUS "  rhi      : ${FBY_RHI_BACKEND}")
 message(STATUS "  source   : ${FBY_SOURCE_ROOT}")
 message(STATUS "  output   : ${FBY_OUTPUT_DIR}")

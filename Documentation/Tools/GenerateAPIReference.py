@@ -77,8 +77,8 @@ TITLES = {
     "ru": "FemboyEngine2D — Справочник API",
 }
 SUBTITLES = {
-    "en": "C++26 data-oriented engine - complete public surface, contracts and a build-from-zero walkthrough",
-    "ru": "Движок на C++26 в парадигме data-oriented: полная публичная поверхность, контракты и пошаговый пример",
+    "en": "C++23 data-oriented engine - complete public surface, contracts and a build-from-zero walkthrough",
+    "ru": "Движок на C++23 в парадигме data-oriented: полная публичная поверхность, контракты и пошаговый пример",
 }
 
 
@@ -115,10 +115,10 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "The engine targets C++26 with GCC 16.2.0 or newer and Clang 23.1.4 or newer; the Windows release "
+                    "The engine targets C++23 with GCC 14.1 or newer and Clang 19.1 or newer; the Windows release "
                     "candidate is built with clang-cl against the MSVC standard library. Four rules are load "
                     "bearing and every public API is designed around them:",
-                    "Движок рассчитан на C++26 с GCC 16.2 или новее и Clang 23.1.4 или новее; релиз-кандидат под Windows "
+                    "Движок рассчитан на C++23 с GCC 14.1 или новее и Clang 19.1 или новее; релиз-кандидат под Windows "
                     "собирается clang-cl со стандартной библиотекой MSVC. Четыре правила являются несущими, и "
                     "каждый публичный API спроектирован вокруг них:",
                 ),
@@ -234,10 +234,10 @@ SECTIONS: list[dict] = [
             {
                 "type": "p",
                 "text": B(
-                    "The compiler wrapper (cmake/FbyCompiler.cmake) owns the C++26 flag, the warning set and the "
+                    "The compiler wrapper (cmake/FbyCompiler.cmake) owns the C++23 flag, the warning set and the "
                     "sanitizer switches. Do not add flags per target: a target that needs a different dialect is "
                     "a target that should not exist.",
-                    "Обёртка компилятора (cmake/FbyCompiler.cmake) задаёт флаг C++26, набор предупреждений и "
+                    "Обёртка компилятора (cmake/FbyCompiler.cmake) задаёт флаг C++23, набор предупреждений и "
                     "переключатели санитайзеров. Не добавляйте флаги отдельным целям: цель, которой нужен другой "
                     "диалект, не должна существовать.",
                 ),

@@ -1,6 +1,6 @@
 # FemboyEngine2D API Reference Manual
 
-**C++26 data-oriented engine - complete public surface, contracts and a build-from-zero walkthrough**
+**C++23 data-oriented engine - complete public surface, contracts and a build-from-zero walkthrough**
 
 
 Version 0.5.0 (Release) · 2026-11-13 · English
@@ -60,7 +60,7 @@ Version 0.5.0 (Release) · 2026-11-13 · English
 
 This manual specifies the public surface of FemboyEngine2D: every header under Source/Engine and the editor infrastructure that a host links against. It is written against the release-candidate tree, so a symbol described here exists in the headers that ship with that tree, and the appendix index is generated from those headers on every run.
 
-The engine targets C++26 with GCC 16.2.0 or newer and Clang 23.1.4 or newer; the Windows release candidate is built with clang-cl against the MSVC standard library. Four rules are load bearing and every public API is designed around them:
+The engine targets C++23 with GCC 14.1 or newer and Clang 19.1 or newer; the Windows release candidate is built with clang-cl against the MSVC standard library. Four rules are load bearing and every public API is designed around them:
 
 - Simulation state is plain, trivially copyable data. No virtual calls, no owning pointers and no std::string belong in a component, snapshot or network payload.
 - Hot paths do not allocate. Frame scratch memory comes from FrameArena, logs go through fixed char buffers, and callbacks are function pointers plus void*, never std::function.
@@ -90,7 +90,7 @@ ctest --test-dir build --output-on-failure
 python Source/Tools/Dev/CheckStyle.py
 ```
 
-The compiler wrapper (cmake/FbyCompiler.cmake) owns the C++26 flag, the warning set and the sanitizer switches. Do not add flags per target: a target that needs a different dialect is a target that should not exist.
+The compiler wrapper (cmake/FbyCompiler.cmake) owns the C++23 flag, the warning set and the sanitizer switches. Do not add flags per target: a target that needs a different dialect is a target that should not exist.
 
 
 ## 3. Core value types, FORCEINLINE and the cast family

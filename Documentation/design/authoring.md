@@ -173,7 +173,7 @@ stack; the panels re-apply the POD after undo/redo.
 | Live graph -> GLSL -> SPIR-V -> pipeline driver | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp`, `Source/Editor/Infrastructure/MaterialGraphRuntime.cpp` |
 | Material editor, Apply Shader, MeshRenderItem binding | `Source/Editor/Panels/MaterialGraphPanel.hpp`, `Source/Editor/Panels/MaterialGraphPanel.cpp` |
 | VisualScript graph + field/condition/math/spawn nodes | `Source/Engine/Script/GraphCompiler.hpp`, `Source/Engine/Script/GraphCompiler.cpp` |
-| Graph -> bytecode -> C++26 front end | `Source/Engine/Script/AotGraphCompiler.hpp`, `Source/Engine/Script/AotGraphCompiler.cpp` |
+| Graph -> bytecode -> C++23 front end | `Source/Engine/Script/AotGraphCompiler.hpp`, `Source/Engine/Script/AotGraphCompiler.cpp` |
 | Background Clang/GCC `-O3 -shared` cooker | `Source/Engine/Script/AotBuilder.hpp`, `Source/Engine/Script/AotBuilder.cpp` |
 | VisualScript editor, PIE compile, AOT status | `Source/Editor/Panels/VisualScriptPanel.hpp`, `Source/Editor/Panels/VisualScriptPanel.cpp` |
 | Vendored ImNodes (MIT) | `third_party/imnodes` |
@@ -221,8 +221,8 @@ canonical bytecode the VM runs.
 
 Release cooking uses the same bytecode as the single artifact boundary:
 `TranspileLogicGraphToCpp` compiles the graph, parses the bytes and emits one
-flat C++26 function per event. `AotBuilder` writes that file, then invokes the
-system compiler (`clang++`/`g++` with `-std=c++26 -O3 -shared -fPIC` on POSIX;
+flat C++23 function per event. `AotBuilder` writes that file, then invokes the
+system compiler (`clang++`/`g++` with `-std=c++23 -O3 -shared -fPIC` on POSIX;
 the `clang-cl` driver form on Windows) on a worker `jthread`, redirects the
 compiler log to `<module>.log`, and publishes a revision. On Windows the child
 environment is repaired (`TMP`/`TEMP` from a POSIX shell) and

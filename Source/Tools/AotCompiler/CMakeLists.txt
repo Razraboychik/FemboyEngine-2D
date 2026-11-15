@@ -1,4 +1,4 @@
-# fby_aotc - FemboyScript bytecode -> C++26 -> native plugin.
+# fby_aotc - FemboyScript bytecode -> C++23 -> native plugin.
 
 add_executable(fby_aotc Main.cpp)
 

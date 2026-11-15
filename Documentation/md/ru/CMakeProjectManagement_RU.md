@@ -1,14 +1,14 @@
 # Управление проектом и движком через CMake
 
-Применимо к FemboyEngine2D 0.5.0 и CMake 3.28 или новее.
+Применимо к FemboyEngine2D 0.5.0 и CMake 3.22 или новее.
 
 ## Требования к инструментам
 
-Движку нужен C++26:
+Движку нужен C++23:
 
-- Windows: clang-cl 23.1.4+ (эталон) или MSVC 19.44+ (опциональная альтернатива), оба со STL MSVC.
-- Linux: Clang 23.1.4+ или GCC 16.2.0+.
-- macOS: Apple Clang с поддержкой C++26.
+- Windows: clang-cl 19.1+ (эталон) или MSVC 19.40+ (поддерживаемая альтернатива с отдельной CI-джобой), оба со STL MSVC.
+- Linux: Clang 19.1+ или GCC 14.1+.
+- macOS: Apple Clang с поддержкой C++23.
 
 Поддерживаемый генератор проверенной сборки — Ninja. Visual Studio используется
 только как IDE и источник Windows SDK и заголовков.
@@ -76,7 +76,7 @@ null-RHI для headless CI. Если заголовки Vulkan недоступ
 ## Подключение через add_subdirectory
 
 ```cmake
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 project(MyGame LANGUAGES CXX)
 
 set(FBY_ENGINE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "FemboyEngine2D root")
@@ -197,4 +197,4 @@ macOS и Vulkan на Windows и Linux при наличии заголовков
 - Ошибки legacy-алиасов: замените `FemboyEngine::*` и
   `FemboyEngine2D::Runtime` на `FemboyEngine2D::Engine`.
 - Тесты упираются в таймаут: используйте `RelWithDebInfo`, а не `Debug`.
-- Ошибки C++26: обновите компилятор. C++23 не поддерживается.
+- Ошибки C++23: обновите компилятор. C++23 не поддерживается.

@@ -4,7 +4,7 @@ add_library(fby_shaderc_core STATIC ShaderCompiler.cpp)
 
 add_library(FemboyEngine2D::ShaderCompilerCore ALIAS fby_shaderc_core)
 
-# Vendored glslang is C++17. The engine-wide C++26 mode is not applied to these
+# Vendored glslang is C++17. The engine-wide C++23 mode is not applied to these
 target_compile_features(fby_shaderc_core PUBLIC cxx_std_17)
 if(MSVC)
     target_compile_options(fby_shaderc_core PUBLIC /EHsc)

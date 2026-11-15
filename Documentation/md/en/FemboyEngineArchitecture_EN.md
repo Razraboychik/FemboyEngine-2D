@@ -11,7 +11,7 @@
 
 ## 1. Executive summary
 
-FemboyEngine2D is a C++26, data-oriented 2D engine at release-candidate status. The runtime is split into one static library per shipping role: a game links the engine, an editor links the engine plus the editor UI library, and the offline cooker links only the asset libraries. A shipped game never pulls in Dear ImGui, ImGuizmo, ImPlot or the TOML parser.
+FemboyEngine2D is a C++23, data-oriented 2D engine at release-candidate status. The runtime is split into one static library per shipping role: a game links the engine, an editor links the engine plus the editor UI library, and the offline cooker links only the asset libraries. A shipped game never pulls in Dear ImGui, ImGuizmo, ImPlot or the TOML parser.
 
 The design rules are strict. Simulation state is plain, trivially copyable data; hot paths use fixed capacity, function pointers and arena storage; frame paths do not allocate; and every subsystem exposes deterministic, checksummed state. Those rules are what make rollback, hot reload, snapshot testing and GPU multi-draw practical rather than aspirational.
 
@@ -207,7 +207,7 @@ CommandStack is the editor's undo/redo engine. An inspector edit or an ImGuizmo 
 | fby_fempak | Texture/audio/localization cooker; byte-identical with the editor importer |
 | fby_loc_tool | Localization TOML -> FlatBuffers pack |
 | fby_scene_tool | Scene/prefab compiler and round-trip verifier |
-| fby_aotc | Bytecode -> C++26 -> native plugin at cook time |
+| fby_aotc | Bytecode -> C++23 -> native plugin at cook time |
 
 ## 9. Visual graphs and the AOT transcriber
 
@@ -223,11 +223,11 @@ The Material Graph is a small DAG stored in three flat fixed-capacity arrays: no
 
 NodeCanvasPanel is a transactional ImNodes canvas. A panel supplies a CanvasModelOps table of plain function pointers and void*; the canvas never sees a virtual interface. The canvas owns only interaction state and opens exactly one CommandStack transaction per drag or edge edit. Because the whole graph is registered as one external buffer, moving a node records an 8-byte Vector2D, not the whole 7 KiB graph.
 
-VisualScript compiles the LogicGraph to canonical bytecode with a Kahn topological pass; cycles are a compile error, never a runtime stack overflow. The VM executes the exact artifact the cooker ships. For release, AotTranspiler emits one flat C++26 translation unit with one function per event and zero engine dependencies beyond AotAbi.hpp; AotBuilder runs clang/g++ -O3 -shared on a background jthread and the editor polls its state without blocking the frame. The generated module carries the graph hash and every component LayoutHash; the loader validates them before the first call.
+VisualScript compiles the LogicGraph to canonical bytecode with a Kahn topological pass; cycles are a compile error, never a runtime stack overflow. The VM executes the exact artifact the cooker ships. For release, AotTranspiler emits one flat C++23 translation unit with one function per event and zero engine dependencies beyond AotAbi.hpp; AotBuilder runs clang/g++ -O3 -shared on a background jthread and the editor polls its state without blocking the frame. The generated module carries the graph hash and every component LayoutHash; the loader validates them before the first call.
 
 ```cpp
 LogicGraph -> GraphCompiler -> bytecode -> VM (PIE)
-                         \-> AotTranspiler -> C++26 -> clang/g++ -O3 -shared -> plugin
+                         \-> AotTranspiler -> C++23 -> clang/g++ -O3 -shared -> plugin
 
 MaterialGraph -> type-check -> GLSL -> glslang -> SPIR-V -> VkPipeline
 ```

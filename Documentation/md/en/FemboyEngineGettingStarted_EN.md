@@ -6,32 +6,32 @@ This document lists what to install and which files must sit next to the engine 
 
 | Platform | Editor | Game runtime | Toolchain |
 |---|---|---|---|
-| Windows 10/11 x64 | yes | yes | clang-cl 23.1.4+ (primary), MSVC 19.44+, GCC 16.2.0+ |
-| Linux x64 | yes | yes | Clang 23.1.4+, GCC 16.2.0+ |
-| macOS 14+ (Apple Silicon and Intel) | yes | yes | AppleClang 21+ (Xcode 26.4+), Metal backend |
+| Windows 10/11 x64 | yes | yes | clang-cl 19.1+ (primary), MSVC 19.40+, GCC 14.1+ |
+| Linux x64 | yes | yes | Clang 19.1+, GCC 14.1+ |
+| macOS 14+ (Apple Silicon and Intel) | yes | yes | AppleClang 16+ (Xcode 26.4+), Metal backend |
 
 The editor and the game runtime target the three desktop platforms above. SDL3 supplies the window, input and application lifecycle.
 
 ## Required software
 
-**MSVC 19.44+ is supported as an alternative.** On Windows the project builds with clang-cl from LLVM as the reference toolchain, or with MSVC (`cl.exe`) when a team standardizes on it. Both consume the Windows SDK and the MSVC standard library; clang-cl remains what CI and the release gate run.
+**MSVC 19.40+ is supported as an alternative.** On Windows the project builds with clang-cl from LLVM as the reference toolchain, or with MSVC (`cl.exe`) when a team standardizes on it. Both consume the Windows SDK and the MSVC standard library; clang-cl remains what CI and the release gate run.
 
 | Tool | Minimum | Validated | Purpose |
 |---|---|---|---|
-| CMake | 3.28 | 3.31.6 | configure and build |
+| CMake | 3.22 | 3.31.6 | configure and build |
 | Ninja | 1.11 | 1.12.1 | build generator |
-| LLVM / clang-cl | 23.1.4 | 23.1.4 | primary Windows compiler |
-| MSVC (`cl.exe`) | 19.44 | 19.44 | optional Visual Studio-native Windows compiler |
-| Clang (Linux) | 23.1.4 | 23.1.4 | primary Linux compiler |
-| GCC | 16.2.0 | 16.2.0 | second compiler for portability checks |
+| LLVM / clang-cl | 19.1 | 19.1 | primary Windows compiler |
+| MSVC (`cl.exe`) | 19.40 | 19.40 | Visual Studio-native Windows compiler with a dedicated CI job |
+| Clang (Linux) | 19.1 | 19.1 | primary Linux compiler |
+| GCC | 14.1 | 14.1 | second compiler for portability checks |
 | Python | 3.11 | 3.13 | documentation and notices generation |
 | Git | 2.40 | — | clone and version control |
 | Vulkan Loader | 1.4 | 1.4 | runtime on Windows and Linux |
 | MoltenVK | 1.2 | — | Vulkan over Metal on macOS (or the Metal backend directly) |
 | 7-Zip | 21 | 25.01 | unpack the LZMA SDK (otherwise the built-in FbyLZ is used) |
-| Xcode | 26.4 | — | macOS builds (AppleClang 21) |
+| Xcode | 26.4 | — | macOS builds (AppleClang 16) |
 
-The language standard is C++26, so an older compiler will not work even when its CMake version matches.
+The language standard is C++23, so an older compiler will not work even when its CMake version matches.
 
 ## Quick start with the setup scripts
 
@@ -49,7 +49,7 @@ The all-in-one entry points are `SetupScripts/Windows/Setup.bat`,
 `SetupScripts/macOS/Setup.command` and `SetupScripts/Linux/Setup.sh`.
 The C++ scripts install the compiler, CMake, Ninja, the Vulkan headers and the
 pinned source dependencies. On Windows, `SetupScripts/Windows/SetupCpp.bat` installs the official LLVM
-23.1.4 MSI and verifies the `clang-cl` version; the Unix scripts install the
+19.1 MSI and verifies the `clang-cl` version; the Unix scripts install the
 distribution Clang (19+). The archiver scripts install 7-Zip. Vendor SDKs are
 downloaded by the all-in-one Setup only after the corresponding licence flags;
 nothing is part of the engine repository.
@@ -85,7 +85,7 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 
 ### Windows
 
-1. Install LLVM 23.1.4 (clang-cl) and add its `bin` directory to `PATH`.
+1. Install LLVM 19.1 (clang-cl) and add its `bin` directory to `PATH`.
 2. Install Visual Studio Build Tools with the "C++ Build Tools" workload (Windows SDK and standard library headers). The MSVC compiler itself is not used by the clang-cl build.
 3. Install CMake 3.31 and Ninja 1.12 (the Build Tools copy is fine).
 4. Install the Vulkan SDK 1.4 — it provides `vulkan-1.dll` and `VULKAN_SDK`.
@@ -98,7 +98,7 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 sudo apt install build-essential clang cmake ninja-build git pkg-config libvulkan-dev vulkan-tools p7zip-full
 ```
 
-Then lay out the same archives as on Windows. GCC 16.2 comes from the distribution or a separate build; Clang is enough for the primary build.
+Then lay out the same archives as on Windows. GCC 14.1 comes from the distribution or a separate build; Clang is enough for the primary build.
 
 ### macOS
 
@@ -237,12 +237,12 @@ Use RenderDoc for GPU debugging: attach it to `fby_editor.exe` and capture a fra
 
 ## Compiler selection
 
-The 0.4 alpha line supports **Clang 23.1.4+** (clang-cl on Windows, clang++ on Unix), **AppleClang 21+**, **GCC 16.2.0+** and **MSVC 19.44+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.44+ builds the same tree and is supported for local development, but it is not part of the CI gate.
+The 0.4 alpha line supports **Clang 19.1+** (clang-cl on Windows, clang++ on Unix), **AppleClang 16+**, **GCC 14.1+** and **MSVC 19.40+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.40+ builds the same tree in its own Windows CI job.
 
 - **Windows, primary:** clang-cl. It is Clang with the MSVC ABI, the Windows SDK and the MSVC standard library, and it works with the Visual Studio debugger and PDBs.
 - **Windows, optional:** MSVC (`cl.exe`). Choose it when the team standardizes on the Microsoft toolchain; CMake selects `/std:c++latest` and the MSVC warning set. RNNoise falls back to the spectral tier because its vendored C sources use variable-length arrays.
-- **Linux, primary:** clang++. GCC 16.2.0 is the second compiler for portability checks.
-- **macOS:** AppleClang 21+ from Xcode 26.4 with the Metal backend.
+- **Linux, primary:** clang++. GCC 14.1 is the second compiler for portability checks.
+- **macOS:** AppleClang 16+ from Xcode 26.4 with the Metal backend.
 - **One compiler on every platform:** Clang (clang-cl on Windows, clang++ elsewhere). It is the only toolchain that covers all three desktop platforms with one frontend.
 
 The full matrix and the per-OS presets are in [build-workflow.md](../../design/build-workflow.md).

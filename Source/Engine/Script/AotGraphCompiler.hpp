@@ -1,4 +1,4 @@
-// FemboyEngine2D - LogicGraph -> C++26 AOT front end.
+// FemboyEngine2D - LogicGraph -> C++23 AOT front end.
 #pragma once
 
 #include "Engine/Script/AotTranspiler.hpp"
@@ -16,7 +16,7 @@ struct AotGraphTranspileOptions
     AotTranspileOptions transpile{};
 };
 
-// Compiles `graph` to bytecode and then to a complete C++26 translation unit.
+// Compiles `graph` to bytecode and then to a complete C++23 translation unit.
 [[nodiscard]] bool TranspileLogicGraphToCpp(const LogicGraph& InGraph, const AotGraphTranspileOptions& InOptions,
                                             std::string* InSource, LogicCompileResult* InProgramOut = nullptr,
                                             std::string* InError = nullptr);

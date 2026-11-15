@@ -60,28 +60,65 @@ all three systems. See
 
 The 0.5.0 line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
 reference toolchain and the release gate; CI also runs clang, GCC and AppleClang.
-MSVC builds the same tree for local development but is not part of the CI gate.
-Every compiler is a supported alternative, never an obligation. The minimum
-versions are the releases validated for this line, not older compatibility
-targets.
+MSVC builds the same tree and has its own Windows CI job; clang-cl remains the
+release gate. Every compiler is a supported alternative, never an obligation.
+The minimum versions are the oldest supported generations, not an upper bound.
 
 | Compiler | Platform | Minimum | Best for |
 |---|---|---|---|
-| clang-cl | Windows | 23.1.4 | primary Windows build, PDB and Visual Studio debugging |
-| MSVC (`cl.exe`) | Windows | 19.44 | optional alternative for teams standardized on the Microsoft toolchain |
-| clang++ | Linux/macOS/Windows | 23.1.4 | cross-platform parity, primary Unix build |
-| GCC | Linux/MinGW | 16.2.0 | second-opinion compiler and portability checks |
-| AppleClang | macOS | 21.0 (Xcode 26.4) | native macOS/Metal build |
+| clang-cl | Windows | 19.1 | primary Windows build, PDB and Visual Studio debugging |
+| MSVC (`cl.exe`) | Windows | 19.40 | supported alternative with its own Windows CI job |
+| clang++ | Linux/macOS/Windows | 19.1 | cross-platform parity, primary Unix build |
+| GCC | Linux/MinGW | 14.1 | second-opinion compiler and portability checks |
+| AppleClang | macOS | 16.0 (Xcode 16) | native macOS/Metal build |
 
 - **Windows:** clang-cl is the reference build. It uses the Windows SDK and the
   MSVC standard library, and works with the Visual Studio debugger and PDBs. MSVC
-  (`cl.exe`) is the optional alternative for a Visual Studio-native toolchain.
-- **Linux:** clang++ is the reference build; GCC 16.2.0 is the second opinion.
-- **macOS:** AppleClang 21+ with the Metal backend.
+  (`cl.exe`) is the supported Visual Studio-native alternative.
+- **Linux:** clang++ is the reference build; GCC 14.1 is the second opinion.
+- **macOS:** AppleClang 16+ with the Metal backend.
 - **One compiler everywhere:** Clang. It is the only frontend that covers
   Windows (clang-cl or clang++), Linux and macOS.
 
-Optional MSVC configure. The Microsoft toolchain stays available, but it is
+### Availability target
+
+The engine targets **C++23**, the latest ratified standard. The supported floors
+are Clang 19.1, GCC 14.1, MSVC 19.40 and AppleClang 16. A direct `cmake -S . -B`
+configure needs CMake 3.22; the checked-in presets use schema v6 and therefore
+need CMake 3.25.
+
+The floors are set by the required C++23 library surface (`std::mdspan`,
+`std::format`, `std::jthread`, `std::expected`), not by the language mode alone.
+Older compilers such as GCC 13 or Clang 17 may lack `std::mdspan`, so they are
+not targets. Ubuntu 22.04 therefore needs a newer compiler from its repositories
+or the LLVM apt repository; Ubuntu 24.04 ships GCC 13 and Clang 18 and normally
+needs `g++-14` or `clang-19` for the same reason.
+
+### C++ standard modes
+
+`-DFBY_CXX_STANDARD=23` is the default and the public contract.
+`-DFBY_CXX_STANDARD=26` is the experimental mode: the same sources with C++26
+flags and whichever C++26 library facilities the feature probes can prove. No
+public API uses C++26 syntax, so both modes expose the same engine and the C++23
+build is not a reduced port.
+
+One acceleration is wired today: `Fby::Simd` for the audio bus peak scan. `Fby::FunctionRef` is the matching non-allocating callback view (the C++23 equivalent of `std::function_ref`). The
+build probes `std::simd`, but neither libc++ 19 nor libstdc++ 16 ships `<simd>`
+yet, so the C++23 build uses an SSE2/NEON reduction with a scalar tail.
+Measured on a 1 MiB float buffer at `-O2`/`-O3` on x86-64:
+
+| Kernel | Scalar loop | `Fby::Simd` | Result |
+|---|---|---|---|
+| peak scan | 26.8 ms | 6.8 ms | **3.8–4.0x** |
+| add | 4.1 ms | same scalar loop | no win; the auto-vectoriser already handles it |
+| scale | 2.5 ms | same scalar loop | no win; the auto-vectoriser already handles it |
+
+Engine-wide this is below 1% of frame time: it shortens the audio bus peak scan
+and gives the audio thread headroom. It is not an FPS win, and the build does not
+claim one. New C++26 library accelerations go through the same probes and
+`Fby::` wrappers; core-language C++26 features are deliberately out of scope.
+
+MSVC configure. The Microsoft toolchain stays available, but it is
 never the reference gate. From a Developer Prompt, `cmake --preset msvc-dev`
 uses the same configuration:
 

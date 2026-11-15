@@ -1,7 +1,7 @@
 # LogicGraph values, messages and AOT
 
 LogicGraph is a visual front end for the same bytecode the text compiler emits.
-The editor runs the bytecode in the VM; a release cook transpiles it to C++26 and
+The editor runs the bytecode in the VM; a release cook transpiles it to C++23 and
 builds a native module. `FemboyScriptSystem` prefers the AOT module for a program
 hash and only falls back to the VM when the host allows it.
 

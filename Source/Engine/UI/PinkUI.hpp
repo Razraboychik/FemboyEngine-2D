@@ -445,7 +445,7 @@ public:
     {
         return MData[row * MColumns + column];
     }
-    // C++26 mdspan exposes multidimensional subscript instead of operator();
+    // C++23 mdspan exposes multidimensional subscript instead of operator();
     [[nodiscard]] constexpr const float& operator[](std::size_t row, std::size_t column) const noexcept
     {
         return MData[row * MColumns + column];

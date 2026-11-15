@@ -68,11 +68,11 @@ SECTIONS: list[dict] = [
             (
                 "p",
                 B(
-                    "FemboyEngine2D is a C++26, data-oriented 2D engine at release-candidate status. "
+                    "FemboyEngine2D is a C++23, data-oriented 2D engine at release-candidate status. "
                     "The runtime is split into one static library per shipping role: a game links the engine, "
                     "an editor links the engine plus the editor UI library, and the offline cooker links only the "
                     "asset libraries. A shipped game never pulls in Dear ImGui, ImGuizmo, ImPlot or the TOML parser.",
-                    "FemboyEngine2D — двумерный движок на C++26, построенный вокруг data-oriented design и "
+                    "FemboyEngine2D — двумерный движок на C++23, построенный вокруг data-oriented design и "
                     "находящийся в статусе Release. Рантайм разделён на отдельные статические библиотеки "
                     "по роли поставки: игра линкует движок, редактор — движок и библиотеку UI редактора, а офлайн-кукер "
                     "линкует только библиотеки ассетов. В поставку игры не попадают Dear ImGui, ImGuizmo, ImPlot и "
@@ -826,7 +826,7 @@ SECTIONS: list[dict] = [
                         B("Texture/audio/localization cooker; byte-identical with the editor importer", "Кукер текстур/аудио/локализации; байт-в-байт совпадает с импортёром редактора"),
                         B("Localization TOML -> FlatBuffers pack", "TOML локализации -> пакет FlatBuffers"),
                         B("Scene/prefab compiler and round-trip verifier", "Компилятор сцен/префабов и проверка round-trip"),
-                        B("Bytecode -> C++26 -> native plugin at cook time", "Байткод -> C++26 -> нативный плагин во время кукинга"),
+                        B("Bytecode -> C++23 -> native plugin at cook time", "Байткод -> C++23 -> нативный плагин во время кукинга"),
                     ],
                 },
             ),
@@ -894,14 +894,14 @@ SECTIONS: list[dict] = [
                 B(
                     "VisualScript compiles the LogicGraph to canonical bytecode with a Kahn topological pass; cycles "
                     "are a compile error, never a runtime stack overflow. The VM executes the exact artifact the "
-                    "cooker ships. For release, AotTranspiler emits one flat C++26 translation unit with one function "
+                    "cooker ships. For release, AotTranspiler emits one flat C++23 translation unit with one function "
                     "per event and zero engine dependencies beyond AotAbi.hpp; AotBuilder runs clang/g++ -O3 -shared "
                     "on a background jthread and the editor polls its state without blocking the frame. The generated "
                     "module carries the graph hash and every component LayoutHash; the loader validates them before "
                     "the first call.",
                     "VisualScript компилирует LogicGraph в канонический байткод с топологической проходкой Кана; цикл — "
                     "ошибка компиляции, а не переполнение стека в рантайме. VM исполняет ровно тот артефакт, который "
-                    "поставляет кукер. Для релиза AotTranspiler генерирует одну плоскую единицу трансляции C++26 с "
+                    "поставляет кукер. Для релиза AotTranspiler генерирует одну плоскую единицу трансляции C++23 с "
                     "одной функцией на событие и без зависимостей от движка, кроме AotAbi.hpp; AotBuilder запускает "
                     "clang/g++ -O3 -shared в фоновом jthread, а редактор опрашивает его состояние, не блокируя кадр. "
                     "Сгенерированный модуль несёт хеш графа и каждый LayoutHash компонента; загрузчик проверяет их до "
@@ -912,10 +912,10 @@ SECTIONS: list[dict] = [
                 "code",
                 B(
                     "LogicGraph -> GraphCompiler -> bytecode -> VM (PIE)\n"
-                    "                         \\-> AotTranspiler -> C++26 -> clang/g++ -O3 -shared -> plugin\n\n"
+                    "                         \\-> AotTranspiler -> C++23 -> clang/g++ -O3 -shared -> plugin\n\n"
                     "MaterialGraph -> type-check -> GLSL -> glslang -> SPIR-V -> VkPipeline",
                     "LogicGraph -> GraphCompiler -> байткод -> VM (PIE)\n"
-                    "                         \\-> AotTranspiler -> C++26 -> clang/g++ -O3 -shared -> плагин\n\n"
+                    "                         \\-> AotTranspiler -> C++23 -> clang/g++ -O3 -shared -> плагин\n\n"
                     "MaterialGraph -> проверка типов -> GLSL -> glslang -> SPIR-V -> VkPipeline",
                 ),
             ),

@@ -17,9 +17,10 @@ will build the engine; there is no cross-OS launcher.
 | Linux | clang++ and GCC `g++` |
 | macOS | AppleClang `clang++`, Homebrew LLVM `clang++`, GCC `g++` |
 
-Windows deliberately installs both compiler families because clang-cl is the
-primary gate and MSVC/GCC are the portability gates. Linux and macOS do not
-reference MSVC, clang-cl or any Windows-only toolchain.
+Windows installs Clang and MinGW GCC. MSVC is detected when Visual Studio
+Build Tools are already present but setup never downloads a Microsoft
+toolchain; Clang and GCC have priority. Linux and macOS do not reference MSVC,
+clang-cl or any Windows-only toolchain.
 
 ## Component entry points
 

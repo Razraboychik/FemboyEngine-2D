@@ -2,7 +2,7 @@
   "version": 6,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 28,
+    "minor": 25,
     "patch": 0
   },
   "configurePresets": [
@@ -78,8 +78,8 @@
     },
     {
       "name": "msvc-dev",
-      "displayName": "Debug MSVC (optional)",
-      "description": "Ninja debug build with the optional Microsoft toolchain; run it from a Developer Prompt.",
+      "displayName": "Debug MSVC",
+      "description": "Ninja debug build with the Microsoft toolchain; run it from a Developer Prompt.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-msvc",
       "cacheVariables": {

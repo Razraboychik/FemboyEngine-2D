@@ -5,7 +5,7 @@ FemboyScript — детерминированный слой игровой ло
 
 - визуальные редакторы LogicGraph и StateTree в редакторе;
 - компактный регистровый байткод, который исполняет VM редактора;
-- cook-time C++26 AOT-backend, который собирает нативный плагин для билда.
+- cook-time C++23 AOT-backend, который собирает нативный плагин для билда.
 
 Документ описывает поведение 0.5.0. FemboyScript 2.0 — это версия байткода и
 графового формата; версия движка — 0.5.0.
@@ -18,7 +18,7 @@ FemboyScript — детерминированный слой игровой ло
 | Визуальный StateTree | Канвас редактора и TOML-сохранение в сцене |
 | Компилятор байткода | `CompileLogicGraph()` даёт канонический байткод |
 | VM редактора | `ScriptVm::Run()` без аллокаций |
-| AOT-транспайлер | Байткод в C++26, затем нативный плагин |
+| AOT-транспайлер | Байткод в C++23, затем нативный плагин |
 | Загрузчик AOT | `AotModule` проверяет ABI и LayoutHash компонентов |
 | Отдельный текстовый парсер `.fbs` | `CompileTextScript()` — текстовое подмножество |
 | Массивы, строки, map | Нативные коллекции (`array_new`, `array_push`, `array_get`, `array_length`, `map_new`, `map_set`, `map_get`, `map_has`, `map_length`, `string_concat`, `string_length`, `string_equals`) поверх ограниченной кучи |
@@ -106,7 +106,7 @@ CompileLogicGraph()
         |
         +--> ParseProgram() -> BindProgram() -> ScriptVm::Run()  редактор/runtime
         |
-        +--> TranspileProgramToCpp() -> C++26 -> нативный плагин  билд
+        +--> TranspileProgramToCpp() -> C++23 -> нативный плагин  билд
 ```
 
 `ParseProgram()` — граница доверия. Он проверяет magic, версию, размеры таблиц,
@@ -232,7 +232,7 @@ Start не заливал лог на 60 Hz.
 `AotBuilder` работает на worker-потоке:
 
 1. `TranspileLogicGraphToCpp()` компилирует граф в байткод, валидирует его и
-   выдаёт плоскую C++26-функцию на событие;
+   выдаёт плоскую C++23-функцию на событие;
 2. сгенерированный код включает только `Engine/Script/AotAbi.hpp`;
 3. доступ к компонентам идёт через `Aot::Context::Component(LayoutHash)`;
 4. плагин экспортирует `fby_aot_module()` — `Module` с хешами компонентов и

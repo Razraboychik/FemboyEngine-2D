@@ -2,6 +2,7 @@
 #include "Engine/Audio/DspGraph.hpp"
 
 #include "Engine/Audio/AudioStream.hpp"
+#include "Engine/Core/Simd.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -1155,15 +1156,7 @@ void DspGraph::ProcessBlock(float* Output, std::uint32_t InFrameCount) noexcept
         }
         ApplyBusGain(ScopedBus, ScopedBuffer, InFrameCount);
 
-        float ScopedPeak = 0.0f;
-        for (std::uint32_t ScopedSample = 0; ScopedSample < ScopedFloats; ++ScopedSample)
-        {
-            const float ScopedMagnitude = std::fabs(ScopedBuffer[ScopedSample]);
-            if (ScopedMagnitude > ScopedPeak)
-            {
-                ScopedPeak = ScopedMagnitude;
-            }
-        }
+        const float ScopedPeak = Simd::PeakAbs(ScopedBuffer, ScopedFloats);
         MBusAtomics[ScopedBus].peak.store(ScopedPeak, std::memory_order_relaxed);
         MLastBlockPeak[ScopedBus] = ScopedPeak;
         ScopedRendered[ScopedBus] = true;

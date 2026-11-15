@@ -51,7 +51,7 @@ fi
 if [[ "${SKIP_SYSTEM:-0}" -eq 0 ]]; then
     echo "==> Homebrew packages"
     brew update
-    # Xcode provides clang++; LLVM 23.1.4+ and GCC 16.2+ are installed as the pinned
+    # Xcode provides clang++; LLVM 19.1+ and GCC 14.1+ are installed as the pinned
     # second-opinion toolchains.
     brew install cmake ninja git p7zip glslang vulkan-headers vulkan-loader molten-vk llvm gcc
 fi

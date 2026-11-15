@@ -3,7 +3,7 @@
 [English](README.md) | [Русский перевод](README_RU.md)
 
 This directory is the entry point to the FemboyEngine2D documentation set. The
-current public line is **0.5.0**. The engine is a C++26, data-oriented 2D
+current public line is **0.5.0**. The engine is a C++23, data-oriented 2D
 runtime: fixed-capacity ECS storage, explicit systems, an SDL3 window, a Vulkan or
 null render hardware interface, Box2D v3 physics and deterministic rollback.
 
@@ -31,7 +31,7 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
   book format; see [text stack](design/text-stack.md),
   [documents](design/documents.md) and [streaming books](design/books.md).
 - **Gameplay and scripting** — FemboyScript 2.0 bytecode, LogicGraph, StateTree,
-  the textual `.fbs` subset, the VM debugger and the cook-time C++26 AOT backend.
+  the textual `.fbs` subset, the VM debugger and the cook-time C++23 AOT backend.
 - **Networking** — reliable transport, protocol v2, replication, relevance grids,
   lobby and deterministic rollback.
 - **Audio and voice** — mixer and DSP graph, spatial audio, capture, AEC, Opus,

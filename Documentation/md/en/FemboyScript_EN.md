@@ -5,7 +5,7 @@ It has two authoring surfaces and two execution backends:
 
 - visual LogicGraph and StateTree editors in the editor;
 - a compact register bytecode executed by the editor VM;
-- a cook-time C++26 AOT backend that produces a native plugin for builds.
+- a cook-time C++23 AOT backend that produces a native plugin for builds.
 
 This document describes the 0.5.0 behavior. FemboyScript 2.0 is the bytecode and
 graph format; the engine version is 0.5.0.
@@ -18,7 +18,7 @@ graph format; the engine version is 0.5.0.
 | StateTree visual scripting | Editor canvas plus TOML persistence in the scene |
 | Bytecode compiler | `CompileLogicGraph()` produces canonical bytecode |
 | Editor VM | `ScriptVm::Run()` executes bytecode without allocation |
-| AOT transpiler | Bytecode to C++26, then a native plugin |
+| AOT transpiler | Bytecode to C++23, then a native plugin |
 | Runtime AOT loader | `AotModule` validates ABI and component hashes |
 | Standalone textual `.fbs` parser | `CompileTextScript()` text subset |
 | Arrays, strings, maps | Collection natives (`array_new`, `array_push`, `array_get`, `array_length`, `map_new`, `map_set`, `map_get`, `map_has`, `map_length`, `string_concat`, `string_length`, `string_equals`) over a bounded heap |
@@ -105,7 +105,7 @@ canonical FemboyScript bytecode (.fembak payload)
         |
         +--> ParseProgram() -> BindProgram() -> ScriptVm::Run()  editor/runtime
         |
-        +--> TranspileProgramToCpp() -> C++26 -> native plugin       build
+        +--> TranspileProgramToCpp() -> C++23 -> native plugin       build
 ```
 
 `ParseProgram()` is the trust boundary. It checks magic, version, table sizes,
@@ -240,7 +240,7 @@ marked started even after a fault, so a broken Start does not flood the log at
 `AotBuilder` runs on a worker:
 
 1. `TranspileLogicGraphToCpp()` compiles the graph to bytecode, validates it and
-   emits a flat C++26 function per event;
+   emits a flat C++23 function per event;
 2. generated code includes only `Engine/Script/AotAbi.hpp`;
 3. component access goes through `Aot::Context::Component(LayoutHash)`;
 4. the plugin exports `fby_aot_module()`, a `Module` record with component

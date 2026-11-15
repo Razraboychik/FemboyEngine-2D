@@ -1,14 +1,14 @@
 # CMake Project and Engine Management
 
-Applies to FemboyEngine2D 0.5.0 and CMake 3.28 or newer.
+Applies to FemboyEngine2D 0.5.0 and CMake 3.22 or newer.
 
 ## Toolchain
 
-The engine requires C++26:
+The engine requires C++23:
 
-- Windows: clang-cl 23.1.4+ (reference) or MSVC 19.44+ (optional alternative), both with the MSVC STL.
-- Linux: Clang 23.1.4+ or GCC 16.2.0+.
-- macOS: Apple Clang with C++26 support.
+- Windows: clang-cl 19.1+ (reference) or MSVC 19.40+ (supported alternative with a dedicated CI job), both with the MSVC STL.
+- Linux: Clang 19.1+ or GCC 14.1+.
+- macOS: Apple Clang with C++23 support.
 
 Ninja is the supported generator for the validated build. Visual Studio is used
 only as an IDE and as the source of the Windows SDK and headers.
@@ -74,7 +74,7 @@ must not be used as a public contract. There are no `FemboyEngine::*` or
 ## Consume the engine with add_subdirectory
 
 ```cmake
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 project(MyGame LANGUAGES CXX)
 
 set(FBY_ENGINE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "FemboyEngine2D root")
@@ -193,4 +193,4 @@ Metal on macOS and Vulkan on Windows and Linux when headers are available.
 - Legacy alias errors: replace `FemboyEngine::*` and
   `FemboyEngine2D::Runtime` with `FemboyEngine2D::Engine`.
 - Tests time out: use `RelWithDebInfo`, not `Debug`.
-- C++26 errors: update the compiler. C++23 is not supported.
+- C++23 errors: update the compiler. C++23 is not supported.

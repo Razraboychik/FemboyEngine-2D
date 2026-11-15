@@ -163,11 +163,11 @@ SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 cmake --build build
 ctest --test-dir build --output-on-failure""")),
             ("p", B(
-                "The compiler is part of the contract: C++26 is required, Clang 23.1.4+ is the reference toolchain and "
-                "GCC 16.2.0+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing "
+                "The compiler is part of the contract: C++23 is required, Clang 19.1+ is the reference toolchain and "
+                "GCC 14.1+ is supported. The build defines FBY_HAS_MDSPAN, FBY_HAS_FORMAT and FBY_HAS_JTHREAD by probing "
                 "the compiler, not by version number. LZMA SDK presence is also probed; without it the .femarc writer "
                 "uses the deterministic FbyLZ codec and reports it in the cook log.",
-                "Компилятор — часть контракта: требуется C++26, эталонный тулчейн — Clang 23.1.4+, поддерживается GCC 16.2.0+. "
+                "Компилятор — часть контракта: требуется C++23, эталонный тулчейн — Clang 19.1+, поддерживается GCC 14.1+. "
                 "Сборка определяет FBY_HAS_MDSPAN, FBY_HAS_FORMAT и FBY_HAS_JTHREAD пробой компилятора, а не по "
                 "номеру версии. Наличие LZMA SDK тоже проверяется; без него писатель .femarc использует "
                 "детерминированный кодек FbyLZ и сообщает об этом в логе кукера.",

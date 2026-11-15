@@ -39,7 +39,7 @@ below names the file that owns it.
   the hot path (enforced by `Source/Tests/ScriptVmTest.cpp` with a counting
   `operator new`).
 * **Release (Asset Cooker).** `fby_aotc` reads the *same* `.fbsc` and emits a
-  dependency-free C++26 translation unit: one flat function per event, typed
+  dependency-free C++23 translation unit: one flat function per event, typed
   component base pointers resolved once, direct float arithmetic, `goto` for
   control flow, `-O3 -shared` via clang/g++, loaded by `AotModule`. The module
   exports `fby_aot_module()`, the graph hash, source hash and every component
@@ -169,7 +169,7 @@ remaining UI work are in [Widgets.md](Widgets.md).
 
 ## 8. Verification
 
-Engine library and editor library build with clang-cl 23 / C++26 (`/std:c++latest`).
+Engine library and editor library build with clang-cl 23 / C++23 (`/std:c++latest`).
 Tests are plain executables (no framework):
 
 | Test | Covers |

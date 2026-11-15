@@ -2,11 +2,11 @@
 
 [English](README.md) | [Русский перевод](READMEs/README_RU.md)
 
-**A data-oriented 2D game engine written from scratch in C++26.**
+**A data-oriented 2D game engine written from scratch in C++23.**
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
-[![C++26](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
-[![CMake 3.28+](https://img.shields.io/badge/CMake-3.28%2B-064F8C.svg)]()
+[![C++23](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
+[![CMake 3.22+ (presets need 3.25)](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
@@ -118,7 +118,7 @@ memory model.
 | Audio | DSP graph with buses/ducking/reverb, zones, limiter, Ogg/Opus, live spatial gain and pan, voice capture/AEC/RNNoise, uplink/downlink effects with conditions, `.fbyvoice` preset packs, a plugin preset table and listener-side reaction cues | Preallocated voices and buses, no per-frame graph construction, explicit capture buffers |
 | UI | Procedural PinkUI SDF primitives, DPI scaling, themes, hypertext, widget kit, Unicode boundaries through libunibreak, opt-in Tab/arrow focus, CPU clip rects, HarfBuzz text stack, accessibility kernel | Retained data, per-frame command spans, clipped quads and SDF primitives instead of one allocation per widget |
 | Editor | Transactional `CommandStack`, ImNodes canvases, project manager, PIE Play/Pause/Stop, Play (Multiplayer), script debugger, tilemap editor, texture thumbnails, Transport Groups panel, borderless fullscreen | Authoring commands are explicit transactions; PIE owns an isolated world and releases it on Stop |
-| Script | LogicGraph to bytecode VM and to C++26 AOT plugin, physics/capability nodes and natives, debug info, VM breakpoints and stepping, `Compile + Nativize`, AOT manifest cook gate | Fixed VM stack and register file, native modules for cooked builds, no script allocation in the fixed step |
+| Script | LogicGraph to bytecode VM and to C++23 AOT plugin, physics/capability nodes and natives, debug info, VM breakpoints and stepping, `Compile + Nativize`, AOT manifest cook gate | Fixed VM stack and register file, native modules for cooked builds, no script allocation in the fixed step |
 
 ---
 
@@ -250,19 +250,21 @@ upscaler SDKs are optional and are not part of the archive; see
 
 ## Build
 
-Requirements: CMake 3.28+, Ninja, and one of **Clang 23.1.4+**
-(clang-cl on Windows, clang++ on Unix), **MSVC 19.44+**, **AppleClang 21+** or
-**GCC 16.2.0+**. clang-cl is the reference toolchain; the others are supported
+Requirements: CMake 3.22+ (presets need 3.25), Ninja, and one of **Clang 19.1+**
+(clang-cl on Windows, clang++ on Unix), **MSVC 19.40+**, **AppleClang 16+** or
+**GCC 14.1+**. clang-cl is the reference toolchain; the others are supported
 alternatives, never an obligation.
 On Windows, run from a shell that provides the Windows SDK headers and
 libraries. The setup scripts install clang-cl / clang++ as the reference
-toolchain and GCC 16.2.0 (MinGW-w64 UCRT) as the second opinion. On Windows,
-`SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 23.1.4** MSI
+toolchain and GCC 14.1 (MinGW-w64 UCRT) as the second opinion. On Windows,
+`SetupScripts/Windows/SetupCpp.bat` downloads the official **LLVM 19.1** MSI
 and verifies the `clang-cl` version.
 
-The validated build uses **clang-cl 23.1.4 on Windows and clang++ elsewhere**;
-that is what CI and the release gate run. **MSVC 19.44+**, **GCC 16.2.0** and
-**AppleClang 21+** are supported alternatives; the compiler-selection matrix is in
+The default language mode is C++23; `-DFBY_CXX_STANDARD=26` enables the experimental C++26 library accelerations behind feature probes.
+
+The validated build uses **clang-cl 19.1 on Windows and clang++ elsewhere**;
+that is what CI and the release gate run. **MSVC 19.40+**, **GCC 14.1** and
+**AppleClang 16+** are supported alternatives; the compiler-selection matrix is in
 [build-workflow.md](Documentation/design/build-workflow.md).
 
 ```bat
