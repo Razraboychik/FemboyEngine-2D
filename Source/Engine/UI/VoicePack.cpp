@@ -599,9 +599,24 @@ void TtsVoicePack::CloseProcess() noexcept
     if (MProcess != 0)
     {
         const pid_t ScopedPid = static_cast<pid_t>(MProcess);
-        (void)::kill(ScopedPid, SIGTERM);
+        // Closing stdin gives the helper EOF after it has drained the QUIT
+        // line; give it a moment before the fallback signal.
         int ScopedStatus = 0;
-        (void)::waitpid(ScopedPid, &ScopedStatus, 0);
+        bool ScopedExited = false;
+        for (int ScopedAttempt = 0; ScopedAttempt < 40; ++ScopedAttempt)
+        {
+            if (::waitpid(ScopedPid, &ScopedStatus, WNOHANG) == ScopedPid)
+            {
+                ScopedExited = true;
+                break;
+            }
+            (void)::usleep(25000);
+        }
+        if (!ScopedExited)
+        {
+            (void)::kill(ScopedPid, SIGTERM);
+            (void)::waitpid(ScopedPid, &ScopedStatus, 0);
+        }
     }
     MProcess = 0;
 #endif

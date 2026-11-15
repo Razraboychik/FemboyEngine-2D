@@ -53,6 +53,8 @@ id ElementForId(std::uint32_t InId) noexcept;
 }
 }
 
+}
+
 // One element per stable node id. The class answers AppKit from the live tree,
 // so a frame rebuild never leaves a stale label or frame behind.
 @interface FbyAccessibilityElement : NSAccessibilityElement

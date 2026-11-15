@@ -311,7 +311,9 @@ void SetNonBlocking(std::uintptr_t InHandle, bool InNonBlocking) noexcept
 #else
     FD_SET(static_cast<int>(InHandle), &ScopedSet);
 #endif
-    timeval ScopedTimeout{static_cast<long>(InTimeoutMs / 1000), static_cast<long>((InTimeoutMs % 1000) * 1000)};
+    timeval ScopedTimeout{};
+    ScopedTimeout.tv_sec = static_cast<decltype(ScopedTimeout.tv_sec)>(InTimeoutMs / 1000);
+    ScopedTimeout.tv_usec = static_cast<decltype(ScopedTimeout.tv_usec)>((InTimeoutMs % 1000) * 1000);
     const int ScopedResult =
         ::select(static_cast<int>(InHandle) + 1, InWrite ? nullptr : &ScopedSet, InWrite ? &ScopedSet : nullptr,
                  nullptr, &ScopedTimeout);

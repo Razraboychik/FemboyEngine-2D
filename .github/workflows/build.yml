@@ -68,7 +68,12 @@ jobs:
       - name: Vendor usage report
         run: python Source/Tools/Dev/ReportVendorUsage.py --build build-ci --output build-ci/vendor-usage.md --strict
       - name: Test
-        run: ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings"
+        run: |
+          ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings" 2>&1 | Tee-Object -FilePath test.log
+          exit $LASTEXITCODE
+      - name: Test errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
 
   linux-clang:
     env:
@@ -195,12 +200,22 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
           LSAN_OPTIONS: detect_leaks=1:report_objects=1:suppressions=${{ github.workspace }}/Source/Tools/Dev/lsan.supp
-        run: xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$"
+        run: |
+          set -o pipefail
+          xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$" 2>&1 | tee test.log
+      - name: Test errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
       - name: Full suite under ASan and LSan
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
           LSAN_OPTIONS: detect_leaks=1:report_objects=1:suppressions=${{ github.workspace }}/Source/Tools/Dev/lsan.supp
-        run: xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300
+        run: |
+          set -o pipefail
+          xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300 2>&1 | tee test.log
+      - name: Test errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
 
   linux-ubsan:
     env:
@@ -223,7 +238,12 @@ jobs:
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Parsers, text and core under UBSan
-        run: xvfb-run -a ctest --test-dir build-ubsan --output-on-failure --timeout 300 -R "^(fuzz_parsers|fuzz_noise|bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden)$"
+        run: |
+          set -o pipefail
+          xvfb-run -a ctest --test-dir build-ubsan --output-on-failure --timeout 300 -R "^(fuzz_parsers|fuzz_noise|bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden)$" 2>&1 | tee test.log
+      - name: Test errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
 
   windows-asan:
     # Windows has no LeakSanitizer, so this job proves the memory errors and
@@ -256,7 +276,12 @@ jobs:
       - name: Text stack under ASan
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1:allocator_may_return_null=1
-        run: ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$"
+        run: |
+          ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$" 2>&1 | Tee-Object -FilePath test.log
+          exit $LASTEXITCODE
+      - name: Test errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
 
   macos-clang:
     env:
