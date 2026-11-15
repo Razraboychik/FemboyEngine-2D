@@ -53,7 +53,12 @@ jobs:
       - name: Dependency lock
         run: python Source/Tools/Dev/CheckDependencyLock.py --build build-ci --require
       - name: Build
-        run: cmake --build --preset ci-clangcl
+        run: |
+          cmake --build --preset ci-clangcl 2>&1 | Tee-Object -FilePath build.log
+          exit $LASTEXITCODE
+      - name: Build errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-ci/bin/tools/fby_fempak.exe
       - name: Release checklist
@@ -77,7 +82,12 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=ON -DFBY_BUILD_TESTS=ON
       - name: Build
-        run: cmake --build build --parallel 8 -- -k 0
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 8 -- -k 0 2>&1 | tee build.log
+      - name: Build errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Release checklist
@@ -117,7 +127,12 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON
       - name: Build
-        run: cmake --build build --parallel 8 -- -k 0
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 8 -- -k 0 2>&1 | tee build.log
+      - name: Build errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Test
@@ -160,7 +175,12 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
-        run: cmake --build build-asan --parallel 8 -- -k 0
+        run: |
+          set -o pipefail
+          cmake --build build-asan --parallel 8 -- -k 0 2>&1 | tee build.log
+      - name: Build errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Text stack under ASan and LSan
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:allocator_may_return_null=1
@@ -186,7 +206,12 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-ubsan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_UBSAN=ON
       - name: Build
-        run: cmake --build build-ubsan --parallel 8 -- -k 0
+        run: |
+          set -o pipefail
+          cmake --build build-ubsan --parallel 8 -- -k 0 2>&1 | tee build.log
+      - name: Build errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Parsers, text and core under UBSan
         run: xvfb-run -a ctest --test-dir build-ubsan --output-on-failure --timeout 300 -R "^(fuzz_parsers|fuzz_noise|bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden)$"
 
@@ -212,7 +237,12 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
-        run: cmake --build build-asan --parallel 8 -- -k 0
+        run: |
+          set -o pipefail
+          cmake --build build-asan --parallel 8 -- -k 0 2>&1 | tee build.log
+      - name: Build errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Text stack under ASan
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1:allocator_may_return_null=1
@@ -234,7 +264,12 @@ jobs:
           LLVM_PREFIX="$(brew --prefix llvm)"
           cmake --preset macos-release             -DCMAKE_C_COMPILER="${LLVM_PREFIX}/bin/clang"             -DCMAKE_CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
       - name: Build editor, tools and core tests
-        run: cmake --build --preset macos-release --target fby_editor_app fby_sandbox fby_fempak fby_scene_tool fby_aotc fby_editor_infrastructure_test fby_frame_composer_test fby_input_system_test fby_release_cooker_test fby_project_bundle_test fby_text_shaper_test -- -k 0
+        run: |
+          set -o pipefail
+          cmake --build --preset macos-release --target fby_editor_app fby_sandbox fby_fempak fby_scene_tool fby_aotc fby_editor_infrastructure_test fby_frame_composer_test fby_input_system_test fby_release_cooker_test fby_project_bundle_test fby_text_shaper_test -- -k 0 2>&1 | tee build.log
+      - name: Build errors
+        if: failure()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
         run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-macos-release/bin/tools/fby_fempak
       - name: Release checklist
