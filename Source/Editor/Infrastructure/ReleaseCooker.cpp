@@ -667,7 +667,7 @@ bool ReleaseCooker::RunChild(const char* InCommandLine, ReleaseCookStage InStage
 void ReleaseCooker::StageRuntimeBundle(const char* InPluginPath) noexcept
 {
     (void)InPluginPath;
-    if (!MConfig.stageRuntime || MConfig.outputRoot[0] == ' ' || MConfig.packerPath[0] == ' ')
+    if (!MConfig.stageRuntime || MConfig.outputRoot[0] == '\0' || MConfig.packerPath[0] == '\0')
     {
         return;
     }
