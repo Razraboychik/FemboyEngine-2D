@@ -10,7 +10,7 @@
 // is covered by a portable test, so this file stays a thin protocol adapter.
 #include "Engine/UI/AccessibilityBridge.hpp"
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(FBY_ATSPI_COMPILE_CHECK)
 
 #include "Engine/Core/Log.hpp"
 #include "Engine/UI/AtspiModel.hpp"

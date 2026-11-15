@@ -206,7 +206,7 @@ private:
     std::uint32_t MDroppedDestroyEvents = 0;
     struct CoroutineSlot
     {
-        Entity Entity = Fby::kNullEntity;
+        Entity EntityId = Fby::kNullEntity;
         std::uint32_t Program = 0;
         Script::ScriptEvent Event = Script::ScriptEvent::Update;
         Script::VmSuspendState State{};

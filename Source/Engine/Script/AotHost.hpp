@@ -114,7 +114,7 @@ private:
     std::array<Slot, kMaxAotPrograms> MSlots{};
     struct CoroutineSlot
     {
-        Entity Entity = Fby::kNullEntity;
+        Entity EntityId = Fby::kNullEntity;
         std::uint32_t Program = 0;
         ScriptEvent Event = ScriptEvent::Update;
         Aot::CoroutineState State{};

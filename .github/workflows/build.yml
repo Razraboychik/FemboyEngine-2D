@@ -238,8 +238,8 @@ jobs:
         run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
         run: |
-          set -o pipefail
-          cmake --build build-asan --parallel 8 -- -k 0 2>&1 | tee build.log
+          cmake --build build-asan --parallel 8 -- -k 0 2>&1 | Tee-Object -FilePath build.log
+          exit $LASTEXITCODE
       - name: Build errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log

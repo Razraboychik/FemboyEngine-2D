@@ -130,7 +130,7 @@ Aot::CoroutineState* AotHost::CoroutineFor(Entity InEntity, std::uint32_t InProg
 {
     for (CoroutineSlot& ScopedSlot : MCoroutines)
     {
-        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+        if (ScopedSlot.Used && ScopedSlot.EntityId == InEntity && ScopedSlot.Program == InProgram &&
             ScopedSlot.Event == InEvent)
         {
             return &ScopedSlot.State;
@@ -141,7 +141,7 @@ Aot::CoroutineState* AotHost::CoroutineFor(Entity InEntity, std::uint32_t InProg
         if (!ScopedSlot.Used)
         {
             ScopedSlot.Used = true;
-            ScopedSlot.Entity = InEntity;
+            ScopedSlot.EntityId = InEntity;
             ScopedSlot.Program = InProgram;
             ScopedSlot.Event = InEvent;
             ScopedSlot.State = Aot::CoroutineState{};
@@ -155,7 +155,7 @@ void AotHost::ReleaseCoroutine(Entity InEntity, std::uint32_t InProgram, ScriptE
 {
     for (CoroutineSlot& ScopedSlot : MCoroutines)
     {
-        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+        if (ScopedSlot.Used && ScopedSlot.EntityId == InEntity && ScopedSlot.Program == InProgram &&
             ScopedSlot.Event == InEvent)
         {
             ScopedSlot = CoroutineSlot{};
@@ -173,7 +173,7 @@ void AotHost::PruneCoroutines(const Ecs::Registry& InRegistry) const noexcept
 {
     for (CoroutineSlot& ScopedSlot : MCoroutines)
     {
-        if (ScopedSlot.Used && !InRegistry.valid(ScopedSlot.Entity))
+        if (ScopedSlot.Used && !InRegistry.valid(ScopedSlot.EntityId))
         {
             ScopedSlot = CoroutineSlot{};
         }

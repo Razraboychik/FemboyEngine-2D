@@ -92,7 +92,7 @@ ParticleSceneSystem::Binding* ParticleSceneSystem::FindBinding(Entity InEntity) 
 {
     for (Binding& ScopedBinding : MBindings)
     {
-        if (ScopedBinding.Active && ScopedBinding.Entity == InEntity)
+        if (ScopedBinding.Active && ScopedBinding.EntityId == InEntity)
         {
             return &ScopedBinding;
         }
@@ -148,12 +148,12 @@ void ParticleSceneSystem::Update(Fcs::Registry& InRegistry, float InDeltaSeconds
             {
                 continue;
             }
-            ScopedBinding->Entity = ScopedEntity;
+            ScopedBinding->EntityId = ScopedEntity;
             ScopedBinding->Emitter =
                 MParticles.Spawn(ScopedSettings, ScopedTransform.Position, ScopedTransform.Rotation);
             if (ScopedBinding->Emitter == kInvalidParticleEmitter)
             {
-                ScopedBinding->Entity = kNullEntity;
+                ScopedBinding->EntityId = kNullEntity;
                 ScopedBinding->Active = false;
                 continue;
             }

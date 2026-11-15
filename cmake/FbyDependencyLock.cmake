@@ -13,6 +13,6 @@ set(FBY_LOCK_GLSLANG_COMMIT "e1b562a8bed273a02f30b59b66a5d499793cede5")
 # the SHA-256 of every sorted relative path plus its bytes. Any edited, added or
 # removed file changes the digest.
 # Box2D 3.2.0 (the version comes from its CMakeLists project()).
-set(FBY_LOCK_BOX2D_TREE "5356bedc401f3a5948f099a407ea72f7ab7a876d0813fcc5e97a55fa61dca5d2")
+set(FBY_LOCK_BOX2D_TREE "366784a2457f7c04fa107c0cac4625c463943cf72ecf91a102c956c03728be98")
 # Opus vendored snapshot; the download did not keep a tag or package_version.
-set(FBY_LOCK_OPUS_TREE "54d157967f6f535fa26ef128fc7b1a004f4e568562e6e4f8684acd81db0c382c")
+set(FBY_LOCK_OPUS_TREE "5e80401f2297c644baa3428bdb7cd4327e9f53c15519d59dd0b84fc868fd68f4")

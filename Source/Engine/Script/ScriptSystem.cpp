@@ -962,7 +962,7 @@ Script::VmSuspendState* ScriptRuntime::FindCoroutine(Entity InEntity, std::uint3
 {
     for (CoroutineSlot& ScopedSlot : MCoroutines)
     {
-        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+        if (ScopedSlot.Used && ScopedSlot.EntityId == InEntity && ScopedSlot.Program == InProgram &&
             ScopedSlot.Event == InEvent)
         {
             return &ScopedSlot.State;
@@ -976,7 +976,7 @@ void ScriptRuntime::StoreCoroutine(Entity InEntity, std::uint32_t InProgram, Scr
 {
     for (CoroutineSlot& ScopedSlot : MCoroutines)
     {
-        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+        if (ScopedSlot.Used && ScopedSlot.EntityId == InEntity && ScopedSlot.Program == InProgram &&
             ScopedSlot.Event == InEvent)
         {
             ScopedSlot.State = InState;
@@ -988,7 +988,7 @@ void ScriptRuntime::StoreCoroutine(Entity InEntity, std::uint32_t InProgram, Scr
         if (!ScopedSlot.Used)
         {
             ScopedSlot.Used = true;
-            ScopedSlot.Entity = InEntity;
+            ScopedSlot.EntityId = InEntity;
             ScopedSlot.Program = InProgram;
             ScopedSlot.Event = InEvent;
             ScopedSlot.State = InState;
@@ -1001,7 +1001,7 @@ void ScriptRuntime::RemoveCoroutine(Entity InEntity, std::uint32_t InProgram, Sc
 {
     for (CoroutineSlot& ScopedSlot : MCoroutines)
     {
-        if (ScopedSlot.Used && ScopedSlot.Entity == InEntity && ScopedSlot.Program == InProgram &&
+        if (ScopedSlot.Used && ScopedSlot.EntityId == InEntity && ScopedSlot.Program == InProgram &&
             ScopedSlot.Event == InEvent)
         {
             ScopedSlot = CoroutineSlot{};
@@ -1019,7 +1019,7 @@ void ScriptRuntime::PruneCoroutines(const Ecs::Registry& InRegistry) noexcept
 {
     for (CoroutineSlot& ScopedSlot : MCoroutines)
     {
-        if (ScopedSlot.Used && (!InRegistry.valid(ScopedSlot.Entity) || Program(ScopedSlot.Program) == nullptr))
+        if (ScopedSlot.Used && (!InRegistry.valid(ScopedSlot.EntityId) || Program(ScopedSlot.Program) == nullptr))
         {
             ScopedSlot = CoroutineSlot{};
         }

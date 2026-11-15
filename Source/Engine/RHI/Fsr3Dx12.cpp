@@ -134,12 +134,12 @@ bool Available() noexcept
     return false;
 }
 
-bool CreateContext(void*, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, void**)
+bool CreateContext(void*, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, void**) noexcept
 {
     return false;
 }
 
-bool Dispatch(void*, void*, void*, void*, std::uint32_t, std::uint32_t, bool, std::uint64_t)
+bool Dispatch(void*, void*, void*, void*, std::uint32_t, std::uint32_t, bool, std::uint64_t) noexcept
 {
     return false;
 }

@@ -92,7 +92,7 @@ public:
 private:
     struct Binding
     {
-        Entity Entity = kNullEntity;
+        Entity EntityId = kNullEntity;
         std::uint32_t Emitter = kInvalidParticleEmitter;
         std::uint32_t RestartCounter = 0;
         bool Active = false;
