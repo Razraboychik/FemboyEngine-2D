@@ -74,6 +74,11 @@ jobs:
       - name: Test errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
+      - name: Diagnose GPU tests
+        if: failure()
+        run: |
+          ctest --preset ci-clangcl -V -R "system_info|d3d12_rhi|d3d11_rhi|fsr2_dx|frame_composer_dx|custom_fg_dx" 2>&1 | Tee-Object -FilePath diag.log
+          python Source/Tools/Dev/AnnotateBuildErrors.py --log diag.log --limit 80
 
   linux-clang:
     env:
