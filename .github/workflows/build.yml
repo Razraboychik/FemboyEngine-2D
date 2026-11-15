@@ -68,20 +68,23 @@ jobs:
       - name: Vendor usage report
         run: python Source/Tools/Dev/ReportVendorUsage.py --build build-ci --output build-ci/vendor-usage.md --strict
       - name: Test
-        # The hosted Windows runner is headless: window/GPU/DX smoke tests need a
-        # real display and adapter and are run on developer machines. The rest of
-        # the suite stays a hard gate.
         run: |
-          ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings|d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark" 2>&1 | Tee-Object -FilePath test.log
+          ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings" 2>&1 | Tee-Object -FilePath test.log
           exit $LASTEXITCODE
       - name: Test errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
-      - name: Diagnose GPU tests
-        if: failure()
+      - name: Hardware smoke (advisory)
+        # The hosted runner has no display or GPU adapter. These smoke tests run
+        # on real hardware locally; here they are executed and reported, but they
+        # do not gate the compiler bring-up job.
+        continue-on-error: true
         run: |
-          ctest --preset ci-clangcl -V -R "system_info|d3d12_rhi|d3d11_rhi|fsr2_dx|frame_composer_dx|custom_fg_dx" 2>&1 | Tee-Object -FilePath diag.log
-          python Source/Tools/Dev/AnnotateBuildErrors.py --log diag.log --limit 80
+          ctest --preset ci-clangcl --output-on-failure --timeout 120 -R "d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark" 2>&1 | Tee-Object -FilePath hardware.log
+          exit $LASTEXITCODE
+      - name: Hardware smoke report
+        if: always()
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log hardware.log
 
   linux-clang:
     env:
