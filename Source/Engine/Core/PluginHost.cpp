@@ -95,7 +95,7 @@ void InvokePluginUnload(FbyPluginUnloadFn InUnload) noexcept
     }
     catch (...)
     {
-        LogWarn("plugin", "fby_plugin_unload threw");
+        std::fputs("plugin: fby_plugin_unload threw\n", stderr);
     }
 }
 }
@@ -163,7 +163,14 @@ PluginHost::PluginHost(ComponentRegistry& InComponents, void* InEcsRegistry)
 
 PluginHost::~PluginHost()
 {
-    UnloadAll();
+    try
+    {
+        UnloadAll();
+    }
+    catch (...)
+    {
+        std::fputs("plugin: unload during host destruction failed\n", stderr);
+    }
 }
 
 bool PluginHost::RebuildGraph(std::string* InError)
@@ -363,7 +370,7 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
     return true;
 }
 
-bool PluginHost::Unload(const std::string& InPath, std::string* InError)
+bool PluginHost::Unload(std::string InPath, std::string* InError)
 {
     for (auto ScopedIt = MPlugins.begin(); ScopedIt != MPlugins.end(); ++ScopedIt)
     {
@@ -430,7 +437,7 @@ std::uint32_t PluginHost::LoadDirectory(const std::filesystem::path& InDirectory
     return ScopedLoaded;
 }
 
-bool PluginHost::Reload(const std::string& InPath, std::string* InError)
+bool PluginHost::Reload(std::string InPath, std::string* InError)
 {
     for (auto ScopedIt = MPlugins.begin(); ScopedIt != MPlugins.end(); ++ScopedIt)
     {

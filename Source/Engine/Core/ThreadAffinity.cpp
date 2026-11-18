@@ -37,8 +37,14 @@ bool RequireMainThread(const char* InWho) noexcept
     {
         return true;
     }
-    LogError("thread", "{} must be called on the OS main thread; the call was made on role {} and is dropped",
-             InWho != nullptr ? InWho : "operation", ThreadRoleName(CurrentThreadRole()));
+    try
+    {
+        LogError("thread", "{} must be called on the OS main thread; the call was made on role {} and is dropped",
+                 InWho != nullptr ? InWho : "operation", ThreadRoleName(CurrentThreadRole()));
+    }
+    catch (...)
+    {
+    }
     FBY_ASSERT_MSG(IsMainThread(), "operation requires the OS main thread (see Engine/Core/ThreadAffinity.hpp)");
     return false;
 }
@@ -53,9 +59,15 @@ bool RequireThreadRole(ThreadRole InRole, const char* InWho) noexcept
     {
         return true;
     }
-    LogError("thread", "{} requires role {} but the caller is {}; the call is dropped",
-             InWho != nullptr ? InWho : "operation", ThreadRoleName(InRole),
-             ThreadRoleName(CurrentThreadRole()));
+    try
+    {
+        LogError("thread", "{} requires role {} but the caller is {}; the call is dropped",
+                 InWho != nullptr ? InWho : "operation", ThreadRoleName(InRole),
+                 ThreadRoleName(CurrentThreadRole()));
+    }
+    catch (...)
+    {
+    }
     FBY_ASSERT_MSG(CurrentThreadRole() == InRole, "operation requires a specific thread role");
     return false;
 }

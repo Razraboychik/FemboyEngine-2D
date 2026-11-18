@@ -414,6 +414,15 @@ bool TestMalformedBindingsRejected()
         Check(!ParseProgram(ScopedBytes, &ScopedParsed, &ScopedError), "zero-sized float field is rejected");
     }
 
+    // A builder must reject a field whose component index is out of range
+    // before indexing its component table; malformed caller data is not a
+    // licence to write outside the vector.
+    {
+        ProgramBuilder ScopedBuilder;
+        Check(ScopedBuilder.AddField(0, Fby::Reflect::FieldKind::Float, 0, 4) == kInvalidBuilderIndex,
+              "a field without a component is rejected");
+    }
+
     return true;
 }
 

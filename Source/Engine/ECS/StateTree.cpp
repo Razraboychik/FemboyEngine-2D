@@ -276,7 +276,9 @@ void RunTask(Ecs::Registry& InRegistry, Entity InEntity, StateTreeComponent& InS
             auto* ScopedTags = InRegistry.try_get<GameplayTagsComponent>(InEntity);
             if (ScopedTags == nullptr)
             {
-                ScopedTags = &InRegistry.emplace<GameplayTagsComponent>(InEntity);
+                // Adding the component here would relocate the entity while the
+                // StateTree view is iterating; the task is skipped instead.
+                return;
             }
             for (std::uint32_t ScopedTagId = 1; ScopedTagId <= kMaxGameplayTags; ++ScopedTagId)
             {
@@ -472,6 +474,10 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
             {
                 ScopedState.Triggers |= kStateTreeTriggerLeafFailed;
             }
+            else
+            {
+                ScopedState.Triggers &= ~kStateTreeTriggerLeafFailed;
+            }
         }
 
         if (ScopedState.Triggers != 0)
@@ -508,7 +514,8 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
                         continue;
                     }
                 }
-                else if (!ScopedTransition.RequireTags.IsEmpty())
+                else if (!ScopedTransition.RequireTags.IsEmpty() ||
+                         !ScopedTransition.ForbidTags.IsEmpty())
                 {
                     continue;
                 }

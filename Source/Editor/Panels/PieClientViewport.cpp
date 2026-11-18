@@ -75,6 +75,7 @@ void PieClientViewport::Draw(std::uint64_t InTexture, bool* InOpen, bool InPieMu
         return;
     }
 
+    bool ScopedHovered = false;
     if (InTexture != 0)
     {
         // The target keeps a fixed pixel size while the panel is resizable, so
@@ -89,10 +90,12 @@ void PieClientViewport::Draw(std::uint64_t InTexture, bool* InOpen, bool InPieMu
         ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + ScopedOffset.x,
                                    ImGui::GetCursorPosY() + ScopedOffset.y));
         ImGui::Image(static_cast<ImTextureRef>(static_cast<ImTextureID>(InTexture)), ScopedImageSize);
+        ScopedHovered = ImGui::IsItemHovered();
     }
     else
     {
         ImGui::Dummy(ScopedAvailable);
+        ScopedHovered = ImGui::IsItemHovered();
         ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
                                                   IM_COL32(18, 20, 28, 255));
         const ImVec2 ScopedMin = ImGui::GetItemRectMin();
@@ -101,7 +104,7 @@ void PieClientViewport::Draw(std::uint64_t InTexture, bool* InOpen, bool InPieMu
     }
 
     // Camera input mirrors the main viewport: middle-drag pans, wheel zooms.
-    if (ImGui::IsItemHovered())
+    if (ScopedHovered)
     {
         const ImGuiIO& ScopedIo = ImGui::GetIO();
         const float ScopedZoom = std::max(MCamera.zoom, 0.01f);

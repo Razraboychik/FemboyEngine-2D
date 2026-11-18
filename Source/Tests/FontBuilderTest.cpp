@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -25,11 +26,30 @@ void Check(bool InCondition, const char* InMessage)
         ++GFailures;
     }
 }
+void TestRejectsUnalignedGlyphTable()
+{
+    Fby::Ui::FontAtlasHeader ScopedHeader{};
+    std::memcpy(ScopedHeader.magic, Fby::Ui::kFontAtlasMagic, sizeof(ScopedHeader.magic));
+    ScopedHeader.version = Fby::Ui::kFontAtlasVersion;
+    ScopedHeader.headerBytes = sizeof(ScopedHeader);
+    ScopedHeader.glyphCount = 1;
+    ScopedHeader.atlasWidth = 1;
+    ScopedHeader.atlasHeight = 1;
+    ScopedHeader.pixelFormat = static_cast<std::uint32_t>(Fby::Ui::FontPixelFormat::Rgba8);
+    ScopedHeader.glyphTableOffset = 1;
+    ScopedHeader.pixelOffset = static_cast<std::uint32_t>(sizeof(ScopedHeader) + sizeof(Fby::Ui::GlyphRecord));
+    std::vector<std::byte> ScopedBytes(ScopedHeader.pixelOffset + 4u);
+    std::memcpy(ScopedBytes.data(), &ScopedHeader, sizeof(ScopedHeader));
+    Fby::Ui::FontAtlas ScopedAtlas;
+    Check(!ScopedAtlas.Open(ScopedBytes), "an unaligned glyph table is rejected");
+}
 }
 
 int main()
 {
     using namespace Fby;
+
+    TestRejectsUnalignedGlyphTable();
 
     VirtualFileSystem ScopedVfs;
     std::string ScopedError;

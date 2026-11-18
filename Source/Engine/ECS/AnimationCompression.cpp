@@ -20,7 +20,7 @@ constexpr float kValueTicks = 32767.0f;
 
 [[nodiscard]] std::int16_t QuantizeValue(float InValue, float InScale) noexcept
 {
-    if (InScale <= 0.0f)
+    if (!std::isfinite(InScale) || InScale <= 0.0f || !std::isfinite(InValue))
     {
         return 0;
     }
@@ -36,7 +36,7 @@ constexpr float kValueTicks = 32767.0f;
 
 [[nodiscard]] std::uint16_t QuantizeTime(float InTime, float InDuration) noexcept
 {
-    if (InDuration <= 0.0f)
+    if (!std::isfinite(InDuration) || InDuration <= 0.0f || !std::isfinite(InTime))
     {
         return 0;
     }

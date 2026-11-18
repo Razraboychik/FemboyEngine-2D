@@ -141,7 +141,7 @@ bool ScriptDebuggerPanel::Compile(const Scene::ComponentRegistry& InComponents)
     MLastStop = {};
     for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
     {
-        std::array<std::uint32_t, 64> ScopedPcs{};
+        std::array<std::uint32_t, kMaxBreakpointPcs> ScopedPcs{};
         const std::uint32_t ScopedPcCount = Script::CollectPcsForLine(MParsed, MBreakpointLines[ScopedI], ScopedPcs);
         for (std::uint32_t ScopedPc = 0; ScopedPc < ScopedPcCount; ++ScopedPc)
         {
@@ -226,7 +226,7 @@ bool ScriptDebuggerPanel::LoadGraphProgram(std::span<const std::byte> InProgram,
     MLastStop = {};
     for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
     {
-        std::array<std::uint32_t, 64> ScopedPcs{};
+        std::array<std::uint32_t, kMaxBreakpointPcs> ScopedPcs{};
         const std::uint32_t ScopedPcCount = Script::CollectPcsForLine(MParsed, MBreakpointLines[ScopedI], ScopedPcs);
         for (std::uint32_t ScopedPc = 0; ScopedPc < ScopedPcCount; ++ScopedPc)
         {
@@ -273,8 +273,13 @@ void ScriptDebuggerPanel::PollAot()
     {
         return;
     }
+    const Script::AotBuildResult ScopedSnapshot = MAot.Snapshot();
+    if (ScopedSnapshot.state == Script::AotBuildState::Compiling)
+    {
+        return;
+    }
     MLastAotRevision = ScopedRevision;
-    MAotResult = MAot.Snapshot();
+    MAotResult = ScopedSnapshot;
     if (MAotResult.state == Script::AotBuildState::Succeeded)
     {
         // The manifest is the cook gate's input: program hash -> native library.
@@ -287,11 +292,15 @@ void ScriptDebuggerPanel::PollAot()
         const std::filesystem::path ScopedManifestPath =
             MAotResult.libraryPath.parent_path() / (MAotOptions.moduleName + ".fbyaot");
         std::ofstream ScopedFile(ScopedManifestPath, std::ios::binary | std::ios::trunc);
+        bool ScopedManifestWritten = false;
         if (ScopedFile)
         {
             ScopedFile << ScopedManifest;
+            ScopedFile.flush();
+            ScopedManifestWritten = static_cast<bool>(ScopedFile);
         }
-        MStatus = "nativized: " + MAotResult.libraryPath.filename().string() + " (+ manifest)";
+        MStatus = "nativized: " + MAotResult.libraryPath.filename().string() +
+                  (ScopedManifestWritten ? " (+ manifest)" : " (manifest write failed)");
     }
     else if (MAotResult.state == Script::AotBuildState::Failed)
     {
@@ -361,7 +370,7 @@ void ScriptDebuggerPanel::ToggleBreakpoint(std::uint32_t InLine)
     {
         return;
     }
-    std::array<std::uint32_t, 64> ScopedPcs{};
+    std::array<std::uint32_t, kMaxBreakpointPcs> ScopedPcs{};
     const std::uint32_t ScopedPcCount = MParsed.valid ? Script::CollectPcsForLine(MParsed, InLine, ScopedPcs) : 0;
     for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
     {

@@ -1014,12 +1014,20 @@ void DspGraph::RebuildOrder() noexcept
             const BusId ScopedChild = ScopedBus.children[ScopedFrame.nextChild++];
             if (ScopedChild < kMaxBuses && MBuses[ScopedChild].active)
             {
+                if (ScopedDepth >= kMaxBuses)
+                {
+                    // Corrupt/duplicated topology must not overflow the DFS stack.
+                    break;
+                }
                 ScopedStack[ScopedDepth++] = Frame{ScopedChild, 0};
             }
         }
         else
         {
-            MOrder[MOrderCount++] = ScopedFrame.bus;
+            if (MOrderCount < kMaxBuses)
+            {
+                MOrder[MOrderCount++] = ScopedFrame.bus;
+            }
             --ScopedDepth;
         }
     }
@@ -1057,7 +1065,7 @@ void DspGraph::DestroyBusOnAudioThread(BusId InBus) noexcept
             continue;
         }
         MBuses[ScopedChild].parent = ScopedParent;
-        if (ScopedParent != kInvalidBus && MBuses[ScopedParent].active)
+        if (ScopedParent != kInvalidBus && ScopedParent < kMaxBuses && MBuses[ScopedParent].active)
         {
             AddChild(ScopedParent, ScopedChild);
         }

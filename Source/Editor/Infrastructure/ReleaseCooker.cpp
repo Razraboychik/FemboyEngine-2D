@@ -746,7 +746,10 @@ void ReleaseCooker::StageRuntimeBundle(const char* InPluginPath) noexcept
         return;
     }
     (void)WriteStoreNotices(ScopedRuntimeDir);
-    CopyText(MResult.runtimePath, sizeof(MResult.runtimePath), ScopedRuntimeDir.generic_string());
+    {
+        std::lock_guard ScopedLock(MProgressMutex);
+        CopyText(MResult.runtimePath, sizeof(MResult.runtimePath), ScopedRuntimeDir.generic_string());
+    }
     SetStage(ReleaseCookStage::Packing, "runtime bundle staged");
 }
 
@@ -1035,7 +1038,7 @@ void ReleaseCooker::Run(std::stop_token InStop) noexcept
             std::string ScopedError;
             if (!MAot.Start(MGraph, ScopedOptions, &ScopedError))
             {
-                Fail(ScopedError.empty() ? "AOT build rejected" : ScopedError.c_str());
+                Fail(ScopedError.empty() ? "AOT build rejected" : ScopedError);
                 MRunning.store(false, std::memory_order_release);
                 WipeKey();
                 return;
@@ -1054,7 +1057,7 @@ void ReleaseCooker::Run(std::stop_token InStop) noexcept
             const Script::AotBuildResult ScopedResult = MAot.Snapshot();
             if (ScopedResult.state != Script::AotBuildState::Succeeded)
             {
-                Fail(ScopedResult.error.empty() ? "AOT compilation failed" : ScopedResult.error.c_str());
+                Fail(ScopedResult.error.empty() ? "AOT compilation failed" : ScopedResult.error);
                 MRunning.store(false, std::memory_order_release);
                 WipeKey();
                 return;

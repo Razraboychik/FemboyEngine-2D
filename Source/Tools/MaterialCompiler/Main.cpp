@@ -2,12 +2,18 @@
 #include "Engine/RHI/MaterialAsset.hpp"
 #include "Engine/RHI/MaterialGraphCompiler.hpp"
 #include "Tools/ShaderCompiler/ShaderCompiler.hpp"
+#include "Tools/MaterialCompiler/DxcArguments.hpp"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #if defined(_WIN32)
 #include <windows.h>
+#else
+#include <spawn.h>
+#include <sys/wait.h>
 #endif
 #include <cstring>
 #include <fstream>
@@ -18,11 +24,19 @@
 #include "spirv_hlsl.hpp"
 #endif
 
+#if !defined(_WIN32)
+extern char** environ;
+#endif
+
 namespace
 {
 
 [[nodiscard]] bool ReadFile(const std::string& InPath, std::vector<std::byte>* OutBytes)
 {
+    if (OutBytes == nullptr)
+    {
+        return false;
+    }
     std::ifstream ScopedStream(InPath, std::ios::binary | std::ios::ate);
     if (!ScopedStream)
     {
@@ -35,32 +49,62 @@ namespace
     }
     OutBytes->resize(static_cast<std::size_t>(ScopedSize));
     ScopedStream.seekg(0, std::ios::beg);
+    if (!ScopedStream)
+    {
+        return false;
+    }
     ScopedStream.read(reinterpret_cast<char*>(OutBytes->data()), ScopedSize);
     return static_cast<bool>(ScopedStream);
 }
 
 [[nodiscard]] bool WriteFile(const std::string& InPath, std::span<const std::byte> InBytes)
 {
+    if (InPath.empty())
+    {
+        return false;
+    }
     std::ofstream ScopedStream(InPath, std::ios::binary);
     if (!ScopedStream)
     {
         return false;
     }
     ScopedStream.write(reinterpret_cast<const char*>(InBytes.data()), static_cast<std::streamsize>(InBytes.size()));
+    ScopedStream.close();
     return static_cast<bool>(ScopedStream);
+}
+
+[[nodiscard]] bool IsCompilerCandidate(const std::string& InPath)
+{
+    if (!Fby::Tools::MaterialCompiler::IsSafeProcessArgument(InPath))
+    {
+        return false;
+    }
+    const std::filesystem::path ScopedPath(InPath);
+    if (ScopedPath.has_parent_path() || ScopedPath.has_root_path() || InPath.find('\\') != std::string::npos)
+    {
+        std::error_code ScopedError;
+        return std::filesystem::is_regular_file(ScopedPath, ScopedError);
+    }
+    return true;
 }
 
 [[nodiscard]] std::string FindDxc()
 {
     if (const char* ScopedExplicit = std::getenv("FBY_DXC"); ScopedExplicit != nullptr)
     {
-        return ScopedExplicit;
+        if (IsCompilerCandidate(ScopedExplicit))
+        {
+            return ScopedExplicit;
+        }
     }
     if (const char* ScopedVulkan = std::getenv("VULKAN_SDK"); ScopedVulkan != nullptr)
     {
-        const std::filesystem::path ScopedPath =
-            std::filesystem::path(ScopedVulkan) / "Bin" / "dxc.exe";
-        if (std::filesystem::exists(ScopedPath))
+#if defined(_WIN32)
+        const std::filesystem::path ScopedPath = std::filesystem::path(ScopedVulkan) / "Bin" / "dxc.exe";
+#else
+        const std::filesystem::path ScopedPath = std::filesystem::path(ScopedVulkan) / "bin" / "dxc";
+#endif
+        if (IsCompilerCandidate(ScopedPath.string()))
         {
             return ScopedPath.string();
         }
@@ -68,33 +112,111 @@ namespace
     return "dxc";
 }
 
+#if defined(_WIN32)
+[[nodiscard]] std::wstring Utf8ToWide(std::string_view InText)
+{
+    if (InText.empty())
+    {
+        return {};
+    }
+    const int ScopedLength = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, InText.data(),
+                                                 static_cast<int>(InText.size()), nullptr, 0);
+    if (ScopedLength <= 0)
+    {
+        return {};
+    }
+    std::wstring ScopedWide(static_cast<std::size_t>(ScopedLength), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, InText.data(), static_cast<int>(InText.size()),
+                            ScopedWide.data(), ScopedLength) != ScopedLength)
+    {
+        return {};
+    }
+    return ScopedWide;
+}
+#endif
+
 [[nodiscard]] bool CompileHlslToDxil(const std::string& InHlslPath, const std::string& InDxilPath,
                                       const char* InProfile)
 {
-    const std::string ScopedCompiler = FindDxc();
-    const std::string ScopedCommand = "\"" + ScopedCompiler + "\" -T " + InProfile + " -E main -Fo \"" +
-                                      InDxilPath + "\" \"" + InHlslPath + "\"";
-#if defined(_WIN32)
-    const int ScopedWideLength =
-        MultiByteToWideChar(CP_UTF8, 0, ScopedCommand.c_str(), -1, nullptr, 0);
-    std::wstring ScopedWide(static_cast<std::size_t>(ScopedWideLength), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, ScopedCommand.c_str(), -1, ScopedWide.data(), ScopedWideLength);
-    STARTUPINFOW ScopedStartup{};
-    ScopedStartup.cb = sizeof(ScopedStartup);
-    PROCESS_INFORMATION ScopedProcess{};
-    if (CreateProcessW(nullptr, ScopedWide.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &ScopedStartup,
-                       &ScopedProcess) == FALSE)
+    if (InProfile == nullptr)
     {
         return false;
     }
-    WaitForSingleObject(ScopedProcess.hProcess, INFINITE);
+    const std::string ScopedCompiler = FindDxc();
+    const std::optional<std::vector<std::string>> ScopedArguments =
+        Fby::Tools::MaterialCompiler::BuildDxcArguments(ScopedCompiler, InHlslPath, InDxilPath, InProfile);
+    if (!ScopedArguments.has_value())
+    {
+        return false;
+    }
+#if defined(_WIN32)
+    const std::wstring ScopedWideCompiler = Utf8ToWide(ScopedCompiler);
+    if (ScopedWideCompiler.empty())
+    {
+        return false;
+    }
+    std::wstring ScopedCommandLine;
+    for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedArguments->size(); ++ScopedIndex)
+    {
+        if (ScopedIndex != 0)
+        {
+            ScopedCommandLine.push_back(L' ');
+        }
+        const std::wstring ScopedWideArgument = Utf8ToWide((*ScopedArguments)[ScopedIndex]);
+        if (ScopedWideArgument.empty())
+        {
+            return false;
+        }
+        ScopedCommandLine += Fby::Tools::MaterialCompiler::QuoteWindowsArgument(ScopedWideArgument);
+    }
+    // A bare compiler name is resolved through PATH, so CreateProcess must
+    // derive the image from argv[0]. An explicit path is passed separately.
+    const wchar_t* ScopedApplication =
+        ScopedCompiler.find('/') != std::string::npos || ScopedCompiler.find('\\') != std::string::npos
+            ? ScopedWideCompiler.c_str()
+            : nullptr;
+    STARTUPINFOW ScopedStartup{};
+    ScopedStartup.cb = sizeof(ScopedStartup);
+    PROCESS_INFORMATION ScopedProcess{};
+    if (CreateProcessW(ScopedApplication, ScopedCommandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr,
+                       &ScopedStartup, &ScopedProcess) == FALSE)
+    {
+        return false;
+    }
+    const DWORD ScopedWait = WaitForSingleObject(ScopedProcess.hProcess, INFINITE);
     DWORD ScopedExit = 1;
-    GetExitCodeProcess(ScopedProcess.hProcess, &ScopedExit);
+    if (ScopedWait != WAIT_OBJECT_0 || GetExitCodeProcess(ScopedProcess.hProcess, &ScopedExit) == FALSE)
+    {
+        ScopedExit = 1;
+    }
     CloseHandle(ScopedProcess.hThread);
     CloseHandle(ScopedProcess.hProcess);
-    return ScopedExit == 0 && std::filesystem::exists(InDxilPath);
+    std::error_code ScopedOutputError;
+    return ScopedExit == 0 && std::filesystem::is_regular_file(InDxilPath, ScopedOutputError);
 #else
-    return std::system(ScopedCommand.c_str()) == 0 && std::filesystem::exists(InDxilPath);
+    std::vector<char*> ScopedArgv;
+    ScopedArgv.reserve(ScopedArguments->size() + 1);
+    for (std::string& ScopedArgument : *ScopedArguments)
+    {
+        ScopedArgv.push_back(ScopedArgument.data());
+    }
+    ScopedArgv.push_back(nullptr);
+    pid_t ScopedProcess = 0;
+    const int ScopedSpawn = posix_spawnp(&ScopedProcess, ScopedCompiler.c_str(), nullptr, nullptr,
+                                         ScopedArgv.data(), environ);
+    if (ScopedSpawn != 0)
+    {
+        return false;
+    }
+    int ScopedStatus = 0;
+    pid_t ScopedWaited = 0;
+    do
+    {
+        ScopedWaited = waitpid(ScopedProcess, &ScopedStatus, 0);
+    } while (ScopedWaited < 0 && errno == EINTR);
+    std::error_code ScopedOutputError;
+    return ScopedWaited == ScopedProcess && WIFEXITED(ScopedStatus) && WEXITSTATUS(ScopedStatus) == 0 &&
+           std::filesystem::is_regular_file(InDxilPath, ScopedOutputError);
 #endif
 }
 
@@ -285,10 +407,39 @@ int main(int argc, char** argv)
     std::vector<std::byte> ScopedFragmentDxil;
     if (ScopedDx12)
     {
-        (void)ReadFile(ScopedOutput + ".frag.dxil", &ScopedFragmentDxil);
+        const std::string ScopedFragmentDxilPath = ScopedOutput + ".frag.dxil";
+        std::error_code ScopedFileError;
+        if (std::filesystem::exists(ScopedFragmentDxilPath, ScopedFileError))
+        {
+            if (!ReadFile(ScopedFragmentDxilPath, &ScopedFragmentDxil))
+            {
+                std::fprintf(stderr, "fby_matc: cannot read '%s'\n", ScopedFragmentDxilPath.c_str());
+                return 1;
+            }
+        }
+        else if (ScopedFileError)
+        {
+            std::fprintf(stderr, "fby_matc: cannot inspect '%s': %s\n", ScopedFragmentDxilPath.c_str(),
+                         ScopedFileError.message().c_str());
+            return 1;
+        }
         if (ScopedProgram.usesGeneratedVertexStage)
         {
-            (void)ReadFile(ScopedOutput + ".vert.dxil", &ScopedVertexDxil);
+            const std::string ScopedVertexDxilPath = ScopedOutput + ".vert.dxil";
+            if (std::filesystem::exists(ScopedVertexDxilPath, ScopedFileError))
+            {
+                if (!ReadFile(ScopedVertexDxilPath, &ScopedVertexDxil))
+                {
+                    std::fprintf(stderr, "fby_matc: cannot read '%s'\n", ScopedVertexDxilPath.c_str());
+                    return 1;
+                }
+            }
+            else if (ScopedFileError)
+            {
+                std::fprintf(stderr, "fby_matc: cannot inspect '%s': %s\n", ScopedVertexDxilPath.c_str(),
+                             ScopedFileError.message().c_str());
+                return 1;
+            }
         }
     }
     std::vector<std::byte> ScopedCookedBytes;

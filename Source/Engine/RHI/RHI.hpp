@@ -216,6 +216,8 @@ struct DeviceInfo
     std::uint8_t gpuVendor = 0;
     // 0 Windows, 1 Linux, 2 macOS, 3 other.
     std::uint8_t platform = 3;
+    // Set when the backend observes DXGI_ERROR_DEVICE_REMOVED / VK_ERROR_DEVICE_LOST.
+    bool deviceLost = false;
 };
 
 struct TextureArrayDesc

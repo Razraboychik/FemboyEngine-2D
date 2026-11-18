@@ -45,7 +45,8 @@ void VoiceReactiveSfx::Configure(const VoiceReactiveSfxSettings& InSettings) noe
 {
     MSettings = InSettings;
     MSettings.Clamp();
-    Reset();
+    // Settings changes must not forget which transition flags were already
+    // observed; Reset() remains the explicit session-reset entry point.
 }
 
 void VoiceReactiveSfx::Reset() noexcept

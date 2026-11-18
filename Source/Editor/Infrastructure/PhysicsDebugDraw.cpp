@@ -147,11 +147,12 @@ void PhysicsDebugVisualizer::BuildBodies(Ecs::SystemContext& InContext, std::uin
     {
         return;
     }
-    auto ScopedView = InContext.registry.view<RigidBody2D, Collider2D>();
+    const Ecs::Registry& ScopedRegistry = InContext.registry;
+    auto ScopedView = ScopedRegistry.view<RigidBody2D, Collider2D>();
     for (const Entity ScopedEntity : ScopedView)
     {
-        const RigidBody2D& ScopedBody = InContext.registry.get<RigidBody2D>(ScopedEntity);
-        const Collider2D& ScopedCollider = InContext.registry.get<Collider2D>(ScopedEntity);
+        const RigidBody2D& ScopedBody = ScopedRegistry.get<RigidBody2D>(ScopedEntity);
+        const Collider2D& ScopedCollider = ScopedRegistry.get<Collider2D>(ScopedEntity);
         const Color32 ScopedColor = BodyColor(ScopedBody.Type, ScopedCollider.Sensor);
 
         if ((InFlags & PhysicsDebugBodies) != 0)
@@ -182,11 +183,12 @@ void PhysicsDebugVisualizer::BuildRopes(Ecs::SystemContext& InContext, std::uint
         return;
     }
     const float ScopedPixelsPerMeter = InContext.physics != nullptr ? InContext.physics->PixelsPerMeter() : 50.0f;
-    auto ScopedView = InContext.registry.view<JointLinkComponent, RigidBody2D>();
+    const Ecs::Registry& ScopedRegistry = InContext.registry;
+    auto ScopedView = ScopedRegistry.view<JointLinkComponent, RigidBody2D>();
     for (const Entity ScopedEntity : ScopedView)
     {
-        const JointLinkComponent& ScopedLink = InContext.registry.get<JointLinkComponent>(ScopedEntity);
-        const RigidBody2D& ScopedBody = InContext.registry.get<RigidBody2D>(ScopedEntity);
+        const JointLinkComponent& ScopedLink = ScopedRegistry.get<JointLinkComponent>(ScopedEntity);
+        const RigidBody2D& ScopedBody = ScopedRegistry.get<RigidBody2D>(ScopedEntity);
         const Vector2D ScopedAxis =
             Rotate(Vector2D{1.0f, 0.0f}, ScopedBody.Rotation) * (ScopedLink.HalfLength * ScopedPixelsPerMeter);
         const float ScopedRadius = std::max(1.0f, ScopedLink.Radius * ScopedPixelsPerMeter);
@@ -215,10 +217,11 @@ void PhysicsDebugVisualizer::BuildCloth(Ecs::SystemContext& InContext, std::uint
     {
         return;
     }
-    auto ScopedView = InContext.registry.view<ClothComponent>();
+    const Ecs::Registry& ScopedRegistry = InContext.registry;
+    auto ScopedView = ScopedRegistry.view<ClothComponent>();
     for (const Entity ScopedEntity : ScopedView)
     {
-        const ClothComponent& ScopedComponent = InContext.registry.get<ClothComponent>(ScopedEntity);
+        const ClothComponent& ScopedComponent = ScopedRegistry.get<ClothComponent>(ScopedEntity);
         const ClothHandle ScopedHandle{ScopedComponent.ClothIndex, ScopedComponent.Generation, ScopedComponent.ClothID};
         if (!InContext.cloth->IsValid(ScopedHandle))
         {

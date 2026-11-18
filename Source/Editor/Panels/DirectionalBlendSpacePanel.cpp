@@ -168,6 +168,10 @@ void DirectionalBlendSpacePanel::BuildDefaultDocument() noexcept
 void DirectionalBlendSpacePanel::SetDocument(const Animation::DirectionalBlendSpaceDocument& InDocument) noexcept
 {
     MDocument = InDocument;
+    if (MDocument.AnchorCount > Animation::kMaxDirectionalAnchors)
+    {
+        MDocument.AnchorCount = Animation::kMaxDirectionalAnchors;
+    }
     for (std::string& ScopedPath : MClipPaths)
     {
         ScopedPath.clear();
@@ -357,7 +361,15 @@ bool DirectionalBlendSpacePanel::SetClipPath(std::uint16_t InAnchor, std::string
     {
         return false;
     }
-    MClipPaths[InAnchor].assign(InPath);
+    try
+    {
+        MClipPaths[InAnchor].assign(InPath);
+    }
+    catch (...)
+    {
+        SetStatus("cannot store the clip path");
+        return false;
+    }
     if (MClipPathAnchor == InAnchor)
     {
         MClipPathAnchor = kNoBlendAnchor;

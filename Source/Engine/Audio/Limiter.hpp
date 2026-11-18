@@ -63,7 +63,7 @@ public:
                 ScopedPeak = std::max(ScopedPeak, std::fabs(InInterleaved[ScopedBase + ScopedChannel]));
             }
 
-            const float ScopedTarget = ScopedPeak > MThreshold ? std::min(1.0f, MCeiling / ScopedPeak) : 1.0f;
+            const float ScopedTarget = ScopedPeak > MThreshold ? std::min(1.0f, MThreshold / ScopedPeak) : 1.0f;
             const float ScopedCoefficient = ScopedTarget < MGain ? MAttackCoefficient : MReleaseCoefficient;
             MGain = ScopedTarget + (MGain - ScopedTarget) * ScopedCoefficient;
             MGain = std::clamp(MGain, 0.0f, 1.0f);

@@ -13,8 +13,29 @@ constexpr float kInvSqrt3 = 0.57735026918962576451f;
 
 [[nodiscard]] constexpr int FastFloor(float InValue) noexcept
 {
+    // Float-to-int conversion is UB for NaN and values outside int's range.
+    // Noise is public API, so keep pathological coordinates finite and safe.
+    constexpr float kIntMin = -2147483648.0f;
+    constexpr float kIntMax = 2147483648.0f;
+    if (!(InValue > kIntMin && InValue < kIntMax))
+    {
+        return 0;
+    }
     const int ScopedTruncated = static_cast<int>(InValue);
     return ScopedTruncated - (InValue < static_cast<float>(ScopedTruncated) ? 1 : 0);
+}
+
+[[nodiscard]] constexpr float SafeCoordinate(float InValue) noexcept
+{
+    // Gradients and simplex skew overflow for extreme inputs. Noise has no
+    // meaningful resolution beyond this range, so clamp instead of returning
+    // NaN/inf from public calls.
+    constexpr float kLimit = 1.0e6f;
+    if (!(InValue > -kLimit && InValue < kLimit))
+    {
+        return 0.0f;
+    }
+    return InValue;
 }
 
 [[nodiscard]] constexpr std::uint64_t SplitMixFinal(std::uint64_t InValue) noexcept
@@ -231,6 +252,8 @@ void NoiseGenerator::BuildPermutation(std::uint64_t InSeed) noexcept
 
 float NoiseGenerator::Perlin2D(float InX, float InY) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
     const int ScopedXi = FastFloor(InX);
     const int ScopedYi = FastFloor(InY);
     const float ScopedXf = InX - static_cast<float>(ScopedXi);
@@ -254,6 +277,9 @@ float NoiseGenerator::Perlin2D(float InX, float InY) const noexcept
 
 float NoiseGenerator::Perlin3D(float InX, float InY, float InZ) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
+    InZ = SafeCoordinate(InZ);
     const int ScopedXi = FastFloor(InX);
     const int ScopedYi = FastFloor(InY);
     const int ScopedZi = FastFloor(InZ);
@@ -302,6 +328,8 @@ float NoiseGenerator::Perlin3D(float InX, float InY, float InZ) const noexcept
 
 float NoiseGenerator::Simplex2D(float InX, float InY) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
     // 0.5 * (sqrt(3) - 1)
     constexpr float ScopedKF2 = 0.36602540378443864676f;
     // (3 - sqrt(3)) / 6
@@ -337,6 +365,9 @@ float NoiseGenerator::Simplex2D(float InX, float InY) const noexcept
 
 float NoiseGenerator::Simplex3D(float InX, float InY, float InZ) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
+    InZ = SafeCoordinate(InZ);
     constexpr float ScopedKF3 = 1.0f / 3.0f;
     constexpr float ScopedKG3 = 1.0f / 6.0f;
 
@@ -433,6 +464,8 @@ float NoiseGenerator::Simplex3D(float InX, float InY, float InZ) const noexcept
 // Worley / cellular
 void NoiseGenerator::Worley2D(float InX, float InY, float& InF1, float& InF2) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
     const int ScopedCellX = FastFloor(InX);
     const int ScopedCellY = FastFloor(InY);
     float ScopedNearest = 1.0e30f;
@@ -468,6 +501,8 @@ void NoiseGenerator::Worley2D(float InX, float InY, float& InF1, float& InF2) co
 
 float NoiseGenerator::Worley2D(float InX, float InY) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
     float ScopedF1 = 0.0f;
     float ScopedF2 = 0.0f;
     Worley2D(InX, InY, ScopedF1, ScopedF2);
@@ -476,6 +511,8 @@ float NoiseGenerator::Worley2D(float InX, float InY) const noexcept
 
 float NoiseGenerator::WorleyEdge2D(float InX, float InY) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
     float ScopedF1 = 0.0f;
     float ScopedF2 = 0.0f;
     Worley2D(InX, InY, ScopedF1, ScopedF2);
@@ -484,6 +521,9 @@ float NoiseGenerator::WorleyEdge2D(float InX, float InY) const noexcept
 
 void NoiseGenerator::Worley3D(float InX, float InY, float InZ, float& InF1, float& InF2) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
+    InZ = SafeCoordinate(InZ);
     const int ScopedCellX = FastFloor(InX);
     const int ScopedCellY = FastFloor(InY);
     const int ScopedCellZ = FastFloor(InZ);
@@ -525,6 +565,9 @@ void NoiseGenerator::Worley3D(float InX, float InY, float InZ, float& InF1, floa
 
 float NoiseGenerator::Worley3D(float InX, float InY, float InZ) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
+    InZ = SafeCoordinate(InZ);
     float ScopedF1 = 0.0f;
     float ScopedF2 = 0.0f;
     Worley3D(InX, InY, InZ, ScopedF1, ScopedF2);
@@ -533,6 +576,9 @@ float NoiseGenerator::Worley3D(float InX, float InY, float InZ) const noexcept
 
 float NoiseGenerator::WorleyEdge3D(float InX, float InY, float InZ) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
+    InZ = SafeCoordinate(InZ);
     float ScopedF1 = 0.0f;
     float ScopedF2 = 0.0f;
     Worley3D(InX, InY, InZ, ScopedF1, ScopedF2);
@@ -541,6 +587,8 @@ float NoiseGenerator::WorleyEdge3D(float InX, float InY, float InZ) const noexce
 
 float NoiseGenerator::Fbm2D(float InX, float InY, int InOctaves, float InLacunarity, float InGain) const noexcept
 {
+    InX = SafeCoordinate(InX);
+    InY = SafeCoordinate(InY);
     if (InOctaves <= 0)
     {
         return 0.0f;

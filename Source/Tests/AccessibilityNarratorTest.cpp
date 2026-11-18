@@ -118,7 +118,11 @@ int main()
     FBY_CHECK(ScopedTree.At(ScopedButton).Name == "Play");
     FBY_CHECK(std::strcmp(Fby::Ui::AccessibilityRoleName(Fby::Ui::AccessibilityRole::Button), "button") == 0);
 
+    ScopedTree.SetFocusedId(1u);
+    FBY_CHECK((ScopedTree.At(ScopedRoot).States & Fby::Ui::AccessibilityStateFocused) != 0);
     ScopedTree.SetFocusedId(2u);
+    FBY_CHECK((ScopedTree.At(ScopedRoot).States & Fby::Ui::AccessibilityStateFocused) == 0);
+    FBY_CHECK((ScopedTree.At(ScopedButton).States & Fby::Ui::AccessibilityStateFocused) != 0);
     FBY_CHECK(ScopedTree.FocusedId() == 2u);
     FBY_CHECK(ScopedTree.FocusedIndex() == ScopedButton);
     Fby::Ui::AccessibilityEvent ScopedEvent{};
@@ -162,6 +166,20 @@ int main()
         ScopedSawStructure |= ScopedEvent.Kind == Fby::Ui::AccessibilityEventKind::Structure;
     }
     FBY_CHECK(!ScopedSawStructure);
+
+    // Reset keeps the focused id across a rebuild. If the same id is focused
+    // again, the fresh node must regain the Focused state even though the id did
+    // not change.
+    ScopedTree.Reset();
+    (void)ScopedTree.AddNode(1u, Fby::Ui::AccessibilityRole::Window, Fby::Ui::kNoAccessibilityNode, Fby::Vector4D{},
+                             Fby::Ui::AccessibilityStateEnabled, 0, "Main menu");
+    ScopedTree.SetFocusedId(1u);
+    FBY_CHECK((ScopedTree.At(0).States & Fby::Ui::AccessibilityStateFocused) != 0);
+    ScopedTree.Reset();
+    (void)ScopedTree.AddNode(1u, Fby::Ui::AccessibilityRole::Window, Fby::Ui::kNoAccessibilityNode, Fby::Vector4D{},
+                             Fby::Ui::AccessibilityStateEnabled, 0, "Main menu");
+    ScopedTree.SetFocusedId(1u);
+    FBY_CHECK((ScopedTree.At(0).States & Fby::Ui::AccessibilityStateFocused) != 0);
 
     // Projection: a canvas with a focused button becomes roles, parents and focus.
     Fby::Ui::WidgetCanvas ScopedCanvas;

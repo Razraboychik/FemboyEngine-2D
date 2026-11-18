@@ -117,13 +117,12 @@ ClothSystem::~ClothSystem() = default;
 
 bool ClothSystem::Initialize(PhysicsSystem* InPhysics)
 {
-    if (MStorage != nullptr)
+    if (MStorage == nullptr)
     {
-        return true;
+        MStorage = std::make_unique<Storage>();
+        MLiveCloths = 0;
     }
-    MStorage = std::make_unique<Storage>();
     MPhysics = (InPhysics != nullptr && InPhysics->IsValid()) ? InPhysics : nullptr;
-    MLiveCloths = 0;
     return MStorage != nullptr;
 }
 
@@ -151,6 +150,10 @@ void ClothSystem::Shutdown(Ecs::Registry& InRegistry) noexcept
                 {
                     InRegistry.destroy(ScopedCloth.entity);
                 }
+            }
+            if (ScopedCloth.stableId.IsValid())
+            {
+                MStableIds.Release(ScopedCloth.stableId);
             }
             ScopedCloth = Runtime{};
         }
@@ -204,7 +207,10 @@ ClothHandle ClothSystem::Create(Ecs::Registry& InRegistry, const ClothDesc& InDe
         !std::isfinite(InDesc.Origin.X) || !std::isfinite(InDesc.Origin.Y) ||
         !std::isfinite(InDesc.Gravity.X) || !std::isfinite(InDesc.Gravity.Y) ||
         !std::isfinite(InDesc.Wind.X) || !std::isfinite(InDesc.Wind.Y) ||
-        !std::isfinite(InDesc.Damping) || !std::isfinite(InDesc.ParticleRadius))
+        !std::isfinite(InDesc.Damping) || !std::isfinite(InDesc.ParticleRadius) ||
+        !std::isfinite(InDesc.StructuralStiffness) || !std::isfinite(InDesc.ShearStiffness) ||
+        !std::isfinite(InDesc.BendStiffness) || InDesc.StructuralStiffness < 0.0f ||
+        InDesc.ShearStiffness < 0.0f || InDesc.BendStiffness < 0.0f)
     {
         return {};
     }
@@ -539,7 +545,8 @@ void ClothSystem::Step(float InDt) noexcept
             }
         }
 
-        if ((ScopedCloth.flags & ClothCollideWorld) != 0 && MPhysics != nullptr && MPhysics->IsValid())
+        if ((ScopedCloth.flags & ClothCollideWorld) != 0 && MPhysics != nullptr && MPhysics->IsValid() &&
+            MPhysics->WorldId() != 0)
         {
             const b2WorldId ScopedWorld = b2LoadWorldId(static_cast<std::uint32_t>(MPhysics->WorldId()));
             const float ScopedPixelsPerMeter = MPhysics->PixelsPerMeter();

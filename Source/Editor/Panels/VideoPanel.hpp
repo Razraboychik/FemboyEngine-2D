@@ -17,6 +17,11 @@ namespace Fby::Editor
 class VideoPanel
 {
 public:
+    VideoPanel() = default;
+    ~VideoPanel();
+    VideoPanel(const VideoPanel&) = delete;
+    VideoPanel& operator=(const VideoPanel&) = delete;
+
     void Draw(Ecs::SystemContext& InContext, bool* InOpen);
 
 private:

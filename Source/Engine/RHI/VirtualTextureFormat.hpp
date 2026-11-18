@@ -129,11 +129,18 @@ inline constexpr std::int32_t kVirtualTextureFeedbackBias = 0x4000;
 // stable grid (a tile always covers [tile * size, (tile + 1) * size)).
 [[nodiscard]] inline std::int32_t VirtualTextureWorldToTile(float InWorld, float InWorldTileSize) noexcept
 {
-    if (!(InWorldTileSize > 0.0f))
+    if (!std::isfinite(InWorld) || !std::isfinite(InWorldTileSize) || !(InWorldTileSize > 0.0f))
     {
         return 0;
     }
-    return static_cast<std::int32_t>(std::floor(InWorld / InWorldTileSize));
+    const float ScopedTile = std::floor(InWorld / InWorldTileSize);
+    constexpr float kTileMin = -2147483648.0f;
+    constexpr float kTileMax = 2147483648.0f;
+    if (!(ScopedTile > kTileMin && ScopedTile < kTileMax))
+    {
+        return 0;
+    }
+    return static_cast<std::int32_t>(ScopedTile);
 }
 
 [[nodiscard]] inline float VirtualTextureTileToWorld(std::int32_t InTile, float InWorldTileSize) noexcept
@@ -144,7 +151,7 @@ inline constexpr std::int32_t kVirtualTextureFeedbackBias = 0x4000;
 // UV inside the tile: [0, 1).
 [[nodiscard]] inline float VirtualTextureTileLocalUv(float InWorld, float InWorldTileSize) noexcept
 {
-    if (!(InWorldTileSize > 0.0f))
+    if (!std::isfinite(InWorld) || !std::isfinite(InWorldTileSize) || !(InWorldTileSize > 0.0f))
     {
         return 0.0f;
     }

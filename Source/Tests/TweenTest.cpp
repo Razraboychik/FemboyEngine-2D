@@ -30,6 +30,25 @@ void TestBasics()
     ScopedTween.Update(0.5f, false, 1.0f);
     Check(ScopedTween.Finished(), "tween finishes");
     Check(ScopedTween.Value() > 9.9f, "tween clamps to end");
+
+    TweenDesc ScopedInvalid;
+    ScopedInvalid.durationSeconds = std::numeric_limits<float>::quiet_NaN();
+    Check(!ScopedTween.Start(ScopedInvalid), "NaN duration is rejected");
+}
+
+void TestDelayCrossing()
+{
+    using namespace Fby::Animation;
+    Tween ScopedTween;
+    TweenDesc ScopedDesc;
+    ScopedDesc.durationSeconds = 1.0f;
+    ScopedDesc.delaySeconds = 0.5f;
+    Check(ScopedTween.Start(ScopedDesc), "delayed tween starts");
+    Check(ScopedTween.Update(0.25f, false, 1.0f), "delayed update accepted");
+    Check(ScopedTween.Progress() < 0.01f, "delay holds progress");
+    Check(ScopedTween.Update(0.75f, false, 1.0f), "delay crossing accepted");
+    Check(ScopedTween.Progress() > 0.24f && ScopedTween.Progress() < 0.26f,
+          "delay crossing advances by the remaining frame");
 }
 
 void TestPauseAndDilation()

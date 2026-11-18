@@ -200,13 +200,15 @@ void TransportGroupPanel::Draw(bool* InOpen, Ecs::Registry& InRegistry, Entity I
         TransportGroupComponent* ScopedGroup = InRegistry.try_get<TransportGroupComponent>(InSelected);
         if (ScopedGroup != nullptr)
         {
+            // DrawGroupEditor can emplace components and relocate the entity.
+            const std::uint32_t ScopedGroupId = ScopedGroup->GroupId;
             DrawGroupEditor(InRegistry, InSelected, *ScopedGroup);
             if (ImGui::Button("Remove selected group"))
             {
-                ScopedRemoveGroupId = ScopedGroup->GroupId;
+                ScopedRemoveGroupId = ScopedGroupId;
             }
             ImGui::Separator();
-            DrawMemberList(InRegistry, ScopedGroup->GroupId);
+            DrawMemberList(InRegistry, ScopedGroupId);
         }
         else if (CarrierMemberComponent* ScopedMember = InRegistry.try_get<CarrierMemberComponent>(InSelected);
                  ScopedMember != nullptr)

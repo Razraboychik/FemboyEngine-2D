@@ -133,10 +133,13 @@ bool NetIdentity::Valid() const noexcept
         return false;
     }
 
-    // The EdDSA secret carries the public half back to back; a mismatch means
-    // the record was assembled from parts of two different identities.
-    if (std::memcmp(Signing.Secret.data() + Crypto::kEddsaPublicBytes, Signing.Public.data(),
-                    Crypto::kEddsaPublicBytes) != 0)
+    // Recompute the EdDSA public key from the stored seed: the secret may carry
+    // an arbitrary public half, so trusting the embedded copy would accept a
+    // record assembled from parts of two different identities.
+    Crypto::EddsaKeyPair ScopedSigning{};
+    if (!Crypto::EddsaKeyPairFromSeed(
+            std::span<const std::byte>(Signing.Secret.data(), Crypto::kEddsaSeedBytes), &ScopedSigning) ||
+        ScopedSigning.Public != Signing.Public)
     {
         return false;
     }

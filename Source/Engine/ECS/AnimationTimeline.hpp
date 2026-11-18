@@ -70,8 +70,8 @@ struct TimelineEvent
     TimelineEventKind kind = TimelineEventKind::Audio;
     std::uint8_t once = 1;
     std::uint8_t flags = 0;
-    // AssetId value (audio clip)
-    std::uint32_t audioAsset = 0;
+    // AssetId value (audio clip); 64-bit like AssetId.
+    std::uint64_t audioAsset = 0;
     // ScriptRuntime handle
     std::uint32_t scriptProgram = 0;
     // Target entity for script events

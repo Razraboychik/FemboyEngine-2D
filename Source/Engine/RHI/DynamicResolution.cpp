@@ -2,6 +2,7 @@
 #include "Engine/RHI/DynamicResolution.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace Fby::Rhi
 {
@@ -9,12 +10,17 @@ namespace Fby::Rhi
 void DynamicResolution::Configure(const DynamicResolutionSettings& InSettings) noexcept
 {
     MSettings = InSettings;
-    MSettings.minScale = std::clamp(MSettings.minScale, 0.25f, 1.0f);
-    MSettings.maxScale = std::clamp(MSettings.maxScale, MSettings.minScale, 1.0f);
-    MSettings.targetMilliseconds = std::max(MSettings.targetMilliseconds, 1.0f);
-    MSettings.step = std::clamp(MSettings.step, 0.01f, 0.25f);
+    MSettings.minScale = std::isfinite(MSettings.minScale)
+                             ? std::clamp(MSettings.minScale, 0.25f, 1.0f)
+                             : 0.25f;
+    MSettings.maxScale = std::isfinite(MSettings.maxScale)
+                             ? std::clamp(MSettings.maxScale, MSettings.minScale, 1.0f)
+                             : 1.0f;
+    MSettings.targetMilliseconds =
+        std::isfinite(MSettings.targetMilliseconds) ? std::max(MSettings.targetMilliseconds, 1.0f) : 16.7f;
+    MSettings.step = std::isfinite(MSettings.step) ? std::clamp(MSettings.step, 0.01f, 0.25f) : 0.05f;
     MSettings.settleFrames = std::max(MSettings.settleFrames, 1u);
-    MScale = std::clamp(MScale, MSettings.minScale, MSettings.maxScale);
+    MScale = std::isfinite(MScale) ? std::clamp(MScale, MSettings.minScale, MSettings.maxScale) : 1.0f;
     MSlowFrames = 0;
     MFastFrames = 0;
 }

@@ -38,7 +38,7 @@ EditorPalette GCurrentPalette{};
 {
     const auto ScopedChannel = [](float InValue)
     {
-        const float Scoped = std::clamp(InValue, 0.0f, 1.0f);
+        const float Scoped = std::isfinite(InValue) ? std::clamp(InValue, 0.0f, 1.0f) : 0.0f;
         const float ScopedSrgb =
             Scoped <= 0.0031308f ? 12.92f * Scoped : 1.055f * std::pow(Scoped, 1.0f / 2.4f) - 0.055f;
         return static_cast<std::uint32_t>(std::lround(std::clamp(ScopedSrgb, 0.0f, 1.0f) * 255.0f));

@@ -22,7 +22,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
-#include <string_view>
+#include <vector>
 #include <system_error>
 
 namespace Fby::Editor
@@ -2053,20 +2053,22 @@ void AIStateTreeCanvasPanel::ProcessCanvasEvents()
     const int ScopedSelectedLinkCount = ImNodes::NumSelectedLinks();
     if (ScopedSelectedNodeCount > 0)
     {
-        int ScopedSelected = 0;
-        ImNodes::GetSelectedNodes(&ScopedSelected);
-        if (ScopedSelected >= kAINodeIdBase && ScopedSelected < kAIInputIdBase)
+        std::vector<int> ScopedSelected(static_cast<std::size_t>(ScopedSelectedNodeCount), 0);
+        ImNodes::GetSelectedNodes(ScopedSelected.data());
+        const int ScopedNodeId = ScopedSelected.front();
+        if (ScopedNodeId >= kAINodeIdBase && ScopedNodeId < kAIInputIdBase)
         {
-            MSelectedNode = static_cast<std::uint16_t>(ScopedSelected - kAINodeIdBase);
+            MSelectedNode = static_cast<std::uint16_t>(ScopedNodeId - kAINodeIdBase);
             MSelectedTransition = 0xFFFFu;
         }
     }
     else if (ScopedSelectedLinkCount > 0)
     {
-        int ScopedSelected = 0;
-        ImNodes::GetSelectedLinks(&ScopedSelected);
+        std::vector<int> ScopedSelected(static_cast<std::size_t>(ScopedSelectedLinkCount), 0);
+        ImNodes::GetSelectedLinks(ScopedSelected.data());
+        const int ScopedLinkId = ScopedSelected.front();
         std::uint16_t ScopedTransition = 0xFFFFu;
-        if (DecodeTransitionLink(ScopedSelected, &ScopedTransition) &&
+        if (DecodeTransitionLink(ScopedLinkId, &ScopedTransition) &&
             ScopedTransition < MDocument.Tree.TransitionCount)
         {
             MSelectedTransition = ScopedTransition;

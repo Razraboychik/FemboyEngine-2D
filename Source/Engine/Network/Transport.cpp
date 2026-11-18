@@ -314,7 +314,7 @@ bool ParseAddress(std::string_view InText, std::uint16_t InDefaultPort, NetAddre
     if (ScopedColon != std::string::npos && ScopedHost.find(':') == ScopedColon)
     {
         const std::string ScopedPortText = ScopedHost.substr(ScopedColon + 1);
-        ScopedHost = ScopedHost.substr(0, ScopedColon);
+        ScopedHost.resize(ScopedColon);
         unsigned long ScopedParsed = 0;
         for (const char ScopedCharacter : ScopedPortText)
         {

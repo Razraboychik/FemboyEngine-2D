@@ -560,6 +560,7 @@ template <std::uint32_t Expansion> struct BigIntT
         {
             return Status::Overflow;
         }
+        const bool ScopedDividendNegative = IsNegative();
         std::array<std::uint32_t, kLimbs> ScopedDividendMagnitude{};
         std::array<std::uint32_t, kLimbs> ScopedDivisorMagnitude{};
         FillMagnitude(*this, ScopedDividendMagnitude);
@@ -568,14 +569,14 @@ template <std::uint32_t Expansion> struct BigIntT
         std::array<std::uint32_t, kLimbs> ScopedRemainderMagnitude{};
         Detail::DivideUnsigned(ScopedDividendMagnitude, ScopedDivisorMagnitude, ScopedQuotientMagnitude,
                                ScopedRemainderMagnitude);
-        const bool ScopedQuotientNegative = IsNegative() != InDivisor.IsNegative();
+        const bool ScopedQuotientNegative = ScopedDividendNegative != InDivisor.IsNegative();
         if ((ScopedQuotientNegative && !FitsNegative(ScopedQuotientMagnitude)) ||
             (!ScopedQuotientNegative && !FitsPositive(ScopedQuotientMagnitude)))
         {
             return Status::Overflow;
         }
         *OutQuotient = FromMagnitude(ScopedQuotientMagnitude, ScopedQuotientNegative);
-        *OutRemainder = FromMagnitude(ScopedRemainderMagnitude, IsNegative());
+        *OutRemainder = FromMagnitude(ScopedRemainderMagnitude, ScopedDividendNegative);
         return Status::Ok;
     }
 

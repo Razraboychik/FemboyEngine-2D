@@ -198,6 +198,12 @@ template <std::uint32_t Expansion = 1> struct DecimalT
         {
             return ScopedStatus;
         }
+        if (ScopedFractionDigits > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
+            ScopedExplicitExponent < std::numeric_limits<std::int64_t>::min() +
+                                           static_cast<std::int64_t>(ScopedFractionDigits))
+        {
+            return Status::Overflow;
+        }
         const std::int64_t ScopedExponent = ScopedExplicitExponent - static_cast<std::int64_t>(ScopedFractionDigits);
         if (ScopedExponent < std::numeric_limits<std::int32_t>::min() ||
             ScopedExponent > std::numeric_limits<std::int32_t>::max())

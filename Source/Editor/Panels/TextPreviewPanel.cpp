@@ -166,12 +166,13 @@ void TextPreviewPanel::EnsureLocalization(VirtualFileSystem* InVfs)
     {
         return;
     }
-    const auto ScopedBytes = InVfs->Read("loc/ui.fbin");
-    if (!ScopedBytes)
+    const auto ScopedPinned = InVfs->Pin("loc/ui.fbin");
+    if (!ScopedPinned)
     {
         return;
     }
-    MLocalization = LocalizationTable::Open(*ScopedBytes, nullptr);
+    MLocalizationBytes.assign(ScopedPinned->bytes.begin(), ScopedPinned->bytes.end());
+    MLocalization = LocalizationTable::Open(MLocalizationBytes, nullptr);
     MLocalizationReady = MLocalization.IsValid();
 }
 

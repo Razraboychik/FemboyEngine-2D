@@ -43,6 +43,11 @@ bool ConnectProjectPlugin(const std::filesystem::path& InProjectRoot, const std:
         return false;
     }
     const std::string ScopedRelative = "plugins/" + InPluginFile.filename().string();
+    if (ScopedRelative.size() >= sizeof(ProjectPluginEntry::Path))
+    {
+        SetError(OutError, "project plugin path is too long: " + ScopedRelative);
+        return false;
+    }
     for (std::uint32_t ScopedI = 0; ScopedI < InSettings.pluginCount; ++ScopedI)
     {
         if (ScopedRelative == InSettings.plugins[ScopedI].Path)

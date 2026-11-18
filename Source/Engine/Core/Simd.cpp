@@ -64,7 +64,7 @@ float PeakAbs(const float* InData, std::size_t InCount) noexcept
     {
         const __m128 ScopedBatch = _mm_loadu_ps(InData + ScopedIndex);
         const __m128 ScopedMagnitude = _mm_andnot_ps(ScopedAbsMask, ScopedBatch);
-        ScopedPeak = _mm_max_ps(ScopedPeak, ScopedMagnitude);
+        ScopedPeak = _mm_max_ps(ScopedMagnitude, ScopedPeak);
     }
     alignas(16) float ScopedLanes[4]{};
     _mm_storeu_ps(ScopedLanes, ScopedPeak);
@@ -76,7 +76,7 @@ float PeakAbs(const float* InData, std::size_t InCount) noexcept
     for (; ScopedIndex + 4 <= InCount; ScopedIndex += 4)
     {
         const float32x4_t ScopedBatch = vld1q_f32(InData + ScopedIndex);
-        ScopedPeak = vmaxq_f32(ScopedPeak, vabsq_f32(ScopedBatch));
+        ScopedPeak = vmaxnmq_f32(ScopedPeak, vabsq_f32(ScopedBatch));
     }
     alignas(16) float ScopedLanes[4]{};
     vst1q_f32(ScopedLanes, ScopedPeak);

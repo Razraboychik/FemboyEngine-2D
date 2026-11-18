@@ -33,19 +33,21 @@ template <typename T> [[nodiscard]] T ValueField(const toml::table& InTable, std
 
 UserSettings ClampUserSettings(UserSettings InSettings) noexcept
 {
+    const auto ScopedFiniteClamp = [](float InValue, float InMinimum, float InMaximum)
+    { return std::isfinite(InValue) ? std::clamp(InValue, InMinimum, InMaximum) : InMinimum; };
     InSettings.windowWidth = std::clamp(InSettings.windowWidth, 320u, 16384u);
     InSettings.windowHeight = std::clamp(InSettings.windowHeight, 240u, 8640u);
     InSettings.windowMode = static_cast<std::uint8_t>(std::min<std::uint8_t>(InSettings.windowMode, 2u));
     InSettings.qualityPreset = static_cast<std::uint8_t>(std::min<std::uint8_t>(InSettings.qualityPreset, 2u));
-    InSettings.renderScale = std::clamp(InSettings.renderScale, 0.25f, 1.0f);
+    InSettings.renderScale = ScopedFiniteClamp(InSettings.renderScale, 0.25f, 1.0f);
     InSettings.upscaleMode = static_cast<UpscaleMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.upscaleMode), std::uint8_t{0}, std::uint8_t{4}));
     InSettings.temporalUpscale = static_cast<TemporalUpscaleMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.temporalUpscale), std::uint8_t{0}, std::uint8_t{3}));
-    InSettings.fsr1Sharpness = std::clamp(InSettings.fsr1Sharpness, 0.0f, 1.0f);
+    InSettings.fsr1Sharpness = ScopedFiniteClamp(InSettings.fsr1Sharpness, 0.0f, 1.0f);
     InSettings.fsr2Quality = static_cast<Rhi::Fsr2QualityMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.fsr2Quality), std::uint8_t{0}, std::uint8_t{3}));
-    InSettings.hudRenderScale = std::clamp(InSettings.hudRenderScale, 0.25f, 1.0f);
+    InSettings.hudRenderScale = ScopedFiniteClamp(InSettings.hudRenderScale, 0.25f, 1.0f);
     InSettings.hudUpscale = static_cast<UpscaleMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.hudUpscale), std::uint8_t{0}, std::uint8_t{1}));
     InSettings.hudTarget = static_cast<HudTargetMode>(
@@ -61,8 +63,8 @@ UserSettings ClampUserSettings(UserSettings InSettings) noexcept
     InSettings.dlssQuality = static_cast<Rhi::DlssQualityMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.dlssQuality), std::uint8_t{0}, std::uint8_t{3}));
     InSettings.voicePresetId[63] = '\0';
-    InSettings.voicePresetIntensity = std::clamp(InSettings.voicePresetIntensity, 0.0f, 1.0f);
-    InSettings.voiceReactiveSfxGain = std::clamp(InSettings.voiceReactiveSfxGain, 0.0f, 1.0f);
+    InSettings.voicePresetIntensity = ScopedFiniteClamp(InSettings.voicePresetIntensity, 0.0f, 1.0f);
+    InSettings.voiceReactiveSfxGain = ScopedFiniteClamp(InSettings.voiceReactiveSfxGain, 0.0f, 1.0f);
     return InSettings;
 }
 

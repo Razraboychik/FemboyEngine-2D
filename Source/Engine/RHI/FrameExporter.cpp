@@ -261,7 +261,6 @@ bool FrameExporter::End(std::string* InError)
     MActive = false;
     MGpu = nullptr;
     MImage.clear();
-    MImage.shrink_to_fit();
     return true;
 }
 

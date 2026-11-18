@@ -13,6 +13,16 @@ constexpr std::uint32_t kInvalidAgent = 0xFFFFFFFFu;
 // Hard ceiling for the per-agent neighbour list; the settings cap is clamped to it.
 constexpr std::uint32_t kMaxNeighbourSlots = 32;
 
+[[nodiscard]] std::uint32_t CellIndex(float InQuotient, std::uint32_t InMax) noexcept
+{
+    if (!std::isfinite(InQuotient) || InMax == 0)
+    {
+        return 0;
+    }
+    return static_cast<std::uint32_t>(
+        std::clamp(InQuotient, 0.0f, static_cast<float>(InMax)));
+}
+
 [[nodiscard]] Vector2D NormalizeOrZero(Vector2D InValue) noexcept
 {
     const float ScopedLengthSquared = InValue.LengthSquared();
@@ -133,9 +143,9 @@ void CrowdPool::RebuildGrid() noexcept
     // One cell of padding so a neighbour outside the bounds still lands in range.
     ScopedMin = Vector2D{ScopedMin.X - MCellSize, ScopedMin.Y - MCellSize};
     const std::uint32_t ScopedWidth =
-        static_cast<std::uint32_t>((ScopedMax.X - ScopedMin.X) / MCellSize) + 3u;
+        CellIndex((ScopedMax.X - ScopedMin.X) / MCellSize, 4093u) + 3u;
     const std::uint32_t ScopedHeight =
-        static_cast<std::uint32_t>((ScopedMax.Y - ScopedMin.Y) / MCellSize) + 3u;
+        CellIndex((ScopedMax.Y - ScopedMin.Y) / MCellSize, 4093u) + 3u;
     MGridOrigin = ScopedMin;
     MGridWidth = std::min(ScopedWidth, 4096u);
     MGridHeight = std::min(ScopedHeight, 4096u);
@@ -146,10 +156,8 @@ void CrowdPool::RebuildGrid() noexcept
     while (static_cast<std::uint64_t>(MGridWidth) * MGridHeight > kMaxGridCells && MCellSize < 4096.0f)
     {
         MCellSize *= 2.0f;
-        MGridWidth = std::min(
-            static_cast<std::uint32_t>((ScopedMax.X - MGridOrigin.X) / MCellSize) + 3u, 4096u);
-        MGridHeight = std::min(
-            static_cast<std::uint32_t>((ScopedMax.Y - MGridOrigin.Y) / MCellSize) + 3u, 4096u);
+        MGridWidth = std::min(CellIndex((ScopedMax.X - MGridOrigin.X) / MCellSize, 4093u) + 3u, 4096u);
+        MGridHeight = std::min(CellIndex((ScopedMax.Y - MGridOrigin.Y) / MCellSize, 4093u) + 3u, 4096u);
     }
     if (static_cast<std::uint64_t>(MGridWidth) * MGridHeight > kMaxGridCells)
     {
@@ -165,10 +173,9 @@ void CrowdPool::RebuildGrid() noexcept
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < MCount; ++ScopedIndex)
     {
         const Vector2D ScopedPosition = MAgents[ScopedIndex].Position;
-        const std::uint32_t ScopedX = std::min(
-            static_cast<std::uint32_t>((ScopedPosition.X - MGridOrigin.X) / MCellSize), MGridWidth - 1u);
-        const std::uint32_t ScopedY = std::min(
-            static_cast<std::uint32_t>((ScopedPosition.Y - MGridOrigin.Y) / MCellSize), MGridHeight - 1u);
+        const std::uint32_t ScopedX =
+            CellIndex((ScopedPosition.X - MGridOrigin.X) / MCellSize, MGridWidth - 1u);
+        const std::uint32_t ScopedY = CellIndex((ScopedPosition.Y - MGridOrigin.Y) / MCellSize, MGridHeight - 1u);
         ++MCellCount[CellOf(ScopedX, ScopedY)];
     }
     for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedCells; ++ScopedIndex)
@@ -180,10 +187,8 @@ void CrowdPool::RebuildGrid() noexcept
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < MCount; ++ScopedIndex)
     {
         const Vector2D ScopedPosition = MAgents[ScopedIndex].Position;
-        const std::uint32_t ScopedX = std::min(
-            static_cast<std::uint32_t>((ScopedPosition.X - MGridOrigin.X) / MCellSize), MGridWidth - 1u);
-        const std::uint32_t ScopedY = std::min(
-            static_cast<std::uint32_t>((ScopedPosition.Y - MGridOrigin.Y) / MCellSize), MGridHeight - 1u);
+        const std::uint32_t ScopedX = CellIndex((ScopedPosition.X - MGridOrigin.X) / MCellSize, MGridWidth - 1u);
+        const std::uint32_t ScopedY = CellIndex((ScopedPosition.Y - MGridOrigin.Y) / MCellSize, MGridHeight - 1u);
         const std::uint32_t ScopedCell = CellOf(ScopedX, ScopedY);
         MSorted[MCellCursor[ScopedCell]++] = ScopedIndex;
     }
@@ -191,11 +196,13 @@ void CrowdPool::RebuildGrid() noexcept
 
 void CrowdPool::Step(float InDt, const CrowdSettings& InSettings) noexcept
 {
-    if (MCount == 0 || InDt <= 0.0f)
+    if (MCount == 0 || !(InDt > 0.0f) || !std::isfinite(InDt))
     {
         return;
     }
-    MCellSize = std::max(InSettings.PerceptionRadius, 1.0f);
+    MCellSize = std::isfinite(InSettings.PerceptionRadius) && InSettings.PerceptionRadius > 0.0f
+                    ? std::max(InSettings.PerceptionRadius, 1.0f)
+                    : 24.0f;
     RebuildGrid();
     const std::uint32_t ScopedNeighbourCap =
         std::min(std::max(InSettings.MaxNeighbours, 1u), kMaxNeighbourSlots);
@@ -204,10 +211,8 @@ void CrowdPool::Step(float InDt, const CrowdSettings& InSettings) noexcept
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < MCount; ++ScopedIndex)
     {
         const CrowdAgent& ScopedAgent = MAgents[ScopedIndex];
-        const std::uint32_t ScopedCellX = std::min(
-            static_cast<std::uint32_t>((ScopedAgent.Position.X - MGridOrigin.X) / MCellSize), MGridWidth - 1u);
-        const std::uint32_t ScopedCellY = std::min(
-            static_cast<std::uint32_t>((ScopedAgent.Position.Y - MGridOrigin.Y) / MCellSize), MGridHeight - 1u);
+        const std::uint32_t ScopedCellX = CellIndex((ScopedAgent.Position.X - MGridOrigin.X) / MCellSize, MGridWidth - 1u);
+        const std::uint32_t ScopedCellY = CellIndex((ScopedAgent.Position.Y - MGridOrigin.Y) / MCellSize, MGridHeight - 1u);
         const float ScopedRadius = InSettings.PerceptionRadius;
         const float ScopedRadiusSquared = ScopedRadius * ScopedRadius;
         Vector2D ScopedSeparation{0.0f, 0.0f};

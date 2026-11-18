@@ -44,6 +44,12 @@ ImTextureID TextureThumbnailCache::Get(Rhi::TextureArrayHandle InArray, std::uin
 
 void TextureThumbnailCache::Clear() noexcept
 {
+    // Clear() is reachable at runtime (settings change); make sure no GPU frame
+    // still references the descriptor sets before ImGui frees them.
+    if (MCount > 0 && MRenderer != nullptr)
+    {
+        MRenderer->WaitIdle();
+    }
     for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
     {
         if (MEntries[ScopedI].Texture != ImTextureID_Invalid)

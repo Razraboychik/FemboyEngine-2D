@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -29,6 +30,10 @@
 
 namespace Fby::Editor
 {
+namespace
+{
+std::atomic<std::uint64_t> GTemporaryFileCounter{0};
+}
 namespace
 {
 // Finished cooks committed per Tick. Bounded so a batch of imports cannot
@@ -99,7 +104,8 @@ void CopyFixed(char* InDestination, std::size_t InCapacity, std::string_view InV
         }
     }
     std::filesystem::path ScopedTemporary = InPath;
-    ScopedTemporary += ".fbtmp";
+    ScopedTemporary += ".fbtmp." +
+                       std::to_string(GTemporaryFileCounter.fetch_add(1, std::memory_order_relaxed));
     {
         std::ofstream ScopedStream(ScopedTemporary, std::ios::binary | std::ios::trunc);
         if (!ScopedStream)
@@ -416,6 +422,13 @@ void AssetImportService::WorkerLoop(std::stop_token InStopToken)
             {
                 const std::filesystem::path ScopedCookedPhysical =
                     MConfig.assetsRoot / std::filesystem::path(ScopedCookedRelative);
+                // A previous commit may have remapped the old cooked file after
+                // ScheduleCook() ran. Release it on the worker thread, under the
+                // VFS mutex, immediately before Windows replaces the file.
+                if (MVfs != nullptr)
+                {
+                    (void)MVfs->InvalidateFile(ScopedCookedRelative);
+                }
                 if (!WriteBytesAtomically(ScopedCookedPhysical, ScopedCooked.payload, &ScopedError))
                 {
                     CopyFixed(ScopedResult.error, sizeof(ScopedResult.error), ScopedError);
@@ -590,9 +603,10 @@ bool AssetImportService::ApplyResult(const CookResult& InResult, std::string* In
                         InResult.cookedPath, Assets::TextureFormatName(InResult.format),
                         Assets::TextureFormatName(MConfig.textureArrayFormat));
             }
-            else if (const auto ScopedBytes = MVfs->Read(InResult.cookedPath); ScopedBytes)
+            else if (const auto ScopedPinned = MVfs->Pin(InResult.cookedPath); ScopedPinned)
             {
-                if (const auto ScopedView = Assets::ParseCookedTexture(*ScopedBytes, &ScopedVfsError); ScopedView)
+                const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
+                if (const auto ScopedView = Assets::ParseCookedTexture(ScopedBytes, &ScopedVfsError); ScopedView)
                 {
                     const std::uint32_t ScopedLayer = LayerFor(ScopedLive->id);
                     if (ScopedLayer == Rhi::TextureArrayHandle::kInvalid32)
@@ -692,14 +706,14 @@ bool AssetImportService::BindAtlasManifest(std::string_view InManifestPath, std:
         SetError(InError, "cannot bind an atlas before the importer is initialized");
         return false;
     }
-    const auto ScopedBytes = MVfs->Read(InManifestPath);
-    if (!ScopedBytes)
+    const auto ScopedPinned = MVfs->Pin(InManifestPath);
+    if (!ScopedPinned)
     {
         SetError(InError, "atlas manifest not found in the VFS");
         return false;
     }
     std::string ScopedParseError;
-    const auto ScopedManifest = Assets::ParseAtlasManifest(*ScopedBytes, &ScopedParseError);
+    const auto ScopedManifest = Assets::ParseAtlasManifest(ScopedPinned->bytes, &ScopedParseError);
     if (!ScopedManifest)
     {
         SetError(InError, ScopedParseError);

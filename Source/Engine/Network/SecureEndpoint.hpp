@@ -26,7 +26,7 @@ public:
 
     [[nodiscard]] bool Established() const noexcept
     {
-        return MChannel.Established();
+        return MStarted && MChannel.Established();
     }
     [[nodiscard]] const SecureChannel& Channel() const noexcept
     {
@@ -69,6 +69,7 @@ protected:
     void* MPumpUser = nullptr;
     PayloadFn MSinkFn = nullptr;
     void* MSinkUser = nullptr;
+    bool MInitiator = false;
     bool MStarted = false;
 };
 }

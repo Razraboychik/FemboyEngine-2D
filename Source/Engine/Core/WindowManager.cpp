@@ -188,7 +188,15 @@ bool WindowManager::SetCursorImage(std::string_view InPath, int InHotspotX, int 
     {
         return false;
     }
-    const std::string ScopedPath(InPath);
+    std::string ScopedPath;
+    try
+    {
+        ScopedPath.assign(InPath);
+    }
+    catch (...)
+    {
+        return false;
+    }
     SDL_Surface* ScopedSurface = SDL_LoadBMP(ScopedPath.c_str());
     if (ScopedSurface == nullptr)
     {
@@ -254,52 +262,68 @@ void WindowManager::Destroy()
 
 bool WindowManager::OpenGamepad(std::uint32_t InInstanceId) noexcept
 {
-    for (std::size_t ScopedSlot = 0; ScopedSlot < MGamepads.size(); ++ScopedSlot)
+    try
     {
-        if (MGamepads[ScopedSlot] != nullptr)
+        for (std::size_t ScopedSlot = 0; ScopedSlot < MGamepads.size(); ++ScopedSlot)
         {
-            continue;
+            if (MGamepads[ScopedSlot] != nullptr)
+            {
+                continue;
+            }
+            SDL_Gamepad* ScopedGamepad = SDL_OpenGamepad(static_cast<SDL_JoystickID>(InInstanceId));
+            if (ScopedGamepad == nullptr)
+            {
+                LogWarn("platform", "cannot open gamepad {}: {}", InInstanceId, SDL_GetError());
+                return false;
+            }
+            MGamepads[ScopedSlot] = ScopedGamepad;
+            MGamepadIds[ScopedSlot] = InInstanceId;
+            GamepadState& ScopedState = MInput.gamepads[ScopedSlot];
+            ScopedState = GamepadState{};
+            ScopedState.connected = true;
+            ScopedState.instanceId = InInstanceId;
+            for (std::size_t ScopedAxis = 0; ScopedAxis < kMaxGamepadAxes; ++ScopedAxis)
+            {
+                const Sint16 ScopedValue =
+                    SDL_GetGamepadAxis(ScopedGamepad, static_cast<SDL_GamepadAxis>(ScopedAxis));
+                ScopedState.axes[ScopedAxis] = static_cast<float>(ScopedValue) / 32767.0f;
+            }
+            ++MInput.gamepadCount;
+            LogInfo("platform", "gamepad {} connected: {}", InInstanceId,
+                    SDL_GetGamepadName(ScopedGamepad) != nullptr ? SDL_GetGamepadName(ScopedGamepad) : "unknown");
+            return true;
         }
-        SDL_Gamepad* ScopedGamepad = SDL_OpenGamepad(static_cast<SDL_JoystickID>(InInstanceId));
-        if (ScopedGamepad == nullptr)
-        {
-            LogWarn("platform", "cannot open gamepad {}: {}", InInstanceId, SDL_GetError());
-            return false;
-        }
-        MGamepads[ScopedSlot] = ScopedGamepad;
-        MGamepadIds[ScopedSlot] = InInstanceId;
-        GamepadState& ScopedState = MInput.gamepads[ScopedSlot];
-        ScopedState = GamepadState{};
-        ScopedState.connected = true;
-        ScopedState.instanceId = InInstanceId;
-        for (std::size_t ScopedAxis = 0; ScopedAxis < kMaxGamepadAxes; ++ScopedAxis)
-        {
-            const Sint16 ScopedValue =
-                SDL_GetGamepadAxis(ScopedGamepad, static_cast<SDL_GamepadAxis>(ScopedAxis));
-            ScopedState.axes[ScopedAxis] = static_cast<float>(ScopedValue) / 32767.0f;
-        }
-        ++MInput.gamepadCount;
-        LogInfo("platform", "gamepad {} connected: {}", InInstanceId,
-                SDL_GetGamepadName(ScopedGamepad) != nullptr ? SDL_GetGamepadName(ScopedGamepad) : "unknown");
-        return true;
+        return false;
+
     }
-    return false;
+    catch (...)
+    {
+        return false;
+    }
 }
 
 void WindowManager::CloseGamepad(std::uint32_t InInstanceId) noexcept
 {
-    for (std::size_t ScopedSlot = 0; ScopedSlot < MGamepads.size(); ++ScopedSlot)
+    try
     {
-        if (MGamepadIds[ScopedSlot] != InInstanceId || MGamepads[ScopedSlot] == nullptr)
+        for (std::size_t ScopedSlot = 0; ScopedSlot < MGamepads.size(); ++ScopedSlot)
         {
-            continue;
+            if (MGamepadIds[ScopedSlot] != InInstanceId || MGamepads[ScopedSlot] == nullptr)
+            {
+                continue;
+            }
+            SDL_CloseGamepad(static_cast<SDL_Gamepad*>(MGamepads[ScopedSlot]));
+            MGamepads[ScopedSlot] = nullptr;
+            MGamepadIds[ScopedSlot] = 0;
+            MInput.gamepads[ScopedSlot] = GamepadState{};
+            MInput.gamepadCount = MInput.gamepadCount > 0 ? MInput.gamepadCount - 1 : 0;
+            LogInfo("platform", "gamepad {} disconnected", InInstanceId);
+            return;
         }
-        SDL_CloseGamepad(static_cast<SDL_Gamepad*>(MGamepads[ScopedSlot]));
-        MGamepads[ScopedSlot] = nullptr;
-        MGamepadIds[ScopedSlot] = 0;
-        MInput.gamepads[ScopedSlot] = GamepadState{};
-        MInput.gamepadCount = MInput.gamepadCount > 0 ? MInput.gamepadCount - 1 : 0;
-        LogInfo("platform", "gamepad {} disconnected", InInstanceId);
+
+    }
+    catch (...)
+    {
         return;
     }
 }
@@ -702,40 +726,48 @@ bool WindowManager::ApplyWindowMode(WindowMode InMode) noexcept
 
 bool WindowManager::SetWindowMode(WindowMode InMode) noexcept
 {
-    if (MWindow == nullptr)
+    try
     {
-        return false;
-    }
-    if (InMode == MMode)
-    {
-        return true;
-    }
-    auto* ScopedWindow = static_cast<SDL_Window*>(MWindow);
-    const WindowMode ScopedPrevious = MMode;
+        if (MWindow == nullptr)
+        {
+            return false;
+        }
+        if (InMode == MMode)
+        {
+            return true;
+        }
+        auto* ScopedWindow = static_cast<SDL_Window*>(MWindow);
+        const WindowMode ScopedPrevious = MMode;
 
-    // A failed transition (for example exclusive fullscreen on a remote desktop)
-    // can leave the window windowed at its authored size, so restore the
-    // previous mode instead of keeping that broken intermediate state.
-    if (!ApplyWindowMode(InMode))
+        // A failed transition (for example exclusive fullscreen on a remote desktop)
+        // can leave the window windowed at its authored size, so restore the
+        // previous mode instead of keeping that broken intermediate state.
+        if (!ApplyWindowMode(InMode))
+        {
+            (void)ApplyWindowMode(ScopedPrevious);
+            MMode = ScopedPrevious;
+            LogWarn("platform", "could not switch to {}: {}", WindowModeName(InMode), SDL_GetError());
+            return false;
+        }
+        MMode = InMode;
+        // Block until the mode is applied so the swapchain is created at the real
+        // size instead of the pre-fullscreen one.
+        (void)SDL_SyncWindow(ScopedWindow);
+        int ScopedWidth = 0;
+        int ScopedHeight = 0;
+        SDL_GetWindowSizeInPixels(ScopedWindow, &ScopedWidth, &ScopedHeight);
+        if (ScopedWidth > 0 && ScopedHeight > 0)
+        {
+            MSize = WindowExtent{static_cast<std::uint32_t>(ScopedWidth), static_cast<std::uint32_t>(ScopedHeight)};
+        }
+        LogInfo("platform", "window mode: {} ({}x{})", WindowModeName(InMode), MSize.width, MSize.height);
+        return true;
+
+    }
+    catch (...)
     {
-        (void)ApplyWindowMode(ScopedPrevious);
-        MMode = ScopedPrevious;
-        LogWarn("platform", "could not switch to {}: {}", WindowModeName(InMode), SDL_GetError());
         return false;
     }
-    MMode = InMode;
-    // Block until the mode is applied so the swapchain is created at the real
-    // size instead of the pre-fullscreen one.
-    (void)SDL_SyncWindow(ScopedWindow);
-    int ScopedWidth = 0;
-    int ScopedHeight = 0;
-    SDL_GetWindowSizeInPixels(ScopedWindow, &ScopedWidth, &ScopedHeight);
-    if (ScopedWidth > 0 && ScopedHeight > 0)
-    {
-        MSize = WindowExtent{static_cast<std::uint32_t>(ScopedWidth), static_cast<std::uint32_t>(ScopedHeight)};
-    }
-    LogInfo("platform", "window mode: {} ({}x{})", WindowModeName(InMode), MSize.width, MSize.height);
-    return true;
 }
 
 void WindowManager::SetVsyncHint(bool InEnabled)

@@ -588,7 +588,7 @@ bool ProjectConfigStore::PersistIfChanged(std::string* InError)
     {
         return false;
     }
-    if (!SaveEditorIni(InError))
+    if (MConfig.editor.saveEditorIniOnCommit && !SaveEditorIni(InError))
     {
         return false;
     }
@@ -1212,6 +1212,12 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
     {
         ScopedProfile.version = static_cast<std::uint16_t>(std::clamp<std::int64_t>(
             IntField(*ScopedAccessibility, "profile_version", kAccessibilityProfileVersion), 0, 0xFFFF));
+        const std::string ScopedActiveEffect = StringField(*ScopedAccessibility, "active_effect");
+        if (!ScopedActiveEffect.empty())
+        {
+            CopyProjectString(ScopedConfig.project.activeEffect, sizeof(ScopedConfig.project.activeEffect),
+                              ScopedActiveEffect);
+        }
         const bool ScopedBlind = BoolField(
             *ScopedAccessibility, "blind_mode",
             AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityBlindMode));

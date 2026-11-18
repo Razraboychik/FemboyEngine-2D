@@ -312,7 +312,13 @@ Assets::AssetHandle ImportSourceFile(Assets::AssetDatabase& InDatabase, const st
     {
         return {};
     }
-    ScopedMeta.sourceHash = HashSourceFile(InAssetsRoot / std::filesystem::path(ScopedNormalized));
+    const std::filesystem::path ScopedPhysical = InAssetsRoot / std::filesystem::path(ScopedNormalized);
+    ScopedMeta.sourceHash = HashSourceFile(ScopedPhysical);
+    if (ScopedMeta.sourceHash == 0)
+    {
+        SetError(InError, "cannot read source asset '" + ScopedNormalized + "'");
+        return {};
+    }
 
     if (!WriteMetaBesideSource(InAssetsRoot, ScopedNormalized, ScopedMeta, InError))
     {

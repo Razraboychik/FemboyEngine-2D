@@ -208,18 +208,27 @@ bool GameplayTagDatabase::Rename(std::uint32_t InIndex, std::string_view InNewPa
         SetError("another tag already uses that path");
         return false;
     }
+    if (HasPrefix(ScopedNewPath, ScopedOldPath))
+    {
+        SetError("a tag cannot be renamed beneath itself");
+        return false;
+    }
+    const std::uint32_t ScopedOriginalCount = Count;
+    const std::uint32_t ScopedOriginalRevision = Revision;
     if (!EnsureParents(ScopedNewPath))
     {
         return false;
     }
     if (Find(ScopedNewPath) >= 0)
     {
+        Count = ScopedOriginalCount;
+        Revision = ScopedOriginalRevision;
         SetError("another tag already uses that path");
         return false;
     }
 
     std::array<bool, kCapacity> ScopedInSubtree{};
-    for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedOriginalCount; ++ScopedI)
     {
         const std::string_view ScopedCurrent = PathAt(ScopedI);
         if (ScopedCurrent == ScopedOldPath || HasPrefix(ScopedCurrent, ScopedOldPath))
@@ -228,7 +237,7 @@ bool GameplayTagDatabase::Rename(std::uint32_t InIndex, std::string_view InNewPa
         }
     }
     // Validate every target before mutating, so a rejected rename is atomic.
-    for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedOriginalCount; ++ScopedI)
     {
         if (!ScopedInSubtree[ScopedI])
         {
@@ -238,6 +247,8 @@ bool GameplayTagDatabase::Rename(std::uint32_t InIndex, std::string_view InNewPa
         const std::string_view ScopedSuffix = ScopedCurrent.substr(ScopedOldPath.size());
         if (ScopedNewPath.size() + ScopedSuffix.size() >= kMaxGameplayTagPath)
         {
+            Count = ScopedOriginalCount;
+            Revision = ScopedOriginalRevision;
             SetError("renamed descendant would exceed the path capacity");
             return false;
         }
@@ -249,6 +260,8 @@ bool GameplayTagDatabase::Rename(std::uint32_t InIndex, std::string_view InNewPa
         {
             if (!ScopedInSubtree[ScopedOther] && PathAt(ScopedOther) == ScopedTargetView)
             {
+                Count = ScopedOriginalCount;
+                Revision = ScopedOriginalRevision;
                 SetError("renamed descendant would collide with another tag");
                 return false;
             }

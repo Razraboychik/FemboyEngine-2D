@@ -80,7 +80,7 @@ void AccumulateAtTime(const CompressedClip& InClip, const AnimationClipBinding& 
             continue;
         }
         const CompressedTrack& ScopedCompressed = InClip.Tracks[ScopedTrack];
-        if (ScopedCompressed.Kind == TrackKind::SpriteClip)
+        if (ScopedCompressed.Kind == TrackKind::SpriteClip || ScopedCompressed.KeyCount == 0)
         {
             continue;
         }
@@ -117,8 +117,11 @@ bool BakeAnimationClipBinding(const CompressedClip& InClip, const SkeletonCompon
         return false;
     }
     *OutBinding = AnimationClipBinding{};
-    const std::uint16_t ScopedTracks =
-        static_cast<std::uint16_t>(std::min<std::uint32_t>(InClip.TrackCount, kMaxTimelineTracks));
+    if (InClip.TrackCount > kMaxTimelineTracks)
+    {
+        return false;
+    }
+    const std::uint16_t ScopedTracks = static_cast<std::uint16_t>(InClip.TrackCount);
     for (std::uint16_t ScopedTrack = 0; ScopedTrack < ScopedTracks; ++ScopedTrack)
     {
         const CompressedTrack& ScopedCompressed = InClip.Tracks[ScopedTrack];

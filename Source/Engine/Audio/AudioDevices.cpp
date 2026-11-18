@@ -208,11 +208,13 @@ bool AudioDeviceEnumerator::Refresh() noexcept
     {
         ScopedHash = Fnv1a(reinterpret_cast<const std::uint8_t*>(ScopedInputs.Devices[ScopedIndex].Id),
                            std::strlen(ScopedInputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
+        ScopedHash ^= ScopedInputs.Devices[ScopedIndex].Default ? 0x9E3779B9ull : 0ull;
     }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedOutputs.Count; ++ScopedIndex)
     {
         ScopedHash = Fnv1a(reinterpret_cast<const std::uint8_t*>(ScopedOutputs.Devices[ScopedIndex].Id),
                            std::strlen(ScopedOutputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
+        ScopedHash ^= ScopedOutputs.Devices[ScopedIndex].Default ? 0x85EBCA6Bull : 0ull;
     }
     ScopedHash ^= static_cast<std::uint64_t>(ScopedInputs.Count) * 131ull;
     ScopedHash ^= static_cast<std::uint64_t>(ScopedOutputs.Count) * 137ull;

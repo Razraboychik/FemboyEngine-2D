@@ -166,15 +166,18 @@ void ScheduleDependentCooks(Assets::AssetDatabase& InDatabase,
             continue;
         }
         ++InStats.cookRequests;
+        // The callback may register assets and reallocate AssetDatabase::MMetas;
+        // copy everything needed before invoking it.
+        const std::string ScopedSourcePath = ScopedMeta->sourcePath;
+        const std::uint64_t ScopedGuid = ScopedMeta->guid;
         std::string ScopedError;
-        if (!InCallbacks.scheduleCook(InCallbacks.user, ScopedMeta->sourcePath, ScopedDependents[ScopedI],
-                                      &ScopedError))
+        if (!InCallbacks.scheduleCook(InCallbacks.user, ScopedSourcePath, ScopedDependents[ScopedI], &ScopedError))
         {
             ++InStats.failures;
-            LogWarn("watch", "cannot enqueue dependent cook for '{}': {}", ScopedMeta->sourcePath, ScopedError);
+            LogWarn("watch", "cannot enqueue dependent cook for '{}': {}", ScopedSourcePath, ScopedError);
             continue;
         }
-        ScheduleDependentCooks(InDatabase, InCallbacks, InStats, ScopedMeta->guid, InDepth + 1u);
+        ScheduleDependentCooks(InDatabase, InCallbacks, InStats, ScopedGuid, InDepth + 1u);
     }
 }
 }
@@ -517,16 +520,26 @@ void AssetDatabaseWatchSystem::ProcessChange(const Change& InChange)
     if (MCallbacks.reload != nullptr)
     {
         const Assets::AssetMeta* ScopedCommitted = MDatabase->Meta(ScopedHandle);
-        if (ScopedCommitted != nullptr &&
-            MCallbacks.reload(MCallbacks.user, ScopedHandle, *ScopedCommitted, &ScopedError))
+        if (ScopedCommitted != nullptr)
         {
-            ++MStats.reloads;
-            LogInfo("watch", "hot reloaded '{}' (content gen {})", InChange.path, ScopedCommitted->contentGeneration);
+            // reload() may mutate/reallocate the database; keep the generation
+            // by value instead of dereferencing the pointer afterwards.
+            const std::uint32_t ScopedGeneration = ScopedCommitted->contentGeneration;
+            if (MCallbacks.reload(MCallbacks.user, ScopedHandle, *ScopedCommitted, &ScopedError))
+            {
+                ++MStats.reloads;
+                LogInfo("watch", "hot reloaded '{}' (content gen {})", InChange.path, ScopedGeneration);
+            }
+            else
+            {
+                ++MStats.failures;
+                LogWarn("watch", "reload failed for '{}': {}", InChange.path, ScopedError);
+            }
         }
         else
         {
             ++MStats.failures;
-            LogWarn("watch", "reload failed for '{}': {}", InChange.path, ScopedError);
+            LogWarn("watch", "reload failed for '{}': metadata disappeared", InChange.path);
         }
     }
     else
@@ -641,9 +654,10 @@ bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
                 {
                     const std::string ScopedRelative = WideToUtf8(
                         ScopedInfo->FileName, static_cast<int>(ScopedInfo->FileNameLength / sizeof(wchar_t)));
-                    if (!ScopedRelative.empty() && IsRelevantFile(ScopedRelative))
+                    const std::string ScopedNormalized = Normalize(ScopedRelative);
+                    if (!ScopedNormalized.empty() && IsRelevantFile(ScopedNormalized))
                     {
-                        (void)PushChange(ScopedRelative);
+                        (void)PushChange(ScopedNormalized);
                     }
                     if (ScopedInfo->NextEntryOffset == 0)
                     {
@@ -682,7 +696,8 @@ bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
                 std::error_code ScopedScanError;
                 auto ScopedVisit = [&](const std::filesystem::directory_entry& InEntry)
                 {
-                    if (ScopedScanError || !InEntry.is_regular_file(ScopedScanError))
+                    std::error_code ScopedEntryError;
+                    if (!InEntry.is_regular_file(ScopedEntryError) || ScopedEntryError)
                     {
                         return;
                     }
@@ -692,12 +707,17 @@ bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
                     {
                         return;
                     }
-                    const auto ScopedWriteTime = InEntry.last_write_time(ScopedScanError);
-                    if (ScopedScanError)
+                    const auto ScopedWriteTime = InEntry.last_write_time(ScopedEntryError);
+                    if (ScopedEntryError)
                     {
                         return;
                     }
-                    ScopedCurrent.emplace(ScopedRelative, FileStamp{ScopedWriteTime, InEntry.file_size(ScopedScanError)});
+                    const auto ScopedFileSize = InEntry.file_size(ScopedEntryError);
+                    if (ScopedEntryError)
+                    {
+                        return;
+                    }
+                    ScopedCurrent.emplace(ScopedRelative, FileStamp{ScopedWriteTime, ScopedFileSize});
                 };
                 if (MConfig.recursive)
                 {

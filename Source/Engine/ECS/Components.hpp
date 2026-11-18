@@ -324,7 +324,8 @@ FBY_REFLECT_COMPONENT(Fby::Vehicle2D, "Vehicle2D", FBY_FIELD(Fby::Vehicle2D, Thr
                       FBY_FIELD(Fby::Vehicle2D, MaxMotorTorque, Float), FBY_FIELD(Fby::Vehicle2D, MaxSpeed, Float),
                       FBY_FIELD(Fby::Vehicle2D, SteeringTorque, Float), FBY_FIELD(Fby::Vehicle2D, Flags, UInt32))
 
-FBY_REFLECT_COMPONENT(Fby::Wheel2D, "Wheel2D", FBY_FIELD(Fby::Wheel2D, LocalAnchor, Vector2D),
+FBY_REFLECT_COMPONENT(Fby::Wheel2D, "Wheel2D", FBY_FIELD(Fby::Wheel2D, Chassis, Entity),
+                      FBY_FIELD(Fby::Wheel2D, LocalAnchor, Vector2D),
                       FBY_FIELD(Fby::Wheel2D, SuspensionAxis, Vector2D), FBY_FIELD(Fby::Wheel2D, Radius, Float),
                       FBY_FIELD(Fby::Wheel2D, SuspensionHertz, Float),
                       FBY_FIELD(Fby::Wheel2D, SuspensionDamping, Float),

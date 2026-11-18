@@ -105,11 +105,12 @@ struct RelevancePlan
 
     [[nodiscard]] bool Contains(NetEntityId InId) const noexcept
     {
-        return InId.IsValid() && (bits[InId.value >> 6u] & (1ull << (InId.value & 63u))) != 0;
+        return InId.IsValid() && InId.value < kMaxNetEntities &&
+               (bits[InId.value >> 6u] & (1ull << (InId.value & 63u))) != 0;
     }
     void Set(NetEntityId InId) noexcept
     {
-        if (InId.IsValid())
+        if (InId.IsValid() && InId.value < kMaxNetEntities)
         {
             bits[InId.value >> 6u] |= 1ull << (InId.value & 63u);
         }

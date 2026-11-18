@@ -374,13 +374,16 @@ public:
                 MRemaining[ScopedSlot] = ScopedRemaining;
                 continue;
             }
-            const double ScopedInterval = MInterval[ScopedSlot] > 0.0 ? MInterval[ScopedSlot] : 1.0e-6;
+            const bool ScopedImmediate = MInterval[ScopedSlot] <= 0.0;
+            const double ScopedInterval = ScopedImmediate ? 1.0e-6 : MInterval[ScopedSlot];
             const double ScopedOverrun = -ScopedRemaining;
             std::uint32_t ScopedFires = 1;
-            if (ScopedOverrun >= ScopedInterval)
+            if (!ScopedImmediate && ScopedOverrun >= ScopedInterval)
             {
                 const double ScopedExtra = ScopedOverrun / ScopedInterval;
-                ScopedFires += static_cast<std::uint32_t>(ScopedExtra);
+                const std::uint32_t ScopedExtraFires =
+                    ScopedExtra < 4294967294.0 ? static_cast<std::uint32_t>(ScopedExtra) : 0xFFFFFFFEu;
+                ScopedFires += ScopedExtraFires;
             }
             MFires[ScopedSlot] += ScopedFires;
             if (ScopedWritten < OutFired.size())

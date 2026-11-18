@@ -15,6 +15,22 @@ namespace
 constexpr std::uint32_t kMaxDeferredControllers = 256;
 constexpr float kPerceptionCellSize = 64.0f;
 
+[[nodiscard]] std::int32_t PerceptionCellCoordinate(float InPosition) noexcept
+{
+    if (!std::isfinite(InPosition))
+    {
+        return 0;
+    }
+    const float ScopedCell = std::floor(InPosition / kPerceptionCellSize);
+    constexpr float kCellMin = -2147483648.0f;
+    constexpr float kCellMax = 2147483648.0f;
+    if (!(ScopedCell > kCellMin && ScopedCell < kCellMax))
+    {
+        return 0;
+    }
+    return static_cast<std::int32_t>(ScopedCell);
+}
+
 [[nodiscard]] std::uint64_t PerceptionCellKey(std::int32_t InX, std::int32_t InY) noexcept
 {
     return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(InX)) << 32) | static_cast<std::uint32_t>(InY);
@@ -219,10 +235,8 @@ void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry*
     auto ScopedAll = InRegistry.view<Transform2D>();
     for (auto [ScopedEntity, ScopedTransform] : ScopedAll.each())
     {
-        const std::int32_t ScopedCellX =
-            static_cast<std::int32_t>(std::floor(ScopedTransform.Position.X / kPerceptionCellSize));
-        const std::int32_t ScopedCellY =
-            static_cast<std::int32_t>(std::floor(ScopedTransform.Position.Y / kPerceptionCellSize));
+        const std::int32_t ScopedCellX = PerceptionCellCoordinate(ScopedTransform.Position.X);
+        const std::int32_t ScopedCellY = PerceptionCellCoordinate(ScopedTransform.Position.Y);
         MGrid.push_back(GridEntry{PerceptionCellKey(ScopedCellX, ScopedCellY), ScopedEntity, ScopedTransform.Position});
     }
     std::sort(MGrid.begin(), MGrid.end(),
@@ -239,16 +253,17 @@ void AIPerceptionSystem::Update(Registry& InRegistry, const GameplayTagRegistry*
         {
             continue;
         }
-        ScopedPerception.Timer = std::max(ScopedSettings.Interval, 0.01f);
-        const float ScopedRadius = std::max(ScopedSettings.Radius, 0.0f);
+        ScopedPerception.Timer =
+            std::isfinite(ScopedSettings.Interval) ? std::max(ScopedSettings.Interval, 0.01f) : 0.01f;
+        const float ScopedRadius =
+            std::isfinite(ScopedSettings.Radius) ? std::clamp(ScopedSettings.Radius, 0.0f, 64.0f * kPerceptionCellSize)
+                                                 : 0.0f;
         Entity ScopedBest = Fby::kNullEntity;
         float ScopedBestDistance = ScopedRadius * ScopedRadius;
-        const std::int32_t ScopedCenterCellX =
-            static_cast<std::int32_t>(std::floor(ScopedTransform.Position.X / kPerceptionCellSize));
-        const std::int32_t ScopedCenterCellY =
-            static_cast<std::int32_t>(std::floor(ScopedTransform.Position.Y / kPerceptionCellSize));
+        const std::int32_t ScopedCenterCellX = PerceptionCellCoordinate(ScopedTransform.Position.X);
+        const std::int32_t ScopedCenterCellY = PerceptionCellCoordinate(ScopedTransform.Position.Y);
         const std::int32_t ScopedCellRadius =
-            std::clamp(static_cast<std::int32_t>(std::ceil(ScopedRadius / kPerceptionCellSize)), 0, 64);
+            static_cast<std::int32_t>(std::ceil(ScopedRadius / kPerceptionCellSize));
         for (std::int32_t ScopedCellY = ScopedCenterCellY - ScopedCellRadius;
              ScopedCellY <= ScopedCenterCellY + ScopedCellRadius; ++ScopedCellY)
         {

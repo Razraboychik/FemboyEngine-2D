@@ -3,7 +3,7 @@
 **Архитектура, рендеринг, ECS, холсты анимации/ИИ с контрактами циклов блендинга и PIE-передачи, глобальный аудит, DOD-оптимизация и продакшн-дистрибуция**
 
 
-Version 0.5.0 (Release) · 2026-11-15 · Russian
+Version 0.7.0-alpha.1 (Alpha) · 2026-11-18 · Russian
 
 
 ---
@@ -1737,7 +1737,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `Callbacks` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 38 |
 | `Change` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 126 |
 | `Codec` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 234 |
-| `Command` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 248 |
+| `Command` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 249 |
 | `CommandKind` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 33 |
 | `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 30 |
 | `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 59 |
@@ -1780,15 +1780,15 @@ ScopedMaterials.Shutdown(InRhi);
 | `NetworkDiagnosticsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 63 |
 | `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 100 |
 | `OpaqueRenderMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 93 |
-| `PendingEdit` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 274 |
-| `PendingSpawn` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 286 |
+| `PendingEdit` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 275 |
+| `PendingSpawn` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 287 |
 | `PhysicsDebugFlags` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 19 |
 | `PhysicsDebugFrame` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 47 |
 | `PhysicsDebugLine` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 32 |
 | `PhysicsDebugPoint` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 40 |
 | `PhysicsDebugVisualizer` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 58 |
 | `PiePlayerInput` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 28 |
-| `PlaybackIcon` | Infrastructure | `Source/Editor/Infrastructure/EditorWidgets.hpp` | 12 |
+| `PlaybackIcon` | Infrastructure | `Source/Editor/Infrastructure/EditorWidgets.hpp` | 14 |
 | `PlayInEditor` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 45 |
 | `PluginHost` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 42 |
 | `Profiler` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 27 |
@@ -1804,7 +1804,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 183 |
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 22 |
 | `ProjectSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 66 |
-| `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 266 |
+| `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 267 |
 | `ReleaseCookConfig` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 70 |
 | `ReleaseCooker` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 163 |
 | `ReleaseCookProgress` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 125 |
@@ -1821,8 +1821,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `SettingScope` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 11 |
 | `Slot` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 118 |
 | `Source` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 19 |
-| `SpawnComponent` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 300 |
-| `SpawnHeader` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 293 |
+| `SpawnComponent` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 301 |
+| `SpawnHeader` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 294 |
 | `SpawnTransaction` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 190 |
 | `StableSource` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 145 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 88 |
@@ -1933,7 +1933,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `SystemContext` | Panels | `Source/Editor/Panels/UiLayoutPanel.hpp` | 12 |
 | `SystemContext` | Panels | `Source/Editor/Panels/VideoPanel.hpp` | 11 |
 | `SystemName` | Panels | `Source/Editor/Panels/LogBoyPanel.hpp` | 189 |
-| `TextPreviewPanel` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 27 |
+| `TextPreviewPanel` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 28 |
 | `TextureThumbnailCache` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 32 |
 | `TextureThumbnailCache` | Panels | `Source/Editor/Panels/SpriteAnimationPanel.hpp` | 19 |
 | `TilemapEditorPanel` | Panels | `Source/Editor/Panels/TilemapEditorPanel.hpp` | 20 |
@@ -1944,7 +1944,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `VideoPanel` | Panels | `Source/Editor/Panels/VideoPanel.hpp` | 17 |
 | `VirtualFileSystem` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 18 |
 | `VirtualFileSystem` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 13 |
-| `VirtualFileSystem` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 18 |
+| `VirtualFileSystem` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 19 |
 | `VirtualTexturePanel` | Panels | `Source/Editor/Panels/VirtualTexturePanel.hpp` | 18 |
 | `VirtualTextureSystem` | Panels | `Source/Editor/Panels/VirtualTexturePanel.hpp` | 10 |
 | `VisualScriptPanel` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 24 |
@@ -1979,7 +1979,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `Ease` | Animation | `Source/Engine/Animation/Tween.hpp` | 13 |
 | `Tween` | Animation | `Source/Engine/Animation/Tween.hpp` | 75 |
 | `TweenDesc` | Animation | `Source/Engine/Animation/Tween.hpp` | 60 |
-| `TweenGroup` | Animation | `Source/Engine/Animation/Tween.hpp` | 182 |
+| `TweenGroup` | Animation | `Source/Engine/Animation/Tween.hpp` | 191 |
 
 ### Engine/Assets (65)
 
@@ -2014,7 +2014,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `AtlasUv` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 41 |
 | `AudioClipHeader` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 87 |
 | `BlockExtent` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 103 |
-| `CleanRenderExtract` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 150 |
+| `CleanRenderExtract` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 151 |
 | `CookedAudioView` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 116 |
 | `CookedTexture` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 41 |
 | `CookedTextureView` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 203 |
@@ -2036,7 +2036,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `PakHeader` | Assets | `Source/Engine/Assets/PakFormat.hpp` | 16 |
 | `PcmFormat` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 21 |
 | `PinnedFile` | Assets | `Source/Engine/Assets/VFS.hpp` | 67 |
-| `ProjectTemplate` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 11 |
+| `ProjectTemplate` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 12 |
 | `ReloadNotice` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 94 |
 | `SpriteAtlas` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 47 |
 | `SpriteAtlasAsset` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 77 |
@@ -2109,7 +2109,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 209 |
 | `Peer` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 131 |
 | `PlayerState` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 88 |
-| `RateBucket` | Audio | `Source/Engine/Audio/VoiceNetworkBridge.hpp` | 62 |
+| `RateBucket` | Audio | `Source/Engine/Audio/VoiceNetworkBridge.hpp` | 67 |
 | `ResolvedZone` | Audio | `Source/Engine/Audio/AudioZones.hpp` | 115 |
 | `ReverbParams` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 96 |
 | `ReverbSpace` | Audio | `Source/Engine/Audio/AudioReverb.hpp` | 9 |
@@ -2179,7 +2179,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `VoiceWhisperSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 185 |
 | `VorbisIdentInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 122 |
 
-### Engine/Core (116)
+### Engine/Core (117)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -2189,12 +2189,12 @@ ScopedMaterials.Shutdown(InRhi);
 | `AudioSystem` | Core | `Source/Engine/Core/Pause.hpp` | 10 |
 | `BigIntT` | Core | `Source/Engine/Core/BigInt.hpp` | 179 |
 | `BigNumberStore` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 41 |
-| `BinaryKind` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 259 |
-| `BinaryKind` | Core | `Source/Engine/Core/DecimalStore.hpp` | 206 |
+| `BinaryKind` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 262 |
+| `BinaryKind` | Core | `Source/Engine/Core/DecimalStore.hpp` | 208 |
 | `BufferTag` | Core | `Source/Engine/Core/Types.hpp` | 301 |
 | `BuildInfo` | Core | `Source/Engine/Core/BuildInfo.hpp` | 12 |
 | `BuildProfile` | Core | `Source/Engine/Core/BuildProfile.hpp` | 135 |
-| `CameraView` | Core | `Source/Engine/Core/Grid.hpp` | 337 |
+| `CameraView` | Core | `Source/Engine/Core/Grid.hpp` | 353 |
 | `Cell` | Core | `Source/Engine/Core/Grid.hpp` | 74 |
 | `CivilDate` | Core | `Source/Engine/Core/Calendar.hpp` | 23 |
 | `Clock` | Core | `Source/Engine/Core/Time.hpp` | 28 |
@@ -2207,18 +2207,18 @@ ScopedMaterials.Shutdown(InRhi);
 | `DateTime` | Core | `Source/Engine/Core/Calendar.hpp` | 46 |
 | `DecimalStore` | Core | `Source/Engine/Core/DecimalStore.hpp` | 17 |
 | `DecimalT` | Core | `Source/Engine/Core/Decimal.hpp` | 34 |
-| `DurationStyle` | Core | `Source/Engine/Core/Time.hpp` | 578 |
+| `DurationStyle` | Core | `Source/Engine/Core/Time.hpp` | 581 |
 | `EddsaKeyPair` | Core | `Source/Engine/Core/CryptoAsymmetric.hpp` | 31 |
 | `Error` | Core | `Source/Engine/Core/Error.hpp` | 23 |
 | `ErrorCode` | Core | `Source/Engine/Core/Error.hpp` | 11 |
 | `FieldDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 40 |
 | `FieldKind` | Core | `Source/Engine/Core/Mirror.hpp` | 17 |
-| `FileFilter` | Core | `Source/Engine/Core/WindowManager.hpp` | 203 |
+| `FileFilter` | Core | `Source/Engine/Core/WindowManager.hpp` | 206 |
 | `FormatSpec` | Core | `Source/Engine/Core/BigInt.hpp` | 36 |
 | `FrameArena` | Core | `Source/Engine/Core/FrameArena.hpp` | 12 |
-| `FrameTimer` | Core | `Source/Engine/Core/Time.hpp` | 508 |
-| `FunctionRef` | Core | `Source/Engine/Core/FunctionRef.hpp` | 13 |
-| `FunctionRef` | Core | `Source/Engine/Core/FunctionRef.hpp` | 16 |
+| `FrameTimer` | Core | `Source/Engine/Core/Time.hpp` | 511 |
+| `FunctionRef` | Core | `Source/Engine/Core/FunctionRef.hpp` | 14 |
+| `FunctionRef` | Core | `Source/Engine/Core/FunctionRef.hpp` | 17 |
 | `GamepadState` | Core | `Source/Engine/Core/WindowManager.hpp` | 27 |
 | `GridDesc` | Core | `Source/Engine/Core/Grid.hpp` | 91 |
 | `Handle` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 20 |
@@ -2255,25 +2255,26 @@ ScopedMaterials.Shutdown(InRhi);
 | `Rect` | Core | `Source/Engine/Core/Types.hpp` | 173 |
 | `ReducedAngle` | Core | `Source/Engine/Core/SimMath.hpp` | 29 |
 | `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 69 |
-| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 298 |
-| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 314 |
-| `ReplayFrame` | Core | `Source/Engine/Core/Replay.hpp` | 245 |
+| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 295 |
+| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 311 |
+| `ReplayFrame` | Core | `Source/Engine/Core/Replay.hpp` | 249 |
 | `ReplayKeyframe` | Core | `Source/Engine/Core/Replay.hpp` | 16 |
 | `ReplaySession` | Core | `Source/Engine/Core/Replay.hpp` | 25 |
 | `RngState` | Core | `Source/Engine/Core/Pcg32.hpp` | 11 |
 | `RoundingMode` | Core | `Source/Engine/Core/Decimal.hpp` | 22 |
+| `RunResult` | Core | `Source/Engine/Core/ProcessLaunch.hpp` | 80 |
 | `SamplerTag` | Core | `Source/Engine/Core/Types.hpp` | 304 |
 | `Scope` | Core | `Source/Engine/Core/Profiler.hpp` | 151 |
 | `SecureRng` | Core | `Source/Engine/Core/SecureRng.hpp` | 11 |
 | `Sha256Context` | Core | `Source/Engine/Core/Sha256.hpp` | 17 |
-| `Slot` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 252 |
-| `Slot` | Core | `Source/Engine/Core/DecimalStore.hpp` | 199 |
+| `Slot` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 255 |
+| `Slot` | Core | `Source/Engine/Core/DecimalStore.hpp` | 201 |
 | `SplashClock` | Core | `Source/Engine/Core/Splash.hpp` | 10 |
 | `Status` | Core | `Source/Engine/Core/BigInt.hpp` | 18 |
 | `Stopwatch` | Core | `Source/Engine/Core/Time.hpp` | 215 |
 | `Task` | Core | `Source/Engine/Core/JobSystem.hpp` | 108 |
 | `TextureTag` | Core | `Source/Engine/Core/Types.hpp` | 302 |
-| `TextWriter` | Core | `Source/Engine/Core/Calendar.hpp` | 204 |
+| `TextWriter` | Core | `Source/Engine/Core/Calendar.hpp` | 224 |
 | `ThreadCounter` | Core | `Source/Engine/Core/JobSystem.hpp` | 121 |
 | `ThreadLoad` | Core | `Source/Engine/Core/JobSystem.hpp` | 31 |
 | `ThreadRole` | Core | `Source/Engine/Core/ThreadAffinity.hpp` | 12 |
@@ -2282,21 +2283,21 @@ ScopedMaterials.Shutdown(InRhi);
 | `TimerPool` | Core | `Source/Engine/Core/Time.hpp` | 271 |
 | `TouchPoint` | Core | `Source/Engine/Core/WindowManager.hpp` | 38 |
 | `TypeNameOverride` | Core | `Source/Engine/Core/Definitions.hpp` | 42 |
-| `TypeNameOverride` | Core | `Source/Engine/Core/Definitions.hpp` | 285 |
+| `TypeNameOverride` | Core | `Source/Engine/Core/Definitions.hpp` | 287 |
 | `TypeObject` | Core | `Source/Engine/Core/Definitions.hpp` | 187 |
 | `TypeRecord` | Core | `Source/Engine/Core/Definitions.hpp` | 87 |
 | `TypeTable` | Core | `Source/Engine/Core/Definitions.hpp` | 95 |
 | `TypeTraits` | Core | `Source/Engine/Core/Definitions.hpp` | 172 |
-| `TypeTraits` | Core | `Source/Engine/Core/Definitions.hpp` | 269 |
+| `TypeTraits` | Core | `Source/Engine/Core/Definitions.hpp` | 271 |
 | `Unregistered` | Core | `Source/Engine/Core/Mirror.hpp` | 62 |
 | `Vector2D` | Core | `Source/Engine/Core/Types.hpp` | 13 |
 | `Vector3D` | Core | `Source/Engine/Core/Types.hpp` | 90 |
 | `Vector4D` | Core | `Source/Engine/Core/Types.hpp` | 139 |
-| `WindowDesc` | Core | `Source/Engine/Core/WindowManager.hpp` | 224 |
+| `WindowDesc` | Core | `Source/Engine/Core/WindowManager.hpp` | 227 |
 | `WindowExtent` | Core | `Source/Engine/Core/WindowManager.hpp` | 49 |
 | `WindowHost` | Core | `Source/Engine/Core/WindowHost.hpp` | 17 |
-| `WindowManager` | Core | `Source/Engine/Core/WindowManager.hpp` | 235 |
-| `WindowMode` | Core | `Source/Engine/Core/WindowManager.hpp` | 215 |
+| `WindowManager` | Core | `Source/Engine/Core/WindowManager.hpp` | 238 |
+| `WindowMode` | Core | `Source/Engine/Core/WindowManager.hpp` | 218 |
 | `WindowRecord` | Core | `Source/Engine/Core/WindowHost.hpp` | 30 |
 | `X25519KeyPair` | Core | `Source/Engine/Core/CryptoAsymmetric.hpp` | 20 |
 
@@ -2381,7 +2382,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `ComponentOps` | ECS | `Source/Engine/ECS/ComponentRegistry.hpp` | 43 |
 | `ComponentOpsFor` | ECS | `Source/Engine/ECS/ComponentRegistry.hpp` | 68 |
 | `ComponentRegistry` | ECS | `Source/Engine/ECS/ComponentRegistry.hpp` | 129 |
-| `ComponentStorage` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 775 |
+| `ComponentStorage` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 794 |
 | `CompressedClip` | ECS | `Source/Engine/ECS/AnimationCompression.hpp` | 47 |
 | `CompressedKey` | ECS | `Source/Engine/ECS/AnimationCompression.hpp` | 19 |
 | `CompressedTrack` | ECS | `Source/Engine/ECS/AnimationCompression.hpp` | 31 |
@@ -2390,14 +2391,14 @@ ScopedMaterials.Shutdown(InRhi);
 | `ConstCoreSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 192 |
 | `ConstRenderSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 119 |
 | `ConstRenderSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 261 |
-| `ConstView` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 366 |
-| `Context` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 607 |
+| `ConstView` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 367 |
+| `Context` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 608 |
 | `CoreServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 55 |
 | `CoreSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 115 |
 | `CoreSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 168 |
 | `Cursor` | ECS | `Source/Engine/ECS/CommandLog.hpp` | 177 |
-| `Cursor` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 114 |
-| `Cursor` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 374 |
+| `Cursor` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 115 |
+| `Cursor` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 375 |
 | `DecimalComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 180 |
 | `DirectionalAnimationPlayer` | ECS | `Source/Engine/ECS/DirectionalAnimationPlayer.hpp` | 29 |
 | `DirectionalBlendAnchor` | ECS | `Source/Engine/ECS/DirectionalBlend.hpp` | 52 |
@@ -2409,18 +2410,18 @@ ScopedMaterials.Shutdown(InRhi);
 | `DirectionalBlendTriangle` | ECS | `Source/Engine/ECS/DirectionalBlend.hpp` | 94 |
 | `DirectionalBlendWeight` | ECS | `Source/Engine/ECS/DirectionalBlend.hpp` | 125 |
 | `DrawOrder` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 79 |
-| `EachIterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 224 |
-| `EachIterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 484 |
-| `EachRange` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 261 |
-| `EachRange` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 521 |
+| `EachIterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 225 |
+| `EachIterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 485 |
+| `EachRange` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 262 |
+| `EachRange` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 522 |
 | `EditorSelected` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 104 |
 | `EmitterIdTag` | ECS | `Source/Engine/ECS/StableIds.hpp` | 14 |
 | `EmitterSaveV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 79 |
 | `Entity` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 48 |
-| `EntityRecord` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 712 |
+| `EntityRecord` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 719 |
 | `EntityRemap` | ECS | `Source/Engine/ECS/Scene.hpp` | 59 |
-| `EntityStorage` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 691 |
-| `Entry` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 668 |
+| `EntityStorage` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 710 |
+| `Entry` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 687 |
 | `Entry` | ECS | `Source/Engine/ECS/Schedule.hpp` | 53 |
 | `Facing2D` | ECS | `Source/Engine/ECS/DirectionalBlend.hpp` | 16 |
 | `FesklHeader` | ECS | `Source/Engine/ECS/SkeletonAsset.hpp` | 37 |
@@ -2448,9 +2449,9 @@ ScopedMaterials.Shutdown(InRhi);
 | `InputUserComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 36 |
 | `Interpolation` | ECS | `Source/Engine/ECS/AnimationTimeline.hpp` | 29 |
 | `IterationGuard` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 264 |
-| `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 190 |
-| `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 450 |
-| `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 698 |
+| `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 191 |
+| `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 451 |
+| `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 717 |
 | `ITextShaper` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 42 |
 | `Lifetime` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 98 |
 | `Light2DComponent` | ECS | `Source/Engine/ECS/Lighting.hpp` | 37 |
@@ -2493,7 +2494,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `PrefabOverrides` | ECS | `Source/Engine/ECS/PrefabSystem.hpp` | 31 |
 | `PrefabSystem` | ECS | `Source/Engine/ECS/PrefabSystem.hpp` | 36 |
 | `QuantizedPose` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 165 |
-| `Registry` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 804 |
+| `Registry` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 823 |
 | `RenderChunk` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 62 |
 | `RenderChunkArena` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 304 |
 | `RenderEcs` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 460 |
@@ -2529,14 +2530,14 @@ ScopedMaterials.Shutdown(InRhi);
 | `SkinComponent` | ECS | `Source/Engine/ECS/Skeleton.hpp` | 143 |
 | `SkinnedSprite` | ECS | `Source/Engine/ECS/Skeleton.hpp` | 154 |
 | `SleepingStaticComponent` | ECS | `Source/Engine/ECS/Presentation.hpp` | 202 |
-| `SnapshotBaseline` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 316 |
+| `SnapshotBaseline` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 317 |
 | `SnapshotComponent` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 78 |
 | `SnapshotComponentOp` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 43 |
-| `SnapshotExtras` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 267 |
+| `SnapshotExtras` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 268 |
 | `SnapshotFlags` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 31 |
 | `SnapshotHeader` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 49 |
 | `SnapshotRecordFlags` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 37 |
-| `SnapshotRestoreExtras` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 272 |
+| `SnapshotRestoreExtras` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 273 |
 | `SnapshotSchema` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 93 |
 | `SnapshotSchema` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 208 |
 | `SnapshotView` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 257 |
@@ -2595,8 +2596,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `VehicleFlags` | ECS | `Source/Engine/ECS/Components.hpp` | 46 |
 | `Velocity` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 41 |
 | `View` | ECS | `Source/Engine/ECS/CommandLog.hpp` | 187 |
-| `View` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 106 |
-| `ViewIterationGuard` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 41 |
+| `View` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 107 |
+| `ViewIterationGuard` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 42 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/DirectionalAnimationPlayer.hpp` | 16 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/Scene.hpp` | 18 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/SkeletonAsset.hpp` | 18 |
@@ -2634,7 +2635,7 @@ ScopedMaterials.Shutdown(InRhi);
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
 | `ActiveGameplayEffect` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 66 |
-| `DefIndexEntry` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 163 |
+| `DefIndexEntry` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 164 |
 | `Entry` | Gameplay | `Source/Engine/Gameplay/GameplayAttributes.hpp` | 50 |
 | `Entry` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 152 |
 | `GameplayAttribute` | Gameplay | `Source/Engine/Gameplay/GameplayAttributes.hpp` | 21 |
@@ -2691,7 +2692,7 @@ ScopedMaterials.Shutdown(InRhi);
 |---|---|---|---|
 | `CrowdAgent` | Navigation | `Source/Engine/Navigation/CrowdPool.hpp` | 16 |
 | `CrowdPool` | Navigation | `Source/Engine/Navigation/CrowdPool.hpp` | 46 |
-| `CrowdRenderSettings` | Navigation | `Source/Engine/Navigation/CrowdRender.hpp` | 14 |
+| `CrowdRenderSettings` | Navigation | `Source/Engine/Navigation/CrowdRender.hpp` | 15 |
 | `CrowdSettings` | Navigation | `Source/Engine/Navigation/CrowdPool.hpp` | 27 |
 | `Entry` | Navigation | `Source/Engine/Navigation/FlowField.hpp` | 79 |
 | `FlowField` | Navigation | `Source/Engine/Navigation/FlowField.hpp` | 33 |
@@ -2719,7 +2720,7 @@ ScopedMaterials.Shutdown(InRhi);
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `CellCoordinate` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 168 |
+| `CellCoordinate` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 169 |
 | `ChecksumComparison` | Network | `Source/Engine/Network/NetRollback.hpp` | 457 |
 | `Config` | Network | `Source/Engine/Network/NetRollback.hpp` | 316 |
 | `DatagramSocket` | Network | `Source/Engine/Network/Transport.hpp` | 32 |
@@ -2784,8 +2785,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `RelevanceConfig` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 56 |
 | `RelevanceEntity` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 81 |
 | `RelevanceGrid` | Network | `Source/Engine/Network/NetRollback.hpp` | 36 |
-| `RelevanceGrid` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 131 |
-| `RelevanceGridStats` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 121 |
+| `RelevanceGrid` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 132 |
+| `RelevanceGridStats` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 122 |
 | `RelevancePlan` | Network | `Source/Engine/Network/NetRollback.hpp` | 35 |
 | `RelevancePlan` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 93 |
 | `ReplicationStatus` | Network | `Source/Engine/Network/Replication.hpp` | 28 |
@@ -2805,7 +2806,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `SnapshotSender` | Network | `Source/Engine/Network/Replication.hpp` | 94 |
 | `SnapshotSenderConfig` | Network | `Source/Engine/Network/Replication.hpp` | 70 |
 | `SnapshotSenderStats` | Network | `Source/Engine/Network/Replication.hpp` | 80 |
-| `SortableEntity` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 195 |
+| `SortableEntity` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 196 |
 | `TicketStatus` | Network | `Source/Engine/Network/Ticket.hpp` | 54 |
 | `TransportChannel` | Network | `Source/Engine/Network/Transport.hpp` | 63 |
 | `TransportPeer` | Network | `Source/Engine/Network/Transport.hpp` | 85 |
@@ -3052,7 +3053,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `FramePacingState` | RHI | `Source/Engine/RHI/FramePacing.hpp` | 17 |
 | `FramePacket` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 387 |
 | `FrameSink` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 85 |
-| `FrameStats` | RHI | `Source/Engine/RHI/RHI.hpp` | 356 |
+| `FrameStats` | RHI | `Source/Engine/RHI/RHI.hpp` | 358 |
 | `FrameTimestampIndex` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 80 |
 | `Fsr2Adapter` | RHI | `Source/Engine/RHI/Fsr2Adapter.hpp` | 86 |
 | `Fsr2Pass` | RHI | `Source/Engine/RHI/Fsr2Pass.hpp` | 10 |
@@ -3069,7 +3070,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `HashEntry` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 218 |
 | `HiZPushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 70 |
 | `IFrameGenerator` | RHI | `Source/Engine/RHI/FrameGeneration.hpp` | 27 |
-| `ImageLayout` | RHI | `Source/Engine/RHI/RHI.hpp` | 317 |
+| `ImageLayout` | RHI | `Source/Engine/RHI/RHI.hpp` | 319 |
 | `JobSystem` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 24 |
 | `KeySorter` | RHI | `Source/Engine/RHI/Sort.hpp` | 14 |
 | `LoadRequest` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 241 |
@@ -3109,8 +3110,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `MeshVertex` | RHI | `Source/Engine/RHI/Mesh.hpp` | 17 |
 | `MotionHistory2D` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 33 |
 | `MotionVectorItem` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 369 |
-| `NativeDeviceHandles` | RHI | `Source/Engine/RHI/RHI.hpp` | 804 |
-| `NativeTextureView` | RHI | `Source/Engine/RHI/RHI.hpp` | 323 |
+| `NativeDeviceHandles` | RHI | `Source/Engine/RHI/RHI.hpp` | 806 |
+| `NativeTextureView` | RHI | `Source/Engine/RHI/RHI.hpp` | 325 |
 | `OitPass` | RHI | `Source/Engine/RHI/OitPass.hpp` | 11 |
 | `PageSlot` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 209 |
 | `ParallelChunkRef` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 301 |
@@ -3122,7 +3123,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `PostFxSettings` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 56 |
 | `PreUploadedPacket` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 1076 |
 | `PushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 51 |
-| `RenderBlendMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 269 |
+| `RenderBlendMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 271 |
 | `RenderCommandRecord` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 58 |
 | `RenderFlags` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 43 |
 | `RenderGraph` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 135 |
@@ -3133,10 +3134,10 @@ ScopedMaterials.Shutdown(InRhi);
 | `RenderPassKind` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 27 |
 | `RenderResourceKind` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 34 |
 | `RenderTarget` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 260 |
-| `RenderTargetDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 286 |
-| `RenderTargetFormat` | RHI | `Source/Engine/RHI/RHI.hpp` | 278 |
-| `RenderTargetHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 306 |
-| `RHI` | RHI | `Source/Engine/RHI/RHI.hpp` | 427 |
+| `RenderTargetDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 288 |
+| `RenderTargetFormat` | RHI | `Source/Engine/RHI/RHI.hpp` | 280 |
+| `RenderTargetHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 308 |
+| `RHI` | RHI | `Source/Engine/RHI/RHI.hpp` | 429 |
 | `SdfCharacterRenderCache` | RHI | `Source/Engine/RHI/SdfCharacterRender.hpp` | 17 |
 | `SdfField` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 22 |
 | `SdfGiVolume` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 23 |
@@ -3148,9 +3149,9 @@ ScopedMaterials.Shutdown(InRhi);
 | `SdfShadowPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 66 |
 | `SequenceFooter` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 42 |
 | `SequenceHeader` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 31 |
-| `ShaderPipelineDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 242 |
-| `ShaderPipelineDomain` | RHI | `Source/Engine/RHI/RHI.hpp` | 236 |
-| `ShaderPipelineHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 257 |
+| `ShaderPipelineDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 244 |
+| `ShaderPipelineDomain` | RHI | `Source/Engine/RHI/RHI.hpp` | 238 |
+| `ShaderPipelineHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 259 |
 | `SkinnedVertex` | RHI | `Source/Engine/RHI/Mesh.hpp` | 30 |
 | `Slot` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 146 |
 | `SpatialUpscaleMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 164 |
@@ -3162,12 +3163,12 @@ ScopedMaterials.Shutdown(InRhi);
 | `StaticMeshRecord` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 217 |
 | `TemporalResolvePass` | RHI | `Source/Engine/RHI/TemporalResolvePass.hpp` | 11 |
 | `TextureArray` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 226 |
-| `TextureArrayDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 221 |
-| `TextureArrayHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 403 |
+| `TextureArrayDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 223 |
+| `TextureArrayHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 405 |
 | `Tile` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 90 |
 | `TintEntry` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 81 |
 | `TransientRing` | RHI | `Source/Engine/RHI/RingBuffer.hpp` | 15 |
-| `UiBackendInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 333 |
+| `UiBackendInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 335 |
 | `UpscalerBackend` | RHI | `Source/Engine/RHI/UpscalerBackend.hpp` | 9 |
 | `UpscalerCaps` | RHI | `Source/Engine/RHI/RHI.hpp` | 172 |
 | `ViewportMode` | RHI | `Source/Engine/RHI/ViewportModes.hpp` | 15 |
@@ -3183,7 +3184,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `VirtualTextureHandle` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 294 |
 | `VirtualTexturePageLocation` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 11 |
 | `VirtualTextureResource` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 434 |
-| `VirtualTextureResourceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 415 |
+| `VirtualTextureResourceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 417 |
 | `VirtualTextureRhiTarget` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 118 |
 | `VirtualTextureSample` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 58 |
 | `VirtualTextureStats` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 51 |
@@ -3214,26 +3215,26 @@ ScopedMaterials.Shutdown(InRhi);
 | `CameraStackSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 20 |
 | `CameraStackSystem` | Script | `Source/Engine/Script/Vm.hpp` | 20 |
 | `Code` | Script | `Source/Engine/Script/Vm.hpp` | 35 |
-| `CompiledDebug` | Script | `Source/Engine/Script/Bytecode.hpp` | 559 |
-| `CompiledProgram` | Script | `Source/Engine/Script/Bytecode.hpp` | 574 |
+| `CompiledDebug` | Script | `Source/Engine/Script/Bytecode.hpp` | 560 |
+| `CompiledProgram` | Script | `Source/Engine/Script/Bytecode.hpp` | 575 |
 | `ComponentAccessor` | Script | `Source/Engine/Script/EcsBridge.hpp` | 17 |
-| `ComponentBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 501 |
+| `ComponentBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 502 |
 | `Context` | Script | `Source/Engine/Script/AotAbi.hpp` | 177 |
 | `CoroutineFrame` | Script | `Source/Engine/Script/AotAbi.hpp` | 158 |
 | `CoroutineSlot` | Script | `Source/Engine/Script/AotHost.hpp` | 115 |
 | `CoroutineSlot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 207 |
 | `CoroutineState` | Script | `Source/Engine/Script/AotAbi.hpp` | 166 |
-| `DebugField` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 123 |
-| `DebugFrame` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 103 |
+| `DebugField` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 127 |
+| `DebugFrame` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 107 |
 | `DebugSectionHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 215 |
 | `DebugSpan` | Script | `Source/Engine/Script/Bytecode.hpp` | 193 |
 | `DebugSpanFlags` | Script | `Source/Engine/Script/Bytecode.hpp` | 184 |
 | `DebugVariable` | Script | `Source/Engine/Script/Bytecode.hpp` | 206 |
 | `EcsBridge` | Script | `Source/Engine/Script/EcsBridge.hpp` | 26 |
-| `FieldBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 511 |
-| `FunctionEntry` | Script | `Source/Engine/Script/Bytecode.hpp` | 524 |
+| `FieldBinding` | Script | `Source/Engine/Script/Bytecode.hpp` | 512 |
+| `FunctionEntry` | Script | `Source/Engine/Script/Bytecode.hpp` | 525 |
 | `HostApi` | Script | `Source/Engine/Script/AotAbi.hpp` | 78 |
-| `Instruction` | Script | `Source/Engine/Script/Bytecode.hpp` | 481 |
+| `Instruction` | Script | `Source/Engine/Script/Bytecode.hpp` | 482 |
 | `LogicCompareOp` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 22 |
 | `LogicCompileOptions` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 775 |
 | `LogicCompileResult` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 782 |
@@ -3248,16 +3249,16 @@ ScopedMaterials.Shutdown(InRhi);
 | `NativeId` | Script | `Source/Engine/Script/Bytecode.hpp` | 18 |
 | `Object` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 115 |
 | `ObjectKind` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 108 |
-| `OpCode` | Script | `Source/Engine/Script/Bytecode.hpp` | 279 |
-| `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 678 |
+| `OpCode` | Script | `Source/Engine/Script/Bytecode.hpp` | 280 |
+| `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 679 |
 | `PhysicsSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 19 |
 | `PhysicsSystem` | Script | `Source/Engine/Script/Vm.hpp` | 19 |
 | `PinType` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 318 |
-| `ProgramBuilder` | Script | `Source/Engine/Script/Bytecode.hpp` | 633 |
-| `ProgramHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 534 |
+| `ProgramBuilder` | Script | `Source/Engine/Script/Bytecode.hpp` | 634 |
+| `ProgramHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 535 |
 | `ResolvedComponent` | Script | `Source/Engine/Script/EcsBridge.hpp` | 93 |
 | `ScriptComponent` | Script | `Source/Engine/Script/ScriptComponent.hpp` | 16 |
-| `ScriptEvent` | Script | `Source/Engine/Script/Bytecode.hpp` | 249 |
+| `ScriptEvent` | Script | `Source/Engine/Script/Bytecode.hpp` | 250 |
 | `ScriptHeap` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 60 |
 | `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 24 |
 | `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 28 |
@@ -3585,10 +3586,10 @@ ScopedMaterials.Shutdown(InRhi);
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 22 |
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 32 |
 | `FBY_DEFINE_PLUGIN` | `Source/Engine/Core/Plugin.hpp` | 55 |
-| `FBY_DETAIL_CONCAT` | `Source/Engine/Core/Definitions.hpp` | 263 |
-| `FBY_DETAIL_CONCAT_INNER` | `Source/Engine/Core/Definitions.hpp` | 262 |
+| `FBY_DETAIL_CONCAT` | `Source/Engine/Core/Definitions.hpp` | 265 |
+| `FBY_DETAIL_CONCAT_INNER` | `Source/Engine/Core/Definitions.hpp` | 264 |
 | `FBY_EFFECT_TAGS` | `Source/Engine/Core/PluginAPI.h` | 104 |
-| `FBY_FIELD` | `Source/Engine/Core/Mirror.hpp` | 288 |
+| `FBY_FIELD` | `Source/Engine/Core/Mirror.hpp` | 285 |
 | `FBY_FLUID_HAS_MDSPAN` | `Source/Engine/Physics/Fluid.hpp` | 16 |
 | `FBY_FLUID_HAS_MDSPAN` | `Source/Engine/Physics/Fluid.hpp` | 18 |
 | `FBY_HAS_MDSPAN` | `Source/Engine/ECS/Skeleton.hpp` | 18 |
@@ -3613,11 +3614,11 @@ ScopedMaterials.Shutdown(InRhi);
 | `FBY_PLUGIN_INFO_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 206 |
 | `FBY_PLUGIN_LOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 207 |
 | `FBY_PLUGIN_UNLOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 208 |
-| `FBY_PROJECT_ASSETS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 146 |
-| `FBY_PROJECT_MAX_RENDER_ITEMS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 139 |
-| `FBY_REFLECT_COMPONENT` | `Source/Engine/Core/Mirror.hpp` | 295 |
-| `FBY_REFLECT_COMPONENT_EMPTY` | `Source/Engine/Core/Mirror.hpp` | 311 |
-| `FBY_REGISTER_TYPE` | `Source/Engine/Core/Definitions.hpp` | 266 |
+| `FBY_PROJECT_ASSETS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 147 |
+| `FBY_PROJECT_MAX_RENDER_ITEMS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 140 |
+| `FBY_REFLECT_COMPONENT` | `Source/Engine/Core/Mirror.hpp` | 292 |
+| `FBY_REFLECT_COMPONENT_EMPTY` | `Source/Engine/Core/Mirror.hpp` | 308 |
+| `FBY_REGISTER_TYPE` | `Source/Engine/Core/Definitions.hpp` | 268 |
 | `FBY_RELEVANCE_HAS_MDSPAN` | `Source/Engine/Network/RelevanceGrid.hpp` | 19 |
 | `FBY_RELEVANCE_HAS_MDSPAN` | `Source/Engine/Network/RelevanceGrid.hpp` | 21 |
 | `FBY_RESTRICT` | `Source/Engine/Core/Definitions.hpp` | 26 |
@@ -3625,7 +3626,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `FBY_SDF_SHAPE_FIELD` | `Source/Engine/Physics/SdfPrimitives.hpp` | 172 |
 | `FBY_TEMPERATURE_BANDS` | `Source/Engine/Core/PluginAPI.h` | 106 |
 | `FBY_THEME_COLOR_COUNT` | `Source/Engine/Core/PluginAPI.h` | 84 |
-| `FBY_TYPE_NAME` | `Source/Engine/Core/Definitions.hpp` | 282 |
+| `FBY_TYPE_NAME` | `Source/Engine/Core/Definitions.hpp` | 284 |
 | `FBY_UI_HAS_MDSPAN` | `Source/Engine/UI/PinkUI.hpp` | 22 |
 | `FBY_UI_HAS_MDSPAN` | `Source/Engine/UI/PinkUI.hpp` | 24 |
 | `FBY_UNREACHABLE` | `Source/Engine/Core/Assert.hpp` | 45 |

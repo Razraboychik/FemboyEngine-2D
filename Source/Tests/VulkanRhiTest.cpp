@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdio>
 #include <span>
 
@@ -55,6 +56,46 @@ int main()
                      ScopedGpu->Info().upscalers.fsr1 ? 1 : 0, ScopedGpu->Info().upscalers.fsr2 ? 1 : 0,
                      ScopedGpu->Info().upscalers.bicubic ? 1 : 0);
         return 1;
+    }
+
+    if (std::getenv("FBY_VULKAN_STRESS") != nullptr)
+    {
+        Fby::Rhi::TextureArrayDesc ScopedReuseTextureDesc;
+        ScopedReuseTextureDesc.size = {1, 1};
+        ScopedReuseTextureDesc.layers = 1;
+        ScopedReuseTextureDesc.srgb = false;
+        std::array<std::byte, 4> ScopedReusePixel{};
+        for (std::uint32_t ScopedReuse = 0; ScopedReuse < 80; ++ScopedReuse)
+        {
+            const Fby::Rhi::TextureArrayHandle ScopedReuseTexture =
+                ScopedGpu->CreateTextureArray(ScopedReuseTextureDesc,
+                                              std::span<const std::byte>(ScopedReusePixel));
+            if (!ScopedReuseTexture.IsValid())
+            {
+                std::fprintf(stderr, "vulkan_rhi: texture slot reuse failed at %u\n",
+                             static_cast<unsigned>(ScopedReuse));
+                return 1;
+            }
+            ScopedGpu->DestroyTextureArray(ScopedReuseTexture);
+            ScopedGpu->WaitIdle();
+        }
+
+        Fby::Rhi::RenderTargetDesc ScopedReuseTargetDesc;
+        ScopedReuseTargetDesc.size = {8, 8};
+        ScopedReuseTargetDesc.srgb = false;
+        for (std::uint32_t ScopedReuse = 0; ScopedReuse < 40; ++ScopedReuse)
+        {
+            const Fby::Rhi::RenderTargetHandle ScopedReuseTarget =
+                ScopedGpu->CreateRenderTarget(ScopedReuseTargetDesc);
+            if (!ScopedReuseTarget.IsValid())
+            {
+                std::fprintf(stderr, "vulkan_rhi: target slot reuse failed at %u\n",
+                             static_cast<unsigned>(ScopedReuse));
+                return 1;
+            }
+            ScopedGpu->DestroyRenderTarget(ScopedReuseTarget);
+            ScopedGpu->WaitIdle();
+        }
     }
 
     std::array<std::byte, 8> ScopedWhite{};

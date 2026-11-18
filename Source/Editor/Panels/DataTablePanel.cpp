@@ -99,13 +99,14 @@ void DataTablePanel::Load(Ecs::SystemContext& InContext)
         MStatus = "The VFS is not available.";
         return;
     }
-    const std::optional<std::span<const std::byte>> ScopedBytes = InContext.assets->Read(MPath.data());
-    if (!ScopedBytes.has_value())
+    const auto ScopedPinned = InContext.assets->Pin(MPath.data());
+    if (!ScopedPinned)
     {
         MStatus = "The file is not present in the VFS.";
         return;
     }
-    const std::string_view ScopedText(reinterpret_cast<const char*>(ScopedBytes->data()), ScopedBytes->size());
+    const std::string_view ScopedText(reinterpret_cast<const char*>(ScopedPinned->bytes.data()),
+                                      ScopedPinned->bytes.size());
     const std::string_view ScopedPath(MPath.data());
     const char ScopedDelimiter = ScopedPath.ends_with(".tsv") ? '\t' : ',';
     if (!Fby::ParseDataTable(ScopedText, &MTable, ScopedDelimiter))

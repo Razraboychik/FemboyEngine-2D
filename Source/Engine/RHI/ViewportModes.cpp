@@ -207,18 +207,24 @@ bool ParseViewportMode(std::string_view InName, ViewportMode* OutMode) noexcept
 ViewportMode CycleViewportMode(ViewportMode InMode, std::int32_t InDelta) noexcept
 {
     const std::int32_t ScopedCount = static_cast<std::int32_t>(kViewportModeCount);
-    std::int32_t ScopedIndex = static_cast<std::int32_t>(InMode) + InDelta;
+    if (ScopedCount <= 0)
+    {
+        return ViewportMode::Standard;
+    }
+    // int32 + int32 can overflow before the modulo when a caller passes
+    // INT32_MIN/MAX as the delta.
+    std::int64_t ScopedIndex = static_cast<std::int64_t>(InMode) + static_cast<std::int64_t>(InDelta);
     ScopedIndex %= ScopedCount;
     if (ScopedIndex < 0)
     {
         ScopedIndex += ScopedCount;
     }
-    return static_cast<ViewportMode>(ScopedIndex);
+    return static_cast<ViewportMode>(static_cast<std::int32_t>(ScopedIndex));
 }
 
 Color32 ComplexityHeatColor(float InNormalized) noexcept
 {
-    const float ScopedValue = Clamp01(InNormalized);
+    const float ScopedValue = std::isfinite(InNormalized) ? Clamp01(InNormalized) : 0.0f;
     // Two linear legs: green to yellow, then yellow to red. The result is
     // opaque so the heat overlay replaces the sprite colour instead of tinting
     // through it.

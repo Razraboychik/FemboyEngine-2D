@@ -176,7 +176,8 @@ std::uint32_t VideoAudioStream::CopyFrames(std::span<float> OutInterleaved, std:
         return 0;
     }
     const std::uint32_t ScopedFrames = std::min(InFrames, MFrameCount);
-    if (ScopedFrames == 0)
+    if (ScopedFrames == 0 ||
+        OutInterleaved.size() < static_cast<std::size_t>(ScopedFrames) * MChannels)
     {
         return 0;
     }

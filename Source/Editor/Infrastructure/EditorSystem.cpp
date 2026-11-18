@@ -4,6 +4,7 @@
 #include "Engine/RHI/Fsr2Adapter.hpp"
 
 #include "Engine/Audio/Audio.hpp"
+#include "Engine/Audio/OggOpus.hpp"
 #include "Engine/Audio/VoicePreset.hpp"
 #include "Engine/Audio/VoiceReactiveSfx.hpp"
 #include "Engine/Audio/VoiceSfxSynth.hpp"
@@ -483,6 +484,12 @@ struct EditorSystem::Impl
     Rhi::RHI* gpu = nullptr;
     WindowManager* window = nullptr;
     VirtualFileSystem* vfs = nullptr;
+    // The editor easter egg is decoded lazily on the first click so startup
+    // never pays for an Ogg read or decode it does not need.
+    AssetId meowClip{};
+    std::vector<float> meowSamples;
+    bool meowLoaded = false;
+    bool meowLoadAttempted = false;
     EditorDesc desc;
     std::string iniPath;
     bool initialized = false;
@@ -1708,8 +1715,8 @@ struct EditorSystem::Impl
         std::array<std::byte, kMaxTrackedComponentBytes> ScopedBefore{};
         const bool ScopedTrackable = InCodec != 0xFFFFu && commands.CaptureComponent(InEntity, InCodec, ScopedBefore) ==
                                                                CommandStack::Result::Ok;
-        ImGui::PushID(InField.name.data());
         const std::string ScopedLabel(InField.name);
+        ImGui::PushID(ScopedLabel.c_str());
         switch (InField.kind)
         {
             case Reflect::FieldKind::Float:
@@ -2340,9 +2347,10 @@ struct EditorSystem::Impl
 
         for (const Scene::ComponentOps* ScopedOps : ScopedPresent)
         {
-            ImGui::PushID(ScopedOps->name.data());
+            const std::string ScopedComponentName(ScopedOps->name);
+            ImGui::PushID(ScopedComponentName.c_str());
             const bool ScopedOpen =
-                ImGui::CollapsingHeader(std::string(ScopedOps->name).c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+                ImGui::CollapsingHeader(ScopedComponentName.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
             if (ScopedOpen)
             {
                 if (ScopedOps->empty)
@@ -2922,20 +2930,21 @@ struct EditorSystem::Impl
         {
             ImGui::Separator();
             const auto ScopedEntry = ScopedAssetVfs->Find(selectedAsset);
-            const auto ScopedBytes = ScopedAssetVfs->Read(selectedAsset);
-            if (ScopedEntry && ScopedBytes)
+            const auto ScopedPinned = ScopedAssetVfs->Pin(selectedAsset);
+            if (ScopedEntry && ScopedPinned)
             {
+                const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
                 PushMono();
                 ImGui::Text("vfs:/%s", selectedAsset.c_str());
-                ImGui::Text("size: %zu bytes", ScopedBytes->size());
+                ImGui::Text("size: %zu bytes", ScopedBytes.size());
                 PopMono();
 
                 std::string ScopedPreview;
                 std::size_t ScopedPrintable = 0;
-                const std::size_t ScopedInspect = std::min<std::size_t>(ScopedBytes->size(), 512);
+                const std::size_t ScopedInspect = std::min<std::size_t>(ScopedBytes.size(), 512);
                 for (std::size_t ScopedI = 0; ScopedI < ScopedInspect; ++ScopedI)
                 {
-                    const auto ScopedCharacter = static_cast<unsigned char>((*ScopedBytes)[ScopedI]);
+                    const auto ScopedCharacter = static_cast<unsigned char>(ScopedBytes[ScopedI]);
                     if (ScopedCharacter == '\n' || ScopedCharacter == '\r' || ScopedCharacter == '\t' ||
                         (ScopedCharacter >= 0x20 && ScopedCharacter < 0x7F) || ScopedCharacter >= 0xC0)
                     {
@@ -2944,15 +2953,15 @@ struct EditorSystem::Impl
                 }
                 if (ScopedInspect > 0 && ScopedPrintable + 8 >= ScopedInspect)
                 {
-                    ScopedPreview.assign(reinterpret_cast<const char*>(ScopedBytes->data()),
-                                         std::min<std::size_t>(ScopedBytes->size(), 1024));
+                    ScopedPreview.assign(reinterpret_cast<const char*>(ScopedBytes.data()),
+                                         std::min<std::size_t>(ScopedBytes.size(), 1024));
                 }
                 else
                 {
-                    const std::size_t ScopedDump = std::min<std::size_t>(ScopedBytes->size(), 64);
+                    const std::size_t ScopedDump = std::min<std::size_t>(ScopedBytes.size(), 64);
                     for (std::size_t ScopedI = 0; ScopedI < ScopedDump; ++ScopedI)
                     {
-                        ScopedPreview += std::format("{:02X} ", static_cast<unsigned>((*ScopedBytes)[ScopedI]));
+                        ScopedPreview += std::format("{:02X} ", static_cast<unsigned>(ScopedBytes[ScopedI]));
                         if (ScopedI % 16 == 15)
                         {
                             ScopedPreview += '\n';
@@ -3198,18 +3207,19 @@ struct EditorSystem::Impl
                             ScopedHandle.IsValid())
                         {
                             const std::string_view ScopedSource = InContext.assetDb->SourcePath(ScopedHandle);
-                            if (const auto ScopedBytes = InContext.assets->Read(ScopedSource); ScopedBytes)
+                            if (const auto ScopedPinned = InContext.assets->Pin(ScopedSource); ScopedPinned)
                             {
+                                const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
                                 if (ScopedSource.ends_with(".fbytext"))
                                 {
-                                    (void)ScopedTextService->AddCookedAsset(ScopedAsset, *ScopedBytes);
+                                    (void)ScopedTextService->AddCookedAsset(ScopedAsset, ScopedBytes);
                                 }
                                 else
                                 {
                                     (void)ScopedTextService->AddMarkupAsset(
                                         ScopedAsset,
-                                        std::string_view(reinterpret_cast<const char*>(ScopedBytes->data()),
-                                                         ScopedBytes->size()));
+                                        std::string_view(reinterpret_cast<const char*>(ScopedBytes.data()),
+                                                         ScopedBytes.size()));
                                 }
                             }
                         }
@@ -4472,11 +4482,14 @@ struct EditorSystem::Impl
                     ImGui::TableNextColumn();
                     ImGui::Text("%llu", static_cast<unsigned long long>(ScopedRow.Count));
                     ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(
-                        Fby::Core::FormatMilliseconds(ScopedRow.AverageMs, ScopedBuffer, sizeof(ScopedBuffer)).data());
+                    const std::string_view ScopedAverageText =
+                        Fby::Core::FormatMilliseconds(ScopedRow.AverageMs, ScopedBuffer, sizeof(ScopedBuffer));
+                    ImGui::TextUnformatted(ScopedAverageText.data(),
+                                           ScopedAverageText.data() + ScopedAverageText.size());
                     ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(
-                        Fby::Core::FormatMilliseconds(ScopedRow.P95Ms, ScopedBuffer, sizeof(ScopedBuffer)).data());
+                    const std::string_view ScopedP95Text =
+                        Fby::Core::FormatMilliseconds(ScopedRow.P95Ms, ScopedBuffer, sizeof(ScopedBuffer));
+                    ImGui::TextUnformatted(ScopedP95Text.data(), ScopedP95Text.data() + ScopedP95Text.size());
                 }
                 ImGui::EndTable();
             }
@@ -4639,6 +4652,55 @@ struct EditorSystem::Impl
         }
         PopMono();
         EndEditorPanel();
+    }
+
+    void PlayMeow(Ecs::SystemContext& InContext)
+    {
+        if (InContext.audio == nullptr || !InContext.audio->IsValid())
+        {
+            LogWarn("editor", "meow preview needs an audio device");
+            return;
+        }
+        if (!meowLoaded && !meowLoadAttempted)
+        {
+            meowLoadAttempted = true;
+            if (vfs == nullptr)
+            {
+                LogWarn("editor", "meow preview is unavailable: the asset VFS is not mounted");
+                return;
+            }
+            const auto ScopedPinned = vfs->Pin("audio/editor/meow.ogg");
+            if (!ScopedPinned)
+            {
+                LogWarn("editor", "meow preview is unavailable: audio/editor/meow.ogg is missing");
+                return;
+            }
+            const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
+            std::vector<float> ScopedDecoded;
+            std::uint32_t ScopedFrames = 0;
+            std::string ScopedError;
+            if (!Fby::Audio::DecodeOggOpusToStereo(ScopedBytes, Fby::Audio::kOggMaxWholeTrackFrames,
+                                                   &ScopedDecoded, &ScopedFrames, &ScopedError))
+            {
+                LogWarn("editor", "meow preview decode failed: {}", ScopedError);
+                return;
+            }
+            meowSamples = std::move(ScopedDecoded);
+            meowClip = AssetId::FromPath("audio/editor/meow.ogg", AssetKind::AudioClip);
+            if (!InContext.audio->RegisterClip(meowClip, meowSamples, 2, Fby::Audio::kOggOpusSampleRate))
+            {
+                LogWarn("editor", "meow preview could not be registered");
+                return;
+            }
+            meowLoaded = true;
+        }
+        if (meowLoaded)
+        {
+            if (InContext.audio->Play(meowClip, AudioBus::Sfx, 1.0f) == Fby::kInvalidAudioVoice)
+            {
+                LogWarn("editor", "meow preview could not start a mixer voice");
+            }
+        }
     }
 
     void Menu(Ecs::SystemContext& InContext)
@@ -4895,6 +4957,26 @@ struct EditorSystem::Impl
                 ImGui::EndMenu();
             }
             ImGui::TextDisabled("  %s", desc.title.c_str());
+            {
+                float ScopedUiWidth = ImGui::GetIO().DisplaySize.x;
+                const float ScopedFramebufferScale = ImGui::GetIO().DisplayFramebufferScale.x;
+                if (ScopedFramebufferScale > 0.0f)
+                {
+                    ScopedUiWidth /= ScopedFramebufferScale;
+                }
+                const float ScopedButtonHeight = ImGui::GetFrameHeight();
+                const float ScopedRight = ScopedUiWidth - ScopedButtonHeight * 2.0f - 16.0f;
+                ImGui::SameLine(ScopedRight);
+                if (CircleTextButton("meow", ":3", EditorSymbolRole::Play, "Meow :3"))
+                {
+                    PlayMeow(InContext);
+                }
+                ImGui::SameLine();
+                if (CircleTextButton("exit", "X", EditorSymbolRole::Stop, "Quit editor"))
+                {
+                    owner->RequestQuit();
+                }
+            }
             if (ImGui::BeginPopupModal("Quit editor", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
             {
                 ImGui::TextUnformatted("Quit FemboyEngine editor?");
@@ -4994,6 +5076,7 @@ EditorSystem::~EditorSystem()
     }
     catch (...)
     {
+        std::fputs("editor: shutdown failed during destruction\n", stderr);
     }
 }
 
@@ -6505,6 +6588,10 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
             }
             else
             {
+                // Reload/Unload erase from Plugins(); collect the action first
+                // instead of mutating the vector during its iteration.
+                std::string ScopedReloadPath;
+                std::string ScopedUnloadPath;
                 for (const auto& ScopedPlugin : MImpl->pluginHost->Plugins())
                 {
                     ImGui::PushID(ScopedPlugin.get());
@@ -6512,20 +6599,30 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Reload"))
                     {
-                        std::string ScopedError;
-                        MImpl->pluginStatus = MImpl->pluginHost->Reload(ScopedPlugin->path, &ScopedError)
-                                                  ? "reloaded " + ScopedPlugin->name
-                                                  : "reload failed: " + ScopedError;
+                        ScopedReloadPath = ScopedPlugin->path;
+                        MImpl->pluginStatus = "reloading " + ScopedPlugin->name;
                     }
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Unload"))
                     {
-                        std::string ScopedError;
-                        MImpl->pluginStatus = MImpl->pluginHost->Unload(ScopedPlugin->path, &ScopedError)
-                                                  ? "unloaded " + ScopedPlugin->name
-                                                  : "unload failed: " + ScopedError;
+                        ScopedUnloadPath = ScopedPlugin->path;
+                        MImpl->pluginStatus = "unloading " + ScopedPlugin->name;
                     }
                     ImGui::PopID();
+                }
+                if (!ScopedReloadPath.empty())
+                {
+                    std::string ScopedError;
+                    MImpl->pluginStatus = MImpl->pluginHost->Reload(ScopedReloadPath, &ScopedError)
+                                              ? "reloaded " + ScopedReloadPath
+                                              : "reload failed: " + ScopedError;
+                }
+                else if (!ScopedUnloadPath.empty())
+                {
+                    std::string ScopedError;
+                    MImpl->pluginStatus = MImpl->pluginHost->Unload(ScopedUnloadPath, &ScopedError)
+                                              ? "unloaded " + ScopedUnloadPath
+                                              : "unload failed: " + ScopedError;
                 }
             }
             if (MImpl->effectRegistry != nullptr)

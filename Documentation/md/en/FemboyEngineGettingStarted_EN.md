@@ -1,4 +1,4 @@
-# FemboyEngine 0.5.0 — getting started
+# FemboyEngine 0.7.0-alpha.1 — getting started
 
 This document lists what to install and which files must sit next to the engine to run the editor, the runtime and the development tools on Windows, Linux and macOS.
 
@@ -237,7 +237,7 @@ Use RenderDoc for GPU debugging: attach it to `fby_editor.exe` and capture a fra
 
 ## Compiler selection
 
-The 0.5.0 line supports **Clang 19.1+** (clang-cl on Windows, clang++ on Unix), **AppleClang 16+**, **GCC 14.1+** and **MSVC 19.40+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.40+ builds the same tree in its own Windows CI job.
+The 0.6.0 line supports **Clang 19.1+** (clang-cl on Windows, clang++ on Unix), **AppleClang 16+**, **GCC 14.1+** and **MSVC 19.40+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.40+ builds the same tree in its own Windows CI job.
 
 - **Windows, primary:** clang-cl. It is Clang with the MSVC ABI, the Windows SDK and the MSVC standard library, and it works with the Visual Studio debugger and PDBs.
 - **Windows, alternative:** MSVC (`cl.exe`). Choose it when the team standardizes on the Microsoft toolchain; CMake selects `/std:c++latest` and the MSVC warning set. RNNoise falls back to the spectral tier because its vendored C sources use variable-length arrays.

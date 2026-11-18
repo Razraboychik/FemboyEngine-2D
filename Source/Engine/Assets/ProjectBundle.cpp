@@ -102,7 +102,8 @@ void Put64(std::vector<std::byte>& OutBytes, std::uint64_t InValue)
     {
         const std::string ScopedName = ScopedPart.string();
         if (ScopedName == ".git" || ScopedName == "build" || ScopedName == "Saved" || ScopedName == ".fbyproject" ||
-            ScopedName == "archives" || ScopedName == "stores")
+            ScopedName == "archives" || ScopedName == "stores" || ScopedName == ".cache" ||
+            ScopedName == "editor.ini" || ScopedName == ".fbyrelease.seed")
         {
             return true;
         }
@@ -146,29 +147,46 @@ bool ExportProjectBundle(const std::filesystem::path& InProjectRoot, const std::
 {
     std::error_code ScopedError;
     const std::filesystem::path ScopedRoot = std::filesystem::weakly_canonical(InProjectRoot, ScopedError);
-    if (ScopedError || !std::filesystem::is_directory(ScopedRoot))
+    if (ScopedError || !std::filesystem::is_directory(ScopedRoot, ScopedError))
     {
         SetError(InError, "project bundle: project root is not a directory");
         return false;
     }
-    if (!std::filesystem::is_regular_file(ScopedRoot / kProjectDescriptorName))
+    const std::filesystem::path ScopedDescriptor = ScopedRoot / kProjectDescriptorName;
+    const std::filesystem::file_status ScopedDescriptorStatus = std::filesystem::symlink_status(ScopedDescriptor, ScopedError);
+    if (ScopedError || !std::filesystem::is_regular_file(ScopedDescriptorStatus))
     {
-        SetError(InError, "project bundle: project.femproj is missing");
+        SetError(InError, "project bundle: project.femproj is missing or not a regular file");
         return false;
     }
 
     std::vector<Entry> ScopedEntries;
-    for (std::filesystem::recursive_directory_iterator ScopedIt(ScopedRoot, ScopedError), ScopedEnd;
-         !ScopedError && ScopedIt != ScopedEnd; ScopedIt.increment(ScopedError))
+    std::error_code ScopedScanError;
+    auto ScopedIt = std::filesystem::recursive_directory_iterator(
+        ScopedRoot, std::filesystem::directory_options::skip_permission_denied, ScopedScanError);
+    const std::filesystem::recursive_directory_iterator ScopedEnd;
+    for (; ScopedIt != ScopedEnd; ScopedIt.increment(ScopedScanError))
     {
+        if (ScopedScanError)
+        {
+            SetError(InError, "project bundle: cannot enumerate " + ScopedRoot.string() + ": " + ScopedScanError.message());
+            return false;
+        }
         const std::filesystem::directory_entry& ScopedEntry = *ScopedIt;
-        if (ScopedEntry.is_symlink(ScopedError) || !ScopedEntry.is_regular_file(ScopedError))
+        std::error_code ScopedEntryError;
+        if (ScopedEntry.is_symlink(ScopedEntryError) || !ScopedEntry.is_regular_file(ScopedEntryError) || ScopedEntryError)
         {
             continue;
         }
         const std::filesystem::path ScopedRelative =
-            std::filesystem::relative(ScopedEntry.path(), ScopedRoot, ScopedError);
-        if (ScopedError || IsExcluded(ScopedRelative))
+            std::filesystem::relative(ScopedEntry.path(), ScopedRoot, ScopedEntryError);
+        if (ScopedEntryError)
+        {
+            SetError(InError, "project bundle: cannot resolve " + ScopedEntry.path().string() + ": " +
+                                  ScopedEntryError.message());
+            return false;
+        }
+        if (IsExcluded(ScopedRelative))
         {
             continue;
         }
@@ -269,9 +287,16 @@ bool ExportProjectBundle(const std::filesystem::path& InProjectRoot, const std::
     }
     ScopedStream.write(reinterpret_cast<const char*>(ScopedArchive.data()),
                        static_cast<std::streamsize>(ScopedArchive.size()));
+    ScopedStream.flush();
     if (!ScopedStream.good())
     {
         SetError(InError, "project bundle: write failed");
+        return false;
+    }
+    ScopedStream.close();
+    if (ScopedStream.fail())
+    {
+        SetError(InError, "project bundle: close failed");
         return false;
     }
     return true;
@@ -350,7 +375,8 @@ bool ImportProjectBundle(const std::filesystem::path& InArchive, const std::file
             return false;
         }
         const std::filesystem::path ScopedRelative(ScopedPath);
-        if (ScopedRelative.is_absolute() || ScopedPath.find('\0') != std::string::npos)
+        if (ScopedRelative.is_absolute() || ScopedRelative.has_root_name() ||
+            ScopedRelative.has_root_directory() || ScopedPath.find('\0') != std::string::npos)
         {
             SetError(InError, "project bundle: absolute path rejected");
             return false;
@@ -373,9 +399,16 @@ bool ImportProjectBundle(const std::filesystem::path& InArchive, const std::file
         }
         ScopedFile.write(reinterpret_cast<const char*>(ScopedData.data()),
                          static_cast<std::streamsize>(ScopedData.size()));
+        ScopedFile.flush();
         if (!ScopedFile.good())
         {
             SetError(InError, "project bundle: write failed for " + ScopedPath);
+            return false;
+        }
+        ScopedFile.close();
+        if (ScopedFile.fail())
+        {
+            SetError(InError, "project bundle: close failed for " + ScopedPath);
             return false;
         }
         if (ScopedPath == kProjectDescriptorName)

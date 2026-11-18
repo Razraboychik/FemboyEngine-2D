@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <limits>
 #include <span>
 
 namespace
@@ -413,6 +414,15 @@ void TestRngAllocationFree()
 
 int main()
 {
+    // Public noise coordinates can be non-finite or far outside int range.
+    {
+        Fby::Noise::NoiseGenerator ScopedNoise(1234u);
+        const float ScopedHuge = 1.0e30f;
+        const float ScopedNan = std::numeric_limits<float>::quiet_NaN();
+        Check(std::isfinite(ScopedNoise.Perlin2D(ScopedHuge, ScopedHuge)), "huge Perlin2D stays finite");
+        Check(std::isfinite(ScopedNoise.Simplex2D(ScopedNan, ScopedNan)), "NaN Simplex2D stays finite");
+        Check(std::isfinite(ScopedNoise.Worley2D(ScopedHuge, ScopedHuge)), "huge Worley2D stays finite");
+    }
     TestPcg32ReferenceVectors();
     TestPcg32StateAndFork();
     TestSecureRng();

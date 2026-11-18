@@ -118,12 +118,12 @@ public:
         {
             return false;
         }
-        const auto ScopedBytes = InVfs.Read(InTtfPath);
-        if (!ScopedBytes)
+        const auto ScopedPinned = InVfs.Pin(InTtfPath);
+        if (!ScopedPinned)
         {
             return false;
         }
-        if (!MShapers[MCount].SetFont(*ScopedBytes, InPixelSize, InFontId))
+        if (!MShapers[MCount].SetFont(ScopedPinned->bytes, InPixelSize, InFontId))
         {
             return false;
         }
@@ -176,12 +176,12 @@ public:
         {
             return false;
         }
-        const auto ScopedBytes = InVfs.Read(InTtfPath);
-        if (!ScopedBytes)
+        const auto ScopedPinned = InVfs.Pin(InTtfPath);
+        if (!ScopedPinned)
         {
             return false;
         }
-        if (!MShapers[MCount].SetFont(*ScopedBytes, InPixelSize, InFontId))
+        if (!MShapers[MCount].SetFont(ScopedPinned->bytes, InPixelSize, InFontId))
         {
             return false;
         }
@@ -229,13 +229,13 @@ public:
             {
                 break;
             }
-            const auto ScopedBytes = InVfs.Read(ScopedCandidate.Path);
-            if (!ScopedBytes)
+            const auto ScopedPinned = InVfs.Pin(ScopedCandidate.Path);
+            if (!ScopedPinned)
             {
                 continue;
             }
             Ui::FontCoverage ScopedMask;
-            (void)Ui::BuildFontCoverageFromTtf(*ScopedBytes, &ScopedMask);
+            (void)Ui::BuildFontCoverageFromTtf(ScopedPinned->bytes, &ScopedMask);
             ScopedOrder[ScopedCount] = ScopedCount;
             ScopedCoverage[ScopedCount] = ScopedMask.CoveredCount();
             ++ScopedCount;
@@ -348,8 +348,8 @@ public:
         {
             return false;
         }
-        const auto ScopedManifestBytes = InVfs.Read(InManifestPath);
-        if (!ScopedManifestBytes)
+        const auto ScopedPinnedManifest = InVfs.Pin(InManifestPath);
+        if (!ScopedPinnedManifest)
         {
             if (InError != nullptr)
             {
@@ -359,8 +359,8 @@ public:
         }
         Ui::FontFamilyManifest ScopedManifest;
         if (!Ui::ParseFontFamilyManifest(
-                std::string_view(reinterpret_cast<const char*>(ScopedManifestBytes->data()),
-                                 ScopedManifestBytes->size()),
+                std::string_view(reinterpret_cast<const char*>(ScopedPinnedManifest->bytes.data()),
+                                 ScopedPinnedManifest->bytes.size()),
                 &ScopedManifest, InError))
         {
             return false;
@@ -376,8 +376,8 @@ public:
         }
         const std::string_view ScopedShapePath =
             ScopedManifest.regular.empty() ? std::string_view(ScopedManifest.bold) : std::string_view(ScopedManifest.regular);
-        const auto ScopedBytes = InVfs.Read(ScopedShapePath);
-        if (!ScopedBytes || !MShapers[MCount].SetFont(*ScopedBytes, InPixelSize, InFontId))
+        const auto ScopedPinnedShape = InVfs.Pin(ScopedShapePath);
+        if (!ScopedPinnedShape || !MShapers[MCount].SetFont(ScopedPinnedShape->bytes, InPixelSize, InFontId))
         {
             if (InError != nullptr)
             {

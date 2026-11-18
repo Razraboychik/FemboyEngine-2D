@@ -38,7 +38,7 @@ namespace
     return ScopedText;
 }
 
-[[nodiscard]] std::vector<std::string_view> SplitLine(std::string_view InLine, char InDelimiter) noexcept
+[[nodiscard]] std::vector<std::string_view> SplitLine(std::string_view InLine, char InDelimiter)
 {
     std::vector<std::string_view> ScopedFields;
     std::size_t ScopedStart = 0;

@@ -133,7 +133,7 @@ void AnimationTimelinePanel::RunScriptTrigger(void* InUser, std::uint32_t InProg
                         ScopedVmContext);
 }
 
-void AnimationTimelinePanel::Dispatch(float InPreviousTime, float InTime) noexcept
+void AnimationTimelinePanel::Dispatch(float InPreviousTime, float InTime, bool InLooped) noexcept
 {
     if (MContext.timeline == nullptr)
     {
@@ -143,7 +143,7 @@ void AnimationTimelinePanel::Dispatch(float InPreviousTime, float InTime) noexce
     ScopedSink.user = &MSinkUser;
     ScopedSink.playAudio = &PlayAudioTrigger;
     ScopedSink.runScript = &RunScriptTrigger;
-    MContext.timeline->DispatchEvents(InPreviousTime, InTime, MLooping, ScopedSink);
+    MContext.timeline->DispatchEvents(InPreviousTime, InTime, InLooped, ScopedSink);
 }
 
 void AnimationTimelinePanel::Tick(float InDeltaSeconds) noexcept
@@ -171,8 +171,7 @@ void AnimationTimelinePanel::Tick(float InDeltaSeconds) noexcept
     }
     MPreviousTime = ScopedPrevious;
     ApplyCurrentPose();
-    Dispatch(ScopedPrevious, MTime);
-    (void)ScopedLooped;
+    Dispatch(ScopedPrevious, MTime, ScopedLooped);
 }
 
 void AnimationTimelinePanel::AddEventAtPlayhead(Animation::TimelineEventKind InKind) noexcept
@@ -194,7 +193,7 @@ void AnimationTimelinePanel::AddEventAtPlayhead(Animation::TimelineEventKind InK
             ScopedText.remove_prefix(2);
         }
         (void)std::from_chars(ScopedText.data(), ScopedText.data() + ScopedText.size(), ScopedValue, 16);
-        ScopedEvent.audioAsset = static_cast<std::uint32_t>(ScopedValue);
+        ScopedEvent.audioAsset = ScopedValue;
     }
     if (InKind == Animation::TimelineEventKind::Script && MScriptProgramText[0] != '\0')
     {
@@ -546,8 +545,11 @@ void AnimationTimelinePanel::DrawKeyInspector()
     {
         if (ImGui::Button("Add key at playhead"))
         {
-            MSelectedKey =
-                static_cast<int>(ScopedTimeline.AddKey(static_cast<std::uint16_t>(MSelectedTrack), MTime, Vector2D{}));
+            const std::uint16_t ScopedAdded = ScopedTimeline.AddKey(
+                static_cast<std::uint16_t>(MSelectedTrack), MTime, Vector2D{});
+            MSelectedKey = ScopedAdded == 0xFFFFu
+                               ? 0
+                               : static_cast<int>(ScopedAdded - ScopedTimeline.tracks[MSelectedTrack].firstKey);
         }
         return;
     }
@@ -557,7 +559,12 @@ void AnimationTimelinePanel::DrawKeyInspector()
     }
     Animation::TimelineKey& ScopedKey = ScopedTimeline.keys[ScopedTrack.firstKey + MSelectedKey];
     ImGui::SetNextItemWidth(90.0f);
-    ImGui::DragFloat("Time", &ScopedKey.time, 0.01f, 0.0f, ScopedTimeline.duration, "%.3f");
+    const float ScopedMinTime = MSelectedKey > 0 ? ScopedTimeline.keys[ScopedTrack.firstKey + MSelectedKey - 1].time : 0.0f;
+    const float ScopedMaxTime =
+        MSelectedKey + 1 < static_cast<int>(ScopedTrack.keyCount)
+            ? ScopedTimeline.keys[ScopedTrack.firstKey + MSelectedKey + 1].time
+            : ScopedTimeline.duration;
+    ImGui::DragFloat("Time", &ScopedKey.time, 0.01f, ScopedMinTime, ScopedMaxTime, "%.3f");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(90.0f);
     ImGui::DragFloat("Value", &ScopedKey.value.X, 0.01f, -10000.0f, 10000.0f, "%.3f");
@@ -583,8 +590,11 @@ void AnimationTimelinePanel::DrawKeyInspector()
     }
     if (ImGui::Button("Add key"))
     {
-        MSelectedKey =
-            static_cast<int>(ScopedTimeline.AddKey(static_cast<std::uint16_t>(MSelectedTrack), MTime, ScopedKey.value));
+        const std::uint16_t ScopedAdded = ScopedTimeline.AddKey(
+            static_cast<std::uint16_t>(MSelectedTrack), MTime, ScopedKey.value);
+        MSelectedKey = ScopedAdded == 0xFFFFu
+                           ? 0
+                           : static_cast<int>(ScopedAdded - ScopedTrack.firstKey);
     }
     ImGui::SameLine();
     if (ImGui::Button("Delete key"))

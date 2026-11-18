@@ -42,6 +42,14 @@ public:
                            std::string* OutError = nullptr);
     void RemoveOwner(const void* InOwner) noexcept;
     void Clear() noexcept;
+    // Rolls back presets added by a failed multi-entry load.
+    void Truncate(std::uint32_t InCount) noexcept
+    {
+        if (InCount < MCount)
+        {
+            MCount = InCount;
+        }
+    }
     void RegisterBuiltIns();
 
     [[nodiscard]] const ParticlePresetDesc* Find(std::string_view InId) const noexcept;

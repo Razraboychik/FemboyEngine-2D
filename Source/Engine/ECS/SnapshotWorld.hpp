@@ -22,7 +22,7 @@ namespace Fby::Ecs
 inline constexpr std::uint32_t kWorldSnapshotVersion = 1;
 inline constexpr std::uint32_t kMaxSnapshotChains = 32;
 inline constexpr std::uint32_t kMaxSnapshotCloths = 8;
-inline constexpr std::uint32_t kMaxSnapshotEmitters = 32;
+inline constexpr std::uint32_t kMaxSnapshotEmitters = 64;
 inline constexpr std::uint32_t kMaxSnapshotChainPath = 64;
 
 struct ChainSaveV3

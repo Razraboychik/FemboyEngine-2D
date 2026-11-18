@@ -117,6 +117,7 @@ void DocumentsPanel::OpenDocument(Ecs::SystemContext& InContext)
                   std::to_string(static_cast<unsigned>(ScopedError)) + ").";
         return;
     }
+    CloseDocument();
     MHandle = ScopedHandle;
     MPage = 0;
     MPageCount = MDocuments.PageCount(MHandle);

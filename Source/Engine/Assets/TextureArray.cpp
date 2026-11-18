@@ -129,13 +129,13 @@ TextureArrayAsset& TextureArrayAsset::operator=(TextureArrayAsset&& InOther) noe
 bool TextureArrayAsset::Load(VirtualFileSystem& InVfs, Rhi::RHI& InGpu, std::string_view InManifestPath,
                              std::string* InError)
 {
-    const auto ScopedBytes = InVfs.Read(InManifestPath);
-    if (!ScopedBytes)
+    const auto ScopedPinned = InVfs.Pin(InManifestPath);
+    if (!ScopedPinned)
     {
         SetError(InError, "atlas manifest not found: " + std::string(InManifestPath));
         return false;
     }
-    return LoadFromManifest(InVfs, InGpu, *ScopedBytes, InError);
+    return LoadFromManifest(InVfs, InGpu, ScopedPinned->bytes, InError);
 }
 
 bool TextureArrayAsset::LoadFromManifest(VirtualFileSystem& InVfs, Rhi::RHI& InGpu,
@@ -158,16 +158,17 @@ bool TextureArrayAsset::LoadFromManifest(VirtualFileSystem& InVfs, Rhi::RHI& InG
 
     for (const AtlasLayer& ScopedLayer : ScopedDesc.layers)
     {
-        const auto ScopedBytes = InVfs.Read(ScopedLayer.source);
-        if (!ScopedBytes)
+        const auto ScopedPinned = InVfs.Pin(ScopedLayer.source);
+        if (!ScopedPinned)
         {
             SetError(InError, "atlas layer not found: " + ScopedLayer.source);
             return false;
         }
+        const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
 
         // One shared validator for both generations: v1 single-mip RGBA8 and v2
         std::string ScopedParseError;
-        const std::optional<CookedTextureView> ScopedCooked = ParseCookedTexture(*ScopedBytes, &ScopedParseError);
+        const std::optional<CookedTextureView> ScopedCooked = ParseCookedTexture(ScopedBytes, &ScopedParseError);
         if (!ScopedCooked)
         {
             SetError(InError, "atlas layer '" + ScopedLayer.source + "': " + ScopedParseError);

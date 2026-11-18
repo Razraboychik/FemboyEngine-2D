@@ -113,6 +113,29 @@ bool PlaybackIconButton(const char* InId, PlaybackIcon InIcon, bool InEngaged, b
     return ScopedClicked && !InDisabled;
 }
 
+bool CircleTextButton(const char* InId, const char* InLabel, EditorSymbolRole InRole, const char* InTooltip)
+{
+    const float ScopedHeight = ImGui::GetFrameHeight();
+    const ImVec2 ScopedSize{ScopedHeight, ScopedHeight};
+    const EditorPalette& ScopedPalette = CurrentEditorPalette();
+    ImGui::PushID(InId);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, ScopedHeight * 0.5f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, HexColor(ScopedPalette.Frame));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, HexColor(ScopedPalette.FrameHover));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, HexColor(ScopedPalette.FrameHover));
+    ImGui::PushStyleColor(ImGuiCol_Text, SymbolColor(InRole));
+    const bool ScopedClicked = ImGui::Button(InLabel, ScopedSize);
+    if (InTooltip != nullptr && ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip("%s", InTooltip);
+    }
+    ImGui::PopStyleColor(4);
+    ImGui::PopStyleVar(2);
+    ImGui::PopID();
+    return ScopedClicked;
+}
+
 bool EditorSlider(const char* InId, float* InValue, float InMin, float InMax, const char* InFormat, float InWidth,
                   bool InOverflow, bool InLogarithmic, float InTrackHeight, bool InShowValue)
 {

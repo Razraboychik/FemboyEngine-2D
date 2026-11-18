@@ -366,6 +366,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArrayFromRenderTarget(RenderTargetHan
     if (ScopedApi.vkCreateSampler(MDevice, &ScopedSamplerInfo, nullptr, &ScopedArray->sampler) != VK_SUCCESS)
     {
         MTextureArrays[ScopedId].reset();
+        MFreeTextureArrayIds.push_back(ScopedId);
         return {};
     }
 
@@ -378,6 +379,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArrayFromRenderTarget(RenderTargetHan
     {
         DestroyTextureArrayResources(*ScopedArray);
         MTextureArrays[ScopedId].reset();
+        MFreeTextureArrayIds.push_back(ScopedId);
         return {};
     }
 
@@ -512,6 +514,11 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
         {
             ScopedApi.vkFreeMemory(MDevice, ScopedArray->memory, nullptr);
         }
+        if (ScopedId < MTextureArrays.size())
+        {
+            MTextureArrays[ScopedId].reset();
+        }
+        MFreeTextureArrayIds.push_back(ScopedId);
     };
 
     VkImageCreateInfo ScopedImageInfo{};
@@ -1419,6 +1426,12 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
     const auto ScopedCleanup = [&]()
     {
         DestroyRenderTargetResources(*ScopedTarget);
+        if (ScopedId < MRenderTargets.size())
+        {
+            MRenderTargets[ScopedId].reset();
+        }
+        // A failed creation must not consume a target slot permanently.
+        MFreeRenderTargetIds.push_back(ScopedId);
     };
 
     VkImageCreateInfo ScopedImageInfo{};

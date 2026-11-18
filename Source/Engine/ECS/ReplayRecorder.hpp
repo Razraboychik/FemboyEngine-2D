@@ -114,8 +114,14 @@ public:
             }
             return false;
         }
+        Core::ReplaySession ScopedLoaded;
+        if (!ScopedLoaded.Load(InBytes, InError))
+        {
+            return false;
+        }
+        MSession = std::move(ScopedLoaded);
         MSchema = InSchema;
-        return MSession.Load(InBytes, InError);
+        return true;
     }
 
     [[nodiscard]] std::uint32_t FrameCount() const noexcept

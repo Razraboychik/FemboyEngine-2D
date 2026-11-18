@@ -874,9 +874,14 @@ std::optional<PinnedFile> VirtualFileSystem::Pin(std::string_view InPath) const
     const std::scoped_lock ScopedLock(MMutex);
     // Materialize() indexes the path and, for a directory mount, opens the lazy
     const auto ScopedEntry = Find(InPath);
-    if (!ScopedEntry.has_value() || ScopedEntry->data.empty())
+    if (!ScopedEntry.has_value())
     {
         return std::nullopt;
+    }
+    if (ScopedEntry->data.empty())
+    {
+        // An empty file is a valid asset; there is no mapping to retain.
+        return PinnedFile{};
     }
 
     for (const std::unique_ptr<MountRecord>& ScopedMount : MMounts)

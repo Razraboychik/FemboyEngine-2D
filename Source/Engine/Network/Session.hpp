@@ -282,7 +282,7 @@ protected:
         std::uint16_t Sequence = 0;
         std::uint32_t EventId = 0;
         std::uint16_t PayloadBytes = 0;
-        std::uint8_t Attempts = 0;
+        std::uint32_t Attempts = 0;
         std::uint64_t LastSentMs = 0;
         std::array<std::byte, kSessionEventPayloadBytes> Payload{};
     };

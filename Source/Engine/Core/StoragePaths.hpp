@@ -33,7 +33,9 @@ namespace Fby::Core
     {
         return std::filesystem::path(ScopedEnvironment);
     }
-    return std::filesystem::current_path() / "Saved";
+    std::error_code ScopedError;
+    const std::filesystem::path ScopedCurrent = std::filesystem::current_path(ScopedError);
+    return ScopedError ? std::filesystem::path{} : ScopedCurrent / "Saved";
 }
 
 [[nodiscard]] inline std::filesystem::path LogDirectory(std::string_view InCategory)
@@ -81,14 +83,17 @@ inline void PruneOldFiles(const std::filesystem::path& InDirectory, std::string_
     std::error_code ScopedError;
     using PruneEntry = std::pair<std::filesystem::file_time_type, std::filesystem::path>;
     std::vector<PruneEntry> ScopedEntries;
-    for (const std::filesystem::directory_entry& ScopedEntry :
-         std::filesystem::directory_iterator(InDirectory, ScopedError))
+    auto ScopedIt = std::filesystem::directory_iterator(InDirectory, ScopedError);
+    const std::filesystem::directory_iterator ScopedEnd;
+    for (; ScopedIt != ScopedEnd; ScopedIt.increment(ScopedError))
     {
         if (ScopedError)
         {
             return;
         }
-        if (!ScopedEntry.is_regular_file(ScopedError))
+        const std::filesystem::directory_entry& ScopedEntry = *ScopedIt;
+        std::error_code ScopedEntryError;
+        if (!ScopedEntry.is_regular_file(ScopedEntryError) || ScopedEntryError)
         {
             continue;
         }
@@ -99,8 +104,11 @@ inline void PruneOldFiles(const std::filesystem::path& InDirectory, std::string_
         }
         std::error_code ScopedTimeError;
         const auto ScopedTime = ScopedEntry.last_write_time(ScopedTimeError);
-        ScopedEntries.emplace_back(ScopedTimeError ? std::filesystem::file_time_type::min() : ScopedTime,
-                                   ScopedEntry.path());
+        if (ScopedTimeError)
+        {
+            continue;
+        }
+        ScopedEntries.emplace_back(ScopedTime, ScopedEntry.path());
     }
     if (ScopedEntries.size() <= InKeep)
     {

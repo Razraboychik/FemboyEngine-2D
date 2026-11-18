@@ -68,7 +68,11 @@ static_assert(sizeof(SdfOpsHeader) == 24, "SdfOpsHeader must stay 24 bytes");
 
 bool SdfDestructible::Configure(const SdfDestructibleDesc& InDesc) noexcept
 {
-    if (InDesc.Width < 2 || InDesc.Height < 2 || InDesc.CellSize.X <= 0.0f || InDesc.CellSize.Y <= 0.0f)
+    if (InDesc.Width < 2 || InDesc.Height < 2 || !std::isfinite(InDesc.CellSize.X) ||
+        !std::isfinite(InDesc.CellSize.Y) || InDesc.CellSize.X <= 0.0f || InDesc.CellSize.Y <= 0.0f ||
+        !std::isfinite(InDesc.Origin.X) || !std::isfinite(InDesc.Origin.Y) ||
+        !std::isfinite(InDesc.OutsideDistance) || !std::isfinite(InDesc.Radius) ||
+        !std::isfinite(InDesc.HalfExtents.X) || !std::isfinite(InDesc.HalfExtents.Y))
     {
         return false;
     }
@@ -138,7 +142,9 @@ void SdfDestructible::Rebuild() noexcept
 
 bool SdfDestructible::Subtract(const SdfCarveOp& InOp) noexcept
 {
-    if (!IsConfigured() || MOpCount >= kMaxOps)
+    if (!IsConfigured() || MOpCount >= kMaxOps || !std::isfinite(InOp.Center.X) ||
+        !std::isfinite(InOp.Center.Y) || !std::isfinite(InOp.Radius) || !std::isfinite(InOp.HalfExtents.X) ||
+        !std::isfinite(InOp.HalfExtents.Y))
     {
         return false;
     }
@@ -165,12 +171,22 @@ bool SdfDestructible::Subtract(const SdfCarveOp& InOp) noexcept
     const auto ScopedBrickX = [this](float InWorldX)
     {
         const float ScopedCell = (InWorldX - MDesc.Origin.X) / MDesc.CellSize.X;
-        return static_cast<std::int32_t>(std::floor(ScopedCell)) / static_cast<std::int32_t>(SdfBrickSize);
+        if (!std::isfinite(ScopedCell))
+        {
+            return std::int32_t{0};
+        }
+        return static_cast<std::int32_t>(std::clamp(ScopedCell, -16.0f, static_cast<float>(MDesc.Width))) /
+               static_cast<std::int32_t>(SdfBrickSize);
     };
     const auto ScopedBrickY = [this](float InWorldY)
     {
         const float ScopedCell = (InWorldY - MDesc.Origin.Y) / MDesc.CellSize.Y;
-        return static_cast<std::int32_t>(std::floor(ScopedCell)) / static_cast<std::int32_t>(SdfBrickSize);
+        if (!std::isfinite(ScopedCell))
+        {
+            return std::int32_t{0};
+        }
+        return static_cast<std::int32_t>(std::clamp(ScopedCell, -16.0f, static_cast<float>(MDesc.Height))) /
+               static_cast<std::int32_t>(SdfBrickSize);
     };
     const std::int32_t ScopedFirstX = std::max<std::int32_t>(ScopedBrickX(ScopedMinX), 0);
     const std::int32_t ScopedFirstY = std::max<std::int32_t>(ScopedBrickY(ScopedMinY), 0);

@@ -18,11 +18,19 @@ namespace Fby::Audio
 {
 namespace
 {
-void SetError(std::string* InError, const char* InMessage)
+void SetError(std::string* InError, const char* InMessage) noexcept
 {
-    if (InError != nullptr)
+    if (InError == nullptr)
+    {
+        return;
+    }
+    try
     {
         *InError = InMessage;
+    }
+    catch (...)
+    {
+        InError->clear();
     }
 }
 
@@ -203,7 +211,7 @@ bool OggPacketReader::Next(OggPacket* InPacket, std::string* InError) noexcept
             {
                 if (MBufferSize != 0 && InError != nullptr && InError->empty())
                 {
-                    *InError = "Ogg stream ends inside a packet";
+                    SetError(InError, "Ogg stream ends inside a packet");
                 }
                 return false;
             }
@@ -239,7 +247,8 @@ bool OggPacketReader::Next(OggPacket* InPacket, std::string* InError) noexcept
                 InPacket->granulePosition = MPage.granulePosition;
                 InPacket->serialNumber = MPage.serialNumber;
                 InPacket->beginningOfStream = MFirstPacket && (MPage.headerType & kOggFlagBeginningOfStream) != 0;
-                InPacket->endOfStream = (MPage.headerType & kOggFlagEndOfStream) != 0;
+                InPacket->endOfStream = (MPage.headerType & kOggFlagEndOfStream) != 0 &&
+                                        MSegmentIndex >= MPage.segmentCount;
                 MFirstPacket = false;
                 MAssembling = false;
                 MBufferSize = 0;
@@ -600,8 +609,10 @@ std::uint32_t OggOpusStream::Read(float* InInterleavedStereo, std::uint32_t InFr
 
 std::uint32_t OggOpusStream::AvailableFrames() const noexcept
 {
-    const std::uint32_t ScopedHead = MRingHead.load(std::memory_order_acquire);
+    // Tail first: this yields a lower bound even if the consumer advances the
+    // head between the two loads.
     const std::uint32_t ScopedTail = MRingTail.load(std::memory_order_acquire);
+    const std::uint32_t ScopedHead = MRingHead.load(std::memory_order_acquire);
     return ScopedTail - ScopedHead;
 }
 

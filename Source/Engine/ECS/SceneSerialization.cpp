@@ -113,14 +113,15 @@ namespace
                     "entity " + std::to_string(ScopedEntityIndex) + " references an unregistered skeleton AssetId";
                 return false;
             }
-            const auto ScopedBytes = InVfs->Read(ScopedPath);
-            if (!ScopedBytes)
+            const auto ScopedPinned = InVfs->Pin(ScopedPath);
+            if (!ScopedPinned)
             {
                 *InError = "entity " + std::to_string(ScopedEntityIndex) + " references missing skeleton asset '" +
                            std::string(ScopedPath) + "'";
                 return false;
             }
-            const auto ScopedView = Skeleton::DecodeSkeletonAsset(*ScopedBytes);
+            const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
+            const auto ScopedView = Skeleton::DecodeSkeletonAsset(ScopedBytes);
             if (!ScopedView)
             {
                 *InError = "entity " + std::to_string(ScopedEntityIndex) + " has an invalid skeleton asset '" +
@@ -155,13 +156,14 @@ namespace
             continue;
         }
         const std::string_view ScopedPath = InAssetDb->SourcePath(ScopedRef->Asset);
-        const auto ScopedBytes = InVfs->Read(ScopedPath);
-        if (!ScopedBytes)
+        const auto ScopedPinned = InVfs->Pin(ScopedPath);
+        if (!ScopedPinned)
         {
             *InError = "skeleton asset disappeared while applying the scene: " + std::string(ScopedPath);
             return false;
         }
-        const auto ScopedView = Skeleton::DecodeSkeletonAsset(*ScopedBytes);
+        const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
+        const auto ScopedView = Skeleton::DecodeSkeletonAsset(ScopedBytes);
         if (!ScopedView)
         {
             *InError = "invalid skeleton asset '" + std::string(ScopedPath) + "': " + ScopedView.error();
@@ -425,27 +427,28 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
                 continue;
             }
             const std::string_view ScopedSourcePath = InOptions.assetDb->SourcePath(ScopedLink.Prefab);
-            const auto ScopedBytes = InOptions.assets->Read(ScopedSourcePath);
-            if (!ScopedBytes)
+            const auto ScopedPinned = InOptions.assets->Pin(ScopedSourcePath);
+            if (!ScopedPinned)
             {
                 return std::unexpected("prefab instance points at missing asset '" + std::string(ScopedSourcePath) +
                                        "'");
             }
+            const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
             PrefabAsset ScopedAsset;
             std::string ScopedAssetError;
             bool ScopedLoaded = false;
             if (ScopedSourcePath.ends_with(".toml"))
             {
                 ScopedLoaded = PrefabSystem::LoadToml(
-                    std::string_view(reinterpret_cast<const char*>(ScopedBytes->data()), ScopedBytes->size()),
+                    std::string_view(reinterpret_cast<const char*>(ScopedBytes.data()), ScopedBytes.size()),
                     ScopedAsset, &ScopedAssetError);
             }
             else
             {
-                ScopedLoaded = PrefabSystem::LoadFlatBuffers(*ScopedBytes, ScopedAsset, &ScopedAssetError);
+                ScopedLoaded = PrefabSystem::LoadFlatBuffers(ScopedBytes, ScopedAsset, &ScopedAssetError);
                 if (!ScopedLoaded)
                 {
-                    ScopedLoaded = PrefabSystem::LoadBinary(*ScopedBytes, ScopedAsset, &ScopedAssetError);
+                    ScopedLoaded = PrefabSystem::LoadBinary(ScopedBytes, ScopedAsset, &ScopedAssetError);
                 }
             }
             if (!ScopedLoaded)

@@ -250,6 +250,6 @@ protected:
     std::uint32_t MAssembleChunkCount = 0;
     std::uint32_t MAssembleReceived = 0;
     std::array<std::byte, kReplicationMaxStateBytes> MAssembleData{};
-    std::uint32_t MAssembleMask = 0;
+    std::uint64_t MAssembleMask = 0;
 };
 }

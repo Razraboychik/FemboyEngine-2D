@@ -45,7 +45,7 @@ struct LightSample
 {
     const auto ScopedByte = [](float InValue)
     {
-        const float ScopedClamped = std::clamp(InValue, 0.0f, 1.0f);
+        const float ScopedClamped = std::isfinite(InValue) ? std::clamp(InValue, 0.0f, 1.0f) : 0.0f;
         return static_cast<std::uint32_t>(std::lround(ScopedClamped * 255.0f));
     };
     return ScopedByte(InRed) | (ScopedByte(InGreen) << 8) | (ScopedByte(InBlue) << 16) | (InAlpha & 0xFF000000u);

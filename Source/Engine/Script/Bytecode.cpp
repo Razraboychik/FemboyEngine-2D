@@ -565,6 +565,10 @@ bool ParseProgram(std::span<const std::byte> InStorage, CompiledProgram* Out, st
 // ProgramBuilder
 std::uint16_t ProgramBuilder::AddComponent(std::uint64_t InLayoutHash, std::uint32_t InComponentSize)
 {
+    if (MComponents.size() >= kMaxComponentBindings)
+    {
+        return kInvalidBuilderIndex;
+    }
     const auto ScopedIndex = static_cast<std::uint16_t>(MComponents.size());
     ComponentBinding ScopedBinding;
     ScopedBinding.layoutHash = InLayoutHash;
@@ -577,6 +581,10 @@ std::uint16_t ProgramBuilder::AddComponent(std::uint64_t InLayoutHash, std::uint
 std::uint16_t ProgramBuilder::AddField(std::uint16_t InComponent, Reflect::FieldKind InKind, std::uint32_t InOffset,
                                        std::uint32_t InFieldSize)
 {
+    if (InComponent >= MComponents.size() || MFields.size() >= kMaxFieldBindings)
+    {
+        return kInvalidBuilderIndex;
+    }
     const auto ScopedIndex = static_cast<std::uint16_t>(MFields.size());
     PendingField ScopedField;
     ScopedField.component = InComponent;
@@ -739,9 +747,13 @@ std::vector<std::byte> ProgramBuilder::Build(std::uint64_t InSourceHash, std::ui
     }
     for (const PendingField& ScopedField : MFields)
     {
+        if (ScopedField.component >= MComponents.size())
+        {
+            SetError(InError, "program field binding references an unknown component");
+            return {};
+        }
         const ComponentBinding& ScopedComponent = MComponents[ScopedField.component];
-        if (ScopedField.component >= MComponents.size() ||
-            static_cast<std::uint64_t>(ScopedField.offset) + ScopedField.size > ScopedComponent.size)
+        if (static_cast<std::uint64_t>(ScopedField.offset) + ScopedField.size > ScopedComponent.size)
         {
             SetError(InError, "program field binding lies outside its component");
             return {};

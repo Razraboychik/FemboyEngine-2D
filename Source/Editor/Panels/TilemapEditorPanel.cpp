@@ -202,7 +202,8 @@ void TilemapEditorPanel::DrawHeader()
     {
         const auto ScopedByte = [](float InValue)
         {
-            return static_cast<std::uint32_t>(std::lround(std::clamp(InValue, 0.0f, 1.0f) * 255.0f));
+            const float Scoped = std::isfinite(InValue) ? std::clamp(InValue, 0.0f, 1.0f) : 0.0f;
+            return static_cast<std::uint32_t>(std::lround(Scoped * 255.0f));
         };
         MMap.Tint = ScopedByte(ScopedTint[0]) | (ScopedByte(ScopedTint[1]) << 8) | (ScopedByte(ScopedTint[2]) << 16) |
                     (ScopedByte(ScopedTint[3]) << 24);

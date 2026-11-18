@@ -77,8 +77,10 @@ class Tween
 public:
     [[nodiscard]] bool Start(const TweenDesc& InDesc) noexcept
     {
-        if (InDesc.durationSeconds <= 0.0f)
+        if (!std::isfinite(InDesc.durationSeconds) || InDesc.durationSeconds <= 0.0f)
         {
+            // A NaN duration passes the <= comparison and would make Progress()
+            // divide by NaN; reject it at the same boundary as zero/negative.
             return false;
         }
         MDesc = InDesc;
@@ -112,8 +114,15 @@ public:
         }
         if (MDesc.delaySeconds > 0.0f)
         {
-            MDesc.delaySeconds -= ScopedDelta;
-            return true;
+            // Consume only the part of the frame that belongs to the delay;
+            // a long frame must not push the whole tween one frame later.
+            const float ScopedDelayStep = std::min(ScopedDelta, MDesc.delaySeconds);
+            MDesc.delaySeconds -= ScopedDelayStep;
+            ScopedDelta -= ScopedDelayStep;
+            if (MDesc.delaySeconds > 0.0f)
+            {
+                return true;
+            }
         }
         MElapsed += ScopedDelta;
         if (!MDesc.loop && MElapsed >= MDesc.durationSeconds)

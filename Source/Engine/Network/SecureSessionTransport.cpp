@@ -42,7 +42,7 @@ bool SecureSessionTransport::StartClient(NetTransport& InTransport, const NetAdd
         ScopedAuth[4] = std::byte{1};
         ScopedAuth[5] = std::byte{0};
         std::memcpy(ScopedAuth.data() + kSecureAuthHeaderBytes, MAuth.SignedTicket.data(), kTicketBytes);
-        (void)MTransport->Send(InServer, ScopedAuth, TransportChannel::Unreliable);
+        (void)MTransport->Send(InServer, ScopedAuth, TransportChannel::Reliable);
     }
     return ScopedPeer->Endpoint.Start(MTransport, InServer, MConfig) == SecureStatus::Ok;
 }
@@ -176,6 +176,10 @@ void SecureSessionTransport::Dispatch(const NetAddress& InFrom,
         ScopedPeer->Used = true;
         ScopedPeer->Owner = this;
         ScopedPeer->Address = InFrom;
+        ScopedPeer->Authorized = false;
+        ScopedPeer->Started = false;
+        ScopedPeer->HasTicketHash = false;
+        ScopedPeer->TicketHash = {};
         ScopedPeer->Endpoint.SetSink(&PayloadThunk, ScopedPeer);
         if (ScopedAuthPacket)
         {
@@ -260,17 +264,20 @@ bool SecureSessionTransport::StartPeerEndpoint(Peer& InPeer, const NetAddress& I
         return false;
     }
     SecureChannelConfig ScopedConfig = MConfig;
+    ScopedConfig.AddressTag =
+        (static_cast<std::uint64_t>(InAddress.Host) << 16u) | static_cast<std::uint64_t>(InAddress.Port);
     if (InPeer.HasTicketHash)
     {
         ScopedConfig.PrologueBytes = InPeer.TicketHash.size();
         std::memcpy(ScopedConfig.Prologue.data(), InPeer.TicketHash.data(), InPeer.TicketHash.size());
     }
-    InPeer.Started = true;
     if (InPeer.Endpoint.Start(MTransport, InAddress, ScopedConfig) != SecureStatus::Ok)
     {
         InPeer.Used = false;
+        InPeer.Started = false;
         return false;
     }
+    InPeer.Started = true;
     return true;
 }
 

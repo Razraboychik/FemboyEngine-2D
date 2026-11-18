@@ -5,6 +5,7 @@
 #include "Engine/Audio/VoiceSystem.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -279,8 +280,12 @@ bool VoicePresetRegistry::Add(const VoicePresetDesc& InPreset, const void* InOwn
     {
         return ScopedFail("voice preset profile was rejected after clamping");
     }
-    ScopedDesc.MinIntensity = std::clamp(ScopedDesc.MinIntensity, 0.0f, 1.0f);
-    ScopedDesc.MaxIntensity = std::clamp(ScopedDesc.MaxIntensity, ScopedDesc.MinIntensity, 1.0f);
+    ScopedDesc.MinIntensity = std::isfinite(ScopedDesc.MinIntensity)
+                                   ? std::clamp(ScopedDesc.MinIntensity, 0.0f, 1.0f)
+                                   : 0.0f;
+    ScopedDesc.MaxIntensity = std::isfinite(ScopedDesc.MaxIntensity)
+                                   ? std::clamp(ScopedDesc.MaxIntensity, ScopedDesc.MinIntensity, 1.0f)
+                                   : 1.0f;
 
     MEntries[MCount].Desc = ScopedDesc;
     MEntries[MCount].Owner = InOwner;

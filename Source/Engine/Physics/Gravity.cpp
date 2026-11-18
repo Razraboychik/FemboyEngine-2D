@@ -302,7 +302,9 @@ bool GravitySystem::Register(Ecs::SystemGraph& InGraph, GravitySystem& InSystem)
     ScopedAccess.ComponentReads =
         Ecs::MakeComponentAccessMask<LevelGravityComponent, TilemapComponent, GravityBodyComponent, RigidBody2D,
                                      Transform2D, Collider2D>();
-    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<RigidBody2D, Transform2D>();
+    ScopedAccess.ComponentWrites =
+        Ecs::MakeComponentAccessMask<LevelGravityComponent, TilemapComponent, GravityBodyComponent, RigidBody2D,
+                                     Transform2D, Collider2D>();
     ScopedAccess.Writes = Ecs::kServicePhysics;
     return InGraph.Add(Ecs::Phase::FixedUpdate, "GravitySystem", Ecs::BindPhysicsSystem<&GravitySystemThunk>(),
                        &InSystem, 0, 0, ScopedAccess);

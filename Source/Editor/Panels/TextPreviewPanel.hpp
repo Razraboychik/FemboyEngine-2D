@@ -12,6 +12,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace Fby
 {
@@ -49,6 +50,7 @@ private:
     int MDirection = 0;
     int MScript = 0;
     float MFontSize = 24.0f;
+    std::vector<std::byte> MLocalizationBytes;
     LocalizationTable MLocalization;
     int MLocaleIndex = 0;
     int MLocalizationKey = 1001;

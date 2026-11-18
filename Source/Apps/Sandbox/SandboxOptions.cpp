@@ -1,6 +1,7 @@
 // FemboyEngine2D - sandbox command-line options implementation.
 #include "SandboxOptions.hpp"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -14,13 +15,14 @@ constexpr std::uint16_t kDefaultHostPort = 41010;
 
 [[nodiscard]] bool ParsePort(const char* InText, std::uint16_t* OutPort) noexcept
 {
-    if (InText == nullptr || *InText == '\0')
+    if (InText == nullptr || *InText == '\0' || InText[0] < '0' || InText[0] > '9')
     {
         return false;
     }
+    errno = 0;
     char* ScopedEnd = nullptr;
     const unsigned long ScopedValue = std::strtoul(InText, &ScopedEnd, 10);
-    if (ScopedEnd == nullptr || *ScopedEnd != '\0' || ScopedValue > 65535ul)
+    if (errno == ERANGE || ScopedEnd == nullptr || *ScopedEnd != '\0' || ScopedValue > 65535ul)
     {
         return false;
     }
@@ -30,13 +32,14 @@ constexpr std::uint16_t kDefaultHostPort = 41010;
 
 [[nodiscard]] bool ParseCount(const char* InText, std::uint32_t* OutCount) noexcept
 {
-    if (InText == nullptr || *InText == '\0')
+    if (InText == nullptr || *InText == '\0' || InText[0] < '0' || InText[0] > '9')
     {
         return false;
     }
+    errno = 0;
     char* ScopedEnd = nullptr;
     const unsigned long ScopedValue = std::strtoul(InText, &ScopedEnd, 10);
-    if (ScopedEnd == nullptr || *ScopedEnd != '\0' || ScopedValue > 0xFFFFFFFFul)
+    if (errno == ERANGE || ScopedEnd == nullptr || *ScopedEnd != '\0' || ScopedValue > 0xFFFFFFFFul)
     {
         return false;
     }
@@ -122,7 +125,8 @@ bool ParseSandboxOptions(int InCount, char** InArgs, SandboxOptions* OutOptions,
             const char* ScopedValue = InArgs[++ScopedIndex];
             if (ScopedArg == "--connect")
             {
-                if (!Net::ParseAddress(ScopedValue, kDefaultHostPort, &ScopedOptions.Connect))
+                if (!Net::ParseAddress(ScopedValue, kDefaultHostPort, &ScopedOptions.Connect) ||
+                    ScopedOptions.Connect.Port == 0)
                 {
                     return Fail("--connect expects host:port");
                 }

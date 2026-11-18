@@ -130,7 +130,10 @@ bool MemoryNetwork::Route(const NetAddress& InFrom, const NetAddress& InTo,
     ScopedFrame.From = InFrom;
     ScopedFrame.Bytes = static_cast<std::uint16_t>(InMessage.size());
     ScopedFrame.ReleaseTick = MTick + MLatencyTicks;
-    std::memcpy(ScopedFrame.Data.data(), InMessage.data(), InMessage.size());
+    if (!InMessage.empty())
+    {
+        std::memcpy(ScopedFrame.Data.data(), InMessage.data(), InMessage.size());
+    }
     ++ScopedTarget->Count;
     return true;
 }
@@ -163,6 +166,12 @@ bool MemoryEndpoint::Open(MemoryNetwork* InNetwork, std::uint16_t InPort) noexce
     {
         return false;
     }
+    if (MNetwork != nullptr)
+    {
+        MNetwork->Close(MAddress);
+        MNetwork = nullptr;
+        MAddress = NetAddress{};
+    }
     const NetAddress ScopedAddress = InNetwork->Open(InPort);
     if (ScopedAddress.Port == 0)
     {
@@ -185,6 +194,10 @@ void MemoryEndpoint::Close() noexcept
 
 NetLink MemoryEndpoint::Link() noexcept
 {
+    if (MNetwork == nullptr)
+    {
+        return {};
+    }
     NetLink ScopedLink;
     ScopedLink.Self = this;
     ScopedLink.SendCall = &MemoryEndpoint::SendThunk;
@@ -210,11 +223,16 @@ std::uint32_t MemoryEndpoint::PollThunk(void* InSelf, LinkMessageFn InFn, void* 
 
     std::uint32_t ScopedDelivered = 0;
     MemoryNetwork::Frame ScopedFrame;
-    while (ScopedEndpoint->MNetwork->Pop(ScopedEndpoint->MAddress, &ScopedFrame))
+    MemoryNetwork* const ScopedNetwork = ScopedEndpoint->MNetwork;
+    while (ScopedNetwork->Pop(ScopedEndpoint->MAddress, &ScopedFrame))
     {
         InFn(InUser, ScopedFrame.From,
              std::span<const std::byte>(ScopedFrame.Data.data(), ScopedFrame.Bytes));
         ++ScopedDelivered;
+        if (ScopedEndpoint->MNetwork != ScopedNetwork)
+        {
+            break;
+        }
     }
     return ScopedDelivered;
 }

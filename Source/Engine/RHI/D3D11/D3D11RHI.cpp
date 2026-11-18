@@ -379,9 +379,15 @@ public:
         MBackBuffer.Reset();
         MDepthView.Reset();
         MDepthTexture.Reset();
-        if (FAILED(MSwapchain->ResizeBuffers(2, InSize.width, InSize.height, DXGI_FORMAT_R8G8B8A8_UNORM, 0)))
+        const HRESULT ScopedResize = MSwapchain->ResizeBuffers(2, InSize.width, InSize.height,
+                                                                 DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+        if (FAILED(ScopedResize))
         {
-            LogError("d3d11", "ResizeBuffers failed");
+            if (ScopedResize == DXGI_ERROR_DEVICE_REMOVED || ScopedResize == DXGI_ERROR_DEVICE_RESET)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d11", "ResizeBuffers failed (0x{:08X})", static_cast<unsigned>(ScopedResize));
             return;
         }
         if (FAILED(MSwapchain->GetBuffer(0, IID_PPV_ARGS(&MBackBuffer))) ||
@@ -500,7 +506,17 @@ public:
         }
         // The back buffer must not stay bound as an RTV while Present reads it.
         MContext->OMSetRenderTargets(0, nullptr, nullptr);
-        MSwapchain->Present(MDesc.vsync ? 1u : 0u, 0);
+        const HRESULT ScopedPresent = MSwapchain->Present(MDesc.vsync ? 1u : 0u, 0);
+        if (ScopedPresent == DXGI_ERROR_DEVICE_REMOVED || ScopedPresent == DXGI_ERROR_DEVICE_RESET)
+        {
+            MInfo.deviceLost = true;
+            LogError("d3d11", "Present failed with device loss (0x{:08X})",
+                     static_cast<unsigned>(ScopedPresent));
+        }
+        else if (FAILED(ScopedPresent))
+        {
+            LogWarn("d3d11", "Present failed (0x{:08X})", static_cast<unsigned>(ScopedPresent));
+        }
     }
 
     void Submit(const FramePacket& InPacket) override

@@ -7,10 +7,10 @@ It has two authoring surfaces and two execution backends:
 - a compact register bytecode executed by the editor VM;
 - a cook-time C++23 AOT backend that produces a native plugin for builds.
 
-This document describes the 0.5.0 behavior. FemboyScript 2.0 is the bytecode and
-graph format; the engine version is 0.5.0.
+This document describes the 0.7.0-alpha.1 behavior. FemboyScript 2.0 is the bytecode and
+graph format; the engine version is 0.7.0-alpha.1.
 
-## What exists in 0.5.0
+## What exists in 0.7.0-alpha.1
 
 | Layer | Status |
 |---|---|
@@ -39,7 +39,7 @@ callee window and the return value moves back into the caller's destination
 register. Calls are depth-limited and may not recurse. A function may call one
 declared later; the compiler pre-scans the function block, but declarations must
 still precede the events. LogicGraph nodes for user functions are not part of
-0.5.0.
+0.7.0-alpha.1.
 
 A coroutine yields with `yield;` or `yield N;` to skip N script frames. The script
 system owns one fixed-capacity slot per `(entity, program, event)` and saves the
@@ -268,7 +268,7 @@ of failing silently.
    a state tree.
 2. Compile the graph and inspect the reported node/instruction/register counts.
 3. Save the StateTree block to the scene TOML; the LogicGraph is an editor asset
-   payload in 0.5.0.
+   payload in 0.7.0-alpha.1.
 4. Assign a `ScriptComponent` program handle to the entity.
 5. Run PIE; faults appear in the Console/LogBoy panel with program, entity and
    pc.
@@ -363,14 +363,14 @@ persisted function frames and fault reporting without an ImGui frame.
 ## Roadmap
 
 Collections (`ScriptHeap`, bytecode v2 strings) and user functions with fixed
-register windows are shipped in 0.5.0; forward function references are resolved
+register windows are shipped in 0.7.0-alpha.1; forward function references are resolved
 by the pre-scan. The next language features, in dependency order:
 
 1. LogicGraph call/return nodes for user functions.
 2. Timer syntax (`yield;`/`yield N;` already work in VM and AOT, including nested
    user-function frames).
 3. Debugger views for the StateTree canvas (the nested user-function call stack
-   is shipped in 0.5.0).
+   is shipped in 0.7.0-alpha.1).
 
 The flat VM contract is not extended by adding heap objects to the
 8-byte instruction. Any new object model needs a new bytecode version and a

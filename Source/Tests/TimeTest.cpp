@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string_view>
 
 namespace
@@ -227,6 +228,19 @@ int main()
     CheckText("00:01:00", std::span<char>(ScopedBuffer), ScopedWritten, "rounding carries into the minute");
     ScopedWritten = FormatDuration(59.999, DurationStyle::Clock, std::span<char>(ScopedBuffer).first(4));
     CheckText("00:0", std::span<char>(ScopedBuffer), ScopedWritten, "a small buffer truncates instead of writing out");
+
+    // Extreme timestamps must not wrap through int32 day indices or int64
+    // negative-floor arithmetic.
+    Check(DateTimeFromUnixSeconds(std::numeric_limits<std::int64_t>::min()).Date == CivilDate{},
+          "int64-min timestamp is rejected");
+    Check(DateTimeFromUnixSeconds(std::numeric_limits<std::int64_t>::max()).Date == CivilDate{},
+          "int64-max timestamp is rejected");
+    Check(DateTimeFromUnixSeconds(-9223372036854775808.0).Date == CivilDate{},
+          "double int64-min timestamp is rejected");
+    Check(DaysFromCivil(std::numeric_limits<std::int32_t>::max(), 1, 1) == 0,
+          "extreme civil year does not overflow day arithmetic");
+    Check(DaysFromCivil(std::numeric_limits<std::int32_t>::min(), 1, 1) == 0,
+          "minimum civil year does not overflow day arithmetic");
 
     if (GFailures != 0)
     {

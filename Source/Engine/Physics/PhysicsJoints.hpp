@@ -733,4 +733,7 @@ FBY_REFLECT_COMPONENT(
     FBY_FIELD(Fby::JointChainComponent, DefaultDamageRate, Float),
     FBY_FIELD(Fby::JointChainComponent, DefaultDamageThreshold, Float),
     FBY_FIELD(Fby::JointChainComponent, BrokenMaskLow, UInt64),
-    FBY_FIELD(Fby::JointChainComponent, BrokenMaskHigh, UInt64))
+    FBY_FIELD(Fby::JointChainComponent, BrokenMaskHigh, UInt64),
+    FBY_FIELD(Fby::JointChainComponent, CategoryBits, UInt64),
+    FBY_FIELD(Fby::JointChainComponent, MaskBits, UInt64),
+    FBY_FIELD(Fby::JointChainComponent, LinkLayer, UInt32))

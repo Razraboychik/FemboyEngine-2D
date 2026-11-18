@@ -214,6 +214,27 @@ void EvaluatePlane(const DirectionalBlendTable& InTable, Vector2D InDirection,
         EmitSingle(OutSample, InTable.Anchors[0], InTable.NormalizeWeights);
         return;
     }
+    if (InTable.HullCount == 0 || InTable.HullCount > kMaxDirectionalAnchors ||
+        InTable.TriangleCount > kMaxDirectionalAnchors)
+    {
+        return;
+    }
+    for (std::uint16_t ScopedIndex = 0; ScopedIndex < InTable.HullCount; ++ScopedIndex)
+    {
+        if (InTable.Hull[ScopedIndex] >= ScopedCount)
+        {
+            return;
+        }
+    }
+    for (std::uint16_t ScopedIndex = 0; ScopedIndex < InTable.TriangleCount; ++ScopedIndex)
+    {
+        const DirectionalBlendTriangle& ScopedTriangle = InTable.Triangles[ScopedIndex];
+        if (ScopedTriangle.AnchorA >= ScopedCount || ScopedTriangle.AnchorB >= ScopedCount ||
+            ScopedTriangle.AnchorC >= ScopedCount)
+        {
+            return;
+        }
+    }
     if (InTable.HullCount < 3)
     {
         // Collinear or two-point authoring reduces to a segment blend.
@@ -366,6 +387,10 @@ float DirectionalBlendNormalizeAngle(float InRadians) noexcept
     if (ScopedAngle < 0.0f)
     {
         ScopedAngle += Sim::kTwoPi;
+    }
+    if (!(ScopedAngle < Sim::kTwoPi))
+    {
+        ScopedAngle = 0.0f;
     }
     return ScopedAngle;
 }

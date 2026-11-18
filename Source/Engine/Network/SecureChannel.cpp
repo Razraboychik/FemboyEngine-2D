@@ -1115,6 +1115,9 @@ SecureStatus SecureChannel::Open(std::span<const std::byte> InRecord, std::span<
         return SecureStatus::Ok;
     }
 
+    const std::array<std::byte, Crypto::kAeadKeyBytes> ScopedSavedRecvKey = MRecvKey;
+    const std::array<std::byte, Crypto::kAeadKeyBytes> ScopedSavedPrevRecvKey = MPrevRecvKey;
+    const std::uint64_t ScopedSavedRecvEpoch = MRecvEpoch;
     const SecureStatus ScopedDerived = DeriveReceiveKey(ScopedSequence);
     if (ScopedDerived != SecureStatus::Ok)
     {
@@ -1132,6 +1135,11 @@ SecureStatus SecureChannel::Open(std::span<const std::byte> InRecord, std::span<
     if (!OpenWithTag(ScopedKey, RecordNonce(ScopedSequence), ScopedAad,
                      InRecord.subspan(ScopedHeaderBytes), OutPlaintext.first(ScopedPlainBytes)))
     {
+        // Do not let an unauthenticated sequence permanently advance the
+        // receive key chain.
+        MRecvKey = ScopedSavedRecvKey;
+        MPrevRecvKey = ScopedSavedPrevRecvKey;
+        MRecvEpoch = ScopedSavedRecvEpoch;
         return SecureStatus::BadTag;
     }
 

@@ -175,7 +175,8 @@ bool EditSymbolColor(const char* InLabel, std::uint32_t* InColor)
     }
     const auto ScopedByte = [](float InValue)
     {
-        return static_cast<std::uint32_t>(std::lround(std::clamp(InValue, 0.0f, 1.0f) * 255.0f));
+        const float Scoped = std::isfinite(InValue) ? std::clamp(InValue, 0.0f, 1.0f) : 0.0f;
+        return static_cast<std::uint32_t>(std::lround(Scoped * 255.0f));
     };
     *InColor = (ScopedByte(ScopedRgb[0]) << 16u) | (ScopedByte(ScopedRgb[1]) << 8u) | ScopedByte(ScopedRgb[2]);
     return true;
@@ -228,10 +229,12 @@ IdePalette& Palette()
     const auto ScopedByte = [](float InValue)
     {
         const float ScopedSrgb = LinearToSrgb(InValue);
-        return static_cast<std::uint8_t>(std::lround(std::clamp(ScopedSrgb, 0.0f, 1.0f) * 255.0f));
+        const float ScopedClamped = std::isfinite(ScopedSrgb) ? std::clamp(ScopedSrgb, 0.0f, 1.0f) : 0.0f;
+        return static_cast<std::uint8_t>(std::lround(ScopedClamped * 255.0f));
     };
     return Color32::FromBytes(ScopedByte(InLinear.x), ScopedByte(InLinear.y), ScopedByte(InLinear.z),
-                              static_cast<std::uint8_t>(std::lround(std::clamp(InLinear.w, 0.0f, 1.0f) * 255.0f)));
+                              static_cast<std::uint8_t>(std::lround(
+                                  (std::isfinite(InLinear.w) ? std::clamp(InLinear.w, 0.0f, 1.0f) : 0.0f) * 255.0f)));
 }
 
 [[nodiscard]] ImVec4 ToLinear(Color32 InColor) noexcept
@@ -1665,19 +1668,35 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     {
         SeedSymbolColors(ScopedValues, CurrentEditorPalette());
     }
+    if (ImGui::Button("Accessible symbol preset (Okabe-Ito)"))
+    {
+        ScopedValues.customSymbolColors = true;
+        ScopedValues.symbolColors.AxisX = 0x0072B2;
+        ScopedValues.symbolColors.AxisY = 0xE69F00;
+        ScopedValues.symbolColors.Grid = 0x555555;
+        ScopedValues.symbolColors.Play = 0x009E73;
+        ScopedValues.symbolColors.Pause = 0xF0E442;
+        ScopedValues.symbolColors.Step = 0xCC79A7;
+        ScopedValues.symbolColors.Stop = 0xD55E00;
+        ScopedValues.symbolColors.Rotate = 0x56B4E9;
+        ScopedValues.symbolColors.Multiplayer = 0xFFFFFF;
+        ScopedValues.symbolColors.Plot = {0x0072B2, 0xE69F00, 0x009E73, 0xCC79A7};
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Deuteranopia/protanopia-safe luminance and hue");
     ImGui::BeginDisabled(!ScopedValues.customSymbolColors);
     EditSymbolColor("Axis X", &ScopedValues.symbolColors.AxisX);
     ImGui::SameLine();
     EditSymbolColor("Axis Y", &ScopedValues.symbolColors.AxisY);
     ImGui::SameLine();
     EditSymbolColor("Grid", &ScopedValues.symbolColors.Grid);
-    EditSymbolColor("Play", &ScopedValues.symbolColors.Play);
+    EditSymbolColor("Play triangle", &ScopedValues.symbolColors.Play);
     ImGui::SameLine();
-    EditSymbolColor("Pause", &ScopedValues.symbolColors.Pause);
+    EditSymbolColor("Pause bars", &ScopedValues.symbolColors.Pause);
     ImGui::SameLine();
     EditSymbolColor("Step", &ScopedValues.symbolColors.Step);
     ImGui::SameLine();
-    EditSymbolColor("Stop", &ScopedValues.symbolColors.Stop);
+    EditSymbolColor("Stop square", &ScopedValues.symbolColors.Stop);
     EditSymbolColor("Rotate", &ScopedValues.symbolColors.Rotate);
     ImGui::SameLine();
     EditSymbolColor("Multiplayer", &ScopedValues.symbolColors.Multiplayer);

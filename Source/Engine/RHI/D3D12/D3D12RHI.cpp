@@ -157,9 +157,15 @@ public:
         {
             ScopedBuffer.Reset();
         }
-        if (FAILED(MSwapchain->ResizeBuffers(2, InSize.width, InSize.height, DXGI_FORMAT_B8G8R8A8_UNORM, 0)))
+        const HRESULT ScopedResize = MSwapchain->ResizeBuffers(2, InSize.width, InSize.height,
+                                                                 DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+        if (FAILED(ScopedResize))
         {
-            LogWarn("d3d12", "swapchain resize failed");
+            if (ScopedResize == DXGI_ERROR_DEVICE_REMOVED || ScopedResize == DXGI_ERROR_DEVICE_RESET)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogWarn("d3d12", "swapchain resize failed (0x{:08X})", static_cast<unsigned>(ScopedResize));
             return;
         }
         D3D12_CPU_DESCRIPTOR_HANDLE ScopedRtv = MRtvHeap->GetCPUDescriptorHandleForHeapStart();
@@ -555,7 +561,17 @@ public:
         MCommandList->Close();
         ID3D12CommandList* ScopedLists[] = {MCommandList.Get()};
         MQueue->ExecuteCommandLists(1, ScopedLists);
-        MSwapchain->Present(MVsync ? 1u : 0u, 0);
+        const HRESULT ScopedPresent = MSwapchain->Present(MVsync ? 1u : 0u, 0);
+        if (ScopedPresent == DXGI_ERROR_DEVICE_REMOVED || ScopedPresent == DXGI_ERROR_DEVICE_RESET)
+        {
+            MInfo.deviceLost = true;
+            LogError("d3d12", "Present failed with device loss (0x{:08X})",
+                     static_cast<unsigned>(ScopedPresent));
+        }
+        else if (FAILED(ScopedPresent))
+        {
+            LogWarn("d3d12", "Present failed (0x{:08X})", static_cast<unsigned>(ScopedPresent));
+        }
         ++MFenceValue;
         MQueue->Signal(MFence.Get(), MFenceValue);
         MStats.frameIndex = MFenceValue;
@@ -586,11 +602,34 @@ public:
         MMeshes.erase(InHandle.id);
     }
 
+    [[nodiscard]] std::uint32_t AcquireSrvSlot() noexcept
+    {
+        if (!MFreeSrvIndices.empty())
+        {
+            const std::uint32_t ScopedIndex = MFreeSrvIndices.back();
+            MFreeSrvIndices.pop_back();
+            return ScopedIndex;
+        }
+        if (MSrvNext >= kMaxTextures)
+        {
+            return kInvalidSrvSlot;
+        }
+        return MSrvNext++;
+    }
+
+    void ReleaseSrvSlot(std::uint32_t InIndex) noexcept
+    {
+        if (InIndex < kMaxTextures)
+        {
+            MFreeSrvIndices.push_back(InIndex);
+        }
+    }
+
     TextureArrayHandle CreateTextureArray(const TextureArrayDesc& InDesc,
                                           std::span<const std::byte> InPixels) override
     {
         if (MDevice == nullptr || MQueue == nullptr || InDesc.size.width == 0 || InDesc.size.height == 0 ||
-            InDesc.layers == 0 || InDesc.mipLevels == 0 || MSrvNext >= kMaxTextures)
+            InDesc.layers == 0 || InDesc.mipLevels == 0 || (MFreeSrvIndices.empty() && MSrvNext >= kMaxTextures))
         {
             return {};
         }
@@ -730,13 +769,18 @@ public:
         ScopedSrv.Texture2DArray.MipLevels = InDesc.mipLevels;
         ScopedSrv.Texture2DArray.FirstArraySlice = 0;
         ScopedSrv.Texture2DArray.ArraySize = InDesc.layers;
+        const std::uint32_t ScopedSrvIndex = AcquireSrvSlot();
+        if (ScopedSrvIndex == kInvalidSrvSlot)
+        {
+            LogError("d3d12", "CreateRenderTarget: all {} SRV slots are in use", kMaxTextures);
+            return {};
+        }
         D3D12_CPU_DESCRIPTOR_HANDLE ScopedSrvHandle = MTextureHeap->GetCPUDescriptorHandleForHeapStart();
-        ScopedSrvHandle.ptr += MSrvNext * MSrvSize;
+        ScopedSrvHandle.ptr += ScopedSrvIndex * MSrvSize;
         MDevice->CreateShaderResourceView(ScopedTexture.Get(), &ScopedSrv, ScopedSrvHandle);
         const std::uint32_t ScopedId = MNextTextureId++;
         MTextures.emplace(ScopedId, ScopedTexture);
-        MTextureSrvIndex[ScopedId] = MSrvNext;
-        ++MSrvNext;
+        MTextureSrvIndex[ScopedId] = ScopedSrvIndex;
         TextureArrayHandle ScopedTextureHandle;
         ScopedTextureHandle.id = ScopedId;
         return ScopedTextureHandle;
@@ -744,7 +788,11 @@ public:
 
     void DestroyTextureArray(TextureArrayHandle InHandle) override
     {
-        MTextureSrvIndex.erase(InHandle.id);
+        if (const auto ScopedIndex = MTextureSrvIndex.find(InHandle.id); ScopedIndex != MTextureSrvIndex.end())
+        {
+            ReleaseSrvSlot(ScopedIndex->second);
+            MTextureSrvIndex.erase(ScopedIndex);
+        }
         MTextures.erase(InHandle.id);
     }
     bool UpdateTextureArrayLayer(TextureArrayHandle InHandle, std::uint32_t InLayer, std::uint32_t InMipLevel,
@@ -808,10 +856,17 @@ public:
         WaitIdle();
         ComPtr<ID3D12CommandAllocator> ScopedAllocator;
         ComPtr<ID3D12GraphicsCommandList> ScopedCommands;
-        if (FAILED(MDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&ScopedAllocator))) ||
-            FAILED(MDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, ScopedAllocator.Get(), nullptr,
-                                              IID_PPV_ARGS(&ScopedCommands))))
+        const HRESULT ScopedAllocatorResult =
+            MDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&ScopedAllocator));
+        const HRESULT ScopedListResult =
+            SUCCEEDED(ScopedAllocatorResult)
+                ? MDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, ScopedAllocator.Get(), nullptr,
+                                             IID_PPV_ARGS(&ScopedCommands))
+                : ScopedAllocatorResult;
+        if (FAILED(ScopedAllocatorResult) || FAILED(ScopedListResult))
         {
+            LogWarn("d3d12", "CaptureRenderTarget: command objects failed (allocator 0x{:08X}, list 0x{:08X})",
+                    static_cast<unsigned>(ScopedAllocatorResult), static_cast<unsigned>(ScopedListResult));
             return false;
         }
         D3D12_RESOURCE_BARRIER ScopedBarrier{};
@@ -844,7 +899,8 @@ public:
     TextureArrayHandle CreateTextureArrayFromRenderTarget(RenderTargetHandle InHandle) override
     {
         const auto ScopedTarget = MTargets.find(InHandle.id);
-        if (MDevice == nullptr || MQueue == nullptr || ScopedTarget == MTargets.end() || MSrvNext >= kMaxTextures)
+        if (MDevice == nullptr || MQueue == nullptr || ScopedTarget == MTargets.end() ||
+            (MFreeSrvIndices.empty() && MSrvNext >= kMaxTextures))
         {
             return {};
         }
@@ -896,13 +952,17 @@ public:
         ScopedSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         ScopedSrv.Texture2DArray.MipLevels = 1;
         ScopedSrv.Texture2DArray.ArraySize = 1;
+        const std::uint32_t ScopedSrvIndex = AcquireSrvSlot();
+        if (ScopedSrvIndex == kInvalidSrvSlot)
+        {
+            return {};
+        }
         D3D12_CPU_DESCRIPTOR_HANDLE ScopedSrvHandle = MTextureHeap->GetCPUDescriptorHandleForHeapStart();
-        ScopedSrvHandle.ptr += MSrvNext * MSrvSize;
+        ScopedSrvHandle.ptr += ScopedSrvIndex * MSrvSize;
         MDevice->CreateShaderResourceView(ScopedTexture.Get(), &ScopedSrv, ScopedSrvHandle);
         const std::uint32_t ScopedId = MNextTextureId++;
         MTextures.emplace(ScopedId, ScopedTexture);
-        MTextureSrvIndex[ScopedId] = MSrvNext;
-        ++MSrvNext;
+        MTextureSrvIndex[ScopedId] = ScopedSrvIndex;
         TextureArrayHandle ScopedHandle;
         ScopedHandle.id = ScopedId;
         return ScopedHandle;
@@ -913,6 +973,8 @@ public:
     {
         if (InDesc.size.width == 0 || InDesc.size.height == 0 || MRtvNext >= kMaxTargets)
         {
+            LogError("d3d12", "CreateRenderTarget: invalid size {}x{} or all {} target slots in use ({})",
+                     InDesc.size.width, InDesc.size.height, kMaxTargets, MRtvNext);
             return {};
         }
         D3D12_RESOURCE_DESC ScopedDesc{};
@@ -929,43 +991,39 @@ public:
         D3D12_HEAP_PROPERTIES ScopedHeap{};
         ScopedHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
         ComPtr<ID3D12Resource> ScopedResource;
-        if (FAILED(MDevice->CreateCommittedResource(&ScopedHeap, D3D12_HEAP_FLAG_NONE, &ScopedDesc,
-                                                    D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
-                                                    IID_PPV_ARGS(&ScopedResource))))
+        const HRESULT ScopedColorResult =
+            MDevice->CreateCommittedResource(&ScopedHeap, D3D12_HEAP_FLAG_NONE, &ScopedDesc,
+                                             D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
+                                             IID_PPV_ARGS(&ScopedResource));
+        if (FAILED(ScopedColorResult))
         {
+            if (ScopedColorResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d12", "CreateRenderTarget: color resource failed (0x{:08X})",
+                     static_cast<unsigned>(ScopedColorResult));
             return {};
         }
         D3D12_DESCRIPTOR_HEAP_DESC ScopedTargetHeapDesc{};
         ScopedTargetHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         ScopedTargetHeapDesc.NumDescriptors = 1;
         ComPtr<ID3D12DescriptorHeap> ScopedTargetHeap;
-        if (FAILED(MDevice->CreateDescriptorHeap(&ScopedTargetHeapDesc, IID_PPV_ARGS(&ScopedTargetHeap))))
+        const HRESULT ScopedRtvHeapResult =
+            MDevice->CreateDescriptorHeap(&ScopedTargetHeapDesc, IID_PPV_ARGS(&ScopedTargetHeap));
+        if (FAILED(ScopedRtvHeapResult))
         {
+            if (ScopedRtvHeapResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d12", "CreateRenderTarget: RTV heap failed (0x{:08X})",
+                     static_cast<unsigned>(ScopedRtvHeapResult));
             return {};
         }
         MDevice->CreateRenderTargetView(ScopedResource.Get(), nullptr,
                                         ScopedTargetHeap->GetCPUDescriptorHandleForHeapStart());
         const std::uint32_t ScopedId = MNextTargetId++;
-        D3D12_DESCRIPTOR_HEAP_DESC ScopedSrvHeapDesc{};
-        ScopedSrvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        ScopedSrvHeapDesc.NumDescriptors = 1;
-        ScopedSrvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ComPtr<ID3D12DescriptorHeap> ScopedTargetSrvHeap;
-        if (FAILED(MDevice->CreateDescriptorHeap(&ScopedSrvHeapDesc, IID_PPV_ARGS(&ScopedTargetSrvHeap))))
-        {
-            return {};
-        }
-        D3D12_SHADER_RESOURCE_VIEW_DESC ScopedSrvDesc{};
-        ScopedSrvDesc.Format = ScopedDesc.Format;
-        ScopedSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        ScopedSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        ScopedSrvDesc.Texture2D.MostDetailedMip = 0;
-        ScopedSrvDesc.Texture2D.MipLevels = 1;
-        MDevice->CreateShaderResourceView(ScopedResource.Get(), &ScopedSrvDesc,
-                                          ScopedTargetSrvHeap->GetCPUDescriptorHandleForHeapStart());
-        MTargets.emplace(ScopedId, ScopedResource);
-        MTargetHeaps.emplace(ScopedId, ScopedTargetHeap);
-        MTargetSrvHeaps.emplace(ScopedId, ScopedTargetSrvHeap);
         D3D12_HEAP_PROPERTIES ScopedDepthHeap{};
         ScopedDepthHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
         D3D12_RESOURCE_DESC ScopedDepthDesc{};
@@ -981,22 +1039,55 @@ public:
         ScopedDepthClear.Format = DXGI_FORMAT_D32_FLOAT;
         ScopedDepthClear.DepthStencil.Depth = 1.0f;
         ComPtr<ID3D12Resource> ScopedDepthResource;
-        if (FAILED(MDevice->CreateCommittedResource(&ScopedDepthHeap, D3D12_HEAP_FLAG_NONE, &ScopedDepthDesc,
-                                                    D3D12_RESOURCE_STATE_DEPTH_WRITE, &ScopedDepthClear,
-                                                    IID_PPV_ARGS(&ScopedDepthResource))))
+        const HRESULT ScopedDepthResult =
+            MDevice->CreateCommittedResource(&ScopedDepthHeap, D3D12_HEAP_FLAG_NONE, &ScopedDepthDesc,
+                                             D3D12_RESOURCE_STATE_DEPTH_WRITE, &ScopedDepthClear,
+                                             IID_PPV_ARGS(&ScopedDepthResource));
+        if (FAILED(ScopedDepthResult))
         {
+            if (ScopedDepthResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d12", "CreateRenderTarget: depth resource failed (0x{:08X})",
+                     static_cast<unsigned>(ScopedDepthResult));
             return {};
         }
         D3D12_DESCRIPTOR_HEAP_DESC ScopedDepthHeapDesc{};
         ScopedDepthHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
         ScopedDepthHeapDesc.NumDescriptors = 1;
         ComPtr<ID3D12DescriptorHeap> ScopedDepthViewHeap;
-        if (FAILED(MDevice->CreateDescriptorHeap(&ScopedDepthHeapDesc, IID_PPV_ARGS(&ScopedDepthViewHeap))))
+        const HRESULT ScopedDsvHeapResult =
+            MDevice->CreateDescriptorHeap(&ScopedDepthHeapDesc, IID_PPV_ARGS(&ScopedDepthViewHeap));
+        if (FAILED(ScopedDsvHeapResult))
         {
+            if (ScopedDsvHeapResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d12", "CreateRenderTarget: DSV heap failed (0x{:08X})",
+                     static_cast<unsigned>(ScopedDsvHeapResult));
             return {};
         }
         MDevice->CreateDepthStencilView(ScopedDepthResource.Get(), nullptr,
                                         ScopedDepthViewHeap->GetCPUDescriptorHandleForHeapStart());
+        const std::uint32_t ScopedSrvIndex = AcquireSrvSlot();
+        if (ScopedSrvIndex == kInvalidSrvSlot)
+        {
+            return {};
+        }
+        D3D12_SHADER_RESOURCE_VIEW_DESC ScopedSrvDesc{};
+        ScopedSrvDesc.Format = ScopedDesc.Format;
+        ScopedSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        ScopedSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        ScopedSrvDesc.Texture2D.MostDetailedMip = 0;
+        ScopedSrvDesc.Texture2D.MipLevels = 1;
+        D3D12_CPU_DESCRIPTOR_HANDLE ScopedSrvHandle = MTextureHeap->GetCPUDescriptorHandleForHeapStart();
+        ScopedSrvHandle.ptr += ScopedSrvIndex * MSrvSize;
+        MDevice->CreateShaderResourceView(ScopedResource.Get(), &ScopedSrvDesc, ScopedSrvHandle);
+        MTargets.emplace(ScopedId, ScopedResource);
+        MTargetHeaps.emplace(ScopedId, ScopedTargetHeap);
+        MTargetSrvIndex.emplace(ScopedId, ScopedSrvIndex);
         MTargetDepthResources.emplace(ScopedId, ScopedDepthResource);
         MTargetDepthHeaps.emplace(ScopedId, ScopedDepthViewHeap);
         MTargetSizes[ScopedId] = InDesc.size;
@@ -1009,14 +1100,24 @@ public:
 
     void DestroyRenderTarget(RenderTargetHandle InHandle) override
     {
+        const bool ScopedExisted = MTargets.erase(InHandle.id) != 0;
+        if (const auto ScopedSrv = MTargetSrvIndex.find(InHandle.id); ScopedSrv != MTargetSrvIndex.end())
+        {
+            ReleaseSrvSlot(ScopedSrv->second);
+            MTargetSrvIndex.erase(ScopedSrv);
+        }
         MAccessibilityResources.erase(InHandle.id);
         MTargetHeaps.erase(InHandle.id);
-        MTargetSrvHeaps.erase(InHandle.id);
         MTargetDepthResources.erase(InHandle.id);
         MTargetDepthHeaps.erase(InHandle.id);
-        MTargets.erase(InHandle.id);
         MTargetSizes.erase(InHandle.id);
         MTargetBlend.erase(InHandle.id);
+        // MRtvNext is the live-target count used against kMaxTargets, not a
+        // monotonic id. Destroying a target must release its slot.
+        if (ScopedExisted && MRtvNext > 0)
+        {
+            --MRtvNext;
+        }
     }
 
     bool UploadMotionVectors(std::span<const MotionVectorItem> InItems) override
@@ -1612,6 +1713,7 @@ public:
         const auto ScopedTarget = MTargets.find(InHandle.id);
         if (ScopedTarget == MTargets.end() || InRgba8.empty())
         {
+            LogWarn("d3d12", "CaptureRenderTarget: target {} missing or destination empty", InHandle.id);
             return false;
         }
         D3D12_RESOURCE_DESC ScopedTargetDesc = ScopedTarget->second->GetDesc();
@@ -1620,6 +1722,8 @@ public:
             ScopedTargetDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB &&
             ScopedTargetDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
         {
+            LogWarn("d3d12", "CaptureRenderTarget: target {} has unsupported format {}", InHandle.id,
+                    static_cast<unsigned>(ScopedTargetDesc.Format));
             return false;
         }
         const std::uint32_t ScopedWidth = static_cast<std::uint32_t>(ScopedTargetDesc.Width);
@@ -1627,6 +1731,8 @@ public:
         const std::size_t ScopedBytes = static_cast<std::size_t>(ScopedWidth) * ScopedHeight * 4u;
         if (InRgba8.size() < ScopedBytes)
         {
+            LogWarn("d3d12", "CaptureRenderTarget: destination {} is smaller than {} bytes", InRgba8.size(),
+                    ScopedBytes);
             return false;
         }
         const UINT ScopedRowPitch = (ScopedWidth * 4u + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) &
@@ -1642,10 +1748,17 @@ public:
         ScopedBufferDesc.SampleDesc.Count = 1;
         ScopedBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         ComPtr<ID3D12Resource> ScopedReadback;
-        if (FAILED(MDevice->CreateCommittedResource(&ScopedReadbackHeap, D3D12_HEAP_FLAG_NONE, &ScopedBufferDesc,
-                                                    D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                    IID_PPV_ARGS(&ScopedReadback))))
+        const HRESULT ScopedReadbackResult =
+            MDevice->CreateCommittedResource(&ScopedReadbackHeap, D3D12_HEAP_FLAG_NONE, &ScopedBufferDesc,
+                                             D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&ScopedReadback));
+        if (FAILED(ScopedReadbackResult))
         {
+            if (ScopedReadbackResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogWarn("d3d12", "CaptureRenderTarget: readback buffer creation failed (0x{:08X})",
+                    static_cast<unsigned>(ScopedReadbackResult));
             return false;
         }
         ComPtr<ID3D12CommandAllocator> ScopedAllocator;
@@ -1684,8 +1797,11 @@ public:
         MQueue->ExecuteCommandLists(1, ScopedLists);
         WaitIdle();
         void* ScopedMapped = nullptr;
-        if (FAILED(ScopedReadback->Map(0, nullptr, &ScopedMapped)))
+        const HRESULT ScopedMapResult = ScopedReadback->Map(0, nullptr, &ScopedMapped);
+        if (FAILED(ScopedMapResult))
         {
+            LogWarn("d3d12", "CaptureRenderTarget: readback map failed (0x{:08X})",
+                    static_cast<unsigned>(ScopedMapResult));
             return false;
         }
         const bool ScopedSwap = ScopedTargetDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -1900,6 +2016,8 @@ public:
 
     void EnsurePipelineLibrary() noexcept
     {
+        try
+        {
         if (MPipelineLibraryLoaded)
         {
             return;
@@ -1934,10 +2052,17 @@ public:
         {
             LogInfo("d3d12", "PSO cache created: {}", ScopedPath.string());
         }
+        }
+        catch (...)
+        {
+            return;
+        }
     }
 
     void SavePipelineLibrary() noexcept
     {
+        try
+        {
         if (MPipelineLibrary == nullptr)
         {
             return;
@@ -1958,6 +2083,11 @@ public:
         {
             ScopedStream.write(reinterpret_cast<const char*>(ScopedBlob.data()),
                                static_cast<std::streamsize>(ScopedSize));
+        }
+        }
+        catch (...)
+        {
+            return;
         }
     }
 
@@ -3934,7 +4064,7 @@ float4 PSMain(VSOutput input) : SV_Target
     ComPtr<ID3D12DescriptorHeap> MTargetHeap;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12Resource>> MTargets;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12DescriptorHeap>> MTargetHeaps;
-    std::unordered_map<std::uint32_t, ComPtr<ID3D12DescriptorHeap>> MTargetSrvHeaps;
+    std::unordered_map<std::uint32_t, std::uint32_t> MTargetSrvIndex;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12Resource>> MTargetDepthResources;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12DescriptorHeap>> MTargetDepthHeaps;
     std::unordered_map<std::uint32_t, Fby::Rhi::Extent2D> MTargetSizes;
@@ -3959,6 +4089,8 @@ float4 PSMain(VSOutput input) : SV_Target
     std::unordered_map<std::uint32_t, std::uint32_t> MTextureSrvIndex;
     std::uint32_t MSrvSize = 0;
     std::uint32_t MSrvNext = 0;
+    std::vector<std::uint32_t> MFreeSrvIndices;
+    static constexpr std::uint32_t kInvalidSrvSlot = 0xFFFFFFFFu;
     std::uint32_t MNextTextureId = 1;
     bool MDebugLayer = false;
     ComPtr<ID3D12InfoQueue> MInfoQueue;

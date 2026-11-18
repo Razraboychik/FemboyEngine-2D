@@ -2,8 +2,10 @@
 #include "Engine/Video/Av1Backend.hpp"
 #include "Engine/Video/VideoPlayer.hpp"
 
+#include <charconv>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -22,7 +24,16 @@ int main(int InCount, char** InArgs)
         }
         else if (ScopedArgument == "--frames" && ScopedIndex + 1 < InCount)
         {
-            ScopedFrames = static_cast<std::uint32_t>(std::stoul(InArgs[++ScopedIndex]));
+            const char* ScopedValue = InArgs[++ScopedIndex];
+            const char* ScopedEnd = ScopedValue + std::strlen(ScopedValue);
+            std::uint32_t ScopedParsed = 0;
+            const auto ScopedResult = std::from_chars(ScopedValue, ScopedEnd, ScopedParsed);
+            if (ScopedResult.ec != std::errc{} || ScopedResult.ptr != ScopedEnd)
+            {
+                std::fprintf(stderr, "fby_video_bench: --frames must be an unsigned integer\n");
+                return 1;
+            }
+            ScopedFrames = ScopedParsed;
         }
         else
         {

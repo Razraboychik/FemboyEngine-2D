@@ -57,8 +57,8 @@ void RegisterBoneAttachmentSystem(Ecs::Schedule& InSchedule)
 void RegisterBoneAttachmentSystem(Ecs::SystemGraph& InGraph)
 {
     Ecs::SystemAccess ScopedAccess;
-    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<SkeletonComponent, BoneAttachment2D>();
-    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<Transform2D>();
+    ScopedAccess.ComponentReads = Ecs::MakeComponentAccessMask<SkeletonComponent>();
+    ScopedAccess.ComponentWrites = Ecs::MakeComponentAccessMask<BoneAttachment2D, Transform2D>();
     (void)InGraph.Add(Ecs::Phase::FixedUpdate, "boneAttachment", Ecs::BindCoreSystem<&BoneAttachmentThunk>(), nullptr,
                       0, 0, ScopedAccess);
 }

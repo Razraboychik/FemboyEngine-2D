@@ -168,11 +168,19 @@ void SetError(std::string* InError, std::string InText)
     if (InOptions.allGlyphs)
     {
         const std::uint32_t ScopedPageSize = InOptions.glyphPageSize;
-        const std::uint32_t ScopedFirst = ScopedPageSize != 0 ? InOptions.glyphPageIndex * ScopedPageSize : 0u;
-        const std::uint32_t ScopedLast =
+        const std::uint64_t ScopedFirst64 =
             ScopedPageSize != 0
-                ? std::min(static_cast<std::uint32_t>(std::max(InFont.numGlyphs, 0)), ScopedFirst + ScopedPageSize)
-                : static_cast<std::uint32_t>(std::max(InFont.numGlyphs, 0));
+                ? static_cast<std::uint64_t>(InOptions.glyphPageIndex) * static_cast<std::uint64_t>(ScopedPageSize)
+                : 0u;
+        const std::uint64_t ScopedGlyphCount64 = static_cast<std::uint64_t>(std::max(InFont.numGlyphs, 0));
+        if (ScopedFirst64 > std::numeric_limits<std::uint32_t>::max())
+        {
+            SetError(InError, "font page index overflows the glyph range");
+            return false;
+        }
+        const std::uint32_t ScopedFirst = static_cast<std::uint32_t>(ScopedFirst64);
+        const std::uint32_t ScopedLast = static_cast<std::uint32_t>(
+            ScopedPageSize != 0 ? std::min(ScopedGlyphCount64, ScopedFirst64 + ScopedPageSize) : ScopedGlyphCount64);
         if (ScopedFirst >= ScopedLast)
         {
             SetError(InError, "font page is past the last glyph");

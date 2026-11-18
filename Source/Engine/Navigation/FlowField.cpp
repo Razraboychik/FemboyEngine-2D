@@ -12,13 +12,33 @@ bool FlowField::Configure(const FlowFieldDesc& InDesc) noexcept
     if (InDesc.Width == 0 || InDesc.Height == 0 || InDesc.Width > kFlowFieldMaxSide ||
         InDesc.Height > kFlowFieldMaxSide)
     {
+        // A rejected configure must not leave the previous field looking valid.
+        MDesc = {};
+        MCosts.clear();
+        MPotential.clear();
+        MHeap.clear();
+        MReachableCount = 0;
+        MGoalCount = 0;
         return false;
     }
-    MDesc = InDesc;
-    const std::size_t ScopedCells = static_cast<std::size_t>(InDesc.Width) * InDesc.Height;
-    MCosts.assign(ScopedCells, InDesc.DefaultCost);
-    MPotential.assign(ScopedCells, kFlowFieldInfinite);
-    MHeap.reserve(ScopedCells);
+    try
+    {
+        MDesc = InDesc;
+        const std::size_t ScopedCells = static_cast<std::size_t>(InDesc.Width) * InDesc.Height;
+        MCosts.assign(ScopedCells, InDesc.DefaultCost);
+        MPotential.assign(ScopedCells, kFlowFieldInfinite);
+        MHeap.reserve(ScopedCells);
+    }
+    catch (...)
+    {
+        MDesc = {};
+        MCosts.clear();
+        MPotential.clear();
+        MHeap.clear();
+        MReachableCount = 0;
+        MGoalCount = 0;
+        return false;
+    }
     MReachableCount = 0;
     MGoalCount = 0;
     return true;
@@ -127,6 +147,17 @@ void FlowField::Build(std::span<const std::uint32_t> InGoals) noexcept
                     continue;
                 }
                 const bool ScopedDiagonal = ScopedDx != 0 && ScopedDy != 0;
+                if (ScopedDiagonal)
+                {
+                    const std::uint32_t ScopedSideA =
+                        ScopedY * ScopedWidth + static_cast<std::uint32_t>(ScopedNeighborX);
+                    const std::uint32_t ScopedSideB =
+                        static_cast<std::uint32_t>(ScopedNeighborY) * ScopedWidth + ScopedX;
+                    if (MCosts[ScopedSideA] == 0 || MCosts[ScopedSideB] == 0)
+                    {
+                        continue;
+                    }
+                }
                 const std::uint32_t ScopedStep = ScopedDiagonal ? kFlowStepDiagonal : kFlowStepStraight;
                 const std::uint32_t ScopedNewDistance =
                     ScopedCurrent.Distance + ScopedStep * static_cast<std::uint32_t>(ScopedCost);
@@ -187,6 +218,12 @@ Vector2D FlowField::FlowAt(std::uint32_t InX, std::uint32_t InY) const noexcept
             if (ScopedNeighborX < 0 || ScopedNeighborY < 0 ||
                 ScopedNeighborX >= static_cast<std::int32_t>(MDesc.Width) ||
                 ScopedNeighborY >= static_cast<std::int32_t>(MDesc.Height))
+            {
+                continue;
+            }
+            if (ScopedDx != 0 && ScopedDy != 0 &&
+                (CostAt(static_cast<std::uint32_t>(ScopedNeighborX), InY) == 0 ||
+                 CostAt(InX, static_cast<std::uint32_t>(ScopedNeighborY)) == 0))
             {
                 continue;
             }

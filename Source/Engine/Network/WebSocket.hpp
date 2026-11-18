@@ -99,7 +99,7 @@ private:
                                  std::string* InError) noexcept;
     [[nodiscard]] bool SendAll(std::span<const std::byte> InData, std::string* InError) noexcept;
     [[nodiscard]] bool ParseFrames(std::string* InError) noexcept;
-    [[nodiscard]] bool Fail(std::string InMessage, std::string* InError) noexcept;
+    [[nodiscard]] bool Fail(std::string_view InMessage, std::string* InError) noexcept;
     void Reset() noexcept;
 
     std::uintptr_t MHandle = kInvalidHandle;

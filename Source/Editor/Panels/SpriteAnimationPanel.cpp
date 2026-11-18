@@ -235,9 +235,13 @@ void DrawSheetGrid(Ecs::Registry& InRegistry, Entity InEntity, SpriteAnimationCo
             ScopedCreated.Rows = 1;
             ScopedCreated.Layer = InSprite != nullptr ? InSprite->Layer : 0;
             ScopedGrid = &InRegistry.emplace<SpriteSheetComponent>(InEntity, ScopedCreated);
-            if (InSprite != nullptr)
+            // emplace may move the entity to another archetype; every cached
+            // component pointer/reference from the caller is now stale.
+            SpriteAnimationComponent* ScopedFreshAnimation = InRegistry.try_get<SpriteAnimationComponent>(InEntity);
+            Sprite2D* ScopedFreshSprite = InRegistry.try_get<Sprite2D>(InEntity);
+            if (ScopedFreshAnimation != nullptr && ScopedFreshSprite != nullptr)
             {
-                ApplySpriteFrame(InSpriteAnimation, ScopedGrid, *InSprite);
+                ApplySpriteFrame(*ScopedFreshAnimation, ScopedGrid, *ScopedFreshSprite);
             }
         }
         ImGui::SameLine();
@@ -472,6 +476,13 @@ void DrawSpriteAnimationInspector(Ecs::SystemContext& InContext, Entity InEntity
     {
         DrawSheetGrid(InContext.registry, InEntity, *ScopedSpriteAnimation, ScopedSprite, InState);
         ImGui::TreePop();
+        // DrawSheetGrid can emplace SpriteSheetComponent and relocate the entity.
+        ScopedSpriteAnimation = InContext.registry.try_get<SpriteAnimationComponent>(InEntity);
+        ScopedSprite = InContext.registry.try_get<Sprite2D>(InEntity);
+        if (ScopedSpriteAnimation == nullptr)
+        {
+            return;
+        }
     }
 
     ImGui::PopID();

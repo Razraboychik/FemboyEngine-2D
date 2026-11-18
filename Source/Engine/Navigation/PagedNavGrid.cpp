@@ -46,8 +46,16 @@ PagedNavGrid::Page* PagedNavGrid::EnsurePage(std::uint32_t InPageX, std::uint32_
     std::unique_ptr<Page>& ScopedSlot = MPages[static_cast<std::size_t>(InPageY) * MDesc.PagesX + InPageX];
     if (!ScopedSlot)
     {
-        ScopedSlot = std::make_unique<Page>();
-        ScopedSlot->Cells.assign(static_cast<std::size_t>(kPageSide) * kPageSide, MDesc.DefaultCost);
+        try
+        {
+            ScopedSlot = std::make_unique<Page>();
+            ScopedSlot->Cells.assign(static_cast<std::size_t>(kPageSide) * kPageSide, MDesc.DefaultCost);
+        }
+        catch (...)
+        {
+            ScopedSlot.reset();
+            return nullptr;
+        }
         ScopedSlot->Allocated = true;
         ++MAllocatedPages;
     }

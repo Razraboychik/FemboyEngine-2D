@@ -21,6 +21,15 @@ inline void SetNativeCleanupHook(Registry& InRegistry, void (*InCleanup)(void*, 
     InRegistry.ctx().insert_or_assign<NativeCleanupHook>(NativeCleanupHook{InCleanup, InUser});
 }
 
+inline void ClearNativeCleanupHook(Registry& InRegistry, void* InUser) noexcept
+{
+    const auto* ScopedHook = InRegistry.ctx().find<NativeCleanupHook>();
+    if (ScopedHook != nullptr && ScopedHook->user == InUser)
+    {
+        InRegistry.ctx().erase<NativeCleanupHook>();
+    }
+}
+
 // Destroys every entity in the registry.
 //
 // Registry::clear() clears the FCS records and invalidates the entities; the

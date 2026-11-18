@@ -127,7 +127,8 @@ public:
     [[nodiscard]] bool Remove(Registry& InRegistry, Entity InTarget, std::uint32_t InDefId) noexcept;
     void RemoveAll(Registry& InRegistry, Entity InTarget) noexcept;
 
-    // Advances timers, periodic applications and expiry. Allocation-free.
+    // Advances timers, periodic applications and expiry. Uses scratch vectors;
+    // allocation failure skips this update instead of terminating.
     void Update(Registry& InRegistry, float InDt) noexcept;
 
     // Recomputes Tags and Current attributes from Base and the active effects.

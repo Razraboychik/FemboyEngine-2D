@@ -181,6 +181,12 @@ bool WritePng(const std::filesystem::path& InPath, std::uint32_t InWidth, std::u
     }
     ScopedOutput.write(reinterpret_cast<const char*>(ScopedPng.data()),
                        static_cast<std::streamsize>(ScopedPng.size()));
+    ScopedOutput.flush();
+    if (!ScopedOutput)
+    {
+        return false;
+    }
+    ScopedOutput.close();
     return static_cast<bool>(ScopedOutput);
 }
 

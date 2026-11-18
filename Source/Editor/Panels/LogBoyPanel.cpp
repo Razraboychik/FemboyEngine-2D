@@ -181,7 +181,7 @@ void LogBoyPanel::DrainRing()
         for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedDrained; ++ScopedIndex)
         {
             const LogBoyRecord& ScopedRecord = ScopedBatch[ScopedIndex];
-            if (MFirstTimestamp == 0)
+            if (MFirstTimestamp == 0 || ScopedRecord.timestampNanoseconds < MFirstTimestamp)
             {
                 MFirstTimestamp = ScopedRecord.timestampNanoseconds;
             }
@@ -360,6 +360,8 @@ void LogBoyPanel::DrawToolbar()
         MSeenTotal = 0;
         MDesyncCount = 0;
         MFirstTimestamp = 0;
+        MRateWindowBase = 0;
+        MRate = 0.0;
     }
     ImGui::SameLine();
     if (ImGui::Button("Copy visible"))
@@ -372,7 +374,9 @@ void LogBoyPanel::DrawToolbar()
             const double ScopedSeconds =
                 MFirstTimestamp == 0
                     ? 0.0
-                    : static_cast<double>(ScopedRecord.timestampNanoseconds - MFirstTimestamp) / 1.0e9;
+                    : (ScopedRecord.timestampNanoseconds >= MFirstTimestamp
+                           ? static_cast<double>(ScopedRecord.timestampNanoseconds - MFirstTimestamp) / 1.0e9
+                           : 0.0);
             const char* ScopedSystemName = MSystem.SystemNameFor(ScopedRecord.systemHash).empty()
                                                ? "?"
                                                : MSystem.SystemNameFor(ScopedRecord.systemHash).data();
@@ -491,7 +495,9 @@ void LogBoyPanel::DrawTable()
             const double ScopedSeconds =
                 MFirstTimestamp == 0
                     ? 0.0
-                    : static_cast<double>(ScopedRecord.timestampNanoseconds - MFirstTimestamp) / 1.0e9;
+                    : (ScopedRecord.timestampNanoseconds >= MFirstTimestamp
+                           ? static_cast<double>(ScopedRecord.timestampNanoseconds - MFirstTimestamp) / 1.0e9
+                           : 0.0);
 
             ImGui::TableNextRow();
             ImGui::TableNextColumn();

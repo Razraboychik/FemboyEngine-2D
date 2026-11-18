@@ -18,7 +18,7 @@ namespace Fby
 inline constexpr std::size_t kMaxScancodes = 512;
 inline constexpr std::size_t kMaxMouseButtons = 8;
 inline constexpr std::size_t kMaxGamepads = 8;
-inline constexpr std::size_t kMaxGamepadButtons = 16;
+inline constexpr std::size_t kMaxGamepadButtons = 21;
 inline constexpr std::size_t kMaxGamepadAxes = 6;
 inline constexpr std::size_t kMaxTouches = 10;
 
@@ -157,15 +157,18 @@ struct InputState
 
     [[nodiscard]] bool IsDown(Key InKey) const noexcept
     {
-        return held[static_cast<std::size_t>(InKey)];
+        const auto ScopedIndex = static_cast<std::size_t>(InKey);
+        return ScopedIndex < held.size() && held[ScopedIndex];
     }
     [[nodiscard]] bool WasPressed(Key InKey) const noexcept
     {
-        return pressed[static_cast<std::size_t>(InKey)];
+        const auto ScopedIndex = static_cast<std::size_t>(InKey);
+        return ScopedIndex < pressed.size() && pressed[ScopedIndex];
     }
     [[nodiscard]] bool WasReleased(Key InKey) const noexcept
     {
-        return released[static_cast<std::size_t>(InKey)];
+        const auto ScopedIndex = static_cast<std::size_t>(InKey);
+        return ScopedIndex < released.size() && released[ScopedIndex];
     }
     [[nodiscard]] bool IsMouseDown(std::uint8_t InButton) const noexcept
     {

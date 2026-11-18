@@ -210,19 +210,26 @@ void ParticleFxPanel::Draw(bool* InOpen)
     (void)ImGui::InputText("Display name", MSaveName.data(), MSaveName.size());
     if (ImGui::Button("Save preset"))
     {
-        ParticlePresetDesc ScopedDesc;
-        std::snprintf(ScopedDesc.Id, sizeof(ScopedDesc.Id), "%s", MSaveId.data());
-        std::snprintf(ScopedDesc.DisplayName, sizeof(ScopedDesc.DisplayName), "%s", MSaveName.data());
-        std::snprintf(ScopedDesc.Category, sizeof(ScopedDesc.Category), "%s", "Authoring");
-        ScopedDesc.Settings = MSettings;
-        std::string ScopedError;
-        if (SaveParticlePresetFile(MPresetPath.data(), ScopedDesc, &ScopedError))
+        if (MSaveId[0] == 0 || MSaveName[0] == 0)
         {
-            MStatus = std::string("saved ") + MPresetPath.data();
+            MStatus = "preset id and display name must not be empty";
         }
         else
         {
-            MStatus = "save failed: " + ScopedError;
+            ParticlePresetDesc ScopedDesc;
+            std::snprintf(ScopedDesc.Id, sizeof(ScopedDesc.Id), "%s", MSaveId.data());
+            std::snprintf(ScopedDesc.DisplayName, sizeof(ScopedDesc.DisplayName), "%s", MSaveName.data());
+            std::snprintf(ScopedDesc.Category, sizeof(ScopedDesc.Category), "%s", "Authoring");
+            ScopedDesc.Settings = MSettings;
+            std::string ScopedError;
+            if (SaveParticlePresetFile(MPresetPath.data(), ScopedDesc, &ScopedError))
+            {
+                MStatus = std::string("saved ") + MPresetPath.data();
+            }
+            else
+            {
+                MStatus = "save failed: " + ScopedError;
+            }
         }
     }
     ImGui::SameLine();

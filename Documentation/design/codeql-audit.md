@@ -88,6 +88,21 @@ ScopedBytes.resize(sizeof(std::uint64_t) + 6u * sizeof(std::uint32_t) +
    repository moves to an organization, set `github-codeql-config-file` to
    `.github/codeql/codeql-config.yml` so the exclusions become automatic again.
 
+## Material compiler command execution
+
+Alert 140 (`cpp/command-line-injection`, critical) was the only open code-scanning
+result after the 0.5.0 merge. `fby_matc` built the dxc invocation by concatenating
+`FBY_DXC`/`VULKAN_SDK` and the input/output paths and passed it to `std::system`
+on POSIX. The compiler now receives an argument array through `posix_spawnp`;
+Windows uses `CreateProcessW` with an explicit image path for path-based
+compilers and per-argument CRT quoting for bare PATH lookups. `FBY_DXC` and
+`VULKAN_SDK` candidates are checked for control characters and regular-file
+existence, and embedded NUL/newline arguments are rejected before launch. The
+regression test is `dxc_arguments`.
+
+The alert is fixed in code, not suppressed: the next SARIF analysis should close
+it. Do not add a query exclusion or baseline entry for this rule.
+
 ## Existing patches
 
 The compiled-asset patches are in `third_party/patches`:

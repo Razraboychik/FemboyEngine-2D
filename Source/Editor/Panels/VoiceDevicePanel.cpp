@@ -49,11 +49,13 @@ void CopyIdInto(char* OutDestination, std::size_t InCapacity, const char* InSour
     ImGui::SetNextItemWidth(220.0f);
     if (ImGui::BeginCombo(InLabel, ScopedCurrent != nullptr ? PresetLabel(*ScopedCurrent) : "None"))
     {
+        ImGui::PushID("##none");
         if (ImGui::Selectable("None", ScopedCurrent == nullptr))
         {
             InChoice.Clear();
             ScopedChanged = true;
         }
+        ImGui::PopID();
         for (std::uint32_t ScopedIndex = 0; ScopedIndex < InPresets.Count(); ++ScopedIndex)
         {
             const Fby::VoicePresetDesc* ScopedPreset = InPresets.At(ScopedIndex);
@@ -62,11 +64,13 @@ void CopyIdInto(char* OutDestination, std::size_t InCapacity, const char* InSour
             {
                 continue;
             }
+            ImGui::PushID(ScopedPreset->Id);
             if (ImGui::Selectable(PresetLabel(*ScopedPreset), ScopedCurrent == ScopedPreset))
             {
                 InChoice.Set(ScopedPreset->Id, InChoice.Intensity);
                 ScopedChanged = true;
             }
+            ImGui::PopID();
         }
         ImGui::EndCombo();
     }
@@ -86,6 +90,11 @@ void DrawChoiceIntensity(Fby::VoicePresetChoice& InChoice) noexcept
 
 void VoiceDevicePanel::RefreshDevices(ProjectConfigStore* InStore, std::uint64_t InNowMs)
 {
+    if (InNowMs - MLastRefreshMs < 1000)
+    {
+        return;
+    }
+    MLastRefreshMs = InNowMs;
     if (!MInitialized)
     {
         std::string ScopedError;
@@ -96,11 +105,6 @@ void VoiceDevicePanel::RefreshDevices(ProjectConfigStore* InStore, std::uint64_t
         }
         MInitialized = true;
     }
-    if (InNowMs - MLastRefreshMs < 1000)
-    {
-        return;
-    }
-    MLastRefreshMs = InNowMs;
     const bool ScopedChanged = MDevices.Refresh();
 
     if (InStore == nullptr)

@@ -356,11 +356,7 @@ void AnimationTimeline::DispatchEvents(float InPreviousTime, float InTime, bool 
     {
         const TimelineEvent& ScopedEvent = events[ScopedI];
         bool ScopedFire = false;
-        if (!InLooped)
-        {
-            ScopedFire = ScopedEvent.time > InPreviousTime && ScopedEvent.time <= InTime;
-        }
-        else if (InTime >= InPreviousTime)
+        if (!InLooped || InTime >= InPreviousTime)
         {
             ScopedFire = ScopedEvent.time > InPreviousTime && ScopedEvent.time <= InTime;
         }

@@ -181,21 +181,18 @@ inline constexpr std::array<BoneColumn, 3> kBoneColumns = MakeBoneColumns();
         }
         if (ScopedHasChildren)
         {
+            for (std::uint16_t ScopedChild = 0; ScopedChild < InSkeleton.BoneCount; ++ScopedChild)
+            {
+                if (InSkeleton.ParentIndices[ScopedChild] == static_cast<std::int16_t>(InBone))
+                {
+                    ScopedEdited |= DrawBoneNode(InRegistry, InEntity, InSkeleton, InState, ScopedChild);
+                }
+            }
             ImGui::TreePop();
         }
     }
     ImGui::PopID();
 
-    if (ScopedHasChildren)
-    {
-        for (std::uint16_t ScopedChild = 0; ScopedChild < InSkeleton.BoneCount; ++ScopedChild)
-        {
-            if (InSkeleton.ParentIndices[ScopedChild] == static_cast<std::int16_t>(InBone))
-            {
-                ScopedEdited |= DrawBoneNode(InRegistry, InEntity, InSkeleton, InState, ScopedChild);
-            }
-        }
-    }
     return ScopedEdited;
 }
 

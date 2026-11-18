@@ -190,7 +190,9 @@ public:
     {
         for (Slot& ScopedSlot : MSlots)
         {
-            ScopedSlot = {};
+            ScopedSlot.Used = false;
+            ScopedSlot.Data = {};
+            ScopedSlot.Generation = NextGeneration(ScopedSlot.Generation);
         }
         MUsed = 0;
     }
@@ -212,7 +214,7 @@ private:
 
     [[nodiscard]] static std::uint32_t NextGeneration(std::uint32_t InGeneration) noexcept
     {
-        const std::uint32_t ScopedNext = InGeneration + 1;
+        const std::uint32_t ScopedNext = (InGeneration + 1u) & 0xFFFFu;
         return ScopedNext == 0 ? 1u : ScopedNext;
     }
 

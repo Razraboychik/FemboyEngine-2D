@@ -10,10 +10,16 @@
 namespace Fby::Editor
 {
 
+VideoPanel::~VideoPanel()
+{
+    CloseStream();
+}
+
 void VideoPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 {
     if (InOpen != nullptr && !*InOpen)
     {
+        CloseStream();
         return;
     }
     ImGui::SetNextWindowSize(ImVec2(560.0f, 380.0f), ImGuiCond_FirstUseEver);
@@ -24,11 +30,18 @@ void VideoPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
     if (!MInitialized)
     {
-        std::string ScopedError;
-        MInitialized = MSystem.Initialize(InContext.renderer, InContext.assets, nullptr, &ScopedError);
-        if (!MInitialized)
+        if (InContext.renderer == nullptr || InContext.assets == nullptr)
         {
-            MStatus = "video system unavailable: " + ScopedError;
+            MStatus = "video system unavailable: renderer or asset VFS is null";
+        }
+        else
+        {
+            std::string ScopedError;
+            MInitialized = MSystem.Initialize(InContext.renderer, InContext.assets, nullptr, &ScopedError);
+            if (!MInitialized)
+            {
+                MStatus = "video system unavailable: " + ScopedError;
+            }
         }
     }
     ImGui::TextDisabled("Streams are decoded into the RHI texture array; this panel exposes metadata and controls.");

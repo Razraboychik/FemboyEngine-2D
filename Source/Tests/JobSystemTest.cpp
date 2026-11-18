@@ -1,9 +1,11 @@
 // FemboyEngine2D - JobSystem exception and shutdown contract.
 #include "Engine/Core/JobSystem.hpp"
+#include "Engine/ECS/ParallelForEach.hpp"
 
 #include <atomic>
 #include <cstdio>
 #include <stdexcept>
+#include <vector>
 
 namespace
 {
@@ -56,6 +58,27 @@ int main()
             }
         }
         Check(ScopedDone.load() == 16, "destructor drains every queued task");
+    }
+
+    // A zero grain must not divide by zero; it is treated as one element per chunk.
+    {
+        Fby::JobSystem ScopedJobs(2);
+        std::atomic<std::uint32_t> ScopedVisited{0};
+        ScopedJobs.ParallelFor(32, 0, [&ScopedVisited](std::uint32_t InBegin, std::uint32_t InEnd)
+                               { ScopedVisited.fetch_add(InEnd - InBegin, std::memory_order_relaxed); });
+        ScopedJobs.WaitIdle();
+        Check(ScopedVisited.load() == 32, "zero grain visits every element once");
+    }
+
+    // A zero grain must not divide by zero or stall the boundary loop.
+    {
+        Fby::JobSystem ScopedJobs(2);
+        std::vector<std::uint32_t> ScopedValues(1);
+        std::atomic<std::uint32_t> ScopedVisited{0};
+        Fby::Ecs::ParallelForEach(ScopedJobs, ScopedValues, 0,
+                                  [&ScopedVisited](std::uint32_t&, auto&)
+                                  { ScopedVisited.fetch_add(1, std::memory_order_relaxed); });
+        Check(ScopedVisited.load() == 1, "ParallelForEach zero grain visits each element");
     }
 
     if (GFailures == 0)

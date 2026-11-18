@@ -109,7 +109,7 @@ public:
     using ApplyObserver = void (*)(void* InUser, Entity InEntity, std::uint16_t InCodec) noexcept;
 
     CommandStack() = default;
-    ~CommandStack() = default;
+    ~CommandStack();
 
     CommandStack(const CommandStack&) = delete;
     CommandStack& operator=(const CommandStack&) = delete;
@@ -236,6 +236,7 @@ private:
         std::string_view name{};
         std::uint64_t layoutHash = 0;
         std::uint32_t size = 0;
+        bool empty = false;
         const void* (*get)(const Scene::Registry&, Entity) = nullptr;
         void* (*getMutable)(Scene::Registry&, Entity) = nullptr;
         bool (*has)(const Scene::Registry&, Entity) = nullptr;

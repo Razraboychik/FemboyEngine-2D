@@ -135,7 +135,8 @@ std::string_view LocalizationTable::ActiveLocale() const noexcept
 std::string_view LocalizationTable::FindVariant(std::uint32_t InBaseId, std::int64_t InCount,
                                                 LocalizationGender InGender) const noexcept
 {
-    const std::int64_t ScopedCount = InCount < 0 ? -InCount : InCount;
+    const std::uint64_t ScopedCount = InCount < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(InCount)
+                                                  : static_cast<std::uint64_t>(InCount);
     std::uint32_t ScopedPlural = 0;
     if (ScopedCount == 0)
     {
@@ -143,8 +144,8 @@ std::string_view LocalizationTable::FindVariant(std::uint32_t InBaseId, std::int
     }
     else if (ActiveLocale() == "ru")
     {
-        const std::int64_t ScopedMod10 = ScopedCount % 10;
-        const std::int64_t ScopedMod100 = ScopedCount % 100;
+        const std::uint64_t ScopedMod10 = ScopedCount % 10;
+        const std::uint64_t ScopedMod100 = ScopedCount % 100;
         if (ScopedMod10 == 1 && ScopedMod100 != 11)
         {
             ScopedPlural = 1;

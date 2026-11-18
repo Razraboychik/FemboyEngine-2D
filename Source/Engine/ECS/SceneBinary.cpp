@@ -97,6 +97,10 @@ std::expected<SceneData, std::string> DecodeSceneBinary(std::span<const std::byt
     {
         ScopedScene.meta.name.assign(ScopedName->c_str(), ScopedName->size());
     }
+    else
+    {
+        ScopedScene.meta.name.clear();
+    }
     if (const flatbuffers::String* ScopedAuthor = ScopedRoot->author())
     {
         ScopedScene.meta.author.assign(ScopedAuthor->c_str(), ScopedAuthor->size());

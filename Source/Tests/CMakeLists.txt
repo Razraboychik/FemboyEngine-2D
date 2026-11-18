@@ -548,6 +548,7 @@ add_test(NAME accessibility_composite COMMAND fby_accessibility_composite_test)
 if(TARGET fby_matc)
     add_executable(fby_material_cook_test MaterialCookTest.cpp)
     target_link_libraries(fby_material_cook_test PRIVATE FemboyEngine2D::Engine)
+    target_include_directories(fby_material_cook_test PRIVATE "${FBY_SOURCE_ROOT}")
     target_compile_definitions(fby_material_cook_test PRIVATE FBY_MATC_PATH="$<TARGET_FILE:fby_matc>")
     add_dependencies(fby_material_cook_test fby_matc)
     fby_link_asan(fby_material_cook_test)
@@ -555,6 +556,27 @@ if(TARGET fby_matc)
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME material_cook COMMAND fby_material_cook_test)
 endif()
+
+# dxc invocation contract: arguments are passed as an array, never through a
+# shell. The regression covers paths with shell metacharacters and NUL/newline
+# rejection; the Windows quoting helper is covered in the same test.
+add_executable(fby_dxc_arguments_test DxcArgumentsTest.cpp)
+target_link_libraries(fby_dxc_arguments_test PRIVATE fby::compiler_flags)
+target_include_directories(fby_dxc_arguments_test PRIVATE "${FBY_SOURCE_ROOT}")
+fby_link_asan(fby_dxc_arguments_test)
+set_target_properties(fby_dxc_arguments_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+add_test(NAME dxc_arguments COMMAND fby_dxc_arguments_test)
+
+# The editor easter-egg asset must stay a decodable, audible Ogg Opus clip.
+add_executable(fby_meow_asset_test MeowAssetTest.cpp)
+target_link_libraries(fby_meow_asset_test PRIVATE FemboyEngine2D::Engine)
+target_compile_definitions(fby_meow_asset_test PRIVATE
+    FBY_MEOW_ASSET="${FBY_SOURCE_ROOT}/../assets/audio/editor/meow.ogg")
+fby_link_asan(fby_meow_asset_test)
+set_target_properties(fby_meow_asset_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+add_test(NAME meow_asset COMMAND fby_meow_asset_test)
 
 # Video: WebM/EBML + VP9-alpha acceptance, MP4/H.264/H.265/VP8 rejection and the
 fby_add_engine_test(fby_video_test video VideoTest.cpp)
@@ -1153,6 +1175,23 @@ if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
             fby_link_asan(${FbyTestTarget})
         endif()
     endforeach()
+endif()
+
+# Command-line tools must reject malformed numeric options instead of silently
+# coercing them to zero (which is especially dangerous for ports and frame limits).
+if(TARGET fby_server)
+    add_test(NAME server_rejects_bad_port COMMAND fby_server --port abc)
+    set_tests_properties(server_rejects_bad_port PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME server_rejects_negative_tick COMMAND fby_server --tick-rate -1)
+    set_tests_properties(server_rejects_negative_tick PROPERTIES WILL_FAIL TRUE)
+endif()
+if(TARGET fby_lobby)
+    add_test(NAME lobby_rejects_bad_port COMMAND fby_lobby --port abc)
+    set_tests_properties(lobby_rejects_bad_port PROPERTIES WILL_FAIL TRUE)
+endif()
+if(TARGET fby_fontc)
+    add_test(NAME fontc_rejects_bad_size COMMAND fby_fontc --size nope)
+    set_tests_properties(fontc_rejects_bad_size PROPERTIES WILL_FAIL TRUE)
 endif()
 
 # Tests read repository-relative assets such as assets/fonts, so the working

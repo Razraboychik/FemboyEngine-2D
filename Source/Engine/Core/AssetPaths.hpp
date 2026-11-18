@@ -1,6 +1,7 @@
 // FemboyEngine2D - asset root discovery for host applications.
 #pragma once
 
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <string_view>
@@ -14,12 +15,16 @@ namespace Fby::Core
 {
     if (InArgv0.empty())
     {
-        return std::filesystem::current_path();
+        std::error_code ScopedError;
+        const std::filesystem::path ScopedCurrent = std::filesystem::current_path(ScopedError);
+        return ScopedError ? std::filesystem::path{} : ScopedCurrent;
     }
     std::filesystem::path ScopedPath(InArgv0);
     if (!ScopedPath.has_parent_path())
     {
-        return std::filesystem::current_path();
+        std::error_code ScopedError;
+        const std::filesystem::path ScopedCurrent = std::filesystem::current_path(ScopedError);
+        return ScopedError ? std::filesystem::path{} : ScopedCurrent;
     }
     std::error_code ScopedError;
     const std::filesystem::path ScopedAbsolute = std::filesystem::absolute(ScopedPath, ScopedError);
@@ -37,8 +42,11 @@ namespace Fby::Core
         ScopedEnvironment != nullptr && ScopedEnvironment[0] != '\0')
     {
         const std::filesystem::path ScopedEnvironmentPath(ScopedEnvironment);
-        if (std::filesystem::is_directory(ScopedEnvironmentPath / "assets", ScopedError) ||
-            std::filesystem::is_directory(ScopedEnvironmentPath, ScopedError))
+        if (std::filesystem::is_directory(ScopedEnvironmentPath / "assets", ScopedError))
+        {
+            return std::filesystem::weakly_canonical(ScopedEnvironmentPath / "assets", ScopedError);
+        }
+        if (std::filesystem::is_directory(ScopedEnvironmentPath, ScopedError))
         {
             return std::filesystem::weakly_canonical(ScopedEnvironmentPath, ScopedError);
         }

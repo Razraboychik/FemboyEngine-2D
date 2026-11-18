@@ -94,11 +94,19 @@ void CopyText(char* OutText, std::size_t InCapacity, std::string_view InValue) n
                     static_cast<float>((*ScopedArray)[1].value_or(InFallback.Y))};
 }
 
-void ErrorFile(std::string* OutError, std::string_view InText)
+void ErrorFile(std::string* OutError, std::string_view InText) noexcept
 {
-    if (OutError != nullptr)
+    if (OutError == nullptr)
     {
-        *OutError = std::string(InText);
+        return;
+    }
+    try
+    {
+        OutError->assign(InText);
+    }
+    catch (...)
+    {
+        OutError->clear();
     }
 }
 }
@@ -372,7 +380,7 @@ bool PrefabSystem::Spawn(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InComman
     {
         ScopedEntities[ScopedI] = InRegistry.create();
     }
-    const auto ScopedRollback = [&]() noexcept
+    const auto ScopedRollback = [&]()
     {
         for (std::uint32_t ScopedI = 0; ScopedI < InAsset.count; ++ScopedI)
         {

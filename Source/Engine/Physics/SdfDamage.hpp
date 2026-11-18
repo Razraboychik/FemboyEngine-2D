@@ -243,12 +243,14 @@ private:
 
 inline void SdfMaterialProfile::Clamp() noexcept
 {
-    Toughness = std::clamp(Toughness, 0.01f, 1000.0f);
-    Hardness = std::clamp(Hardness, 0.01f, 1000.0f);
-    MinKineticEnergy = std::clamp(MinKineticEnergy, 0.0f, 1.0e9f);
-    EnergyToDamage = std::clamp(EnergyToDamage, 0.0f, 1000.0f);
-    ThicknessExponent = std::clamp(ThicknessExponent, 0.01f, 8.0f);
-    MaximumDamageFraction = std::clamp(MaximumDamageFraction, 0.0f, 1.0f);
+    const auto ScopedFiniteClamp = [](float InValue, float InMinimum, float InMaximum, float InFallback)
+    { return std::isfinite(InValue) ? std::clamp(InValue, InMinimum, InMaximum) : InFallback; };
+    Toughness = ScopedFiniteClamp(Toughness, 0.01f, 1000.0f, 1.0f);
+    Hardness = ScopedFiniteClamp(Hardness, 0.01f, 1000.0f, 1.0f);
+    MinKineticEnergy = ScopedFiniteClamp(MinKineticEnergy, 0.0f, 1.0e9f, 0.0f);
+    EnergyToDamage = ScopedFiniteClamp(EnergyToDamage, 0.0f, 1000.0f, 0.0f);
+    ThicknessExponent = ScopedFiniteClamp(ThicknessExponent, 0.01f, 8.0f, 1.0f);
+    MaximumDamageFraction = ScopedFiniteClamp(MaximumDamageFraction, 0.0f, 1.0f, 1.0f);
 }
 
 inline void SdfDamageModel::Clear() noexcept

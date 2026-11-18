@@ -61,6 +61,18 @@ void TestMetaFileRoundTrip()
     Check(ScopedDependencyCount == 2 && ScopedParsedDependencies[0].guid == 1 && ScopedParsedDependencies[1].guid == 2,
           "dependencies round-trip");
     Check(ScopedParsed.import.srgb == false && ScopedParsed.import.maxSize == 2048, "import settings round-trip");
+
+    std::string ScopedOverflow = ScopedText;
+    const std::size_t ScopedGuid = ScopedOverflow.find("guid = \"0x0000001234ABCDEF\"");
+    Check(ScopedGuid != std::string::npos, "overflow fixture has a guid");
+    if (ScopedGuid != std::string::npos)
+    {
+        ScopedOverflow.replace(ScopedGuid, std::strlen("guid = \"0x0000001234ABCDEF\""),
+                               "guid = \"0xFFFFFFFFFFFFFFFFF\"");
+        Check(!Fby::Assets::ParseAssetMetaFile(ScopedOverflow, &ScopedParsed, ScopedParsedDependencies, 4,
+                                               &ScopedDependencyCount, &ScopedError),
+              "guid larger than uint64 is rejected");
+    }
 }
 
 void TestFontMetaRoundTrip()

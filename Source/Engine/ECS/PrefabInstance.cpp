@@ -96,7 +96,7 @@ bool PrefabInstance::SetOverride(Ecs::Registry& InRegistry, Entity InInstance,
     if (InOverride.overrideRotation)
     {
         ScopedInstance->RotationMask |= ScopedBit;
-        ScopedInstance->RotationOverrides[ScopedIndex] = Vector2D{InOverride.rotation, 0.0f};
+        ScopedInstance->RotationOverrides[ScopedIndex].X = InOverride.rotation;
     }
     if (InOverride.overrideColor)
     {

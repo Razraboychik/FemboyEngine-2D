@@ -204,13 +204,13 @@ std::uint32_t ActionNarration::Compose(const ActionEvent& InEvent, char* OutText
     }
 
     char ScopedDistance[48]{};
-    if (MSettings.AnnounceDistance && InEvent.DistanceMeters >= 0.0f)
+    if (MSettings.AnnounceDistance && std::isfinite(InEvent.DistanceMeters) && InEvent.DistanceMeters >= 0.0f)
     {
         (void)Resolve(DistanceWord(InEvent.DistanceMeters), {}, ScopedDistance, sizeof(ScopedDistance));
     }
 
     char ScopedMeters[32]{};
-    if (InEvent.DistanceMeters >= 0.0f)
+    if (std::isfinite(InEvent.DistanceMeters) && InEvent.DistanceMeters >= 0.0f)
     {
         std::snprintf(ScopedMeters, sizeof(ScopedMeters), "%lld",
                       static_cast<long long>(std::lround(InEvent.DistanceMeters)));

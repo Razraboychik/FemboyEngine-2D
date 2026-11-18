@@ -71,7 +71,7 @@ static_assert(DirtyBlockCount == 32u);
 // Marks the 512-byte blocks that cover one written range.
 inline void MarkDirty(RenderChunk& InChunk, std::uint32_t InOffset, std::uint32_t InBytes) noexcept
 {
-    if (InBytes == 0)
+    if (InBytes == 0 || InOffset >= ChunkBytes || InBytes > ChunkBytes - InOffset)
     {
         return;
     }
@@ -341,7 +341,7 @@ public:
         std::fill_n(ScopedSlot, sizeof(GpuSpriteInstance), std::byte{0});
         // The zeroed slot must reach the GPU on the next upload; without the dirty
         // mark a released sprite would stay visible in the packed chunk.
-        MarkDirty(ScopedChunk, InEntity.Slot * static_cast<std::uint32_t>(sizeof(GpuSpriteInstance)),
+        MarkDirty(ScopedChunk, ChunkHeaderBytes + InEntity.Slot * static_cast<std::uint32_t>(sizeof(GpuSpriteInstance)),
                   static_cast<std::uint32_t>(sizeof(GpuSpriteInstance)));
         --ScopedChunk.Header.ActiveCount;
         --MActiveCount;
@@ -476,7 +476,7 @@ public:
         }
         *ScopedSprite = MakeGpuSpriteInstance(InItem);
         const std::uint32_t ScopedOffset =
-            ScopedEntity.Slot * static_cast<std::uint32_t>(sizeof(GpuSpriteInstance));
+            ChunkHeaderBytes + ScopedEntity.Slot * static_cast<std::uint32_t>(sizeof(GpuSpriteInstance));
         MarkDirty(*ScopedChunk, ScopedOffset, sizeof(GpuSpriteInstance));
         return ScopedEntity;
     }
@@ -491,7 +491,7 @@ public:
         }
         *ScopedSprite = MakeGpuSpriteInstance(InItem);
         const std::uint32_t ScopedOffset =
-            InEntity.Slot * static_cast<std::uint32_t>(sizeof(GpuSpriteInstance));
+            ChunkHeaderBytes + InEntity.Slot * static_cast<std::uint32_t>(sizeof(GpuSpriteInstance));
         MarkDirty(*ScopedChunk, ScopedOffset, sizeof(GpuSpriteInstance));
         return true;
     }

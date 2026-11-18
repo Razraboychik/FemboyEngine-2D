@@ -1,6 +1,6 @@
 # Editor Settings Reference
 
-This document is the complete reference for the editor's own settings in FemboyEngine2D 0.5.0: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
+This document is the complete reference for the editor's own settings in FemboyEngine2D 0.7.0-alpha.1: every key, its type, its default, its clamp, what it changes and where it is stored. It covers the `[editor]` table of `project.femproj`, the single `[render]` key that the editor owns, and the `[FemboyEditor]` mirror in `editor.ini`.
 
 The settings are environment preferences, not gameplay. They are stored next to the project so a team reproduces the same authoring environment, they are mirrored to the editor INI for humans and legacy readers, and they never change how a shipped game behaves. No shipped runtime reads them.
 
@@ -179,6 +179,12 @@ contrast*; editing a colour switches the preset to *Custom*. Selecting a preset
 also sets the matching text colour. The panel computes the WCAG contrast of the
 current text colour against both rows and warns below 4.5:1. Turning the
 checkbox off restores the normal table and node colours.
+
+The symbol palette is edited under **Fine-tune symbol colours**: `Axis X`,
+`Axis Y`, `Grid`, `Play triangle`, `Pause bars`, `Step`, `Stop square`, `Rotate`,
+`Multiplayer` and the four plot colours. The **Accessible symbol preset
+(Okabe-Ito)** button seeds a deuteranopia/protanopia-safe set with distinct
+luminance and hue.
 
 The **Themed cursor** switch loads a 32-bit BMP with a magenta transparent key;
 the path is user-supplied because the engine ships no cursor art. Unchecking it

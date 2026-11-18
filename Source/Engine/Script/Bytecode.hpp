@@ -231,6 +231,7 @@ inline constexpr std::uint32_t kMaxInstructions = 65536;
 inline constexpr std::uint32_t kMaxConstants = 1024;
 inline constexpr std::uint32_t kMaxComponentBindings = 32;
 inline constexpr std::uint32_t kMaxFieldBindings = 256;
+inline constexpr std::uint16_t kInvalidBuilderIndex = 0xFFFFu;
 inline constexpr std::uint32_t kMaxFunctions = 16;
 inline constexpr std::uint32_t kMaxProgramNatives = 32;
 inline constexpr std::uint32_t kMaxProgramStrings = 256;

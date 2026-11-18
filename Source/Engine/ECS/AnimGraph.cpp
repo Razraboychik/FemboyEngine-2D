@@ -312,7 +312,7 @@ bool AnimGraphResolveDirectional(const AnimGraphDefinitionComponent& InDefinitio
             const float ScopedSum = ScopedDominantWeight + ScopedSecondWeight;
             if (ScopedSecondState != ScopedDominantState && ScopedSum > Animation::kDirectionalBlendEpsilon)
             {
-                ScopedWeight = std::clamp(ScopedSecondWeight / ScopedSum, 0.0f, 1.0f);
+                ScopedWeight = std::clamp(ScopedDominantWeight / ScopedSum, 0.0f, 1.0f);
             }
             else
             {
@@ -388,10 +388,14 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
         // bridges, so the sprite and the skeleton stay on the same source.
         AnimStateComponent ScopedPoseState = ScopedState;
         bool ScopedDirectional = false;
+        bool ScopedDirectionalChanged = false;
         if (const auto* ScopedFacing = InRegistry.try_get<Facing2D>(ScopedEntity); ScopedFacing != nullptr)
         {
             ScopedDirectional =
                 AnimGraphResolveDirectional(ScopedDefinition, ScopedState, ScopedFacing->Direction, &ScopedPoseState);
+            ScopedDirectionalChanged = ScopedDirectional &&
+                                       (ScopedPoseState.CurrentState != ScopedState.CurrentState ||
+                                        ScopedPoseState.PreviousState != ScopedState.PreviousState);
         }
 
         // Bridge 1: SkeletalAnimation. Always apply, not only on a transition.
@@ -401,7 +405,7 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
         }
 
         // Bridge 2: SpriteAnimation. Only on a state change; SpriteAnimationSystem owns the frame
-        if (ScopedStateChanged || ScopedDirectional)
+        if (ScopedStateChanged || ScopedDirectionalChanged)
         {
             if (auto* ScopedSpriteAnimation = InRegistry.try_get<SpriteAnimationComponent>(ScopedEntity);
                 ScopedSpriteAnimation != nullptr)

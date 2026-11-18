@@ -3,6 +3,9 @@
 #include "Engine/Core/PathUtil.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <random>
 #include <bit>
 #include <cstring>
 #include <filesystem>
@@ -90,7 +93,10 @@ void FempakWriter::Add(std::string_view InPath, std::vector<std::byte> InBytes, 
     ScopedInput.bytes = std::move(InBytes);
     // AlignUp masks the low bits, so a non-power-of-two alignment would not
     // actually align the payload. Round up to the next power of two.
-    ScopedInput.alignment = std::bit_ceil(std::max(InAlignment, 1u));
+    const std::uint32_t ScopedAlignment = std::max(InAlignment, 1u);
+    // std::bit_ceil has a precondition that the result is representable; a
+    // value above 2^31 would be undefined.
+    ScopedInput.alignment = ScopedAlignment <= (1u << 31) ? std::bit_ceil(ScopedAlignment) : (1u << 31);
     if (ScopedExisting != MEntries.end())
     {
         *ScopedExisting = std::move(ScopedInput);
@@ -110,15 +116,24 @@ bool FempakWriter::AddDirectory(std::string_view InDirectory, std::string_view I
         return false;
     }
 
-    for (const fs::directory_entry& ScopedItem :
-         fs::recursive_directory_iterator(ScopedRoot, fs::directory_options::skip_permission_denied, ScopedCode))
+    std::error_code ScopedIteratorError;
+    for (auto ScopedIt = fs::recursive_directory_iterator(
+             ScopedRoot, fs::directory_options::skip_permission_denied, ScopedIteratorError);
+         ScopedIt != fs::recursive_directory_iterator(); ScopedIt.increment(ScopedIteratorError))
     {
-        if (!ScopedItem.is_regular_file(ScopedCode))
+        if (ScopedIteratorError)
+        {
+            SetError(InError, "cannot enumerate " + std::string(InDirectory) + ": " + ScopedIteratorError.message());
+            return false;
+        }
+        const fs::directory_entry& ScopedItem = *ScopedIt;
+        std::error_code ScopedEntryError;
+        if (!ScopedItem.is_regular_file(ScopedEntryError) || ScopedEntryError)
         {
             continue;
         }
-        const fs::path ScopedRelative = fs::relative(ScopedItem.path(), ScopedRoot, ScopedCode);
-        if (ScopedCode || ScopedRelative.empty())
+        const fs::path ScopedRelative = fs::relative(ScopedItem.path(), ScopedRoot, ScopedEntryError);
+        if (ScopedEntryError || ScopedRelative.empty())
         {
             continue;
         }
@@ -129,6 +144,11 @@ bool FempakWriter::AddDirectory(std::string_view InDirectory, std::string_view I
             return false;
         }
         Add(JoinVirtual(InVirtualRoot, ScopedRelative.generic_string()), std::move(ScopedBytes));
+    }
+    if (ScopedIteratorError)
+    {
+        SetError(InError, "cannot enumerate " + std::string(InDirectory) + ": " + ScopedIteratorError.message());
+        return false;
     }
     return true;
 }
@@ -241,7 +261,12 @@ bool WriteFileAtomically(std::string_view InPath, std::span<const std::byte> InB
     namespace fs = std::filesystem;
     const fs::path ScopedTarget = Core::PathFromUtf8(InPath);
     fs::path ScopedTemporary = ScopedTarget;
-    ScopedTemporary += ".tmp";
+    static std::atomic<std::uint64_t> ScopedTempCounter{0};
+    const std::uint64_t ScopedToken =
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
+        (ScopedTempCounter.fetch_add(1, std::memory_order_relaxed) * 0x9E3779B97F4A7C15ull) ^
+        static_cast<std::uint64_t>(std::random_device{}());
+    ScopedTemporary += ".tmp." + std::to_string(ScopedToken);
 
     {
         std::error_code ScopedCode;
@@ -253,6 +278,7 @@ bool WriteFileAtomically(std::string_view InPath, std::span<const std::byte> InB
         if (!ScopedStream)
         {
             SetError(InError, "cannot write " + ScopedTemporary.string());
+            fs::remove(ScopedTemporary, ScopedCode);
             return false;
         }
         ScopedStream.write(reinterpret_cast<const char*>(InBytes.data()), static_cast<std::streamsize>(InBytes.size()));
@@ -260,6 +286,8 @@ bool WriteFileAtomically(std::string_view InPath, std::span<const std::byte> InB
         if (!ScopedStream)
         {
             SetError(InError, "write failed: " + ScopedTemporary.string());
+            ScopedStream.close();
+            fs::remove(ScopedTemporary, ScopedCode);
             return false;
         }
     }

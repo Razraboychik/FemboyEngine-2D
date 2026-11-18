@@ -321,7 +321,9 @@ public:
         }
         else
         {
-            if (MRecords.size() >= (std::size_t{1} << kEntityIndexBits))
+            // Reserve the all-ones packed pattern (kNullEntity) by never
+            // allocating the highest index.
+            if (MRecords.size() >= ((std::size_t{1} << kEntityIndexBits) - 1u))
             {
                 return kNullEntity;
             }
@@ -329,7 +331,11 @@ public:
             MRecords.push_back(EntityRecord{});
         }
         EntityRecord& ScopedRecord = MRecords[ScopedIndex];
-        ScopedRecord.Generation += 1u;
+        ScopedRecord.Generation = (ScopedRecord.Generation + 1u) & kEntityGenerationMask;
+        if (ScopedRecord.Generation == 0)
+        {
+            ScopedRecord.Generation = 1;
+        }
         const std::uint32_t ScopedEmptyArchetype = GetOrCreateArchetype(Signature{});
         const auto [ScopedChunk, ScopedRow] = AllocateRow(ScopedEmptyArchetype);
         ScopedRecord.Archetype = ScopedEmptyArchetype;
@@ -347,7 +353,8 @@ public:
     {
         ++MRevision;
         assert(MIterationDepth == 0 && "FCS: structural change during iteration; queue it through CommandBuffer");
-        if (!InEntity.IsValid() || InEntity.Index >= (std::uint32_t{1} << kEntityIndexBits))
+        if (!InEntity.IsValid() || InEntity.Index >= kEntityIndexMask ||
+            InEntity.Generation > kEntityGenerationMask)
         {
             return kNullEntity;
         }

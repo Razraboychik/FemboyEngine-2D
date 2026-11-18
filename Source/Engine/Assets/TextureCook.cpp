@@ -14,6 +14,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -829,7 +830,7 @@ bool DecodeAstcConstantBlock(std::span<const std::byte, 16> InBlock, std::uint8_
 bool BuildMipChain(const std::uint8_t* InRgba8, std::uint32_t InWidth, std::uint32_t InHeight,
                    std::uint32_t InMipLevels, bool InSrgb, std::vector<std::uint8_t>& OutRgba8)
 {
-    if (InRgba8 == nullptr || InWidth == 0 || InHeight == 0 || InMipLevels == 0)
+    if (InRgba8 == nullptr || InWidth == 0 || InHeight == 0 || InMipLevels == 0 || InMipLevels > 32)
     {
         return false;
     }
@@ -1033,19 +1034,21 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
     int ScopedWidth = 0;
     int ScopedHeight = 0;
     int ScopedChannels = 0;
-    stbi_uc* ScopedPixels =
+    stbi_uc* ScopedRawPixels =
         stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(InSource.data()), static_cast<int>(InSource.size()),
                               &ScopedWidth, &ScopedHeight, &ScopedChannels, 4);
-    if (ScopedPixels == nullptr)
+    if (ScopedRawPixels == nullptr)
     {
         const char* ScopedReason = stbi_failure_reason();
         SetError(InError,
                  std::string("image decode failed: ") + (ScopedReason != nullptr ? ScopedReason : "unknown error"));
         return false;
     }
+    const std::unique_ptr<stbi_uc, void (*)(stbi_uc*)> ScopedPixelsOwner(
+        ScopedRawPixels, [](stbi_uc* InPixels) { stbi_image_free(InPixels); });
+    stbi_uc* const ScopedPixels = ScopedPixelsOwner.get();
     if (ScopedWidth <= 0 || ScopedHeight <= 0 || ScopedWidth > 16384 || ScopedHeight > 16384)
     {
-        stbi_image_free(ScopedPixels);
         SetError(InError, "texture dimensions are out of range (1..16384)");
         return false;
     }
@@ -1083,7 +1086,6 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
     const bool ScopedBuilt =
         BuildMipChain(ScopedPixels, static_cast<std::uint32_t>(ScopedWidth), static_cast<std::uint32_t>(ScopedHeight),
                       ScopedMipLevels, InOptions.srgb, ScopedChain);
-    stbi_image_free(ScopedPixels);
     if (!ScopedBuilt)
     {
         SetError(InError, "mip generation failed");

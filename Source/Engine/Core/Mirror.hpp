@@ -179,10 +179,7 @@ namespace Detail
             }
             continue;
         }
-        if (ScopedA == std::byte{0} || ScopedB == std::byte{0})
-        {
-            return false;
-        }
+        return false;
     }
     return true;
 }

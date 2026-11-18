@@ -17,6 +17,19 @@ constexpr std::uint32_t kSleepFrameThreshold = 120;
 constexpr std::uint32_t kInvalidBody = std::numeric_limits<std::uint32_t>::max();
 // Wire entity handles use 20 index bits and 12 generation bits (see FCS World).
 constexpr std::uint32_t kEntityIndexMask = 0x000FFFFFu;
+constexpr std::int32_t kMaxBroadphaseCellsPerAxis = 4096;
+constexpr float kMaxBroadphaseCoordinate = 1.0e6f;
+
+[[nodiscard]] std::int32_t BroadphaseCell(float InWorld, float InCellSize) noexcept
+{
+    if (!std::isfinite(InWorld))
+    {
+        return 0;
+    }
+    const float ScopedCoordinate = std::clamp(InWorld, -kMaxBroadphaseCoordinate, kMaxBroadphaseCoordinate);
+    const float ScopedCell = std::floor(ScopedCoordinate / InCellSize);
+    return static_cast<std::int32_t>(ScopedCell);
+}
 
 // Box2D derives mass from the shape area and density; the DOD backend used to
 // treat density itself as the inverse mass, which made every body equally heavy.
@@ -420,10 +433,17 @@ void DodPhysicsBackend::Step(Ecs::Registry& InRegistry, float InFixedDt)
         }
         const Vector2D ScopedMin = MinCorner(ScopedIndex);
         const Vector2D ScopedMax = MaxCorner(ScopedIndex);
-        const std::int32_t ScopedMinX = static_cast<std::int32_t>(std::floor(ScopedMin.X / kCellSize));
-        const std::int32_t ScopedMaxX = static_cast<std::int32_t>(std::floor(ScopedMax.X / kCellSize));
-        const std::int32_t ScopedMinY = static_cast<std::int32_t>(std::floor(ScopedMin.Y / kCellSize));
-        const std::int32_t ScopedMaxY = static_cast<std::int32_t>(std::floor(ScopedMax.Y / kCellSize));
+        const std::int32_t ScopedMinX = BroadphaseCell(ScopedMin.X, kCellSize);
+        const std::int32_t ScopedMaxX = BroadphaseCell(ScopedMax.X, kCellSize);
+        const std::int32_t ScopedMinY = BroadphaseCell(ScopedMin.Y, kCellSize);
+        const std::int32_t ScopedMaxY = BroadphaseCell(ScopedMax.Y, kCellSize);
+        // A body spanning an unbounded number of cells would allocate/iterate
+        // without bound. It cannot contribute a meaningful nearby pair.
+        if (ScopedMaxX - ScopedMinX > kMaxBroadphaseCellsPerAxis ||
+            ScopedMaxY - ScopedMinY > kMaxBroadphaseCellsPerAxis)
+        {
+            continue;
+        }
         for (std::int32_t ScopedX = ScopedMinX; ScopedX <= ScopedMaxX; ++ScopedX)
         {
             for (std::int32_t ScopedY = ScopedMinY; ScopedY <= ScopedMaxY; ++ScopedY)

@@ -358,7 +358,9 @@ if ($null -eq $env:VULKAN_SDK -and -not $SkipSystem) {
     $SdkRoot = Join-Path $env:ProgramFiles "VulkanSDK"
     if (Test-Path $SdkRoot) {
         $LatestSdk = Get-ChildItem -Path $SdkRoot -Directory |
-            Sort-Object { [version]($_.Name) } -Descending | Select-Object -First 1
+            Sort-Object {
+                try { [version]($_.Name) } catch { [version]"0.0" }
+            } -Descending | Select-Object -First 1
         if ($null -ne $LatestSdk) {
             $env:VULKAN_SDK = $LatestSdk.FullName
         }

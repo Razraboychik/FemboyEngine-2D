@@ -22,7 +22,13 @@ struct DrawKey
     {
         return InLeft.sortLayer < InRight.sortLayer;
     }
-    if (InLeft.depth != InRight.depth)
+    const bool ScopedLeftNaN = std::isnan(InLeft.depth);
+    const bool ScopedRightNaN = std::isnan(InRight.depth);
+    if (ScopedLeftNaN != ScopedRightNaN)
+    {
+        return !ScopedLeftNaN;
+    }
+    if (!ScopedLeftNaN && InLeft.depth != InRight.depth)
     {
         return InLeft.depth < InRight.depth;
     }

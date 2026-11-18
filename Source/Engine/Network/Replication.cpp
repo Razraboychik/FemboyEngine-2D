@@ -148,6 +148,11 @@ bool SnapshotSender::Enqueue(std::uint64_t InTick, std::uint64_t InBaselineTick,
     std::memcpy(ScopedState.Data.data(), InState.data(), InState.size());
     ++MQueueCount;
     ++MStats.StatesPublished;
+    if (InBaseline)
+    {
+        // The requested resync baseline has been published.
+        MNeedsBaseline = false;
+    }
 
     RefillBudget(InNowMs);
     SendState(ScopedState, InNowMs, InBaseline);
@@ -470,7 +475,7 @@ void SnapshotReceiver::HandleState(const NetAddress& InFrom, std::span<const std
         return;
     }
 
-    const std::uint32_t ScopedBit = 1u << ScopedIndex;
+    const std::uint64_t ScopedBit = 1ull << ScopedIndex;
     if ((MAssembleMask & ScopedBit) == 0)
     {
         MAssembleMask |= ScopedBit;

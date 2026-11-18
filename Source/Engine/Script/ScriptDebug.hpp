@@ -68,6 +68,10 @@ template <typename OutRange> std::uint32_t CollectPcsForLine(const CompiledProgr
         {
             continue;
         }
+        if (ScopedCount >= OutPcs.size())
+        {
+            break;
+        }
         OutPcs[ScopedCount++] = ScopedSpan.Pc;
     }
     return ScopedCount;

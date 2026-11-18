@@ -79,6 +79,10 @@ void SetError(std::string* InError, std::string_view InText)
             {
                 return false;
             }
+            if (ScopedValue > (0xFFFFFFFFFFFFFFFFull - ScopedDigit) / static_cast<std::uint64_t>(ScopedBase))
+            {
+                return false;
+            }
             ScopedValue = ScopedValue * static_cast<std::uint64_t>(ScopedBase) + ScopedDigit;
         }
         *Out = ScopedValue;

@@ -482,6 +482,10 @@ std::uint32_t ApplyRetarget(const SkeletonComponent& InSource, const RetargetMap
 
 std::int16_t QuantizeRotation(float InRadians) noexcept
 {
+    if (!std::isfinite(InRadians))
+    {
+        return 0;
+    }
     const float ScopedValue = InRadians / kPoseRotationQuantum;
     const float ScopedClamped = std::clamp(ScopedValue, -32767.0f, 32767.0f);
     return static_cast<std::int16_t>(std::lround(ScopedClamped));
@@ -489,6 +493,10 @@ std::int16_t QuantizeRotation(float InRadians) noexcept
 
 std::int16_t QuantizePosition(float InWorldUnits) noexcept
 {
+    if (!std::isfinite(InWorldUnits))
+    {
+        return 0;
+    }
     const float ScopedValue = InWorldUnits / kPosePositionQuantum;
     const float ScopedClamped = std::clamp(ScopedValue, -32767.0f, 32767.0f);
     return static_cast<std::int16_t>(std::lround(ScopedClamped));
@@ -496,6 +504,10 @@ std::int16_t QuantizePosition(float InWorldUnits) noexcept
 
 std::uint16_t QuantizeScale(float InScale) noexcept
 {
+    if (!std::isfinite(InScale))
+    {
+        return 0;
+    }
     const float ScopedValue = InScale / kPoseScaleQuantum;
     const float ScopedClamped = std::clamp(ScopedValue, 0.0f, 65535.0f);
     return static_cast<std::uint16_t>(std::lround(ScopedClamped));

@@ -119,23 +119,17 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         return false;
     }
 
-    if (MDevice != nullptr)
+    void* const ScopedOldDevice = MDevice;
+    void* const ScopedOldContext = MContext;
+    const bool ScopedHadDevice = MDevice != nullptr;
+    const auto ScopedFailed = [this, ScopedHadDevice]()
     {
-        auto* ScopedOld = static_cast<ma_device*>(MDevice);
-        ma_device_uninit(ScopedOld);
-        delete ScopedOld;
-        MDevice = nullptr;
-    }
-    if (MContext != nullptr)
-    {
-        auto* ScopedOldContext = static_cast<ma_context*>(MContext);
-        ma_context_uninit(ScopedOldContext);
-        delete ScopedOldContext;
-        MContext = nullptr;
-    }
-    const auto ScopedFailed = [this]()
-    {
-        MInitialized = false;
+        // Keep the previous device/context alive on failure; switching output
+        // must not leave the whole mixer uninitialized.
+        if (!ScopedHadDevice)
+        {
+            MInitialized = false;
+        }
         return false;
     };
 
@@ -198,13 +192,37 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         delete ScopedDevice;
         return ScopedFailed();
     }
+    // Stop the old callback before starting the new one: both devices point at
+    // this AudioSystem and would otherwise run Mix concurrently.
+    bool ScopedOldStopped = false;
+    if (ScopedOldDevice != nullptr)
+    {
+        ma_device_stop(static_cast<ma_device*>(ScopedOldDevice));
+        ScopedOldStopped = true;
+    }
     if (ma_device_start(ScopedDevice) != MA_SUCCESS)
     {
         ma_device_uninit(ScopedDevice);
         ma_context_uninit(ScopedContext);
         delete ScopedContext;
         delete ScopedDevice;
-        return ScopedFailed();
+        if (ScopedOldStopped && ma_device_start(static_cast<ma_device*>(ScopedOldDevice)) != MA_SUCCESS)
+        {
+            MInitialized = false;
+        }
+        return false;
+    }
+    if (ScopedOldDevice != nullptr)
+    {
+        auto* ScopedDeviceToStop = static_cast<ma_device*>(ScopedOldDevice);
+        ma_device_uninit(ScopedDeviceToStop);
+        delete ScopedDeviceToStop;
+    }
+    if (ScopedOldContext != nullptr)
+    {
+        auto* ScopedContextToFree = static_cast<ma_context*>(ScopedOldContext);
+        ma_context_uninit(ScopedContextToFree);
+        delete ScopedContextToFree;
     }
     MContext = ScopedContext;
     MDevice = ScopedDevice;
@@ -761,8 +779,14 @@ void AudioSystem::SyncBusComponents(Ecs::Registry& InRegistry)
             ScopedCommand.Type = AudioCommandType::SetGain;
             ScopedCommand.Bus = ScopedBus.BusID;
             ScopedCommand.Gain = ScopedVolume;
-            (void)MMixer.PushCommand(ScopedCommand);
-            ScopedRuntime.volume = ScopedVolume;
+            if (MMixer.PushCommand(ScopedCommand))
+            {
+                ScopedRuntime.volume = ScopedVolume;
+            }
+            else
+            {
+                ScopedRuntime.applied = false;
+            }
         }
         if (!ScopedRuntime.applied || ScopedRuntime.parent != ScopedBus.ParentBus)
         {
@@ -776,7 +800,10 @@ void AudioSystem::SyncBusComponents(Ecs::Registry& InRegistry)
         MComponentMuted[ScopedBus.BusID] = ScopedComponentMuted;
         (void)MMixer.SetBusMuted(ScopedBus.BusID, ScopedComponentMuted || MPauseMuted[ScopedBus.BusID]);
         ScopedRuntime.flags = ScopedBus.Flags;
-        ScopedRuntime.applied = true;
+        if (ScopedRuntime.volume == ScopedVolume)
+        {
+            ScopedRuntime.applied = true;
+        }
     }
     // A bus component that disappeared must release its DSP bus; otherwise the
     // fixed bus table fills with dead buses and new components go silent.

@@ -71,13 +71,20 @@ void CreateSessionDirectory() noexcept
 {
     char ScopedStamp[32] = {};
     FormatTimestamp(ScopedStamp, sizeof(ScopedStamp), true);
-    const std::string ScopedDirectory =
-        (CrashRoot() / (std::string(ScopedStamp) + "-" + std::to_string(ProcessId()))).string();
-    if (!EnsureDirectory(ScopedDirectory))
+    try
     {
-        return;
+        const std::string ScopedDirectory =
+            (CrashRoot() / (std::string(ScopedStamp) + "-" + std::to_string(ProcessId()))).string();
+        if (!EnsureDirectory(ScopedDirectory))
+        {
+            return;
+        }
+        std::snprintf(GSessionDirectory, sizeof(GSessionDirectory), "%s", ScopedDirectory.c_str());
     }
-    std::snprintf(GSessionDirectory, sizeof(GSessionDirectory), "%s", ScopedDirectory.c_str());
+    catch (...)
+    {
+        GSessionDirectory[0] = '\0';
+    }
 }
 
 void AppendText(char* InBuffer, std::size_t InCapacity, std::size_t& InOffset, std::string_view InText) noexcept

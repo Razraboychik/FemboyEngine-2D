@@ -243,7 +243,10 @@ public:
     {
         for (Slot& ScopedSlot : MSlots)
         {
-            ScopedSlot = {};
+            ScopedSlot.Used = false;
+            ScopedSlot.Data = {};
+            // Keep old handles invalid after a clear.
+            ScopedSlot.Generation = NextGeneration(ScopedSlot.Generation);
         }
         MUsed = 0;
     }
@@ -265,7 +268,8 @@ private:
 
     [[nodiscard]] static std::uint32_t NextGeneration(std::uint32_t InGeneration) noexcept
     {
-        const std::uint32_t ScopedNext = InGeneration + 1;
+        // Packed script handles carry only the low 16 generation bits.
+        const std::uint32_t ScopedNext = (InGeneration + 1u) & 0xFFFFu;
         return ScopedNext == 0 ? 1u : ScopedNext;
     }
 
@@ -314,12 +318,20 @@ private:
     [[nodiscard]] Status PublishPair(const Value& InFirst, const Value& InSecond, Handle* OutFirst,
                                      Handle* OutSecond) noexcept
     {
+        const Handle ScopedOriginalFirst = OutFirst != nullptr ? *OutFirst : Handle{};
+        const bool ScopedCreatedFirst = !IsValid(ScopedOriginalFirst);
         const Status ScopedFirst = Publish(InFirst, OutFirst);
         if (ScopedFirst != Status::Ok)
         {
             return ScopedFirst;
         }
-        return Publish(InSecond, OutSecond);
+        const Status ScopedSecond = Publish(InSecond, OutSecond);
+        if (ScopedSecond != Status::Ok && ScopedCreatedFirst && OutFirst != nullptr)
+        {
+            (void)Release(*OutFirst);
+            *OutFirst = ScopedOriginalFirst;
+        }
+        return ScopedSecond;
     }
 
     [[nodiscard]] Status BinaryOperation(Handle InLeft, Handle InRight, Handle* OutResult,

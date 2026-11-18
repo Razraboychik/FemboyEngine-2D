@@ -74,7 +74,8 @@ void WeatherSystem::Update(Ecs::SystemContext& InContext) noexcept
         ScopedContext.gust = ScopedGust;
         ScopedContext.wetness =
             std::clamp(ScopedContext.wetness + ScopedDt * (ScopedContext.rainIntensity * 0.4f - 0.05f), 0.0f, 1.0f);
-        ScopedContext.flags &= ~(WeatherRain | WeatherSnow | WeatherFire);
+        ScopedContext.flags &=
+            ~(WeatherRain | WeatherSnow | WeatherFire | WeatherClouds | WeatherCloudShadows | WeatherFog);
         if (ScopedContext.cloudCoverage > 0.01f)
         {
             ScopedContext.flags |= WeatherClouds | WeatherCloudShadows;
@@ -108,6 +109,12 @@ void WeatherSystem::Update(Ecs::SystemContext& InContext) noexcept
             MWindField.fog = Vector4D{ScopedContext.fogDensity, ScopedContext.fogFalloff, ScopedTime,
                                       static_cast<float>(ScopedContext.flags)};
         }
+    }
+    if (ScopedPrimary == Fby::kNullEntity)
+    {
+        // A removed weather context must not leave cloth driven by the last
+        // zone's wind forever.
+        MWindField = WeatherWindField{};
     }
     if (InContext.cloth != nullptr)
     {

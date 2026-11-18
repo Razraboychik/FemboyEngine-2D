@@ -98,6 +98,7 @@
 #include "Engine/ECS/Scene.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <thread>
 #include <array>
@@ -484,9 +485,10 @@ void ProjectileStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
                     std::array<Fby::SdfDebrisPiece, 24> ScopedPieces{};
                     Fby::SdfDebrisSettings ScopedSettings;
                     ScopedSettings.MaxPieces = static_cast<std::uint32_t>(ScopedPieces.size());
-                    ScopedSettings.Seed = static_cast<std::uint64_t>(ScopedHit.point.X * 131.0f) ^
-                                          static_cast<std::uint64_t>(ScopedHit.point.Y * 17.0f) ^
-                                          ScopedRuntime->destructible->Ops().size();
+                    ScopedSettings.Seed =
+                        (static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(ScopedHit.point.X)) << 32) ^
+                        static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(ScopedHit.point.Y)) ^
+                        ScopedRuntime->destructible->Ops().size();
                     const std::uint32_t ScopedDebrisCount = Fby::SpawnDebris(
                         *ScopedRuntime->destructible, ScopedCarve, ScopedSettings, ScopedPieces);
                     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedDebrisCount; ++ScopedIndex)
@@ -2183,8 +2185,15 @@ int main(int argc, char** argv)
         }
     }
 
-    while (!ScopedEditor.ShouldQuit() && ScopedWindow.PumpEvents())
+    while (!ScopedEditor.ShouldQuit())
     {
+        // PumpEvents() returns false once the close request is latched, which
+        // used to skip the whole body and bypass the save prompt. Keep looping
+        // through the editor's quit flow; only a missing window is fatal here.
+        if (!ScopedWindow.PumpEvents() && !ScopedWindow.ShouldClose())
+        {
+            break;
+        }
         const auto ScopedFrameStart = std::chrono::steady_clock::now();
         (void)ScopedPieWindowHost.PumpEvents();
         // The window close button goes through the editor so an unsaved scene
@@ -2416,6 +2425,9 @@ int main(int argc, char** argv)
                     ScopedVtSystem->RequestTiles(
                         std::span<const Fby::Rhi::VirtualTextureTileId>(ScopedRequests.data(), ScopedRequestCount));
                 }
+                // Async requests are only queued by RequestTiles; commit the
+                // ready pages before reading the table updates this frame.
+                ScopedVtSystem->PollLoads();
 
                 bool ScopedTableChanged = false;
                 for (const Fby::Rhi::VirtualTextureTableUpdate& ScopedUpdate : ScopedVtSystem->PendingTableUpdates())

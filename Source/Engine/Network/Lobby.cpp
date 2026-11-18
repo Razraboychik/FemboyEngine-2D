@@ -226,8 +226,11 @@ void LobbyServer::HandleCreate(const NetAddress& InFrom, std::span<const std::by
     ScopedRoom = Room{};
     ScopedRoom.Used = true;
     ScopedRoom.Id = MNextRoomId++;
-    ScopedRoom.MaxPlayers = ScopedMaxPlayers == 0 ? 1 : (ScopedMaxPlayers > kLobbyMaxPlayers ? kLobbyMaxPlayers
-                                                                                              : ScopedMaxPlayers);
+    const std::uint32_t ScopedRequested = ScopedMaxPlayers == 0 ? 1u : ScopedMaxPlayers;
+    const std::uint32_t ScopedConfiguredCap =
+        std::min<std::uint32_t>(MConfig.MaxPlayersPerRoom, kLobbyMaxPlayers);
+    ScopedRoom.MaxPlayers = static_cast<std::uint8_t>(
+        std::min(ScopedRequested, ScopedConfiguredCap == 0 ? 1u : ScopedConfiguredCap));
     std::memcpy(ScopedRoom.Name, ScopedIn, kLobbyNameBytes);
     ScopedRoom.Name[kLobbyNameBytes - 1] = '\0';
 

@@ -489,7 +489,14 @@ bool TransportGroupSystem::CreateGroup(Ecs::Registry& InRegistry, Entity InRoot,
     TransportGroupComponent* ScopedComponent = InRegistry.try_get<TransportGroupComponent>(InRoot);
     if (ScopedComponent == nullptr)
     {
-        ScopedComponent = &InRegistry.emplace<TransportGroupComponent>(InRoot);
+        try
+        {
+            ScopedComponent = &InRegistry.emplace<TransportGroupComponent>(InRoot);
+        }
+        catch (...)
+        {
+            return false;
+        }
     }
     ScopedComponent->GroupId = InGroupId;
     ScopedComponent->ParentGroupId = InParentGroupId;

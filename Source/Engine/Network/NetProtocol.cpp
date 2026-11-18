@@ -276,7 +276,6 @@ std::uint32_t InputChannel::Receive(NetRollbackSession& InSession) noexcept
 
 void InputChannel::OnPacket(void* InUser, const NetAddress& InFrom, std::span<const std::byte> InMessage) noexcept
 {
-    (void)InFrom;
     auto* ScopedSink = static_cast<ReceiveSink*>(InUser);
     if (ScopedSink == nullptr || ScopedSink->channel == nullptr || ScopedSink->session == nullptr)
     {
@@ -285,6 +284,11 @@ void InputChannel::OnPacket(void* InUser, const NetAddress& InFrom, std::span<co
     InputChannel& ScopedChannel = *ScopedSink->channel;
     InputPacket ScopedPacket;
     if (!DecodeInputPacket(InMessage, &ScopedPacket))
+    {
+        ++ScopedChannel.MStats.Rejected;
+        return;
+    }
+    if (ScopedChannel.MRemote.Port != 0 && InFrom != ScopedChannel.MRemote)
     {
         ++ScopedChannel.MStats.Rejected;
         return;

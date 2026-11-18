@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -192,7 +193,13 @@ public:
         }
         std::sort(MOrder.begin(), MOrder.begin() + MItemCount,
                   [this](std::uint32_t InLeft, std::uint32_t InRight)
-                  { return MKeys[InLeft] < MKeys[InRight]; });
+                  {
+                      if (MKeys[InLeft] != MKeys[InRight])
+                      {
+                          return MKeys[InLeft] < MKeys[InRight];
+                      }
+                      return InLeft < InRight;
+                  });
         for (std::uint32_t ScopedI = 0; ScopedI < MItemCount; ++ScopedI)
         {
             const std::uint32_t ScopedSource = MOrder[ScopedI];
@@ -251,7 +258,7 @@ void ExtractFrame(Fby::Ecs::RenderSystemView& InView, void* InUser)
 int main(int, char**)
 {
     Fby::SetLogLevel(Fby::LogLevel::Info);
-    Fby::LogInfo("game", "@PROJECT_NAME@ starting");
+    Fby::LogInfo("game", "{} starting", "@PROJECT_NAME@");
 
     Fby::WindowManager ScopedWindow;
     if (!ScopedWindow.Initialize())
@@ -339,6 +346,7 @@ int main(int, char**)
         ++ScopedFrameIndex;
         ScopedContext.frameIndex = ScopedFrameIndex;
         ScopedContext.dt = ScopedDt;
+        ScopedContext.uiDt = ScopedDt;
         ScopedGraph.Run(Fby::Ecs::Phase::PreUpdate, ScopedContext);
 
         ScopedAccumulator += ScopedDt;
@@ -357,6 +365,7 @@ int main(int, char**)
         }
 
         ScopedContext.dt = ScopedDt;
+        ScopedContext.uiDt = ScopedDt;
         ScopedContext.interpolationAlpha = std::clamp(ScopedAccumulator / kFixedStep, 0.0f, 1.0f);
         ScopedGraph.Run(Fby::Ecs::Phase::PostUpdate, ScopedContext);
         ScopedGraph.Run(Fby::Ecs::Phase::Render, ScopedContext);

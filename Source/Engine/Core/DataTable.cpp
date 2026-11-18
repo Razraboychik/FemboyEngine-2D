@@ -86,10 +86,11 @@ bool DataTable::GetFloat(std::size_t InRow, std::string_view InColumn, float* Ou
     {
         return false;
     }
-    char* ScopedEnd = nullptr;
-    const std::string ScopedNullTerminated(ScopedText);
-    const float ScopedValue = std::strtof(ScopedNullTerminated.c_str(), &ScopedEnd);
-    if (ScopedEnd == ScopedNullTerminated.c_str() || *ScopedEnd != '\0' || !std::isfinite(ScopedValue))
+    float ScopedValue = 0.0f;
+    const auto ScopedResult =
+        std::from_chars(ScopedText.data(), ScopedText.data() + ScopedText.size(), ScopedValue);
+    if (ScopedResult.ec != std::errc{} || ScopedResult.ptr != ScopedText.data() + ScopedText.size() ||
+        !std::isfinite(ScopedValue))
     {
         return false;
     }

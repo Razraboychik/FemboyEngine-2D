@@ -173,15 +173,8 @@ namespace
     {
         return false;
     }
-    std::string ScopedCopy(InText);
-    char* ScopedEnd = nullptr;
-    const float ScopedValue = std::strtof(ScopedCopy.c_str(), &ScopedEnd);
-    if (ScopedEnd == ScopedCopy.c_str() || *ScopedEnd != '\0')
-    {
-        return false;
-    }
-    *Out = ScopedValue;
-    return true;
+    const auto ScopedResult = std::from_chars(InText.data(), InText.data() + InText.size(), *Out);
+    return ScopedResult.ec == std::errc{} && ScopedResult.ptr == InText.data() + InText.size();
 }
 
 [[nodiscard]] std::string_view NextToken(std::string_view* Cursor) noexcept
@@ -467,8 +460,8 @@ bool Tilemap::LoadFromVfs(const VirtualFileSystem& InVfs, std::string_view InPat
         }
         return false;
     }
-    const std::optional<std::span<const std::byte>> ScopedBytes = InVfs.Read(InPath);
-    if (!ScopedBytes.has_value() || ScopedBytes->empty())
+    const auto ScopedPinned = InVfs.Pin(InPath);
+    if (!ScopedPinned || ScopedPinned->bytes.empty())
     {
         if (InError != nullptr)
         {
@@ -476,7 +469,8 @@ bool Tilemap::LoadFromVfs(const VirtualFileSystem& InVfs, std::string_view InPat
         }
         return false;
     }
-    const std::string_view ScopedText(reinterpret_cast<const char*>(ScopedBytes->data()), ScopedBytes->size());
+    const std::string_view ScopedText(reinterpret_cast<const char*>(ScopedPinned->bytes.data()),
+                                     ScopedPinned->bytes.size());
     return LoadText(ScopedText, OutMap, InError);
 }
 

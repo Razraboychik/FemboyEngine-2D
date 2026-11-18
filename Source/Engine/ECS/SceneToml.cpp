@@ -527,11 +527,16 @@ std::expected<SceneData, std::string> DecodeSceneToml(std::string_view InToml, c
         ScopedScene.meta.author = *ScopedAuthor;
     }
 
-    const toml::array* ScopedEntities = ScopedRoot["entity"].as_array();
-    if (ScopedEntities == nullptr)
+    const toml::node* ScopedEntitiesNode = ScopedRoot.get("entity");
+    if (ScopedEntitiesNode == nullptr)
     {
         // An empty scene is valid
         return ScopedScene;
+    }
+    const toml::array* ScopedEntities = ScopedEntitiesNode->as_array();
+    if (ScopedEntities == nullptr)
+    {
+        return std::unexpected("'entity' must be an array of tables ([[entity]])");
     }
 
     ScopedScene.entities.reserve(ScopedEntities->size());
@@ -549,7 +554,14 @@ std::expected<SceneData, std::string> DecodeSceneToml(std::string_view InToml, c
             ScopedEntity.name = *ScopedName;
         }
 
-        const toml::array* ScopedComponentArray = (*ScopedEntityTable)["components"].as_array();
+        const toml::node* ScopedComponentsNode = ScopedEntityTable->get("components");
+        if (ScopedComponentsNode != nullptr && !ScopedComponentsNode->is_array())
+        {
+            return std::unexpected("entity[" + std::to_string(ScopedEntityIndex) +
+                                   "].components must be an array of tables");
+        }
+        const toml::array* ScopedComponentArray =
+            ScopedComponentsNode != nullptr ? ScopedComponentsNode->as_array() : nullptr;
         if (ScopedComponentArray != nullptr)
         {
             std::unordered_set<std::string> ScopedSeen;

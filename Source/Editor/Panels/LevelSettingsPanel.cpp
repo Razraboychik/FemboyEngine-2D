@@ -95,6 +95,7 @@ void LevelSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         }
     }
     std::uint32_t ScopedFieldCount = 0;
+    Entity ScopedPendingRemove = Fby::kNullEntity;
     auto ScopedFields = InContext.registry.view<GravityBodyComponent>();
     for (const Entity ScopedEntity : ScopedFields)
     {
@@ -147,7 +148,9 @@ void LevelSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
             ImGui::Checkbox("Enabled", &ScopedBody.Enabled);
             if (ImGui::Button("Remove field"))
             {
-                InContext.registry.remove<GravityBodyComponent>(ScopedEntity);
+                // A structural remove during View iteration trips the ECS
+                // iteration guard; defer it until the loop is done.
+                ScopedPendingRemove = ScopedEntity;
                 ImGui::TreePop();
                 ImGui::PopID();
                 break;
@@ -155,6 +158,10 @@ void LevelSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
             ImGui::TreePop();
         }
         ImGui::PopID();
+    }
+    if (ScopedPendingRemove != Fby::kNullEntity)
+    {
+        InContext.registry.remove<GravityBodyComponent>(ScopedPendingRemove);
     }
     ImGui::TextDisabled("%u field(s).", ScopedFieldCount);
 

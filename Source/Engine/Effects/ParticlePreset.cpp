@@ -31,6 +31,17 @@ namespace
     return ScopedValue.has_value() ? *ScopedValue : InFallback;
 }
 
+[[nodiscard]] std::uint32_t IntegerField(const toml::table& InTable, std::string_view InKey,
+                                         std::uint32_t InFallback) noexcept
+{
+    const double ScopedValue = NumberField(InTable, InKey, static_cast<double>(InFallback));
+    if (!std::isfinite(ScopedValue) || ScopedValue < 0.0 || ScopedValue > 4294967295.0)
+    {
+        return InFallback;
+    }
+    return static_cast<std::uint32_t>(ScopedValue);
+}
+
 [[nodiscard]] bool BoolField(const toml::table& InTable, std::string_view InKey, bool InFallback) noexcept
 {
     const auto ScopedNode = InTable[InKey];
@@ -153,10 +164,34 @@ namespace
         }
         return false;
     }
+    if (ScopedId.size() >= sizeof(OutPreset.Id))
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "particle preset id is too long: " + ScopedId;
+        }
+        return false;
+    }
     std::snprintf(OutPreset.Id, sizeof(OutPreset.Id), "%s", ScopedId.c_str());
     const std::string ScopedName = StringField(InTable, "name", ScopedId);
+    if (ScopedName.size() >= sizeof(OutPreset.DisplayName))
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "particle preset name is too long: " + ScopedName;
+        }
+        return false;
+    }
     std::snprintf(OutPreset.DisplayName, sizeof(OutPreset.DisplayName), "%s", ScopedName.c_str());
     const std::string ScopedCategory = StringField(InTable, "category", "Pack");
+    if (ScopedCategory.size() >= sizeof(OutPreset.Category))
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "particle preset category is too long: " + ScopedCategory;
+        }
+        return false;
+    }
     std::snprintf(OutPreset.Category, sizeof(OutPreset.Category), "%s", ScopedCategory.c_str());
 
     const std::optional<ParticleShape> ScopedShape = ShapeFromName(StringField(InTable, "shape", "Circle"));
@@ -182,8 +217,8 @@ namespace
     ParticleEffectSettings& ScopedSettings = OutPreset.Settings;
     ScopedSettings.Shape = *ScopedShape;
     ScopedSettings.EmissionShape = *ScopedEmissionShape;
-    ScopedSettings.MaxParticles = static_cast<std::uint32_t>(NumberField(InTable, "max_particles", 256.0));
-    ScopedSettings.Seed = static_cast<std::uint32_t>(NumberField(InTable, "seed", 0x9E3779B9u));
+    ScopedSettings.MaxParticles = IntegerField(InTable, "max_particles", 256u);
+    ScopedSettings.Seed = IntegerField(InTable, "seed", 0x9E3779B9u);
     (void)Vec2Field(InTable, "direction", ScopedSettings.Direction);
     (void)Vec2Field(InTable, "gravity", ScopedSettings.Gravity);
     (void)Vec2Field(InTable, "wind", ScopedSettings.Wind);
@@ -193,7 +228,7 @@ namespace
     ScopedSettings.Turbulence = static_cast<float>(NumberField(InTable, "turbulence", 0.0));
     ScopedSettings.Swirl = static_cast<float>(NumberField(InTable, "swirl", 0.0));
     ScopedSettings.EmissionRate = static_cast<float>(NumberField(InTable, "rate", 60.0));
-    ScopedSettings.BurstCount = static_cast<std::uint32_t>(NumberField(InTable, "burst_count", 0.0));
+    ScopedSettings.BurstCount = IntegerField(InTable, "burst_count", 0u);
     ScopedSettings.BurstInterval = static_cast<float>(NumberField(InTable, "burst_interval", 0.0));
     ScopedSettings.Duration = static_cast<float>(NumberField(InTable, "duration", 0.0));
     ScopedSettings.Loop = BoolField(InTable, "loop", true);
@@ -370,6 +405,7 @@ bool LoadParticlePresetToml(std::string_view InText, ParticlePresetRegistry& InR
         return false;
     }
 
+    const std::uint32_t ScopedOriginalCount = InRegistry.Count();
     for (const toml::node& ScopedNode : *ScopedPresets)
     {
         const toml::table* ScopedTable = ScopedNode.as_table();
@@ -379,15 +415,18 @@ bool LoadParticlePresetToml(std::string_view InText, ParticlePresetRegistry& InR
             {
                 *OutError = "particle preset entry is not a table";
             }
+            InRegistry.Truncate(ScopedOriginalCount);
             return false;
         }
         ParticlePresetDesc ScopedDesc{};
         if (!ParsePreset(*ScopedTable, ScopedDesc, OutError))
         {
+            InRegistry.Truncate(ScopedOriginalCount);
             return false;
         }
         if (!InRegistry.Add(ScopedDesc, InOwner, OutError))
         {
+            InRegistry.Truncate(ScopedOriginalCount);
             return false;
         }
     }
@@ -499,11 +538,21 @@ bool SaveParticlePresetFile(std::string_view InPath, const ParticlePresetDesc& I
         return false;
     }
     ScopedStream.write(ScopedText.data(), static_cast<std::streamsize>(ScopedText.size()));
+    ScopedStream.flush();
     if (!ScopedStream)
     {
         if (OutError != nullptr)
         {
             *OutError = "write failed for particle preset: " + std::string(InPath);
+        }
+        return false;
+    }
+    ScopedStream.close();
+    if (ScopedStream.fail())
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "close failed for particle preset: " + std::string(InPath);
         }
         return false;
     }

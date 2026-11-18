@@ -111,7 +111,9 @@ struct HierarchyScratch
 
 bool UpdateHierarchy(Registry& InRegistry) noexcept
 {
-    HierarchyScratch& ScopedScratch = InRegistry.ctx().emplace<HierarchyScratch>();
+    try
+    {
+        HierarchyScratch& ScopedScratch = InRegistry.ctx().emplace<HierarchyScratch>();
     ScopedScratch.Entries.clear();
     bool ScopedOk = true;
     // Collect first: adding Transform2D moves the entity to another archetype,
@@ -137,7 +139,12 @@ bool UpdateHierarchy(Registry& InRegistry) noexcept
         }
         *ScopedTarget = *ScopedWorld;
     }
-    return ScopedOk;
+        return ScopedOk;
+    }
+    catch (...)
+    {
+        return false;
+    }
 }
 
 bool SetParent(Registry& InRegistry, Entity InChild, Entity InParent) noexcept
