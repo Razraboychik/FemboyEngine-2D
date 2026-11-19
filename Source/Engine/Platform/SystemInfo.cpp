@@ -52,7 +52,9 @@ namespace
     {
         return {};
     }
-    std::wstring ScopedWide(ScopedBuffer.data());
+    const std::size_t ScopedChars = std::min<std::size_t>(
+        static_cast<std::size_t>(ScopedBytes) / sizeof(wchar_t), ScopedBuffer.size() - 1u);
+    std::wstring ScopedWide(ScopedBuffer.data(), ScopedChars);
     return std::string(ScopedWide.begin(), ScopedWide.end());
 }
 
@@ -72,9 +74,18 @@ void QueryGpu(HardwareInfo* InInfo)
         return;
     }
     IDXGIAdapter1* ScopedAdapter = nullptr;
-    for (UINT ScopedIndex = 0; ScopedFactory->EnumAdapters1(ScopedIndex, &ScopedAdapter) != DXGI_ERROR_NOT_FOUND;
-         ++ScopedIndex)
+    for (UINT ScopedIndex = 0;; ++ScopedIndex)
     {
+        const HRESULT ScopedEnum = ScopedFactory->EnumAdapters1(ScopedIndex, &ScopedAdapter);
+        if (FAILED(ScopedEnum) || ScopedAdapter == nullptr)
+        {
+            if (ScopedAdapter != nullptr)
+            {
+                ScopedAdapter->Release();
+                ScopedAdapter = nullptr;
+            }
+            break;
+        }
         DXGI_ADAPTER_DESC1 ScopedDesc{};
         if (ScopedAdapter != nullptr && SUCCEEDED(ScopedAdapter->GetDesc1(&ScopedDesc)) &&
             (ScopedDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0)

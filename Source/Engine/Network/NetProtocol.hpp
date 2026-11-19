@@ -31,6 +31,15 @@ struct InputPacket
 };
 
 static_assert(sizeof(NetInputFrame) == 24);
+static_assert(offsetof(NetInputFrame, tick) == 0);
+static_assert(offsetof(NetInputFrame, moveX) == 8);
+static_assert(offsetof(NetInputFrame, moveY) == 10);
+static_assert(offsetof(NetInputFrame, aimX) == 12);
+static_assert(offsetof(NetInputFrame, aimY) == 14);
+static_assert(offsetof(NetInputFrame, buttons) == 16);
+static_assert(offsetof(NetInputFrame, sequence) == 20);
+static_assert(offsetof(NetInputFrame, player) == 22);
+static_assert(offsetof(NetInputFrame, reserved) == 23);
 
 // Writes the packet into `OutBuffer`. Returns the byte count, or 0 when the
 // buffer is too small or the packet is invalid.

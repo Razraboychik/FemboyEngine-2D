@@ -71,7 +71,7 @@ public:
     VoiceCapture& operator=(const VoiceCapture&) = delete;
 
     [[nodiscard]] bool Start(const AudioDeviceEnumerator& InDevices, const char* InDeviceId, FloatRing* InRing,
-                             std::uint32_t InSampleRate = 48000, std::string* InError = nullptr) noexcept;
+                             std::uint32_t InSampleRate = 48000, std::string* InError = nullptr);
     void Stop() noexcept;
     [[nodiscard]] bool Active() const noexcept
     {

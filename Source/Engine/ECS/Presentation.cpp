@@ -52,6 +52,17 @@ void WakeSleepingStatic(Ecs::Registry& InRegistry, Entity InEntity, std::uint32_
     ScopedStatic->LastWakeReason = InReason;
     ++ScopedStatic->WakeCount;
 
+    if (auto* ScopedPolicy = InRegistry.try_get<CollisionPolicyComponent>(InEntity))
+    {
+        if (ScopedPolicy->GetMode() == CollisionMode::SimpleStatic)
+        {
+            ScopedPolicy->SetMode(CollisionMode::SimpleDynamic);
+        }
+        else if (ScopedPolicy->GetMode() == CollisionMode::ComplexStatic)
+        {
+            ScopedPolicy->SetMode(CollisionMode::ComplexDynamic);
+        }
+    }
     auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity);
     if (ScopedBody != nullptr)
     {

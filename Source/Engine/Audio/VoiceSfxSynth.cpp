@@ -4,6 +4,7 @@
 #include "Engine/Core/Pcg32.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <cmath>
 #include <cstdint>
 
@@ -85,15 +86,48 @@ void NormalizePeak(std::span<float> InSamples, float InCeiling) noexcept
 }
 }
 
-std::uint32_t SynthesizeVoiceSfx(VoiceSfxKind InKind, std::uint32_t InSampleRate, std::span<float> Out) noexcept
+std::uint32_t VoiceSfxSampleCount(VoiceSfxKind InKind, std::uint32_t InSampleRate) noexcept
 {
     const float ScopedDuration = DurationSeconds(InKind);
     if (ScopedDuration <= 0.0f || InSampleRate == 0)
     {
         return 0;
     }
-    const std::uint32_t ScopedCount = std::min<std::uint32_t>(
-        static_cast<std::uint32_t>(ScopedDuration * static_cast<float>(InSampleRate) + 0.5f), kVoiceSfxMaxSamples);
+    const double ScopedSamples = static_cast<double>(ScopedDuration) * static_cast<double>(InSampleRate);
+    if (ScopedSamples > static_cast<double>(std::numeric_limits<std::uint32_t>::max()))
+    {
+        return 0;
+    }
+    return static_cast<std::uint32_t>(ScopedSamples + 0.5);
+}
+
+VoiceSfxSynthesisStatus SynthesizeVoiceSfxChecked(VoiceSfxKind InKind, std::uint32_t InSampleRate,
+                                                   std::span<float> Out, std::uint32_t* OutCount) noexcept
+{
+    if (InSampleRate == 0)
+    {
+        return VoiceSfxSynthesisStatus::InvalidSampleRate;
+    }
+    const std::uint32_t ScopedCount = VoiceSfxSampleCount(InKind, InSampleRate);
+    if (ScopedCount == 0)
+    {
+        return VoiceSfxSynthesisStatus::UnsupportedKind;
+    }
+    if (Out.size() < ScopedCount)
+    {
+        return VoiceSfxSynthesisStatus::BufferTooSmall;
+    }
+    if (OutCount != nullptr)
+    {
+        *OutCount = ScopedCount;
+    }
+    return SynthesizeVoiceSfx(InKind, InSampleRate, Out) == ScopedCount ? VoiceSfxSynthesisStatus::Ok
+                                                                       : VoiceSfxSynthesisStatus::UnsupportedKind;
+}
+
+std::uint32_t SynthesizeVoiceSfx(VoiceSfxKind InKind, std::uint32_t InSampleRate, std::span<float> Out) noexcept
+{
+    const std::uint32_t ScopedCount = VoiceSfxSampleCount(InKind, InSampleRate);
     if (ScopedCount == 0 || Out.size() < ScopedCount)
     {
         return 0;
@@ -181,6 +215,14 @@ std::uint32_t SynthesizeVoiceSfx(VoiceSfxKind InKind, std::uint32_t InSampleRate
     }
 
     NormalizePeak(ScopedOut, 0.8f);
+    // Ramp the last 2 ms to zero so one-shot playback never ends on a step.
+    const std::uint32_t ScopedFade = std::min<std::uint32_t>(
+        ScopedCount, std::max<std::uint32_t>(1, static_cast<std::uint32_t>(ScopedRate * 0.002f)));
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedFade; ++ScopedIndex)
+    {
+        const float ScopedGain = 1.0f - static_cast<float>(ScopedIndex + 1u) / static_cast<float>(ScopedFade);
+        ScopedOut[ScopedCount - ScopedFade + ScopedIndex] *= ScopedGain;
+    }
     return ScopedCount;
 }
 }

@@ -123,6 +123,12 @@ void SdfShadowPass::RefreshConstants(const RenderGraphContext& InContext) noexce
     // owns the frame-slot layout. The pass supplies validity, blend and camera.
     MConstants.history = Vector4D{0.0f, ScopedSdf.temporal ? 1.0f : 0.0f, 0.5f, 0.0f};
     MConstants.historyCamera = ScopedSdf.previousCamera;
+    MConstants.fieldGrid = Vector4D{ScopedSdf.origin.X, ScopedSdf.origin.Y, ScopedSdf.cellSize.X,
+                                    ScopedSdf.cellSize.Y};
+    const float ScopedBrickColumns = static_cast<float>((ScopedSdf.width + 15u) / 16u);
+    const float ScopedBrickRows = static_cast<float>((ScopedSdf.height + 15u) / 16u);
+    MConstants.brickMeta = Vector4D{16.0f, ScopedBrickColumns, ScopedBrickRows,
+                                    static_cast<float>(ScopedSdf.atlasColumns)};
     const std::uint32_t ScopedCount = std::min(ScopedSdf.occluderCount, kMaxSdfGpuOccluders);
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
     {

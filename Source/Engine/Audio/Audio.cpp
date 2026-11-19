@@ -248,6 +248,9 @@ void AudioSystem::Shutdown()
     }
     MMixer.Shutdown();
     ResetRuntimeState();
+    MClipSamples = {};
+    MRetiredClipSamples.clear();
+    MClipCount = 0;
     MGameSfxBus = kSfxBus;
     MGameplayBusActive = false;
     MInitialized = false;
@@ -333,8 +336,24 @@ bool AudioSystem::RegisterClip(AssetId InId, std::span<const float> InInterleave
         }
         ScopedClip = &MClips[MClipCount++];
     }
+    std::shared_ptr<const std::vector<float>> ScopedStorage;
+    try
+    {
+        ScopedStorage = std::make_shared<const std::vector<float>>(InInterleavedSamples.begin(),
+                                                                   InInterleavedSamples.end());
+    }
+    catch (...)
+    {
+        return false;
+    }
+    const std::size_t ScopedIndex = static_cast<std::size_t>(ScopedClip - MClips);
+    if (MClipSamples[ScopedIndex] != nullptr)
+    {
+        MRetiredClipSamples.push_back(std::move(MClipSamples[ScopedIndex]));
+    }
+    MClipSamples[ScopedIndex] = ScopedStorage;
     ScopedClip->id = InId;
-    ScopedClip->samples = InInterleavedSamples.data();
+    ScopedClip->samples = ScopedStorage->data();
     ScopedClip->frameCount = static_cast<std::uint32_t>(InInterleavedSamples.size() / InChannels);
     ScopedClip->channels = InChannels;
     ScopedClip->sampleRate = InSampleRate;
@@ -523,6 +542,31 @@ void AudioSystem::ConfigureLimiter(const LimiterDesc& InDesc) noexcept
     MLimiter.Configure(MSampleRate == 0 ? 48000 : MSampleRate, InDesc);
 }
 
+std::uint32_t AudioSystem::EncodeVoice(std::uint16_t InSlot) noexcept
+{
+    if (InSlot >= kMaxAudioVoices)
+    {
+        return kInvalidAudioVoice;
+    }
+    const std::uint16_t ScopedGeneration = ++MVoiceGenerations[InSlot];
+    return (static_cast<std::uint32_t>(ScopedGeneration) << 16) | InSlot;
+}
+
+std::uint16_t AudioSystem::DecodeVoice(std::uint32_t InHandle) const noexcept
+{
+    if (InHandle == kInvalidAudioVoice)
+    {
+        return static_cast<std::uint16_t>(kInvalidAudioVoice);
+    }
+    const std::uint16_t ScopedSlot = static_cast<std::uint16_t>(InHandle & 0xFFFFu);
+    const std::uint16_t ScopedGeneration = static_cast<std::uint16_t>(InHandle >> 16);
+    if (ScopedSlot >= kMaxAudioVoices || MVoiceGenerations[ScopedSlot] != ScopedGeneration)
+    {
+        return static_cast<std::uint16_t>(kInvalidAudioVoice);
+    }
+    return ScopedSlot;
+}
+
 std::uint32_t AudioSystem::StartClip(AssetId InId, BusId InBus, float InVolume, float InPitch, bool InLoop) noexcept
 {
     DspClipView ScopedClip{};
@@ -573,7 +617,7 @@ std::uint32_t AudioSystem::StartClip(AssetId InId, BusId InBus, float InVolume, 
     {
         return kInvalidAudioVoice;
     }
-    return ScopedVoice;
+    return EncodeVoice(static_cast<std::uint16_t>(ScopedVoice));
 }
 
 std::uint32_t AudioSystem::Play(AssetId InId, AudioBus InBus, float InVolume, float InPitch, bool InLoop)
@@ -584,9 +628,10 @@ std::uint32_t AudioSystem::Play(AssetId InId, AudioBus InBus, float InVolume, fl
 
 void AudioSystem::Stop(std::uint32_t InVoice)
 {
-    if (InVoice < kMaxAudioVoices)
+    const std::uint16_t ScopedSlot = DecodeVoice(InVoice);
+    if (ScopedSlot != kInvalidAudioVoice)
     {
-        (void)MMixer.StopVoice(InVoice);
+        (void)MMixer.StopVoice(ScopedSlot);
     }
 }
 
@@ -597,11 +642,12 @@ void AudioSystem::StopAll()
 
 bool AudioSystem::SetVoiceSpatial(std::uint32_t InVoice, float InVolume, float InPan) noexcept
 {
-    if (InVoice == kInvalidAudioVoice || InVoice >= kMaxAudioVoices)
+    const std::uint16_t ScopedSlot = DecodeVoice(InVoice);
+    if (ScopedSlot == kInvalidAudioVoice)
     {
         return false;
     }
-    return MMixer.SetVoiceSpatial(InVoice, InVolume, InPan) == DspResult::Ok;
+    return MMixer.SetVoiceSpatial(ScopedSlot, InVolume, InPan) == DspResult::Ok;
 }
 
 void AudioSystem::Mix(float* Output, std::uint32_t InFrameCount) noexcept

@@ -14,6 +14,7 @@
 #include <bitset>
 #include <cassert>
 #include <cstddef>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -499,7 +500,7 @@ public:
         Signature ScopedMask;
         (ScopedMask.set(Detail::ComponentIdOf<Components>()), ...);
         (Detail::AccessValidation::Write(Detail::ComponentIdOf<Components>()), ...);
-        ++MModificationRevision;
+        MModificationRevision.fetch_add(1, std::memory_order_relaxed);
         for (Archetype& ScopedArchetype : MArchetypes)
         {
             if ((ScopedArchetype.Type & ScopedMask) != ScopedMask)
@@ -571,12 +572,12 @@ public:
     // caches that mirror component values (not just the entity set) compare it.
     [[nodiscard]] std::uint64_t ModificationRevision() const noexcept
     {
-        return MModificationRevision;
+        return MModificationRevision.load(std::memory_order_relaxed);
     }
 
     void MarkRevision() noexcept
     {
-        ++MModificationRevision;
+        MModificationRevision.fetch_add(1, std::memory_order_relaxed);
     }
 
     [[nodiscard]] std::uint32_t& IterationDepthRef() noexcept
@@ -912,7 +913,7 @@ private:
     std::size_t MLiveCount = 0;
     std::uint32_t MIterationDepth = 0;
     std::uint64_t MRevision = 0;
-    std::uint64_t MModificationRevision = 0;
+    std::atomic<std::uint64_t> MModificationRevision{0};
 };
 
 }

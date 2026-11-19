@@ -83,7 +83,7 @@ std::vector<DxAdapterInfo> ProbeDxAdapters()
         ScopedInfo.D3D12FeatureLevel = ProbeD3D12(ScopedAdapter.Get());
         ScopedInfo.D3D11FeatureLevel = ProbeD3D11(ScopedAdapter.Get());
         ScopedInfo.SupportsD3D12 = ScopedInfo.D3D12FeatureLevel >= D3D_FEATURE_LEVEL_11_0;
-        ScopedInfo.SupportsD3D11 = ScopedInfo.D3D11FeatureLevel >= D3D_FEATURE_LEVEL_11_0;
+        ScopedInfo.SupportsD3D11 = ScopedInfo.D3D11FeatureLevel != 0;
         ScopedAdapters.push_back(ScopedInfo);
     }
     return ScopedAdapters;

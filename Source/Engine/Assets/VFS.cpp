@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -489,6 +490,8 @@ bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std
 
     const std::uint32_t ScopedMountId = ScopedMount->id;
     std::size_t ScopedAdded = 0;
+    std::unordered_set<std::string> ScopedSeenPaths;
+    ScopedSeenPaths.reserve(ScopedHeader.entryCount);
 
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedHeader.entryCount; ++ScopedI)
     {
@@ -498,17 +501,34 @@ bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std
                         static_cast<std::size_t>(ScopedI) * sizeof(PakEntry),
                     sizeof(ScopedEntry));
 
-        const std::uint64_t ScopedPathPosition = ScopedHeader.stringTableOffset + ScopedEntry.pathOffset;
-        if (!IsRangeInside(ScopedPathPosition, ScopedEntry.pathSize, ScopedBytes.size()))
+        if (ScopedHeader.stringTableOffset > ScopedBytes.size() ||
+            ScopedEntry.pathOffset > ScopedBytes.size() - ScopedHeader.stringTableOffset ||
+            ScopedEntry.pathSize > ScopedBytes.size() - ScopedHeader.stringTableOffset - ScopedEntry.pathOffset ||
+            ScopedEntry.pathSize == 0 || ScopedEntry.pathSize > 4096)
         {
             continue;
         }
+        const std::uint64_t ScopedPathPosition =
+            ScopedHeader.stringTableOffset + static_cast<std::uint64_t>(ScopedEntry.pathOffset);
         if (!IsRangeInside(ScopedEntry.offset, ScopedEntry.size, ScopedBytes.size()))
         {
             continue;
         }
-        const std::string ScopedPath(reinterpret_cast<const char*>(ScopedBytes.data() + ScopedPathPosition),
-                                     ScopedEntry.pathSize);
+        const char* ScopedPathBytes = reinterpret_cast<const char*>(ScopedBytes.data() + ScopedPathPosition);
+        if (std::memchr(ScopedPathBytes, ' ', ScopedEntry.pathSize) != nullptr)
+        {
+            continue;
+        }
+        const std::string ScopedPath(ScopedPathBytes, ScopedEntry.pathSize);
+        if (Assets::NormalizePakPath(ScopedPath) != ScopedPath)
+        {
+            continue;
+        }
+        if (!ScopedSeenPaths.insert(ScopedPath).second)
+        {
+            LogWarn("vfs", "pak '{}' contains duplicate path '{}'; keeping the first", InPakPath, ScopedPath);
+            continue;
+        }
         const std::span<const std::byte> ScopedData(ScopedBytes.data() + ScopedEntry.offset,
                                                     static_cast<std::size_t>(ScopedEntry.size));
         AddEntry(Normalize(ScopedPath), VfsEntry{ScopedMountId, InPriority, ScopedData}, nullptr);

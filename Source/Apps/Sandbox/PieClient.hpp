@@ -6,6 +6,7 @@
 #include "Engine/Network/Replication.hpp"
 #include "Engine/Network/Transport.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -55,7 +56,7 @@ public:
     }
     [[nodiscard]] bool HasState() const noexcept
     {
-        return MReceiver.HasState();
+        return MHasWorld.load(std::memory_order_relaxed);
     }
     [[nodiscard]] bool TimedOut() const noexcept
     {
@@ -71,7 +72,7 @@ public:
     }
     [[nodiscard]] Net::ReplicationStatus Status() const noexcept
     {
-        return MReceiver.LastStatus();
+        return static_cast<Net::ReplicationStatus>(MApplyStatus.load(std::memory_order_relaxed));
     }
     [[nodiscard]] std::uint16_t ListenPort() const noexcept
     {
@@ -92,13 +93,17 @@ private:
     Net::NetTransport MTransport{};
     Net::SnapshotReceiver MReceiver{};
     Ecs::SnapshotSchema MSchema{};
+    Ecs::SnapshotBaseline MBaseline{};
     Ecs::Registry MWorld{};
+    std::atomic<bool> MHasWorld{false};
+    std::atomic<std::uint32_t> MApplyFailures{0};
+    std::atomic<std::uint8_t> MApplyStatus{static_cast<std::uint8_t>(Net::ReplicationStatus::NotStarted)};
     PieClientConfig MConfig{};
     std::uint64_t MStartMs = 0;
     std::uint64_t MLastPacketMs = 0;
     bool MClockStarted = false;
     bool MRunning = false;
     bool MTimedOut = false;
-    bool MStopRequested = false;
+    std::atomic<bool> MStopRequested{false};
 };
 }

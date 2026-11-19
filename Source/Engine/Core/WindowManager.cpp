@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 
 // SDL_vulkan.h only forwards the Vulkan handles; the engine needs the real
@@ -26,6 +27,8 @@ namespace Fby
 {
 namespace
 {
+std::atomic<std::uint32_t> GSdlUsers{0};
+
 // The dialog is asynchronous, so the strings the filters point at must outlive
 struct DialogRequest
 {
@@ -108,6 +111,7 @@ bool WindowManager::Initialize()
     }
 
     MInitialized = true;
+    GSdlUsers.fetch_add(1, std::memory_order_relaxed);
     LogInfo("platform", "SDL {} initialised ({})", SDL_GetRevision(), SDL_GetCurrentVideoDriver());
     return true;
 }
@@ -255,8 +259,11 @@ void WindowManager::Destroy()
     }
     if (MInitialized)
     {
-        SDL_Quit();
         MInitialized = false;
+        if (GSdlUsers.fetch_sub(1, std::memory_order_acq_rel) == 1)
+        {
+            SDL_Quit();
+        }
     }
 }
 

@@ -90,12 +90,18 @@ bool SdfCharacterBounds(const SkeletonComponent& InSkeleton, const SdfCharacterC
         {
             continue;
         }
-        const Vector2D ScopedCenter =
-            Mat3TransformPoint(InSkeleton.GlobalMatrices[ScopedPart.BoneIndex], ScopedPart.LocalOffset);
-        const float ScopedExtent = std::max({std::abs(ScopedPart.Shape.HalfExtents.X),
-                                             std::abs(ScopedPart.Shape.HalfExtents.Y),
-                                             std::abs(ScopedPart.Shape.Radius)}) +
-                                   std::abs(ScopedPart.BlendRadius) + 1.0f;
+        const Mat3& ScopedBone = InSkeleton.GlobalMatrices[ScopedPart.BoneIndex];
+        const Vector2D ScopedCenter = Mat3TransformPoint(ScopedBone, ScopedPart.LocalOffset);
+        const float ScopedScaleX = std::sqrt(ScopedBone.m[0] * ScopedBone.m[0] + ScopedBone.m[1] * ScopedBone.m[1]);
+        const float ScopedScaleY = std::sqrt(ScopedBone.m[3] * ScopedBone.m[3] + ScopedBone.m[4] * ScopedBone.m[4]);
+        const float ScopedScale = std::max(ScopedScaleX, ScopedScaleY);
+        const float ScopedHalf = std::max(std::abs(ScopedPart.Shape.HalfExtents.X),
+                                          std::abs(ScopedPart.Shape.HalfExtents.Y)) +
+                                 std::abs(ScopedPart.Shape.Radius) + std::abs(ScopedPart.Shape.Width);
+        // Rotation can expand either axis by sqrt(2); include bone scale and the
+        // smooth-union radius so the bake region covers every shape family.
+        const float ScopedExtent =
+            ScopedHalf * ScopedScale * 1.41421356f + std::abs(ScopedPart.BlendRadius) + 1.0f;
         if (!ScopedAny)
         {
             ScopedMin = ScopedCenter - Vector2D{ScopedExtent, ScopedExtent};
@@ -142,8 +148,8 @@ float SdfCharacterField::Sample(Vector2D InWorld) const noexcept
     }
     const float ScopedX = (InWorld.X - Origin.X) / CellSize.X;
     const float ScopedY = (InWorld.Y - Origin.Y) / CellSize.Y;
-    if (ScopedX < 0.0f || ScopedY < 0.0f || ScopedX > static_cast<float>(Width - 1) ||
-        ScopedY > static_cast<float>(Height - 1))
+    if (!(ScopedX >= 0.0f && ScopedY >= 0.0f && ScopedX <= static_cast<float>(Width - 1) &&
+          ScopedY <= static_cast<float>(Height - 1)))
     {
         return 1.0e6f;
     }
@@ -171,22 +177,32 @@ bool BakeSdfCharacterField(const SkeletonComponent& InSkeleton, const SdfCharact
     {
         return false;
     }
-    OutField->Width = InWidth;
-    OutField->Height = InHeight;
-    OutField->Origin = InMin;
-    OutField->CellSize = Vector2D{(InMax.X - InMin.X) / static_cast<float>(InWidth - 1),
+    const Vector2D ScopedCellSize{(InMax.X - InMin.X) / static_cast<float>(InWidth - 1),
                                   (InMax.Y - InMin.Y) / static_cast<float>(InHeight - 1)};
-    OutField->Samples.resize(static_cast<std::size_t>(ScopedSamples));
+    std::vector<float> ScopedFieldSamples;
+    try
+    {
+        ScopedFieldSamples.resize(static_cast<std::size_t>(InWidth) * InHeight);
+    }
+    catch (...)
+    {
+        return false;
+    }
     for (std::uint32_t ScopedY = 0; ScopedY < InHeight; ++ScopedY)
     {
         for (std::uint32_t ScopedX = 0; ScopedX < InWidth; ++ScopedX)
         {
-            const Vector2D ScopedPoint{InMin.X + OutField->CellSize.X * static_cast<float>(ScopedX),
-                                       InMin.Y + OutField->CellSize.Y * static_cast<float>(ScopedY)};
-            OutField->Samples[static_cast<std::size_t>(ScopedY) * InWidth + ScopedX] =
+            const Vector2D ScopedPoint{InMin.X + ScopedCellSize.X * static_cast<float>(ScopedX),
+                                       InMin.Y + ScopedCellSize.Y * static_cast<float>(ScopedY)};
+            ScopedFieldSamples[static_cast<std::size_t>(ScopedY) * InWidth + ScopedX] =
                 SdfCharacterDistance(InSkeleton, InCharacter, ScopedPoint);
         }
     }
+    OutField->Width = InWidth;
+    OutField->Height = InHeight;
+    OutField->Origin = InMin;
+    OutField->CellSize = ScopedCellSize;
+    OutField->Samples = std::move(ScopedFieldSamples);
     ++OutField->Version;
     return true;
 }

@@ -37,7 +37,10 @@ template <typename... Components> [[nodiscard]] ComponentAccessMask MakeComponen
     ComponentAccessMask ScopedMask{};
     const auto ScopedAdd = [&ScopedMask](std::uint16_t InId)
     {
-        ScopedMask[InId / 64u] |= (std::uint64_t{1} << (InId % 64u));
+        if (InId / 64u < ScopedMask.size())
+        {
+            ScopedMask[InId / 64u] |= (std::uint64_t{1} << (InId % 64u));
+        }
     };
     (ScopedAdd(Fby::Fcs::Detail::ComponentIdOf<Components>()), ...);
     return ScopedMask;
@@ -119,7 +122,8 @@ public:
     [[nodiscard]] bool Add(Phase InPhase, const char* InName, GraphSystemFn InRun, void* InUser = nullptr,
                            std::uint64_t InAfter = 0, std::uint64_t InBefore = 0, SystemAccess InAccess = {})
     {
-        if (MCount >= kMaxGraphSystems || InRun == nullptr || InName == nullptr)
+        if (MCount >= kMaxGraphSystems || InRun == nullptr || InName == nullptr ||
+            InPhase >= Phase::Count)
         {
             return false;
         }
@@ -206,7 +210,7 @@ public:
     }
     [[nodiscard]] std::uint32_t SystemLevel(std::uint32_t InIndex) const noexcept
     {
-        return MLevels[InIndex];
+        return InIndex < kMaxGraphSystems ? MLevels[InIndex] : 0u;
     }
 
     // Runs one phase through the JobSystem. Nodes with no dependency edge
@@ -218,7 +222,7 @@ public:
     }
     [[nodiscard]] const GraphSystem& At(std::uint32_t InIndex) const noexcept
     {
-        return MSystems[InIndex];
+        return MSystems[InIndex < kMaxGraphSystems ? InIndex : 0u];
     }
 
 private:

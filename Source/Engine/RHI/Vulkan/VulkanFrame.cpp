@@ -435,7 +435,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
         return {};
     }
 
-    const VkFormat ScopedFormat = ToVkFormat(InDesc.format, InDesc.srgb);
+    const VkFormat ScopedFormat = ToVkFormat(InDesc.format, InDesc.EffectiveSrgb());
     if (ScopedFormat == VK_FORMAT_UNDEFINED)
     {
         LogError("vulkan", "CreateTextureArray: unknown cooked texture format");
@@ -490,7 +490,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
     ScopedArray->width = InDesc.size.width;
     ScopedArray->height = InDesc.size.height;
     ScopedArray->format = InDesc.format;
-    ScopedArray->srgb = InDesc.srgb;
+    ScopedArray->srgb = InDesc.EffectiveSrgb();
 
     const auto ScopedCleanup = [&]()
     {
@@ -680,7 +680,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
 
     MTextureArrays[ScopedId] = std::move(ScopedArray);
     LogInfo("vulkan", "texture array #{}: {}x{} x {} layers, {}", ScopedId, InDesc.size.width, InDesc.size.height,
-            InDesc.layers, InDesc.srgb ? "sRGB" : "linear");
+            InDesc.layers, InDesc.EffectiveSrgb() ? "sRGB" : "linear");
     return TextureArrayHandle{ScopedId};
 }
 
@@ -701,6 +701,18 @@ void VulkanRHI::DestroyTextureArray(TextureArrayHandle InHandle)
         return;
     }
     WaitIdle();
+    for (auto ScopedIt = MLayerViews.begin(); ScopedIt != MLayerViews.end();)
+    {
+        if (static_cast<std::uint32_t>(ScopedIt->first >> 32u) == InHandle.id)
+        {
+            Vk::GetApi().vkDestroyImageView(MDevice, ScopedIt->second, nullptr);
+            ScopedIt = MLayerViews.erase(ScopedIt);
+        }
+        else
+        {
+            ++ScopedIt;
+        }
+    }
     DestroyTextureArrayResources(*ScopedArray);
     MTextureArrays[InHandle.id].reset();
     MFreeTextureArrayIds.push_back(InHandle.id);
@@ -1020,11 +1032,8 @@ void VulkanRHI::DestroySwapchain()
     {
         DestroyDepthImage(&MDrawDepthImages[ScopedI], &MDrawDepthMemories[ScopedI], &MDrawDepthViews[ScopedI]);
     }
-    if (MDepthSampler != VK_NULL_HANDLE)
-    {
-        ScopedApi.vkDestroySampler(MDevice, MDepthSampler, nullptr);
-        MDepthSampler = VK_NULL_HANDLE;
-    }
+    // MDepthSampler is device-lifetime state; DestroySwapchain must not
+    // invalidate the depth descriptors that sample it. Shutdown releases it.
     MDrawDepthImages.clear();
     MDrawDepthMemories.clear();
     MDrawDepthViews.clear();
@@ -2400,6 +2409,7 @@ bool VulkanRHI::TextureArrayLayerView(TextureArrayHandle InHandle, std::uint32_t
     }
     MLayerViews.emplace_back(ScopedKey, ScopedView);
     InView.view = ScopedView;
+    InView.image = ScopedArray->image;
     InView.layout = static_cast<int>(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     return true;
 }
@@ -3728,6 +3738,8 @@ bool VulkanRHI::UploadMotionVectors(std::span<const MotionVectorItem> InItems)
     Vk::Api& ScopedApi = Vk::GetApi();
     if (MMotionCapacity < InItems.size())
     {
+        // The old buffer may still be referenced by submitted frames.
+        WaitIdle();
         if (MMotionMapped != nullptr)
         {
             ScopedApi.vkUnmapMemory(MDevice, MMotionMemory);
@@ -4529,6 +4541,11 @@ void VulkanRHI::Shutdown()
 
     if (MDevice != VK_NULL_HANDLE)
     {
+        if (MDepthSampler != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroySampler(MDevice, MDepthSampler, nullptr);
+            MDepthSampler = VK_NULL_HANDLE;
+        }
         if (MInstanceMapped != nullptr)
         {
             ScopedApi.vkUnmapMemory(MDevice, MInstanceStagingMemory);

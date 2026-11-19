@@ -104,8 +104,8 @@ public:
             LogError("RHI", "null backend: transient ring exhausted ({} items)", InPacket.items.size());
             return;
         }
-        MStats.items = static_cast<std::uint32_t>(InPacket.items.size());
-        MStats.batches = static_cast<std::uint32_t>(InPacket.batches.size());
+        MStats.items += static_cast<std::uint32_t>(InPacket.items.size());
+        MStats.batches += static_cast<std::uint32_t>(InPacket.batches.size());
         MStats.uploadedBytes += InPacket.items.size_bytes() + InPacket.keys.size_bytes();
     }
 

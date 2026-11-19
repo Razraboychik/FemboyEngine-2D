@@ -42,8 +42,9 @@ bool PrefabInstance::Expand(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InCom
             if ((ScopedInstance->ColorMask & ScopedBit) != 0)
             {
                 const Vector2D& ScopedColor = ScopedInstance->ColorOverrides[ScopedIndex];
+                const Vector2D& ScopedAlpha = ScopedInstance->ColorAlphaOverrides[ScopedIndex];
                 ScopedEntry.overrideColor = true;
-                ScopedEntry.color = Color32::FromFloats(ScopedColor.X, ScopedColor.Y, ScopedInstance->RotationOverrides[ScopedIndex].Y, 1.0f);
+                ScopedEntry.color = Color32::FromFloats(ScopedColor.X, ScopedColor.Y, ScopedAlpha.X, ScopedAlpha.Y);
             }
             if (ScopedEntry.overridePosition || ScopedEntry.overrideScale || ScopedEntry.overrideRotation ||
                 ScopedEntry.overrideColor)
@@ -103,8 +104,8 @@ bool PrefabInstance::SetOverride(Ecs::Registry& InRegistry, Entity InInstance,
         ScopedInstance->ColorMask |= ScopedBit;
         ScopedInstance->ColorOverrides[ScopedIndex] = Vector2D{
             static_cast<float>(InOverride.color.R()) / 255.0f, static_cast<float>(InOverride.color.G()) / 255.0f};
-        ScopedInstance->RotationOverrides[ScopedIndex].Y =
-            static_cast<float>(InOverride.color.B()) / 255.0f;
+        ScopedInstance->ColorAlphaOverrides[ScopedIndex] = Vector2D{
+            static_cast<float>(InOverride.color.B()) / 255.0f, static_cast<float>(InOverride.color.A()) / 255.0f};
     }
     return true;
 }

@@ -76,6 +76,7 @@ int main()
     ScopedUser.oitEnabled = true;
 
     Fby::Rhi::FrameGenerationPolicy ScopedPolicy;
+    ScopedPolicy.ProjectAllowed = false;
     FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 60.0f, false) ==
               Fby::Rhi::FrameGenerationStatus::Disabled);
     ScopedPolicy.ProjectAllowed = true;
@@ -128,6 +129,8 @@ int main()
     FBY_CHECK(ScopedFfx.Upscaling);
     FBY_CHECK(!ScopedFfx.FrameGeneration);
     Fby::Rhi::DeviceInfo ScopedFfxInfo;
+    // The FidelityFX artifact is a Vulkan runtime in this tree.
+    ScopedFfxInfo.backend = Fby::Rhi::Backend::Vulkan;
     ScopedFfxInfo.upscalers.motionVectors = true;
     FBY_CHECK(Fby::Rhi::CapabilitiesFromDevice(ScopedFfxInfo, {}, ScopedFfx).Fsr2Vendor);
     Fby::Rhi::FidelityFxRuntimeAvailability ScopedFfxFg;

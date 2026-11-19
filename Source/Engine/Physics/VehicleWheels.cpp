@@ -159,7 +159,12 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
     const float ScopedBrakeTorque = ScopedBrake * std::max(ScopedVehicle->MaxMotorTorque, 0.0f) *
                                     std::max(ScopedWheel->BrakeWeight, 0.0f);
 
-    const auto ScopedSetMotor = [ScopedJoint](bool InEnable, float InSpeed, float InTorque) noexcept
+    const auto ScopedWake = [ScopedJoint]() noexcept
+    {
+        b2Body_SetAwake(b2Joint_GetBodyA(ScopedJoint), true);
+        b2Body_SetAwake(b2Joint_GetBodyB(ScopedJoint), true);
+    };
+    const auto ScopedSetMotor = [ScopedJoint, &ScopedWake](bool InEnable, float InSpeed, float InTorque) noexcept
     {
         if (b2WheelJoint_IsMotorEnabled(ScopedJoint) != InEnable)
         {
@@ -177,6 +182,7 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
         {
             b2WheelJoint_SetMaxMotorTorque(ScopedJoint, InTorque);
         }
+        ScopedWake();
     };
     if (ScopedBrake > 0.0f || ScopedHandbrake)
     {
@@ -197,10 +203,12 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
     else if (ScopedDriven)
     {
         ScopedSetMotor(true, ScopedThrottle * ScopedMaxAngular, ScopedDriveTorque);
+        ScopedWake();
     }
     else
     {
         ScopedSetMotor(false, 0.0f, 0.0f);
+        ScopedWake();
     }
 
     if ((ScopedVehicle->Flags & VehicleFlagArcadeSteering) != 0 && (ScopedWheel->Flags & kWheelFlagSteer) != 0)
@@ -211,8 +219,8 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
             const b2BodyId ScopedChassisId = b2LoadBodyId(ScopedChassis->Body);
             const b2Vec2 ScopedVelocity = b2Body_GetLinearVelocity(ScopedChassisId);
             const float ScopedSpeedFactor =
-                std::clamp(std::sqrt(ScopedVelocity.x * ScopedVelocity.x + ScopedVelocity.y * ScopedVelocity.y) /
-                               std::max(ScopedMaxSpeed, 1.0f),
+                std::clamp(std::sqrt(ScopedVelocity.x * ScopedVelocity.x + ScopedVelocity.y * ScopedVelocity.y) *
+                               InPhysics.PixelsPerMeter() / std::max(ScopedMaxSpeed, 1.0f),
                            0.0f, 1.0f);
             b2Body_ApplyTorque(ScopedChassisId,
                                std::clamp(ScopedVehicle->Steering, -1.0f, 1.0f) * ScopedVehicle->SteeringTorque *

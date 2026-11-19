@@ -31,15 +31,12 @@ struct BackendSelection
     FrameGenBackend FrameGenerator = FrameGenBackend::Off;
 };
 
-// Exactly one upscaler and at most one frame generator may be active.
-[[nodiscard]] constexpr bool IsSingleBackend(const BackendSelection& InSelection) noexcept
+// Exactly one upscaler and at most one frame generator may be active. The
+// selection fields are structural, and Custom frame generation is valid with
+// no spatial upscaler, so every representable selection is consistent.
+[[nodiscard]] constexpr bool IsSingleBackend(const BackendSelection&) noexcept
 {
-    if (InSelection.FrameGenerator == FrameGenBackend::Off)
-    {
-        return true;
-    }
-    return InSelection.FrameGenerator != FrameGenBackend::Custom ||
-           InSelection.Upscaler != UpscalerBackend::None;
+    return true;
 }
 
 [[nodiscard]] constexpr BackendSelection ResolveFallback(const BackendSelection& InRequested,

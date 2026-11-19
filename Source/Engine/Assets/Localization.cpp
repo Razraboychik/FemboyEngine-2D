@@ -32,6 +32,44 @@ LocalizationTable LocalizationTable::Open(std::span<const std::byte> InBytes, st
     }
 
     ScopedTable.MPack = Loc::GetLocalizationPack(InBytes.data());
+    if (ScopedTable.MPack->version() != 1)
+    {
+        if (InError != nullptr)
+        {
+            *InError = "unsupported localization pack version";
+        }
+        ScopedTable.MPack = nullptr;
+        return ScopedTable;
+    }
+    const auto* ScopedLocales = ScopedTable.MPack->locales();
+    if (ScopedLocales != nullptr)
+    {
+        std::string_view ScopedPrevious;
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedLocales->size(); ++ScopedI)
+        {
+            const auto* ScopedLocale = ScopedLocales->Get(ScopedI);
+            if (ScopedLocale == nullptr || ScopedLocale->code() == nullptr)
+            {
+                if (InError != nullptr)
+                {
+                    *InError = "localization pack contains a locale without a code";
+                }
+                ScopedTable.MPack = nullptr;
+                return ScopedTable;
+            }
+            const std::string_view ScopedCode = ScopedLocale->code()->string_view();
+            if (ScopedI > 0 && !(ScopedPrevious < ScopedCode))
+            {
+                if (InError != nullptr)
+                {
+                    *InError = "localization locales are not strictly sorted by code";
+                }
+                ScopedTable.MPack = nullptr;
+                return ScopedTable;
+            }
+            ScopedPrevious = ScopedCode;
+        }
+    }
     ScopedTable.SelectDefaultLocale();
     return ScopedTable;
 }
@@ -72,6 +110,7 @@ void LocalizationTable::SelectDefaultLocale() noexcept
         return;
     }
     MFallback = nullptr;
+    MActive = nullptr;
     if (MPack->default_locale() != nullptr)
     {
         SelectLocale(MPack->default_locale()->string_view());

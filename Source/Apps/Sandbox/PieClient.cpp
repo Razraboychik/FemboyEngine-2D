@@ -17,6 +17,14 @@ bool PieClient::Start(const PieClientConfig& InConfig, const Ecs::SnapshotSchema
 {
     Stop();
 
+    if (InConfig.Host.Port == 0)
+    {
+        if (InError != nullptr)
+        {
+            *InError = "the PIE host port must be non-zero";
+        }
+        return false;
+    }
     std::string ScopedError;
     if (!Net::DatagramSocket::EnsureSocketsInitialized(&ScopedError))
     {
@@ -70,17 +78,21 @@ bool PieClient::Start(const PieClientConfig& InConfig, const Ecs::SnapshotSchema
 
 void PieClient::Stop() noexcept
 {
-    if (!MRunning)
+    if (MRunning)
     {
-        return;
+        MReceiver.Stop();
+        MTransport.Close();
     }
-    MReceiver.Stop();
-    MTransport.Close();
+    // A caller may populate World() before Start(); teardown must still run.
     Scene::DestroyAllEntities(MWorld);
     MClockStarted = false;
     MRunning = false;
     MTimedOut = false;
     MStopRequested = false;
+    MBaseline = {};
+    MHasWorld.store(false, std::memory_order_relaxed);
+    MApplyStatus.store(static_cast<std::uint8_t>(Net::ReplicationStatus::NotStarted),
+                       std::memory_order_relaxed);
     MStartMs = 0;
     MLastPacketMs = 0;
 }
@@ -137,11 +149,46 @@ void PieClient::ApplyStateThunk(void* InUser, std::uint64_t InTick, std::span<co
         return;
     }
     (void)InTick;
-    // Deltas keep entity handles; the first state of a session is a baseline
-    // and a failed in-place apply means this state has to recreate the world.
-    if (!Net::ApplyReplicationDeltaInPlace(ScopedClient->MWorld, ScopedClient->MSchema, InState))
+    // Classify the payload before touching the world. A full snapshot replaces
+    // the world and becomes the baseline; a delta is accepted only against that
+    // exact baseline. A malformed/rejected state must not fabricate entities.
+    bool ScopedApplied = false;
+    try
     {
-        (void)Ecs::RestoreSnapshot(ScopedClient->MWorld, ScopedClient->MSchema, InState, nullptr);
+        const Ecs::SnapshotView ScopedView = Ecs::SnapshotView::Open(InState);
+        if (ScopedView.valid)
+        {
+            if ((ScopedView.header.flags & Ecs::SnapshotFull) != 0)
+            {
+                if (Ecs::ValidateSnapshot(InState, ScopedClient->MSchema, nullptr) &&
+                    Ecs::RestoreSnapshot(ScopedClient->MWorld, ScopedClient->MSchema, InState, nullptr) &&
+                    Ecs::RememberBaseline(ScopedClient->MBaseline, InState))
+                {
+                    ScopedApplied = true;
+                }
+            }
+            else if ((ScopedView.header.flags & Ecs::SnapshotDelta) != 0 && ScopedClient->MBaseline.Valid)
+            {
+                ScopedApplied = Ecs::ApplyDeltaChecked(ScopedClient->MWorld, ScopedClient->MSchema, InState,
+                                                       ScopedClient->MBaseline);
+            }
+        }
+    }
+    catch (...)
+    {
+        ScopedApplied = false;
+    }
+    if (ScopedApplied)
+    {
+        ScopedClient->MHasWorld.store(true, std::memory_order_relaxed);
+        ScopedClient->MApplyStatus.store(static_cast<std::uint8_t>(Net::ReplicationStatus::Ok),
+                                         std::memory_order_relaxed);
+    }
+    else
+    {
+        ScopedClient->MApplyFailures.fetch_add(1, std::memory_order_relaxed);
+        ScopedClient->MApplyStatus.store(static_cast<std::uint8_t>(Net::ReplicationStatus::NotExpected),
+                                         std::memory_order_relaxed);
     }
 }
 }

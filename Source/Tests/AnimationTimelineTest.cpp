@@ -90,7 +90,7 @@ void TestBonePoseAndSpriteAnimation()
     (void)ScopedTimeline.AddKey(ScopedClip, 0.0f, {4.0f, 3.0f}, Fby::Animation::Interpolation::Step);
     ScopedTimeline.ApplySpriteClip(ScopedSpriteAnimation, 0.25f);
     Check(ScopedSpriteAnimation.StartFrame == 4 && ScopedSpriteAnimation.FrameCount == 3, "spriteAnimation clip selected from timeline");
-    Check(ScopedSpriteAnimation.CurrentFrame == 6, "spriteAnimation frame advanced inside the clip");
+    Check(ScopedSpriteAnimation.CurrentFrame == 2, "spriteAnimation frame advanced inside the clip");
 }
 
 void TestEvents()

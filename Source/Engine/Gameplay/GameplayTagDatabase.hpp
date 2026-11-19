@@ -3,6 +3,7 @@
 
 #include "Engine/Gameplay/GameplayTags.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string_view>
@@ -32,7 +33,9 @@ struct GameplayTagDatabase
     // the path is invalid, duplicated with a different spelling, or the fixed
     // capacity is exhausted.
     [[nodiscard]] int Add(std::string_view InPath) noexcept;
-    // Removes the tag and its whole subtree by path prefix.
+    // Removes the tag and its whole subtree by path prefix. Removal is
+    // suffix-only: ids never renumber, so a removal whose subtree is followed by
+    // another live tag is rejected. Clear() or a deliberate reorder invalidates ids.
     [[nodiscard]] bool RemoveAt(std::uint32_t InIndex) noexcept;
     // Renames the tag and every descendant, preserving their relative order.
     [[nodiscard]] bool Rename(std::uint32_t InIndex, std::string_view InNewPath) noexcept;
@@ -44,14 +47,26 @@ struct GameplayTagDatabase
     // Human-readable reason for the last failed operation; empty on success.
     [[nodiscard]] std::string_view LastError() const noexcept
     {
-        return std::string_view(LastErrorText.data(), LastErrorLength);
+        return std::string_view(LastErrorText.data(),
+                               std::min<std::size_t>(LastErrorLength, LastErrorText.size() - 1));
     }
 
     // Diagnostics are excluded: two databases with the same authored paths are
     // semantically equal even if the last failed edit set a message.
     [[nodiscard]] friend bool operator==(const GameplayTagDatabase& InA, const GameplayTagDatabase& InB) noexcept
     {
-        return InA.Count == InB.Count && InA.Paths == InB.Paths;
+        if (InA.Count != InB.Count)
+        {
+            return false;
+        }
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < InA.Count; ++ScopedIndex)
+        {
+            if (InA.PathAt(ScopedIndex) != InB.PathAt(ScopedIndex))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     // Diagnostics live in the same access section as the data: the database is

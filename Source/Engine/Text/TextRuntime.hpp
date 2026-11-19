@@ -43,7 +43,11 @@ public:
     }
     void SetShaper(ITextShaper* InShaper) noexcept
     {
-        MShaper = InShaper;
+        if (MShaper != InShaper)
+        {
+            MShaper = InShaper;
+            MShapes->Clear();
+        }
     }
     [[nodiscard]] ITextShaper* Shaper() const noexcept
     {

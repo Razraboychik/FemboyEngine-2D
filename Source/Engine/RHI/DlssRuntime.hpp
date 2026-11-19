@@ -15,10 +15,19 @@ struct DlssRuntimeAvailability
 [[nodiscard]] inline DlssRuntimeAvailability DetectDlssRuntime(const std::filesystem::path& InDirectory) noexcept
 {
     DlssRuntimeAvailability ScopedResult;
-    std::error_code ScopedError;
-    ScopedResult.Upscaling = std::filesystem::exists(InDirectory / "nvngx_dlss.dll", ScopedError);
-    ScopedError.clear();
-    ScopedResult.FrameGeneration = std::filesystem::exists(InDirectory / "nvngx_dlssg.dll", ScopedError);
+    try
+    {
+        std::error_code ScopedError;
+        ScopedResult.Upscaling =
+            !ScopedError && std::filesystem::is_regular_file(InDirectory / "nvngx_dlss.dll", ScopedError);
+        ScopedError.clear();
+        ScopedResult.FrameGeneration =
+            !ScopedError && std::filesystem::is_regular_file(InDirectory / "nvngx_dlssg.dll", ScopedError);
+    }
+    catch (...)
+    {
+        return {};
+    }
     return ScopedResult;
 }
 

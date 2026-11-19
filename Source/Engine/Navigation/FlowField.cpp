@@ -251,7 +251,9 @@ Vector2D FlowField::FlowAt(std::uint32_t InX, std::uint32_t InY) const noexcept
 
 bool FlowField::BakeCostsFromField(const SdfField& InField, float InAgentRadius, std::uint8_t InNearCost) noexcept
 {
-    if (!IsConfigured() || !InField.Valid() || InField.width != MDesc.Width || InField.height != MDesc.Height)
+    if (!IsConfigured() || !InField.Valid() || InField.width != MDesc.Width || InField.height != MDesc.Height ||
+        !std::isfinite(InAgentRadius) || !std::isfinite(InField.cellSize.X) ||
+        !std::isfinite(InField.cellSize.Y))
     {
         return false;
     }
@@ -262,7 +264,11 @@ bool FlowField::BakeCostsFromField(const SdfField& InField, float InAgentRadius,
         {
             const std::size_t ScopedIndex = static_cast<std::size_t>(ScopedY) * MDesc.Width + ScopedX;
             const float ScopedDistance = InField.samples[ScopedIndex];
-            if (ScopedDistance <= InAgentRadius)
+            if (!std::isfinite(ScopedDistance))
+            {
+                MCosts[ScopedIndex] = 0;
+            }
+            else if (ScopedDistance <= InAgentRadius)
             {
                 MCosts[ScopedIndex] = 0;
             }

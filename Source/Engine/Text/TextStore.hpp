@@ -37,7 +37,8 @@ public:
 
         AssetSlot ScopedSlot;
         ScopedSlot.Asset = InAsset;
-        ScopedSlot.Generation = NextGeneration(0);
+        ScopedSlot.Generation = NextGeneration(MNextGeneration);
+        MNextGeneration = ScopedSlot.Generation;
         ScopedSlot.FirstBlock = MBlockCount;
         ScopedSlot.Used = true;
 
@@ -135,7 +136,8 @@ public:
         }
         AssetSlot ScopedSlot;
         ScopedSlot.Asset = InAsset;
-        ScopedSlot.Generation = NextGeneration(0);
+        ScopedSlot.Generation = NextGeneration(MNextGeneration);
+        MNextGeneration = ScopedSlot.Generation;
         ScopedSlot.FirstBlock = MBlockCount;
         ScopedSlot.BlockCount = static_cast<std::uint32_t>(InAssetView.Blocks.size());
         ScopedSlot.Used = true;
@@ -260,5 +262,6 @@ private:
     std::uint32_t MAssetCount = 0;
     std::uint32_t MBlockCount = 0;
     std::uint32_t MDataUsed = 0;
+    std::uint32_t MNextGeneration = 0;
 };
 }

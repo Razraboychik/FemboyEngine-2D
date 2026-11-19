@@ -2530,20 +2530,22 @@ struct EditorSystem::Impl
                         ScopedLink->ColorOverrides[ScopedIndex] =
                             Vector2D{static_cast<float>(ScopedBase.R()) / 255.0f,
                                      static_cast<float>(ScopedBase.G()) / 255.0f};
-                        ScopedLink->RotationOverrides[ScopedIndex].Y =
-                            static_cast<float>(ScopedBase.B()) / 255.0f;
+                        ScopedLink->ColorAlphaOverrides[ScopedIndex] =
+                            Vector2D{static_cast<float>(ScopedBase.B()) / 255.0f,
+                                     static_cast<float>(ScopedBase.A()) / 255.0f};
                     }
                     ScopedChanged = true;
                 }
                 if (ScopedColor)
                 {
                     const Vector2D& ScopedStored = ScopedLink->ColorOverrides[ScopedIndex];
-                    float ScopedColorValue[4] = {ScopedStored.X, ScopedStored.Y,
-                                                 ScopedLink->RotationOverrides[ScopedIndex].Y, 1.0f};
+                    const Vector2D ScopedAlphaStored = ScopedLink->ColorAlphaOverrides[ScopedIndex];
+                    float ScopedColorValue[4] = {ScopedStored.X, ScopedStored.Y, ScopedAlphaStored.X,
+                                                 ScopedAlphaStored.Y};
                     if (ImGui::ColorEdit4("##color", ScopedColorValue))
                     {
                         ScopedLink->ColorOverrides[ScopedIndex] = Vector2D{ScopedColorValue[0], ScopedColorValue[1]};
-                        ScopedLink->RotationOverrides[ScopedIndex].Y = ScopedColorValue[2];
+                        ScopedLink->ColorAlphaOverrides[ScopedIndex] = Vector2D{ScopedColorValue[2], ScopedColorValue[3]};
                         ScopedChanged = true;
                     }
                 }
@@ -3169,7 +3171,10 @@ struct EditorSystem::Impl
             ScopedDebugView.width = std::max(ScopedImageMax.x - ScopedImageMin.x, 1.0f);
             ScopedDebugView.height = std::max(ScopedImageMax.y - ScopedImageMin.y, 1.0f);
             physicsDebug.Build(InContext, PhysicsDebugAll, nullptr);
-            physicsDebug.DrawImGui(ImGui::GetWindowDrawList(), &ScopedDebugView, &MapPhysicsDebugToScreen);
+            const Rect ScopedDebugClip{Vector2D{ScopedImageMin.x, ScopedImageMin.y},
+                                       Vector2D{ScopedImageMax.x, ScopedImageMax.y}};
+            physicsDebug.DrawImGui(*ImGui::GetWindowDrawList(), &ScopedDebugView, &MapPhysicsDebugToScreen,
+                                   ScopedDebugClip);
         }
 
         // Scene text overlay: the editor draws TextComponent content with the
@@ -5823,6 +5828,13 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
                 const Entity ScopedInstance = InContext.registry.create();
                 PrefabInstanceComponent ScopedLink;
                 ScopedLink.Prefab = ScopedHandle;
+                if (InContext.assetDb != nullptr)
+                {
+                    if (const Assets::AssetMeta* ScopedMeta = InContext.assetDb->Meta(ScopedHandle))
+                    {
+                        ScopedLink.PrefabGuid = ScopedMeta->guid;
+                    }
+                }
                 ScopedLink.Origin = MImpl->camera.center;
                 InContext.registry.emplace<PrefabInstanceComponent>(ScopedInstance, ScopedLink);
                 std::array<Entity, Fby::kPrefabMaxEntities> ScopedChildren{};

@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#define REQUIRE_CAPTURE(expr) do { if (!(expr)) { std::fprintf(stderr, "capture failed\n"); return 1; } } while (0)
+
 namespace
 {
 
@@ -107,7 +109,7 @@ int main()
     const Fby::Rhi::Extent2D ScopedExtent{kSize, kSize};
 
     std::vector<std::byte> ScopedBaseline;
-    FBY_CHECK(RenderAndCapture(*ScopedGpu, ScopedTarget, ScopedPacket, ScopedExtent, ScopedBaseline));
+    REQUIRE_CAPTURE(RenderAndCapture(*ScopedGpu, ScopedTarget, ScopedPacket, ScopedExtent, ScopedBaseline));
     FBY_CHECK(ScopedBaseline.size() == static_cast<std::size_t>(kSize) * kSize * 4u);
     const int ScopedBaseRed = ChannelAt(ScopedBaseline, 0);
     FBY_CHECK(ScopedBaseRed >= 190 && ScopedBaseRed <= 210);
@@ -145,7 +147,7 @@ int main()
     ScopedCvd.accessibility.colorVision = 2;
     ScopedCvd.accessibility.colorVisionStrength = 1.0f;
     std::vector<std::byte> ScopedCorrected;
-    FBY_CHECK(RenderAndCapture(*ScopedGpu, ScopedTarget, ScopedCvd, ScopedExtent, ScopedCorrected));
+    REQUIRE_CAPTURE(RenderAndCapture(*ScopedGpu, ScopedTarget, ScopedCvd, ScopedExtent, ScopedCorrected));
     int ScopedDelta = 0;
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < kSize * kSize; ++ScopedIndex)
     {
@@ -167,7 +169,7 @@ int main()
     ScopedNoop.accessibility.colorVisionStrength = 0.0f;
     ScopedNoop.accessibility.flashGain = 1.0f;
     std::vector<std::byte> ScopedNoopPixels;
-    FBY_CHECK(RenderAndCapture(*ScopedGpu, ScopedTarget, ScopedNoop, ScopedExtent, ScopedNoopPixels));
+    REQUIRE_CAPTURE(RenderAndCapture(*ScopedGpu, ScopedTarget, ScopedNoop, ScopedExtent, ScopedNoopPixels));
     FBY_CHECK(std::memcmp(ScopedNoopPixels.data(), ScopedBaseline.data(), ScopedBaseline.size()) == 0);
 
     // The composite owns colour vision only; a lone flash-guard flag must not
@@ -176,7 +178,7 @@ int main()
     ScopedGuardOnly.accessibility.flags = Fby::Rhi::AccessibilityFlashGuard;
     ScopedGuardOnly.accessibility.flashGain = 0.5f;
     std::vector<std::byte> ScopedGuardPixels;
-    FBY_CHECK(RenderAndCapture(*ScopedGpu, ScopedTarget, ScopedGuardOnly, ScopedExtent, ScopedGuardPixels));
+    REQUIRE_CAPTURE(RenderAndCapture(*ScopedGpu, ScopedTarget, ScopedGuardOnly, ScopedExtent, ScopedGuardPixels));
     FBY_CHECK(std::memcmp(ScopedGuardPixels.data(), ScopedBaseline.data(), ScopedBaseline.size()) == 0);
 
     // Per-pixel flash guard: a dark frame stores its luminance, a sudden bright
@@ -192,12 +194,12 @@ int main()
     ScopedDark.accessibility.flashThreshold = 0.2f;
     ScopedDark.accessibility.flashGain = 0.35f;
     std::vector<std::byte> ScopedDarkPixels;
-    FBY_CHECK(RenderAndCapture(*ScopedGpu, ScopedFlashTarget, ScopedDark, ScopedExtent, ScopedDarkPixels));
+    REQUIRE_CAPTURE(RenderAndCapture(*ScopedGpu, ScopedFlashTarget, ScopedDark, ScopedExtent, ScopedDarkPixels));
     Fby::Rhi::FramePacket ScopedBright = ScopedPacket;
     ScopedBright.clear = Fby::Color32::FromBytes(220, 220, 220);
     ScopedBright.accessibility = ScopedDark.accessibility;
     std::vector<std::byte> ScopedFlashPixels;
-    FBY_CHECK(RenderAndCapture(*ScopedGpu, ScopedFlashTarget, ScopedBright, ScopedExtent, ScopedFlashPixels));
+    REQUIRE_CAPTURE(RenderAndCapture(*ScopedGpu, ScopedFlashTarget, ScopedBright, ScopedExtent, ScopedFlashPixels));
     FBY_CHECK(ChannelAt(ScopedFlashPixels, 0) < 150);
 
     // Without the guard the same two-frame sequence keeps the bright frame.
@@ -209,12 +211,12 @@ int main()
     Fby::Rhi::FramePacket ScopedControlDark = ScopedPacket;
     ScopedControlDark.clear = Fby::Color32::FromBytes(20, 20, 20);
     std::vector<std::byte> ScopedControlDarkPixels;
-    FBY_CHECK(RenderAndCapture(*ScopedGpu, ScopedControlTarget, ScopedControlDark, ScopedExtent,
+    REQUIRE_CAPTURE(RenderAndCapture(*ScopedGpu, ScopedControlTarget, ScopedControlDark, ScopedExtent,
                                ScopedControlDarkPixels));
     Fby::Rhi::FramePacket ScopedControlBright = ScopedBright;
     ScopedControlBright.accessibility = {};
     std::vector<std::byte> ScopedControlBrightPixels;
-    FBY_CHECK(RenderAndCapture(*ScopedGpu, ScopedControlTarget, ScopedControlBright, ScopedExtent,
+    REQUIRE_CAPTURE(RenderAndCapture(*ScopedGpu, ScopedControlTarget, ScopedControlBright, ScopedExtent,
                                ScopedControlBrightPixels));
     FBY_CHECK(ChannelAt(ScopedControlBrightPixels, 0) > 200);
     ScopedGpu->DestroyRenderTarget(ScopedFlashTarget);

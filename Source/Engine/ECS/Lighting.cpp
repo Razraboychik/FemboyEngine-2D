@@ -34,6 +34,7 @@ struct LightSample
     float red = 1.0f;
     float green = 1.0f;
     float blue = 1.0f;
+    bool castShadow = true;
 };
 
 [[nodiscard]] float UnpackChannel(std::uint32_t InRgba, std::uint32_t InShift) noexcept
@@ -248,6 +249,7 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
         ScopedSample.red = UnpackChannel(ScopedLight.Color.rgba, 0);
         ScopedSample.green = UnpackChannel(ScopedLight.Color.rgba, 8);
         ScopedSample.blue = UnpackChannel(ScopedLight.Color.rgba, 16);
+        ScopedSample.castShadow = (ScopedLight.Flags & kLight2DFlagCastNoShadow) == 0;
     }
     MLightCount = ScopedLightCount;
     std::array<LightGridInput, kMaxLightSamples> ScopedGridInputs{};
@@ -306,7 +308,7 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
             }
             const float ScopedFalloff = 1.0f - ScopedDistance / ScopedSample.radius;
             float ScopedAttenuation = ScopedFalloff * ScopedFalloff * ScopedSample.intensity;
-            if (ScopedHasField && InSettings.SdfShadows)
+            if (ScopedHasField && InSettings.SdfShadows && ScopedSample.castShadow)
             {
                 const float ScopedShadow =
                     SdfShadowFactor(ScopedField, ScopedTransform.Position, ScopedSample.position,
@@ -350,13 +352,14 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
             ScopedGreen += (1.0f - ScopedGreen) * ScopedEmissive;
             ScopedBlue += (1.0f - ScopedBlue) * ScopedEmissive;
         }
-        if (ScopedLit < kMaxLitSprites)
+        if (ScopedLit >= kMaxLitSprites)
         {
-            ScopedResults[ScopedLit].entity = ScopedEntity;
-            // The result is a light tint: alpha stays opaque so the extract keeps
-            // the authored sprite alpha instead of multiplying it twice.
-            ScopedResults[ScopedLit].color = Color32{PackRgb(ScopedRed, ScopedGreen, ScopedBlue, 0xFF000000u)};
+            continue;
         }
+        ScopedResults[ScopedLit].entity = ScopedEntity;
+        // The result is a light tint: alpha stays opaque so the extract keeps
+        // the authored sprite alpha instead of multiplying it twice.
+        ScopedResults[ScopedLit].color = Color32{PackRgb(ScopedRed, ScopedGreen, ScopedBlue, 0xFF000000u)};
         ++ScopedLit;
     }
 

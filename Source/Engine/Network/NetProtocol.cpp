@@ -91,6 +91,13 @@ std::size_t EncodeInputPacket(const InputPacket& InPacket, std::span<std::byte> 
     {
         return 0;
     }
+    for (std::uint32_t ScopedI = 0; ScopedI < InPacket.Count; ++ScopedI)
+    {
+        if (InPacket.Frames[ScopedI].tick == kInvalidNetTick)
+        {
+            return 0;
+        }
+    }
     const std::size_t ScopedBytes = kInputPacketHeaderBytes + InPacket.Count * kFrameStride;
     if (OutBuffer.size() < ScopedBytes)
     {

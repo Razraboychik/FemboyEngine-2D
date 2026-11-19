@@ -137,6 +137,7 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<Collider2D>(false);
     // Gameplay runtime state is simulation data, not scene authoring data: it
     // travels in snapshots and is registered for the inspector but not TOML.
+    InRegistry.Register<Projectile2D>(false);
     InRegistry.Register<GameplayTagsComponent>(false);
     InRegistry.Register<GameplayAttributesComponent>(false);
     InRegistry.Register<GameplayEffectsComponent>(false);

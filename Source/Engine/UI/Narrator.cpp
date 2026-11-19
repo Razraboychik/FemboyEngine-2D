@@ -33,7 +33,7 @@ namespace
     }
     else
     {
-        ++ScopedCut;
+        ScopedCut = std::min(ScopedCut + 1, ScopedLimit);
     }
     return ScopedCut;
 }
@@ -175,7 +175,7 @@ std::string_view Narrator::RoleName(Ui::AccessibilityRole InRole) const noexcept
 std::uint32_t Narrator::ComposeFocus(const Ui::AccessibilityTree& InTree, std::uint32_t InIndex, char* OutText,
                                      std::size_t InCapacity) noexcept
 {
-    if (OutText == nullptr || InCapacity == 0)
+    if (OutText == nullptr || InCapacity == 0 || MSettings.Verbosity == 0)
     {
         return 0;
     }

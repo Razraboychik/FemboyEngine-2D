@@ -165,6 +165,8 @@ struct ProjectPluginEntry
 {
     char Path[192]{};
     bool Enabled = true;
+    // True only when this helper copied the binary into <root>/plugins.
+    bool Copied = false;
 
     [[nodiscard]] friend bool operator==(const ProjectPluginEntry&, const ProjectPluginEntry&) noexcept = default;
 };

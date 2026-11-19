@@ -48,7 +48,9 @@ NetTopologyPlan PlanNetTopology(const NetSessionConfig& InConfig) noexcept
         case NetSessionMode::Auto:
             if (ScopedPlan.Role == NetRole::Authority)
             {
-                ScopedPlan.Topology = InConfig.Headless ? NetTopology::Dedicated : NetTopology::Hosted;
+                ScopedPlan.Topology = (InConfig.Mode == NetSessionMode::Dedicated || InConfig.Headless)
+                                  ? NetTopology::Dedicated
+                                  : NetTopology::Hosted;
             }
             else if (ScopedPlan.Role == NetRole::Peer)
             {
@@ -65,10 +67,20 @@ NetTopologyPlan PlanNetTopology(const NetSessionConfig& InConfig) noexcept
             break;
     }
 
+    if (ScopedPlan.Role == NetRole::Offline)
+    {
+        ScopedPlan.Topology = NetTopology::Offline;
+    }
+    if (ScopedPlan.Role == NetRole::Authority)
+    {
+        ScopedPlan.Topology = (InConfig.Mode == NetSessionMode::Dedicated || InConfig.Headless)
+                                  ? NetTopology::Dedicated
+                                  : NetTopology::Hosted;
+    }
     ScopedPlan.RunsServer = ScopedPlan.Role == NetRole::Authority;
     ScopedPlan.HasLocalClient =
-        ScopedPlan.Role == NetRole::Client || ScopedPlan.Role == NetRole::Peer ||
-        (ScopedPlan.Role == NetRole::Authority && !InConfig.Headless && ScopedPlan.Topology != NetTopology::Dedicated);
+        ScopedPlan.Topology != NetTopology::Offline && ScopedPlan.Topology != NetTopology::Dedicated &&
+        ScopedPlan.Role != NetRole::Offline;
     return ScopedPlan;
 }
 

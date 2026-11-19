@@ -44,7 +44,8 @@ struct NgxExtensionApi
         return ScopedApi.Instance != nullptr || ScopedApi.Device != nullptr;
     }
     wchar_t ScopedPath[MAX_PATH]{};
-    if (GetModuleFileNameW(nullptr, ScopedPath, MAX_PATH) == 0)
+    const DWORD ScopedPathLength = GetModuleFileNameW(nullptr, ScopedPath, MAX_PATH);
+    if (ScopedPathLength == 0 || ScopedPathLength >= MAX_PATH)
     {
         return false;
     }
@@ -55,20 +56,28 @@ struct NgxExtensionApi
     }
     *(ScopedSlash + 1) = L'\0';
     const std::wstring ScopedBase(ScopedPath);
-    ScopedApi.Module = LoadLibraryW((ScopedBase + L"nvngx_dlss.dll").c_str());
-    if (ScopedApi.Module == nullptr)
+    for (const wchar_t* ScopedName : {L"nvngx_dlss.dll", L"nvngx.dll", L"_nvngx.dll"})
     {
-        ScopedApi.Module = LoadLibraryW((ScopedBase + L"nvngx.dll").c_str());
+        HMODULE ScopedModule = LoadLibraryW((ScopedBase + ScopedName).c_str());
+        if (ScopedModule == nullptr)
+        {
+            continue;
+        }
+        InstanceRequirementsFn ScopedInstance = reinterpret_cast<InstanceRequirementsFn>(
+            GetProcAddress(ScopedModule, "NVSDK_NGX_VULKAN_GetFeatureInstanceExtensionRequirements"));
+        DeviceRequirementsFn ScopedDevice = reinterpret_cast<DeviceRequirementsFn>(
+            GetProcAddress(ScopedModule, "NVSDK_NGX_VULKAN_GetFeatureDeviceExtensionRequirements"));
+        if (ScopedInstance == nullptr && ScopedDevice == nullptr)
+        {
+            FreeLibrary(ScopedModule);
+            continue;
+        }
+        ScopedApi.Module = ScopedModule;
+        ScopedApi.Instance = ScopedInstance;
+        ScopedApi.Device = ScopedDevice;
+        return true;
     }
-    if (ScopedApi.Module == nullptr)
-    {
-        return false;
-    }
-    ScopedApi.Instance = reinterpret_cast<InstanceRequirementsFn>(
-        GetProcAddress(ScopedApi.Module, "NVSDK_NGX_VULKAN_GetFeatureInstanceExtensionRequirements"));
-    ScopedApi.Device = reinterpret_cast<DeviceRequirementsFn>(
-        GetProcAddress(ScopedApi.Module, "NVSDK_NGX_VULKAN_GetFeatureDeviceExtensionRequirements"));
-    return ScopedApi.Instance != nullptr || ScopedApi.Device != nullptr;
+    return false;
 }
 
 void FillDiscoveryInfo(NVSDK_NGX_FeatureDiscoveryInfo& OutInfo)
@@ -76,7 +85,7 @@ void FillDiscoveryInfo(NVSDK_NGX_FeatureDiscoveryInfo& OutInfo)
     OutInfo.SDKVersion = NVSDK_NGX_Version_API;
     OutInfo.FeatureID = NVSDK_NGX_Feature_SuperSampling;
     OutInfo.Identifier.IdentifierType = NVSDK_NGX_Application_Identifier_Type_Project_Id;
-    OutInfo.Identifier.v.ProjectDesc.ProjectId = "femboyengine";
+    OutInfo.Identifier.v.ProjectDesc.ProjectId = "a0f57b54-1daf-4934-90ae-c4035c19df04";
     OutInfo.Identifier.v.ProjectDesc.EngineType = NVSDK_NGX_ENGINE_TYPE_CUSTOM;
     OutInfo.Identifier.v.ProjectDesc.EngineVersion = "1.0";
     OutInfo.ApplicationDataPath = L"./";

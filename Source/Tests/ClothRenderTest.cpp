@@ -71,11 +71,19 @@ int main()
 
     const std::span<const Rhi::MeshRenderItem> ScopedItems = ScopedBridge.Items();
     FBY_CHECK(ScopedItems.size() == 1);
+    if (ScopedItems.size() != 1)
+    {
+        return 1;
+    }
     const Rhi::MeshRenderItem& ScopedItem = ScopedItems[0];
     FBY_CHECK((ScopedItem.flags & Rhi::MeshItemUnskinned) != 0);
     FBY_CHECK(ScopedItem.boneCount == 0);
     FBY_CHECK(ScopedItem.vertices.size() == 16);
     FBY_CHECK(ScopedItem.indices.size() == 54);
+    if (ScopedItem.vertices.size() != 16 || ScopedItem.indices.size() != 54)
+    {
+        return 1;
+    }
     FBY_CHECK(Rhi::IsUnskinnedMeshItem(ScopedItem));
 
     // Non-collapse: the mesh still spans the authored 64x64 pixels.

@@ -413,6 +413,11 @@ void ParticleEffectSystem::Clear() noexcept
     ResetFreeList();
 }
 
+std::uint16_t ParticleEffectSystem::EmitterGeneration(std::uint32_t InEmitter) const noexcept
+{
+    return InEmitter < kParticleEffectMaxEmitters ? MEmitterGenerations[InEmitter] : 0u;
+}
+
 std::uint32_t ParticleEffectSystem::Spawn(const ParticleEffectSettings& InSettings, Vector2D InPosition,
                                           float InRotation) noexcept
 {
@@ -433,6 +438,7 @@ std::uint32_t ParticleEffectSystem::Spawn(const ParticleEffectSettings& InSettin
     }
 
     MEmitters[ScopedEmitter].Active = true;
+    ++MEmitterGenerations[ScopedEmitter];
     ++MActiveEmitters;
     InitializeEmitter(ScopedEmitter, ScopedSettings, InPosition, InRotation);
     return ScopedEmitter;

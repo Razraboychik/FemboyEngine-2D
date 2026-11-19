@@ -1185,9 +1185,13 @@ private:
                 return false;
             }
             std::string ScopedSuffix;
-            if (Accept(".") && ExpectIdentifier())
+            if (Accept("."))
             {
                 ScopedSuffix = MToken.text;
+                if (!ExpectIdentifier())
+                {
+                    return false;
+                }
             }
             const std::uint32_t ScopedFieldIndex = ResolveField(ScopedComponent, ScopedFieldName);
             if (MFailed)
@@ -1206,6 +1210,7 @@ private:
             if (ScopedField.kind == static_cast<std::uint8_t>(Reflect::FieldKind::Vector2D) && ScopedField.size == 8)
             {
                 const std::uint8_t ScopedDestination = Allocate();
+                (void)Allocate();
                 if (ScopedSuffix == "X" || ScopedSuffix == "x")
                 {
                     Emit(OpCode::LoadFieldVec2, ScopedDestination, static_cast<std::uint8_t>(ScopedEntity),

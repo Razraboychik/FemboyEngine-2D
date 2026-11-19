@@ -15,6 +15,7 @@ int main()
     ScopedWindowDesc.title = "FemboyEngine - system info";
     ScopedWindowDesc.width = 640;
     ScopedWindowDesc.height = 360;
+    ScopedWindowDesc.mode = Fby::WindowMode::Windowed;
     if (!ScopedWindow.Create(ScopedWindowDesc))
     {
         return 1;
@@ -31,7 +32,10 @@ int main()
                 static_cast<unsigned long long>(ScopedProfile.hardware.videoMemoryBytes),
                 static_cast<unsigned long long>(ScopedProfile.storage.totalBytes),
                 static_cast<unsigned long long>(ScopedProfile.storage.freeBytes));
-    if (ScopedDisplay.width == 0 || ScopedDisplay.height == 0 || ScopedDisplay.Aspect() <= 0.0f ||
+    if (ScopedProfile.displays.empty() || ScopedProfile.primaryDisplay.width == 0 ||
+        ScopedProfile.primaryDisplay.height == 0 || ScopedDisplay.width == 0 || ScopedDisplay.height == 0 ||
+        ScopedDisplay.Aspect() <= 0.0f || ScopedDisplay.AspectLabel().empty() ||
+        ScopedDisplay.width != ScopedWindow.Size().width || ScopedDisplay.height != ScopedWindow.Size().height ||
         ScopedProfile.hardware.logicalCores == 0 || ScopedProfile.hardware.memoryTotalBytes == 0 ||
         ScopedProfile.storage.totalBytes == 0)
     {

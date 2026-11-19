@@ -10,6 +10,11 @@ namespace Fby::Rhi
 class Fsr3FrameGenerator final : public IFrameGenerator
 {
 public:
+    Fsr3FrameGenerator() = default;
+    Fsr3FrameGenerator(const Fsr3FrameGenerator&) = delete;
+    Fsr3FrameGenerator& operator=(const Fsr3FrameGenerator&) = delete;
+    Fsr3FrameGenerator(Fsr3FrameGenerator&&) = delete;
+    Fsr3FrameGenerator& operator=(Fsr3FrameGenerator&&) = delete;
     [[nodiscard]] bool Initialize(RHI& InGpu, Extent2D InRenderExtent, Extent2D InOutputExtent) override;
     [[nodiscard]] bool Generate(RHI& InGpu, const FrameGenerationInput& InInput) override;
     void ResetHistory() noexcept override;

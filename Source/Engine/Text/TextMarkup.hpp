@@ -138,6 +138,20 @@ struct MarkupStackEntry
     std::size_t ScopedWritten = 0;
     while (ScopedCursor < InMarkup.size())
     {
+        if (InMarkup[ScopedCursor] == '\\' && ScopedCursor + 1 < InMarkup.size())
+        {
+            if (ScopedSkipping == 0)
+            {
+                if (ScopedWritten + 2 > OutBuffer.size())
+                {
+                    return TextMarkupStatus::TextTooLong;
+                }
+                OutBuffer[ScopedWritten++] = InMarkup[ScopedCursor];
+                OutBuffer[ScopedWritten++] = InMarkup[ScopedCursor + 1];
+            }
+            ScopedCursor += 2;
+            continue;
+        }
         if (InMarkup[ScopedCursor] != '[')
         {
             if (ScopedSkipping == 0)

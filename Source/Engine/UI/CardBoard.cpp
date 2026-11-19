@@ -84,20 +84,21 @@ void CardBoardSystem::Update(const Ecs::CoreSystemView& InView) noexcept
         const SlotLayout ScopedLayout = ComputeSlotLayout(*ScopedBoard, ScopedSlot);
         ScopedSlot.Position = ScopedLayout.Position;
         ScopedSlot.IsOccupied = ScopedSlot.CardId != 0u;
+        const std::uint16_t ScopedLayer = ScopedSlot.Layer;
         Transform2D& ScopedTransform = InView.registry.get_or_emplace<Transform2D>(ScopedEntity);
         ScopedTransform.Position = ScopedLayout.Position;
         ScopedTransform.Rotation = ScopedLayout.Rotation;
         if (auto* ScopedOrder = InView.registry.try_get<DrawOrder>(ScopedEntity); ScopedOrder == nullptr)
         {
             DrawOrder ScopedNewOrder{};
-            ScopedNewOrder.Layer = ScopedSlot.Layer;
+            ScopedNewOrder.Layer = ScopedLayer;
             InView.registry.emplace<DrawOrder>(ScopedEntity, ScopedNewOrder);
         }
-        else if (ScopedOrder->Layer != ScopedSlot.Layer)
+        else if (ScopedOrder->Layer != ScopedLayer)
         {
             // The slot can change layer after the first frame; keep DrawOrder in
             // sync instead of freezing the initial value.
-            ScopedOrder->Layer = ScopedSlot.Layer;
+            ScopedOrder->Layer = ScopedLayer;
         }
     }
 }

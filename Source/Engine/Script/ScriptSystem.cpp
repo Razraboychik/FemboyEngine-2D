@@ -49,8 +49,7 @@ void NativeDespawnSelf(Script::ScriptVm& InVm, Script::VmContext& InContext, std
     const auto ScopedEntity = static_cast<Entity>(InVm.U(InBase));
     if (InContext.registry.valid(ScopedEntity))
     {
-        (void)InContext.commands->Destroy(ScopedEntity);
-        InVm.SetU(InBase, 1);
+        InVm.SetU(InBase, InContext.commands->Destroy(ScopedEntity) ? 1 : 0);
     }
     else
     {
@@ -1055,13 +1054,29 @@ std::uint16_t ScriptRuntime::LoadProgram(std::span<const std::byte> InCooked, st
         return static_cast<std::uint16_t>(kScriptNoProgram);
     }
 
-    Script::CompiledProgram ScopedParsed;
-    if (!Script::ParseProgram(InCooked, &ScopedParsed, InError))
+    Slot& ScopedSlot = MSlots[ScopedHandle];
+    try
     {
+        ScopedSlot.owned.assign(InCooked.begin(), InCooked.end());
+    }
+    catch (...)
+    {
+        if (InError != nullptr)
+        {
+            *InError = "script program copy failed";
+        }
+        ScopedSlot = {};
+        return static_cast<std::uint16_t>(kScriptNoProgram);
+    }
+    ScopedSlot.storage = ScopedSlot.owned;
+
+    Script::CompiledProgram ScopedParsed;
+    if (!Script::ParseProgram(ScopedSlot.storage, &ScopedParsed, InError))
+    {
+        ScopedSlot = {};
         return static_cast<std::uint16_t>(kScriptNoProgram);
     }
 
-    Slot& ScopedSlot = MSlots[ScopedHandle];
     if (!Script::BindProgram(ScopedParsed, MBridge, &ScopedSlot.bound, InError))
     {
         ScopedSlot = {};

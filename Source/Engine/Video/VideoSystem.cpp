@@ -119,7 +119,8 @@ bool VideoSystem::OpenOnFreeSlot(VideoStreamComponent& InComponent, std::span<co
         return false;
     }
     // Re-opening a component that already owns a slot replaces the old stream;
-    if (InComponent.Player < kMaxVideoPlayers && MSlotUsed[InComponent.Player])
+    if (InComponent.Player < kMaxVideoPlayers && MSlotUsed[InComponent.Player] &&
+        MStreamIds[InComponent.Player] == InComponent.StreamId)
     {
         (void)Close(InComponent);
     }
@@ -161,7 +162,8 @@ bool VideoSystem::OpenOnFreeSlot(VideoStreamComponent& InComponent, std::span<co
 bool VideoSystem::Close(VideoStreamComponent& InComponent)
 {
     const std::uint32_t ScopedSlot = InComponent.Player;
-    if (ScopedSlot >= kMaxVideoPlayers || !MSlotUsed[ScopedSlot])
+    if (ScopedSlot >= kMaxVideoPlayers || !MSlotUsed[ScopedSlot] ||
+        MStreamIds[ScopedSlot] != InComponent.StreamId)
     {
         InComponent = VideoStreamComponent{};
         return false;

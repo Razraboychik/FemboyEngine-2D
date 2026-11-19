@@ -146,7 +146,19 @@ struct BackendCapabilities
         }
         return "motion vectors unavailable";
     case UpscalerBackend::MetalFx:
-        return "MetalFX requires macOS on Apple silicon";
+        if (InCaps.Platform != PlatformKind::MacOs)
+        {
+            return "MetalFX requires macOS";
+        }
+        if (InCaps.Vendor != GpuVendor::Apple)
+        {
+            return "MetalFX requires an Apple GPU";
+        }
+        if (!InCaps.MetalFx)
+        {
+            return "MetalFX runtime unavailable";
+        }
+        return "motion vectors unavailable";
     case UpscalerBackend::XeSs:
         return InCaps.MotionVectors ? "XeSS runtime unavailable" : "motion vectors unavailable";
     }

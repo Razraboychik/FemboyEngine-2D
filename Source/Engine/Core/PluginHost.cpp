@@ -71,9 +71,12 @@ void* FindSymbol(LibraryHandle handle, const char* name)
     try
     {
         const FbyPluginInfo* ScopedInfo = InEntry();
-        if (ScopedInfo == nullptr || ScopedInfo->struct_size < sizeof(FbyPluginInfo))
+        if (ScopedInfo == nullptr || ScopedInfo->struct_size < sizeof(FbyPluginInfo) ||
+            (ScopedInfo->component_count > 0 && ScopedInfo->components == nullptr) ||
+            (ScopedInfo->component_count == 0 && ScopedInfo->components != nullptr) ||
+            ScopedInfo->component_count > 256)
         {
-            return std::unexpected(Core::MakeError(Core::ErrorCode::InvalidState));
+            return std::unexpected(Core::MakeError(Core::ErrorCode::AbiViolation));
         }
         return ScopedInfo;
     }

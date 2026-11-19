@@ -168,6 +168,10 @@ AudioZoneSystem::ResolvedZone AudioZoneSystem::FindDominant(Ecs::Registry& InReg
     for (auto [ScopedEntity, ScopedZone] : ScopedView.each())
     {
         (void)ScopedEntity;
+        if (ScopedIndex >= kMaxZones)
+        {
+            break;
+        }
         const std::uint32_t ScopedCurrent = ScopedIndex++;
         if (!ScopedZone.Enabled() || !ScopedZone.Contains(InPoint))
         {

@@ -94,6 +94,7 @@ private:
     {
         Entity EntityId = kNullEntity;
         std::uint32_t Emitter = kInvalidParticleEmitter;
+        std::uint16_t EmitterGeneration = 0;
         std::uint32_t RestartCounter = 0;
         bool Active = false;
         bool Seen = false;

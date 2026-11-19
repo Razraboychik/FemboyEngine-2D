@@ -6,6 +6,7 @@
 #include <chrono>
 
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <cstdint>
 #include <semaphore>
@@ -140,6 +141,28 @@ bool SystemGraph::Build()
         }
     }
 
+    const auto ScopedReaches = [&ScopedDependencies](std::uint32_t InFrom, std::uint32_t InTo)
+    {
+        std::uint64_t ScopedFrontier = 1ull << InFrom;
+        std::uint64_t ScopedVisited = 0;
+        while (ScopedFrontier != 0)
+        {
+            const std::uint32_t ScopedNode = static_cast<std::uint32_t>(std::countr_zero(ScopedFrontier));
+            ScopedFrontier &= ScopedFrontier - 1u;
+            if (ScopedNode >= kMaxGraphSystems || (ScopedVisited & (1ull << ScopedNode)) != 0)
+            {
+                continue;
+            }
+            ScopedVisited |= (1ull << ScopedNode);
+            if (ScopedNode == InTo)
+            {
+                return true;
+            }
+            ScopedFrontier |= ScopedDependencies[ScopedNode] & ~ScopedVisited;
+        }
+        return false;
+    };
+
     // Access conflicts: two same-phase systems that touch the same engine service
     // are ordered by registration instead of running in parallel on it. A zero
     // declaration keeps the previous behavior.
@@ -163,7 +186,11 @@ bool SystemGraph::Build()
             const bool ScopedNotParallelSafe = !ScopedLeft.ParallelSafe || !ScopedRight.ParallelSafe;
             if (ScopedServiceConflict || ScopedComponentConflict || ScopedNotParallelSafe)
             {
-                ScopedDependencies[ScopedSecond] |= (1ull << ScopedFirst);
+                // Do not add an edge that closes a cycle over an explicit ordering.
+                if (!ScopedReaches(ScopedFirst, ScopedSecond))
+                {
+                    ScopedDependencies[ScopedSecond] |= (1ull << ScopedFirst);
+                }
             }
         }
     }

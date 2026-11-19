@@ -3,6 +3,8 @@
 
 #include "Engine/Audio/DspGraph.hpp"
 
+#include <cstdint>
+
 namespace Fby::Audio
 {
 
@@ -13,13 +15,19 @@ enum class ReverbSpace : std::uint8_t
     Cave,
     Plate,
     Cathedral,
+    Off,
 };
 
-// All values are tuned for a wet/dry bus send; the caller still owns the return
-// gain on BusFilterParams. Keep roomSize below 0.97 to avoid an endless tail.
+// `wet` is a linear additive return gain, not a dry/wet mix ratio; the dry bus is
+// never attenuated. Return gain is owned by AudioZoneSystem on zoned buses. The
+// engine clamps roomSize to [0,1] and scales comb feedback internally.
 [[nodiscard]] constexpr ReverbParams MakeReverbPreset(ReverbSpace InSpace) noexcept
 {
     ReverbParams ScopedParams;
+    if (InSpace == ReverbSpace::Off)
+    {
+        return ScopedParams;
+    }
     ScopedParams.enabled = true;
     switch (InSpace)
     {
@@ -35,7 +43,7 @@ enum class ReverbSpace : std::uint8_t
             break;
         case ReverbSpace::Plate:
             ScopedParams.roomSize = 0.74f;
-            ScopedParams.damping = 0.55f;
+            ScopedParams.damping = 0.18f;
             ScopedParams.wet = 0.3f;
             break;
         case ReverbSpace::Cathedral:
@@ -44,11 +52,13 @@ enum class ReverbSpace : std::uint8_t
             ScopedParams.wet = 0.48f;
             break;
         case ReverbSpace::Room:
-        default:
             ScopedParams.roomSize = 0.55f;
             ScopedParams.damping = 0.45f;
             ScopedParams.wet = 0.2f;
             break;
+        case ReverbSpace::Off:
+        default:
+            return ReverbParams{};
     }
     return ScopedParams;
 }

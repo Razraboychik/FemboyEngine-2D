@@ -41,6 +41,10 @@ struct TextRenderSystemStats
     {
         const TextComponent& ScopedText = ScopedView.get<TextComponent>(ScopedEntity);
         const Transform2D& ScopedTransform = ScopedView.get<Transform2D>(ScopedEntity);
+        if ((ScopedText.Flags & kTextFlagHidden) != 0)
+        {
+            continue;
+        }
         if (const auto* ScopedLocalized = InRegistry.try_get<LocalizedTextComponent>(ScopedEntity);
             ScopedLocalized != nullptr && InLocalization != nullptr && ScopedLocalized->LocalizationKey != 0)
         {
@@ -75,7 +79,7 @@ struct TextRenderSystemStats
             }
         }
         const TextAssetRef ScopedRef = ScopedText.Ref();
-        if (!ScopedRef.IsValid() || (ScopedText.Flags & kTextFlagHidden) != 0)
+        if (!ScopedRef.IsValid())
         {
             continue;
         }

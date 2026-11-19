@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <span>
 
+struct ImDrawList;
+
 namespace Fby
 {
 class SdfCollisionSystem;
@@ -52,19 +54,27 @@ struct PhysicsDebugFrame
     std::uint32_t ropes = 0;
     std::uint32_t cloths = 0;
     std::uint32_t sdfContacts = 0;
+    std::uint32_t appliedFlags = 0;
+    std::uint32_t unavailableFlags = 0;
+    std::uint32_t droppedShapes = 0;
     bool truncated = false;
 };
 
 class PhysicsDebugVisualizer
 {
 public:
+    PhysicsDebugVisualizer() = default;
+    PhysicsDebugVisualizer(const PhysicsDebugVisualizer&) = delete;
+    PhysicsDebugVisualizer& operator=(const PhysicsDebugVisualizer&) = delete;
+    PhysicsDebugVisualizer(PhysicsDebugVisualizer&&) = delete;
+    PhysicsDebugVisualizer& operator=(PhysicsDebugVisualizer&&) = delete;
     static constexpr std::uint32_t kMaxLines = 12000;
     static constexpr std::uint32_t kMaxPoints = 512;
 
     // World pixels -> screen pixels. `InUser` is the caller's camera/rect state.
     using ScreenMapper = Vector2D (*)(void* InUser, Vector2D InWorldPixels);
 
-    void Build(Ecs::SystemContext& InContext, std::uint32_t InFlags = PhysicsDebugAll,
+    void Build(const Ecs::SystemContext& InContext, std::uint32_t InFlags = PhysicsDebugAll,
                const SdfCollisionSystem* InSdf = nullptr);
     void Clear() noexcept;
 
@@ -81,20 +91,21 @@ public:
         return MPointCount;
     }
 
-    // `InDrawList` is an ImDrawList*. Kept as void* so this header does not pull
-    void DrawImGui(void* InDrawList, void* InUser, ScreenMapper InMapper) const;
+    // The clip rectangle is in screen space; a zero-sized rectangle disables it.
+    void DrawImGui(ImDrawList& InDrawList, void* InUser, ScreenMapper InMapper, Rect InClip = {}) const;
 
 private:
-    void AddLine(Vector2D InA, Vector2D InB, Color32 InColor, float InThickness = 1.0f) noexcept;
-    void AddPoint(Vector2D InPosition, Color32 InColor, float InRadius = 2.0f) noexcept;
-    void AddBox(Vector2D InCenter, float InRotation, Vector2D InHalfExtents, Color32 InColor) noexcept;
-    void AddCircle(Vector2D InCenter, float InRadius, Color32 InColor, std::uint32_t InSegments = 12) noexcept;
+    [[nodiscard]] bool AddLine(Vector2D InA, Vector2D InB, Color32 InColor, float InThickness = 1.0f) noexcept;
+    [[nodiscard]] bool AddPoint(Vector2D InPosition, Color32 InColor, float InRadius = 2.0f) noexcept;
+    [[nodiscard]] bool AddBox(Vector2D InCenter, float InRotation, Vector2D InHalfExtents, Color32 InColor) noexcept;
+    [[nodiscard]] bool AddCircle(Vector2D InCenter, float InRadius, Color32 InColor,
+                                 std::uint32_t InSegments = 12) noexcept;
 
-    void BuildBodies(Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept;
-    void BuildRopes(Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept;
-    void BuildCloth(Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept;
+    void BuildBodies(const Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept;
+    void BuildRopes(const Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept;
+    void BuildCloth(const Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept;
     void BuildSdf(std::uint32_t InFlags, const SdfCollisionSystem* InSdf) noexcept;
-    void BuildContacts(Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept;
+    void BuildContacts(const Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept;
 
     std::array<PhysicsDebugLine, kMaxLines> MLines{};
     std::array<PhysicsDebugPoint, kMaxPoints> MPoints{};

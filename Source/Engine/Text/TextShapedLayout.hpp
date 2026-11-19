@@ -52,7 +52,7 @@ struct ShapedLayoutResult
         for (std::uint32_t ScopedIndex = 0; ScopedIndex < InShaped.Count; ++ScopedIndex)
         {
             const ShapedGlyph& ScopedGlyph = InShaped.Glyphs[ScopedIndex];
-            float ScopedAdvance = std::abs(ScopedGlyph.AdvanceY);
+            float ScopedAdvance = std::max(std::abs(ScopedGlyph.AdvanceY), 0.5f * ScopedHeight);
             float ScopedGlyphWidth = std::abs(ScopedGlyph.AdvanceX);
             for (const TextInlineObject& ScopedInline : InParams.Inlines)
             {
@@ -173,8 +173,9 @@ struct ShapedGlyphHit
              ScopedIndex < ScopedLine.EndGlyph && ScopedIndex < InGlyphs.size(); ++ScopedIndex)
         {
             const ShapedGlyph& ScopedGlyph = InGlyphs[ScopedIndex];
-            const float ScopedAdvance = InVertical ? std::abs(ScopedGlyph.AdvanceY)
-                                                   : std::abs(ScopedGlyph.AdvanceX);
+            const float ScopedAdvance =
+                InVertical ? std::max(std::abs(ScopedGlyph.AdvanceY), 0.5f * (InFontSize > 0.0f ? InFontSize : 16.0f))
+                           : std::abs(ScopedGlyph.AdvanceX);
             const bool ScopedInside = InVertical
                                           ? (InPoint.X >= ScopedLineX && InPoint.X <= ScopedLineX + InFontSize &&
                                              InPoint.Y >= ScopedPenY && InPoint.Y <= ScopedPenY + ScopedAdvance)

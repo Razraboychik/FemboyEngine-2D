@@ -223,8 +223,13 @@ bool AssetDatabaseWatchSystem::Initialize(Assets::AssetDatabase& InDatabase, con
     MPendingHead = MPendingTail = 0;
     MWatchedCount = 0;
     MStats = {};
+    if (!StartOsWatcher(InError))
+    {
+        Shutdown();
+        return false;
+    }
     MActive = true;
-    return StartOsWatcher(InError);
+    return true;
 }
 
 void AssetDatabaseWatchSystem::Shutdown()
@@ -276,19 +281,27 @@ std::uint32_t AssetDatabaseWatchSystem::ScanForNewSources(std::string* InError)
         return 0;
     }
     std::uint32_t ScopedImported = 0;
+    // Importing writes .femeta files beside the sources; finish the directory
+    // walk before mutating it.
+    std::vector<std::string> ScopedCandidates;
     for (const std::filesystem::directory_entry& ScopedEntry : std::filesystem::recursive_directory_iterator(
              MConfig.projectRoot, std::filesystem::directory_options::skip_permission_denied, ScopedCode))
     {
-        if (ScopedCode || !ScopedEntry.is_regular_file(ScopedCode))
+        std::error_code ScopedEntryError;
+        if (ScopedCode || !ScopedEntry.is_regular_file(ScopedEntryError))
         {
             continue;
         }
         const std::string ScopedRelative =
             Normalize(ScopedEntry.path().lexically_relative(MConfig.projectRoot).generic_string());
-        if (!IsRelevantSourceFile(ScopedRelative) || MDatabase->FindHandleBySourcePath(ScopedRelative).IsValid())
+        if (IsRelevantSourceFile(ScopedRelative) &&
+            !MDatabase->FindHandleBySourcePath(ScopedRelative).IsValid())
         {
-            continue;
+            ScopedCandidates.push_back(ScopedRelative);
         }
+    }
+    for (const std::string& ScopedRelative : ScopedCandidates)
+    {
         std::string ScopedImportError;
         const Assets::AssetHandle ScopedHandle = EnsureImported(ScopedRelative, &ScopedImportError);
         if (!ScopedHandle.IsValid())
@@ -522,10 +535,11 @@ void AssetDatabaseWatchSystem::ProcessChange(const Change& InChange)
         const Assets::AssetMeta* ScopedCommitted = MDatabase->Meta(ScopedHandle);
         if (ScopedCommitted != nullptr)
         {
-            // reload() may mutate/reallocate the database; keep the generation
-            // by value instead of dereferencing the pointer afterwards.
-            const std::uint32_t ScopedGeneration = ScopedCommitted->contentGeneration;
-            if (MCallbacks.reload(MCallbacks.user, ScopedHandle, *ScopedCommitted, &ScopedError))
+            // reload() may mutate/reallocate the database, so pass a snapshot
+            // instead of a reference into MMetas.
+            const Assets::AssetMeta ScopedSnapshot = *ScopedCommitted;
+            const std::uint32_t ScopedGeneration = ScopedSnapshot.contentGeneration;
+            if (MCallbacks.reload(MCallbacks.user, ScopedHandle, ScopedSnapshot, &ScopedError))
             {
                 ++MStats.reloads;
                 LogInfo("watch", "hot reloaded '{}' (content gen {})", InChange.path, ScopedGeneration);

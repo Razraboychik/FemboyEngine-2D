@@ -156,7 +156,7 @@ bool PagedNavGrid::BakeFromWorld(const SdfWorld& InWorld, const TilemapComponent
 
 bool PagedNavGrid::BuildFlow(std::uint32_t InGoalX, std::uint32_t InGoalY) noexcept
 {
-    if (!IsConfigured() || InGoalX >= WidthCells() || InGoalY >= HeightCells())
+    if (!IsConfigured() || InGoalX >= WidthCells() || InGoalY >= HeightCells() || CostAt(InGoalX, InGoalY) == 0)
     {
         return false;
     }

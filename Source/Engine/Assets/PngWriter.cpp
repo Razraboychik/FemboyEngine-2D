@@ -173,6 +173,10 @@ bool WritePng(const std::filesystem::path& InPath, std::uint32_t InWidth, std::u
     if (!InPath.parent_path().empty())
     {
         std::filesystem::create_directories(InPath.parent_path(), ScopedCode);
+        if (ScopedCode)
+        {
+            return false;
+        }
     }
     std::ofstream ScopedOutput(InPath, std::ios::binary | std::ios::trunc);
     if (!ScopedOutput)

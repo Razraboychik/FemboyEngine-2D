@@ -541,8 +541,11 @@ DecodeStatus VideoPlayer::PumpFrame()
 
 void VideoPlayer::PublishError(std::string InMessage)
 {
+    {
+        std::lock_guard<std::mutex> ScopedLock(MErrorMutex);
+        MErrorText = std::move(InMessage);
+    }
     MFailed.store(true, std::memory_order_release);
-    MErrorText = std::move(InMessage);
 }
 
 void VideoPlayer::ThreadMain(std::stop_token InStopToken)

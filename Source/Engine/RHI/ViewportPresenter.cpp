@@ -66,7 +66,7 @@ std::uint32_t ViewportPresenter::CountReachingLights(const Ecs::Registry& InRegi
     auto ScopedView = InRegistry.view<LightSourceComponent>();
     for (auto [ScopedEntity, ScopedSource] : ScopedView.each())
     {
-        if (InEntity == ScopedEntity || !ScopedSource.IsEnabled() ||
+        if (!ScopedSource.IsEnabled() ||
             !EntityAllowsRenderPass(InRegistry, ScopedEntity, RenderPassLightSources))
         {
             continue;
@@ -142,7 +142,8 @@ void ViewportPresenter::Prepare(const Ecs::Registry& InRegistry) noexcept
         VisibleSprite& ScopedVisible = MSprites[MSpriteCount++];
         ScopedVisible.Owner = ScopedEntity;
         ScopedVisible.Center = ScopedTransform.Position;
-        ScopedVisible.HalfExtents = ScopedSprite.Size * ScopedTransform.Scale * 0.5f;
+        ScopedVisible.HalfExtents = Vector2D{std::fabs(ScopedSprite.Size.X * ScopedTransform.Scale.X) * 0.5f,
+                                             std::fabs(ScopedSprite.Size.Y * ScopedTransform.Scale.Y) * 0.5f};
         ScopedVisible.BaseColor = ScopedSprite.Color.rgba;
     }
     MStats.VisibleSprites = MSpriteCount;

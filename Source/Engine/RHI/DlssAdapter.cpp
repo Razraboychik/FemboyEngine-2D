@@ -29,7 +29,8 @@ struct DlssNgxApi
     {
         if (Module != nullptr)
         {
-            return true;
+            return Init != nullptr && Shutdown != nullptr && GetCapabilityParameters != nullptr &&
+                   CreateFeature != nullptr && EvaluateFeature != nullptr && ReleaseFeature != nullptr;
         }
         wchar_t ScopedPath[MAX_PATH]{};
         if (GetModuleFileNameW(nullptr, ScopedPath, MAX_PATH) == 0)
@@ -73,8 +74,22 @@ struct DlssNgxApi
         EvaluateFeature = reinterpret_cast<decltype(EvaluateFeature)>(
             ScopedResolve("NVSDK_NGX_VULKAN_EvaluateFeature"));
         ReleaseFeature = reinterpret_cast<decltype(ReleaseFeature)>(ScopedResolve("NVSDK_NGX_VULKAN_ReleaseFeature"));
-        return Init != nullptr && Shutdown != nullptr && GetCapabilityParameters != nullptr &&
-               CreateFeature != nullptr && EvaluateFeature != nullptr && ReleaseFeature != nullptr;
+        const bool ScopedLoaded =
+            Init != nullptr && Shutdown != nullptr && GetCapabilityParameters != nullptr &&
+            CreateFeature != nullptr && EvaluateFeature != nullptr && ReleaseFeature != nullptr;
+        if (!ScopedLoaded)
+        {
+            Init = nullptr;
+            InitProject = nullptr;
+            Shutdown = nullptr;
+            GetCapabilityParameters = nullptr;
+            CreateFeature = nullptr;
+            EvaluateFeature = nullptr;
+            ReleaseFeature = nullptr;
+            FreeLibrary(Module);
+            Module = nullptr;
+        }
+        return ScopedLoaded;
     }
 
     // Parameter access goes through the NGX C++ interface, not exported
@@ -103,6 +118,11 @@ DlssNgxApi GDlssNgx;
 
 namespace Fby::Rhi
 {
+DlssAdapter::~DlssAdapter()
+{
+    Shutdown();
+}
+
 
 bool DlssAdapter::Initialize(RHI& InGpu)
 {
@@ -125,7 +145,7 @@ bool DlssAdapter::Initialize(RHI& InGpu)
     const NVSDK_NGX_Result ScopedInit =
         GDlssNgx.InitProject != nullptr
             ? GDlssNgx.InitProject(
-                  "femboyengine", NVSDK_NGX_ENGINE_TYPE_CUSTOM, "1.0", L"./",
+                  "a0f57b54-1daf-4934-90ae-c4035c19df04", NVSDK_NGX_ENGINE_TYPE_CUSTOM, "1.0", L"./",
                   static_cast<VkInstance>(ScopedHandles.Instance),
                   static_cast<VkPhysicalDevice>(ScopedHandles.PhysicalDevice),
                   static_cast<VkDevice>(ScopedHandles.Device), nullptr, nullptr, nullptr,
@@ -145,6 +165,9 @@ bool DlssAdapter::Initialize(RHI& InGpu)
     if (NVSDK_NGX_FAILED(GDlssNgx.GetCapabilityParameters(&ScopedParameters)) ||
         ScopedParameters == nullptr)
     {
+        GDlssNgx.Shutdown(static_cast<VkDevice>(MDevice));
+        MInitialized = false;
+        MDevice = nullptr;
         return false;
     }
     MParameters = ScopedParameters;
@@ -324,6 +347,11 @@ bool DlssAdapter::Evaluate(void* InCommandBuffer)
 void DlssAdapter::Shutdown(RHI& InGpu) noexcept
 {
     (void)InGpu;
+    Shutdown();
+}
+
+void DlssAdapter::Shutdown() noexcept
+{
 #if defined(FBY_WITH_DLSS)
     if (MFgFeature != nullptr)
     {
@@ -335,7 +363,7 @@ void DlssAdapter::Shutdown(RHI& InGpu) noexcept
     }
     if (MInitialized)
     {
-        GDlssNgx.Shutdown(nullptr);
+        GDlssNgx.Shutdown(static_cast<VkDevice>(MDevice));
     }
 #endif
     MInitialized = false;
@@ -343,6 +371,7 @@ void DlssAdapter::Shutdown(RHI& InGpu) noexcept
     MFgAvailable = false;
     MParameters = nullptr;
     MFeature = nullptr;
+    MFgFeature = nullptr;
     MDevice = nullptr;
 }
 

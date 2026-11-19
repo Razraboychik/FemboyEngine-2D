@@ -1,6 +1,10 @@
 // FemboyEngine2D - portable source-only project archive.
 #include "Engine/Assets/ProjectBundle.hpp"
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -28,6 +32,34 @@ struct Entry
     std::uint32_t DataOffset = 0;
     std::uint32_t Checksum = 0;
 };
+
+bool HasSymlinkComponent(const std::filesystem::path& InRoot, const std::filesystem::path& InRelative)
+{
+    std::filesystem::path ScopedCurrent = InRoot;
+    for (const std::filesystem::path& ScopedPart : InRelative)
+    {
+        ScopedCurrent /= ScopedPart;
+        std::error_code ScopedError;
+        const std::filesystem::file_status ScopedStatus = std::filesystem::symlink_status(ScopedCurrent, ScopedError);
+        if (ScopedError)
+        {
+            if (ScopedError == std::errc::no_such_file_or_directory)
+            {
+                return false;
+            }
+            return true;
+        }
+        if (ScopedStatus.type() == std::filesystem::file_type::not_found)
+        {
+            return false;
+        }
+        if (std::filesystem::is_symlink(ScopedStatus))
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 void SetError(std::string* OutError, std::string InText)
 {
@@ -279,10 +311,12 @@ bool ExportProjectBundle(const std::filesystem::path& InProjectRoot, const std::
     {
         std::filesystem::create_directories(InArchive.parent_path(), ScopedParentError);
     }
-    std::ofstream ScopedStream(InArchive, std::ios::binary | std::ios::trunc);
+    std::filesystem::path ScopedTemp = InArchive;
+    ScopedTemp += ".tmp";
+    std::ofstream ScopedStream(ScopedTemp, std::ios::binary | std::ios::trunc);
     if (!ScopedStream)
     {
-        SetError(InError, "project bundle: cannot write " + InArchive.string());
+        SetError(InError, "project bundle: cannot write " + ScopedTemp.string());
         return false;
     }
     ScopedStream.write(reinterpret_cast<const char*>(ScopedArchive.data()),
@@ -296,9 +330,27 @@ bool ExportProjectBundle(const std::filesystem::path& InProjectRoot, const std::
     ScopedStream.close();
     if (ScopedStream.fail())
     {
+        std::filesystem::remove(ScopedTemp, ScopedError);
         SetError(InError, "project bundle: close failed");
         return false;
     }
+#if defined(_WIN32)
+    if (!MoveFileExW(ScopedTemp.c_str(), InArchive.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    {
+        std::filesystem::remove(ScopedTemp, ScopedError);
+        SetError(InError, "project bundle: cannot replace the target archive");
+        return false;
+    }
+#else
+    std::filesystem::rename(ScopedTemp, InArchive, ScopedError);
+    if (ScopedError)
+    {
+        std::filesystem::remove(ScopedTemp, ScopedError);
+        SetError(InError, "project bundle: cannot replace the target archive");
+        return false;
+    }
+#endif
     return true;
 }
 
@@ -321,17 +373,40 @@ bool ImportProjectBundle(const std::filesystem::path& InArchive, const std::file
     std::uint64_t ScopedTable = 0;
     if (!Get32(ScopedBytes, 8, &ScopedVersion) || ScopedVersion != kVersion ||
         !Get32(ScopedBytes, 12, &ScopedCount) || !Get64(ScopedBytes, 16, &ScopedTable) ||
-        ScopedTable < kHeaderBytes || ScopedTable + kEntryBytes * ScopedCount > ScopedBytes.size())
+        ScopedTable < kHeaderBytes || ScopedTable > ScopedBytes.size() ||
+        ScopedCount > (ScopedBytes.size() - ScopedTable) / kEntryBytes)
     {
         SetError(InError, "project bundle: corrupt header");
         return false;
     }
 
     std::error_code ScopedError;
-    if (std::filesystem::exists(InProjectRoot, ScopedError) && !InOverwrite &&
-        !std::filesystem::is_empty(InProjectRoot, ScopedError))
+    const bool ScopedRootExists = std::filesystem::exists(InProjectRoot, ScopedError);
+    if (ScopedError)
     {
-        SetError(InError, "project bundle: destination is not empty");
+        SetError(InError, "project bundle: cannot inspect destination");
+        return false;
+    }
+    if (ScopedRootExists && !InOverwrite)
+    {
+        const bool ScopedEmpty = std::filesystem::is_empty(InProjectRoot, ScopedError);
+        if (ScopedError)
+        {
+            SetError(InError, "project bundle: cannot inspect destination");
+            return false;
+        }
+        if (!ScopedEmpty)
+        {
+            SetError(InError, "project bundle: destination is not empty");
+            return false;
+        }
+    }
+    std::error_code ScopedRootStatusError;
+    const std::filesystem::file_status ScopedRootStatus =
+        std::filesystem::symlink_status(InProjectRoot, ScopedRootStatusError);
+    if (!ScopedRootStatusError && std::filesystem::is_symlink(ScopedRootStatus))
+    {
+        SetError(InError, "project bundle: destination is a symlink");
         return false;
     }
     std::filesystem::create_directories(InProjectRoot, ScopedError);
@@ -343,6 +418,13 @@ bool ImportProjectBundle(const std::filesystem::path& InArchive, const std::file
 
     const std::uint64_t ScopedPathTable = ScopedTable + kEntryBytes * ScopedCount;
     bool ScopedHasDescriptor = false;
+    struct ValidatedEntry
+    {
+        std::string Path;
+        std::span<const std::byte> Data;
+    };
+    std::vector<ValidatedEntry> ScopedValidated;
+    ScopedValidated.reserve(ScopedCount);
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
     {
         const std::size_t ScopedEntryOffset = static_cast<std::size_t>(ScopedTable + kEntryBytes * ScopedI);
@@ -389,37 +471,52 @@ bool ImportProjectBundle(const std::filesystem::path& InArchive, const std::file
                 return false;
             }
         }
-        const std::filesystem::path ScopedDestination = InProjectRoot / ScopedRelative;
-        std::filesystem::create_directories(ScopedDestination.parent_path(), ScopedError);
-        std::ofstream ScopedFile(ScopedDestination, std::ios::binary | std::ios::trunc);
-        if (!ScopedFile)
-        {
-            SetError(InError, "project bundle: cannot write " + ScopedPath);
-            return false;
-        }
-        ScopedFile.write(reinterpret_cast<const char*>(ScopedData.data()),
-                         static_cast<std::streamsize>(ScopedData.size()));
-        ScopedFile.flush();
-        if (!ScopedFile.good())
-        {
-            SetError(InError, "project bundle: write failed for " + ScopedPath);
-            return false;
-        }
-        ScopedFile.close();
-        if (ScopedFile.fail())
-        {
-            SetError(InError, "project bundle: close failed for " + ScopedPath);
-            return false;
-        }
         if (ScopedPath == kProjectDescriptorName)
         {
             ScopedHasDescriptor = true;
         }
+        ScopedValidated.push_back(ValidatedEntry{ScopedPath, ScopedData});
     }
     if (!ScopedHasDescriptor)
     {
         SetError(InError, "project bundle: descriptor is missing");
         return false;
+    }
+    for (const ValidatedEntry& ScopedEntry : ScopedValidated)
+    {
+        const std::filesystem::path ScopedRelative = std::filesystem::path(ScopedEntry.Path);
+        if (HasSymlinkComponent(InProjectRoot, ScopedRelative))
+        {
+            SetError(InError, "project bundle: symlink component rejected for " + ScopedEntry.Path);
+            return false;
+        }
+        const std::filesystem::path ScopedDestination = InProjectRoot / ScopedRelative;
+        std::filesystem::create_directories(ScopedDestination.parent_path(), ScopedError);
+        if (ScopedError)
+        {
+            SetError(InError, "project bundle: cannot create directory for " + ScopedEntry.Path);
+            return false;
+        }
+        std::ofstream ScopedFile(ScopedDestination, std::ios::binary | std::ios::trunc);
+        if (!ScopedFile)
+        {
+            SetError(InError, "project bundle: cannot write " + ScopedEntry.Path);
+            return false;
+        }
+        ScopedFile.write(reinterpret_cast<const char*>(ScopedEntry.Data.data()),
+                         static_cast<std::streamsize>(ScopedEntry.Data.size()));
+        ScopedFile.flush();
+        if (!ScopedFile.good())
+        {
+            SetError(InError, "project bundle: write failed for " + ScopedEntry.Path);
+            return false;
+        }
+        ScopedFile.close();
+        if (ScopedFile.fail())
+        {
+            SetError(InError, "project bundle: close failed for " + ScopedEntry.Path);
+            return false;
+        }
     }
     return true;
 }

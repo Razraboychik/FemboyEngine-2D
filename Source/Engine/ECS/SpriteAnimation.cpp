@@ -23,7 +23,9 @@ constexpr float kMinFrameDuration = 1.0f / 1000.0f;
     {
         return InGrid->Columns;
     }
-    return SafeFrameCount(InSpriteAnimation);
+    const std::uint64_t ScopedSpan =
+        static_cast<std::uint64_t>(InSpriteAnimation.StartFrame) + SafeFrameCount(InSpriteAnimation);
+    return static_cast<std::uint32_t>(std::min<std::uint64_t>(ScopedSpan, 0xFFFFFFFFu));
 }
 
 [[nodiscard]] std::uint32_t SafeRows(const SpriteSheetComponent* InGrid) noexcept
@@ -36,6 +38,12 @@ SpriteFrameRect SpriteFrameUv(const SpriteAnimationComponent& InSpriteAnimation,
                               const SpriteSheetComponent* InGrid) noexcept
 {
     SpriteFrameRect ScopedResult;
+    if (InGrid != nullptr && (!std::isfinite(InGrid->UVMin.X) || !std::isfinite(InGrid->UVMin.Y) ||
+                              !std::isfinite(InGrid->UVMax.X) || !std::isfinite(InGrid->UVMax.Y) ||
+                              InGrid->UVMax.X <= InGrid->UVMin.X || InGrid->UVMax.Y <= InGrid->UVMin.Y))
+    {
+        return ScopedResult;
+    }
     const std::uint32_t ScopedFrameCount = SafeFrameCount(InSpriteAnimation);
     const std::uint32_t ScopedColumns = SafeColumns(InSpriteAnimation, InGrid);
     const std::uint32_t ScopedRows = SafeRows(InGrid);

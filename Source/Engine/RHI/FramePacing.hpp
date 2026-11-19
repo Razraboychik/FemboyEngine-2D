@@ -28,9 +28,10 @@ struct FramePacingState
     const float ScopedInterval = InConfig.TargetFps > 0.0f ? 1000.0f / InConfig.TargetFps : 16.6667f;
     if (InRealFrame)
     {
-        InState.AccumulatedMs = std::min(InState.AccumulatedMs + InDeltaMs, ScopedInterval * 2.0f);
+        const float ScopedDelta = std::isfinite(InDeltaMs) ? InDeltaMs : 0.0f;
+        InState.AccumulatedMs = std::min(InState.AccumulatedMs + ScopedDelta, ScopedInterval * 2.0f);
         InState.GeneratedThisReal = 0;
-        InState.AllowGenerated = InState.AccumulatedMs >= ScopedInterval &&
+        InState.AllowGenerated = InConfig.MaxGeneratedPerReal > 0 && InState.AccumulatedMs >= ScopedInterval &&
                                  InConfig.MaxLatencyMs <= ScopedInterval * 2.0f;
         return InState;
     }

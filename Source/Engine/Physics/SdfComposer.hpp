@@ -58,7 +58,8 @@ public:
 
     [[nodiscard]] bool Add(SdfComposeOp InOp, const SdfShape& InShape, Vector2D InCenter = {}) noexcept
     {
-        if (MLayers.size() >= kMaxLayers || !InShape.IsValid())
+        if (MLayers.size() >= kMaxLayers || !InShape.IsValid() || !std::isfinite(InCenter.X) ||
+            !std::isfinite(InCenter.Y))
         {
             return false;
         }
@@ -66,7 +67,14 @@ public:
         ScopedLayer.Op = InOp;
         ScopedLayer.Shape = InShape;
         ScopedLayer.Center = InCenter;
-        MLayers.push_back(ScopedLayer);
+        try
+        {
+            MLayers.push_back(ScopedLayer);
+        }
+        catch (...)
+        {
+            return false;
+        }
         return true;
     }
 
@@ -102,12 +110,25 @@ public:
     [[nodiscard]] bool Bake(Vector2D InOrigin, Vector2D InCellSize, std::uint32_t InWidth, std::uint32_t InHeight,
                             std::vector<float>* OutSamples, SdfField* OutField) const
     {
-        if (OutSamples == nullptr || OutField == nullptr || InWidth < 2 || InHeight < 2 || InCellSize.X <= 0.0f ||
-            InCellSize.Y <= 0.0f)
+        if (OutSamples == nullptr || OutField == nullptr || InWidth < 2 || InHeight < 2 ||
+            !std::isfinite(InCellSize.X) || !std::isfinite(InCellSize.Y) || !std::isfinite(InOrigin.X) ||
+            !std::isfinite(InOrigin.Y) || InCellSize.X <= 0.0f || InCellSize.Y <= 0.0f)
         {
             return false;
         }
-        OutSamples->assign(static_cast<std::size_t>(InWidth) * InHeight, 0.0f);
+        constexpr std::uint64_t kMaxBakeSamples = 1ull << 24u;
+        if (static_cast<std::uint64_t>(InWidth) * InHeight > kMaxBakeSamples)
+        {
+            return false;
+        }
+        try
+        {
+            OutSamples->assign(static_cast<std::size_t>(InWidth) * InHeight, 0.0f);
+        }
+        catch (...)
+        {
+            return false;
+        }
         for (std::uint32_t ScopedY = 0; ScopedY < InHeight; ++ScopedY)
         {
             for (std::uint32_t ScopedX = 0; ScopedX < InWidth; ++ScopedX)
@@ -122,6 +143,8 @@ public:
         OutField->height = InHeight;
         OutField->origin = InOrigin;
         OutField->cellSize = InCellSize;
+        OutField->outsideDistance = 1.0f;
+        ++OutField->version;
         return true;
     }
 

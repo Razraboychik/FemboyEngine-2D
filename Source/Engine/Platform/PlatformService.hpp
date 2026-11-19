@@ -97,6 +97,12 @@ public:
     [[nodiscard]] bool QueueAchievement(std::uint64_t InId, std::string_view InApiName) noexcept;
     [[nodiscard]] bool QueueStat(std::string_view InApiName, std::int64_t InValue) noexcept;
     [[nodiscard]] bool QueueStat(std::string_view InApiName, double InValue) noexcept;
+    template <typename T>
+        requires std::is_integral_v<T> && (!std::is_same_v<T, bool>)
+    [[nodiscard]] bool QueueStat(std::string_view InApiName, T InValue) noexcept
+    {
+        return QueueStat(InApiName, static_cast<std::int64_t>(InValue));
+    }
     [[nodiscard]] bool QueueStoreStats() noexcept;
     [[nodiscard]] bool QueueCloudWrite(std::uint64_t InId, std::string_view InName,
                                        std::span<const std::byte> InData) noexcept;

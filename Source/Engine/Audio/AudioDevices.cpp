@@ -45,13 +45,14 @@ void CopyName(const char* InName, char* OutName) noexcept
 
 std::int32_t ResolveAudioDeviceIndex(const AudioDeviceList& InList, const char* InPreferredId) noexcept
 {
-    if (InList.Count == 0)
+    const std::uint32_t ScopedCount = std::min(InList.Count, kMaxAudioDevices);
+    if (ScopedCount == 0)
     {
         return -1;
     }
     if (InPreferredId != nullptr && InPreferredId[0] != '\0')
     {
-        for (std::uint32_t ScopedIndex = 0; ScopedIndex < InList.Count; ++ScopedIndex)
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)
         {
             if (std::strcmp(InList.Devices[ScopedIndex].Id, InPreferredId) == 0)
             {
@@ -59,7 +60,7 @@ std::int32_t ResolveAudioDeviceIndex(const AudioDeviceList& InList, const char* 
             }
         }
     }
-    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InList.Count; ++ScopedIndex)
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)
     {
         if (InList.Devices[ScopedIndex].Default)
         {
@@ -76,11 +77,13 @@ std::int32_t ResolveAudioDeviceIndexByRaw(const AudioDeviceList& InList,
     {
         return -1;
     }
-    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InList.Count; ++ScopedIndex)
+    const std::uint32_t ScopedCount = std::min(InList.Count, kMaxAudioDevices);
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)
     {
         const AudioDeviceInfo& ScopedInfo = InList.Devices[ScopedIndex];
-        if (ScopedInfo.RawIdSize == InRawId.size() && ScopedInfo.RawIdSize > 0 &&
-            std::memcmp(ScopedInfo.RawId, InRawId.data(), InRawId.size()) == 0)
+        const std::size_t ScopedRawSize = std::min<std::size_t>(ScopedInfo.RawIdSize, kAudioRawIdBytes);
+        if (ScopedRawSize == InRawId.size() && ScopedRawSize > 0 &&
+            std::memcmp(ScopedInfo.RawId, InRawId.data(), ScopedRawSize) == 0)
         {
             return static_cast<std::int32_t>(ScopedIndex);
         }
@@ -95,7 +98,7 @@ std::uint32_t AudioDeviceIdCollisions(const AudioDeviceList& InList, const char*
         return 0;
     }
     std::uint32_t ScopedCount = 0;
-    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InList.Count; ++ScopedIndex)
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < std::min(InList.Count, kMaxAudioDevices); ++ScopedIndex)
     {
         ScopedCount += std::strcmp(InList.Devices[ScopedIndex].Id, InId) == 0 ? 1u : 0u;
     }

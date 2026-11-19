@@ -72,8 +72,19 @@ struct SdfDebrisSettings
         return 0;
     }
     const SdfField& ScopedField = InObject.Field();
-    const float ScopedExtentX = InOp.Shape == SdfCarveShape::Circle ? InOp.Radius : InOp.HalfExtents.X;
-    const float ScopedExtentY = InOp.Shape == SdfCarveShape::Circle ? InOp.Radius : InOp.HalfExtents.Y;
+    float ScopedExtentX = std::abs(InOp.Shape == SdfCarveShape::Circle ? InOp.Radius : InOp.HalfExtents.X);
+    float ScopedExtentY = std::abs(InOp.Shape == SdfCarveShape::Circle ? InOp.Radius : InOp.HalfExtents.Y);
+    if (InOp.Shape != SdfCarveShape::Circle)
+    {
+        // Use the rotated box's axis-aligned extents so the sampling window
+        // covers the whole carve.
+        const float ScopedCos = std::abs(Sim::Cos(InOp.Angle));
+        const float ScopedSin = std::abs(Sim::Sin(InOp.Angle));
+        const float ScopedHalfX = ScopedExtentX;
+        const float ScopedHalfY = ScopedExtentY;
+        ScopedExtentX = ScopedHalfX * ScopedCos + ScopedHalfY * ScopedSin;
+        ScopedExtentY = ScopedHalfX * ScopedSin + ScopedHalfY * ScopedCos;
+    }
     const float ScopedMinX = std::max(InOp.Center.X - ScopedExtentX, ScopedField.origin.X);
     const float ScopedMaxX = std::min(InOp.Center.X + ScopedExtentX,
                                       ScopedField.origin.X + static_cast<float>(ScopedField.width) * ScopedField.cellSize.X);

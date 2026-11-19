@@ -52,11 +52,11 @@ struct PinkSdfGpuPrimitive
 {
     // xy centre, zw size
     Vector4D rect{};
-    // x radius, y border, z rotation, w shadow
+    // x radius, y border, z rotation, w = flags | (shape << 8)
     Vector4D params{};
     // rgb + alpha
     Vector4D fill{};
-    // rgb + alpha, w = flags as uint bits
+    // rgb + alpha (alpha preserved; flags live in params.w)
     Vector4D border{};
 };
 

@@ -62,6 +62,7 @@ void Store64(std::byte* OutData, std::uint64_t InValue) noexcept
 
 void PlatformCommandLog::Clear() noexcept
 {
+    MSealed = false;
     MStorage.fill(std::byte{0});
     std::memcpy(MStorage.data(), kPlatformLogMagic, 8);
     Store32(MStorage.data() + 8, kPlatformLogVersion);
@@ -100,6 +101,10 @@ bool PlatformCommandLog::Append(PlatformLogType InType, std::uint64_t InTick, st
     {
         std::memcpy(ScopedRecord + kRecordBytes + InName.size(), InData.data(), InData.size());
     }
+    if (MSealed)
+    {
+        return false;
+    }
     if (MCount == 0)
     {
         MFirstTick = InTick;
@@ -112,6 +117,7 @@ bool PlatformCommandLog::Append(PlatformLogType InType, std::uint64_t InTick, st
 
 void PlatformCommandLog::Seal() noexcept
 {
+    MSealed = true;
     Store32(MStorage.data() + 8, kPlatformLogVersion);
     Store32(MStorage.data() + 12, MCount);
     Store32(MStorage.data() + 16, MWriteOffset);

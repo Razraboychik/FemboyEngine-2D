@@ -52,6 +52,11 @@ constexpr Color32 kColorContact{0xFF66D1FFu};
     return Vector2D{InValue.X * ScopedCos - InValue.Y * ScopedSin, InValue.X * ScopedSin + InValue.Y * ScopedCos};
 }
 
+[[nodiscard]] bool IsFinite(Vector2D InValue) noexcept
+{
+    return std::isfinite(InValue.X) && std::isfinite(InValue.Y);
+}
+
 [[nodiscard]] std::uint32_t ToImGuiColor(Color32 InColor) noexcept
 {
     const std::uint32_t ScopedRgb = (static_cast<std::uint32_t>(InColor.B()) << 16) |
@@ -70,31 +75,53 @@ void PhysicsDebugVisualizer::Clear() noexcept
     MFrame = PhysicsDebugFrame{};
 }
 
-void PhysicsDebugVisualizer::AddLine(Vector2D InA, Vector2D InB, Color32 InColor, float InThickness) noexcept
+bool PhysicsDebugVisualizer::AddLine(Vector2D InA, Vector2D InB, Color32 InColor,
+                                     float InThickness) noexcept
 {
+    if (!IsFinite(InA) || !IsFinite(InB) || !std::isfinite(InThickness))
+    {
+        ++MFrame.droppedShapes;
+        return false;
+    }
     if (MLineCount >= kMaxLines)
     {
         MTruncated = true;
-        return;
+        ++MFrame.droppedShapes;
+        return false;
     }
     MLines[MLineCount] = PhysicsDebugLine{InA, InB, InColor, InThickness};
     ++MLineCount;
+    return true;
 }
 
-void PhysicsDebugVisualizer::AddPoint(Vector2D InPosition, Color32 InColor, float InRadius) noexcept
+bool PhysicsDebugVisualizer::AddPoint(Vector2D InPosition, Color32 InColor, float InRadius) noexcept
 {
+    if (!IsFinite(InPosition) || !std::isfinite(InRadius) || InRadius <= 0.0f)
+    {
+        ++MFrame.droppedShapes;
+        return false;
+    }
     if (MPointCount >= kMaxPoints)
     {
         MTruncated = true;
-        return;
+        ++MFrame.droppedShapes;
+        return false;
     }
     MPoints[MPointCount] = PhysicsDebugPoint{InPosition, InColor, InRadius};
     ++MPointCount;
+    return true;
 }
 
-void PhysicsDebugVisualizer::AddBox(Vector2D InCenter, float InRotation, Vector2D InHalfExtents,
+bool PhysicsDebugVisualizer::AddBox(Vector2D InCenter, float InRotation, Vector2D InHalfExtents,
                                     Color32 InColor) noexcept
 {
+    if (!IsFinite(InCenter) || !IsFinite(InHalfExtents) || !std::isfinite(InRotation) ||
+        MLineCount + 4u > kMaxLines)
+    {
+        MTruncated = MLineCount + 4u > kMaxLines;
+        ++MFrame.droppedShapes;
+        return false;
+    }
     Vector2D ScopedCorners[4];
     ScopedCorners[0] = InCenter + Rotate(Vector2D{-InHalfExtents.X, -InHalfExtents.Y}, InRotation);
     ScopedCorners[1] = InCenter + Rotate(Vector2D{InHalfExtents.X, -InHalfExtents.Y}, InRotation);
@@ -102,14 +129,25 @@ void PhysicsDebugVisualizer::AddBox(Vector2D InCenter, float InRotation, Vector2
     ScopedCorners[3] = InCenter + Rotate(Vector2D{-InHalfExtents.X, InHalfExtents.Y}, InRotation);
     for (std::uint32_t ScopedEdge = 0; ScopedEdge < 4; ++ScopedEdge)
     {
-        AddLine(ScopedCorners[ScopedEdge], ScopedCorners[(ScopedEdge + 1) % 4], InColor);
+        if (!AddLine(ScopedCorners[ScopedEdge], ScopedCorners[(ScopedEdge + 1) % 4], InColor))
+        {
+            return false;
+        }
     }
+    return true;
 }
 
-void PhysicsDebugVisualizer::AddCircle(Vector2D InCenter, float InRadius, Color32 InColor,
+bool PhysicsDebugVisualizer::AddCircle(Vector2D InCenter, float InRadius, Color32 InColor,
                                        std::uint32_t InSegments) noexcept
 {
     const std::uint32_t ScopedSegments = std::max<std::uint32_t>(InSegments, 4);
+    if (!IsFinite(InCenter) || !std::isfinite(InRadius) || InRadius <= 0.0f ||
+        MLineCount + ScopedSegments > kMaxLines)
+    {
+        MTruncated = MLineCount + ScopedSegments > kMaxLines;
+        ++MFrame.droppedShapes;
+        return false;
+    }
     Vector2D ScopedPrevious = InCenter + Vector2D{InRadius, 0.0f};
     for (std::uint32_t ScopedSegment = 1; ScopedSegment <= ScopedSegments; ++ScopedSegment)
     {
@@ -117,12 +155,16 @@ void PhysicsDebugVisualizer::AddCircle(Vector2D InCenter, float InRadius, Color3
             6.28318530718f * static_cast<float>(ScopedSegment) / static_cast<float>(ScopedSegments);
         const Vector2D ScopedCurrent =
             InCenter + Vector2D{InRadius * std::cos(ScopedAngle), InRadius * std::sin(ScopedAngle)};
-        AddLine(ScopedPrevious, ScopedCurrent, InColor);
+        if (!AddLine(ScopedPrevious, ScopedCurrent, InColor))
+        {
+            return false;
+        }
         ScopedPrevious = ScopedCurrent;
     }
+    return true;
 }
 
-void PhysicsDebugVisualizer::Build(Ecs::SystemContext& InContext, std::uint32_t InFlags,
+void PhysicsDebugVisualizer::Build(const Ecs::SystemContext& InContext, std::uint32_t InFlags,
                                    const SdfCollisionSystem* InSdf)
 {
     Clear();
@@ -130,18 +172,26 @@ void PhysicsDebugVisualizer::Build(Ecs::SystemContext& InContext, std::uint32_t 
     {
         return;
     }
-    BuildBodies(InContext, InFlags);
-    BuildRopes(InContext, InFlags);
-    BuildCloth(InContext, InFlags);
-    BuildSdf(InFlags, InSdf);
-    BuildContacts(InContext, InFlags);
+    std::uint32_t ScopedFlags = InFlags;
+    MFrame.unavailableFlags = 0;
+    if ((ScopedFlags & PhysicsDebugSdf) != 0 && InSdf == nullptr)
+    {
+        ScopedFlags &= ~PhysicsDebugSdf;
+        MFrame.unavailableFlags |= PhysicsDebugSdf;
+    }
+    MFrame.appliedFlags = ScopedFlags;
+    BuildBodies(InContext, ScopedFlags);
+    BuildRopes(InContext, ScopedFlags);
+    BuildCloth(InContext, ScopedFlags);
+    BuildSdf(ScopedFlags, InSdf);
+    BuildContacts(InContext, ScopedFlags);
 
     MFrame.lines = std::span<const PhysicsDebugLine>(MLines.data(), MLineCount);
     MFrame.points = std::span<const PhysicsDebugPoint>(MPoints.data(), MPointCount);
     MFrame.truncated = MTruncated;
 }
 
-void PhysicsDebugVisualizer::BuildBodies(Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept
+void PhysicsDebugVisualizer::BuildBodies(const Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept
 {
     if ((InFlags & (PhysicsDebugBodies | PhysicsDebugVelocity)) == 0)
     {
@@ -157,14 +207,16 @@ void PhysicsDebugVisualizer::BuildBodies(Ecs::SystemContext& InContext, std::uin
 
         if ((InFlags & PhysicsDebugBodies) != 0)
         {
-            AddBox(ScopedBody.Position, ScopedBody.Rotation, ScopedCollider.HalfExtents, ScopedColor);
-            // A small cross marks the body origin, which is what the physics
-            constexpr float kCross = 3.0f;
-            AddLine(ScopedBody.Position + Vector2D{-kCross, 0.0f}, ScopedBody.Position + Vector2D{kCross, 0.0f},
-                    ScopedColor, 1.0f);
-            AddLine(ScopedBody.Position + Vector2D{0.0f, -kCross}, ScopedBody.Position + Vector2D{0.0f, kCross},
-                    ScopedColor, 1.0f);
-            ++MFrame.bodies;
+            if (AddBox(ScopedBody.Position, ScopedBody.Rotation, ScopedCollider.HalfExtents, ScopedColor))
+            {
+                // A small cross marks the body origin, which is what the physics
+                constexpr float kCross = 3.0f;
+                AddLine(ScopedBody.Position + Vector2D{-kCross, 0.0f},
+                        ScopedBody.Position + Vector2D{kCross, 0.0f}, ScopedColor, 1.0f);
+                AddLine(ScopedBody.Position + Vector2D{0.0f, -kCross},
+                        ScopedBody.Position + Vector2D{0.0f, kCross}, ScopedColor, 1.0f);
+                ++MFrame.bodies;
+            }
         }
 
         if ((InFlags & PhysicsDebugVelocity) != 0)
@@ -176,7 +228,7 @@ void PhysicsDebugVisualizer::BuildBodies(Ecs::SystemContext& InContext, std::uin
     }
 }
 
-void PhysicsDebugVisualizer::BuildRopes(Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept
+void PhysicsDebugVisualizer::BuildRopes(const Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept
 {
     if ((InFlags & PhysicsDebugRopes) == 0)
     {
@@ -195,9 +247,21 @@ void PhysicsDebugVisualizer::BuildRopes(Ecs::SystemContext& InContext, std::uint
         // Capsule: a spine line plus a circle at both ends is the cheapest
         const Vector2D ScopedStartTip = ScopedBody.Position - ScopedAxis;
         const Vector2D ScopedEndTip = ScopedBody.Position + ScopedAxis;
-        AddLine(ScopedStartTip, ScopedEndTip, kColorRope, 2.0f);
-        AddCircle(ScopedStartTip, ScopedRadius, kColorRope, 8);
-        AddCircle(ScopedEndTip, ScopedRadius, kColorRope, 8);
+        const std::uint32_t ScopedExtraLines =
+            ((ScopedLink.Flags & JointLinkFreeStart) != 0 ? 8u : 0u) +
+            ((ScopedLink.Flags & JointLinkFreeEnd) != 0 ? 8u : 0u);
+        if (MLineCount + 17u + ScopedExtraLines > kMaxLines)
+        {
+            MTruncated = true;
+            ++MFrame.droppedShapes;
+            continue;
+        }
+        if (!AddLine(ScopedStartTip, ScopedEndTip, kColorRope, 2.0f) ||
+            !AddCircle(ScopedStartTip, ScopedRadius, kColorRope, 8) ||
+            !AddCircle(ScopedEndTip, ScopedRadius, kColorRope, 8))
+        {
+            continue;
+        }
         // A free end is a cut in the chain and reads as a red ring.
         if ((ScopedLink.Flags & JointLinkFreeStart) != 0)
         {
@@ -211,7 +275,7 @@ void PhysicsDebugVisualizer::BuildRopes(Ecs::SystemContext& InContext, std::uint
     }
 }
 
-void PhysicsDebugVisualizer::BuildCloth(Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept
+void PhysicsDebugVisualizer::BuildCloth(const Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept
 {
     if ((InFlags & PhysicsDebugCloth) == 0 || InContext.cloth == nullptr)
     {
@@ -232,6 +296,14 @@ void PhysicsDebugVisualizer::BuildCloth(Ecs::SystemContext& InContext, std::uint
         if (ScopedInfo.Columns < 2 || ScopedInfo.Rows < 2 ||
             ScopedParticles.size() < static_cast<std::size_t>(ScopedInfo.Columns) * ScopedInfo.Rows)
         {
+            continue;
+        }
+        const std::uint32_t ScopedRequiredLines =
+            ScopedInfo.Rows * (ScopedInfo.Columns - 1u) + ScopedInfo.Columns * (ScopedInfo.Rows - 1u);
+        if (MLineCount + ScopedRequiredLines > kMaxLines)
+        {
+            MTruncated = true;
+            ++MFrame.droppedShapes;
             continue;
         }
         const auto ScopedAt = [&](std::uint32_t InX, std::uint32_t InY) -> Vector2D
@@ -265,15 +337,24 @@ void PhysicsDebugVisualizer::BuildSdf(std::uint32_t InFlags, const SdfCollisionS
     for (const SdfContact& ScopedContact : InSdf->Contacts())
     {
         // The push-out vector is drawn from the contact point along the field
+        if (MLineCount + 7u > kMaxLines)
+        {
+            MTruncated = true;
+            ++MFrame.droppedShapes;
+            continue;
+        }
         const float ScopedLength = std::max(6.0f, ScopedContact.Penetration);
         const Vector2D ScopedTip = ScopedContact.Point + ScopedContact.Normal * ScopedLength;
-        AddLine(ScopedContact.Point, ScopedTip, kColorSdfNormal, 2.0f);
-        AddCircle(ScopedContact.Point, 2.5f, kColorSdfNormal, 6);
+        if (!AddLine(ScopedContact.Point, ScopedTip, kColorSdfNormal, 2.0f) ||
+            !AddCircle(ScopedContact.Point, 2.5f, kColorSdfNormal, 6))
+        {
+            continue;
+        }
         ++MFrame.sdfContacts;
     }
 }
 
-void PhysicsDebugVisualizer::BuildContacts(Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept
+void PhysicsDebugVisualizer::BuildContacts(const Ecs::SystemContext& InContext, std::uint32_t InFlags) noexcept
 {
     if ((InFlags & PhysicsDebugContacts) == 0 || InContext.physics == nullptr)
     {
@@ -290,27 +371,38 @@ void PhysicsDebugVisualizer::BuildContacts(Ecs::SystemContext& InContext, std::u
     }
 }
 
-void PhysicsDebugVisualizer::DrawImGui(void* InDrawList, void* InUser, ScreenMapper InMapper) const
+void PhysicsDebugVisualizer::DrawImGui(ImDrawList& InDrawList, void* InUser, ScreenMapper InMapper,
+                                       Rect InClip) const
 {
-    if (InDrawList == nullptr || InMapper == nullptr)
+    if (InMapper == nullptr)
     {
         return;
     }
-    auto* ScopedDrawList = static_cast<ImDrawList*>(InDrawList);
+    ImDrawList& ScopedDrawList = InDrawList;
+    const bool ScopedClip = InClip.max.X > InClip.min.X && InClip.max.Y > InClip.min.Y;
+    if (ScopedClip)
+    {
+        ScopedDrawList.PushClipRect(ImVec2(InClip.min.X, InClip.min.Y),
+                                    ImVec2(InClip.max.X, InClip.max.Y), true);
+    }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < MLineCount; ++ScopedIndex)
     {
         const PhysicsDebugLine& ScopedLine = MLines[ScopedIndex];
         const Vector2D ScopedA = InMapper(InUser, ScopedLine.a);
         const Vector2D ScopedB = InMapper(InUser, ScopedLine.b);
-        ScopedDrawList->AddLine(ImVec2(ScopedA.X, ScopedA.Y), ImVec2(ScopedB.X, ScopedB.Y),
-                                ToImGuiColor(ScopedLine.color), ScopedLine.thickness);
+        ScopedDrawList.AddLine(ImVec2(ScopedA.X, ScopedA.Y), ImVec2(ScopedB.X, ScopedB.Y),
+                               ToImGuiColor(ScopedLine.color), ScopedLine.thickness);
     }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < MPointCount; ++ScopedIndex)
     {
         const PhysicsDebugPoint& ScopedPoint = MPoints[ScopedIndex];
         const Vector2D ScopedScreen = InMapper(InUser, ScopedPoint.position);
-        ScopedDrawList->AddCircleFilled(ImVec2(ScopedScreen.X, ScopedScreen.Y), ScopedPoint.radius,
-                                        ToImGuiColor(ScopedPoint.color));
+        ScopedDrawList.AddCircleFilled(ImVec2(ScopedScreen.X, ScopedScreen.Y), ScopedPoint.radius,
+                                       ToImGuiColor(ScopedPoint.color));
+    }
+    if (ScopedClip)
+    {
+        ScopedDrawList.PopClipRect();
     }
 }
 }

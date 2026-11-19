@@ -116,6 +116,7 @@ fby_add_engine_test(fby_prefab_override_test prefab_overrides PrefabOverrideTest
 fby_add_engine_test(fby_dx_probe_test dx_probe DxProbeTest.cpp)
 # Backend extension requirements: dedupe/merge/filter.
 fby_add_engine_test(fby_gpu_extension_broker_test gpu_extension_broker GpuExtensionBrokerTest.cpp)
+fby_add_engine_test(fby_data_table_test data_table DataTableTest.cpp)
 # D3D12 swapchain clear/present smoke (Windows only; no-op elsewhere).
 if(WIN32)
     fby_add_engine_test(fby_d3d12_smoke_test d3d12_smoke D3D12SmokeTest.cpp)
@@ -125,7 +126,6 @@ if(WIN32)
     fby_add_engine_test(fby_system_info_test system_info SystemInfoTest.cpp)
     fby_add_engine_test(fby_tween_test tween TweenTest.cpp)
     fby_add_engine_test(fby_reverb_preset_test reverb_preset ReverbPresetTest.cpp)
-    fby_add_engine_test(fby_data_table_test data_table DataTableTest.cpp)
     fby_add_engine_test(fby_websocket_test websocket WebSocketTest.cpp)
     fby_add_engine_test(fby_websocket_loopback_test websocket_loopback WebSocketLoopbackTest.cpp)
     fby_add_engine_test(fby_fsr2_dx_test fsr2_dx Fsr2DxTest.cpp)
@@ -504,10 +504,7 @@ add_test(NAME dsp_mixer COMMAND fby_dsp_mixer_test)
 fby_add_engine_test(fby_audio_spatial_test audio_spatial AudioSpatialTest.cpp)
 
 # Audio cooking: WAV 16/24-bit -> .fpcm, Ogg demuxing, MP3 rejection.
-add_executable(fby_audio_cook_test AudioCookTest.cpp
-    "${FBY_SOURCE_ROOT}/Tools/FempakCooker/AudioCook.cpp")
-target_include_directories(fby_audio_cook_test PRIVATE
-    "${FBY_SOURCE_ROOT}/Tools/FempakCooker")
+add_executable(fby_audio_cook_test AudioCookTest.cpp)
 target_link_libraries(fby_audio_cook_test PRIVATE FemboyEngine2D::Engine)
 if(TARGET Opus::opus)
     target_link_libraries(fby_audio_cook_test PRIVATE Opus::opus)

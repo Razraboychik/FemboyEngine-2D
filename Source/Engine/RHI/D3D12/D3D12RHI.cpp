@@ -633,7 +633,7 @@ public:
         {
             return {};
         }
-        const DXGI_FORMAT ScopedFormat = TextureFormatToDxgi(InDesc.format, InDesc.srgb);
+        const DXGI_FORMAT ScopedFormat = TextureFormatToDxgi(InDesc.format, InDesc.EffectiveSrgb());
         if (ScopedFormat == DXGI_FORMAT_UNKNOWN)
         {
             LogError("d3d12", "CreateTextureArray: {} is not supported on Direct3D",

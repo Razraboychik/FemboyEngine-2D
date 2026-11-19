@@ -74,9 +74,10 @@ bool DecodeFrame(void*, void* InDecoder, std::span<const std::byte> InCompressed
 {
     auto* ScopedState = static_cast<Dav1dState*>(InDecoder);
     GLastError.clear();
-    if (ScopedState == nullptr || ScopedState->Context == nullptr || InCompressed.empty())
+    if (ScopedState == nullptr || ScopedState->Context == nullptr || InCompressed.empty() ||
+        !InTarget.IsValid() || InTarget.chromaU == nullptr || InTarget.chromaV == nullptr)
     {
-        SetBackendError(ScopedState, "dav1d: decoder is not initialized or packet is empty");
+        SetBackendError(ScopedState, "dav1d: decoder/target is invalid or packet is empty");
         return false;
     }
     Dav1dData ScopedData{};

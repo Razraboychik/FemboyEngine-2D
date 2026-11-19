@@ -17,7 +17,13 @@ std::atomic<std::thread::id> GMainThreadId{std::this_thread::get_id()};
 
 void MarkMainThread() noexcept
 {
-    GMainThreadId.store(std::this_thread::get_id(), std::memory_order_release);
+    const std::thread::id ScopedCurrent = std::this_thread::get_id();
+    const std::thread::id ScopedKnown = GMainThreadId.load(std::memory_order_acquire);
+    if (ScopedKnown != ScopedCurrent)
+    {
+        FBY_ASSERT_MSG(false, "MarkMainThread called from a thread that is not the established main thread");
+        return;
+    }
     BindThreadRole(ThreadRole::Main);
 }
 
@@ -51,6 +57,10 @@ bool RequireMainThread(const char* InWho) noexcept
 
 bool RequireThreadRole(ThreadRole InRole, const char* InWho) noexcept
 {
+    if (InRole == ThreadRole::Unknown)
+    {
+        return true;
+    }
     if (InRole == ThreadRole::Main)
     {
         return RequireMainThread(InWho);

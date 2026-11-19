@@ -32,10 +32,10 @@ std::uint32_t PackPinkSdfPrimitives(std::span<const PinkSdfPrimitive> InPrimitiv
         ScopedTarget.rect = Vector4D{ScopedSource.center.X, ScopedSource.center.Y, ScopedSource.size.X,
                                      ScopedSource.size.Y};
         ScopedTarget.params =
-            Vector4D{ScopedSource.radius, ScopedSource.border, ScopedSource.rotation, ScopedSource.shadow};
+            Vector4D{ScopedSource.radius, ScopedSource.border, ScopedSource.rotation,
+                     static_cast<float>(ScopedSource.flags | (static_cast<std::uint32_t>(ScopedSource.shape) << 8))};
         ScopedTarget.fill = ColorToVector(ScopedSource.fill);
         ScopedTarget.border = ColorToVector(ScopedSource.borderColor);
-        ScopedTarget.border.W = static_cast<float>(ScopedSource.flags | (static_cast<std::uint32_t>(ScopedSource.shape) << 8));
     }
     return static_cast<std::uint32_t>(InPrimitives.size());
 }
@@ -86,10 +86,9 @@ std::uint32_t BuildCardBoardPrimitives(Ecs::Registry& InRegistry, std::uint32_t 
         ScopedCard.border = ScopedSelected ? 3.0f : 1.5f;
         ScopedCard.rotation = ScopedLayout.Rotation;
         ScopedCard.shape = PinkSdfShape::Card;
-        ScopedCard.flags = PinkSdfShadow | (ScopedSelected ? PinkSdfSelected : 0u);
+        ScopedCard.flags = ScopedSelected ? PinkSdfSelected : 0u;
         ScopedCard.fill = ScopedFill;
         ScopedCard.borderColor = ScopedSelected ? Color32::FromBytes(232, 93, 158) : Color32::FromBytes(40, 40, 48);
-        OutPrimitives[ScopedWritten++] = ScopedCard;
         PinkSdfPrimitive ScopedShadow = ScopedCard;
         ScopedShadow.center = ScopedLayout.Position + Vector2D{4.0f, 7.0f};
         ScopedShadow.radius = ScopedCard.radius + 2.0f;
@@ -99,6 +98,7 @@ std::uint32_t BuildCardBoardPrimitives(Ecs::Registry& InRegistry, std::uint32_t 
         ScopedShadow.borderColor = Color32::FromBytes(0, 0, 0, 0);
         ScopedShadow.flags = PinkSdfShadow;
         OutPrimitives[ScopedWritten++] = ScopedShadow;
+        OutPrimitives[ScopedWritten++] = ScopedCard;
     }
     return ScopedWritten;
 }

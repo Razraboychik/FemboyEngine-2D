@@ -225,4 +225,24 @@ std::string DecompileLocalization(std::span<const std::byte> InBinary, std::stri
     }
     return ScopedOut;
 }
+
+LocalizationCompileResult CompileLocalizationChecked(std::string_view InTomlContent)
+{
+    LocalizationCompileResult ScopedResult;
+    ScopedResult.Bytes = CompileLocalization(InTomlContent, &ScopedResult.Error);
+    ScopedResult.Ok = !ScopedResult.Bytes.empty();
+    if (ScopedResult.Ok)
+    {
+        ScopedResult.Error.clear();
+    }
+    return ScopedResult;
+}
+
+LocalizationDecompileResult DecompileLocalizationChecked(std::span<const std::byte> InBinary)
+{
+    LocalizationDecompileResult ScopedResult;
+    ScopedResult.Text = DecompileLocalization(InBinary, &ScopedResult.Error);
+    ScopedResult.Ok = ScopedResult.Error.empty();
+    return ScopedResult;
+}
 }

@@ -799,7 +799,12 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
                          ScopedFile.source.string().c_str());
             return false;
         }
-        ScopedWriter.Add(ScopedFile.destination, std::move(ScopedBytes));
+        if (!ScopedWriter.Add(ScopedFile.destination, std::move(ScopedBytes)))
+        {
+            ScopedError = "cooked destination escapes the pak root: " + ScopedFile.destination;
+            std::fprintf(stderr, "fempak: %s\n", ScopedError.c_str());
+            return false;
+        }
         ++ScopedIndex;
         ScopedProgress.Update(Fby::Assets::CookProgressStage::Cooking, ScopedIndex, ScopedTotal,
                               ScopedFile.source.generic_string(), ScopedRawTotal, 0, 0, "cooked");

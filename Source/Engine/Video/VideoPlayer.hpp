@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -147,8 +148,9 @@ public:
     {
         return MFailed.load(std::memory_order_relaxed);
     }
-    [[nodiscard]] std::string_view ErrorText() const noexcept
+    [[nodiscard]] std::string ErrorText() const
     {
+        std::lock_guard<std::mutex> ScopedLock(MErrorMutex);
         return MErrorText;
     }
     // kVideoFlag* mask for the owning component.
@@ -249,6 +251,7 @@ private:
 
     std::jthread MDecoderThread{};
     bool MThreadRunning = false;
+    mutable std::mutex MErrorMutex{};
     std::string MErrorText{};
     // Demuxer error scratch. A local std::string in PumpFrame allocates a debug
     // container proxy on every call, which breaks the no-allocation frame rule.

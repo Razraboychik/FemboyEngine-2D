@@ -728,6 +728,7 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
         ScopedPlugin.insert("path", std::string(ProjectString(ScopedProject.plugins[ScopedI].Path,
                                                              sizeof(ScopedProject.plugins[ScopedI].Path))));
         ScopedPlugin.insert("enabled", ScopedProject.plugins[ScopedI].Enabled);
+        ScopedPlugin.insert("copied", ScopedProject.plugins[ScopedI].Copied);
         ScopedPlugins.push_back(std::move(ScopedPlugin));
     }
     ScopedRoot.insert("plugins", std::move(ScopedPlugins));
@@ -1060,6 +1061,7 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             ProjectPluginEntry& ScopedEntry = ScopedConfig.project.plugins[ScopedConfig.project.pluginCount];
             CopyProjectString(ScopedEntry.Path, sizeof(ScopedEntry.Path), StringField(*ScopedPlugin, "path"));
             ScopedEntry.Enabled = BoolField(*ScopedPlugin, "enabled", true);
+            ScopedEntry.Copied = BoolField(*ScopedPlugin, "copied", false);
             if (ScopedEntry.Path[0] != '\0')
             {
                 ++ScopedConfig.project.pluginCount;

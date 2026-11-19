@@ -968,6 +968,10 @@ void DodPhysicsBackend::ApplyCollisionFilterMatrix(Ecs::Registry& InRegistry, co
         // The component is the source of truth: EnsureBodies copies it every step,
         // so a matrix baked only into the column would be overwritten immediately.
         const std::uint32_t ScopedLayer = CollisionFilterMatrix::LayerFromCategory(ScopedCollider.CategoryBits);
+        if (ScopedLayer == kNoCollisionLayer)
+        {
+            continue;
+        }
         ScopedCollider.CategoryBits = InMatrix.CategoryBits(ScopedLayer);
         ScopedCollider.MaskBits = InMatrix.MaskBits(ScopedLayer);
         MColumns.Categories[ScopedIndex] = ScopedCollider.CategoryBits;

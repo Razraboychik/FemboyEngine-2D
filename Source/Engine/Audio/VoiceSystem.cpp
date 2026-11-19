@@ -1,6 +1,8 @@
 // FemboyEngine2D - voice runtime implementation.
 #include "Engine/Audio/VoiceSystem.hpp"
 
+#include "Engine/Core/Log.hpp"
+
 #include <algorithm>
 
 namespace Fby
@@ -41,13 +43,21 @@ bool VoiceSystem::Start(DspGraph& InGraph, FloatRing* InReferenceRing, const Voi
     MChannel.SetCaptureRing(&MProcessedRing);
 
     MChain.Configure(MDspSettings, 48000);
-    MAec.Configure(InConfig.Aec, 48000);
+    auto ScopedAec = InConfig.Aec;
+    if (ScopedAec.Enabled && MReferenceRing == nullptr)
+    {
+        LogWarn("voice", "AEC requested without a playback reference ring; echo cancellation disabled");
+        ScopedAec.Enabled = false;
+    }
+    MAec.Configure(ScopedAec, 48000);
     MCaptureRack.reset(new (std::nothrow) VoiceEffectRack());
     MParticipantRacks.reset(new (std::nothrow) std::array<VoiceEffectRack, kVoiceMaxPeers>());
     if (MCaptureRack == nullptr || MParticipantRacks == nullptr)
     {
         MCaptureRack.reset();
         MParticipantRacks.reset();
+        MChannel.Stop();
+        (void)InGraph.DestroyBus(MVoiceBus);
         MVoiceBus = kInvalidBus;
         MStarted = false;
         return false;
@@ -291,6 +301,7 @@ void VoiceSystem::Tick(float InDeltaSeconds, VoiceSession& InSession) noexcept
     AdvanceEffects(InDeltaSeconds);
     ProcessCapture();
     MChannel.Tick(InDeltaSeconds, &InSession);
+    InSession.Update(InDeltaSeconds);
     BindParticipants(InSession);
 }
 }

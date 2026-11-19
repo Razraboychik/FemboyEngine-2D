@@ -134,6 +134,10 @@ std::uint8_t ActionNarration::DirectionBucket(float InRadians) const noexcept
 {
     // Eight sectors of 45 degrees. Normalize into [0, 2pi) without a loop over
     // unbounded input.
+    if (!std::isfinite(InRadians))
+    {
+        return 0;
+    }
     float ScopedAngle = std::fmod(InRadians, 2.0f * kPi);
     if (ScopedAngle < 0.0f)
     {

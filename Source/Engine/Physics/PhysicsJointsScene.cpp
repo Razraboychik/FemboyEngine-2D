@@ -66,7 +66,8 @@ constexpr char kHexDigits[] = "0123456789ABCDEF";
 // the emitted bytes are deterministic across compilers.
 [[nodiscard]] JointChainSection CanonicalSection(const JointChainSection& InSection) noexcept
 {
-    JointChainSection ScopedSection{};
+    JointChainSection ScopedSection;
+    std::memset(&ScopedSection, 0, sizeof(ScopedSection));
     ScopedSection.Kind = InSection.Kind;
     ScopedSection.Flags = InSection.Flags;
     ScopedSection.LinkCount = InSection.LinkCount;
@@ -119,7 +120,12 @@ bool RestoreJointChainToml(void* InComponent, std::string_view InKey, std::strin
     auto* ScopedComponent = static_cast<JointChainComponent*>(InComponent);
     if (InKey == "SectionsHex")
     {
-        const std::uint32_t ScopedCount = std::min<std::uint32_t>(ScopedComponent->SectionCount, 8);
+        if (ScopedComponent->SectionCount > 8)
+        {
+            *OutError = "SectionsHex SectionCount exceeds capacity";
+            return false;
+        }
+        const std::uint32_t ScopedCount = ScopedComponent->SectionCount;
         std::array<JointChainSection, 8> ScopedSections{};
         if (!FromHex(InValue, reinterpret_cast<std::byte*>(ScopedSections.data()),
                      ScopedCount * sizeof(JointChainSection)))
@@ -135,7 +141,12 @@ bool RestoreJointChainToml(void* InComponent, std::string_view InKey, std::strin
     }
     if (InKey == "PathHex")
     {
-        const std::uint32_t ScopedCount = std::min<std::uint32_t>(ScopedComponent->PathCount, 16);
+        if (ScopedComponent->PathCount > 16)
+        {
+            *OutError = "PathHex PathCount exceeds capacity";
+            return false;
+        }
+        const std::uint32_t ScopedCount = ScopedComponent->PathCount;
         std::array<Vector2D, 16> ScopedPath{};
         if (!FromHex(InValue, reinterpret_cast<std::byte*>(ScopedPath.data()), ScopedCount * sizeof(Vector2D)))
         {

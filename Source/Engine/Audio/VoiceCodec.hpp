@@ -40,8 +40,9 @@ public:
         return MEncoder != nullptr;
     }
     // Encodes exactly kVoiceFrameSamples mono f32 samples. Returns the packet
-    // size, or 0 when the encoder is unavailable or the input is the wrong size.
-    [[nodiscard]] std::uint32_t Encode(std::span<const float> InSamples, std::span<std::uint8_t> OutPacket) noexcept;
+    // size, or 0 on failure; OutError receives the libopus error (0 on success).
+    [[nodiscard]] std::uint32_t Encode(std::span<const float> InSamples, std::span<std::uint8_t> OutPacket,
+                                       std::int32_t* OutError = nullptr) noexcept;
 
 protected:
     void* MEncoder = nullptr;
@@ -63,14 +64,16 @@ public:
     {
         return MDecoder != nullptr;
     }
-    [[nodiscard]] std::uint32_t Decode(std::span<const std::uint8_t> InPacket,
-                                       std::span<float> OutSamples) noexcept;
+    [[nodiscard]] std::uint32_t Decode(std::span<const std::uint8_t> InPacket, std::span<float> OutSamples,
+                                       std::int32_t* OutError = nullptr) noexcept;
     // Reconstructs the frame that was lost before `InPacket` using Opus in-band
     // FEC (decode_fec = 1). The packet itself is not consumed: the caller decodes
-    // it normally afterwards. Returns 0 when FEC is not present.
-    [[nodiscard]] std::uint32_t DecodeFec(std::span<const std::uint8_t> InPacket,
-                                          std::span<float> OutSamples) noexcept;
-    [[nodiscard]] std::uint32_t Conceal(std::span<float> OutSamples) noexcept;
+    // it normally afterwards. A positive return means "recovered or concealed":
+    // libopus synthesizes PLC when the packet carries no LBRR data, so this cannot
+    // prove FEC presence. 0 means the codec failed; OutError carries the reason.
+    [[nodiscard]] std::uint32_t DecodeFec(std::span<const std::uint8_t> InPacket, std::span<float> OutSamples,
+                                          std::int32_t* OutError = nullptr) noexcept;
+    [[nodiscard]] std::uint32_t Conceal(std::span<float> OutSamples, std::int32_t* OutError = nullptr) noexcept;
 
 protected:
     void* MDecoder = nullptr;

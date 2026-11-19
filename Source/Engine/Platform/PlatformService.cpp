@@ -202,7 +202,8 @@ void PlatformService::Unload() noexcept
 
 std::uint32_t PlatformService::Pump()
 {
-    if (MApi == nullptr)
+    const FbyPlatformApi* const ScopedApi = MApi;
+    if (ScopedApi == nullptr)
     {
         return 0;
     }
@@ -214,10 +215,15 @@ std::uint32_t PlatformService::Pump()
         Execute(ScopedCommand);
         ++ScopedExecuted;
         ++MStats.executed;
+        if (MApi != ScopedApi)
+        {
+            // A command may unload the provider from inside Execute().
+            return ScopedExecuted;
+        }
     }
-    if (MApi->pump != nullptr)
+    if (ScopedApi->pump != nullptr)
     {
-        MApi->pump();
+        ScopedApi->pump();
     }
     return ScopedExecuted;
 }

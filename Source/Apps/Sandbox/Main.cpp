@@ -72,6 +72,7 @@ public:
         MKeys.resize(InCapacity);
         MOrder.resize(InCapacity);
         MSorted.resize(InCapacity);
+        MSortedKeys.resize(InCapacity);
         MCapacity = InCapacity;
     }
 
@@ -159,6 +160,7 @@ public:
             for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
             {
                 MSorted[ScopedI] = MItems[MOrder[ScopedI]];
+                MSortedKeys[ScopedI] = MKeys[MOrder[ScopedI]];
             }
         }
     }
@@ -169,7 +171,8 @@ public:
         Fby::Rhi::FramePacket ScopedPacket;
         ScopedPacket.items =
             std::span<const Fby::Rhi::RenderItem>(MIdentityOrder ? MItems.data() : MSorted.data(), MCount);
-        ScopedPacket.keys = std::span<const Fby::Rhi::RenderKey>(MKeys.data(), MCount);
+        ScopedPacket.keys = std::span<const Fby::Rhi::RenderKey>(
+            MIdentityOrder ? MKeys.data() : MSortedKeys.data(), MCount);
         ScopedPacket.batches = std::span<const Fby::Rhi::DrawBatch>(MBatches.data(), MBatches.size());
         ScopedPacket.camera = InCamera;
         ScopedPacket.clear = InClear;
@@ -181,6 +184,7 @@ private:
     std::vector<Fby::Rhi::RenderItem> MSorted;
     std::vector<Fby::Rhi::RenderKey> MKeys;
     std::vector<Fby::Rhi::RenderKey> MLastKeys;
+    std::vector<Fby::Rhi::RenderKey> MSortedKeys;
     std::vector<std::uint32_t> MOrder;
     std::vector<Fby::Rhi::DrawBatch> MBatches;
     Fby::Rhi::KeySorter MSorter;
@@ -218,6 +222,11 @@ void SpawnSprites(World& InWorld, std::uint32_t InCount, std::uint32_t InSeed)
     for (std::uint32_t ScopedI = 0; ScopedI < InCount; ++ScopedI)
     {
         const auto ScopedEntity = InWorld.registry.create();
+        if (ScopedEntity == Fby::kNullEntity)
+        {
+            Fby::LogError("sandbox", "entity limit reached while spawning sprites at {}", ScopedI);
+            break;
+        }
         const float ScopedX = static_cast<float>(ScopedNext() % 100000) / 100000.0f * InWorld.bounds.X;
         const float ScopedY = static_cast<float>(ScopedNext() % 100000) / 100000.0f * InWorld.bounds.Y;
         const float ScopedSpeed = 20.0f + static_cast<float>(ScopedNext() % 1000) / 10.0f;
@@ -244,6 +253,11 @@ void SpawnSprites(World& InWorld, std::uint32_t InCount, std::uint32_t InSeed)
 void SpawnParticleEffect(Fby::Fcs::Registry& InRegistry, const char* InPreset, Fby::Vector2D InPosition)
 {
     const Fby::Entity ScopedEntity = InRegistry.create();
+    if (ScopedEntity == Fby::kNullEntity)
+    {
+        Fby::LogError("sandbox", "entity limit reached while spawning a particle effect");
+        return;
+    }
     InRegistry.emplace<Fby::Transform2D>(ScopedEntity, Fby::Transform2D{InPosition, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
     Fby::ParticleEffectComponent ScopedComponent{};
     if (FillParticleEffectComponent(ScopedComponent, InPreset))
@@ -255,6 +269,11 @@ void SpawnParticleEffect(Fby::Fcs::Registry& InRegistry, const char* InPreset, F
 void SpawnPlayer(World& InWorld, Fby::Vector2D InPosition)
 {
     const Fby::Entity ScopedEntity = InWorld.registry.create();
+    if (ScopedEntity == Fby::kNullEntity)
+    {
+        Fby::LogError("sandbox", "entity limit reached while spawning the player");
+        return;
+    }
     InWorld.registry.emplace<Fby::Transform2D>(
         ScopedEntity, Fby::Transform2D{InPosition, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
     InWorld.registry.emplace<Fby::Velocity>(ScopedEntity, Fby::Velocity{Fby::Vector2D{0.0f, 0.0f}});
@@ -338,7 +357,19 @@ void PlayerControlSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
 void RenderExtractSystem(const Fby::Ecs::ConstRenderSystemView& InView, void* InUser)
 {
     SandboxSystems& ScopedSystems = *static_cast<SandboxSystems*>(InUser);
-    const std::uint32_t ScopedCount = static_cast<std::uint32_t>(ScopedSystems.world->sprites.size());
+    const std::size_t ScopedCapacity = ScopedSystems.extract->Capacity();
+    const std::uint32_t ScopedCount = static_cast<std::uint32_t>(
+        std::min(ScopedSystems.world->sprites.size(), ScopedCapacity));
+    if (ScopedSystems.world->sprites.size() > ScopedCapacity)
+    {
+        static bool ScopedWarned = false;
+        if (!ScopedWarned)
+        {
+            ScopedWarned = true;
+            Fby::LogWarn("sandbox", "sprite extract capped at {} of {} sprites",
+                         ScopedCapacity, ScopedSystems.world->sprites.size());
+        }
+    }
     ScopedSystems.extract->Begin(ScopedCount);
     auto ScopedView = InView.registry.view<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder>();
     Fby::Rhi::RenderItem* ScopedItems = ScopedSystems.extract->Items();
@@ -410,7 +441,9 @@ void RenderExtractSystem(const Fby::Ecs::ConstRenderSystemView& InView, void* In
         {
             Fby::Navigation::CrowdRenderSettings ScopedCrowdRender;
             ScopedCrowdRender.Size = Fby::Vector2D{10.0f, 10.0f};
-            ScopedCrowdRender.Layer = 6;
+            // Texture-array slice 0 is the built-in white sprite; layer 6 is
+            // only the render-key bucket below.
+            ScopedCrowdRender.Layer = 0;
             const std::uint32_t ScopedCrowdCount = Fby::Navigation::BuildCrowdRenderItems(
                 *ScopedSystems.crowd, ScopedCrowdRender,
                 std::span<Fby::Rhi::RenderItem>(ScopedSystems.extract->Items() + ScopedBase, ScopedTail));
@@ -543,6 +576,11 @@ int main(int argc, char** argv)
     ScopedDeviceDesc.vsync = !ScopedOptions.NoVsync;
     ScopedDeviceDesc.maxItemsPerFrame =
         std::max<std::uint32_t>(ScopedOptions.PieClient ? 4096u : ScopedOptions.SpriteCount + 4096u, 1u << 16);
+    if (ScopedDeviceDesc.backend == Fby::Rhi::Backend::D3D11)
+    {
+        // D3D11's Submit contract is 4096 items per packet.
+        ScopedDeviceDesc.maxItemsPerFrame = std::min<std::uint32_t>(ScopedDeviceDesc.maxItemsPerFrame, 4096u);
+    }
 
     std::unique_ptr<Fby::Rhi::RHI> ScopedGpu = Fby::Rhi::RHI::Create(ScopedDeviceDesc);
     if (!ScopedGpu)
@@ -762,8 +800,15 @@ int main(int argc, char** argv)
     SpawnParticleEffect(ScopedWorld.registry, "Particle.Bubbles", Fby::Vector2D{2200.0f, 1400.0f});
 
     RenderExtract ScopedExtract;
-    ScopedExtract.Resize(ScopedWorld.sprites.size() + Fby::kParticleEffectMaxParticles + ScopedMaskEntities.size() +
-                         ScopedCrowd.Capacity());
+    const std::size_t ScopedDesiredItems = ScopedWorld.sprites.size() + Fby::kParticleEffectMaxParticles +
+                                           ScopedMaskEntities.size() + ScopedCrowd.Capacity();
+    const std::size_t ScopedItemBudget = ScopedGpu->Info().maxItemsPerFrame;
+    if (ScopedDesiredItems > ScopedItemBudget)
+    {
+        Fby::LogWarn("sandbox", "render extract capped from {} to the backend budget of {} items",
+                     ScopedDesiredItems, ScopedItemBudget);
+    }
+    ScopedExtract.Resize(std::min(ScopedDesiredItems, ScopedItemBudget));
 
     // Accessibility is a frame policy, not a postscript: the profile is applied
     // once and every frame receives the flags the RHI already understands.
@@ -813,11 +858,19 @@ int main(int argc, char** argv)
         Fby::LogWarn("sandbox", "text asset could not be compiled");
     }
     const Fby::Entity ScopedWorldTextEntity = ScopedWorld.registry.create();
-    ScopedWorld.registry.emplace<Fby::Transform2D>(
-        ScopedWorldTextEntity, Fby::Transform2D{Fby::Vector2D{2000.0f, 1350.0f}, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
-    Fby::TextComponent ScopedWorldTextComponent;
-    ScopedWorldTextComponent.SetRef(ScopedTextRuntime.Service().MakeRef(ScopedTextAsset));
-    ScopedWorld.registry.emplace<Fby::TextComponent>(ScopedWorldTextEntity, ScopedWorldTextComponent);
+    if (ScopedWorldTextEntity == Fby::kNullEntity)
+    {
+        Fby::LogError("sandbox", "entity limit reached while spawning the world text label");
+    }
+    else
+    {
+        ScopedWorld.registry.emplace<Fby::Transform2D>(
+            ScopedWorldTextEntity,
+            Fby::Transform2D{Fby::Vector2D{2000.0f, 1350.0f}, Fby::Vector2D{1.0f, 1.0f}, 0.0f});
+        Fby::TextComponent ScopedWorldTextComponent;
+        ScopedWorldTextComponent.SetRef(ScopedTextRuntime.Service().MakeRef(ScopedTextAsset));
+        ScopedWorld.registry.emplace<Fby::TextComponent>(ScopedWorldTextEntity, ScopedWorldTextComponent);
+    }
     Fby::Assets::TextureArrayAsset ScopedSplashAtlas;
     {
         const std::string ScopedManifest = "name = \"splash\"\nwidth = 1024\nheight = 1024\nsrgb = false\n"
@@ -1168,18 +1221,28 @@ int main(int argc, char** argv)
                 ScopedWorld.cameraCenter,
                 {static_cast<float>(ScopedDeviceDesc.size.width), static_cast<float>(ScopedDeviceDesc.size.height)},
                 ScopedWorld.zoom};
+            const Fby::Rhi::CameraData ScopedSplashCamera{
+                {0.0f, 0.0f},
+                {static_cast<float>(ScopedDeviceDesc.size.width),
+                 static_cast<float>(ScopedDeviceDesc.size.height)},
+                1.0f};
             Fby::Color32 ScopedClear = Fby::Color32::FromBytes(10, 12, 20);
             Fby::Rhi::FramePacket ScopedFrame = ScopedExtract.Packet(ScopedCamera, ScopedClear);
+            // Keep the splash packet's backing storage in frame scope: Submit()
+            // reads these spans after the branch below has closed.
+            Fby::Rhi::RenderItem ScopedLogo{};
+            Fby::Rhi::RenderKey ScopedLogoKey{};
+            Fby::Rhi::DrawBatch ScopedLogoBatch{0, 1, 0, 0};
             if (!ScopedSplash.Done() && ScopedSplashAtlas.IsValid())
             {
                 const auto ScopedAlpha =
                     static_cast<std::uint8_t>(std::clamp(ScopedSplash.Opacity(), 0.0f, 1.0f) * 255.0f);
-                const Fby::Rhi::RenderItem ScopedLogo = Fby::Rhi::RenderItem::Quad(
+                ScopedLogo = Fby::Rhi::RenderItem::Quad(
                     {0.0f, 0.0f}, {512.0f, 512.0f}, Fby::Color32::FromBytes(255, 255, 255, ScopedAlpha).rgba);
-                const Fby::Rhi::RenderKey ScopedLogoKey{};
-                const Fby::Rhi::DrawBatch ScopedLogoBatch{0, 1, 0, 0};
+                ScopedLogoKey = Fby::Rhi::RenderKey{};
+                ScopedLogoBatch = Fby::Rhi::DrawBatch{0, 1, 0, 0};
                 ScopedFrame = Fby::Rhi::FramePacket{};
-                ScopedFrame.camera = ScopedCamera;
+                ScopedFrame.camera = ScopedSplashCamera;
                 ScopedFrame.clear = Fby::Color32::FromBytes(6, 7, 12);
                 ScopedFrame.textureArray = ScopedSplashAtlas.Handle().id;
                 ScopedFrame.items = std::span<const Fby::Rhi::RenderItem>(&ScopedLogo, 1);
@@ -1219,7 +1282,8 @@ int main(int argc, char** argv)
                 }
             }
             ScopedFrame.timeSeconds = static_cast<float>(ScopedClock.Elapsed());
-            ScopedAccessibility.AdvanceCaptionClock(ScopedDt);
+            ScopedAccessibility.Update(ScopedContext.AccessibilityView());
+            ScopedAccessibility.FlushSpeech();
             (void)ScopedOverlay.Build(ScopedContext.UiView(), ScopedAccessibility,
                                       Fby::Vector2D{static_cast<float>(ScopedDeviceDesc.size.width),
                                                     static_cast<float>(ScopedDeviceDesc.size.height)});
@@ -1236,7 +1300,9 @@ int main(int argc, char** argv)
             ScopedAccessibility.ApplyPostFx(ScopedFrame.postFx);
             ScopedFrame.postFxEnabled = true;
             ScopedGpu->Submit(ScopedFrame);
-            if (ScopedWorldTextCount > 0u && ScopedUiFontStack.Fonts().TextureArray().IsValid())
+            if (ScopedSplash.Done() &&
+                !Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode) &&
+                ScopedWorldTextCount > 0u && ScopedUiFontStack.Fonts().TextureArray().IsValid())
             {
                 Fby::Rhi::FramePacket ScopedWorldText;
                 ScopedWorldText.camera = ScopedCamera;
@@ -1249,10 +1315,12 @@ int main(int argc, char** argv)
                 ScopedWorldText.batches = std::span<const Fby::Rhi::DrawBatch>(&ScopedWorldTextBatch, 1);
                 (void)ScopedGpu->DrawOverlay(ScopedWorldText);
             }
-            if (!ScopedSplash.Done() && ScopedSplashTextCount > 0u &&
+            if (!Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityBlindMode) &&
+                !ScopedSplash.Done() && ScopedSplashTextCount > 0u &&
                 ScopedUiFontStack.Fonts().TextureArray().IsValid())
             {
                 Fby::Rhi::FramePacket ScopedSplashText;
+                ScopedSplashText.camera = ScopedSplashCamera;
                 ScopedSplashText.textureArray = ScopedUiFontStack.Fonts().TextureArray().id;
                 ScopedSplashText.items =
                     std::span<const Fby::Rhi::RenderItem>(ScopedSplashTextItems.data(), ScopedSplashTextCount);

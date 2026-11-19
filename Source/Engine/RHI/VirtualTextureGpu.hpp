@@ -33,7 +33,7 @@ struct VirtualTexturePageLocation
     {
         return false;
     }
-    if (InUpload.rowPitch < InUpload.width * 4u ||
+    if (InUpload.rowPitch % 4u != 0u || InUpload.rowPitch < InUpload.width * 4u ||
         InUpload.pixels.size() < static_cast<std::size_t>(InUpload.rowPitch) * InUpload.height)
     {
         return false;
@@ -76,6 +76,11 @@ struct VirtualTextureSample
     }
     const std::int32_t ScopedTileX = VirtualTextureWorldToTile(InWorld.X, InWorldTileSize);
     const std::int32_t ScopedTileY = VirtualTextureWorldToTile(InWorld.Y, InWorldTileSize);
+    if (!std::isfinite(InTableOrigin.X) || !std::isfinite(InTableOrigin.Y) ||
+        std::fabs(InTableOrigin.X) > 9.0e15f || std::fabs(InTableOrigin.Y) > 9.0e15f)
+    {
+        return false;
+    }
     const std::int64_t ScopedCellX = static_cast<std::int64_t>(ScopedTileX) - static_cast<std::int64_t>(InTableOrigin.X);
     const std::int64_t ScopedCellY = static_cast<std::int64_t>(ScopedTileY) - static_cast<std::int64_t>(InTableOrigin.Y);
     if (ScopedCellX < 0 || ScopedCellY < 0 || ScopedCellX >= static_cast<std::int64_t>(InTableSize) ||

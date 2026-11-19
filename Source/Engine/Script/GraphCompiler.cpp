@@ -64,7 +64,8 @@ public:
             return false;
         }
         *MOut = {};
-        if (MGraph.nodeCount == 0 || MGraph.nodeCount > kMaxLogicNodes || MGraph.linkCount > kMaxLogicLinks)
+        if (MGraph.nodeCount == 0 || MGraph.nodeCount > kMaxLogicNodes ||
+            MGraph.linkCount > kMaxLogicLinks || MGraph.fieldCount > kMaxLogicFields)
         {
             return Fail("graph is empty or exceeds its capacity");
         }
@@ -766,6 +767,9 @@ private:
             {
                 const std::uint16_t ScopedNative = MBuilder.AddNative(NativeId::DespawnSelf);
                 MBuilder.Emit(OpCode::CallNative, 0, 0, ScopedNative);
+                // The native writes its 1/0 result into r0; restore the self
+                // entity that every later statement reads.
+                MBuilder.Emit(OpCode::LoadSelf, 0);
                 break;
             }
             case LogicNodeKind::GetFrameIndex:

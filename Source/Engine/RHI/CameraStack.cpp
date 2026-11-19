@@ -168,10 +168,7 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
             {
                 ScopedBase.ViewSize = ScopedAuthored->ViewSize;
                 ScopedBase.Zoom = ScopedAuthored->Zoom;
-                if ((ScopedSlot.desc.flags & CameraStackWriteBack) == 0)
-                {
-                    ScopedBase.Rotation = ScopedAuthored->Rotation;
-                }
+                ScopedBase.Rotation = ScopedAuthored->Rotation;
             }
         }
 
@@ -234,6 +231,10 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
             }
         }
 
+        if ((ScopedSlot.desc.flags & CameraStackShake) == 0 && InView.dt > 0.0f)
+        {
+            ScopedSlot.trauma = std::max(0.0f, ScopedSlot.trauma - ScopedSlot.desc.shakeDecay * InView.dt);
+        }
         if ((ScopedSlot.desc.flags & CameraStackShake) != 0 && InView.dt > 0.0f)
         {
             ScopedSlot.trauma = std::max(0.0f, ScopedSlot.trauma - ScopedSlot.desc.shakeDecay * InView.dt);
@@ -249,7 +250,7 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
                 ScopedResolved.Center.Y += ValueNoise(ScopedSlot.phaseY, ScopedSlot.desc.seed ^ 0x9E3779B9u) *
                                            ScopedAmplitude * 0.78f;
                 ScopedResolved.Rotation +=
-                    ValueNoise(ScopedSlot.phaseRoll, ScopedSlot.desc.seed ^ 0x85EBCA6Bu) * 0.012f * ScopedIntensity;
+                    ValueNoise(ScopedSlot.phaseRoll, ScopedSlot.desc.seed ^ 0x85EBCA6Bu) * ScopedAmplitude * 0.02f;
             }
         }
 

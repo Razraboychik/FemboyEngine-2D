@@ -24,10 +24,12 @@ struct Fsr3FgApi
     {
         if (Module != nullptr)
         {
-            return true;
+            return Functions.CreateContext != nullptr && Functions.DestroyContext != nullptr &&
+                   Functions.Dispatch != nullptr;
         }
         wchar_t ScopedPath[MAX_PATH]{};
-        if (GetModuleFileNameW(nullptr, ScopedPath, MAX_PATH) == 0)
+        const DWORD ScopedLength = GetModuleFileNameW(nullptr, ScopedPath, MAX_PATH);
+        if (ScopedLength == 0 || ScopedLength >= MAX_PATH)
         {
             return false;
         }
@@ -49,15 +51,22 @@ struct Fsr3FgApi
         Functions.Configure = reinterpret_cast<PfnFfxConfigure>(GetProcAddress(Module, "ffxConfigure"));
         Functions.Query = reinterpret_cast<PfnFfxQuery>(GetProcAddress(Module, "ffxQuery"));
         Functions.Dispatch = reinterpret_cast<PfnFfxDispatch>(GetProcAddress(Module, "ffxDispatch"));
-        return Functions.CreateContext != nullptr && Functions.DestroyContext != nullptr &&
-               Functions.Dispatch != nullptr;
+        const bool ScopedLoaded = Functions.CreateContext != nullptr && Functions.DestroyContext != nullptr &&
+                                  Functions.Dispatch != nullptr;
+        if (!ScopedLoaded)
+        {
+            Functions = {};
+            FreeLibrary(Module);
+            Module = nullptr;
+        }
+        return ScopedLoaded;
     }
 };
 
 Fsr3FgApi GFsr3FgApi;
 
 [[nodiscard]] FfxApiResource MakeResource(const Fby::Rhi::NativeTextureView& InView, std::uint32_t InWidth,
-                                          std::uint32_t InHeight, uint32_t InState)
+                                          std::uint32_t InHeight, uint32_t InState, uint32_t InUsage)
 {
     FfxApiResourceDescription ScopedDesc{};
     ScopedDesc.type = FFX_API_RESOURCE_TYPE_TEXTURE2D;
@@ -66,6 +75,8 @@ Fsr3FgApi GFsr3FgApi;
     ScopedDesc.height = InHeight;
     ScopedDesc.depth = 1;
     ScopedDesc.mipCount = 1;
+    ScopedDesc.flags = FFX_API_RESOURCE_FLAGS_NONE;
+    ScopedDesc.usage = static_cast<FfxApiResourceUsage>(InUsage);
     FfxApiResource ScopedResource{};
     ScopedResource.resource = InView.image != nullptr ? InView.image : InView.view;
     ScopedResource.description = ScopedDesc;
@@ -169,7 +180,12 @@ bool Fsr3FrameGenerator::Generate(RHI& InGpu, const FrameGenerationInput& InInpu
         {
             return false;
         }
-        const bool ScopedOk = Fsr3Dx12::Dispatch(MContext, InGpu.CurrentCommandBuffer(), ScopedColor.image,
+        void* const ScopedCommandList = InGpu.CurrentCommandBuffer();
+        if (ScopedCommandList == nullptr)
+        {
+            return false;
+        }
+        const bool ScopedOk = Fsr3Dx12::Dispatch(MContext, ScopedCommandList, ScopedColor.image,
                                                  ScopedOutput.image, InInput.OutputExtent.width,
                                                  InInput.OutputExtent.height, InInput.ResetHistory || MReset,
                                                  MFrameId++);
@@ -196,13 +212,21 @@ bool Fsr3FrameGenerator::Generate(RHI& InGpu, const FrameGenerationInput& InInpu
     {
         return false;
     }
+    void* const ScopedCommandBuffer = InGpu.CurrentCommandBuffer();
+    if (ScopedCommandBuffer == nullptr)
+    {
+        return false;
+    }
     ffxDispatchDescFrameGeneration ScopedDispatch{};
     ScopedDispatch.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION;
-    ScopedDispatch.commandList = InGpu.CurrentCommandBuffer();
-    ScopedDispatch.presentColor = MakeResource(ScopedColor, InInput.OutputExtent.width,
-                                               InInput.OutputExtent.height, FFX_API_RESOURCE_STATE_COMPUTE_READ);
-    ScopedDispatch.outputs[0] = MakeResource(ScopedOutput, InInput.OutputExtent.width,
-                                              InInput.OutputExtent.height, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
+    ScopedDispatch.commandList = ScopedCommandBuffer;
+    ScopedDispatch.presentColor = MakeResource(
+        ScopedColor, InInput.OutputExtent.width, InInput.OutputExtent.height,
+        FFX_API_RESOURCE_STATE_COMPUTE_READ, FFX_API_RESOURCE_USAGE_READ_ONLY);
+    ScopedDispatch.outputs[0] = MakeResource(
+        ScopedOutput, InInput.OutputExtent.width, InInput.OutputExtent.height,
+        FFX_API_RESOURCE_STATE_UNORDERED_ACCESS,
+        FFX_API_RESOURCE_USAGE_READ_ONLY | FFX_API_RESOURCE_USAGE_UAV);
     ScopedDispatch.numGeneratedFrames = 1;
     ScopedDispatch.reset = InInput.ResetHistory || MReset;
     ScopedDispatch.frameID = MFrameId++;
@@ -228,7 +252,10 @@ void Fsr3FrameGenerator::ResetHistory() noexcept
 
 void Fsr3FrameGenerator::Shutdown(RHI& InGpu) noexcept
 {
-    (void)InGpu;
+    if (MContext != nullptr)
+    {
+        InGpu.WaitIdle();
+    }
     if (MDx12)
     {
         Fsr3Dx12::DestroyContext(MContext);

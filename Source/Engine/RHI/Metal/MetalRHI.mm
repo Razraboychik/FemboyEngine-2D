@@ -174,7 +174,7 @@ public:
             return {};
         }
         const std::uint32_t ScopedMips = std::max(desc.mipLevels, 1u);
-        const MTLPixelFormat ScopedFormat = ToMetalFormat(desc.format, desc.srgb);
+        const MTLPixelFormat ScopedFormat = ToMetalFormat(desc.format, desc.EffectiveSrgb());
         const std::uint64_t ScopedExpected = Fby::Assets::TextureByteSize(
             desc.format, desc.size.width, desc.size.height, desc.layers, ScopedMips);
         if (pixels.size() < ScopedExpected)
@@ -429,9 +429,8 @@ bool MetalRHI::Initialize(const DeviceDesc& desc)
     MLayer.framebufferOnly = YES;
     MLayer.displaySyncEnabled = desc.vsync ? YES : NO;
     MLayer.maximumDrawableCount = static_cast<NSUInteger>(std::max(2u, MFramesInFlight));
-    const float density = SDL_GetWindowPixelDensity(static_cast<SDL_Window*>(desc.nativeWindow));
     MLayer.drawableSize =
-        CGSizeMake(static_cast<CGFloat>(desc.size.width) * density, static_cast<CGFloat>(desc.size.height) * density);
+        CGSizeMake(static_cast<CGFloat>(desc.size.width), static_cast<CGFloat>(desc.size.height));
 
     MTLTextureDescriptor* depthDescriptor =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
@@ -1166,9 +1165,7 @@ void MetalRHI::Resize(Extent2D size)
     {
         return;
     }
-    const float density = SDL_GetWindowPixelDensity(static_cast<SDL_Window*>(MDesc.nativeWindow));
-    MLayer.drawableSize =
-        CGSizeMake(static_cast<CGFloat>(size.width) * density, static_cast<CGFloat>(size.height) * density);
+    MLayer.drawableSize = CGSizeMake(static_cast<CGFloat>(size.width), static_cast<CGFloat>(size.height));
     if (MDevice != nil && MDepthTexture != nil)
     {
         // The swapchain depth must follow the drawable size.
@@ -1460,11 +1457,14 @@ bool MetalRHI::RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t In
     {
         return false;
     }
-    struct MotionVertex
+    struct alignas(8) MotionVertex
     {
         float Position[3];
+        float Pad = 0.0f;
         float Delta[2];
     };
+    static_assert(sizeof(MotionVertex) == 24, "MotionVertex must match packed_float3 + float2");
+    static_assert(offsetof(MotionVertex, Delta) == 16, "MotionVertex delta must start at byte 16");
     const Extent2D extent = MRenderTargets[InTarget.id]->extent;
     const float viewportX = InViewport.X > 0.0f ? InViewport.X : static_cast<float>(extent.width);
     const float viewportY = InViewport.Y > 0.0f ? InViewport.Y : static_cast<float>(extent.height);
@@ -1742,6 +1742,10 @@ void MetalRHI::Shutdown()
     MFreeStaticMeshIds.clear();
     MRenderTargets.clear();
     MFreeRenderTargetIds.clear();
+    MFreeTextureArrayIds.clear();
+    MTransientCapacity = 0;
+    MFrameIndex = 0;
+    MFrameSlot = 0;
     MSkinPipeline = nil;
     MMeshPipeline = nil;
     MSpritePipeline = nil;

@@ -89,6 +89,7 @@ private:
     std::uint64_t MFirstTick = 0;
     std::uint64_t MLastTick = 0;
     std::uint64_t MChecksum = 0;
+    bool MSealed = false;
 };
 
 // Components
@@ -179,7 +180,7 @@ class EgsStoreSystem
 {
 public:
     static constexpr std::uint32_t kMaxStagedSaves = 16;
-    static constexpr std::uint32_t kStagedSaveBytes = 1024;
+    static constexpr std::uint32_t kStagedSaveBytes = kPlatformInlineCloudBytes;
 
     EgsStoreSystem() = default;
 
@@ -259,7 +260,7 @@ class GogStorageSystem
 {
 public:
     static constexpr std::uint32_t kMaxStagedSaves = 16;
-    static constexpr std::uint32_t kStagedSaveBytes = 1024;
+    static constexpr std::uint32_t kStagedSaveBytes = kPlatformInlineCloudBytes;
 
     GogStorageSystem() = default;
 

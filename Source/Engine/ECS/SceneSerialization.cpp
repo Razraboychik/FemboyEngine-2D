@@ -141,6 +141,56 @@ namespace
     return true;
 }
 
+[[nodiscard]] bool ValidatePrefabAssets(const SceneData& InScene, VirtualFileSystem* InVfs,
+                                       Assets::AssetDatabase* InAssetDb, std::string* InError)
+{
+    if (InAssetDb == nullptr)
+    {
+        return true;
+    }
+    for (std::size_t ScopedEntityIndex = 0; ScopedEntityIndex < InScene.entities.size(); ++ScopedEntityIndex)
+    {
+        for (const SceneComponent& ScopedComponent : InScene.entities[ScopedEntityIndex].components)
+        {
+            if (ScopedComponent.type == nullptr || ScopedComponent.type->name != "PrefabInstanceComponent")
+            {
+                continue;
+            }
+            if (ScopedComponent.data.size() != sizeof(PrefabInstanceComponent))
+            {
+                *InError = "PrefabInstanceComponent on entity " + std::to_string(ScopedEntityIndex) +
+                           " has the wrong size";
+                return false;
+            }
+            PrefabInstanceComponent ScopedLink{};
+            std::memcpy(&ScopedLink, ScopedComponent.data.data(), sizeof(ScopedLink));
+            Assets::AssetHandle ScopedHandle = ScopedLink.Prefab;
+            if (ScopedLink.PrefabGuid != Assets::kInvalidAssetGuid)
+            {
+                ScopedHandle = InAssetDb->FindHandleByGuid(ScopedLink.PrefabGuid);
+            }
+            if (!ScopedHandle.IsValid())
+            {
+                *InError = "entity " + std::to_string(ScopedEntityIndex) + " references an unregistered prefab";
+                return false;
+            }
+            const std::string_view ScopedPath = InAssetDb->SourcePath(ScopedHandle);
+            if (ScopedPath.empty())
+            {
+                *InError = "entity " + std::to_string(ScopedEntityIndex) + " prefab has no source path";
+                return false;
+            }
+            if (InVfs != nullptr && !InVfs->Pin(ScopedPath))
+            {
+                *InError = "entity " + std::to_string(ScopedEntityIndex) + " references missing prefab asset '" +
+                           std::string(ScopedPath) + "'";
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] bool InstantiateSkeletonRefs(Registry& InRegistry, const EntityRemap& InRemap, VirtualFileSystem* InVfs,
                                            Assets::AssetDatabase* InAssetDb, std::string* InError)
 {
@@ -341,6 +391,11 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
     {
         return std::unexpected(std::move(ScopedSkeletonError));
     }
+    std::string ScopedPrefabError;
+    if (!ValidatePrefabAssets(InScene, InOptions.assets, InOptions.assetDb, &ScopedPrefabError))
+    {
+        return std::unexpected(std::move(ScopedPrefabError));
+    }
 
     if (InOptions.clearExisting)
     {
@@ -421,7 +476,16 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
         }
         for (const Entity ScopedInstance : ScopedInstanceEntities)
         {
-            const PrefabInstanceComponent& ScopedLink = InRegistry.get<PrefabInstanceComponent>(ScopedInstance);
+            PrefabInstanceComponent ScopedLink = InRegistry.get<PrefabInstanceComponent>(ScopedInstance);
+            if (ScopedLink.PrefabGuid != Assets::kInvalidAssetGuid && InOptions.assetDb != nullptr)
+            {
+                if (const Assets::AssetHandle ScopedResolved = InOptions.assetDb->FindHandleByGuid(ScopedLink.PrefabGuid);
+                    ScopedResolved.IsValid())
+                {
+                    ScopedLink.Prefab = ScopedResolved;
+                    InRegistry.get<PrefabInstanceComponent>(ScopedInstance).Prefab = ScopedResolved;
+                }
+            }
             if (!ScopedLink.Prefab.IsValid())
             {
                 continue;

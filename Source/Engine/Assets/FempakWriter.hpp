@@ -23,11 +23,15 @@ class FempakWriter
 {
 public:
     // `path` is normalized with NormalizePakPath(). Adds or replaces the entry.
-    void Add(std::string_view InPath, std::span<const std::byte> InBytes, std::uint32_t InAlignment = kPakAlignment);
-    void Add(std::string_view InPath, std::vector<std::byte> InBytes, std::uint32_t InAlignment = kPakAlignment);
+    // Returns false when the path is absolute, UNC or escapes the archive root.
+    [[nodiscard]] bool Add(std::string_view InPath, std::span<const std::byte> InBytes,
+                           std::uint32_t InAlignment = kPakAlignment);
+    [[nodiscard]] bool Add(std::string_view InPath, std::vector<std::byte> InBytes,
+                           std::uint32_t InAlignment = kPakAlignment);
 
-    // Adds every regular file under a directory, recursively.
-    bool AddDirectory(std::string_view InDirectory, std::string_view InVirtualRoot, std::string* InError = nullptr);
+    // Adds every regular file under a directory, recursively. The scan is staged:
+    // a failure leaves the writer untouched.
+    [[nodiscard]] bool AddDirectory(std::string_view InDirectory, std::string_view InVirtualRoot, std::string* InError = nullptr);
 
     [[nodiscard]] std::size_t Size() const noexcept
     {
@@ -37,7 +41,7 @@ public:
     {
         return MEntries.empty();
     }
-    [[nodiscard]] const std::vector<FempakInput>& Entries() const noexcept
+    [[nodiscard]] std::vector<FempakInput> Entries() const
     {
         return MEntries;
     }

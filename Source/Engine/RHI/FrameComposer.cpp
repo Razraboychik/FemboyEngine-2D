@@ -636,13 +636,20 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             ScopedTotalVertices += ScopedMesh.Positions.size();
             ScopedTotalIndices += ScopedMesh.Indices.size();
         }
+        // The combined mesh uses uint16 indices; refusing to wrap keeps every
+        // character's index span inside its own vertex range.
+        if (ScopedTotalVertices <= 65535u && ScopedTotalIndices <= 65535u)
+        {
         MSdfCharacterVertices.reserve(ScopedTotalVertices);
         MSdfCharacterIndices.reserve(ScopedTotalIndices);
         std::vector<std::uint32_t> ScopedOffsets;
+        std::vector<std::uint32_t> ScopedIndexOffsets;
         ScopedOffsets.reserve(InSdfCharacterMeshes.size());
+        ScopedIndexOffsets.reserve(InSdfCharacterMeshes.size());
         for (const SdfCharacterMeshData& ScopedMesh : InSdfCharacterMeshes)
         {
             ScopedOffsets.push_back(static_cast<std::uint32_t>(MSdfCharacterVertices.size()));
+            ScopedIndexOffsets.push_back(static_cast<std::uint32_t>(MSdfCharacterIndices.size()));
             const std::uint16_t ScopedBase = static_cast<std::uint16_t>(MSdfCharacterVertices.size());
             for (const Vector2D ScopedPosition : ScopedMesh.Positions)
             {
@@ -667,12 +674,13 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             ScopedItem.vertices = std::span<const Rhi::MeshVertex>(
                 MSdfCharacterVertices.data() + ScopedOffsets[ScopedMeshIndex2], ScopedMesh.Positions.size());
             ScopedItem.indices = std::span<const std::uint16_t>(
-                MSdfCharacterIndices.data() + ScopedOffsets[ScopedMeshIndex2], ScopedMesh.Indices.size());
+                MSdfCharacterIndices.data() + ScopedIndexOffsets[ScopedMeshIndex2], ScopedMesh.Indices.size());
             ScopedItem.textureArray = InTextureArray;
             ScopedItem.color = Color32::White();
             ScopedItem.model = Mat4::Identity();
             ScopedItem.flags = Rhi::MeshItemUnskinned;
             MMeshItems[ScopedMeshIndex++] = ScopedItem;
+        }
         }
     }
     // Tilemap quads: one item per visible tile, already keyed by the isometric
@@ -750,8 +758,13 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         }
         MLastItems.resize(MCount);
         MLastKeys.resize(MCount);
-        std::memcpy(MLastItems.data(), MItems.data(), static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderItem));
-        std::memcpy(MLastKeys.data(), MKeys.data(), static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderKey));
+        if (MCount > 0)
+        {
+            std::memcpy(MLastItems.data(), MItems.data(),
+                        static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderItem));
+            std::memcpy(MLastKeys.data(), MKeys.data(),
+                        static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderKey));
+        }
     }
 
     MStats.GatherMilliseconds =
@@ -959,6 +972,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     }
 
     MPacket = Rhi::FramePacket{};
+    MPacket.sdf = MSdfLighting;
+    MPacket.virtualTexture = MVirtualTexture;
+    MPacket.virtualTextureParams = MVirtualTextureParams;
+    MPacket.virtualTextureLayout = MVirtualTextureLayout;
+    MPacket.virtualTextureDebugMode = MVirtualTextureDebugMode;
     MPacket.opaqueFrontToBack = MOpaqueFrontToBack;
     if (MInstanceDeltasEnabled)
     {

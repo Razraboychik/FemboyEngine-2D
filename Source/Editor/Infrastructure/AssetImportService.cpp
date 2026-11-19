@@ -405,12 +405,15 @@ void AssetImportService::WorkerLoop(std::stop_token InStopToken)
         {
             Fby::Cook::TextureCookOptions ScopedOptions;
             ScopedOptions.target =
-                IsAstc(ScopedRequest.format) ? Fby::Cook::CookTarget::Astc : Fby::Cook::CookTarget::Desktop;
+                ScopedRequest.format == Fby::Assets::TextureFormat::Rgba8
+                    ? Fby::Cook::CookTarget::Rgba8
+                    : (IsAstc(ScopedRequest.format) ? Fby::Cook::CookTarget::Astc : Fby::Cook::CookTarget::Desktop);
             ScopedOptions.astcBlock = (ScopedRequest.format == Assets::TextureFormat::Astc6x6Srgb ||
                                        ScopedRequest.format == Assets::TextureFormat::Astc6x6Unorm)
                                           ? Fby::Cook::AstcBlock::Block6x6
                                           : Fby::Cook::AstcBlock::Block4x4;
             ScopedOptions.srgb = ScopedRequest.srgb;
+            ScopedOptions.maxSize = ScopedRequest.maxSize;
             Fby::Cook::CookedTexture ScopedCooked;
             std::string ScopedError;
             if (!Fby::Cook::CookTextureFile(ScopedSource, ScopedOptions, &ScopedCooked, &ScopedError))

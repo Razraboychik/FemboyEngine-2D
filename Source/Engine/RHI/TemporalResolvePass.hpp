@@ -11,6 +11,11 @@ namespace Fby::Rhi
 class TemporalResolvePass
 {
 public:
+    TemporalResolvePass() = default;
+    TemporalResolvePass(const TemporalResolvePass&) = delete;
+    TemporalResolvePass& operator=(const TemporalResolvePass&) = delete;
+    TemporalResolvePass(TemporalResolvePass&&) = delete;
+    TemporalResolvePass& operator=(TemporalResolvePass&&) = delete;
     [[nodiscard]] bool Ensure(RHI& InGpu, Extent2D InExtent);
     [[nodiscard]] bool Resolve(RHI& InGpu, RenderTargetHandle InCurrent, RenderTargetHandle InMotion,
                                bool InResetHistory, float InHistoryWeight = 0.9f);
@@ -33,6 +38,7 @@ private:
     Extent2D MDepthExtent{};
     Extent2D MExtent{};
     std::uint32_t MRead = 0;
+    bool MForceReset = false;
 };
 
 }

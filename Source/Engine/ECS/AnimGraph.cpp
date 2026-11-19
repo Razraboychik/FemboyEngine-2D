@@ -354,6 +354,11 @@ void AnimGraphSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt,
             {
                 continue;
             }
+            // An any-state self transition would re-fire every frame and pin StateTime.
+            if (ScopedTransition.FromState == kAnimAnyState && ScopedTransition.ToState == ScopedState.CurrentState)
+            {
+                continue;
+            }
             if (AnimTransitionMatches(ScopedTransition, ScopedState, ScopedTags, InTags))
             {
                 ScopedFired = &ScopedTransition;

@@ -24,7 +24,8 @@ void Check(bool InCondition, const char* InMessage)
 
 void CheckClose(float InActual, float InExpected, float InTolerance, const char* InMessage)
 {
-    if (std::fabs(InActual - InExpected) > InTolerance)
+    if (!std::isfinite(InActual) || !std::isfinite(InExpected) || !std::isfinite(InTolerance) ||
+        !(std::fabs(InActual - InExpected) <= InTolerance))
     {
         std::printf("FAIL: %s (expected %f, got %f)\n", InMessage, static_cast<double>(InExpected),
                     static_cast<double>(InActual));
@@ -360,6 +361,10 @@ void TestDirectionalIntegration()
         {
             const std::uint32_t ScopedClip = ScopedSample.Weights[ScopedWeight].ClipId;
             Check(ScopedClip < 8, "directional clip id is inside the set");
+            if (ScopedClip >= 8)
+            {
+                break;
+            }
             AccumulateAnimationClip(ScopedClips[ScopedClip], ScopedBindings[ScopedClip], ScopedSkeleton, 0.25f,
                                     ScopedSample.Weights[ScopedWeight].Weight, ScopedPose);
         }
@@ -386,7 +391,9 @@ void TestDeterminism()
     ResetAnimationPose(ScopedSecond, ScopedSkeleton);
     AccumulateAnimationClip(ScopedClip, ScopedBinding, ScopedSkeleton, 0.37f, 0.8f, ScopedFirst);
     AccumulateAnimationClip(ScopedClip, ScopedBinding, ScopedSkeleton, 0.37f, 0.8f, ScopedSecond);
-    Check(std::memcmp(&ScopedFirst, &ScopedSecond, sizeof(AnimationPose)) == 0, "pose accumulation is deterministic");
+    constexpr std::size_t kPoseBytes =
+        offsetof(AnimationPose, BoneCount) + sizeof(AnimationPose::BoneCount);
+    Check(std::memcmp(&ScopedFirst, &ScopedSecond, kPoseBytes) == 0, "pose accumulation is deterministic");
 
     Fby::SkeletonComponent ScopedFirstSkeleton = ScopedSkeleton;
     Fby::SkeletonComponent ScopedSecondSkeleton = ScopedSkeleton;

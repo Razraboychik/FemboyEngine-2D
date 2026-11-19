@@ -151,10 +151,10 @@ struct SystemContext : CoreServices,
     }
 
     [[nodiscard]] CoreSystemView CoreView() noexcept;
-    [[nodiscard]] ConstCoreSystemView ConstCoreView() noexcept;
+    [[nodiscard]] ConstCoreSystemView ConstCoreView() const noexcept;
     [[nodiscard]] PhysicsSystemView PhysicsView() noexcept;
     [[nodiscard]] RenderSystemView RenderView() noexcept;
-    [[nodiscard]] ConstRenderSystemView ConstRenderView() noexcept;
+    [[nodiscard]] ConstRenderSystemView ConstRenderView() const noexcept;
     [[nodiscard]] GameplaySystemView GameplayView() noexcept;
     [[nodiscard]] AudioSystemView AudioView() noexcept;
     [[nodiscard]] UiSystemView UiView() noexcept;
@@ -373,7 +373,7 @@ inline CoreSystemView SystemContext::CoreView() noexcept
     return {registry, jobs, *this, dt, frameIndex, interpolationAlpha};
 }
 
-inline ConstCoreSystemView SystemContext::ConstCoreView() noexcept
+inline ConstCoreSystemView SystemContext::ConstCoreView() const noexcept
 {
     return {registry, jobs, *this, dt, frameIndex, interpolationAlpha};
 }
@@ -388,7 +388,7 @@ inline RenderSystemView SystemContext::RenderView() noexcept
     return {registry, jobs, *this, *this, dt, interpolationAlpha};
 }
 
-inline ConstRenderSystemView SystemContext::ConstRenderView() noexcept
+inline ConstRenderSystemView SystemContext::ConstRenderView() const noexcept
 {
     return {registry, jobs, *this, *this, dt, interpolationAlpha};
 }

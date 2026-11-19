@@ -74,7 +74,7 @@ public:
 
 private:
     float MThreshold = 0.20f;
-    float MResidualGain = 0.85f;
+    float MResidualGain = 0.35f;
     float MPreviousLuminance = 0.0f;
     float MGain = 1.0f;
     bool MPrimed = false;
@@ -222,7 +222,7 @@ struct AccessibilitySettings
 {
     [[nodiscard]] friend bool operator==(const AccessibilitySettings&, const AccessibilitySettings&) = default;
 
-    std::uint32_t flags = 0;
+    std::uint32_t flags = AccessibilityFlashGuard;
     ColorVisionDeficiency colorVision = ColorVisionDeficiency::None;
     float colorVisionStrength = 1.0f;
     float flashThreshold = 0.20f;

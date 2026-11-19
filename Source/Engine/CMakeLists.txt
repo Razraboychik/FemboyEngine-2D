@@ -28,6 +28,7 @@ set(FBY_ENGINE_SOURCES
     Audio/AudioZones.cpp
     Audio/DspGraph.cpp
     Audio/MiniAudioImpl.c
+    Audio/AudioCook.cpp
     Audio/OggOpus.cpp
     Audio/VoiceAec.cpp
     Audio/VoiceChannel.cpp

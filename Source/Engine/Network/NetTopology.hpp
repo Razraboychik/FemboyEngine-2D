@@ -37,9 +37,11 @@ struct NetTopologyPlan
     return InRole == NetRole::Authority;
 }
 
-[[nodiscard]] constexpr bool IsLocalClientRole(NetRole InRole) noexcept
+// The plan is the only authority for this question: a role alone cannot know
+// whether the process is headless or dedicated.
+[[nodiscard]] constexpr bool HasLocalClient(const NetTopologyPlan& InPlan) noexcept
 {
-    return InRole == NetRole::Client || InRole == NetRole::Authority;
+    return InPlan.HasLocalClient;
 }
 
 }

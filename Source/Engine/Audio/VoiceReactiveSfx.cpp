@@ -1,6 +1,8 @@
 // FemboyEngine2D - reactive voice SFX event layer and playback helper.
 #include "Engine/Audio/VoiceReactiveSfx.hpp"
 
+#include "Engine/Core/Math.hpp"
+
 #include "Engine/Audio/Audio.hpp"
 
 #include <algorithm>
@@ -33,12 +35,12 @@ const char* VoiceSfxKindName(VoiceSfxKind InKind) noexcept
 
 void VoiceReactiveSfxSettings::Clamp() noexcept
 {
-    MasterGain = std::clamp(MasterGain, 0.0f, 1.0f);
-    BubbleGain = std::clamp(BubbleGain, 0.0f, 1.0f);
-    SplashGain = std::clamp(SplashGain, 0.0f, 1.0f);
-    ModerationGain = std::clamp(ModerationGain, 0.0f, 1.0f);
-    SpeakerCooldownSeconds = std::clamp(SpeakerCooldownSeconds, 0.1f, 10.0f);
-    GlobalCooldownSeconds = std::clamp(GlobalCooldownSeconds, 0.0f, 5.0f);
+    MasterGain = Math::ClampFinite(MasterGain, 0.0f, 1.0f, 0.5f);
+    BubbleGain = Math::ClampFinite(BubbleGain, 0.0f, 1.0f, 0.35f);
+    SplashGain = Math::ClampFinite(SplashGain, 0.0f, 1.0f, 0.5f);
+    ModerationGain = Math::ClampFinite(ModerationGain, 0.0f, 1.0f, 0.6f);
+    SpeakerCooldownSeconds = Math::ClampFinite(SpeakerCooldownSeconds, 0.1f, 10.0f, 2.5f);
+    GlobalCooldownSeconds = Math::ClampFinite(GlobalCooldownSeconds, 0.0f, 5.0f, 0.4f);
 }
 
 void VoiceReactiveSfx::Configure(const VoiceReactiveSfxSettings& InSettings) noexcept
@@ -75,18 +77,20 @@ std::uint32_t VoiceReactiveSfx::Update(float InDeltaSeconds, const VoiceReactive
     {
         if (ScopedCount >= Out.size() || (InGlobalLimit && MGlobalCooldown > 0.0f))
         {
-            return;
+            return false;
         }
         VoiceSfxEvent& ScopedEvent = Out[ScopedCount++];
         ScopedEvent.Kind = InKind;
         ScopedEvent.Player = InPlayer;
-        ScopedEvent.Gain = std::clamp(MSettings.MasterGain * InBaseGain, 0.0f, 1.0f);
+        const float ScopedGain = MSettings.MasterGain * InBaseGain * std::clamp(InSource.Gain, 0.0f, 1.0f);
+        ScopedEvent.Gain = std::isfinite(ScopedGain) ? std::clamp(ScopedGain, 0.0f, 1.0f) : 0.0f;
         ScopedEvent.Pan = std::clamp(InSource.Pan, -1.0f, 1.0f);
         ScopedEvent.Position = InSource.Position;
         if (InGlobalLimit)
         {
             MGlobalCooldown = MSettings.GlobalCooldownSeconds;
         }
+        return true;
     };
 
     for (std::uint8_t ScopedPlayer = 0; ScopedPlayer < static_cast<std::uint8_t>(kVoiceMaxPeers); ++ScopedPlayer)
@@ -111,8 +115,10 @@ std::uint32_t VoiceReactiveSfx::Update(float InDeltaSeconds, const VoiceReactive
         if (MSettings.Bubbles && ScopedSource.Submerged && ScopedSource.Talking && !ScopedState.WasTalking &&
             ScopedState.BubbleCooldown <= 0.0f)
         {
-            ScopedEmit(VoiceSfxKind::BubbleCluster, ScopedPlayer, ScopedSource, MSettings.BubbleGain, false);
-            ScopedState.BubbleCooldown = MSettings.SpeakerCooldownSeconds;
+            if (ScopedEmit(VoiceSfxKind::BubbleCluster, ScopedPlayer, ScopedSource, MSettings.BubbleGain, false))
+            {
+                ScopedState.BubbleCooldown = MSettings.SpeakerCooldownSeconds;
+            }
         }
         ScopedState.WasTalking = ScopedSource.Talking;
         ScopedState.WasSubmerged = ScopedSource.Submerged;

@@ -1,6 +1,13 @@
 @echo off
 rem FemboyEngine 2.0 - 7-Zip archiver setup for Windows.
 setlocal
-for %%I in ("%~dp0..\..") do set "ROOT=%%~fI\"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%SetupScripts\Windows\SetupWindows.ps1" -Component Archiver %*
+if not exist "%~dp0SetupWindows.ps1" (
+    echo [Setup] SetupWindows.ps1 is missing next to SetupArchiver.bat.
+    exit /b 1
+)
+set "FBY_POWERSHELL=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if defined PROCESSOR_ARCHITEW6432 set "FBY_POWERSHELL=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%FBY_POWERSHELL%" set "FBY_POWERSHELL=powershell"
+set "ERRORLEVEL="
+"%FBY_POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0SetupWindows.ps1" -Component Archiver %*
 exit /b %ERRORLEVEL%

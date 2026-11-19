@@ -45,7 +45,14 @@ public:
                              std::uint32_t InHeight, float InMaxDistance = 256.0f,
                              std::uint32_t InRaysPerLobe = 2u)
     {
-        if (InWidth == 0u || InHeight == 0u || InCellSize.X <= 0.0f || InCellSize.Y <= 0.0f)
+        if (InWidth == 0u || InHeight == 0u || !std::isfinite(InCellSize.X) || !std::isfinite(InCellSize.Y) ||
+            !std::isfinite(InOrigin.X) || !std::isfinite(InOrigin.Y) || !std::isfinite(InMaxDistance) ||
+            InCellSize.X <= 0.0f || InCellSize.Y <= 0.0f)
+        {
+            return false;
+        }
+        constexpr std::uint64_t kMaxProbes = 1ull << 20u;
+        if (static_cast<std::uint64_t>(InWidth) * InHeight > kMaxProbes)
         {
             return false;
         }
@@ -55,7 +62,15 @@ public:
         MHeight = InHeight;
         MMaxDistance = std::max(InMaxDistance, 1.0f);
         MRaysPerLobe = std::clamp(InRaysPerLobe, 1u, 4u);
-        MProbes.assign(static_cast<std::size_t>(MWidth) * MHeight, SdfGiProbe{});
+        try
+        {
+            MProbes.assign(static_cast<std::size_t>(MWidth) * MHeight, SdfGiProbe{});
+        }
+        catch (...)
+        {
+            MProbes.clear();
+            return false;
+        }
         for (std::uint32_t ScopedY = 0; ScopedY < MHeight; ++ScopedY)
         {
             for (std::uint32_t ScopedX = 0; ScopedX < MWidth; ++ScopedX)
@@ -98,8 +113,8 @@ public:
         }
         const float ScopedX = (InWorld.X - MOrigin.X) / MCellSize.X;
         const float ScopedY = (InWorld.Y - MOrigin.Y) / MCellSize.Y;
-        if (ScopedX < 0.0f || ScopedY < 0.0f || ScopedX >= static_cast<float>(MWidth) ||
-            ScopedY >= static_cast<float>(MHeight))
+        if (!(ScopedX >= 0.0f && ScopedY >= 0.0f && ScopedX < static_cast<float>(MWidth) &&
+              ScopedY < static_cast<float>(MHeight)))
         {
             return nullptr;
         }
@@ -190,6 +205,7 @@ private:
                                    MOrigin.Y + (static_cast<float>(InY) + 0.5f) * MCellSize.Y};
         if (InMap.Sample(ScopedCenter) <= 0.0f)
         {
+            ScopedProbe.Radiance = {};
             ScopedProbe.Occlusion = 1.0f;
             ScopedProbe.Openness = 0.0f;
             return;
@@ -208,7 +224,7 @@ private:
                 const Vector2D ScopedDirection{ScopedBase.X - ScopedBase.Y * ScopedOffset,
                                                ScopedBase.Y + ScopedBase.X * ScopedOffset};
                 const float ScopedRemaining = InMap.Trace(ScopedCenter, ScopedDirection, MMaxDistance, 32u);
-                ScopedLobeOpen += ScopedRemaining > 0.0f ? ScopedRemaining / MMaxDistance : 0.0f;
+                ScopedLobeOpen += ScopedRemaining > 0.0f ? 1.0f : 0.0f;
             }
             ScopedLobeOpen /= static_cast<float>(MRaysPerLobe);
             ScopedProbe.Radiance[ScopedLobe] = ScopedLobeOpen;

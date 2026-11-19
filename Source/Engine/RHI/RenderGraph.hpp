@@ -91,16 +91,27 @@ struct RenderGraphContext
 
     [[nodiscard]] bool Push(const RenderCommandRecord& InRecord) noexcept
     {
-        if (recordCount == nullptr || records.empty() || *recordCount >= records.size())
+        if (recordCount == nullptr || records.empty() || *recordCount >= records.size() ||
+            InRecord.constantsBytes > sizeof(RenderCommandRecord::ConstantBytes))
         {
             return false;
         }
         RenderCommandRecord& ScopedStored = records[(*recordCount)++];
         ScopedStored = InRecord;
-        // The source block may be a temporary; only the copy inside the record
-        // survives. A record built by Make* carries its bytes here.
-        ScopedStored.constants =
-            ScopedStored.constantsBytes != 0 ? ScopedStored.ConstantBytes.data() : nullptr;
+        if (ScopedStored.constantsBytes != 0)
+        {
+            if (ScopedStored.constants != nullptr &&
+                ScopedStored.constants != ScopedStored.ConstantBytes.data())
+            {
+                std::memcpy(ScopedStored.ConstantBytes.data(), ScopedStored.constants,
+                            ScopedStored.constantsBytes);
+            }
+            ScopedStored.constants = ScopedStored.ConstantBytes.data();
+        }
+        else
+        {
+            ScopedStored.constants = nullptr;
+        }
         return true;
     }
 };

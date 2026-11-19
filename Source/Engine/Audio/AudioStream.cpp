@@ -162,7 +162,7 @@ VoiceCapture::~VoiceCapture()
 }
 
 bool VoiceCapture::Start(const AudioDeviceEnumerator& InDevices, const char* InDeviceId, FloatRing* InRing,
-                         std::uint32_t InSampleRate, std::string* InError) noexcept
+                         std::uint32_t InSampleRate, std::string* InError)
 {
     Stop();
     if (!InDevices.Ready() || InDevices.Context() == nullptr || InRing == nullptr)
@@ -298,7 +298,7 @@ AudioCaptureMonitor::~AudioCaptureMonitor()
 }
 
 bool AudioCaptureMonitor::Start(const AudioDeviceEnumerator& InDevices, const char* InDeviceId,
-                                std::uint32_t InSampleRate, std::string* InError) noexcept
+                                std::uint32_t InSampleRate, std::string* InError)
 {
     Stop();
     if (!MState)

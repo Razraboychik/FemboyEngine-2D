@@ -52,7 +52,21 @@ bool ConnectProjectPlugin(const std::filesystem::path& InProjectRoot, const std:
     {
         if (ScopedRelative == InSettings.plugins[ScopedI].Path)
         {
+            std::error_code ScopedCopyCode;
+            const std::filesystem::path ScopedTarget = InProjectRoot / "plugins" / InPluginFile.filename();
+            std::filesystem::create_directories(ScopedTarget.parent_path(), ScopedCopyCode);
+            if (!ScopedCopyCode)
+            {
+                std::filesystem::copy_file(InPluginFile, ScopedTarget,
+                                           std::filesystem::copy_options::overwrite_existing, ScopedCopyCode);
+            }
+            if (ScopedCopyCode)
+            {
+                SetError(OutError, "cannot refresh the copied plugin: " + ScopedCopyCode.message());
+                return false;
+            }
             InSettings.plugins[ScopedI].Enabled = true;
+            InSettings.plugins[ScopedI].Copied = true;
             if (OutRelativePath != nullptr)
             {
                 *OutRelativePath = ScopedRelative;
@@ -82,6 +96,7 @@ bool ConnectProjectPlugin(const std::filesystem::path& InProjectRoot, const std:
     ProjectPluginEntry& ScopedEntry = InSettings.plugins[InSettings.pluginCount++];
     std::snprintf(ScopedEntry.Path, sizeof(ScopedEntry.Path), "%s", ScopedRelative.c_str());
     ScopedEntry.Enabled = true;
+    ScopedEntry.Copied = true;
     if (OutRelativePath != nullptr)
     {
         *OutRelativePath = ScopedRelative;
@@ -98,7 +113,7 @@ bool RemoveProjectPlugin(const std::filesystem::path& InProjectRoot, ProjectSett
         return false;
     }
     const std::string ScopedRelative = InSettings.plugins[InIndex].Path;
-    if (IsProjectPluginPath(ScopedRelative))
+    if (InSettings.plugins[InIndex].Copied && IsProjectPluginPath(ScopedRelative))
     {
         std::error_code ScopedCode;
         std::filesystem::remove(InProjectRoot / ScopedRelative, ScopedCode);

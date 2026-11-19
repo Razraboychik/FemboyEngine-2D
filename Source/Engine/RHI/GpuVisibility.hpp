@@ -47,6 +47,8 @@ struct GpuCullingConstants
 };
 
 static_assert(sizeof(GpuCullingConstants) == 72);
+static_assert(std::is_standard_layout_v<GpuCullingConstants>);
+static_assert(std::is_trivially_copyable_v<GpuCullingConstants>);
 static_assert(offsetof(GpuCullingConstants, ItemCount) == 32);
 static_assert(offsetof(GpuCullingConstants, OutputOffset) == 44);
 static_assert(offsetof(GpuCullingConstants, CounterOffset) == 48);

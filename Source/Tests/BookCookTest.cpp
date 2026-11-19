@@ -94,8 +94,7 @@ int main()
     FBY_CHECK(std::string_view(ScopedBlock.Text.data(), ScopedBlock.Text.size()) == "int x = 1;");
     FBY_CHECK(ScopedReader.Block(7, &ScopedBlock));
     FBY_CHECK(ScopedBlock.Type == Fby::Text::BookBlockType::Image);
-    FBY_CHECK(ScopedBlock.Inlines.size() == 1);
-    FBY_CHECK(ScopedBlock.Inlines[0].AssetId != 0);
+    FBY_CHECK(ScopedBlock.Inlines.size() == 1 && ScopedBlock.Inlines[0].AssetId != 0);
     FBY_CHECK(ScopedReader.Block(8, &ScopedBlock));
     FBY_CHECK(ScopedBlock.Type == Fby::Text::BookBlockType::PageBreak);
 

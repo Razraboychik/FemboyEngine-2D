@@ -20,6 +20,8 @@ enum class CookTarget : std::uint8_t
     Desktop = 0,
     // ASTC 4x4 / 6x6 for GPUs that expose the format.
     Astc,
+    // Uncompressed RGBA8 (sRGB/UNORM selected by TextureCookOptions::srgb).
+    Rgba8,
 };
 
 enum class AstcBlock : std::uint8_t
@@ -36,6 +38,8 @@ struct TextureCookOptions
     bool srgb = true;
     // 0 = full chain for the format's block size (Assets::MaxMipLevels).
     std::uint32_t mipLevels = 0;
+    // 0 = keep source size; otherwise the base image is box-downscaled to fit.
+    std::uint32_t maxSize = 0;
 };
 
 struct CookedTexture

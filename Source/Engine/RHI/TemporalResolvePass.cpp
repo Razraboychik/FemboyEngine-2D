@@ -32,6 +32,7 @@ bool TemporalResolvePass::Ensure(RHI& InGpu, Extent2D InExtent)
     }
     MExtent = InExtent;
     MRead = 0;
+    MForceReset = true;
     return true;
 }
 
@@ -44,11 +45,16 @@ bool TemporalResolvePass::Resolve(RHI& InGpu, RenderTargetHandle InCurrent, Rend
     }
     const std::uint32_t ScopedWrite = 1u - MRead;
     if (!InGpu.TemporalResolve(InCurrent, MHistory[MRead], InMotion, InCurrent, MDepthHistory,
-                               MHistory[ScopedWrite], InHistoryWeight, 1.0f, InResetHistory))
+                               MHistory[ScopedWrite], InHistoryWeight, 1.0f, InResetHistory || MForceReset))
     {
         return false;
     }
-    (void)InGpu.CopyDepth(InCurrent, MDepthHistory);
+    if (!InGpu.CopyDepth(InCurrent, MDepthHistory))
+    {
+        MForceReset = true;
+        return false;
+    }
+    MForceReset = false;
     MRead = ScopedWrite;
     return true;
 }

@@ -477,14 +477,29 @@ bool TransportGroupSystem::CreateGroup(Ecs::Registry& InRegistry, Entity InRoot,
     {
         return false;
     }
+    if (InParentGroupId == InGroupId && InParentGroupId != 0)
+    {
+        return false;
+    }
+    bool ScopedAlreadyGroup = InRegistry.try_get<TransportGroupComponent>(InRoot) != nullptr;
+    std::uint32_t ScopedGroupCount = 0;
     auto ScopedExistingView = InRegistry.view<TransportGroupComponent>();
     for (const Entity ScopedExistingEntity : ScopedExistingView)
     {
-        if (ScopedExistingView.get<TransportGroupComponent>(ScopedExistingEntity).GroupId == InGroupId &&
-            ScopedExistingEntity != InRoot)
+        const TransportGroupComponent& ScopedExisting =
+            ScopedExistingView.get<TransportGroupComponent>(ScopedExistingEntity);
+        if (ScopedExistingEntity != InRoot && ScopedExisting.GroupId == InGroupId)
         {
             return false;
         }
+        if (ScopedExistingEntity != InRoot && ScopedExisting.GroupId != 0)
+        {
+            ++ScopedGroupCount;
+        }
+    }
+    if (!ScopedAlreadyGroup && ScopedGroupCount >= kTransportMaxGroups)
+    {
+        return false;
     }
     TransportGroupComponent* ScopedComponent = InRegistry.try_get<TransportGroupComponent>(InRoot);
     if (ScopedComponent == nullptr)
@@ -602,10 +617,30 @@ bool TransportGroupSystem::Attach(Ecs::Registry& InRegistry, Entity InMember, st
     {
         return false;
     }
+    std::uint32_t ScopedMemberCount = 0;
+    auto ScopedMembersView = InRegistry.view<CarrierMemberComponent>();
+    for (const Entity ScopedMemberEntity : ScopedMembersView)
+    {
+        if (ScopedMembersView.get<CarrierMemberComponent>(ScopedMemberEntity).GroupId == InGroupId)
+        {
+            ++ScopedMemberCount;
+        }
+    }
+    if (ScopedMemberCount >= kTransportMaxMembers && InRegistry.try_get<CarrierMemberComponent>(InMember) == nullptr)
+    {
+        return false;
+    }
     CarrierMemberComponent* ScopedComponent = InRegistry.try_get<CarrierMemberComponent>(InMember);
     if (ScopedComponent == nullptr)
     {
-        ScopedComponent = &InRegistry.emplace<CarrierMemberComponent>(InMember);
+        try
+        {
+            ScopedComponent = &InRegistry.emplace<CarrierMemberComponent>(InMember);
+        }
+        catch (...)
+        {
+            return false;
+        }
     }
     ScopedComponent->GroupId = InGroupId;
     ScopedComponent->Mode = InMode;

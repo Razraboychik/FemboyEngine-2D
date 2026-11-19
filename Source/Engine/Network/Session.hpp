@@ -192,6 +192,8 @@ public:
     using NowFn = std::uint64_t (*)(void* InUser);
 
     NetSession() = default;
+    NetSession(const NetSession&) = delete;
+    NetSession& operator=(const NetSession&) = delete;
 
     // Starts the session. The link may be absent for Offline. For a client the
     // link must already be bound to the remote address by the backend.
@@ -271,7 +273,8 @@ public:
     }
     [[nodiscard]] const NetPlayerSlot& Slot(std::uint32_t InIndex) const noexcept
     {
-        return MSlots[InIndex];
+        static const NetPlayerSlot ScopedEmpty{};
+        return InIndex < kSessionMaxPlayers ? MSlots[InIndex] : ScopedEmpty;
     }
     [[nodiscard]] const NetPlayerSlot* FindPlayer(std::uint8_t InPlayerId) const noexcept;
 

@@ -24,6 +24,11 @@ bool BindProgram(const CompiledProgram& InProgram, const EcsBridge& InBridge, Bo
         return false;
     }
     *Out = {};
+    if (InProgram.components.size() > Out->components.size())
+    {
+        SetError(InError, "BindProgram: program declares too many component bindings");
+        return false;
+    }
     Out->program = InProgram;
     Out->componentCount = static_cast<std::uint32_t>(InProgram.components.size());
     for (std::uint32_t ScopedI = 0; ScopedI < Out->componentCount; ++ScopedI)

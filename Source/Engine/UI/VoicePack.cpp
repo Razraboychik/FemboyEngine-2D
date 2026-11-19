@@ -12,6 +12,9 @@
 #include "Engine/UI/Tts.hpp"
 
 #include "Engine/Core/Log.hpp"
+
+#include <csignal>
+#include "Engine/Core/PathUtil.hpp"
 #include "Engine/Core/StoragePaths.hpp"
 
 #include <algorithm>
@@ -201,7 +204,7 @@ void VoicePackRegistry::Clear() noexcept
 
 void VoicePackRegistry::Add(std::string_view InDirectory, std::uint32_t& SkippedCount) noexcept
 {
-    const fs::path ScopedDirectory{std::string(InDirectory)};
+    const fs::path ScopedDirectory = Core::PathFromUtf8(InDirectory);
     VoicePackInfo ScopedInfo{};
     std::string ScopedHelper;
     std::string ScopedModel;
@@ -210,10 +213,12 @@ void VoicePackRegistry::Add(std::string_view InDirectory, std::uint32_t& Skipped
         ++SkippedCount;
         return;
     }
-    const fs::path ScopedHelperPath =
-        fs::path(ScopedHelper).is_absolute() ? fs::path(ScopedHelper) : ScopedDirectory / fs::path(ScopedHelper);
-    const fs::path ScopedModelPath =
-        fs::path(ScopedModel).is_absolute() ? fs::path(ScopedModel) : ScopedDirectory / fs::path(ScopedModel);
+    const fs::path ScopedHelperPath = Core::PathFromUtf8(ScopedHelper).is_absolute()
+                                          ? Core::PathFromUtf8(ScopedHelper)
+                                          : ScopedDirectory / Core::PathFromUtf8(ScopedHelper);
+    const fs::path ScopedModelPath = Core::PathFromUtf8(ScopedModel).is_absolute()
+                                         ? Core::PathFromUtf8(ScopedModel)
+                                         : ScopedDirectory / Core::PathFromUtf8(ScopedModel);
     std::error_code ScopedError;
     if (!fs::is_regular_file(ScopedHelperPath, ScopedError) || !fs::is_regular_file(ScopedModelPath, ScopedError))
     {
@@ -446,6 +451,12 @@ bool TtsVoicePack::WriteAll(std::string_view InBytes) noexcept
     {
         return false;
     }
+    static const bool ScopedSigpipeIgnored = []
+    {
+        std::signal(SIGPIPE, SIG_IGN);
+        return true;
+    }();
+    (void)ScopedSigpipeIgnored;
     std::size_t ScopedWritten = 0;
     while (ScopedWritten < InBytes.size())
     {

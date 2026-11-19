@@ -27,13 +27,15 @@ bool Fsr2Pass::Ensure(RHI& InGpu, Extent2D InRenderExtent, Extent2D InOutputExte
     }
     MRenderExtent = InRenderExtent;
     MOutputExtent = InOutputExtent;
+    MFreshHistory = true;
     return true;
 }
 
 bool Fsr2Pass::Resolve(RHI& InGpu, RenderTargetHandle InCurrent, RenderTargetHandle InMotion,
                        RenderTargetHandle InOutput, bool InResetHistory, float InSharpness)
 {
-    if (!IsValid() || !MTemporal.Resolve(InGpu, InCurrent, InMotion, InResetHistory))
+    const bool ScopedResetHistory = InResetHistory || MFreshHistory;
+    if (!IsValid() || !MTemporal.Resolve(InGpu, InCurrent, InMotion, ScopedResetHistory))
     {
         return false;
     }
@@ -41,6 +43,7 @@ bool Fsr2Pass::Resolve(RHI& InGpu, RenderTargetHandle InCurrent, RenderTargetHan
     {
         return false;
     }
+    MFreshHistory = false;
     return InGpu.RcasSharpen(MIntermediate, InOutput, InSharpness);
 }
 

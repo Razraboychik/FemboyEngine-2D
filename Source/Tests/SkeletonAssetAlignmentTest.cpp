@@ -26,7 +26,11 @@ int main()
     const std::span<const std::byte> ScopedMisaligned = std::span<const std::byte>(ScopedStorage).subspan(1, 128);
     const auto ScopedResult = Fby::Skeleton::DecodeSkeletonAsset(ScopedMisaligned);
     Check(!ScopedResult.has_value(), "a misaligned skeleton buffer is rejected");
-    Check(ScopedResult.error().find("aligned") != std::string::npos, "the rejection names the alignment requirement");
+    if (!ScopedResult.has_value())
+    {
+        Check(ScopedResult.error().find("aligned") != std::string::npos,
+              "the rejection names the alignment requirement");
+    }
 
     if (GFailures != 0)
     {

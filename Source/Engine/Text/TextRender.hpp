@@ -468,10 +468,12 @@ inline std::uint32_t EmitGlyphItems(std::string_view InBlock, const TextLayoutRe
                 std::uint32_t ScopedHash = (ScopedGlyphOrdinal + InRenderParams.Animation.ShakeSeed) * 747796405u;
                 ScopedHash = (ScopedHash ^ (ScopedHash >> 15u)) * 2246822519u;
                 const float ScopedJitterX =
-                    static_cast<float>((ScopedHash & 0xFFu) - 128u) / 128.0f * InRenderParams.Animation.ShakeAmplitude;
+                    static_cast<float>(static_cast<int>(ScopedHash & 0xFFu) - 128) / 128.0f *
+                    InRenderParams.Animation.ShakeAmplitude;
                 ScopedHash = ScopedHash * 1664525u + 1013904223u;
                 const float ScopedJitterY =
-                    static_cast<float>((ScopedHash & 0xFFu) - 128u) / 128.0f * InRenderParams.Animation.ShakeAmplitude;
+                    static_cast<float>(static_cast<int>(ScopedHash & 0xFFu) - 128) / 128.0f *
+                    InRenderParams.Animation.ShakeAmplitude;
                 ScopedCenter.X += ScopedJitterX;
                 ScopedCenter.Y += ScopedJitterY;
             }

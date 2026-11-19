@@ -345,7 +345,7 @@ void AnimationTimeline::ApplySpriteClip(SpriteAnimationComponent& InSpriteAnimat
     InSpriteAnimation.FrameCount = ScopedCount;
     const float ScopedFrameDuration = InSpriteAnimation.FrameDuration > 0.0f ? InSpriteAnimation.FrameDuration : 0.1f;
     const auto ScopedFrame = static_cast<std::uint32_t>(std::max(0.0f, InTime) / ScopedFrameDuration);
-    InSpriteAnimation.CurrentFrame = ScopedStart + ScopedFrame % ScopedCount;
+    InSpriteAnimation.CurrentFrame = ScopedFrame % ScopedCount;
     InSpriteAnimation.ElapsedTime = std::fmod(std::max(0.0f, InTime), ScopedFrameDuration);
 }
 

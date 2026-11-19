@@ -9,6 +9,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <string>
 #include <string_view>
 
@@ -20,8 +21,13 @@ struct Host
 {
     FbyHostApi* api = nullptr;
 
+    [[nodiscard]] bool HasRegistry() const noexcept
+    {
+        return api != nullptr && api->registry != nullptr;
+    }
     [[nodiscard]] Scene::Registry& Registry() const
     {
+        FBY_ASSERT(HasRegistry());
         return *static_cast<Scene::Registry*>(api->registry);
     }
 
@@ -61,14 +67,14 @@ template <typename Component> [[nodiscard]] constexpr FbyComponentInfo Describe(
                                                         PluginVersion,                                                 \
                                                         PluginAuthor,                                                  \
                                                         static_cast<std::uint32_t>(std::size(ComponentsArray)),        \
-                                                        (ComponentsArray),                                             \
+                                                        std::data(ComponentsArray),                                             \
                                                         BuildInfo};                                                    \
         return &info;                                                                                                  \
     }                                                                                                                  \
     FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* rawHost)                                                          \
     {                                                                                                                  \
         if (rawHost == nullptr || rawHost->abi_version != FBY_PLUGIN_ABI_VERSION ||                             \
-            rawHost->struct_size < sizeof(FbyHostApi))                                                          \
+            rawHost->struct_size < static_cast<std::uint32_t>(offsetof(FbyHostApi, add_system) + sizeof(rawHost->add_system)))                                                          \
         {                                                                                                              \
             return -1;                                                                                                 \
         }                                                                                                              \

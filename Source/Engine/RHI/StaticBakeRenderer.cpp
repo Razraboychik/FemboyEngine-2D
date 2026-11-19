@@ -42,6 +42,7 @@ bool StaticBakeRenderer::Finalize(RHI& InGpu)
         InGpu.DestroyTextureArray(MTexture);
         MTexture = {};
     }
+    MOverlay = FramePacket{};
     MTexture = InGpu.CreateTextureArrayFromRenderTarget(MTarget);
     if (!MTexture.IsValid())
     {
@@ -78,6 +79,10 @@ void StaticBakeRenderer::Release(RHI& InGpu) noexcept
         InGpu.DestroyRenderTarget(MTarget);
         MTarget = {};
     }
+    MOverlay = FramePacket{};
+    MOverlayItems = {};
+    MOverlayKeys = {};
+    MOverlayBatches = {};
     MExtent = {};
 }
 

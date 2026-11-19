@@ -953,6 +953,10 @@ void PhysicsSystem::ApplyShapeFilter(Collider2D& InCollider) noexcept
         return;
     }
     const std::uint32_t ScopedLayer = CollisionFilterMatrix::LayerFromCategory(InCollider.CategoryBits);
+    if (ScopedLayer == kNoCollisionLayer)
+    {
+        return;
+    }
     InCollider.CategoryBits = MFilter.CategoryBits(ScopedLayer);
     InCollider.MaskBits = MFilter.MaskBits(ScopedLayer);
     const b2ShapeId ScopedShapeId = b2LoadShapeId(InCollider.Shape);

@@ -149,6 +149,7 @@ struct Projectile2D
     Vector2D Direction{1.0f, 0.0f};
     std::uint32_t MaxSubsteps = 4;
     std::uint32_t CollisionMask = 0xFFFFFFFFu;
+    bool Spent = false;
 };
 
 struct PhysicsDesc

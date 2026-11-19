@@ -228,6 +228,13 @@ struct TextureArrayDesc
     bool srgb = true;
     // Cooked texel format. The cooker writes BC7 or ASTC for compatible GPUs;
     Assets::TextureFormat format = Assets::TextureFormat::Rgba8;
+
+    // `srgb` is only authoritative for uncompressed Rgba8; BC7/ASTC encode
+    // gamma in the format itself. Backends must use this instead of srgb.
+    [[nodiscard]] constexpr bool EffectiveSrgb() const noexcept
+    {
+        return format == Assets::TextureFormat::Rgba8 ? srgb : Assets::IsSrgb(format);
+    }
 };
 
 // A GPU pipeline compiled from runtime-generated SPIR-V (MaterialGraph).

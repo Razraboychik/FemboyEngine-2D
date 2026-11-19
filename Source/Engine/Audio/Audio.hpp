@@ -234,6 +234,8 @@ private:
         std::uint32_t stamp = 0;
     };
 
+    [[nodiscard]] std::uint32_t EncodeVoice(std::uint16_t InSlot) noexcept;
+    [[nodiscard]] std::uint16_t DecodeVoice(std::uint32_t InHandle) const noexcept;
     [[nodiscard]] const AudioClip* FindClip(AssetId InId) const noexcept;
     [[nodiscard]] const CookedClipRecord* FindCookedClip(AssetId InId) const noexcept;
     [[nodiscard]] const OwnedPcmRecord* FindOwnedPcm(AssetId InId) const noexcept;
@@ -254,7 +256,12 @@ private:
     AudioLimiter MLimiter{};
     FloatRing* MReferenceRing = nullptr;
 
+    std::array<std::uint16_t, kMaxAudioVoices> MVoiceGenerations{};
     AudioClip MClips[kMaxAudioClips]{};
+    // Registered float clips own their samples here; a replaced clip's storage
+    // is retired until Shutdown so a live voice cannot read freed memory.
+    std::array<std::shared_ptr<const std::vector<float>>, kMaxAudioClips> MClipSamples{};
+    std::vector<std::shared_ptr<const std::vector<float>>> MRetiredClipSamples;
     std::uint32_t MClipCount = 0;
 
     CookedClipRecord MCookedClips[kMaxAudioClips]{};

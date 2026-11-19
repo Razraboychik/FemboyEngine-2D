@@ -23,6 +23,9 @@ struct AnimationClipBinding
 {
     std::array<std::uint16_t, kMaxTimelineTracks> TrackBones{};
     std::uint16_t TrackCount = 0;
+    // Number of tracks in the clip the binding was baked from; the accumulate
+    // path rejects a binding/clip mismatch instead of animating wrong bones.
+    std::uint16_t ClipTrackCount = 0;
     bool IsValid = false;
 };
 

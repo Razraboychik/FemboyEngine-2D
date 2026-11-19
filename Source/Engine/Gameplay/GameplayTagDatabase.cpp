@@ -150,34 +150,39 @@ bool GameplayTagDatabase::RemoveAt(std::uint32_t InIndex) noexcept
         SetError("tag index is out of range");
         return false;
     }
-    std::array<char, kPathCapacity> ScopedPath{};
-    std::memcpy(ScopedPath.data(), Paths[InIndex].data(), kPathCapacity - 1);
-    const std::string_view ScopedPrefix(ScopedPath.data());
-    bool ScopedRemoved = false;
-    std::uint32_t ScopedWrite = 0;
+    const std::string_view ScopedPath = PathAt(InIndex);
+    if (ScopedPath.empty())
+    {
+        SetError("tag path is empty");
+        return false;
+    }
+    std::uint32_t ScopedFirst = Count;
+    std::uint32_t ScopedLast = 0;
+    bool ScopedFound = false;
     for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
         const std::string_view ScopedCurrent = PathAt(ScopedI);
-        if (ScopedCurrent == ScopedPrefix || HasPrefix(ScopedCurrent, ScopedPrefix))
+        if (ScopedCurrent == ScopedPath || HasPrefix(ScopedCurrent, ScopedPath))
         {
-            ScopedRemoved = true;
-            continue;
+            ScopedFirst = std::min(ScopedFirst, ScopedI);
+            ScopedLast = ScopedI;
+            ScopedFound = true;
         }
-        if (ScopedWrite != ScopedI)
-        {
-            Paths[ScopedWrite] = Paths[ScopedI];
-        }
-        ++ScopedWrite;
     }
-    if (!ScopedRemoved)
+    if (!ScopedFound)
     {
         return false;
     }
-    for (std::uint32_t ScopedI = ScopedWrite; ScopedI < Count; ++ScopedI)
+    if (ScopedLast + 1u != Count)
+    {
+        SetError("removal would renumber later tag ids");
+        return false;
+    }
+    for (std::uint32_t ScopedI = ScopedFirst; ScopedI <= ScopedLast; ++ScopedI)
     {
         Paths[ScopedI] = {};
     }
-    Count = ScopedWrite;
+    Count = ScopedFirst;
     ++Revision;
     return true;
 }

@@ -215,6 +215,10 @@ void TestDepthMismatchCompile()
     FBY_CHECK(ScopedPanel.Initialize(ScopedCommands, 10));
     const std::uint16_t ScopedLeaf = FindNodeOfKind(ScopedPanel.Document().Tree, Fby::StateTreeNodeKind::Leaf);
     FBY_CHECK(ScopedLeaf != Fby::kStateTreeNone);
+    if (ScopedLeaf == Fby::kStateTreeNone)
+    {
+        return;
+    }
     ScopedPanel.Document().Tree.Nodes[ScopedLeaf].Depth = 5;
     FBY_CHECK(!ScopedPanel.CompileTree());
     FBY_CHECK(std::string_view(ScopedPanel.Status()).find("depth") != std::string_view::npos);
@@ -314,6 +318,10 @@ void TestPIEActivePath()
         }
     }
     FBY_CHECK(ScopedLeaf != Fby::kStateTreeNone);
+    if (ScopedLeaf == Fby::kStateTreeNone)
+    {
+        return;
+    }
 
     std::array<std::uint16_t, Fby::kMaxStateTreeDepth> ScopedPath{Fby::kStateTreeNone, Fby::kStateTreeNone,
                                                                   Fby::kStateTreeNone, Fby::kStateTreeNone};

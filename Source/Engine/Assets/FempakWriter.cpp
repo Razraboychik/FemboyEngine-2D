@@ -72,18 +72,18 @@ void SetError(std::string* InError, std::string InMessage)
 }
 }
 
-void FempakWriter::Add(std::string_view InPath, std::span<const std::byte> InBytes, std::uint32_t InAlignment)
+bool FempakWriter::Add(std::string_view InPath, std::span<const std::byte> InBytes, std::uint32_t InAlignment)
 {
     std::vector<std::byte> ScopedCopy(InBytes.begin(), InBytes.end());
-    Add(InPath, std::move(ScopedCopy), InAlignment);
+    return Add(InPath, std::move(ScopedCopy), InAlignment);
 }
 
-void FempakWriter::Add(std::string_view InPath, std::vector<std::byte> InBytes, std::uint32_t InAlignment)
+bool FempakWriter::Add(std::string_view InPath, std::vector<std::byte> InBytes, std::uint32_t InAlignment)
 {
     const std::string ScopedNormalized = NormalizePakPath(InPath);
     if (ScopedNormalized.empty())
     {
-        return;
+        return false;
     }
     const auto ScopedExisting =
         std::find_if(MEntries.begin(), MEntries.end(),
@@ -100,9 +100,10 @@ void FempakWriter::Add(std::string_view InPath, std::vector<std::byte> InBytes, 
     if (ScopedExisting != MEntries.end())
     {
         *ScopedExisting = std::move(ScopedInput);
-        return;
+        return true;
     }
     MEntries.push_back(std::move(ScopedInput));
+    return true;
 }
 
 bool FempakWriter::AddDirectory(std::string_view InDirectory, std::string_view InVirtualRoot, std::string* InError)
@@ -116,6 +117,7 @@ bool FempakWriter::AddDirectory(std::string_view InDirectory, std::string_view I
         return false;
     }
 
+    std::vector<FempakInput> ScopedStaged;
     std::error_code ScopedIteratorError;
     for (auto ScopedIt = fs::recursive_directory_iterator(
              ScopedRoot, fs::directory_options::skip_permission_denied, ScopedIteratorError);
@@ -143,12 +145,26 @@ bool FempakWriter::AddDirectory(std::string_view InDirectory, std::string_view I
             SetError(InError, "cannot read " + ScopedItem.path().string());
             return false;
         }
-        Add(JoinVirtual(InVirtualRoot, ScopedRelative.generic_string()), std::move(ScopedBytes));
+        const std::string ScopedVirtual = JoinVirtual(InVirtualRoot, ScopedRelative.generic_string());
+        if (NormalizePakPath(ScopedVirtual).empty())
+        {
+            SetError(InError, "directory entry escapes the pak root: " + ScopedVirtual);
+            return false;
+        }
+        ScopedStaged.push_back(FempakInput{ScopedVirtual, std::move(ScopedBytes), kPakAlignment});
     }
     if (ScopedIteratorError)
     {
         SetError(InError, "cannot enumerate " + std::string(InDirectory) + ": " + ScopedIteratorError.message());
         return false;
+    }
+    for (FempakInput& ScopedEntry : ScopedStaged)
+    {
+        if (!Add(ScopedEntry.path, std::move(ScopedEntry.bytes), ScopedEntry.alignment))
+        {
+            SetError(InError, "cannot stage directory entry: " + ScopedEntry.path);
+            return false;
+        }
     }
     return true;
 }

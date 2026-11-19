@@ -48,7 +48,14 @@ public:
     [[nodiscard]] bool Build(const SdfBrickMap& InMap, Vector2D InOrigin, Vector2D InCellSize, std::uint32_t InWidth,
                              std::uint32_t InHeight, const SdfGiBakeSettings& InSettings = {}) noexcept
     {
-        if (InWidth == 0 || InHeight == 0 || InCellSize.X <= 0.0f || InCellSize.Y <= 0.0f)
+        if (InWidth == 0 || InHeight == 0 || !std::isfinite(InCellSize.X) || !std::isfinite(InCellSize.Y) ||
+            !std::isfinite(InOrigin.X) || !std::isfinite(InOrigin.Y) || InCellSize.X <= 0.0f ||
+            InCellSize.Y <= 0.0f)
+        {
+            return false;
+        }
+        constexpr std::uint64_t kMaxProbes = 1ull << 20u;
+        if (static_cast<std::uint64_t>(InWidth) * InHeight > kMaxProbes)
         {
             return false;
         }
@@ -60,7 +67,15 @@ public:
         const Vector2D ScopedSun = Normalize(MSettings.SunDirection);
         const float ScopedBounceDistance = std::max(MSettings.BounceRadius, 1.0f);
         const float ScopedSunDistance = std::max(MSettings.SunDistance, ScopedBounceDistance);
-        MProbes.assign(static_cast<std::size_t>(MWidth) * MHeight, SdfGiBakedProbe{});
+        try
+        {
+            MProbes.assign(static_cast<std::size_t>(MWidth) * MHeight, SdfGiBakedProbe{});
+        }
+        catch (...)
+        {
+            MProbes.clear();
+            return false;
+        }
         const std::uint32_t ScopedBounceSamples = std::clamp(MSettings.BounceSamples, 0u, 16u);
         for (std::uint32_t ScopedY = 0; ScopedY < MHeight; ++ScopedY)
         {
@@ -217,7 +232,7 @@ private:
                                      float InMaxDistance) noexcept
     {
         const float ScopedTrace = InMap.Trace(InPoint, InSun, InMaxDistance, 32u);
-        return ScopedTrace > 0.0f ? std::clamp(ScopedTrace / InMaxDistance, 0.0f, 1.0f) : 0.0f;
+        return ScopedTrace > 0.0f ? 1.0f : 0.0f;
     }
 
     SdfGiBakeSettings MSettings{};

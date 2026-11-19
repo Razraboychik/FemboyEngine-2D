@@ -37,7 +37,8 @@ namespace
 void AccumulateAtTime(const CompressedClip& InClip, const AnimationClipBinding& InBinding,
                       const SkeletonComponent& InSkeleton, float InTime, float InWeight, AnimationPose& InPose) noexcept
 {
-    if (!InBinding.IsValid || !(InWeight > 0.0f) || !std::isfinite(InWeight) || !(InClip.Duration > 0.0f))
+    if (!InBinding.IsValid || InBinding.ClipTrackCount != InClip.TrackCount || !(InWeight > 0.0f) ||
+        !std::isfinite(InWeight) || !(InClip.Duration > 0.0f) || !InSkeleton.RestPoseCaptured)
     {
         return;
     }
@@ -150,6 +151,7 @@ bool BakeAnimationClipBinding(const CompressedClip& InClip, const SkeletonCompon
         OutBinding->TrackBones[ScopedTrack] = static_cast<std::uint16_t>(ScopedBone);
     }
     OutBinding->TrackCount = ScopedTracks;
+    OutBinding->ClipTrackCount = InClip.TrackCount;
     OutBinding->IsValid = true;
     return true;
 }
@@ -178,7 +180,7 @@ void AccumulateAnimationClipAtTime(const CompressedClip& InClip, const Animation
 
 void ResolveAnimationPose(const AnimationPose& InPose, SkeletonComponent& InSkeleton) noexcept
 {
-    if (!(InPose.Weight > kPoseWeightEpsilon))
+    if (!(InPose.Weight > 0.0f))
     {
         return;
     }

@@ -172,6 +172,7 @@ public:
 private:
     struct Slot
     {
+        std::vector<std::byte> owned{};
         std::span<const std::byte> storage{};
         Script::BoundProgram bound{};
         // Stable identity of the cooked bytes: the AOT manifest is keyed by the

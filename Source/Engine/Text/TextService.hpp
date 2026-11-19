@@ -272,6 +272,7 @@ public:
             return false;
         }
         FormatEntry* ScopedTarget = nullptr;
+        bool ScopedFreeFound = false;
         for (FormatEntry& ScopedEntry : MFormatCache)
         {
             if (ScopedEntry.Used && ScopedEntry.Asset == InRef.Asset.value && ScopedEntry.Block == InRef.Block &&
@@ -282,14 +283,13 @@ public:
                 *OutText = std::string_view(ScopedEntry.Text.data(), ScopedEntry.Length);
                 return true;
             }
-            if (!ScopedEntry.Used)
+            if (!ScopedEntry.Used && !ScopedFreeFound)
             {
-                if (ScopedTarget == nullptr)
-                {
-                    ScopedTarget = &ScopedEntry;
-                }
+                ScopedTarget = &ScopedEntry;
+                ScopedFreeFound = true;
             }
-            else if (ScopedTarget == nullptr || ScopedEntry.LastUsed < ScopedTarget->LastUsed)
+            else if (!ScopedFreeFound && ScopedTarget != nullptr &&
+                     ScopedEntry.LastUsed < ScopedTarget->LastUsed)
             {
                 ScopedTarget = &ScopedEntry;
             }

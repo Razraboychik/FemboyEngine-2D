@@ -170,12 +170,16 @@ public:
     // offscreen viewport paths share one description.
     void SetSdfLighting(const Rhi::SdfLightingFrame& InFrame) noexcept
     {
+        MSdfLighting = InFrame;
         MPacket.sdf = InFrame;
     }
 
     void SetVirtualTexture(Rhi::VirtualTextureHandle InHandle, const Vector4D& InWorldParams,
                            const Vector4D& InLayout) noexcept
     {
+        MVirtualTexture = InHandle;
+        MVirtualTextureParams = InWorldParams;
+        MVirtualTextureLayout = InLayout;
         MPacket.virtualTexture = InHandle;
         MPacket.virtualTextureParams = InWorldParams;
         MPacket.virtualTextureLayout = InLayout;
@@ -183,6 +187,7 @@ public:
 
     void SetVirtualTextureDebugMode(std::uint32_t InMode) noexcept
     {
+        MVirtualTextureDebugMode = InMode;
         MPacket.virtualTextureDebugMode = InMode;
     }
 
@@ -355,6 +360,11 @@ private:
     bool MRenderEcsMirror = true;
     Rhi::KeySorter MSorter;
     Rhi::FramePacket MPacket{};
+    Rhi::SdfLightingFrame MSdfLighting{};
+    Rhi::VirtualTextureHandle MVirtualTexture{};
+    Vector4D MVirtualTextureParams{};
+    Vector4D MVirtualTextureLayout{};
+    std::uint32_t MVirtualTextureDebugMode = 0;
     Rhi::ViewportPresenter MViewportPresenter{};
     FrameComposerStats MStats{};
     const SdfField* MSdfField = nullptr;
