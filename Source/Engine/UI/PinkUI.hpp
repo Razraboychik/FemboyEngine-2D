@@ -500,6 +500,7 @@ struct ScrollView
     Vector2D contentBaseMax{};
     float offset = 0.0f;
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InPanel, WidgetHandle InContent,
               WidgetHandle InScrollbar = {});
@@ -524,6 +525,7 @@ struct TabBar
     std::uint32_t tabCount = 0;
     Color32 activeTint = Color32::White();
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InSwitcher);
     bool AddTab(WidgetCanvas& InCanvas, WidgetHandle InButton);
@@ -546,6 +548,7 @@ struct Dropdown
     Color32 activeTint = Color32::White();
     bool open = false;
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InTrigger, WidgetHandle InPopup);
     bool AddItem(WidgetCanvas& InCanvas, WidgetHandle InItem);
@@ -571,6 +574,7 @@ struct ListView
     float rowHeight = 24.0f;
     float offset = 0.0f;
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InViewport, WidgetHandle InContent,
               std::uint32_t InRowCapacity);
@@ -602,6 +606,7 @@ struct TooltipPlacer
     Vector2D offset{12.0f, 8.0f};
     Vector2D tooltipSize{};
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InTooltip, WidgetHandle InTarget);
     void Place(WidgetCanvas& InCanvas);

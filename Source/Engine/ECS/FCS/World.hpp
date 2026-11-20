@@ -907,6 +907,29 @@ private:
         return reinterpret_cast<Component*>(ScopedBase);
     }
 
+    friend class Registry;
+
+    // Exchanges two complete worlds so a staged load can become the live one.
+    void Swap(World& InOther) noexcept
+    {
+        MRecords.swap(InOther.MRecords);
+        MFreeIndices.swap(InOther.MFreeIndices);
+        MArchetypes.swap(InOther.MArchetypes);
+        const std::size_t ScopedLiveCount = MLiveCount;
+        MLiveCount = InOther.MLiveCount;
+        InOther.MLiveCount = ScopedLiveCount;
+        const std::uint32_t ScopedIterationDepth = MIterationDepth;
+        MIterationDepth = InOther.MIterationDepth;
+        InOther.MIterationDepth = ScopedIterationDepth;
+        const std::uint64_t ScopedRevision = MRevision;
+        MRevision = InOther.MRevision;
+        InOther.MRevision = ScopedRevision;
+        const std::uint64_t ScopedModification =
+            MModificationRevision.exchange(InOther.MModificationRevision.load(std::memory_order_relaxed),
+                                           std::memory_order_relaxed);
+        InOther.MModificationRevision.store(ScopedModification, std::memory_order_relaxed);
+    }
+
     std::vector<EntityRecord> MRecords;
     std::vector<std::uint32_t> MFreeIndices;
     std::vector<Archetype> MArchetypes;

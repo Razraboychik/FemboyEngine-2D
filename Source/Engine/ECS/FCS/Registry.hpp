@@ -823,6 +823,11 @@ private:
 class Registry
 {
 public:
+    void Swap(Registry& InOther) noexcept
+    {
+        MWorld.Swap(InOther.MWorld);
+    }
+
     using entity_type = Fby::Entity;
     using EntityType = Fby::Entity;
 

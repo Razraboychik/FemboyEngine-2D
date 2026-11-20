@@ -389,44 +389,6 @@ void TilemapEditorPanel::DrawToolbar(Ecs::Registry& InRegistry, Entity InSelecte
     ImGui::SetNextItemWidth(220.0f);
     (void)ImGui::InputText("path", MPath.data(), MPath.size());
     ImGui::SameLine();
-    ImGui::BeginDisabled(InSelected == Fby::kNullEntity);
-    if (ImGui::Button("Bake to selection"))
-    {
-        // The runtime grid is rebuilt from the authored reference on load, so the
-        // scene stores the `.tilemap` path (a small POD), not 16 KiB of tiles.
-        std::string ScopedText;
-        if (!SaveToText(&ScopedText))
-        {
-            MStatus = "bake: cannot serialize";
-        }
-        else
-        {
-            const std::filesystem::path ScopedPath(MPath.data());
-            std::error_code ScopedError;
-            if (!ScopedPath.parent_path().empty())
-            {
-                std::filesystem::create_directories(ScopedPath.parent_path(), ScopedError);
-            }
-            std::ofstream ScopedFile(ScopedPath, std::ios::binary | std::ios::trunc);
-            if (!ScopedFile)
-            {
-                MStatus = "bake: cannot open " + ScopedPath.string();
-            }
-            else
-            {
-                ScopedFile << ScopedText;
-                ScopedFile.close();
-                TilemapAssetRefComponent ScopedRef;
-                const std::size_t ScopedLength =
-                    std::min(std::strlen(MPath.data()), static_cast<std::size_t>(kTilemapRefPathBytes - 1));
-                std::memcpy(ScopedRef.Path, MPath.data(), ScopedLength);
-                ScopedRef.SortLayer = MMap.SortLayer;
-                InRegistry.emplace_or_replace<TilemapAssetRefComponent>(InSelected, ScopedRef);
-                InRegistry.emplace_or_replace<TilemapComponent>(InSelected, MMap);
-                MStatus = "baked reference " + ScopedPath.string();
-            }
-        }
-    }
     ImGui::SameLine();
     if (ImGui::Button("Load from selection"))
     {

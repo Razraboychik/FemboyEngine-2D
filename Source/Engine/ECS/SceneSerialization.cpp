@@ -355,6 +355,11 @@ SceneData CaptureScene(const Registry& InRegistry, const ComponentRegistry& InCo
 SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComponents, const SceneData& InScene,
                            SceneLoadOptions InOptions)
 {
+    // A replacing load is applied to a scratch registry and swapped in only after
+    // every stage succeeds; the live world is untouched on failure.
+    Registry ScopedStaged;
+    Registry& ScopedWorld = InOptions.clearExisting ? ScopedStaged : InRegistry;
+
     // Validate before mutating anything. A prefab that fails halfway through
     for (std::size_t ScopedEntityIndex = 0; ScopedEntityIndex < InScene.entities.size(); ++ScopedEntityIndex)
     {
@@ -403,14 +408,14 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
 
     if (InOptions.clearExisting)
     {
-        DestroyAllEntities(InRegistry);
+        DestroyAllEntities(ScopedWorld);
     }
 
     EntityRemap ScopedRemap;
     ScopedRemap.entities.reserve(InScene.entities.size());
     for (std::size_t ScopedI = 0; ScopedI < InScene.entities.size(); ++ScopedI)
     {
-        ScopedRemap.entities.push_back(InRegistry.create());
+        ScopedRemap.entities.push_back(ScopedWorld.create());
     }
     if (InOptions.buildReverse)
     {
@@ -432,13 +437,13 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
                 // Pre-validated, unreachable
                 continue;
             }
-            ScopedOps->emplaceBytes(InRegistry, ScopedEntity, ScopedComponent.data.data());
+            ScopedOps->emplaceBytes(ScopedWorld, ScopedEntity, ScopedComponent.data.data());
 
             if (ScopedOps->empty)
             {
                 continue;
             }
-            void* ScopedTarget = ScopedOps->getMutable(InRegistry, ScopedEntity);
+            void* ScopedTarget = ScopedOps->getMutable(ScopedWorld, ScopedEntity);
             if (ScopedTarget == nullptr)
             {
                 return std::unexpected("failed to create component '" + std::string(ScopedOps->name) + "'");
@@ -460,7 +465,7 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
     }
 
     std::string ScopedSkeletonInstanceError;
-    if (!InstantiateSkeletonRefs(InRegistry, ScopedRemap, InOptions.assets, InOptions.assetDb,
+    if (!InstantiateSkeletonRefs(ScopedWorld, ScopedRemap, InOptions.assets, InOptions.assetDb,
                                  &ScopedSkeletonInstanceError))
     {
         return std::unexpected(std::move(ScopedSkeletonInstanceError));
@@ -473,21 +478,21 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
         Ecs::CommandBuffer ScopedCommands;
         ScopedCommands.Initialize(&ScopedArena);
         std::vector<Entity> ScopedInstanceEntities;
-        auto ScopedInstances = InRegistry.view<PrefabInstanceComponent>();
+        auto ScopedInstances = ScopedWorld.view<PrefabInstanceComponent>();
         for (const Entity ScopedInstance : ScopedInstances)
         {
             ScopedInstanceEntities.push_back(ScopedInstance);
         }
         for (const Entity ScopedInstance : ScopedInstanceEntities)
         {
-            PrefabInstanceComponent ScopedLink = InRegistry.get<PrefabInstanceComponent>(ScopedInstance);
+            PrefabInstanceComponent ScopedLink = ScopedWorld.get<PrefabInstanceComponent>(ScopedInstance);
             if (ScopedLink.PrefabGuid != Assets::kInvalidAssetGuid && InOptions.assetDb != nullptr)
             {
                 if (const Assets::AssetHandle ScopedResolved = InOptions.assetDb->FindHandleByGuid(ScopedLink.PrefabGuid);
                     ScopedResolved.IsValid())
                 {
                     ScopedLink.Prefab = ScopedResolved;
-                    InRegistry.get<PrefabInstanceComponent>(ScopedInstance).Prefab = ScopedResolved;
+                    ScopedWorld.get<PrefabInstanceComponent>(ScopedInstance).Prefab = ScopedResolved;
                 }
             }
             if (!ScopedLink.Prefab.IsValid())
@@ -524,18 +529,22 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
                 return std::unexpected("prefab instance asset '" + std::string(ScopedSourcePath) +
                                        "' is invalid: " + ScopedAssetError);
             }
-            PrefabInstance::ClearChildren(InRegistry, ScopedInstance);
+            PrefabInstance::ClearChildren(ScopedWorld, ScopedInstance);
             std::array<Entity, kPrefabMaxEntities> ScopedChildren{};
-            if (!PrefabInstance::Expand(InRegistry, ScopedCommands, ScopedInstance, ScopedAsset, ScopedChildren))
+            if (!PrefabInstance::Expand(ScopedWorld, ScopedCommands, ScopedInstance, ScopedAsset, ScopedChildren))
             {
                 return std::unexpected("prefab instance expansion failed for '" + std::string(ScopedSourcePath) +
                                        "'");
             }
-            ScopedCommands.Play(InRegistry);
+            ScopedCommands.Play(ScopedWorld);
             ScopedArena.Reset();
         }
     }
 
+    if (InOptions.clearExisting)
+    {
+        InRegistry.Swap(ScopedWorld);
+    }
     LogInfo("scene", "applied '{}': {} entities{}", InScene.meta.name, ScopedRemap.entities.size(),
             InOptions.clearExisting ? " (world replaced)" : " (appended)");
     return ScopedRemap;

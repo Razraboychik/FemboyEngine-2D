@@ -1868,13 +1868,36 @@ void WidgetCanvas::SetChecked(std::int32_t InWidget, bool InChecked) noexcept
 
 bool WidgetCanvas::SetHyperlinks(std::int32_t InWidget, std::span<const WidgetHyperlink> InLinks) noexcept
 {
-    if (!ValidWidget(InWidget) || InLinks.size() > hyperlinks.size() - hyperlinkUsed)
+    if (!ValidWidget(InWidget) || InLinks.size() > hyperlinks.size())
     {
         return false;
     }
     const auto ScopedSlot = static_cast<std::uint32_t>(InWidget);
-    firstHyperlink[ScopedSlot] = static_cast<std::uint16_t>(hyperlinkUsed);
+    // Drop the old range, repack every live range, then append the new one.
     hyperlinkCounts[ScopedSlot] = 0;
+    std::array<WidgetHyperlink, 128> ScopedPacked{};
+    std::uint32_t ScopedUsed = 0;
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < widgetCount; ++ScopedIndex)
+    {
+        const std::uint16_t ScopedFirst = firstHyperlink[ScopedIndex];
+        const std::uint16_t ScopedCount = hyperlinkCounts[ScopedIndex];
+        if (ScopedCount == 0)
+        {
+            continue;
+        }
+        firstHyperlink[ScopedIndex] = static_cast<std::uint16_t>(ScopedUsed);
+        for (std::uint16_t ScopedLink = 0; ScopedLink < ScopedCount; ++ScopedLink)
+        {
+            ScopedPacked[ScopedUsed++] = hyperlinks[ScopedFirst + ScopedLink];
+        }
+    }
+    hyperlinks = ScopedPacked;
+    hyperlinkUsed = ScopedUsed;
+    if (InLinks.size() > hyperlinks.size() - hyperlinkUsed)
+    {
+        return false;
+    }
+    firstHyperlink[ScopedSlot] = static_cast<std::uint16_t>(hyperlinkUsed);
     for (const WidgetHyperlink& ScopedLink : InLinks)
     {
         if (ScopedLink.begin >= ScopedLink.end || ScopedLink.end > textLengths[ScopedSlot])
@@ -1914,7 +1937,8 @@ void WidgetCanvas::SetOffsets(std::int32_t InWidget, Vector2D InMin, Vector2D In
 
 void ScrollView::Bind(WidgetCanvas& InCanvas, WidgetHandle InPanel, WidgetHandle InContent, WidgetHandle InScrollbar)
 {
-    if (!IsHandleSet(InPanel) || !IsHandleSet(InContent))
+    if (!InCanvas.ResolveHandle(InPanel) || !InCanvas.ResolveHandle(InContent) ||
+        (IsHandleSet(InScrollbar) && !InCanvas.ResolveHandle(InScrollbar)))
     {
         return;
     }
@@ -1926,12 +1950,13 @@ void ScrollView::Bind(WidgetCanvas& InCanvas, WidgetHandle InPanel, WidgetHandle
     contentBaseMax = InCanvas.offsetMaxs[ScopedContent];
     offset = 0.0f;
     bound = true;
+    generation = InCanvas.Generation;
     Update(InCanvas, 0.0f);
 }
 
 float ScrollView::MaxOffset(const WidgetCanvas& InCanvas) const noexcept
 {
-    if (!bound)
+    if (!bound || generation != InCanvas.Generation)
     {
         return 0.0f;
     }
@@ -1945,7 +1970,7 @@ float ScrollView::MaxOffset(const WidgetCanvas& InCanvas) const noexcept
 
 void ScrollView::Update(WidgetCanvas& InCanvas, float InWheelDelta)
 {
-    if (!bound)
+    if (!bound || generation != InCanvas.Generation)
     {
         return;
     }
@@ -1976,19 +2001,21 @@ void ScrollView::Update(WidgetCanvas& InCanvas, float InWheelDelta)
 
 void TabBar::Bind(WidgetCanvas& InCanvas, WidgetHandle InSwitcher)
 {
-    if (!IsHandleSet(InSwitcher))
+    if (!InCanvas.ResolveHandle(InSwitcher))
     {
         return;
     }
     switcher = InSwitcher.Widget;
     tabCount = 0;
     bound = true;
+    generation = InCanvas.Generation;
     InCanvas.SetActivePage(switcher, 0);
 }
 
 bool TabBar::AddTab(WidgetCanvas& InCanvas, WidgetHandle InButton)
 {
-    if (!bound || tabCount >= kMaxTabs || !IsHandleSet(InButton))
+    if (!bound || generation != InCanvas.Generation || tabCount >= kMaxTabs ||
+        !InCanvas.ResolveHandle(InButton))
     {
         return false;
     }
@@ -2005,7 +2032,7 @@ bool TabBar::AddTab(WidgetCanvas& InCanvas, WidgetHandle InButton)
 
 bool TabBar::HandleClick(WidgetCanvas& InCanvas, std::int32_t InPressedWidget)
 {
-    if (!bound)
+    if (!bound || generation != InCanvas.Generation)
     {
         return false;
     }
@@ -2032,7 +2059,7 @@ std::uint32_t TabBar::ActiveTab(const WidgetCanvas& InCanvas) const noexcept
 
 void Dropdown::Bind(WidgetCanvas& InCanvas, WidgetHandle InTrigger, WidgetHandle InPopup)
 {
-    if (!IsHandleSet(InTrigger) || !IsHandleSet(InPopup))
+    if (!InCanvas.ResolveHandle(InTrigger) || !InCanvas.ResolveHandle(InPopup))
     {
         return;
     }
@@ -2042,12 +2069,14 @@ void Dropdown::Bind(WidgetCanvas& InCanvas, WidgetHandle InTrigger, WidgetHandle
     selected = 0;
     open = false;
     bound = true;
+    generation = InCanvas.Generation;
     InCanvas.SetVisible(popup, false);
 }
 
 bool Dropdown::AddItem(WidgetCanvas& InCanvas, WidgetHandle InItem)
 {
-    if (!bound || itemCount >= kMaxItems || !IsHandleSet(InItem))
+    if (!bound || generation != InCanvas.Generation || itemCount >= kMaxItems ||
+        !InCanvas.ResolveHandle(InItem))
     {
         return false;
     }
@@ -2064,7 +2093,7 @@ bool Dropdown::AddItem(WidgetCanvas& InCanvas, WidgetHandle InItem)
 
 void Dropdown::SetOpen(WidgetCanvas& InCanvas, bool InOpen)
 {
-    if (!bound)
+    if (!bound || generation != InCanvas.Generation)
     {
         return;
     }
@@ -2109,7 +2138,7 @@ bool Dropdown::HandleClick(WidgetCanvas& InCanvas, std::int32_t InPressedWidget)
 void ListView::Bind(WidgetCanvas& InCanvas, WidgetHandle InViewport, WidgetHandle InContent,
                     std::uint32_t InRowCapacity)
 {
-    if (!IsHandleSet(InViewport) || !IsHandleSet(InContent) || InRowCapacity == 0)
+    if (!InCanvas.ResolveHandle(InViewport) || !InCanvas.ResolveHandle(InContent) || InRowCapacity == 0)
     {
         return;
     }
@@ -2130,6 +2159,7 @@ void ListView::Bind(WidgetCanvas& InCanvas, WidgetHandle InViewport, WidgetHandl
         rows[ScopedRow] = InCanvas.AddWidget(ScopedRowDesc);
     }
     bound = true;
+    generation = InCanvas.Generation;
     offset = 0.0f;
     itemCount = 0;
     Update(InCanvas, 0.0f);
@@ -2137,13 +2167,17 @@ void ListView::Bind(WidgetCanvas& InCanvas, WidgetHandle InViewport, WidgetHandl
 
 void ListView::SetItemCount(WidgetCanvas& InCanvas, std::uint32_t InItemCount)
 {
+    if (!bound || generation != InCanvas.Generation)
+    {
+        return;
+    }
     itemCount = InItemCount;
     Update(InCanvas, 0.0f);
 }
 
 void ListView::Update(WidgetCanvas& InCanvas, float InWheelDelta)
 {
-    if (!bound)
+    if (!bound || generation != InCanvas.Generation)
     {
         return;
     }
@@ -2260,7 +2294,7 @@ void RadialProgress::SetProgress(WidgetCanvas& InCanvas, WidgetHandle InWidget, 
 
 void TooltipPlacer::Bind(WidgetCanvas& InCanvas, WidgetHandle InTooltip, WidgetHandle InTarget)
 {
-    if (!IsHandleSet(InTooltip) || !IsHandleSet(InTarget))
+    if (!InCanvas.ResolveHandle(InTooltip) || !InCanvas.ResolveHandle(InTarget))
     {
         return;
     }
@@ -2271,11 +2305,12 @@ void TooltipPlacer::Bind(WidgetCanvas& InCanvas, WidgetHandle InTooltip, WidgetH
     // The placer owns the tooltip position, so it needs fixed anchors.
     InCanvas.SetAnchors(tooltip, Vector2D{0.0f, 0.0f}, Vector2D{0.0f, 0.0f});
     bound = true;
+    generation = InCanvas.Generation;
 }
 
 void TooltipPlacer::Place(WidgetCanvas& InCanvas)
 {
-    if (!bound)
+    if (!bound || generation != InCanvas.Generation)
     {
         return;
     }
@@ -2707,6 +2742,8 @@ const WidgetHyperlink* HitTestHyperlink(const WidgetCanvas& InCanvas, Vector2D I
     return HyperlinkAtByte(InCanvas, ScopedWidget, ScopedLastByte);
 }
 
+std::int32_t EffectiveFocusScope(const WidgetCanvas& InCanvas) noexcept;
+
 std::int32_t PointerDown(WidgetCanvas& InCanvas, Vector2D InCanvasPoint) noexcept
 {
     // One press at a time: clear the old one before testing.
@@ -2720,6 +2757,28 @@ std::int32_t PointerDown(WidgetCanvas& InCanvas, Vector2D InCanvasPoint) noexcep
     if (ScopedHit == kNoWidget)
     {
         return kNoWidget;
+    }
+    const std::int32_t ScopedScope = EffectiveFocusScope(InCanvas);
+    if (ScopedScope != kNoWidget)
+    {
+        bool ScopedInside = false;
+        for (std::int32_t ScopedCursor = ScopedHit; ScopedCursor != kNoWidget;)
+        {
+            if (ScopedCursor == ScopedScope)
+            {
+                ScopedInside = true;
+                break;
+            }
+            if (!InCanvas.ValidWidget(ScopedCursor))
+            {
+                break;
+            }
+            ScopedCursor = InCanvas.parents[static_cast<std::uint32_t>(ScopedCursor)];
+        }
+        if (!ScopedInside)
+        {
+            return kNoWidget;
+        }
     }
     const auto ScopedSlot = static_cast<std::uint32_t>(ScopedHit);
     const bool ScopedEnabled = HasFlag(InCanvas.flags[ScopedSlot], WidgetFlags::Enabled);
@@ -2931,7 +2990,7 @@ namespace
         return 0;
     }
     std::uint32_t ScopedIndex = 0;
-    while (ScopedIndex + 1 < InClusterOffsets.size() && InClusterOffsets[ScopedIndex] < InCaret)
+    while (ScopedIndex + 1 < InClusterOffsets.size() && InClusterOffsets[ScopedIndex + 1] <= InCaret)
     {
         ++ScopedIndex;
     }
@@ -4526,8 +4585,8 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
     // owner (lowest entity id) in a small pre-pass; only the owner advances the
     // canvas clock and builds the frame.
     const std::uint64_t ScopedFrame = InView.frameIndex + 1u;
-    auto ScopedOwnerView = InView.registry.view<WidgetComponent>();
-    for (auto [ScopedEntity, ScopedComponent] : ScopedOwnerView.each())
+    auto ScopedOwnerView = InView.registry.view<WidgetComponent, Transform2D>();
+    for (auto [ScopedEntity, ScopedComponent, ScopedOwnerTransform] : ScopedOwnerView.each())
     {
         if ((ScopedComponent.Flags & static_cast<std::uint32_t>(WidgetComponentFlags::Visible)) == 0 ||
             ScopedComponent.CanvasID >= InCanvases.size())
@@ -4577,6 +4636,7 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
         {
             ScopedDisplayScale = InView.render.cameraStack->DisplayScale();
         }
+        ScopedDisplayScale = std::clamp(ScopedDisplayScale, 0.5f, 4.0f);
         ScopedCanvas.SetDisplayScale(ScopedDisplayScale);
         if (ScopedCanvas.followDisplayScale && InView.render.window != nullptr)
         {

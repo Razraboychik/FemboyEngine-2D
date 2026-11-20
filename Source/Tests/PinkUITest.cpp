@@ -2830,45 +2830,47 @@ void TestClusterEditing()
         return Fby::Ui::BuildTextClusterOffsets(ScopedCanvas.Text(ScopedInput), ScopedShaper, ScopedParams,
                                                 ScopedOffsets);
     };
+    const auto ScopedClusters = [&]() noexcept
+    { return std::span<const std::uint16_t>(ScopedOffsets.data(), ScopedRebuild()); };
     FBY_CHECK(ScopedRebuild() == 3);
     FBY_CHECK(ScopedOffsets[0] == 0);
     FBY_CHECK(ScopedOffsets[1] == 3);
     FBY_CHECK(ScopedOffsets[2] == 4);
 
-    FBY_CHECK(Fby::Ui::MoveCaretClusters(ScopedCanvas, ScopedInput, -1, false, ScopedOffsets));
+    FBY_CHECK(Fby::Ui::MoveCaretClusters(ScopedCanvas, ScopedInput, -1, false, ScopedClusters()));
     FBY_CHECK(ScopedCanvas.Caret(ScopedInput) == 3);
-    FBY_CHECK(Fby::Ui::MoveCaretClusters(ScopedCanvas, ScopedInput, -1, false, ScopedOffsets));
+    FBY_CHECK(Fby::Ui::MoveCaretClusters(ScopedCanvas, ScopedInput, -1, false, ScopedClusters()));
     FBY_CHECK(ScopedCanvas.Caret(ScopedInput) == 0);
-    FBY_CHECK(Fby::Ui::MoveCaretClusters(ScopedCanvas, ScopedInput, 1, false, ScopedOffsets));
+    FBY_CHECK(Fby::Ui::MoveCaretClusters(ScopedCanvas, ScopedInput, 1, false, ScopedClusters()));
     FBY_CHECK(ScopedCanvas.Caret(ScopedInput) == 3);
 
     // Backspace removes the whole a+combining cluster, not just the mark.
     FBY_CHECK(ScopedCanvas.SetCaret(ScopedInput, 4, false));
     FBY_CHECK(ScopedRebuild() == 3);
-    FBY_CHECK(Fby::Ui::BackspaceCluster(ScopedCanvas, ScopedInput, ScopedOffsets));
+    FBY_CHECK(Fby::Ui::BackspaceCluster(ScopedCanvas, ScopedInput, ScopedClusters()));
     FBY_CHECK(ScopedCanvas.Text(ScopedInput).size() == 3);
     FBY_CHECK(ScopedCanvas.Caret(ScopedInput) == 3);
     FBY_CHECK(ScopedRebuild() == 2);
-    FBY_CHECK(Fby::Ui::BackspaceCluster(ScopedCanvas, ScopedInput, ScopedOffsets));
+    FBY_CHECK(Fby::Ui::BackspaceCluster(ScopedCanvas, ScopedInput, ScopedClusters()));
     FBY_CHECK(ScopedCanvas.Text(ScopedInput).empty());
 
     // Forward delete removes the cluster after the caret.
     FBY_CHECK(ScopedCanvas.SetText(ScopedInput, ScopedText));
     FBY_CHECK(ScopedCanvas.SetCaret(ScopedInput, 0, false));
     FBY_CHECK(ScopedRebuild() == 3);
-    FBY_CHECK(Fby::Ui::DeleteForwardCluster(ScopedCanvas, ScopedInput, ScopedOffsets));
+    FBY_CHECK(Fby::Ui::DeleteForwardCluster(ScopedCanvas, ScopedInput, ScopedClusters()));
     FBY_CHECK(ScopedCanvas.Text(ScopedInput) == "b");
 
     // A selection is removed as a whole, and ReadOnly rejects cluster deletes.
     FBY_CHECK(ScopedCanvas.SetText(ScopedInput, ScopedText));
     ScopedCanvas.SelectAll(ScopedInput);
     FBY_CHECK(ScopedRebuild() == 3);
-    FBY_CHECK(Fby::Ui::BackspaceCluster(ScopedCanvas, ScopedInput, ScopedOffsets));
+    FBY_CHECK(Fby::Ui::BackspaceCluster(ScopedCanvas, ScopedInput, ScopedClusters()));
     FBY_CHECK(ScopedCanvas.Text(ScopedInput).empty());
     FBY_CHECK(ScopedCanvas.SetText(ScopedInput, "x"));
     ScopedCanvas.SetFlag(ScopedInput, WidgetFlags::ReadOnly, true);
     FBY_CHECK(ScopedRebuild() == 2);
-    FBY_CHECK(!Fby::Ui::BackspaceCluster(ScopedCanvas, ScopedInput, ScopedOffsets));
+    FBY_CHECK(!Fby::Ui::BackspaceCluster(ScopedCanvas, ScopedInput, ScopedClusters()));
 }
 
 // A test shaper that emits RTL glyphs in visual order with one cluster each.
