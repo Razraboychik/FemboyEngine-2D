@@ -183,14 +183,14 @@ EXTRA_SECTIONS: list[dict] = [
                 "headers": [B("Region", "Область"), B("Contents", "Содержимое")],
                 "rows": [
                     [B("Header", "Заголовок"),
-                     B("48 bytes: magic FBYFNT01, version, glyph count, atlas size, format, "
+                     B("60 bytes: magic FBYFNT01, version, glyph count, atlas size, format, "
                        "offsets, line height, ascent/descent, font id.",
-                       "48 байт: magic FBYFNT01, версия, число глифов, размер атласа, формат, "
+                       "60 байт: magic FBYFNT01, версия, число глифов, размер атласа, формат, "
                        "смещения, высота строки, ascent/descent, id шрифта.")],
                     [B("Glyph table", "Таблица глифов"),
-                     B("40 bytes per glyph: codepoint, normalized UVs, advance, bearings, quad "
+                     B("44 bytes per glyph: codepoint, normalized UVs, advance, bearings, quad "
                        "size. Sorted ascending for the binary search in FontAtlas::Glyph().",
-                       "40 байт на глиф: кодовая точка, нормализованные UV, advance, bearings, "
+                       "44 байт на глиф: кодовая точка, нормализованные UV, advance, bearings, "
                        "размер квада. Отсортирована по возрастанию для бинарного поиска в "
                        "FontAtlas::Glyph().")],
                     [B("Pixels", "Пиксели"),

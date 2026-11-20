@@ -59,6 +59,11 @@ public:
                                            std::string* InError = nullptr);
 
     // Loads a parsed .femeta (see ParseAssetMetaFile) into the table.
+    // Replaces an existing row's metadata/dependencies; returns an invalid handle if
+    // the GUID is unknown or the dependency table cannot accept the new list.
+    [[nodiscard]] AssetHandle UpdateMeta(const AssetMeta& InMeta,
+                                         std::span<const AssetDependency> InDependencies,
+                                         std::string* InError = nullptr);
     [[nodiscard]] AssetHandle RegisterMetaFile(std::string_view InMetaText, std::string* InError = nullptr);
 
     // Migration helper: returns the metadata row for `id`, creating a default

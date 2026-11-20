@@ -150,10 +150,13 @@ ProbeResult RunScene(std::uint32_t InCount)
         Fby::JobSystem ScopedJobs(1);
         Fby::Ecs::SystemContext ScopedServices{ScopedRegistry, ScopedJobs};
         const auto ScopedPieStart = std::chrono::steady_clock::now();
-        (void)ScopedPie.Start(ScopedRegistry, ScopedSchema, ScopedServices);
+        const Fby::Editor::PlayInEditor::Result ScopedPieResult =
+            ScopedPie.Start(ScopedRegistry, ScopedSchema, ScopedServices);
         const auto ScopedPieEnd = std::chrono::steady_clock::now();
         ScopedResult.PieStartMilliseconds =
-            std::chrono::duration<double, std::milli>(ScopedPieEnd - ScopedPieStart).count();
+            ScopedPieResult == Fby::Editor::PlayInEditor::Result::Ok
+                ? std::chrono::duration<double, std::milli>(ScopedPieEnd - ScopedPieStart).count()
+                : -1.0;
         ScopedPie.Stop();
     }
     ScopedResult.PeakResidentBytes = PeakResidentBytes();

@@ -312,9 +312,15 @@ struct WavDescription
     ScopedPages.Reset(InBytes);
     Audio::OggPage ScopedPage;
     std::uint32_t ScopedPageCount = 0;
-    while (ScopedPages.Next(&ScopedPage, nullptr))
+    std::string ScopedPageError;
+    while (ScopedPages.Next(&ScopedPage, &ScopedPageError))
     {
         ++ScopedPageCount;
+    }
+    if (!ScopedPageError.empty())
+    {
+        SetError(InError, "Ogg source is corrupt: " + ScopedPageError);
+        return false;
     }
     if (ScopedPageCount == 0)
     {

@@ -378,7 +378,7 @@ if [[ "${RUN_UPSCALERS}" -eq 1 ]]; then
     setup_vendor_sdks
 fi
 
-og "Done"
+log "Done"
 echo "  configure   : cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON"
 echo "  build       : cmake --build build-dev"
 echo "  test        : ctest --test-dir build-dev --output-on-failure"

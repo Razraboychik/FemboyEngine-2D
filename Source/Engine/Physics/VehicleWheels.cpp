@@ -156,8 +156,6 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
     const float ScopedDriveTorque =
         std::abs(ScopedThrottle) * std::max(ScopedVehicle->MaxMotorTorque, 0.0f) *
         std::max(ScopedWheel->DriveWeight, 0.0f);
-    const float ScopedBrakeTorque = ScopedBrake * std::max(ScopedVehicle->MaxMotorTorque, 0.0f) *
-                                    std::max(ScopedWheel->BrakeWeight, 0.0f);
 
     const auto ScopedWake = [ScopedJoint]() noexcept
     {
@@ -186,11 +184,7 @@ void WheelSystem::ApplyDrive(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics
     };
     if (ScopedBrake > 0.0f || ScopedHandbrake)
     {
-        const float ScopedTorque = ScopedHandbrake
-                                       ? std::max(ScopedVehicle->MaxMotorTorque, 0.0f) *
-                                             std::max(ScopedWheel->BrakeWeight, 0.0f)
-                                       : ScopedBrakeTorque;
-        ScopedSetMotor(false, 0.0f, ScopedTorque);
+        ScopedSetMotor(false, 0.0f, 0.0f);
         if (RigidBody2D* ScopedWheelBody = InRegistry.try_get<RigidBody2D>(InWheel);
             ScopedWheelBody != nullptr && ScopedWheelBody->Body != 0)
         {

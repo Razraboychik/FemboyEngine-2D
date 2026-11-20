@@ -1,5 +1,6 @@
 #include "Editor/Infrastructure/EditorSystem.hpp"
 
+#include "Engine/Physics/SdfCharacter.hpp"
 #include "Engine/RHI/CameraStack.hpp"
 #include "Engine/RHI/Fsr2Adapter.hpp"
 
@@ -1072,7 +1073,8 @@ struct EditorSystem::Impl
             return;
         }
         // BuiltIns() is the same schema the rollback session uses. The snapshot
-        const Ecs::SnapshotSchema ScopedSchema = Ecs::SnapshotSchema::BuiltIns();
+        Ecs::SnapshotSchema ScopedSchema = Ecs::SnapshotSchema::BuiltIns();
+        (void)Fby::RegisterSdfCharacterSnapshotCodec(ScopedSchema);
         // The replication protocol expects the first baseline at tick 1; the
         // sandbox second copy applies that baseline before any delta.
         ExternalClientDesc ScopedExternal;
@@ -5293,7 +5295,9 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
 
     // Allocate the PIE arena once, at editor startup.
     MImpl->pieArena.resize(kPieArenaBytes);
-    if (!MImpl->pie.Initialize(MImpl->pieArena, Ecs::SnapshotSchema::BuiltIns(), MImpl->pieArena.size()))
+    Ecs::SnapshotSchema ScopedPieSchema = Ecs::SnapshotSchema::BuiltIns();
+    (void)Fby::RegisterSdfCharacterSnapshotCodec(ScopedPieSchema);
+    if (!MImpl->pie.Initialize(MImpl->pieArena, ScopedPieSchema, MImpl->pieArena.size()))
     {
         LogWarn("editor", "PIE arena initialization failed; the Play button will report the reason");
     }
@@ -7188,7 +7192,7 @@ bool EditorSystem::OpenProject(Ecs::SystemContext& InContext, const ProjectPaths
     MImpl->desc.projectRoot = InPaths.root;
     MImpl->desc.showProjectDashboard = false;
     MImpl->projectConfig.Project().gameplayTags.ApplyToRegistry(MImpl->gameplayTags);
-    MImpl->dashboard.Initialize(InPaths, MImpl->projectConfig.Config(), false);
+    MImpl->dashboard.SetCurrentProject(InPaths, MImpl->projectConfig.Config());
     MImpl->contentBrowser.SetProjectRoot(InPaths.assets);
     MImpl->contentBrowser.Initialize(InContext.assetDb, ContentBrowserPanel::Config{InPaths.assets}, &MImpl->importer);
 
@@ -7392,7 +7396,7 @@ bool EditorSystem::SaveScene(Ecs::SystemContext& InContext, const std::filesyste
         (void)MImpl->aiStateTree.SaveCompiledToSceneToml();
     }
     MImpl->animationGraph.SetScenePath(InPath);
-    if (MImpl->animationGraph.HasCompiledImage())
+    if (MImpl->animationGraph.HasAuthoredDocument())
     {
         (void)MImpl->animationGraph.SaveToSceneToml();
     }

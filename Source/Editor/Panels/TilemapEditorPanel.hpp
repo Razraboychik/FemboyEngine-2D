@@ -20,7 +20,7 @@ namespace Fby::Editor
 class TilemapEditorPanel
 {
 public:
-    static constexpr std::uint32_t kPathCapacity = 260;
+    static constexpr std::uint32_t kPathCapacity = kTilemapRefPathBytes;
 
     TilemapEditorPanel() = default;
 

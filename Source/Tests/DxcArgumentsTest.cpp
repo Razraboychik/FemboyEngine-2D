@@ -37,12 +37,18 @@ int main()
     if (ScopedArguments.has_value())
     {
         const std::vector<std::string>& ScopedArgv = *ScopedArguments;
-        Check(ScopedArgv.size() == 8, "dxc receives one argument per token");
+        if (ScopedArgv.size() != 8)
+        {
+            Check(false, "dxc receives one argument per token");
+        }
+        else
+        {
         Check(ScopedArgv[0] == "dxc", "compiler remains argv[0]");
         Check(ScopedArgv[1] == "-T" && ScopedArgv[2] == "ps_6_0", "profile is a separate argument");
         Check(ScopedArgv[3] == "-E" && ScopedArgv[4] == "main", "entry point is a separate argument");
         Check(ScopedArgv[5] == "-Fo" && ScopedArgv[6] == "out.femmat", "output is a separate argument");
         Check(ScopedArgv[7] == ScopedInjection, "the injected path stays one literal argument");
+        }
     }
 
     std::string ScopedNul("dxc\0evil", 8);

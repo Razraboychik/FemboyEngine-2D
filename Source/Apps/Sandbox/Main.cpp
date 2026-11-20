@@ -1,4 +1,5 @@
 // FemboyEngine2D - sandbox.
+#include "Engine/Physics/SdfCharacter.hpp"
 #include "Engine/Core/CrashHandler.hpp"
 #include "Engine/Core/AssetPaths.hpp"
 #include "Engine/Core/Time.hpp"
@@ -457,10 +458,10 @@ void RenderExtractSystem(const Fby::Ecs::ConstRenderSystemView& InView, void* In
     }
 }
 
-void ExtractRegistry(const Fby::Ecs::Registry& InRegistry, RenderExtract& InExtract)
+void ExtractRegistry(const Fby::Ecs::Registry& InRegistry, RenderExtract& InExtract, std::size_t InBudget)
 {
     auto ScopedView = InRegistry.view<Fby::Transform2D, Fby::Sprite2D, Fby::DrawOrder>();
-    const std::size_t ScopedCount = ScopedView.size_hint();
+    const std::size_t ScopedCount = std::min(ScopedView.size_hint(), InBudget);
     if (ScopedCount > InExtract.Capacity())
     {
         InExtract.Resize(ScopedCount);
@@ -471,6 +472,10 @@ void ExtractRegistry(const Fby::Ecs::Registry& InRegistry, RenderExtract& InExtr
     std::uint32_t ScopedIndex = 0;
     for (auto [ScopedEntity, ScopedTransform, ScopedSprite, ScopedOrder] : ScopedView.each())
     {
+        if (ScopedIndex >= ScopedCount)
+        {
+            break;
+        }
         (void)ScopedEntity;
         ScopedItems[ScopedIndex] = Fby::Rhi::RenderItem{
             ScopedTransform.Position, ScopedSprite.Size,       ScopedSprite.UVMin,       ScopedSprite.UVMax,
@@ -490,7 +495,9 @@ void ExtractRegistry(const Fby::Ecs::Registry& InRegistry, RenderExtract& InExtr
 
     Fby::Sandbox::PieClient ScopedClient;
     std::string ScopedError;
-    if (!ScopedClient.Start(ScopedConfig, Fby::Ecs::SnapshotSchema::BuiltIns(), &ScopedError))
+    Fby::Ecs::SnapshotSchema ScopedClientSchema = Fby::Ecs::SnapshotSchema::BuiltIns();
+    (void)Fby::RegisterSdfCharacterSnapshotCodec(ScopedClientSchema);
+    if (!ScopedClient.Start(ScopedConfig, ScopedClientSchema, &ScopedError))
     {
         Fby::LogError("sandbox", "PIE client start failed: {}", ScopedError);
         return 3;
@@ -636,7 +643,9 @@ int main(int argc, char** argv)
 
         Fby::Sandbox::PieClient ScopedClient;
         std::string ScopedClientError;
-        if (!ScopedClient.Start(ScopedClientConfig, Fby::Ecs::SnapshotSchema::BuiltIns(), &ScopedClientError))
+        Fby::Ecs::SnapshotSchema ScopedPieClientSchema = Fby::Ecs::SnapshotSchema::BuiltIns();
+        (void)Fby::RegisterSdfCharacterSnapshotCodec(ScopedPieClientSchema);
+        if (!ScopedClient.Start(ScopedClientConfig, ScopedPieClientSchema, &ScopedClientError))
         {
             Fby::LogError("sandbox", "PIE client start failed: {}", ScopedClientError);
             ScopedGpu->Shutdown();
@@ -713,7 +722,14 @@ int main(int argc, char** argv)
                 ScopedGpu->Resize(ScopedDeviceDesc.size);
             }
 
-            ExtractRegistry(ScopedClient.World(), ScopedClientExtract);
+            constexpr std::size_t ScopedPieReservedItems =
+                Fby::AccessibilityOverlay::kMaxOverlayItems + 2u * Fby::Text::kMaxShapedGlyphs;
+            const std::size_t ScopedPieBudget =
+                std::max<std::size_t>(ScopedGpu->Info().maxItemsPerFrame > ScopedPieReservedItems
+                                          ? ScopedGpu->Info().maxItemsPerFrame - ScopedPieReservedItems
+                                          : 0u,
+                                      1u);
+            ExtractRegistry(ScopedClient.World(), ScopedClientExtract, ScopedPieBudget);
             ScopedClientExtract.FinishSorted();
             if (ScopedGpu->BeginFrame())
             {
@@ -802,7 +818,12 @@ int main(int argc, char** argv)
     RenderExtract ScopedExtract;
     const std::size_t ScopedDesiredItems = ScopedWorld.sprites.size() + Fby::kParticleEffectMaxParticles +
                                            ScopedMaskEntities.size() + ScopedCrowd.Capacity();
-    const std::size_t ScopedItemBudget = ScopedGpu->Info().maxItemsPerFrame;
+    constexpr std::size_t ScopedReservedItems =
+        Fby::AccessibilityOverlay::kMaxOverlayItems + 2u * Fby::Text::kMaxShapedGlyphs;
+    const std::size_t ScopedItemBudget =
+        std::max<std::size_t>(ScopedGpu->Info().maxItemsPerFrame > ScopedReservedItems
+                                  ? ScopedGpu->Info().maxItemsPerFrame - ScopedReservedItems
+                                  : 0u, 1u);
     if (ScopedDesiredItems > ScopedItemBudget)
     {
         Fby::LogWarn("sandbox", "render extract capped from {} to the backend budget of {} items",
@@ -887,9 +908,14 @@ int main(int argc, char** argv)
     bool ScopedShowSplash = true;
     try
     {
-        if (std::filesystem::exists("project.femproj"))
+        std::filesystem::path ScopedDescriptor = ScopedAssetRoot / "project.femproj";
+        if (!std::filesystem::exists(ScopedDescriptor) && ScopedAssetRoot.has_parent_path())
         {
-            const toml::table ScopedTable = toml::parse_file("project.femproj");
+            ScopedDescriptor = ScopedAssetRoot.parent_path() / "project.femproj";
+        }
+        if (std::filesystem::exists(ScopedDescriptor))
+        {
+            const toml::table ScopedTable = toml::parse_file(ScopedDescriptor.string());
             if (const toml::table* ScopedProject = ScopedTable["project"].as_table())
             {
                 ScopedShowSplash = (*ScopedProject)["show_splash"].value_or(true);

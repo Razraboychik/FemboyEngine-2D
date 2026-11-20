@@ -19,10 +19,17 @@ import sys
 
 ERROR_MARKERS = (
     "error:",
+    "error C",
+    "error LNK",
+    "fatal error:",
+    "fatal error C",
+    "fatal error LNK",
     "FAILED:",
     "CMake Error",
-    "fatal error:",
     "undefined reference",
+    "ERROR: AddressSanitizer",
+    "ERROR: LeakSanitizer",
+    "SUMMARY:",
     "***Failed",
     "The following tests FAILED",
     "FAIL ",
@@ -33,7 +40,7 @@ ERROR_MARKERS = (
     "timeout",
     "Segmentation",
 )
-MAX_ANNOTATIONS = 60
+MAX_ANNOTATIONS = 10
 
 
 def escape(text: str) -> str:
@@ -58,6 +65,7 @@ def main() -> int:
         if not stripped or not any(marker in stripped for marker in ERROR_MARKERS):
             continue
         candidates.append(stripped)
+    candidates = list(dict.fromkeys(candidates))
 
     # Compiler diagnostics and assertion lines explain the failure; ctest's
     # "***Failed" summary only names the test. Annotate the explanations first.

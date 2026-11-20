@@ -358,9 +358,9 @@ def component_field_failures(text: str) -> list[tuple[int, str]]:
     failures: list[tuple[int, str]] = []
     masked = mask_non_code(text)
     registered = {
-        match.group(1)
+        match.group(1).split("::")[-1]
         for match in re.finditer(
-            r"FBY_REFLECT_COMPONENT(?:_EMPTY)?\(\s*(?:::)?(?:Fby::)?([A-Za-z_]\w*)", text
+            r"FBY_REFLECT_COMPONENT(?:_EMPTY)?\(\s*(?:::)?((?:[A-Za-z_]\w*::)*[A-Za-z_]\w*)", text
         )
     }
     if not registered:

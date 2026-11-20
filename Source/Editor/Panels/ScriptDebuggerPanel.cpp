@@ -252,13 +252,14 @@ bool ScriptDebuggerPanel::CompileAndNativize(const Scene::ComponentRegistry& InC
         MStatus = "AOT: cook options are not configured";
         return false;
     }
-    MAotProgramHash = Script::HashProgramBytes(MBytes);
     std::string ScopedError;
     if (!MAot.StartProgram(MBytes, MAotOptions, &ScopedError))
     {
+        MAotProgramHash = 0;
         MStatus = "AOT: " + ScopedError;
         return false;
     }
+    MAotProgramHash = Script::HashProgramBytes(MBytes);
     char ScopedBuffer[160] = {};
     std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "compiled + nativizing %016llx",
                   static_cast<unsigned long long>(MAotProgramHash));

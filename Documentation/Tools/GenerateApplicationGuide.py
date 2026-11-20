@@ -1324,20 +1324,20 @@ def configure_styles(document: Document) -> None:
     styles = document.styles
     normal = styles["Normal"]
     normal.font.name = "Arial"
-    normal.font.Size = Pt(10.5)
+    normal.font.size = Pt(10.5)
     normal.font.color.rgb = INK
     normal.paragraph_format.space_after = Pt(6)
     normal.paragraph_format.line_spacing = 1.15
     for name, size in (("Heading 1", 22), ("Heading 2", 15), ("Heading 3", 12)):
         style = styles[name]
         style.font.name = "Arial"
-        style.font.Size = Pt(size)
+        style.font.size = Pt(size)
         style.font.color.rgb = ACCENT if name == "Heading 1" else INK
         style.paragraph_format.space_before = Pt(14)
         style.paragraph_format.space_after = Pt(6)
     code_style = styles.add_style("FbyCode", 1)
     code_style.font.name = "Consolas"
-    code_style.font.Size = Pt(8.5)
+    code_style.font.size = Pt(8.5)
     code_style.font.color.rgb = RGBColor(0x20, 0x20, 0x28)
     code_style.paragraph_format.space_before = Pt(4)
     code_style.paragraph_format.space_after = Pt(8)
@@ -1359,13 +1359,13 @@ def add_header_footer(section, label: str) -> None:
     header.text = label
     header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     for run in header.runs:
-        run.font.Size = Pt(8)
+        run.font.size = Pt(8)
         run.font.color.rgb = MUTED
     footer = section.footer.paragraphs[0]
     footer.text = "FemboyEngine2D Application Guide"
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in footer.runs:
-        run.font.Size = Pt(8)
+        run.font.size = Pt(8)
         run.font.color.rgb = MUTED
 
 
@@ -1390,14 +1390,14 @@ def build_docx(path: pathlib.Path, language: str, title: str, subtitle: str) -> 
     cover.paragraph_format.space_before = Pt(140)
     run = cover.add_run("FemboyEngine2D")
     run.font.name = "Arial"
-    run.font.Size = Pt(34)
+    run.font.size = Pt(34)
     run.font.bold = True
     run.font.color.rgb = ACCENT
     title_paragraph = document.add_paragraph()
     title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = title_paragraph.add_run("Application Guide\n" + subtitle)
     run.font.name = "Arial"
-    run.font.Size = Pt(18)
+    run.font.size = Pt(18)
     run.font.color.rgb = INK
     date_paragraph = document.add_paragraph()
     date_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER

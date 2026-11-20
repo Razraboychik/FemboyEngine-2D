@@ -15,6 +15,10 @@
 
 namespace Fby
 {
+namespace Ecs
+{
+class SnapshotSchema;
+}
 
 inline constexpr std::uint32_t kMaxSdfCharacterParts = 64;
 inline constexpr std::uint32_t kMaxSdfCharacterFieldSamples = 512u * 512u;
@@ -115,6 +119,9 @@ struct SdfCharacterMeshData
 
 [[nodiscard]] bool BuildSdfCharacterMesh(const SdfCharacterField& InField, float InIso,
                                          SdfCharacterMeshData* OutMesh) noexcept;
+
+// Registers a blob codec so the authored parts survive snapshots/replication.
+[[nodiscard]] bool RegisterSdfCharacterSnapshotCodec(Ecs::SnapshotSchema& InSchema);
 
 }
 

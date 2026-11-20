@@ -374,6 +374,14 @@ void ProjectDashboard::DrawOpen(WindowManager* InWindow)
     {
         MMode = Mode::Welcome;
     }
+    if (!MCurrentProject.root.empty())
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Back to editor", ImVec2(140.0f, 34.0f)))
+        {
+            MPendingAction = Action::Cancel;
+        }
+    }
 }
 
 void ProjectDashboard::DrawNew(WindowManager* InWindow)
@@ -455,7 +463,7 @@ ProjectDashboard::Action ProjectDashboard::ConsumeResult(ProjectPaths* OutPaths,
         MCurrentProject = MPendingProject;
         MCurrentConfig = MPendingConfig;
     }
-    else if (ScopedAction == Action::Quit)
+    else if (ScopedAction == Action::Quit || ScopedAction == Action::Cancel)
     {
         MVisible = false;
     }

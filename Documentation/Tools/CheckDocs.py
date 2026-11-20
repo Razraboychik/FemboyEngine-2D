@@ -187,7 +187,7 @@ def check_layout(errors: list[str]) -> None:
             errors.append(f"ADR name does not follow NNNN-slug.md: {rel(item)}")
 
 
-def check_toc() -> None:
+def check_toc(errors: list[str]) -> None:
     for name in ("FemboyEngineAPIReference_EN.md", "FemboyEngineCompleteReference_EN.md"):
         path = MD / "en" / name
         if not path.is_file():
@@ -203,10 +203,10 @@ def check_toc() -> None:
                 break
         # The first TOC entry starts at 1 and the sequence has no duplicate.
         if numbers and numbers[0] != 1:
-            print(f"warning: {rel(path)}: table of contents does not start at 1")
+            errors.append(f"{rel(path)}: table of contents does not start at 1")
         if numbers != list(range(1, len(numbers) + 1)):
             duplicates = sorted({value for value in numbers if numbers.count(value) > 1})
-            print(f"warning: {rel(path)}: table of contents is not contiguous (duplicates: {duplicates})")
+            errors.append(f"{rel(path)}: table of contents is not contiguous (duplicates: {duplicates})")
 
 
 def main() -> int:
@@ -221,6 +221,7 @@ def main() -> int:
     check_pair_structure(errors)
     check_layout(errors)
     check_formats(warnings)
+    check_toc(errors)
     if not DjvuExpected():
         print("note: pdf2djvu is not installed and no DjVu edition is checked in; DjVu is not checked")
     if arguments.strict:

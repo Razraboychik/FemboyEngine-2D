@@ -14,19 +14,19 @@ namespace Fby
 {
 
 inline constexpr std::uint32_t kSkeletonAssetRefSpawnSkin = 1u << 0;
-inline constexpr std::uint32_t kSkeletonAssetRefRebindOnLoad = 1u << 1;
 
-// Migration: the scene now stores a transactional metadata handle instead.
+// The scene stores the asset's stable GUID, not a transient lookup handle:
+// handles are (slot, generation) cache keys that change between sessions.
 struct SkeletonAssetRef
 {
-    Assets::AssetHandle Asset{};
-    std::uint32_t Flags = kSkeletonAssetRefSpawnSkin | kSkeletonAssetRefRebindOnLoad;
+    Assets::AssetGuid Asset = 0;
+    std::uint32_t Flags = kSkeletonAssetRefSpawnSkin;
     // Truncated FesklHeader::contentHash
     std::uint32_t ContentHash = 0;
 
     [[nodiscard]] bool Empty() const noexcept
     {
-        return !Asset.IsValid();
+        return Asset == 0;
     }
 };
 

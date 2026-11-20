@@ -68,6 +68,9 @@ public:
     InputChannel() = default;
 
     void Bind(NetTransport* InTransport, const NetAddress& InRemote, NetPlayerId InLocalPlayer) noexcept;
+    // Binds a peer and pins the only remote player id this channel may accept.
+    [[nodiscard]] bool BindPeer(NetTransport* InTransport, const NetAddress& InRemote,
+                                NetPlayerId InLocalPlayer, NetPlayerId InRemotePlayer) noexcept;
     void Unbind() noexcept;
     [[nodiscard]] bool Bound() const noexcept
     {
@@ -99,6 +102,8 @@ private:
     NetTransport* MTransport = nullptr;
     NetAddress MRemote{};
     NetPlayerId MLocalPlayer{};
+    NetPlayerId MRemotePlayer{};
+    bool MHasRemotePlayer = false;
     std::uint32_t MPacketSequence = 0;
     std::uint16_t MFrameSequence = 0;
     InputChannelStats MStats{};

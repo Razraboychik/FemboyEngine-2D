@@ -677,14 +677,22 @@ void TestSpawnCommand()
     Check(ScopedRegistry.view<Fby::Transform2D>().size() == 1, "drop created one transform entity");
     if (ScopedCommands.CanUndo())
     {
-        const Fby::Entity ScopedSpawned = *ScopedRegistry.view<Fby::Transform2D>().begin();
-        Check(ScopedCommands.Undo(), "undo spawn");
-        Check(!ScopedRegistry.valid(ScopedSpawned), "undo destroyed the spawned entity");
-        Check(ScopedRegistry.view<Fby::Transform2D>().size() == 0, "undo removed the spawned transform");
-        Check(ScopedCommands.Redo(), "redo spawn");
-        Check(ScopedRegistry.valid(ScopedSpawned), "redo recreated the same entity id");
-        Check(ScopedRegistry.get<Fby::Transform2D>(ScopedSpawned).Position.X == 100.0f,
-              "redo restored the component image");
+        const auto ScopedSpawnView = ScopedRegistry.view<Fby::Transform2D>();
+        if (ScopedSpawnView.size() != 1)
+        {
+            Check(false, "spawn command must leave exactly one transform");
+        }
+        else
+        {
+            const Fby::Entity ScopedSpawned = *ScopedSpawnView.begin();
+            Check(ScopedCommands.Undo(), "undo spawn");
+            Check(!ScopedRegistry.valid(ScopedSpawned), "undo destroyed the spawned entity");
+            Check(ScopedRegistry.view<Fby::Transform2D>().size() == 0, "undo removed the spawned transform");
+            Check(ScopedCommands.Redo(), "redo spawn");
+            Check(ScopedRegistry.valid(ScopedSpawned), "redo recreated the same entity id");
+            Check(ScopedRegistry.get<Fby::Transform2D>(ScopedSpawned).Position.X == 100.0f,
+                  "redo restored the component image");
+        }
     }
     else
     {

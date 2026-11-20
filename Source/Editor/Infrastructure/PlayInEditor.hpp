@@ -93,7 +93,7 @@ public:
 
     // Serializes `editorWorld` and restores the clone. The editor world is never
     [[nodiscard]] Result Start(Ecs::Registry& InEditorWorld, const Ecs::SnapshotSchema& InSchema,
-                               const Ecs::SystemContext& InServices, std::uint64_t InTick = 0,
+                               const Ecs::SystemContext& InServices, std::uint64_t InTick = 1,
                                const DeterministicRng* InRng = nullptr) noexcept;
     static void ApplyPieState(void* InUser, std::uint64_t InTick, std::span<const std::byte> InState) noexcept;
     void Stop() noexcept;

@@ -440,6 +440,14 @@ void ReadTransitionFields(const toml::table& InTable, std::string_view InPrefix,
     };
     OutTransition.FromState = ReadMask(InTable, ScopedKey("from_state"), OutTransition.FromState);
     OutTransition.ToState = ReadMask(InTable, ScopedKey("to_state"), OutTransition.ToState);
+    if (const toml::node* ScopedAnyMaskNode = InTable.get(ScopedKey("tags_any_mask"));
+        ScopedAnyMaskNode != nullptr && ScopedAnyMaskNode->is_integer())
+    {
+        UnpackAnimTags(ReadMask(InTable, ScopedKey("tags_any_mask"), 0), OutTransition.TagsAny,
+                       OutTransition.TagsAnyCount);
+    }
+    else
+    {
     const toml::node* ScopedAnyNode = InTable.get(ScopedKey("tags_any"));
     if (ScopedAnyNode != nullptr && ScopedAnyNode->is_string())
     {
@@ -450,6 +458,7 @@ void ReadTransitionFields(const toml::table& InTable, std::string_view InPrefix,
     {
         UnpackAnimTags(ReadMask(InTable, ScopedKey("tags_any"), PackAnimTags(OutTransition.TagsAny)),
                        OutTransition.TagsAny, OutTransition.TagsAnyCount);
+    }
     }
     const toml::node* ScopedAllNode = InTable.get(ScopedKey("tags_all"));
     if (ScopedAllNode != nullptr && ScopedAllNode->is_string())
@@ -646,6 +655,7 @@ void AnimationGraphCanvasPanel::ResetDocument() noexcept
 
 void AnimationGraphCanvasPanel::BuildDefaultDocument() noexcept
 {
+    MHasAuthoredDocument = false;
     ResetDocument();
     const std::uint16_t ScopedIdle = AddNode(AnimationGraphNodeKind::Clip, Vector2D{-260.0f, 40.0f});
     const std::uint16_t ScopedAttack = AddNode(AnimationGraphNodeKind::Clip, Vector2D{300.0f, 40.0f});
@@ -3523,6 +3533,7 @@ bool AnimationGraphCanvasPanel::LoadFromSceneToml()
     }
 
     MDocument = ScopedDocument;
+    MHasAuthoredDocument = true;
     MCompiledValid = false;
     MCompiledDirty = true;
     PurgeCanvasSelection();
@@ -3530,7 +3541,6 @@ bool AnimationGraphCanvasPanel::LoadFromSceneToml()
     {
         char ScopedError[kAnimationGraphStatusBytes]{};
         std::snprintf(ScopedError, sizeof(ScopedError), "%s", MStatus);
-        BuildDefaultDocument();
         SetStatus("Anim load rejected: %s", ScopedError);
         return false;
     }

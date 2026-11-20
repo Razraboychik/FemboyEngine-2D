@@ -174,6 +174,20 @@ void InputChannel::Bind(NetTransport* InTransport, const NetAddress& InRemote, N
     MLocalPlayer = InLocalPlayer;
 }
 
+bool InputChannel::BindPeer(NetTransport* InTransport, const NetAddress& InRemote, NetPlayerId InLocalPlayer,
+                            NetPlayerId InRemotePlayer) noexcept
+{
+    if (InTransport == nullptr || InRemote.Port == 0 || !InLocalPlayer.IsValid() || !InRemotePlayer.IsValid() ||
+        InLocalPlayer.value == InRemotePlayer.value)
+    {
+        return false;
+    }
+    Bind(InTransport, InRemote, InLocalPlayer);
+    MRemotePlayer = InRemotePlayer;
+    MHasRemotePlayer = true;
+    return true;
+}
+
 void InputChannel::Unbind() noexcept
 {
     MTransport = nullptr;
@@ -296,6 +310,11 @@ void InputChannel::OnPacket(void* InUser, const NetAddress& InFrom, std::span<co
         return;
     }
     if (ScopedChannel.MRemote.Port != 0 && InFrom != ScopedChannel.MRemote)
+    {
+        ++ScopedChannel.MStats.Rejected;
+        return;
+    }
+    if (ScopedChannel.MHasRemotePlayer && ScopedPacket.Player.value != ScopedChannel.MRemotePlayer.value)
     {
         ++ScopedChannel.MStats.Rejected;
         return;

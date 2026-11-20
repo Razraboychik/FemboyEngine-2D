@@ -194,18 +194,9 @@ bool AssetDatabaseWatchSystem::IsRelevantFile(std::string_view InPath) noexcept
 
 bool AssetDatabaseWatchSystem::IsRelevantSourceFile(std::string_view InPath) noexcept
 {
-    // Cooked payloads are outputs, never sources. Excluding them here is what
-    const bool ScopedToml = EndsWithNoCase(InPath, ".toml");
-    const bool ScopedSceneToml =
-        ScopedToml && (StartsWithNoCase(InPath, "scenes/") || ContainsNoCase(InPath, "/scenes/") ||
-                       StartsWithNoCase(InPath, "prefabs/") || ContainsNoCase(InPath, "/prefabs/"));
-    const bool ScopedAtlasToml =
-        ScopedToml && (StartsWithNoCase(InPath, "atlas/") || ContainsNoCase(InPath, "/atlas/"));
-    return EndsWithNoCase(InPath, ".png") || EndsWithNoCase(InPath, ".tga") || EndsWithNoCase(InPath, ".wav") ||
-           EndsWithNoCase(InPath, ".ogg") || EndsWithNoCase(InPath, ".opus") || EndsWithNoCase(InPath, ".webm") ||
-           ScopedSceneToml || ScopedAtlasToml || EndsWithNoCase(InPath, ".feskl") ||
-           EndsWithNoCase(InPath, ".fanim") || EndsWithNoCase(InPath, ".fmat") ||
-           EndsWithNoCase(InPath, ".fscript");
+    // Single source of truth: the importer decides which extensions are assets.
+    AssetKind ScopedKind = AssetKind::Unknown;
+    return InferAssetKindFromPath(InPath, &ScopedKind);
 }
 
 bool AssetDatabaseWatchSystem::Initialize(Assets::AssetDatabase& InDatabase, const Config& InConfig,
@@ -429,9 +420,19 @@ void AssetDatabaseWatchSystem::ProcessMetaFile(std::string_view InRelativePath)
         LogWarn("watch", "invalid metadata '{}': {}", InRelativePath, ScopedError);
         return;
     }
-    // A .femeta written by this system triggers a change notification.
+    // A .femeta written by this system triggers a change notification. Updating an
+    // existing row is idempotent when the content is unchanged, so always commit it
+    // instead of discarding hand/tool edits.
     if (MDatabase->FindHandleByGuid(ScopedMeta.guid).IsValid())
     {
+        if (!MDatabase->UpdateMeta(ScopedMeta,
+                                   std::span<const Assets::AssetDependency>(ScopedDependencies, ScopedDependencyCount),
+                                   &ScopedError)
+                 .IsValid())
+        {
+            ++MStats.failures;
+            LogWarn("watch", "cannot update metadata '{}': {}", InRelativePath, ScopedError);
+        }
         return;
     }
     const Assets::AssetHandle ScopedHandle = MDatabase->RegisterMeta(

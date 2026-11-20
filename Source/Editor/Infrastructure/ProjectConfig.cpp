@@ -1006,6 +1006,18 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
         return false;
     }
 
+    if (const toml::node* ScopedVersion = ScopedRoot.get("format_version");
+        ScopedVersion != nullptr && ScopedVersion->is_integer())
+    {
+        const std::int64_t ScopedFormat = ScopedVersion->value<std::int64_t>().value_or(0);
+        if (ScopedFormat > static_cast<std::int64_t>(kProjectFormatVersion))
+        {
+            SetError(InError, "project format_version " + std::to_string(ScopedFormat) +
+                                  " is newer than this editor supports");
+            return false;
+        }
+    }
+
     ProjectConfig ScopedConfig;
     if (const toml::table* ScopedProject = Section(ScopedRoot, "project"); ScopedProject != nullptr)
     {

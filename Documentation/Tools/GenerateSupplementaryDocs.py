@@ -61,7 +61,7 @@ def add_inline_runs(paragraph, text: str) -> None:
         if part.startswith("`") and part.endswith("`"):
             run = paragraph.add_run(part[1:-1])
             run.font.name = "Consolas"
-            run.font.Size = Pt(9)
+            run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(0x8B, 0x1A, 0x4A)
         else:
             paragraph.add_run(part)
@@ -92,7 +92,7 @@ def render_markdown(md_path: pathlib.Path, docx_path: pathlib.Path, title: str, 
 
     normal = document.styles["Normal"]
     normal.font.name = "Segoe UI"
-    normal.font.Size = Pt(10)
+    normal.font.size = Pt(10)
     normal.paragraph_format.space_after = Pt(5)
 
     for level in range(1, 4):
@@ -106,18 +106,33 @@ def render_markdown(md_path: pathlib.Path, docx_path: pathlib.Path, title: str, 
     title_run = title_paragraph.add_run(title)
     title_run.bold = True
     title_run.font.name = "Segoe UI"
-    title_run.font.Size = Pt(26)
+    title_run.font.size = Pt(26)
     title_run.font.color.rgb = RGBColor(0x8B, 0x1A, 0x4A)
     subtitle = document.add_paragraph()
-    subtitle.add_run(f"FemboyEngine2D {DOC_VERSION}  ·  {language}  ·  {TODAY}").font.Size = Pt(9)
+    subtitle.add_run(f"FemboyEngine2D {DOC_VERSION}  ·  {language}  ·  {TODAY}").font.size = Pt(9)
     document.add_paragraph()
 
     index = 0
+    paragraph_buffer: list[str] = []
+
+    def flush_paragraph() -> None:
+        if not paragraph_buffer:
+            return
+        paragraph = document.add_paragraph()
+        add_inline_runs(paragraph, " ".join(paragraph_buffer))
+        paragraph_buffer.clear()
+
     while index < len(lines):
         line = lines[index]
         stripped = line.strip()
 
+        if not stripped:
+            flush_paragraph()
+            index += 1
+            continue
+
         if stripped.startswith("```"):
+            flush_paragraph()
             index += 1
             code_lines: list[str] = []
             while index < len(lines) and not lines[index].strip().startswith("```"):
@@ -128,11 +143,12 @@ def render_markdown(md_path: pathlib.Path, docx_path: pathlib.Path, title: str, 
             code_paragraph.style = document.styles["No Spacing"]
             code_run = code_paragraph.add_run("\n".join(code_lines))
             code_run.font.name = "Consolas"
-            code_run.font.Size = Pt(8)
+            code_run.font.size = Pt(8)
             code_paragraph.paragraph_format.left_indent = Cm(0.5)
             code_paragraph.paragraph_format.space_after = Pt(6)
             continue
 
+        flush_paragraph()
         if stripped.startswith("|") and index + 1 < len(lines) and re.match(r"^\s*\|?[-: ]+\|", lines[index + 1]):
             rows: list[list[str]] = []
             while index < len(lines) and lines[index].strip().startswith("|"):
@@ -156,32 +172,35 @@ def render_markdown(md_path: pathlib.Path, docx_path: pathlib.Path, title: str, 
                 document.add_paragraph()
             continue
 
+        flush_paragraph()
         if stripped.startswith("#"):
             level = min(len(stripped) - len(stripped.lstrip("#")), 3)
             document.add_heading(stripped[level:].strip(), level=level)
             index += 1
             continue
 
+        flush_paragraph()
         if stripped.startswith("- "):
             paragraph = document.add_paragraph(style="List Bullet")
             add_inline_runs(paragraph, stripped[2:])
             index += 1
             continue
 
+        flush_paragraph()
         if re.match(r"^\d+\.\s+", stripped):
             paragraph = document.add_paragraph(style="List Number")
             add_inline_runs(paragraph, re.sub(r"^\d+\.\s+", "", stripped))
             index += 1
             continue
 
-        if stripped:
-            paragraph = document.add_paragraph()
-            add_inline_runs(paragraph, stripped)
+        paragraph_buffer.append(stripped)
         index += 1
+
+    flush_paragraph()
 
     footer = section.footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    footer.add_run(f"FemboyEngine2D {DOC_VERSION}  ·  {title}  ·  ").font.Size = Pt(8)
+    footer.add_run(f"FemboyEngine2D {DOC_VERSION}  ·  {title}  ·  ").font.size = Pt(8)
     add_page_number(footer)
 
     document.core_properties.title = title

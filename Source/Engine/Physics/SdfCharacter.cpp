@@ -1,6 +1,9 @@
 // FemboyEngine2D - bone-bound SDF character evaluation and field baking.
 #include "Engine/Physics/SdfCharacter.hpp"
 
+#include "Engine/Core/Mirror.hpp"
+#include "Engine/ECS/Snapshot.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -267,4 +270,43 @@ bool BuildSdfCharacterBrickMap(const SdfCharacterField& InField, float InNarrowB
     return OutMap->Build(ScopedView, InNarrowBand);
 }
 
+}
+
+
+namespace Fby
+{
+bool RegisterSdfCharacterSnapshotCodec(Ecs::SnapshotSchema& InSchema)
+{
+    Ecs::SnapshotComponent ScopedCodec;
+    ScopedCodec.name = "SdfCharacterComponent";
+    ScopedCodec.typeId = Reflect::Fnv1a(Reflect::Reflection<SdfCharacterComponent>::kName);
+    ScopedCodec.layoutHash = Reflect::LayoutHash<SdfCharacterComponent>();
+    ScopedCodec.size = static_cast<std::uint32_t>(sizeof(SdfCharacterComponent));
+    ScopedCodec.has = +[](const Ecs::Registry& InRegistry, Entity InEntity)
+    { return InRegistry.all_of<SdfCharacterComponent>(InEntity); };
+    ScopedCodec.capture = +[](const Ecs::Registry& InRegistry, Entity InEntity, std::span<std::byte> OutBytes)
+    {
+        const SdfCharacterComponent* ScopedComponent = InRegistry.try_get<SdfCharacterComponent>(InEntity);
+        if (ScopedComponent == nullptr || OutBytes.size() < sizeof(SdfCharacterComponent))
+        {
+            return false;
+        }
+        std::memcpy(OutBytes.data(), ScopedComponent, sizeof(SdfCharacterComponent));
+        return true;
+    };
+    ScopedCodec.restore = +[](Ecs::Registry& InRegistry, Entity InEntity, std::span<const std::byte> InBytes)
+    {
+        if (InBytes.size() < sizeof(SdfCharacterComponent))
+        {
+            return false;
+        }
+        SdfCharacterComponent ScopedComponent{};
+        std::memcpy(&ScopedComponent, InBytes.data(), sizeof(SdfCharacterComponent));
+        InRegistry.emplace_or_replace<SdfCharacterComponent>(InEntity, ScopedComponent);
+        return true;
+    };
+    ScopedCodec.remove = +[](Ecs::Registry& InRegistry, Entity InEntity)
+    { InRegistry.remove<SdfCharacterComponent>(InEntity); };
+    return InSchema.AddCodec(ScopedCodec);
+}
 }

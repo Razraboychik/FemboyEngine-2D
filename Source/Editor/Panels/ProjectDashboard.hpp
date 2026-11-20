@@ -27,6 +27,7 @@ public:
         None = 0,
         OpenProject,
         NewProject,
+        Cancel,
         Quit,
     };
 
@@ -36,6 +37,13 @@ public:
     ProjectDashboard() = default;
 
     // The extra arguments are optional so headless tests can keep calling without a window.
+    // Updates only the current project; window/VFS/font services are preserved.
+    void SetCurrentProject(const ProjectPaths& InCurrentProject, const ProjectConfig& InCurrentConfig) noexcept
+    {
+        MCurrentProject = InCurrentProject;
+        MCurrentConfig = InCurrentConfig;
+        MVisible = false;
+    }
     void Initialize(const ProjectPaths& InCurrentProject, const ProjectConfig& InCurrentConfig, bool InVisible,
                     WindowManager* InWindow = nullptr, VirtualFileSystem* InVfs = nullptr,
                     EditorFonts* InFonts = nullptr, float InUiScale = 1.0f);

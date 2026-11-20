@@ -141,12 +141,12 @@ void BuildReport(char* OutBuffer, std::size_t InCapacity, std::string_view InRea
     }
 }
 
-void WriteReportFile(std::string_view InReason, std::string_view InDetails,
+bool WriteReportFile(std::string_view InReason, std::string_view InDetails,
                       unsigned int InSequence = 0) noexcept
 {
     if (GSessionDirectory[0] == '\0')
     {
-        return;
+        return false;
     }
     char ScopedPath[1200] = {};
     std::snprintf(ScopedPath, sizeof(ScopedPath), "%s/report.txt", GSessionDirectory);
@@ -158,17 +158,22 @@ void WriteReportFile(std::string_view InReason, std::string_view InDetails,
                                         FILE_ATTRIBUTE_NORMAL, nullptr);
     if (ScopedHandle == INVALID_HANDLE_VALUE)
     {
-        return;
+        return false;
     }
     DWORD ScopedWritten = 0;
-    ::WriteFile(ScopedHandle, ScopedReport, static_cast<DWORD>(ScopedLength), &ScopedWritten, nullptr);
+    const BOOL ScopedOk =
+        ::WriteFile(ScopedHandle, ScopedReport, static_cast<DWORD>(ScopedLength), &ScopedWritten, nullptr);
     ::FlushFileBuffers(ScopedHandle);
     ::CloseHandle(ScopedHandle);
+    if (ScopedOk == FALSE || ScopedWritten != ScopedLength)
+    {
+        return false;
+    }
 #else
     const int ScopedHandle = ::open(ScopedPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (ScopedHandle < 0)
     {
-        return;
+        return false;
     }
     std::size_t ScopedOffset = 0;
     while (ScopedOffset < ScopedLength)
@@ -182,7 +187,12 @@ void WriteReportFile(std::string_view InReason, std::string_view InDetails,
     }
     ::fsync(ScopedHandle);
     ::close(ScopedHandle);
+    if (ScopedOffset != ScopedLength)
+    {
+        return false;
+    }
 #endif
+    return true;
 }
 
 void HandleTerminate() noexcept
@@ -343,8 +353,7 @@ bool WriteCrashReport(std::string_view InApplicationName, std::string_view InRea
         return false;
     }
     const unsigned int ScopedSequence = GReportSequence.fetch_add(1, std::memory_order_relaxed);
-    WriteReportFile(InReason, InDetails, ScopedSequence);
-    return true;
+    return WriteReportFile(InReason, InDetails, ScopedSequence);
 }
 
 std::string_view LastCrashDirectory() noexcept

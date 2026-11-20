@@ -29,5 +29,13 @@ foreach ($Resolution in $Resolutions) {
     if ($Only -ne "") {
         $Arguments += @("--only", $Only)
     }
-    & $Executable @Arguments | Tee-Object -FilePath $Log
+    $LogText = & $Executable @Arguments 2>&1 | ForEach-Object { "$_" }
+    $RawLog = $Log -replace '\.csv$', '.log'
+    $LogText | Set-Content -Path $RawLog -Encoding utf8
+    if ($LASTEXITCODE -ne 0) {
+        throw ("benchmark failed for " + $Resolution.Name + " (exit " + $LASTEXITCODE + ")")
+    }
+    $LogText |
+        Where-Object { $_ -match '^(scenario,|[A-Za-z0-9+_-]+,)' } |
+        Set-Content -Path $Log -Encoding utf8
 }

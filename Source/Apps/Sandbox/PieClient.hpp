@@ -102,8 +102,8 @@ private:
     std::uint64_t MStartMs = 0;
     std::uint64_t MLastPacketMs = 0;
     bool MClockStarted = false;
-    bool MRunning = false;
-    bool MTimedOut = false;
+    std::atomic<bool> MRunning{false};
+    std::atomic<bool> MTimedOut{false};
     std::atomic<bool> MStopRequested{false};
 };
 }

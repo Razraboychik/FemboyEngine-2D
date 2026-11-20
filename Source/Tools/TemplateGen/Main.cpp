@@ -84,8 +84,8 @@ void MovementSystem(Fby::Ecs::SystemContext& InContext, void*)
         {
             ScopedDirection = ScopedAi->direction * ScopedAi->speed;
         }
-        ScopedVelocity.value = Fby::Vector2D{ScopedDirection.X * 120.0f, ScopedDirection.Y * 120.0f};
-        ScopedTransform.position = ScopedTransform.position + ScopedVelocity.value * InContext.dt;
+        ScopedVelocity.Value = Fby::Vector2D{ScopedDirection.X * 120.0f, ScopedDirection.Y * 120.0f};
+        ScopedTransform.Position = ScopedTransform.Position + ScopedVelocity.Value * InContext.dt;
     }
 }
 
@@ -96,9 +96,9 @@ void AISystem(Fby::Ecs::SystemContext& InContext, void*)
     {
         const AIBehaviorComponent& ScopedAi = ScopedView.get<AIBehaviorComponent>(InEntity);
         Fby::Transform2D& ScopedTransform = ScopedView.get<Fby::Transform2D>(InEntity);
-        if (ScopedTransform.position.X > 640.0f)
+        if (ScopedTransform.Position.X > 640.0f)
         {
-            ScopedTransform.position.X = 640.0f;
+            ScopedTransform.Position.X = 640.0f;
         }
         (void)ScopedAi;
     }
@@ -218,11 +218,9 @@ add_executable(@TARGET@ GameMain.cpp)
 target_link_libraries(@TARGET@ PRIVATE FemboyEngine2D::Engine)
 # A shipped game has no console window. The generated main() keeps the portable
 # entry point, so the Windows subsystem uses the plain CRT startup.
-if(WIN32)
+if(WIN32 AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
     set_target_properties(@TARGET@ PROPERTIES WIN32_EXECUTABLE TRUE)
-    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-        target_link_options(@TARGET@ PRIVATE "/ENTRY:mainCRTStartup")
-    endif()
+    target_link_options(@TARGET@ PRIVATE "/ENTRY:mainCRTStartup")
 endif()
 )CMAKE";
 

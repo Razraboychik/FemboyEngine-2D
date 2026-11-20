@@ -86,7 +86,7 @@ struct WidgetHandle
 
 [[nodiscard]] constexpr bool IsHandleSet(WidgetHandle InHandle) noexcept
 {
-    return InHandle.Widget != kNoWidget && InHandle.Generation != 0;
+    return InHandle.Widget >= 0 && InHandle.Widget < kMaxWidgets && InHandle.Generation != 0;
 }
 
 // Sorting range for per-widget z-order. The render key stores
@@ -771,7 +771,8 @@ struct WidgetCanvas
     [[nodiscard]] Rect RectOf(WidgetHandle InHandle) const noexcept
     {
         EnsureLayout();
-        if (InHandle.Widget < 0 || static_cast<std::uint32_t>(InHandle.Widget) >= widgetCount)
+        if (InHandle.Widget < 0 || static_cast<std::uint32_t>(InHandle.Widget) >= widgetCount ||
+            InHandle.Generation != Generation)
         {
             return {};
         }
@@ -915,7 +916,7 @@ struct WidgetCanvas
     {
         if (ValidWidget(InWidget))
         {
-            progresses[InWidget] = InValue < 0.0f ? 0.0f : (InValue > 1.0f ? 1.0f : InValue);
+            progresses[InWidget] = (InValue > 0.0f) ? (InValue < 1.0f ? InValue : 1.0f) : 0.0f;
         }
     }
     void SetBorderWidth(std::int32_t InWidget, float InValue) noexcept
@@ -936,7 +937,7 @@ struct WidgetCanvas
     {
         if (ValidWidget(InWidget))
         {
-            ratios[InWidget] = InValue < 0.0f ? 0.0f : (InValue > 1.0f ? 1.0f : InValue);
+            ratios[InWidget] = (InValue > 0.0f) ? (InValue < 1.0f ? InValue : 1.0f) : 0.0f;
         }
     }
     void SetChecked(std::int32_t InWidget, bool InChecked) noexcept;

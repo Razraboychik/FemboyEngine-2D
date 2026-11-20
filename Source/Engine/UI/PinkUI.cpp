@@ -1,6 +1,8 @@
 // FemboyEngine2D - Pink UI implementation.
 #include "Engine/UI/PinkUI.hpp"
 
+#include "Engine/UI/Accessibility.hpp"
+
 #include "Engine/Assets/Localization.hpp"
 #include "Engine/ECS/Components.hpp"
 #include "Engine/ECS/Schedule.hpp"
@@ -4561,6 +4563,11 @@ void WidgetCanvasSystem::Update(const Ecs::UiSystemView& InView, std::span<Widge
             continue;
         }
         ScopedCanvas.processedFrame = ScopedFrame;
+        if (InView.accessibilityServices.accessibility != nullptr)
+        {
+            ScopedCanvas.SetOledShiftEnabled(
+                InView.accessibilityServices.accessibility->Profile().presentation.oledPixelShift);
+        }
         ScopedCanvas.AdvanceOledShift(InView.uiDt);
         ScopedCanvas.AdvanceHover(InView.uiDt);
         ScopedCanvas.AdvanceTime(InView.uiDt);

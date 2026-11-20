@@ -8,8 +8,12 @@ function(fby_add_platform_provider target source)
     target_link_libraries(${target} PRIVATE fby::compiler_flags)
     set_target_properties(${target} PROPERTIES
         OUTPUT_NAME ${target}
+        PREFIX ""
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}"
         LIBRARY_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}")
+    if(APPLE)
+        set_target_properties(${target} PROPERTIES SUFFIX ".dylib")
+    endif()
     if(UNIX AND NOT APPLE)
         target_link_libraries(${target} PRIVATE dl)
     endif()

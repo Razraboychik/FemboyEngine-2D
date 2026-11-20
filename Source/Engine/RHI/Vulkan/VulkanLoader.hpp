@@ -128,6 +128,13 @@ struct Api
     VkInstance BoundInstance = VK_NULL_HANDLE;
     VkDevice BoundDevice = VK_NULL_HANDLE;
 
+    // Allows a new instance/device pair after the previous one was destroyed.
+    void ReleaseBinding() noexcept
+    {
+        BoundInstance = VK_NULL_HANDLE;
+        BoundDevice = VK_NULL_HANDLE;
+    }
+
 #define FBY_VK_DECLARE(name) PFN_##name name = nullptr;
     FBY_VK_GLOBAL_FUNCTIONS(FBY_VK_DECLARE)
     FBY_VK_INSTANCE_FUNCTIONS(FBY_VK_DECLARE)

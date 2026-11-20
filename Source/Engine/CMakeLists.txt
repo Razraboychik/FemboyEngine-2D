@@ -628,7 +628,8 @@ if(WIN32)
 endif()
 elseif (APPLE)
     target_link_libraries(fby_engine PRIVATE
-        "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework Foundation")
+        "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework Foundation"
+        "-framework AVFoundation" "-framework AudioToolbox" "-framework CoreAudio")
     target_compile_definitions(fby_engine PRIVATE FBY_HAS_METAL=1)
 else()
     target_link_libraries(fby_engine PRIVATE dl pthread m)

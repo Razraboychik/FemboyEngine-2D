@@ -72,7 +72,13 @@ def find_dxc() -> pathlib.Path:
         candidate = pathlib.Path(sdk) / "Bin" / "dxc.exe"
         if candidate.is_file():
             return candidate
-    raise SystemExit("dxc.exe not found; set FBY_DXC or VULKAN_SDK")
+    kits = pathlib.Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Windows Kits" / "10" / "bin"
+    if kits.is_dir():
+        for version in sorted((item for item in kits.iterdir() if item.is_dir()), reverse=True):
+            candidate = version / "x64" / "dxc.exe"
+            if candidate.is_file():
+                return candidate
+    raise SystemExit("dxc.exe not found; set FBY_DXC, VULKAN_SDK, or install the Windows SDK")
 
 
 def find_fxc() -> pathlib.Path:

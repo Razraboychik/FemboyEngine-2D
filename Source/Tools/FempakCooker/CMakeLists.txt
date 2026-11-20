@@ -2,7 +2,7 @@
 
 add_executable(fby_fempak
     Main.cpp
-    AudioCook.cpp
+    "${FBY_SOURCE_ROOT}/Engine/Audio/AudioCook.cpp"
     "${FBY_SOURCE_ROOT}/Engine/Assets/AudioClipFormat.cpp"
     "${FBY_SOURCE_ROOT}/Engine/Audio/OggOpus.cpp"
     "${FBY_SOURCE_ROOT}/Engine/Core/SecureRng.cpp")

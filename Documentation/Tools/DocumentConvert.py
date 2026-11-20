@@ -163,25 +163,29 @@ def BuildDjvu(pdf_path: pathlib.Path, djvu_path: pathlib.Path) -> bool:
         return False
 
     djvu_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = djvu_path.with_name(djvu_path.name + ".tmp")
+    temp_path.unlink(missing_ok=True)
     converter = FindPdf2Djvu()
     if converter is None:
-        if not BuildRasterDjvu(pdf_path, djvu_path):
+        if not BuildRasterDjvu(pdf_path, temp_path):
+            temp_path.unlink(missing_ok=True)
             print(f"djvu skipped: install pdf2djvu/djvulibre or set FBY_C44 and FBY_DJVM ({djvu_path.name})")
             return False
     else:
-        if djvu_path.is_file():
-            djvu_path.unlink()
-        command = [converter, "--no-metadata", f"--dpi={DEFAULT_DPI}", "-o", str(djvu_path), str(pdf_path)]
+        command = [converter, "--no-metadata", f"--dpi={DEFAULT_DPI}", "-o", str(temp_path), str(pdf_path)]
         result = subprocess.run(command, check=False, capture_output=True)
         if result.returncode != 0:
+            temp_path.unlink(missing_ok=True)
             print(f"djvu export failed: {pdf_path.name}")
             if result.stderr:
                 print(result.stderr.decode("utf-8", errors="replace").strip()[:400])
             return False
 
-    if not HasDjvuMagic(djvu_path):
+    if not HasDjvuMagic(temp_path):
+        temp_path.unlink(missing_ok=True)
         print(f"djvu export failed: {pdf_path.name}")
         return False
+    os.replace(temp_path, djvu_path)
     print(f"djvu {djvu_path}")
     return True
 

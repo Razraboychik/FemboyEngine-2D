@@ -42,6 +42,7 @@ private:
     bool MDirty = false;
     ParticlePresetRegistry MPresetRegistry;
     std::array<char, 512> MPresetPath{};
+    std::array<char, 512> MSavePath{};
     std::array<char, 64> MSaveId{};
     std::array<char, 64> MSaveName{};
     std::string MStatus;

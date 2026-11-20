@@ -51,13 +51,20 @@ def main() -> int:
         found = None
         for root in roots:
             candidate = root / required
-            if candidate.exists():
+            if candidate.is_file():
                 found = candidate
                 break
         if found is None:
             failures.append(f"missing artifact: {required}")
             continue
-        entries.append({"path": str(found), "bytes": found.stat().st_size, "sha256": digest(found)})
+        size = found.stat().st_size
+        if size <= 0:
+            failures.append(f"empty artifact: {found}")
+            continue
+        try:
+            entries.append({"path": str(found), "bytes": size, "sha256": digest(found)})
+        except OSError as error:
+            failures.append(f"unreadable artifact: {found}: {error}")
 
     for forbidden in args.forbid:
         candidate = ROOT / forbidden

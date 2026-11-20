@@ -18,6 +18,7 @@
 #include <uiautomationcoreapi.h>
 
 #include <cstdio>
+#include <unordered_map>
 #include <cstring>
 
 namespace Fby
@@ -31,6 +32,7 @@ Ui::AccessibilityTree* MTree = nullptr;
 AccessibilityBridgeSettings MSettings{};
 bool MActive = false;
 IRawElementProviderSimple* MRoot = nullptr;
+std::unordered_map<std::uint32_t, std::uint32_t> GLastStates;
 
 [[nodiscard]] std::uint32_t NodeIndexOf(std::uint32_t InId) noexcept
 {
@@ -894,6 +896,65 @@ void PlatformAccessibilityBridgeUpdate(Ui::AccessibilityTree& InTree) noexcept
         return;
     }
     MTree = &InTree;
+    if (MSettings.RaiseStateEvents)
+    {
+        std::unordered_map<std::uint32_t, std::uint32_t> ScopedCurrent;
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < InTree.Count(); ++ScopedIndex)
+        {
+            const Ui::AccessibilityNodeView ScopedNode = InTree.At(ScopedIndex);
+            ScopedCurrent.emplace(ScopedNode.Id, ScopedNode.States);
+            const auto ScopedPrevious = GLastStates.find(ScopedNode.Id);
+            if (ScopedPrevious == GLastStates.end() || ScopedPrevious->second == ScopedNode.States)
+            {
+                continue;
+            }
+            const std::uint32_t ScopedChanged = ScopedPrevious->second ^ ScopedNode.States;
+            const auto ScopedRaise = [ScopedNode](PROPERTYID InProperty, std::uint32_t InBit,
+                                                  std::uint32_t InPrevious)
+            {
+                NodeProvider* ScopedProvider = CreateNodeProvider(ScopedNode.Id);
+                if (ScopedProvider == nullptr)
+                {
+                    return;
+                }
+                VARIANT ScopedOld;
+                VARIANT ScopedNew;
+                VariantInit(&ScopedOld);
+                VariantInit(&ScopedNew);
+                ScopedOld.vt = VT_BOOL;
+                ScopedNew.vt = VT_BOOL;
+                ScopedOld.boolVal = (InPrevious & InBit) != 0 ? VARIANT_TRUE : VARIANT_FALSE;
+                ScopedNew.boolVal = (ScopedNode.States & InBit) != 0 ? VARIANT_TRUE : VARIANT_FALSE;
+                if (ScopedOld.boolVal == ScopedNew.boolVal)
+                {
+                    VariantClear(&ScopedOld);
+                    VariantClear(&ScopedNew);
+                    ScopedProvider->Release();
+                    return;
+                }
+                (void)UiaRaiseAutomationPropertyChangedEvent(static_cast<IRawElementProviderSimple*>(ScopedProvider),
+                                                             InProperty, ScopedOld, ScopedNew);
+                ScopedProvider->Release();
+            };
+            if ((ScopedChanged & Ui::AccessibilityStateChecked) != 0)
+            {
+                ScopedRaise(UIA_ToggleToggleStatePropertyId, Ui::AccessibilityStateChecked, ScopedPrevious->second);
+            }
+            if ((ScopedChanged & Ui::AccessibilityStateSelected) != 0)
+            {
+                ScopedRaise(UIA_SelectionItemIsSelectedPropertyId, Ui::AccessibilityStateSelected, ScopedPrevious->second);
+            }
+            if ((ScopedChanged & Ui::AccessibilityStateExpanded) != 0)
+            {
+                ScopedRaise(UIA_ExpandCollapseExpandCollapseStatePropertyId, Ui::AccessibilityStateExpanded, ScopedPrevious->second);
+            }
+            if ((ScopedChanged & Ui::AccessibilityStateFocused) != 0)
+            {
+                ScopedRaise(UIA_HasKeyboardFocusPropertyId, Ui::AccessibilityStateFocused, ScopedPrevious->second);
+            }
+        }
+        GLastStates = std::move(ScopedCurrent);
+    }
     Ui::AccessibilityEvent ScopedEvent{};
     while (InTree.PollEvent(ScopedEvent))
     {

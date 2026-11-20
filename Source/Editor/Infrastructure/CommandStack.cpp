@@ -347,6 +347,7 @@ CommandStack::Result CommandStack::Record(Entity InEntity, std::uint16_t InCodec
             return Result::StackFull;
         }
         ScopedPending = &MPending[MPendingCount++];
+        *ScopedPending = PendingEdit{};
         ScopedPending->entity = InEntity;
         ScopedPending->codec = InCodec;
         ScopedPending->active = true;
@@ -796,6 +797,12 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
     {
         CancelTransaction();
         return Result::Ok;
+    }
+    if (static_cast<std::size_t>(MCursor) + ScopedBuiltCount >
+            std::min<std::size_t>(static_cast<std::size_t>(MMaxCommands), MCommands.size()))
+    {
+        CancelTransaction();
+        return Result::StackFull;
     }
     // One committed transaction is one undo step: the first command records the group size.
     ScopedBuilt[0].groupSize = static_cast<std::uint16_t>(ScopedBuiltCount);

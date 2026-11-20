@@ -4910,6 +4910,7 @@ void VulkanRHI::Shutdown()
     if (MInstance != VK_NULL_HANDLE)
     {
         ScopedApi.vkDestroyInstance(MInstance, nullptr);
+        ScopedApi.ReleaseBinding();
         MInstance = VK_NULL_HANDLE;
     }
 }

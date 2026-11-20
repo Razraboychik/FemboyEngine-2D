@@ -80,6 +80,11 @@ bool ConnectProjectPlugin(const std::filesystem::path& InProjectRoot, const std:
         return false;
     }
     const std::filesystem::path ScopedTarget = InProjectRoot / "plugins" / InPluginFile.filename();
+    if (std::filesystem::exists(ScopedTarget, ScopedCode) && !ScopedCode)
+    {
+        SetError(OutError, "another plugin already uses the file name " + ScopedRelative);
+        return false;
+    }
     std::filesystem::create_directories(ScopedTarget.parent_path(), ScopedCode);
     if (ScopedCode)
     {

@@ -106,7 +106,7 @@ namespace
                            " has a SkeletonAssetRef but SceneLoadOptions::assetDb is null";
                 return false;
             }
-            const std::string_view ScopedPath = InAssetDb->SourcePath(ScopedRef.Asset);
+            const std::string_view ScopedPath = InAssetDb->SourcePath(InAssetDb->FindHandleByGuid(ScopedRef.Asset));
             if (ScopedPath.empty())
             {
                 *InError =
@@ -205,7 +205,7 @@ namespace
         {
             continue;
         }
-        const std::string_view ScopedPath = InAssetDb->SourcePath(ScopedRef->Asset);
+        const std::string_view ScopedPath = InAssetDb->SourcePath(InAssetDb->FindHandleByGuid(ScopedRef->Asset));
         const auto ScopedPinned = InVfs->Pin(ScopedPath);
         if (!ScopedPinned)
         {
@@ -288,6 +288,10 @@ SceneData CaptureScene(const Registry& InRegistry, const ComponentRegistry& InCo
     }
     std::sort(ScopedEntities.begin(), ScopedEntities.end(),
               [](Entity InLeft, Entity InRight) { return Fby::ToIntegral(InLeft) < Fby::ToIntegral(InRight); });
+    // Prefab children are transient and are not serialized; drop them before
+    // numbering so entity-typed fields use the same list that is stored.
+    std::erase_if(ScopedEntities, [&InRegistry](Entity InEntity)
+                  { return InRegistry.try_get<PrefabInstanceMemberComponent>(InEntity) != nullptr; });
 
     std::unordered_map<Entity, std::uint32_t> ScopedIndices;
     ScopedIndices.reserve(ScopedEntities.size());
