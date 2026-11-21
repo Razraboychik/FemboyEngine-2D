@@ -8,7 +8,7 @@ struct VSInput
     float4 color : COLOR;
     float layer : TEXCOORD1;
     float normalMeta : TEXCOORD2;
-    uint flags : TEXCOORD4;
+    uint flags : TEXCOORD3;
 };
 
 struct VSOutput
