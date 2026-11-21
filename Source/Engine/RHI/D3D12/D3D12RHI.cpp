@@ -4063,6 +4063,7 @@ float4 PSMain(VSOutput input) : SV_Target
     ComPtr<ID3D12RootSignature> MSpriteLightRootSignature;
     ComPtr<ID3D12PipelineState> MPipeline;
     ComPtr<ID3D12PipelineState> MBasePipeline;
+    ComPtr<ID3D12PipelineState> MSdfPipeline;
     ComPtr<ID3D12RootSignature> MMaterialRootSignature;
     Extent2D MExtent{320, 240};
     bool MVsync = true;
