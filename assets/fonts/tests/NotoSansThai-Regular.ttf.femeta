@@ -1,0 +1,17 @@
+guid = "0x12B170FCCDD3AF54"
+asset_id = "0x73F19C443A139E53"
+type = "font"
+source = "fonts/tests/NotoSansThai-Regular.ttf"
+cooked = "fonts/tests/NotoSansThai-Regular.fbyfont"
+source_hash = "0x739170F95E850732"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

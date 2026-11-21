@@ -1,0 +1,17 @@
+guid = "0xFF6DE2FA68BFE5E9"
+asset_id = "0x3C8290B128CF86F0"
+type = "font"
+source = "fonts/IBMPlexMono-Regular.ttf"
+cooked = "fonts/IBMPlexMono-Regular.fbyfont"
+source_hash = "0x0339FE3F7F6B9D68"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

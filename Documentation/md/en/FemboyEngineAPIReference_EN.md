@@ -3,7 +3,7 @@
 **C++23 data-oriented engine - complete public surface, contracts and a build-from-zero walkthrough**
 
 
-Version 0.7.0-alpha.1 (Alpha) · 2026-11-21 · English
+Version 0.6.0-alpha.1 (Alpha) · 2026-11-21 · English
 
 
 ---

@@ -119,7 +119,7 @@ all three systems. See
 
 ## Choosing a compiler
 
-The 0.7.0 line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
+The 0.6.0 line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
 reference Windows toolchain and the release gate; CI also runs clang, GCC,
 AppleClang and MSVC. Every compiler is a supported alternative, never an
 obligation. The minimum versions are the oldest supported generations, not an

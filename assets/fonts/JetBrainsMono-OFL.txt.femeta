@@ -1,0 +1,17 @@
+guid = "0x8F5EBEBC41604A96"
+asset_id = "0x78034C1CA45A2CE1"
+type = "text"
+source = "fonts/JetBrainsMono-OFL.txt"
+cooked = "fonts/JetBrainsMono-OFL.fbytext"
+source_hash = "0x5C94FB7380D35FFA"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

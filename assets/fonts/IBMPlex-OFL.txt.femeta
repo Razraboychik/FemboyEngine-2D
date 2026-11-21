@@ -1,0 +1,17 @@
+guid = "0x110E9ED220173658"
+asset_id = "0x8C40772B06E932B3"
+type = "text"
+source = "fonts/IBMPlex-OFL.txt"
+cooked = "fonts/IBMPlex-OFL.fbytext"
+source_hash = "0x816BB7162EAE403B"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

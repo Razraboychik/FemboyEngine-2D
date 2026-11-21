@@ -8,7 +8,7 @@
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)]()
 [![CMake 3.22+](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.7.0-alpha.1](https://img.shields.io/badge/status-0.7.0--alpha.1-blue.svg)]()
+[![Status: 0.6.0-alpha.1](https://img.shields.io/badge/status-0.6.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D — компактный, детерминированный движок для 2D-игр: собственный
@@ -21,8 +21,8 @@ opt-in параллельным выполнением, физика Box2D v3, r
 тривиально копируемые данные; системы — свободные функции; кадр — плоский массив
 `RenderItem`, отправляемый одним RHI-пакетом.
 
-**Статус: 0.7.0-alpha.1.** FemboyEngine2D находится в публичной линии
-0.7 alpha. Runtime включает отладчик FemboyScript (spans, breakpoints, stepping,
+**Статус: 0.6.0-alpha.1.** FemboyEngine2D находится в публичной линии
+0.6 alpha. Runtime включает отладчик FemboyScript (spans, breakpoints, stepping,
 locals и self-поля), изометрические и тайловые карты с редактором, скелетный
 IK, retargeting и сжатие клипов (`.fanim`), навигацию по сетке, 2D-освещение,
 UDP-транспорт с надёжностью и MTU-фрагментацией, живой пространственный звук,

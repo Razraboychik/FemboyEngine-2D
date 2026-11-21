@@ -1,0 +1,17 @@
+guid = "0x5DDD9C790B7C1A25"
+asset_id = "0x7047A492DC2C89B2"
+type = "text"
+source = "fonts/Inter-OFL.txt"
+cooked = "fonts/Inter-OFL.fbytext"
+source_hash = "0x8CC49FDD0B98A231"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

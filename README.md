@@ -8,7 +8,7 @@
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)]()
 [![CMake 3.22+](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.7.0-alpha.1](https://img.shields.io/badge/status-0.7.0--alpha.1-blue.svg)]()
+[![Status: 0.6.0-alpha.1](https://img.shields.io/badge/status-0.6.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D is a compact, deterministic, data-oriented engine for 2D games:
@@ -22,7 +22,7 @@ path, no JSON in the shipped runtime and no hidden object graph. Components are
 trivially copyable data; systems are free functions; the frame is a flat
 `RenderItem` array submitted through one RHI packet.
 
-**Status: 0.7.0-alpha.1.** FemboyEngine2D is in the public 0.7 alpha line. Its
+**Status: 0.6.0-alpha.1.** FemboyEngine2D is in the public 0.6 alpha line. Its
 runtime includes the FemboyScript debugger (source spans, breakpoints, stepping,
 locals and self fields), isometric and tile-based maps with a map editor,
 skeletal IK, retargeting and clip compression (`.fanim`), grid navigation, 2D

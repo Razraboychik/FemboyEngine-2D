@@ -3,7 +3,7 @@
 [English](README.md) | [Русский перевод](README_RU.md)
 
 This directory is the entry point to the FemboyEngine2D documentation set. The
-current public line is **0.7.0-alpha.1**. The engine is a C++23, data-oriented 2D
+current public line is **0.6.0-alpha.1**. The engine is a C++23, data-oriented 2D
 runtime: fixed-capacity ECS storage, explicit systems, an SDL3 window, a Vulkan or
 null render hardware interface, Box2D v3 physics and deterministic rollback.
 

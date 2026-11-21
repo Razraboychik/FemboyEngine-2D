@@ -3,7 +3,7 @@
 **Architecture, rendering, ECS, the animation/AI canvases with blend-cycle and PIE contracts, DOD pipelines and production distribution**
 
 
-Version 0.7.0-alpha.1 (Alpha) · 2026-11-21 · English
+Version 0.6.0-alpha.1 (Alpha) · 2026-11-21 · English
 
 
 ---

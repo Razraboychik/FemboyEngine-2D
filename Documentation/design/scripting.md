@@ -36,7 +36,7 @@ hash and only falls back to the VM when the host allows it.
   the VM and released build see the same strings, arrays and maps.
 - Overflow returns a script fault (`no-heap`, `heap-full`, `bad-collection`,
   `out-of-range`, `missing-key`) rather than growing the heap.
-- User functions are textual-only in 0.7.0-alpha.1: `function name(a, b) { ... }` before
+- User functions are textual-only in 0.6.0-alpha.1: `function name(a, b) { ... }` before
   the events. Each function owns an 8-register window at
   `64 + index * 8`; calls are depth-limited to 16 and recursion is rejected at
   runtime. `CallFunction` stores the result register, `Return` moves the result

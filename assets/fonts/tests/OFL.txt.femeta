@@ -1,0 +1,17 @@
+guid = "0x2EAB90B13B252AE4"
+asset_id = "0x0B5472FD95F500F7"
+type = "text"
+source = "fonts/tests/OFL.txt"
+cooked = "fonts/tests/OFL.fbytext"
+source_hash = "0x6E82BB650B712CCA"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

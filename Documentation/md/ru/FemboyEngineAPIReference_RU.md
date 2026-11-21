@@ -3,7 +3,7 @@
 **Движок на C++23 в парадигме data-oriented: полная публичная поверхность, контракты и пошаговый пример**
 
 
-Version 0.7.0-alpha.1 (Alpha) · 2026-11-21 · Russian
+Version 0.6.0-alpha.1 (Alpha) · 2026-11-21 · Russian
 
 
 ---

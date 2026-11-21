@@ -1,0 +1,17 @@
+guid = "0xD7E605422EF9676B"
+asset_id = "0x99D2DB43637843B2"
+type = "font"
+source = "fonts/Inter-Regular.ttf"
+cooked = "fonts/Inter-Regular.fbyfont"
+source_hash = "0xDF2F7FB389836504"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

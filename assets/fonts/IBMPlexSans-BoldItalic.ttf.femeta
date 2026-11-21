@@ -1,0 +1,17 @@
+guid = "0x6C67EDDC244B0BBC"
+asset_id = "0x008E52C43431438B"
+type = "font"
+source = "fonts/IBMPlexSans-BoldItalic.ttf"
+cooked = "fonts/IBMPlexSans-BoldItalic.fbyfont"
+source_hash = "0xD578BE69AF50F87D"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false
