@@ -335,6 +335,8 @@ private:
     id<MTLComputePipelineState> MSkinPipeline = nil;
     id<MTLRenderPipelineState> MMeshPipeline = nil;
     id<MTLRenderPipelineState> MSpritePipeline = nil;
+    id<MTLRenderPipelineState> MSpriteBasePipeline = nil;
+    id<MTLRenderPipelineState> MSpriteNormalPipeline = nil;
     id<MTLRenderPipelineState> MUpscalePipeline = nil;
     id<MTLRenderPipelineState> MTemporalPipeline = nil;
     id<MTLRenderPipelineState> MHudPipeline = nil;
@@ -535,8 +537,11 @@ bool MetalRHI::CreateLibraryAndPipelines()
     id<MTLFunction> meshVertex = [MLibrary newFunctionWithName:@"mesh_vertex"];
     id<MTLFunction> meshFragment = [MLibrary newFunctionWithName:@"mesh_fragment"];
     id<MTLFunction> spriteVertex = [MLibrary newFunctionWithName:@"sprite_vertex"];
+    id<MTLFunction> spriteBaseFragment = [MLibrary newFunctionWithName:@"sprite_base_fragment"];
+    id<MTLFunction> spriteNormalFragment = [MLibrary newFunctionWithName:@"sprite_normal_fragment"];
     id<MTLFunction> spriteFragment = [MLibrary newFunctionWithName:@"sprite_fragment"];
-    if (skinFunction == nil || meshVertex == nil || meshFragment == nil || spriteVertex == nil || spriteFragment == nil)
+    if (skinFunction == nil || meshVertex == nil || meshFragment == nil || spriteVertex == nil ||
+        spriteBaseFragment == nil || spriteNormalFragment == nil || spriteFragment == nil)
     {
         LogError("metal", "MSL library is missing one of the mesh/sprite entry points");
         return false;
@@ -572,7 +577,10 @@ bool MetalRHI::CreateLibraryAndPipelines()
 
     MMeshPipeline = makeRenderPipeline(meshVertex, meshFragment);
     MSpritePipeline = makeRenderPipeline(spriteVertex, spriteFragment);
-    if (MMeshPipeline == nil || MSpritePipeline == nil)
+    MSpriteBasePipeline = makeRenderPipeline(spriteVertex, spriteBaseFragment);
+    MSpriteNormalPipeline = makeRenderPipeline(spriteVertex, spriteNormalFragment);
+    if (MMeshPipeline == nil || MSpritePipeline == nil || MSpriteBasePipeline == nil ||
+        MSpriteNormalPipeline == nil)
     {
         return false;
     }
@@ -921,6 +929,16 @@ void MetalRHI::RecordPacket(id<MTLCommandBuffer> commandBuffer, id<MTLTexture> c
             ScopedLights[16u + ScopedI * 4u + 3u] = ScopedLight.ColorAndIntensity.W;
         }
         [encoder setFragmentBytes:ScopedLights.data() length:sizeof(ScopedLights) atIndex:2];
+        const auto ScopedSpritePipeline = [&](const RenderItem& InItem) -> id<MTLRenderPipelineState>
+        {
+            if ((InItem.flags & ((1u << 6) | (1u << 7) | (1u << 8))) != 0u)
+            {
+                return MSpritePipeline;
+            }
+            const bool ScopedNormal =
+                ((InItem.flags >> 16u) & 0xFFu) >= 1u && ((InItem.flags >> 11u) & 0x1Fu) != 0u;
+            return ScopedNormal ? MSpriteNormalPipeline : MSpriteBasePipeline;
+        };
 
         // Per-batch texture-array binding, mirroring VulkanRHI::DrawPacket.
         //
@@ -943,6 +961,7 @@ void MetalRHI::RecordPacket(id<MTLCommandBuffer> commandBuffer, id<MTLTexture> c
 
         if (packet.batches.empty())
         {
+            [encoder setRenderPipelineState:ScopedSpritePipeline(packet.items.front())];
             [encoder setVertexBuffer:frame.instances offset:0 atIndex:0];
             ScopedBindArray(packet.textureArray);
             ++MStats.textureBinds;
@@ -984,6 +1003,7 @@ void MetalRHI::RecordPacket(id<MTLCommandBuffer> commandBuffer, id<MTLTexture> c
                 }
                 const std::uint32_t ScopedArray =
                     ScopedBatch.textureArray != 0 ? ScopedBatch.textureArray : packet.textureArray;
+                [encoder setRenderPipelineState:ScopedSpritePipeline(packet.items[ScopedBatch.firstItem])];
                 [encoder setVertexBuffer:frame.instances
                                   offset:static_cast<NSUInteger>(ScopedBatch.firstItem) * ScopedItemStride
                                  atIndex:0];
