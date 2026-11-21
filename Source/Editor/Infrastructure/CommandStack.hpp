@@ -89,8 +89,8 @@ public:
 
     struct Config
     {
-        // 4 MiB of compressed undo deltas
-        std::size_t payloadBytes = 4u << 20;
+        // 16 MiB of compressed undo deltas; the editor allocates this once.
+        std::size_t payloadBytes = 16u << 20;
         std::uint32_t maxCommands = kMaxUndoCommands;
     };
 

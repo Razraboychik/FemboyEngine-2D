@@ -17,7 +17,7 @@ namespace Fby::Editor
 class TextureThumbnailCache
 {
 public:
-    static constexpr std::uint32_t kMaxEntries = 256;
+    static constexpr std::uint32_t kMaxEntries = 512;
 
     TextureThumbnailCache() = default;
     TextureThumbnailCache(const TextureThumbnailCache&) = delete;

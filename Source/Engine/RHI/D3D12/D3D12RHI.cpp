@@ -70,7 +70,14 @@ class D3D12RHI final : public RHI
 public:
     bool Initialize(const DeviceDesc& InDesc) override
     {
-        (void)InDesc;
+        constexpr std::uint32_t kMaxBackendItems = 1u << 16;
+        const std::uint32_t ScopedRequestedItems = std::max(1u, InDesc.maxItemsPerFrame);
+        const std::uint32_t ScopedItems = std::min(ScopedRequestedItems, kMaxBackendItems);
+        MVertexCapacity = ScopedItems * 6u;
+        if (ScopedItems < ScopedRequestedItems)
+        {
+            LogWarn("d3d12", "sprite item capacity clamped from {} to {}", ScopedRequestedItems, ScopedItems);
+        }
         if (!CreateFactoryAndDevice())
         {
             return false;
@@ -377,7 +384,10 @@ public:
         if (InPacket.batches.empty())
         {
             MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
-            MCommandList->SetPipelineState(MPipeline.Get());
+            const Rhi::RenderItem& ScopedOnly = InPacket.items.front();
+            const bool ScopedOnlyNormal =
+                NormalMapLayer(ScopedOnly.flags) >= 1u && NormalMapStrength(ScopedOnly.flags) > 0.0f;
+            MCommandList->SetPipelineState(ScopedOnlyNormal ? MPipeline.Get() : MBasePipeline.Get());
             MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
             ScopedDraw(0, static_cast<std::uint32_t>(ScopedCount), InPacket.textureArray);
         }
@@ -403,7 +413,11 @@ public:
                 else
                 {
                     MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
-                    MCommandList->SetPipelineState(MPipeline.Get());
+                    const Rhi::RenderItem& ScopedBatchFirst =
+                        InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
+                    const bool ScopedBatchNormal = NormalMapLayer(ScopedBatchFirst.flags) >= 1u &&
+                                                   NormalMapStrength(ScopedBatchFirst.flags) > 0.0f;
+                    MCommandList->SetPipelineState(ScopedBatchNormal ? MPipeline.Get() : MBasePipeline.Get());
                     MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
                 }
                 ScopedDraw(ScopedBatch.firstItem * 6, ScopedBatch.itemCount * 6, ScopedTexture);
@@ -518,7 +532,7 @@ public:
                 else
                 {
                     MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
-                    MCommandList->SetPipelineState(MPipeline.Get());
+                    MCommandList->SetPipelineState(MBasePipeline.Get());
                     MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
                 }
                 MCommandList->DrawInstanced(static_cast<UINT>(ScopedMeshCount - ScopedStart), 1,
@@ -3773,6 +3787,12 @@ float4 PSMain(VSOutput input) : SV_Target
         {
             return false;
         }
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedBasePso = ScopedPso;
+        ScopedBasePso.PS = {Shaders::Dx::D3D12SpriteBasePsSm5.data(), Shaders::Dx::D3D12SpriteBasePsSm5.size()};
+        if (FAILED(MDevice->CreateGraphicsPipelineState(&ScopedBasePso, IID_PPV_ARGS(&MBasePipeline))))
+        {
+            return false;
+        }
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedAdditivePso = ScopedPso;
         ScopedAdditivePso.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
         ScopedAdditivePso.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
@@ -4024,6 +4044,7 @@ float4 PSMain(VSOutput input) : SV_Target
     ComPtr<ID3D12RootSignature> MRootSignature;
     ComPtr<ID3D12RootSignature> MSpriteLightRootSignature;
     ComPtr<ID3D12PipelineState> MPipeline;
+    ComPtr<ID3D12PipelineState> MBasePipeline;
     ComPtr<ID3D12RootSignature> MMaterialRootSignature;
     Extent2D MExtent{320, 240};
     bool MVsync = true;

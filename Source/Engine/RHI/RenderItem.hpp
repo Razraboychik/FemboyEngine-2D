@@ -219,6 +219,10 @@ inline constexpr std::uint64_t kDepthScale = (1ull << kDepthBits) - 1ull;
 static_assert(kDepthBits == 32);
 static_assert((std::uint64_t{65535} << kSequenceBits) <= kDepthScale);
 inline constexpr std::uint32_t kMaxMaterialBuckets = 1u << kMaterialBits;
+// The last bucket is reserved for normal-mapped sprites so the D3D11 base and
+// normal pixel shaders never share a batch.
+inline constexpr std::uint32_t kNormalMaterialBucket = kMaxMaterialBuckets - 1u;
+inline constexpr std::uint32_t kMaxUserMaterialBucket = kNormalMaterialBucket - 1u;
 inline constexpr std::uint32_t kMaterialKeyShift = kDepthBits + kSequenceBits;
 inline constexpr std::uint32_t kLayerKeyShift = kMaterialKeyShift + kMaterialBits;
 

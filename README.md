@@ -477,7 +477,6 @@ is [the Russian README](READMEs/README_RU.md).
 - [Vehicle wheels](Documentation/design/vehicle-wheels.md)
 - [Input system](Documentation/design/input-system.md)
 - [Physics backends design](Documentation/design/physics-backends.md)
-- [CodeQL audit](Documentation/design/codeql-audit.md)
 - [Time, timers and dates](Documentation/design/time.md)
 - [Accessibility guide](Documentation/design/accessibility-guide.md)
 - [Accessibility contract](Documentation/design/accessibility.md)

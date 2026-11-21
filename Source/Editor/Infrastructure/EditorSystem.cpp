@@ -122,7 +122,7 @@ namespace Fby::Editor
 namespace
 {
 // Fixed PIE snapshot arena.
-inline constexpr std::size_t kPieArenaBytes = 32u * 1024u * 1024u;
+inline constexpr std::size_t kPieArenaBytes = 256u * 1024u * 1024u;
 // Bump when the default dock layout changes materially (new panel, new split).
 // The marker next to the ImGui ini then forces one rebuild, so an old saved
 // layout cannot hide the Viewport behind stale tabs.
@@ -5465,6 +5465,8 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     {
         MImpl->pieInitialized = true;
     }
+    LogInfo("editor", "memory budgets: PIE {} MiB, undo {} MiB, thumbnails {}", kPieArenaBytes / (1024u * 1024u),
+            MImpl->commands.GetStats().bytesCapacity / (1024u * 1024u), TextureThumbnailCache::kMaxEntries);
 
     // A project is only a project when its project.femproj exists. Accepting an
     // arbitrary working directory would offer "Continue with this project" for

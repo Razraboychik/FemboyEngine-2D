@@ -138,6 +138,16 @@ public:
         MHasLastSorted = false;
     }
 
+    // Keeps every sprite in the packet so a camera-only change never needs a
+    // scene re-extract. The GPU clips off-screen quads; use only where the
+    // overdraw is cheaper than the CPU extract (editor small scenes/tests).
+    void SetCameraReuseAllSprites(bool InEnabled) noexcept
+    {
+        MCameraReuseAllSprites = InEnabled;
+        MCameraCacheValid = false;
+        MHasLastFrame = false;
+    }
+
     // Reserves the compose buffers once so a growing scene does not allocate on
     // the first heavy frame. `InMaxItems` is the frame contract's item cap.
     void Reserve(std::uint32_t InMaxItems);
@@ -377,6 +387,14 @@ private:
     std::uint64_t MLastSceneRevision = 0;
     std::uint64_t MLastModificationRevision = 0;
     std::uint32_t MLastTextureArray = 0xFFFFFFFFu;
+    bool MLastCullComplete = true;
+    bool MCameraReuseAllSprites = false;
+    bool MCameraCacheValid = false;
+    std::vector<Rhi::RenderItem> MCameraCacheItems;
+    std::vector<Rhi::RenderKey> MCameraCacheKeys;
+    std::vector<Rhi::RenderItem> MCameraFilteredItems;
+    std::vector<Rhi::RenderKey> MCameraFilteredKeys;
+    std::vector<Rhi::DrawBatch> MCameraFilteredBatches;
     Rhi::ViewportMode MLastViewportMode{};
     bool MHasLastCamera = false;
     // History generation. Bumping it invalidates every MotionHistory2D record

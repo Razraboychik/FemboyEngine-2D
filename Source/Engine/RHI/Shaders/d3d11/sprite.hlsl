@@ -34,7 +34,8 @@ float4 PSMain(VSOutput input) : SV_Target
         sampled.xy *= strength;
         float3 normal = normalize(float3(sampled.xy, max(sampled.z, 0.05)));
         float3 lit = float3(0.15, 0.15, 0.15);
-        [unroll] for (uint i = 0; i < 64; ++i)
+        const uint lightCount = min((uint)SpriteLights[63].PositionAndRadius.w, 63u);
+        [loop] for (uint i = 0; i < lightCount; ++i)
         {
             GpuLight light = SpriteLights[i];
             float radius = light.PositionAndRadius.z;

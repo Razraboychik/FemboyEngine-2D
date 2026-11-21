@@ -98,7 +98,6 @@ source documents live in this directory, `design/`, `style/` and `adr/`.
 | Build text chat and voice chat, including effects and conditions | [Chat and voice effects](design/chat.md) |
 | Review transport security | [Security](design/security.md) |
 | Plan plugins and accessibility packs | [Plugin architecture](design/plugins.md) |
-| Understand excluded CodeQL vendor alerts | [CodeQL unused alerts](md/en/CodeQLUnusedAlerts_EN.md) |
 | Work on voice, lighting, text, PIE or networking | [Design documents](design) |
 
 ## Languages and formats
@@ -160,7 +159,6 @@ FemboyEngine2D.
 | Physics | [EN](md/en/Physics_EN.md) / [RU](md/ru/Physics_RU.md) | [EN](docx/en/Physics_EN.docx) / [RU](docx/ru/Physics_RU.docx) | [EN](pdf/en/Physics_EN.pdf) / [RU](pdf/ru/Physics_RU.pdf) | [EN](djvu/en/Physics_EN.djvu) / [RU](djvu/ru/Physics_RU.djvu) |
 | Frame Generation | [EN](md/en/FemboyEngineFrameGeneration_EN.md) / [RU](md/ru/FemboyEngineFrameGeneration_RU.md) | [EN](docx/en/FemboyEngineFrameGeneration_EN.docx) / [RU](docx/ru/FemboyEngineFrameGeneration_RU.docx) | [EN](pdf/en/FemboyEngineFrameGeneration_EN.pdf) / [RU](pdf/ru/FemboyEngineFrameGeneration_RU.pdf) | [EN](djvu/en/FemboyEngineFrameGeneration_EN.djvu) / [RU](djvu/ru/FemboyEngineFrameGeneration_RU.djvu) |
 | Optimization | [EN](md/en/FemboyEngineOptimization_EN.md) / [RU](md/ru/FemboyEngineOptimization_RU.md) | [EN](docx/en/FemboyEngineOptimization_EN.docx) / [RU](docx/ru/FemboyEngineOptimization_RU.docx) | [EN](pdf/en/FemboyEngineOptimization_EN.pdf) / [RU](pdf/ru/FemboyEngineOptimization_RU.pdf) | [EN](djvu/en/FemboyEngineOptimization_EN.djvu) / [RU](djvu/ru/FemboyEngineOptimization_RU.djvu) |
-| CodeQL unused alerts | [EN](md/en/CodeQLUnusedAlerts_EN.md) / [RU](md/ru/CodeQLUnusedAlerts_RU.md) | [EN](docx/en/CodeQLUnusedAlerts_EN.docx) / [RU](docx/ru/CodeQLUnusedAlerts_RU.docx) | [EN](pdf/en/CodeQLUnusedAlerts_EN.pdf) / [RU](pdf/ru/CodeQLUnusedAlerts_RU.pdf) | [EN](djvu/en/CodeQLUnusedAlerts_EN.djvu) / [RU](djvu/ru/CodeQLUnusedAlerts_RU.djvu) |
 
 ## Regenerate
 

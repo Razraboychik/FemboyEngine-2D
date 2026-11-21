@@ -20,6 +20,7 @@ OUTPUT = SHADER_ROOT / "DxShaderBlobs.hpp"
 NAMES = {
     "d3d11_sprite_VSMain": "D3D11SpriteVsSm5",
     "d3d11_sprite_PSMain": "D3D11SpritePsSm5",
+    "d3d11_sprite_base_PSMain": "D3D11SpriteBasePsSm5",
     "d3d11_motion_VSMain": "D3D11MotionVsSm5",
     "d3d11_motion_PSMain": "D3D11MotionPsSm5",
     "d3d11_temporal_VSMain": "D3D11TemporalVsSm5",
@@ -38,6 +39,7 @@ NAMES = {
     "d3d11_accessibility_flash_CSMain": "D3D11AccessibilityFlashCsSm5",
     "d3d12_sprite_VSMain": "D3D12SpriteVsSm5",
     "d3d12_sprite_PSMain": "D3D12SpritePsSm5",
+    "d3d12_sprite_base_PSMain": "D3D12SpriteBasePsSm5",
     "d3d12_motion_VSMain": "D3D12MotionVsSm5",
     "d3d12_motion_PSMain": "D3D12MotionPsSm5",
     "d3d12_temporal_VSMain": "D3D12TemporalVsSm5",
@@ -121,10 +123,16 @@ def main() -> int:
             names = ("sprite", "motion", "temporal", "sharpen", "postfx_composite", "bloom_prefilter", "bloom_blur",
                      "color_grading", "blit", "hud_composite", "upscale", "accessibility_composite",
                      "accessibility_flash")
+            if backend == "d3d11":
+                names = names + ("sprite_base",)
+            if backend == "d3d12":
+                names = names + ("sprite_base",)
             if backend == "d3d12":
                 names = names + ("material_sprite",)
             for name in names:
                 entries = ("VSMain", "PSMain")
+                if name == "sprite_base":
+                    entries = ("PSMain",)
                 if backend == "d3d11" and name == "sharpen":
                     entries = ("PSMain",)
                 if name == "material_sprite":

@@ -36,6 +36,14 @@ class D3D11RHI final : public RHI
 public:
     bool Initialize(const DeviceDesc& InDesc) override
     {
+        constexpr std::uint32_t kMaxBackendItems = 1u << 16;
+        const std::uint32_t ScopedRequestedItems = std::max(1u, InDesc.maxItemsPerFrame);
+        const std::uint32_t ScopedItems = std::min(ScopedRequestedItems, kMaxBackendItems);
+        MVertexCapacity = ScopedItems * 6u;
+        if (ScopedItems < ScopedRequestedItems)
+        {
+            LogWarn("d3d11", "sprite item capacity clamped from {} to {}", ScopedRequestedItems, ScopedItems);
+        }
         auto* ScopedWindow = static_cast<SDL_Window*>(InDesc.nativeWindow);
         if (ScopedWindow == nullptr)
         {
@@ -153,7 +161,7 @@ public:
         MInfo.backend = Backend::D3D11;
         MInfo.apiVersion = static_cast<std::uint32_t>(ScopedLevel);
         MInfo.framesInFlight = 1;
-        MInfo.maxItemsPerFrame = InDesc.maxItemsPerFrame;
+        MInfo.maxItemsPerFrame = ScopedItems;
         MInfo.maxTextureLayers = InDesc.maxTextureLayers;
         MInfo.maxMeshVerticesPerFrame = InDesc.maxMeshVerticesPerFrame;
         MInfo.maxBoneMatricesPerFrame = InDesc.maxBoneMatricesPerFrame;
@@ -570,13 +578,14 @@ public:
         if (!InPacket.items.empty())
         {
             std::array<GpuLight, 64> ScopedLights{};
-            const std::size_t ScopedLightCount = InPacket.lights.size() < ScopedLights.size()
+            const std::size_t ScopedLightCount = InPacket.lights.size() < ScopedLights.size() - 1u
                                                      ? InPacket.lights.size()
-                                                     : ScopedLights.size();
+                                                     : ScopedLights.size() - 1u;
             for (std::size_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
             {
                 ScopedLights[ScopedI] = InPacket.lights[ScopedI];
             }
+            ScopedLights.back().PositionAndRadius.W = static_cast<float>(ScopedLightCount);
             D3D11_MAPPED_SUBRESOURCE ScopedLightMapped{};
             if (SUCCEEDED(MContext->Map(MSpriteLightBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ScopedLightMapped)))
             {
@@ -653,6 +662,10 @@ public:
                 ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(InPacket.textureArray),
                                                            MSpriteLightSrv.Get()};
                 MContext->PSSetShaderResources(0, 2, ScopedViews);
+                const Rhi::RenderItem& ScopedFirst = InPacket.items.front();
+                const bool ScopedNormal = NormalMapLayer(ScopedFirst.flags) >= 1u &&
+                                          NormalMapStrength(ScopedFirst.flags) > 0.0f;
+                MContext->PSSetShader(ScopedNormal ? MPixelShader.Get() : MBasePixelShader.Get(), nullptr, 0);
                 MContext->Draw(static_cast<UINT>(ScopedCount), 0);
                 ++MStats.drawCalls;
             }
@@ -670,6 +683,11 @@ public:
                     ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(ScopedTexture),
                                                                MSpriteLightSrv.Get()};
                     MContext->PSSetShaderResources(0, 2, ScopedViews);
+                    const Rhi::RenderItem& ScopedBatchFirst =
+                        InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
+                    const bool ScopedBatchNormal = NormalMapLayer(ScopedBatchFirst.flags) >= 1u &&
+                                                   NormalMapStrength(ScopedBatchFirst.flags) > 0.0f;
+                    MContext->PSSetShader(ScopedBatchNormal ? MPixelShader.Get() : MBasePixelShader.Get(), nullptr, 0);
                     MContext->Draw(static_cast<UINT>(ScopedBatch.itemCount) * 6u,
                                    static_cast<UINT>(ScopedBatch.firstItem) * 6u);
                     ++MStats.drawCalls;
@@ -764,6 +782,7 @@ public:
                 ID3D11ShaderResourceView* ScopedMeshViews[] = {TextureViewFor(ScopedItem.textureArray),
                                                                MSpriteLightSrv.Get()};
                 MContext->PSSetShaderResources(0, 2, ScopedMeshViews);
+                MContext->PSSetShader(MBasePixelShader.Get(), nullptr, 0);
                 const UINT ScopedStride = sizeof(SmokeVertex);
                 const UINT ScopedOffset = 0;
                 MContext->IASetVertexBuffers(0, 1, MVertexBuffer.GetAddressOf(), &ScopedStride, &ScopedOffset);
@@ -2109,6 +2128,8 @@ float4 PSMain(VSOutput input) : SV_Target
         SIZE_T ScopedVSSize = Shaders::Dx::D3D11SpriteVsSm5.size();
         const void* ScopedPSData = Shaders::Dx::D3D11SpritePsSm5.data();
         SIZE_T ScopedPSSize = Shaders::Dx::D3D11SpritePsSm5.size();
+        const void* ScopedBasePSData = Shaders::Dx::D3D11SpriteBasePsSm5.data();
+        SIZE_T ScopedBasePSSize = Shaders::Dx::D3D11SpriteBasePsSm5.size();
         if (ScopedLegacyShaderModel)
         {
             if (FAILED(D3DCompile(ScopedShader, sizeof(ScopedShader), "sprite11.hlsl", nullptr, nullptr, "VSMain",
@@ -2132,6 +2153,7 @@ float4 PSMain(VSOutput input) : SV_Target
         };
         if (FAILED(MDevice->CreateVertexShader(ScopedVSData, ScopedVSSize, nullptr, &MVertexShader)) ||
             FAILED(MDevice->CreatePixelShader(ScopedPSData, ScopedPSSize, nullptr, &MPixelShader)) ||
+            FAILED(MDevice->CreatePixelShader(ScopedBasePSData, ScopedBasePSSize, nullptr, &MBasePixelShader)) ||
             FAILED(MDevice->CreateInputLayout(ScopedLayout, static_cast<UINT>(std::size(ScopedLayout)),
                                               ScopedVSData, ScopedVSSize, &MInputLayout)))
         {
@@ -2463,6 +2485,7 @@ float4 PSMain(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     ComPtr<ID3D11RenderTargetView> MRtv;
     ComPtr<ID3D11VertexShader> MVertexShader;
     ComPtr<ID3D11PixelShader> MPixelShader;
+    ComPtr<ID3D11PixelShader> MBasePixelShader;
     ComPtr<ID3D11InputLayout> MInputLayout;
     ComPtr<ID3D11BlendState> MBlendState;
     ComPtr<ID3D11BlendState> MAdditiveBlendState;

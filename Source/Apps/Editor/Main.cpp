@@ -993,7 +993,7 @@ int main(int argc, char** argv)
     ScopedDeviceDesc.size = {ScopedWindow.Size().width, ScopedWindow.Size().height};
     ScopedDeviceDesc.vsync = std::getenv("FBY_EDITOR_NOVSYNC") == nullptr;
     ScopedDeviceDesc.enableValidation = std::getenv("FBY_VULKAN_VALIDATION") != nullptr;
-    ScopedDeviceDesc.maxItemsPerFrame = 1u << 16;
+    ScopedDeviceDesc.maxItemsPerFrame = 1u << 17;
 
     std::unique_ptr<Fby::Rhi::RHI> ScopedGpu = Fby::Rhi::RHI::Create(ScopedDeviceDesc);
     if (!ScopedGpu)
@@ -2052,11 +2052,25 @@ int main(int argc, char** argv)
     Fby::Rhi::SdfCharacterRenderCache ScopedPieSdfCharacters;
     ScopedExtract.SetJobSystem(&ScopedJobs);
     ScopedPieExtract.SetJobSystem(&ScopedJobs);
-    ScopedExtract.SetInstanceDeltasEnabled(ScopedGpu->Info().framesInFlight == 1);
-    ScopedPieExtract.SetInstanceDeltasEnabled(ScopedGpu->Info().framesInFlight == 1);
+    // The multi-frame path is opt-in: the composer still emits full slices and
+    // the backend falls back to a full upload if a range or slot is invalid.
+    const bool ScopedAllowInstanceDeltas =
+        ScopedGpu->Info().framesInFlight == 1 || std::getenv("FBY_RHI_INSTANCE_DELTAS") != nullptr;
+    ScopedExtract.SetInstanceDeltasEnabled(ScopedAllowInstanceDeltas);
+    ScopedPieExtract.SetInstanceDeltasEnabled(ScopedAllowInstanceDeltas);
+    if (std::getenv("FBY_EDITOR_CAMERA_REUSE_ALL") != nullptr)
+    {
+        ScopedExtract.SetCameraReuseAllSprites(true);
+        ScopedPieExtract.SetCameraReuseAllSprites(true);
+        Fby::LogInfo("editor_app", "camera reuse-all enabled; off-screen sprites stay in the packet");
+    }
+    if (ScopedAllowInstanceDeltas && ScopedGpu->Info().framesInFlight > 1)
+    {
+        Fby::LogInfo("editor_app", "multi-frame instance deltas enabled by FBY_RHI_INSTANCE_DELTAS");
+    }
     // The viewport composes into fixed storage and does not need the diagnostic
     // render-ECS mirror, so both composers skip the per-sprite pack.
-    const std::uint32_t ScopedComposerItems = std::min<std::uint32_t>(ScopedGpu->Info().maxItemsPerFrame, 1u << 16);
+    const std::uint32_t ScopedComposerItems = std::min<std::uint32_t>(ScopedGpu->Info().maxItemsPerFrame, 1u << 17);
     ScopedExtract.Reserve(ScopedComposerItems);
     ScopedPieExtract.Reserve(ScopedComposerItems);
     ScopedExtract.SetRenderEcsMirror(false);

@@ -1390,7 +1390,9 @@ bool VulkanRHI::CreatePipeline()
         return false;
     }
 
-    if (!CreatePipelineForPass(MRenderPass, &MPipeline))
+    if (!CreatePipelineForPass(MRenderPass, &MPipeline) ||
+        !CreatePipelineForPass(MRenderPass, &MBasePipeline, false, false,
+                               Fby::Rhi::RenderBlendMode::Opaque, true))
     {
         return false;
     }
@@ -1399,7 +1401,7 @@ bool VulkanRHI::CreatePipeline()
 
 // One sprite pipeline per render pass.
 bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline, bool InDepthTest,
-                                      bool InBlendless, Fby::Rhi::RenderBlendMode InBlend)
+                                      bool InBlendless, Fby::Rhi::RenderBlendMode InBlend, bool InBaseFragment)
 {
     Vk::Api& ScopedApi = Vk::GetApi();
 
@@ -1419,7 +1421,8 @@ bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* Out
     };
 
     VkShaderModule ScopedVertexModule = ScopedMakeModule(Shaders::quad_vert);
-    VkShaderModule ScopedFragmentModule = ScopedMakeModule(Shaders::quad_frag);
+    VkShaderModule ScopedFragmentModule = InBaseFragment ? ScopedMakeModule(Shaders::quad_base_frag)
+                                                         : ScopedMakeModule(Shaders::quad_frag);
     if (ScopedVertexModule == VK_NULL_HANDLE || ScopedFragmentModule == VK_NULL_HANDLE)
     {
         return false;
@@ -1576,7 +1579,17 @@ bool VulkanRHI::CreateGeometry()
 
 bool VulkanRHI::CreateInstanceRing()
 {
-    MInstanceCapacity = std::max(1u, MDesc.maxItemsPerFrame);
+    VkPhysicalDeviceProperties ScopedProperties{};
+    Vk::GetApi().vkGetPhysicalDeviceProperties(MPhysical, &ScopedProperties);
+    MInstanceCapacity = VulkanCapacity::ClampInstanceCapacity(
+        MDesc.maxItemsPerFrame, ScopedProperties.limits.maxStorageBufferRange, MFramesInFlight, sizeof(RenderItem));
+    if (MInstanceCapacity < MDesc.maxItemsPerFrame)
+    {
+        LogWarn("vulkan", "instance capacity clamped from {} to {} (storage range {} bytes, {} frames)",
+                MDesc.maxItemsPerFrame, MInstanceCapacity, ScopedProperties.limits.maxStorageBufferRange,
+                MFramesInFlight);
+    }
+    MInfo.maxItemsPerFrame = MInstanceCapacity;
     const VkDeviceSize ScopedSliceBytes = static_cast<VkDeviceSize>(MInstanceCapacity) * sizeof(RenderItem);
     const VkDeviceSize ScopedTotalBytes = ScopedSliceBytes * (MFramesInFlight * 2u);
 
