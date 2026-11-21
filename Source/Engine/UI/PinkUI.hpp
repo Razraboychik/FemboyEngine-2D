@@ -866,6 +866,9 @@ struct WidgetCanvas
 
     // Insertion
     [[nodiscard]] std::int32_t AddWidget(const WidgetDesc& InDesc) noexcept;
+    // Moves a widget under a new parent (kNoWidget = root). Rejects cycles and a
+    // full parent child list.
+    [[nodiscard]] bool ReparentWidget(std::int32_t InWidget, std::int32_t InParent) noexcept;
 
     // Replaces the text range of a label.
     [[nodiscard]] bool SetText(std::int32_t InWidget, std::string_view InText) noexcept;

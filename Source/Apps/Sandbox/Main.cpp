@@ -1,4 +1,5 @@
 // FemboyEngine2D - sandbox.
+#include "Engine/ECS/StateTree.hpp"
 #include "Engine/Physics/SdfCharacter.hpp"
 #include "Engine/Core/CrashHandler.hpp"
 #include "Engine/Core/AssetPaths.hpp"
@@ -496,7 +497,6 @@ void ExtractRegistry(const Fby::Ecs::Registry& InRegistry, RenderExtract& InExtr
     Fby::Sandbox::PieClient ScopedClient;
     std::string ScopedError;
     Fby::Ecs::SnapshotSchema ScopedClientSchema = Fby::Ecs::SnapshotSchema::BuiltIns();
-    (void)Fby::RegisterSdfCharacterSnapshotCodec(ScopedClientSchema);
     if (!ScopedClient.Start(ScopedConfig, ScopedClientSchema, &ScopedError))
     {
         Fby::LogError("sandbox", "PIE client start failed: {}", ScopedError);
@@ -644,7 +644,6 @@ int main(int argc, char** argv)
         Fby::Sandbox::PieClient ScopedClient;
         std::string ScopedClientError;
         Fby::Ecs::SnapshotSchema ScopedPieClientSchema = Fby::Ecs::SnapshotSchema::BuiltIns();
-        (void)Fby::RegisterSdfCharacterSnapshotCodec(ScopedPieClientSchema);
         if (!ScopedClient.Start(ScopedClientConfig, ScopedPieClientSchema, &ScopedClientError))
         {
             Fby::LogError("sandbox", "PIE client start failed: {}", ScopedClientError);

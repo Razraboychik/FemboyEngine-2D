@@ -119,7 +119,11 @@ bool VirtualTextureSystem::Initialize(const VirtualTextureDesc& InDesc, VirtualF
     }
     MSlotsPerLayer = MTilesPerAxis * MTilesPerAxis;
 
-    const std::size_t ScopedRootBytes = std::strlen(InChunkRoot);
+    std::size_t ScopedRootBytes = 0;
+    while (ScopedRootBytes < kVirtualTextureMaxChunkRootBytes && InChunkRoot[ScopedRootBytes] != '\0')
+    {
+        ++ScopedRootBytes;
+    }
     if (ScopedRootBytes >= kVirtualTextureMaxChunkRootBytes)
     {
         return ScopedFail("virtual texture: chunk root is longer than 191 bytes");

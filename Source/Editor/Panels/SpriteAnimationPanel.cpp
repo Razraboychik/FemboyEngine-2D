@@ -1,6 +1,7 @@
 #include "Editor/Panels/SpriteAnimationPanel.hpp"
 
 #include "Engine/Assets/AssetDatabase.hpp"
+#include "Engine/Assets/AsepriteImporter.hpp"
 
 #include "Editor/Infrastructure/EditorTheme.hpp"
 #include "Editor/Infrastructure/TextureThumbnails.hpp"
@@ -403,6 +404,51 @@ void DrawSpriteAnimationInspector(Ecs::SystemContext& InContext, Entity InEntity
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%s", InState.saveStatus.c_str());
+    ImGui::InputText("Aseprite JSON", InState.asepritePath.data(), InState.asepritePath.size());
+    if (ImGui::Button("Import Aseprite"))
+    {
+        std::error_code ScopedSizeError;
+        const std::uintmax_t ScopedJsonBytes =
+            std::filesystem::file_size(InState.asepritePath.data(), ScopedSizeError);
+        if (ScopedSizeError || ScopedJsonBytes > 4u * 1024u * 1024u)
+        {
+            InState.saveStatus = "Aseprite JSON is missing or larger than 4 MiB";
+        }
+        else
+        {
+            std::ifstream ScopedFile(InState.asepritePath.data(), std::ios::binary);
+            std::string ScopedJson((std::istreambuf_iterator<char>(ScopedFile)), std::istreambuf_iterator<char>());
+            Assets::AsepriteSheet ScopedSheet;
+            std::string ScopedError;
+            if (!Assets::ParseAsepriteJson(ScopedJson, &ScopedSheet, &ScopedError))
+            {
+                InState.saveStatus = "Aseprite: " + ScopedError;
+            }
+            else
+            {
+                const std::uint32_t ScopedFirst = ScopedSheet.Tags.empty() ? 0 : ScopedSheet.Tags.front().From;
+                const std::uint32_t ScopedCount =
+                    ScopedSheet.Tags.empty() ? static_cast<std::uint32_t>(ScopedSheet.Frames.size())
+                                             : ScopedSheet.Tags.front().To - ScopedSheet.Tags.front().From + 1;
+                std::uint32_t ScopedStart = 0;
+                float ScopedDuration = 0.1f;
+                if (Assets::AsepriteToSpriteSheet(ScopedSheet, ScopedFirst, ScopedCount, ScopedGrid, &ScopedStart,
+                                                  &ScopedDuration, &ScopedError))
+                {
+                    ScopedSpriteAnimation->StartFrame = ScopedStart;
+                    ScopedSpriteAnimation->FrameCount = ScopedCount;
+                    ScopedSpriteAnimation->CurrentFrame = 0;
+                    ScopedSpriteAnimation->ElapsedTime = 0.0f;
+                    ScopedSpriteAnimation->FrameDuration = ScopedDuration;
+                    InState.saveStatus = "Aseprite clip imported";
+                }
+                else
+                {
+                    InState.saveStatus = "Aseprite: " + ScopedError;
+                }
+            }
+        }
+    }
 
     ImGui::BeginChild("##frame_timeline", ImVec2(0.0f, 30.0f), ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar);
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedFrameCount; ++ScopedI)

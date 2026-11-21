@@ -7,6 +7,7 @@
 #include "Engine/Audio/VoiceNetworkBridge.hpp"
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/ECS/ReplayRecorder.hpp"
+#include "Engine/Core/ViewProfile.hpp"
 #include "Engine/ECS/Snapshot.hpp"
 #include "Engine/Network/NetLink.hpp"
 #include "Engine/Network/Replication.hpp"
@@ -94,7 +95,8 @@ public:
     // Serializes `editorWorld` and restores the clone. The editor world is never
     [[nodiscard]] Result Start(Ecs::Registry& InEditorWorld, const Ecs::SnapshotSchema& InSchema,
                                const Ecs::SystemContext& InServices, std::uint64_t InTick = 1,
-                               const DeterministicRng* InRng = nullptr) noexcept;
+                               const DeterministicRng* InRng = nullptr,
+                               ViewProfile InProfile = ViewProfile::Default) noexcept;
     static void ApplyPieState(void* InUser, std::uint64_t InTick, std::span<const std::byte> InState) noexcept;
     void Stop() noexcept;
 
@@ -106,7 +108,8 @@ public:
                                           const Ecs::SystemContext& InServices, std::uint32_t InClientCount = 1,
                                           std::uint64_t InTick = 0,
                                           const DeterministicRng* InRng = nullptr,
-                                          const ExternalClientDesc* InExternal = nullptr) noexcept;
+                                          const ExternalClientDesc* InExternal = nullptr,
+                                          ViewProfile InProfile = ViewProfile::Default) noexcept;
     [[nodiscard]] bool StepMultiplayer(Ecs::SystemGraph& InGraph, float InDeltaSeconds,
                                        float InFixedDelta = 1.0f / 60.0f) noexcept;
     [[nodiscard]] bool Multiplayer() const noexcept

@@ -2691,6 +2691,14 @@ void AIStateTreeCanvasPanel::DrawPIEInspector()
                                     static_cast<unsigned>(ScopedField.size / sizeof(Vector2D)));
                 break;
             }
+            case Reflect::FieldKind::UInt16Array:
+            case Reflect::FieldKind::FloatArray:
+            {
+                ImGui::TextDisabled("%.*s: %u value(s)", static_cast<int>(ScopedField.name.size()),
+                                    ScopedField.name.data(),
+                                    static_cast<unsigned>(ScopedField.size / sizeof(std::uint16_t)));
+                break;
+            }
         }
     }
 

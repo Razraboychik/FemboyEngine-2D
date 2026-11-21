@@ -138,6 +138,122 @@ bool TileUv(const TilemapComponent& InMap, std::uint16_t InIndex, Vector2D* OutM
     *OutMax = Vector2D{ScopedU + ScopedCellWidth, ScopedV + ScopedCellHeight};
     return true;
 }
+
+namespace
+{
+[[nodiscard]] bool HexFilled(const TilemapComponent& InMap, std::int32_t InX, std::int32_t InY) noexcept
+{
+    const Grid::Cell ScopedCell{InX, InY};
+    return Tilemap::Contains(InMap, ScopedCell) && !Fby::TileEmpty(Tilemap::At(InMap, ScopedCell));
+}
+}
+
+std::uint32_t HexAutoTileMask(const TilemapComponent& InMap, Grid::Cell InCell) noexcept
+{
+    constexpr std::array<Grid::Cell, 6> kNeighbours{Grid::Cell{1, 0},  Grid::Cell{1, -1}, Grid::Cell{0, -1},
+                                                    Grid::Cell{-1, 0}, Grid::Cell{-1, 1}, Grid::Cell{0, 1}};
+    std::uint32_t ScopedMask = 0;
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < kNeighbours.size(); ++ScopedIndex)
+    {
+        const Grid::Cell ScopedNeighbour{InCell.X + kNeighbours[ScopedIndex].X,
+                                         InCell.Y + kNeighbours[ScopedIndex].Y};
+        if (HexFilled(InMap, ScopedNeighbour.X, ScopedNeighbour.Y))
+        {
+            ScopedMask |= 1u << ScopedIndex;
+        }
+    }
+    return ScopedMask;
+}
+
+bool HexAutoTileCell(TilemapComponent& InMap, Grid::Cell InCell, const HexAutoTileRule& InRule) noexcept
+{
+    if (!Contains(InMap, InCell) || TileEmpty(At(InMap, InCell)))
+    {
+        return false;
+    }
+    const std::uint32_t ScopedTile = At(InMap, InCell);
+    const std::uint16_t ScopedReplacement = InRule.Tiles[HexAutoTileMask(InMap, InCell)];
+    if (ScopedReplacement == 0)
+    {
+        return false;
+    }
+    return Set(InMap, InCell, MakeTile(ScopedReplacement, TileFlagsOf(ScopedTile), TileHeightOf(ScopedTile)));
+}
+
+std::uint32_t HexAutoTileAll(TilemapComponent& InMap, const HexAutoTileRule& InRule) noexcept
+{
+    std::uint32_t ScopedChanged = 0;
+    for (std::uint32_t ScopedY = 0; ScopedY < InMap.Height; ++ScopedY)
+    {
+        for (std::uint32_t ScopedX = 0; ScopedX < InMap.Width; ++ScopedX)
+        {
+            if (HexAutoTileCell(InMap, Grid::Cell{static_cast<std::int32_t>(ScopedX), static_cast<std::int32_t>(ScopedY)},
+                                InRule))
+            {
+                ++ScopedChanged;
+            }
+        }
+    }
+    return ScopedChanged;
+}
+
+std::uint32_t AutoTileMask(const TilemapComponent& InMap, Grid::Cell InCell) noexcept
+{
+    std::uint32_t ScopedMask = 0;
+    if (Contains(InMap, Grid::Cell{InCell.X, InCell.Y - 1}) && !TileEmpty(At(InMap, Grid::Cell{InCell.X, InCell.Y - 1})))
+    {
+        ScopedMask |= 1u;
+    }
+    if (Contains(InMap, Grid::Cell{InCell.X + 1, InCell.Y}) && !TileEmpty(At(InMap, Grid::Cell{InCell.X + 1, InCell.Y})))
+    {
+        ScopedMask |= 2u;
+    }
+    if (Contains(InMap, Grid::Cell{InCell.X, InCell.Y + 1}) && !TileEmpty(At(InMap, Grid::Cell{InCell.X, InCell.Y + 1})))
+    {
+        ScopedMask |= 4u;
+    }
+    if (Contains(InMap, Grid::Cell{InCell.X - 1, InCell.Y}) && !TileEmpty(At(InMap, Grid::Cell{InCell.X - 1, InCell.Y})))
+    {
+        ScopedMask |= 8u;
+    }
+    return ScopedMask;
+}
+
+bool AutoTileCell(TilemapComponent& InMap, Grid::Cell InCell, const AutoTileRule& InRule) noexcept
+{
+    if (!Contains(InMap, InCell))
+    {
+        return false;
+    }
+    const std::uint32_t ScopedTile = At(InMap, InCell);
+    if (TileEmpty(ScopedTile))
+    {
+        return false;
+    }
+    const std::uint16_t ScopedReplacement = InRule.Tiles[AutoTileMask(InMap, InCell)];
+    if (ScopedReplacement == 0)
+    {
+        return false;
+    }
+    return Set(InMap, InCell, MakeTile(ScopedReplacement, TileFlagsOf(ScopedTile), TileHeightOf(ScopedTile)));
+}
+
+std::uint32_t AutoTileAll(TilemapComponent& InMap, const AutoTileRule& InRule) noexcept
+{
+    std::uint32_t ScopedChanged = 0;
+    for (std::uint32_t ScopedY = 0; ScopedY < InMap.Height; ++ScopedY)
+    {
+        for (std::uint32_t ScopedX = 0; ScopedX < InMap.Width; ++ScopedX)
+        {
+            if (AutoTileCell(InMap, Grid::Cell{static_cast<std::int32_t>(ScopedX), static_cast<std::int32_t>(ScopedY)},
+                             InRule))
+            {
+                ++ScopedChanged;
+            }
+        }
+    }
+    return ScopedChanged;
+}
 }
 
 namespace

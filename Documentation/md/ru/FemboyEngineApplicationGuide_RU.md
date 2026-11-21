@@ -1,6 +1,6 @@
 # FemboyEngine2D — Практическое руководство
 
-*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-18*
+*Практика ECS, оптимизация производства и SDK дистрибуции — 2026-11-21*
 
 ## 1. Для чего это руководство
 
@@ -377,6 +377,183 @@ session.SubmitRemoteInput(0, frame);
 - Проверяйте PIE на двух игроках, с искусственной задержкой, потерей пакетов и принудительным роллбэком до добавления контента.
 
 Полезный порядок проекта: один игрок + InputSystem; два локальных пользователя; round-trip снапшота; серверно-авторитетное движение; затем взаимодействия, оружие и ИИ. Добавляйте поля репликации вместе с фичей-владельцем, а не одним поздним «networking pass». Если система читает wall-clock, delta кадра или render handle, она не готова к роллбэку.
+
+### 5.2 Стабильные id, tombstones и ёмкость
+
+Gameplay-теги и SystemGraph намеренно никогда не перенумеровывают живой слот. Удаление тега или системы оставляет tombstone, потому что маски тегов в сцене и битмаски зависимостей ссылаются на id, а не на имена. У стабильности есть цена: Count — это high-water mark, а не число живых элементов. Воспринимайте его как выделенный диапазон id, а живой набор получайте через PathAt()/Find() или ActiveCount().
+
+- Предпочитайте Rename вместо Remove + Add для тега, который сохраняет смысл: rename сохраняет id и все маски в сценах.
+- Удаляйте тег только когда он выводится из обращения. RemoveAt() очищает всё поддерево, сохраняет более поздние id и оставляет tombstones.
+- Никогда не переиспользуйте tombstone для другого пути: сцена со старым битом молча изменит смысл.
+- Не используйте Count как счётчик живых тегов и не обходите его без пропуска пустых слотов PathAt().
+- Планируйте таксономию до релиза. У проекта kCapacity стабильных слотов тегов на всё время жизни; удаления расходуют их до осознанной миграции схемы.
+- Если проект приближается к лимиту, мигрируйте явно: экспортируйте пути тегов, пересоздайте базу, пересчитайте все маски GameplayTagsComponent и все сохранённые сцены одним изменением. Clear() сам по себе меняет id и миграцией не является.
+- Runtime-серверы загружают базу тегов один раз; tombstones стоят только памяти и невидимы геймплею. Дисциплина нужна прежде всего редактору при частых правках.
+- SystemGraph.RemoveUser() отключает слот на месте; для диагностики используйте ActiveCount(), а маски зависимостей держите живыми до Clear().
+- Вызывайте SystemGraph.Clear() только при полном teardown, когда ни система, ни инструмент, ни плагин больше не держат маску BitFor(). Повторная загрузка/выгрузка плагинов расходует слоты до этого teardown.
+
+```cpp
+const std::uint32_t retired = tags.Find("Character.State.Deprecated");
+if (retired >= 0)
+{
+    tags.RemoveAt(retired); // subtree becomes tombstones; later ids stay
+}
+for (std::uint32_t i = 0; i < tags.Count; ++i)
+{
+    const std::string_view path = tags.PathAt(i);
+    if (!path.empty())
+    {
+        DrawLiveTag(i, path); // Count is the id range, not the live count
+    }
+}
+
+graph.RemoveUser(pluginUser); // slot disabled in place; masks stay valid
+const std::uint32_t running = graph.ActiveCount();
+// At full teardown only:
+graph.Clear();
+```
+
+Файлы сцен и lobby в этом релизе имеют формат v2. Сцена v2 несёт skeleton-ссылки на GUID и текущий layout StateTree, а lobby v2 — ack с корреляцией nonce. Файлы v1 и пиры v1 отвергаются, а не читаются неверно; пересохраните проекты и обновляйте оба конца lobby-сессии вместе.
+
+### 5.3 Ограниченные authoring-payload для существующих систем
+
+Data::StructValue — слой движка в духе FInstancedStruct. Он хранит значение фиксированного размера, trivially copyable, вместе со стабильным type id и schema hash. Это не второй ECS и не второй GAS: GameplayTags, GameplayEffects и GameplaySkills остаются владельцами своих правил. Существующие определения имеют необязательное поле Data::StructPayload Params для данных проекта/плагина; системы копируют его, но не интерпретируют.
+
+- Жёсткие лимиты: 64 байта на значение, 4 значения на payload, 256 зарегистрированных типов. Планируйте под них, а не добавляйте heap-payload в компоненты.
+- Только trivially copyable, standard-layout типы. Внутри значения нет std::string, vector, указателей и виртуальных функций.
+- Регистрируйте тип один раз при старте со стабильным именем. MakeStructTypeId() хэширует имя, а не typeid() или адрес.
+- SchemaHash покрывает имена, виды, offset и размеры полей. Изменённый layout — это новая схема, старые файлы должны отвергаться.
+- Компонент — для редких authoring-данных сущности, никогда для Transform2D, Velocity, физики или per-frame hot state.
+- Для core-полей используйте типизированные компоненты. Payload — для модов, параметров проекта, cues и подобного.
+- TOML encode/decode полевой и отвергает неизвестные типы, несовпадение схемы и значения вне диапазона.
+- Snapshot-кодек регистрируется в схеме хоста; payload копируется сырыми байтами только после проверки схемы.
+
+```cpp
+struct Durability
+{
+    float Current = 100.0f;
+    float Maximum = 100.0f;
+};
+
+constexpr std::array<Data::StructField, 2> kDurabilityFields{
+    {"current", Reflect::FieldKind::Float, offsetof(Durability, Current), sizeof(float)},
+    {"maximum", Reflect::FieldKind::Float, offsetof(Durability, Maximum), sizeof(float)},
+};
+
+Data::StructTypeRegistry types;
+Data::RegisterStructType<Durability>(types, "Item.Durability", kDurabilityFields);
+const Data::StructType* durability = types.Find("Item.Durability");
+
+GameplayEffectDef effect;
+effect.Id = 7;
+effect.Params.Add(*durability, Durability{12.0f, 20.0f});
+effects.AddDef(effect); // existing GAS-like effect system owns the rules
+
+StructPayloadComponent payload;
+payload.Payload.Add(*durability, Durability{3.0f, 4.0f});
+registry.emplace<StructPayloadComponent>(entity, payload);
+```
+
+### 5.4 Пакеты модов без игровых интерфейсов
+
+Мод — это прежде всего данные: манифест, смонтированный пакет и, опционально, доверенный native-плагин. Он не реализует C++-интерфейс и не подменяет игровой класс. Существующие определения GameplayTags, GameplayEffects, GameplaySkills и StateTree остаются владельцами правил; мод добавляет строки, теги, системы и контент либо хранит проектные значения в StructPayload.
+
+```cpp
+# <mods>/hardcore/mod.toml
+id = "hardcore"
+name = "Hardcore"
+version = "1.2.0"
+engine_api = 6
+side = "both"
+priority = 100
+package = "hardcore.fempak"
+hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+# optional and only loaded when the host explicitly allows native code
+plugin = "hardcore.dll"
+scripts = ["scripts/hardcore.fbys"]
+dependencies = ["core"]
+```
+
+Хост находит mod.toml, проверяет пути и хэши, разрешает зависимости и циклы, затем монтирует пакеты в детерминированном порядке. Зависимости загружаются первыми; готовые моды — по возрастанию priority и id. Более поздний mount перекрывает путь меньшего приоритета через таблицу теней VFS. Загрузка транзакционна: плохой пакет размонтирует всё, что было загружено до него.
+
+```cpp
+Modding::ModHostConfig config;
+config.Vfs = &vfs;
+config.Plugins = &plugins;       // optional
+config.AllowNative = false;      // downloaded mods stay data-only
+config.RequireSignature = true;
+config.BasePriority = 100;
+config.HostSide = Modding::ModSide::Server;
+config.Scripts = &scripts; // optional ScriptRuntime
+
+Modding::ModHost mods(config);
+std::string error;
+if (!mods.LoadAll("mods", &error))
+{
+    LogError("mods", "{}", error);
+}
+// Server handshake: compare this with the peer before simulation starts.
+const std::string setHash = mods.ModSetHash();
+// ...
+mods.UnloadAll(&error);
+```
+
+- Никогда не загружайте native-плагины из недоверенной загрузки без явного доверия: native-код получает весь процесс.
+- Для файловых пакетов требуйте SHA-256, для подписанных манифестов — доверенный EdDSA-ключ; каталог-пакет v1 — путь разработки.
+- Мод не должен зависеть от приватного C++ layout. Он использует стабильные id, теги, строки effect/skill, системы, команды и события.
+- Системы мода работают в фазах SystemGraph и подчиняются тем же правилам fixed-step, CommandBuffer и детерминизма, что и first-party системы.
+- В серверных играх обменивайтесь ModSetHash и отвергайте пиров с другим simulation-набором; для cosmetic-only нужна отдельная политика.
+- Для проектных per-entity значений мода используйте Data::StructPayload, а не новый компонент на каждый мод.
+- Доступ native-модов к данным пока доверенная ABI-поверхность: текущий C ABI даёт регистрацию систем и layout-пробы, но не полный безопасный entity/component SDK.
+
+### 5.5 Безопасная data ABI модов и доверенная plugin ABI
+
+Есть два разных контракта. FbyHostApi — доверенная ABI first-party плагинов: она может отдавать непрозрачный Registry pointer и регистрацию native-систем. FbyModApi — безопасная data ABI: opaque entity handles, числовые component id, bounded-чтение, отложенные команды и никаких указателей в чанки. Скачиваемый мод должен получать только второй контракт. Доверенный native-плагин может получить оба через FbyHostApi::mod_api.
+
+```cpp
+/* Trusted plugin */
+if (FbyHostHasModApi(rawHost))
+{
+    const FbyModApi* mod = (const FbyModApi*)rawHost->mod_api;
+    FbyModComponentId health = 0;
+    if (mod->component_find(mod->user, "Health", &health) == FBY_MOD_OK)
+    {
+        FbyModEntity entity = mod->entity_create(mod->user);
+        Fby::Health value{100.0f};
+        mod->command_write(mod->user, entity, health, &value, sizeof(value));
+        mod->flush_commands(mod->user); /* safe point only */
+    }
+}
+```
+
+- Component id — process-local число, не C++ typeid и не адрес; перед записью проверяйте size и layout hash.
+- component_read копирует в буфер вызывающего. Маленький буфер возвращает FBY_MOD_WRONG_SIZE с требуемым размером.
+- command_write и command_remove только ставят работу в очередь; flush_commands применяет её в безопасной точке. Flush запрещён во время query.
+- Query несёт structural revision. Создание, удаление или flush во время query делают его stale; завершите и начните заново.
+- Entity handle — opaque index+generation. Уничтоженная сущность возвращает FBY_MOD_STALE_ENTITY, а не висячий указатель.
+- У событий стабильные host-assigned id и лимит payload 256 байт. Публикация копирует payload до вызова callbacks.
+- register_tag/register_effect/register_skill привязываются к существующим системам тегов, эффектов и скиллов; они добавляют строки, а не второй GAS.
+- Вызывайте ModApiHost::InstallFlushSystem(), чтобы очередь записывалась в фазе графа; хост должен пережить граф.
+- Native-плагин, получивший FbyHostApi::registry, — доверенный код. Не передавайте этот указатель недоверенному моду.
+- Safe ABI append-only: проверяйте struct_size и FbyModApiHas() перед использованием полей новых версий движка.
+
+### 5.6 Профили вида и политика сцены
+
+Проект выбирает профиль вида по умолчанию, а каждая сцена может его переопределить. Профиль — это политика симуляции, а не режим рендера: side-view использует гравитацию и Box2D, top-down убирает гравитацию, изометрия остаётся 2D-плоскостью с projection-слоем, а hex использует grid movement и top-down физику только для свободных объектов. Сцены одного проекта могут смешивать эти профили.
+
+```cpp
+view_profile = "side-view"   # project default
+
+# scenes/main.toml
+version = 2
+name = "main"
+profile = "hex"             # overrides the project for this scene
+```
+
+- Новый проект начинается с пустой сцены и профиля default; профиль выбирается в Project Settings и переопределяется на сцене.
+- Профиль сцены хранится и в TOML, и в бинарной сцене, и применяется при старте PIE.
+- Hex- и изометрические сцены по-прежнему используют мировые XY; соседство гексов, occupancy и pathfinding относятся к grid-слою.
+- Для больших top-down миров используйте DOD, для суставов, CCD и side-view стопок — Box2D; профиль задаёт значение по умолчанию, проект может переопределить backend.
 
 ---
 

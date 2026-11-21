@@ -1,6 +1,7 @@
 // FemboyEngine2D - data-driven gameplay effects: duration, periodic and stacks.
 #pragma once
 
+#include "Engine/Data/StructValue.hpp"
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/Gameplay/GameplayAttributes.hpp"
 #include "Engine/Gameplay/GameplayTags.hpp"
@@ -57,6 +58,9 @@ struct GameplayEffectDef
     // Tags granted to the target while the effect is active.
     std::array<GameplayTag, kMaxEffectGrantedTags> GrantedTags{};
     std::uint32_t GrantedTagCount = 0;
+    // Optional project/plugin authoring data for cues and custom effect logic.
+    // The effect system never interprets it, so it does not duplicate GAS.
+    Data::StructPayload Params;
 };
 
 static_assert(std::is_trivially_copyable_v<GameplayEffectDef>);

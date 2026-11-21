@@ -334,7 +334,8 @@ public:
     // Run(); with it enabled the loop honours breakpoints, single steps and
     // pause requests, and leaves the register file and pc intact on a pause.
     [[nodiscard]] VmStopInfo RunDebug(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf,
-                                      VmContext& InContext, VmDebugState& InDebug) noexcept;
+                                      VmContext& InContext, VmDebugState& InDebug,
+                                      VmSuspendState* InSuspend = nullptr) noexcept;
 
     // Prepares a fresh debug session: clears pause state and requests a pause at
     // the first instruction of the event.

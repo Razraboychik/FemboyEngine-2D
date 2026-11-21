@@ -15,7 +15,7 @@
 namespace Fby::Editor
 {
 
-inline constexpr std::uint32_t kMaxCommandCodecs = 64;
+inline constexpr std::uint32_t kMaxCommandCodecs = 128;
 inline constexpr std::uint32_t kMaxUndoCommands = 512;
 // ProjectSettings carries the full gameplay tag database and accessibility,
 // render and build policies. Keep the external-buffer cap above that image so

@@ -65,6 +65,43 @@ enum class RenderFlags : std::uint32_t
     Oit = 1u << 10,
 };
 
+// Normal-map sidecar packed into free RenderItem::flags bits. Bits 24..31 are
+// the depth byte, so the layer uses 16..23 and strength uses 11..15. SDF effect
+// width and a normal map are mutually exclusive per item.
+inline constexpr std::uint32_t kNormalLayerShift = 16u;
+inline constexpr std::uint32_t kNormalLayerMask = 0xFFu;
+inline constexpr std::uint32_t kNormalStrengthShift = 11u;
+inline constexpr std::uint32_t kNormalStrengthMask = 0x1Fu;
+
+[[nodiscard]] constexpr std::uint32_t EncodeNormalMap(std::uint32_t InLayer, float InStrength) noexcept
+{
+    const std::uint32_t ScopedLayer = InLayer > kNormalLayerMask ? kNormalLayerMask : InLayer;
+    const float ScopedStrength = !(InStrength >= 0.0f) ? 0.0f : (InStrength > 1.0f ? 1.0f : InStrength);
+    const std::uint32_t ScopedStrengthBits =
+        static_cast<std::uint32_t>(ScopedStrength * static_cast<float>(kNormalStrengthMask) + 0.5f);
+    return (ScopedLayer << kNormalLayerShift) | (ScopedStrengthBits << kNormalStrengthShift);
+}
+
+[[nodiscard]] constexpr std::uint32_t NormalMapLayer(std::uint32_t InFlags) noexcept
+{
+    return (InFlags >> kNormalLayerShift) & kNormalLayerMask;
+}
+
+[[nodiscard]] constexpr float NormalMapStrength(std::uint32_t InFlags) noexcept
+{
+    return static_cast<float>((InFlags >> kNormalStrengthShift) & kNormalStrengthMask) /
+           static_cast<float>(kNormalStrengthMask);
+}
+
+// Vertex metadata packs layer + half the strength so strength 1.0 never carries
+// into the next integer layer. The shader decodes frac() * 2.
+[[nodiscard]] constexpr float EncodeNormalVertexMeta(std::uint32_t InLayer, float InStrength) noexcept
+{
+    const std::uint32_t ScopedLayer = InLayer > kNormalLayerMask ? kNormalLayerMask : InLayer;
+    const float ScopedStrength = !(InStrength >= 0.0f) ? 0.0f : (InStrength > 1.0f ? 1.0f : InStrength);
+    return static_cast<float>(ScopedLayer) + ScopedStrength * 0.5f;
+}
+
 // Shader-facing bit for RenderFlags::VirtualTexture (quad.vert/frag).
 inline constexpr std::uint32_t kRenderFlagVirtualTexture = 1u << 5;
 // Shader-facing bit for RenderFlags::SdfText (quad.frag/metal sprite path).

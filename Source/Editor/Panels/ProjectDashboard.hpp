@@ -115,7 +115,6 @@ private:
     char MOpenPath[kPathCapacity]{};
     char MLocation[kPathCapacity]{};
     char MProjectName[kNameCapacity] = "MyProject";
-    int MProjectTemplate = 0;
     Mode MMode = Mode::Welcome;
     Action MPendingAction = Action::None;
     WindowManager* MWindow = nullptr;

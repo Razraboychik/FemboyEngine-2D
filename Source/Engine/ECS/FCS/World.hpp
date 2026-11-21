@@ -930,6 +930,58 @@ private:
         InOther.MModificationRevision.store(ScopedModification, std::memory_order_relaxed);
     }
 
+    // Deep copy used by staging: entity ids, free list and component bytes are
+    // preserved so an appended scene keeps the live world's identity space.
+    void CloneFrom(const World& InOther)
+    {
+        MRecords = InOther.MRecords;
+        MFreeIndices = InOther.MFreeIndices;
+        MLiveCount = InOther.MLiveCount;
+        MRevision = InOther.MRevision;
+        MIterationDepth = 0;
+        MModificationRevision.store(InOther.MModificationRevision.load(std::memory_order_relaxed),
+                                    std::memory_order_relaxed);
+        MArchetypes.clear();
+        MArchetypes.reserve(InOther.MArchetypes.size());
+        for (const Archetype& ScopedSource : InOther.MArchetypes)
+        {
+            Archetype ScopedTarget;
+            ScopedTarget.Type = ScopedSource.Type;
+            ScopedTarget.RowBytes = ScopedSource.RowBytes;
+            ScopedTarget.StorageBytes = ScopedSource.StorageBytes;
+            ScopedTarget.Capacity = ScopedSource.Capacity;
+            ScopedTarget.Offsets = ScopedSource.Offsets;
+            ScopedTarget.Sizes = ScopedSource.Sizes;
+            ScopedTarget.Chunks.reserve(ScopedSource.Chunks.size());
+            for (const Chunk& ScopedSourceChunk : ScopedSource.Chunks)
+            {
+                Chunk ScopedTargetChunk;
+                ScopedTargetChunk.Storage.Allocate(ScopedSourceChunk.Storage.Size());
+                for (std::uint32_t ScopedRow = 0; ScopedRow < ScopedSourceChunk.Count; ++ScopedRow)
+                {
+                    for (std::uint32_t ScopedId = 0; ScopedId < kMaxComponents; ++ScopedId)
+                    {
+                        const std::uint32_t ScopedSize = ScopedSource.Sizes[ScopedId];
+                        if (ScopedSize == 0)
+                        {
+                            continue;
+                        }
+                        const std::size_t ScopedOffset = ScopedSource.Offsets[ScopedId] +
+                                                        static_cast<std::size_t>(ScopedRow) * ScopedSize;
+                        std::memcpy(ScopedTargetChunk.Storage.Data() + ScopedOffset,
+                                    ScopedSourceChunk.Storage.Data() + ScopedOffset, ScopedSize);
+                    }
+                }
+                ScopedTargetChunk.Entities.assign(ScopedSourceChunk.Entities.size(), Entity{});
+                std::copy_n(ScopedSourceChunk.Entities.begin(), ScopedSourceChunk.Count,
+                            ScopedTargetChunk.Entities.begin());
+                ScopedTargetChunk.Count = ScopedSourceChunk.Count;
+                ScopedTarget.Chunks.push_back(std::move(ScopedTargetChunk));
+            }
+            MArchetypes.push_back(std::move(ScopedTarget));
+        }
+    }
+
     std::vector<EntityRecord> MRecords;
     std::vector<std::uint32_t> MFreeIndices;
     std::vector<Archetype> MArchetypes;

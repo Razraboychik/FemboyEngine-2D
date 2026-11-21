@@ -1112,6 +1112,31 @@ bool ScriptRuntime::UnloadProgram(std::uint32_t InHandle) noexcept
     return true;
 }
 
+bool ScriptRuntime::ReloadProgram(std::uint32_t* InHandle, std::span<const std::byte> InCooked,
+                                  std::string* InError)
+{
+    if (InHandle == nullptr)
+    {
+        if (InError != nullptr)
+        {
+            *InError = "reload handle is null";
+        }
+        return false;
+    }
+    const std::uint32_t ScopedOldHandle = *InHandle;
+    const std::uint16_t ScopedNewHandle = LoadProgram(InCooked, InError);
+    if (ScopedNewHandle == kScriptNoProgram)
+    {
+        return false;
+    }
+    if (ScopedOldHandle < kScriptMaxPrograms)
+    {
+        (void)UnloadProgram(ScopedOldHandle);
+    }
+    *InHandle = ScopedNewHandle;
+    return true;
+}
+
 const Script::BoundProgram* ScriptRuntime::Program(std::uint32_t InHandle) const noexcept
 {
     if (InHandle >= kScriptMaxPrograms || !MSlots[InHandle].used)
@@ -1119,6 +1144,15 @@ const Script::BoundProgram* ScriptRuntime::Program(std::uint32_t InHandle) const
         return nullptr;
     }
     return &MSlots[InHandle].bound;
+}
+
+std::span<const std::byte> ScriptRuntime::ProgramBytes(std::uint32_t InHandle) const noexcept
+{
+    if (InHandle >= kScriptMaxPrograms || !MSlots[InHandle].used)
+    {
+        return {};
+    }
+    return MSlots[InHandle].owned;
 }
 
 std::uint64_t ScriptRuntime::ProgramHash(std::uint32_t InHandle) const noexcept
@@ -1250,6 +1284,10 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
     {
         return;
     }
+    if (const Script::VmDebugState* ScopedDebug = InRuntime.DebugState(); ScopedDebug != nullptr && ScopedDebug->Paused)
+    {
+        return;
+    }
     InRuntime.BeginScriptFrame();
     InRuntime.PruneCoroutines(InContext.registry);
 
@@ -1303,6 +1341,35 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
 
         if (ScopedNativized)
         {
+            if (Script::VmDebugState* ScopedDebug = InRuntime.DebugState();
+                ScopedDebug != nullptr && ScopedDebug->Enabled && ScopedProgram != nullptr)
+            {
+                Script::VmSuspendState* ScopedPending =
+                    InRuntime.FindCoroutine(ScopedEntity, ScopedComponent.Program, Script::ScriptEvent::Update);
+                Script::VmSuspendState ScopedNewState;
+                Script::VmSuspendState* ScopedState = ScopedPending != nullptr ? ScopedPending : &ScopedNewState;
+                const Script::VmStopInfo ScopedStop = InRuntime.Vm().RunDebug(
+                    *ScopedProgram, Script::ScriptEvent::Update, ScopedEntity, ScopedVmContext, *ScopedDebug,
+                    ScopedState);
+                if (ScopedStop.Halt == Script::VmHalt::Paused)
+                {
+                    break;
+                }
+                if (ScopedStop.Halt == Script::VmHalt::Faulted)
+                {
+                    InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedStop.Fault);
+                }
+                else if (ScopedPending != nullptr && !ScopedState->Valid)
+                {
+                    InRuntime.RemoveCoroutine(ScopedEntity, ScopedComponent.Program, Script::ScriptEvent::Update);
+                }
+                else if (ScopedPending == nullptr && ScopedState->Valid)
+                {
+                    InRuntime.StoreCoroutine(ScopedEntity, ScopedComponent.Program, Script::ScriptEvent::Update,
+                                             *ScopedState);
+                }
+                continue;
+            }
             ScopedAotError.clear();
             if ((ScopedComponent.Flags & kScriptFlagStarted) == 0)
             {
@@ -1332,6 +1399,36 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
                 return;
             }
             Script::VmFault ScopedFault;
+            Script::VmDebugState* ScopedDebug = InRuntime.DebugState();
+            if (ScopedDebug != nullptr && InEvent == Script::ScriptEvent::Update)
+            {
+                Script::VmSuspendState* ScopedPending =
+                    InRuntime.FindCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+                Script::VmSuspendState ScopedNewState;
+                Script::VmSuspendState* ScopedState = ScopedPending != nullptr ? ScopedPending : &ScopedNewState;
+                const Script::VmStopInfo ScopedStop = InRuntime.Vm().RunDebug(
+                    *ScopedProgram, InEvent, ScopedEntity, ScopedVmContext, *ScopedDebug, ScopedState);
+                if (ScopedStop.Halt == Script::VmHalt::Paused)
+                {
+                    OutSuspended = true;
+                    return;
+                }
+                if (ScopedStop.Halt == Script::VmHalt::Faulted)
+                {
+                    InRuntime.ReportFault(ScopedComponent.Program, ScopedEntity, ScopedStop.Fault);
+                    return;
+                }
+                OutSuspended = ScopedState->Valid;
+                if (ScopedPending != nullptr && !OutSuspended)
+                {
+                    InRuntime.RemoveCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
+                }
+                else if (ScopedPending == nullptr && OutSuspended)
+                {
+                    InRuntime.StoreCoroutine(ScopedEntity, ScopedComponent.Program, InEvent, *ScopedState);
+                }
+                return;
+            }
             if (Script::VmSuspendState* ScopedState =
                     InRuntime.FindCoroutine(ScopedEntity, ScopedComponent.Program, InEvent);
                 ScopedState != nullptr)
@@ -1378,6 +1475,11 @@ void FemboyScriptSystem(Ecs::SystemContext& InContext, ScriptRuntime& InRuntime,
         bool ScopedUpdateSuspended = false;
         ScopedRunEvent(Script::ScriptEvent::Update, ScopedUpdateSuspended);
         (void)ScopedUpdateSuspended;
+        if (const Script::VmDebugState* ScopedDebug = InRuntime.DebugState();
+            ScopedDebug != nullptr && ScopedDebug->Paused)
+        {
+            break;
+        }
     }
     InRuntime.RunDestroyForInactive(InContext.registry, ScopedVmContext, InAllowVmFallback);
 }

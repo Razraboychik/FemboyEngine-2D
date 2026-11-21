@@ -1,6 +1,8 @@
 // FemboyEngine2D - tilemap/isometric editor panel implementation.
 #include "Editor/Panels/TilemapEditorPanel.hpp"
 
+#include "Engine/Assets/TiledImporter.hpp"
+
 #include "Editor/Infrastructure/EditorTypography.hpp"
 
 #include <imgui.h>
@@ -336,6 +338,37 @@ void TilemapEditorPanel::DrawCanvas()
     ImGui::EndChild();
 }
 
+bool TilemapEditorPanel::ImportTiled(std::string_view InXml, std::string* InError)
+{
+    Assets::TiledMap ScopedMap;
+    if (!Assets::ParseTiledMap(InXml, &ScopedMap, InError))
+    {
+        return false;
+    }
+    std::uint32_t ScopedLayer = 0;
+    while (ScopedLayer < ScopedMap.Layers.size() && !ScopedMap.Layers[ScopedLayer].Visible)
+    {
+        ++ScopedLayer;
+    }
+    if (ScopedLayer >= ScopedMap.Layers.size())
+    {
+        if (InError != nullptr)
+        {
+            *InError = "Tiled map has no visible tile layer";
+        }
+        return false;
+    }
+    TilemapComponent ScopedTilemap;
+    if (!Assets::TiledMapToTilemap(ScopedMap, ScopedLayer, &ScopedTilemap, InError))
+    {
+        return false;
+    }
+    MMap = ScopedTilemap;
+    MInitialized = true;
+    MStatus = "imported Tiled layer " + ScopedMap.Layers[ScopedLayer].Name;
+    return true;
+}
+
 void TilemapEditorPanel::DrawToolbar(Ecs::Registry& InRegistry, Entity InSelected)
 {
     if (ImGui::Button("Save"))
@@ -382,6 +415,32 @@ void TilemapEditorPanel::DrawToolbar(Ecs::Registry& InRegistry, Entity InSelecte
             if (!LoadFromText(ScopedStream.str(), &ScopedError))
             {
                 MStatus = "load: " + ScopedError;
+            }
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Import Tiled"))
+    {
+        const std::filesystem::path ScopedPath(MPath.data());
+        std::error_code ScopedSizeError;
+        const std::uintmax_t ScopedBytes = std::filesystem::file_size(ScopedPath, ScopedSizeError);
+        std::ifstream ScopedFile(ScopedPath, std::ios::binary);
+        if (ScopedSizeError || ScopedBytes > 4u * 1024u * 1024u || !ScopedFile)
+        {
+            MStatus = "import: file is missing, unreadable or larger than 4 MiB";
+        }
+        else
+        {
+            std::ostringstream ScopedStream;
+            ScopedStream << ScopedFile.rdbuf();
+            std::string ScopedError;
+            if (!ImportTiled(ScopedStream.str(), &ScopedError))
+            {
+                MStatus = "import: " + ScopedError;
+            }
+            else
+            {
+                MStatus = "imported " + ScopedPath.string();
             }
         }
     }

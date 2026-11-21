@@ -363,8 +363,7 @@ bool ResolveProjectPaths(const std::filesystem::path& InRootOrProjectFile, Proje
 }
 
 bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_view InProjectName,
-                   ProjectPaths* OutPaths, ProjectConfig* OutConfig, std::string* InError,
-                   Assets::Scaffold::ProjectTemplate InTemplate)
+                   ProjectPaths* OutPaths, ProjectConfig* OutConfig, std::string* InError)
 {
     if (!ValidProjectName(InProjectName))
     {
@@ -421,7 +420,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     const std::filesystem::path ScopedDefaultScene = ScopedPaths.scenes / "main.toml";
     if (!std::filesystem::exists(ScopedDefaultScene, ScopedCode))
     {
-        const std::string ScopedEmptyScene = Assets::Scaffold::ProjectTemplateScene(InTemplate);
+        const std::string ScopedEmptyScene = Assets::Scaffold::DefaultProjectScene();
         if (!WriteFileAtomically(ScopedDefaultScene, ScopedEmptyScene, InError))
         {
             return false;
@@ -454,7 +453,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     if (!std::filesystem::exists(ScopedReadme, ScopedCode))
     {
         if (!WriteFileAtomically(ScopedReadme,
-                                 Assets::Scaffold::ProjectTemplateReadme(InTemplate, ScopedDisplayName), InError))
+                                 Assets::Scaffold::ProjectReadme(ScopedDisplayName), InError))
         {
             return false;
         }
@@ -463,7 +462,8 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     if (!WriteFileAtomically(
             ScopedPaths.projectFile,
             Assets::Scaffold::ProjectToml(ScopedDisplayName, ScopedTargetName,
-                                          Assets::TextureFormatName(ScopedConfig.project.textureFormat)),
+                                          Assets::TextureFormatName(ScopedConfig.project.textureFormat),
+                                          ViewProfileKey(ScopedConfig.project.viewProfile)),
             InError))
     {
         return false;
@@ -741,6 +741,7 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     toml::table ScopedPhysics;
     ScopedPhysics.insert("backend", static_cast<std::int64_t>(ScopedProject.physicsBackend));
     ScopedPhysics.insert("body_budget", static_cast<std::int64_t>(ScopedProject.physicsBodyBudget));
+    ScopedPhysics.insert("profile", std::string(ViewProfileKey(ScopedProject.viewProfile)));
     ScopedRoot.insert("physics", std::move(ScopedPhysics));
 
     toml::table ScopedAudio;
@@ -1047,12 +1048,19 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
     ScopedConfig.project.gameplayTags = {};
     if (const toml::array* ScopedTags = ScopedRoot["gameplay_tags"].as_array(); ScopedTags != nullptr)
     {
+        std::uint32_t ScopedSlot = 0;
         for (const toml::node& ScopedNode : *ScopedTags)
         {
-            if (const auto ScopedPath = ScopedNode.value<std::string>(); ScopedPath.has_value())
+            const auto ScopedPath = ScopedNode.value<std::string>();
+            if (!ScopedPath.has_value() || ScopedPath->empty())
             {
-                (void)ScopedConfig.project.gameplayTags.Add(*ScopedPath);
+                ScopedConfig.project.gameplayTags.ReserveSlot();
             }
+            else if (!ScopedConfig.project.gameplayTags.RestoreSlot(ScopedSlot, *ScopedPath))
+            {
+                ScopedConfig.project.gameplayTags.ReserveSlot();
+            }
+            ++ScopedSlot;
         }
     }
 
@@ -1094,6 +1102,10 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             std::clamp<std::int64_t>(IntField(*ScopedPhysics, "backend", 0), 0, 2));
         ScopedConfig.project.physicsBodyBudget = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(IntField(*ScopedPhysics, "body_budget", 0), 0, 65536));
+        if (const auto ScopedProfile = (*ScopedPhysics)["profile"].value<std::string>(); ScopedProfile.has_value())
+        {
+            (void)ParseViewProfile(*ScopedProfile, &ScopedConfig.project.viewProfile);
+        }
     }
     if (const toml::table* ScopedAudio = Section(ScopedRoot, "audio"); ScopedAudio != nullptr)
     {

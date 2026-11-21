@@ -1324,6 +1324,80 @@ std::int32_t WidgetCanvas::AddWidget(const WidgetDesc& InDesc) noexcept
     return ScopedIndex;
 }
 
+bool WidgetCanvas::ReparentWidget(std::int32_t InWidget, std::int32_t InParent) noexcept
+{
+    if (!ValidWidget(InWidget) || InWidget == InParent)
+    {
+        return false;
+    }
+    if (InParent != kNoWidget && !ValidWidget(InParent))
+    {
+        return false;
+    }
+    if (InParent != kNoWidget && childCounts[static_cast<std::uint32_t>(InParent)] >= kMaxChildrenPerWidget)
+    {
+        return false;
+    }
+    for (std::int32_t ScopedAncestor = InParent; ScopedAncestor != kNoWidget;
+         ScopedAncestor = parents[static_cast<std::uint32_t>(ScopedAncestor)])
+    {
+        if (ScopedAncestor == InWidget)
+        {
+            return false;
+        }
+    }
+    const auto ScopedSlot = static_cast<std::uint32_t>(InWidget);
+    const std::int32_t ScopedOldParent = parents[ScopedSlot];
+    if (ScopedOldParent != kNoWidget)
+    {
+        const auto ScopedOldSlot = static_cast<std::uint32_t>(ScopedOldParent);
+        if (firstChild[ScopedOldSlot] == InWidget)
+        {
+            firstChild[ScopedOldSlot] = nextSibling[ScopedSlot];
+        }
+        else
+        {
+            std::int32_t ScopedSibling = firstChild[ScopedOldSlot];
+            while (ScopedSibling != kNoWidget && nextSibling[static_cast<std::uint32_t>(ScopedSibling)] != InWidget)
+            {
+                ScopedSibling = nextSibling[static_cast<std::uint32_t>(ScopedSibling)];
+            }
+            if (ScopedSibling != kNoWidget)
+            {
+                nextSibling[static_cast<std::uint32_t>(ScopedSibling)] = nextSibling[ScopedSlot];
+            }
+        }
+        if (childCounts[ScopedOldSlot] > 0)
+        {
+            --childCounts[ScopedOldSlot];
+        }
+    }
+    parents[ScopedSlot] = InParent;
+    nextSibling[ScopedSlot] = kNoWidget;
+    childOrdinals[ScopedSlot] = 0;
+    if (InParent != kNoWidget)
+    {
+        const auto ScopedParentSlot = static_cast<std::uint32_t>(InParent);
+        childOrdinals[ScopedSlot] = static_cast<std::uint16_t>(childCounts[ScopedParentSlot]);
+        if (firstChild[ScopedParentSlot] == kNoWidget)
+        {
+            firstChild[ScopedParentSlot] = InWidget;
+        }
+        else
+        {
+            std::int32_t ScopedSibling = firstChild[ScopedParentSlot];
+            while (nextSibling[static_cast<std::uint32_t>(ScopedSibling)] != kNoWidget)
+            {
+                ScopedSibling = nextSibling[static_cast<std::uint32_t>(ScopedSibling)];
+            }
+            nextSibling[static_cast<std::uint32_t>(ScopedSibling)] = InWidget;
+        }
+        ++childCounts[ScopedParentSlot];
+    }
+    InvalidateLayout();
+    return true;
+}
+
 bool WidgetCanvas::SetText(std::int32_t InWidget, std::string_view InText) noexcept
 {
     if (!ReplaceText(InWidget, InText))

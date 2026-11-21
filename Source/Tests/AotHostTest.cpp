@@ -187,6 +187,23 @@ void TestNativizedSystem()
     CheckFloat(ScopedRegistry.get<Fby::Velocity>(ScopedEntity).Value.Y, 2.0f, "native module halved velocity.y");
     Check(ScopedRuntime.AotRunCount() == 1, "the AOT path ran once");
 
+    // Debug mode routes the same nativized program through the bytecode VM so a
+    // source breakpoint can pause it before the native module runs.
+    ScopedRegistry.get<Fby::Velocity>(ScopedEntity).Value = Fby::Vector2D{2.0f, 4.0f};
+    Fby::Script::VmDebugState ScopedDebug;
+    ScopedDebug.Enabled = true;
+    ScopedRuntime.Vm().RequestPauseAtEntry(ScopedDebug);
+    ScopedRuntime.SetDebugState(&ScopedDebug);
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime, &ScopedHost, false);
+    Check(ScopedDebug.Paused, "AOT debug pauses at entry");
+    CheckFloat(ScopedRegistry.get<Fby::Velocity>(ScopedEntity).Value.X, 2.0f,
+               "paused AOT debug does not write the component");
+    ScopedDebug.ClearPause();
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime, &ScopedHost, false);
+    CheckFloat(ScopedRegistry.get<Fby::Velocity>(ScopedEntity).Value.X, 1.0f,
+               "resumed AOT debug runs the bytecode program");
+    ScopedRuntime.SetDebugState(nullptr);
+
     // A program without a module is refused instead of falling back to the VM.
     std::vector<std::byte> ScopedOtherStorage;
     std::uint64_t ScopedOtherHash = 0;

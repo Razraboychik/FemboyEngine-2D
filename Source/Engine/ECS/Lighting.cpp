@@ -289,6 +289,18 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
     for (auto [ScopedEntity, ScopedTransform, ScopedSprite, ScopedTarget] : ScopedSpriteView.each())
     {
         ScopedField.Receiver = ScopedEntity;
+        const auto* ScopedSurface = InRegistry.try_get<SurfaceNormal2D>(ScopedEntity);
+        Vector2D ScopedSurfaceNormal{0.0f, 1.0f};
+        float ScopedSurfaceStrength = 0.0f;
+        if (ScopedSurface != nullptr && ScopedSurface->Strength > 0.0f)
+        {
+            const float ScopedNormalLength = std::sqrt(ScopedSurface->Normal.LengthSquared());
+            if (ScopedNormalLength > 0.0f)
+            {
+                ScopedSurfaceNormal = ScopedSurface->Normal / ScopedNormalLength;
+                ScopedSurfaceStrength = std::clamp(ScopedSurface->Strength, 0.0f, 1.0f);
+            }
+        }
         const float ScopedEmissive = std::clamp(ScopedTarget.Emissive, 0.0f, 1.0f);
         float ScopedRed = ScopedAmbientRed;
         float ScopedGreen = ScopedAmbientGreen;
@@ -308,6 +320,17 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
             }
             const float ScopedFalloff = 1.0f - ScopedDistance / ScopedSample.radius;
             float ScopedAttenuation = ScopedFalloff * ScopedFalloff * ScopedSample.intensity;
+            if (ScopedSurfaceStrength > 0.0f)
+            {
+                const Vector2D ScopedLightDirection = ScopedSample.position - ScopedTransform.Position;
+                const float ScopedLightLength = std::sqrt(ScopedLightDirection.LengthSquared());
+                const float ScopedFacing =
+                    ScopedLightLength > 0.0f
+                        ? std::max(0.0f, ScopedSurfaceNormal.X * ScopedLightDirection.X / ScopedLightLength +
+                                             ScopedSurfaceNormal.Y * ScopedLightDirection.Y / ScopedLightLength)
+                        : 1.0f;
+                ScopedAttenuation *= (1.0f - ScopedSurfaceStrength) + ScopedSurfaceStrength * ScopedFacing;
+            }
             if (ScopedHasField && InSettings.SdfShadows && ScopedSample.castShadow)
             {
                 const float ScopedShadow =

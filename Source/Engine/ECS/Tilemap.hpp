@@ -110,6 +110,29 @@ void Resize(TilemapComponent& InMap, std::uint32_t InWidth, std::uint32_t InHeig
 [[nodiscard]] bool TileUv(const TilemapComponent& InMap, std::uint16_t InIndex, Vector2D* OutMin,
                           Vector2D* OutMax) noexcept;
 
+// Four-neighbour mask: north, east, south, west. A rule maps the mask to a
+// 1-based atlas tile; zero entries keep the authored tile.
+struct AutoTileRule
+{
+    std::array<std::uint16_t, 16> Tiles{};
+    bool RequireSolidNeighbours = false;
+};
+
+[[nodiscard]] std::uint32_t AutoTileMask(const TilemapComponent& InMap, Grid::Cell InCell) noexcept;
+[[nodiscard]] bool AutoTileCell(TilemapComponent& InMap, Grid::Cell InCell, const AutoTileRule& InRule) noexcept;
+[[nodiscard]] std::uint32_t AutoTileAll(TilemapComponent& InMap, const AutoTileRule& InRule) noexcept;
+
+// Six-neighbour hex rule. Bit order is east, north-east, north-west, west,
+// south-west, south-east; zero entries keep the authored tile.
+struct HexAutoTileRule
+{
+    std::array<std::uint16_t, 64> Tiles{};
+};
+
+[[nodiscard]] std::uint32_t HexAutoTileMask(const TilemapComponent& InMap, Grid::Cell InCell) noexcept;
+[[nodiscard]] bool HexAutoTileCell(TilemapComponent& InMap, Grid::Cell InCell, const HexAutoTileRule& InRule) noexcept;
+[[nodiscard]] std::uint32_t HexAutoTileAll(TilemapComponent& InMap, const HexAutoTileRule& InRule) noexcept;
+
 // Text form used by the editor's tilemap document (`.tilemap`). The header is
 // line-based and the tile payload is one hex word per cell, so a diff is
 // readable and a corrupted word is detected instead of silently rendered.

@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <string>
 #include <type_traits>
 
 namespace Fby::Ecs
@@ -93,7 +94,7 @@ using GraphSystemFn = void (*)(SystemContext&, void*);
 
 struct GraphSystem
 {
-    const char* name = nullptr;
+    std::string name;
     Phase phase = Phase::PreUpdate;
     GraphSystemFn run = nullptr;
     void* user = nullptr;
@@ -119,6 +120,28 @@ struct GraphSystem
 class SystemGraph
 {
 public:
+    // Stable name lookup for dependency masks. Registration order is still the
+    // bit order, but callers can express a dependency by name instead of
+    // hard-coding an index.
+    [[nodiscard]] std::uint64_t BitFor(std::string_view InName) const noexcept
+    {
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < MCount; ++ScopedIndex)
+        {
+            if (InName == MSystems[ScopedIndex].name)
+            {
+                return std::uint64_t{1} << ScopedIndex;
+            }
+        }
+        return 0;
+    }
+
+    [[nodiscard]] bool AddAfter(Phase InPhase, const char* InName, GraphSystemFn InRun, std::string_view InAfterName,
+                                SystemAccess InAccess = {})
+    {
+        const std::uint64_t ScopedAfter = BitFor(InAfterName);
+        return ScopedAfter != 0 && Add(InPhase, InName, InRun, nullptr, ScopedAfter, 0, InAccess);
+    }
+
     [[nodiscard]] bool Add(Phase InPhase, const char* InName, GraphSystemFn InRun, void* InUser = nullptr,
                            std::uint64_t InAfter = 0, std::uint64_t InBefore = 0, SystemAccess InAccess = {})
     {
@@ -216,9 +239,24 @@ public:
     // Runs one phase through the JobSystem. Nodes with no dependency edge
     void Run(Phase InPhase, SystemContext& InContext) const;
 
+    // Count is the stable slot high-water mark. ActiveCount excludes systems
+    // disabled by RemoveUser; slots are never shifted, so dependency masks and
+    // BitFor() results stay valid for the graph's lifetime.
     [[nodiscard]] std::uint32_t Count() const noexcept
     {
         return MCount;
+    }
+    [[nodiscard]] std::uint32_t ActiveCount() const noexcept
+    {
+        std::uint32_t ScopedCount = 0;
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < MCount; ++ScopedIndex)
+        {
+            if (MSystems[ScopedIndex].enabled && MSystems[ScopedIndex].run != nullptr)
+            {
+                ++ScopedCount;
+            }
+        }
+        return ScopedCount;
     }
     [[nodiscard]] const GraphSystem& At(std::uint32_t InIndex) const noexcept
     {

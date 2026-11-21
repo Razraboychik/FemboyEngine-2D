@@ -5,6 +5,7 @@
 #include "Engine/Assets/ProjectScaffold.hpp"
 #include "Engine/Assets/TextureFormat.hpp"
 #include "Engine/Core/BuildProfile.hpp"
+#include "Engine/Core/ViewProfile.hpp"
 #include "Engine/Audio/AudioDevices.hpp"
 #include "Engine/Gameplay/GameplayTagDatabase.hpp"
 #include "Engine/Physics/CollisionFilter.hpp"
@@ -201,6 +202,7 @@ struct ProjectSettings
     // data-oriented backend for large, joint-free strategy worlds.
     std::uint8_t physicsBackend = 0;
     std::uint32_t physicsBodyBudget = 0;
+    ViewProfile viewProfile = ViewProfile::Default;
 
     float masterVolume = 1.0f;
     float sfxVolume = 1.0f;
@@ -343,9 +345,7 @@ struct ProjectPaths
 // Creates a clean, strictly typed project tree and a default project.femproj.
 [[nodiscard]] bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_view InProjectName,
                                  ProjectPaths* OutPaths = nullptr, ProjectConfig* OutConfig = nullptr,
-                                 std::string* InError = nullptr,
-                                 Assets::Scaffold::ProjectTemplate InTemplate =
-                                     Assets::Scaffold::ProjectTemplate::Empty);
+                                 std::string* InError = nullptr);
 
 // Reads project.femproj. Missing optional sections fall back to defaults.
 [[nodiscard]] bool LoadProject(const std::filesystem::path& InRootOrProjectFile, ProjectPaths* OutPaths,

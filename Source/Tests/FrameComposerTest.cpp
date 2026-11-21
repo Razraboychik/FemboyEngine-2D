@@ -112,6 +112,15 @@ int main()
     Check(ScopedComposer.Stats().PackedLights == 1u, "the stats count packed lights");
     Check(ScopedComposer.Stats().ExtractMilliseconds >= 0.0, "extract timing is recorded");
 
+    NormalMap2D ScopedNormal;
+    ScopedNormal.Layer = 5;
+    ScopedNormal.Strength = 0.5f;
+    ScopedRegistry.emplace<NormalMap2D>(ScopedUpper, ScopedNormal);
+    ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Color32::Black(), 0u);
+    Check(Rhi::NormalMapLayer(ScopedComposer.Packet().items[1].flags) == 5u, "normal layer reaches RenderItem flags");
+    Check(Rhi::NormalMapStrength(ScopedComposer.Packet().items[1].flags) > 0.45f,
+          "normal strength reaches RenderItem flags");
+
     // Change positions without touching the sort keys. The retained composer
     // must reuse the previous order instead of the extraction order.
     ScopedRegistry.get<Transform2D>(ScopedUpper).Position.X = 30.0f;

@@ -1078,8 +1078,10 @@ void ReleaseCooker::Run(std::stop_token InStop) noexcept
         }
 
         char ScopedCommand[kCommandBytes] = {};
-        std::snprintf(ScopedCommand, sizeof(ScopedCommand), "\"%s\" cook --root \"%s\" --out \"%s\" --progress \"%s\"",
-                      MConfig.packerPath, MConfig.assetsRoot, MConfig.packPath, MConfig.progressPath);
+        std::snprintf(ScopedCommand, sizeof(ScopedCommand),
+                      "\"%s\" cook --root \"%s\" --out \"%s\" --progress \"%s\" --target \"%s\"",
+                      MConfig.packerPath, MConfig.assetsRoot, MConfig.packPath, MConfig.progressPath,
+                      MConfig.target[0] != 0 ? MConfig.target : "desktop");
         std::uint32_t ScopedExitCode = 1;
         if (!RunChild(ScopedCommand, ReleaseCookStage::Cooking, MConfig.assetsRoot, &ScopedExitCode))
         {

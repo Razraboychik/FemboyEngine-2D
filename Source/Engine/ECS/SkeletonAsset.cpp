@@ -136,7 +136,7 @@ void SkeletonNameTablePopulateFromIndices(SkeletonNameTable& InTable, std::uint3
             continue;
         }
         char ScopedBuffer[kFesklMaxBoneNameLength + 1]{};
-        std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "bone_%u", ScopedBone);
+        (void)std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "bone_%u", ScopedBone);
         (void)SkeletonNameTableSet(InTable, ScopedBone, ScopedBuffer);
     }
     InTable.count = static_cast<std::uint16_t>(std::max<std::uint32_t>(InTable.count, ScopedCount));

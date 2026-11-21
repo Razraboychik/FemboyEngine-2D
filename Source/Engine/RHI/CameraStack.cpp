@@ -1,6 +1,8 @@
 // FemboyEngine2D - camera stack implementation.
 #include "Engine/RHI/CameraStack.hpp"
 
+#include "Engine/RHI/PixelPerfect.hpp"
+
 #include "Engine/Core/Pcg32.hpp"
 #include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/WindowManager.hpp"
@@ -286,6 +288,15 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
         }
 
         ScopedSlot.baseCamera = ScopedBase;
+        if (ScopedSlot.desc.cameraEntity != Fby::kNullEntity &&
+            InView.registry.valid(ScopedSlot.desc.cameraEntity))
+        {
+            if (const auto* ScopedPixel = InView.registry.try_get<PixelPerfectCamera>(ScopedSlot.desc.cameraEntity);
+                ScopedPixel != nullptr && ScopedPixel->Enabled)
+            {
+                SnapCameraToPixelGrid(ScopedResolved, ScopedPixel->PixelsPerUnit);
+            }
+        }
         ScopedSlot.camera = ScopedResolved;
     }
 }

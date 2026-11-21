@@ -1,6 +1,9 @@
 // FemboyEngine2D - StateTree implementation.
 #include "Engine/ECS/StateTree.hpp"
 
+#include "Engine/Core/Mirror.hpp"
+#include "Engine/ECS/Snapshot.hpp"
+
 #include "Engine/ECS/CommandBuffer.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
 #include "Engine/Gameplay/GameplayAttributes.hpp"
@@ -218,7 +221,7 @@ void BuildPath(const StateTreeDefinition& InTree, std::uint16_t InLeaf, StateTre
     ScopedCommand.Flags = InTask.Flags;
     ScopedCommand.ActionId = InTask.ActionId;
     ScopedCommand.TaskIndex = InNodeIndex;
-    ScopedCommand.Sequence = InState.Ticks;
+    ScopedCommand.Sequence = InState.LifetimeTicks;
     return ScopedCommand;
 }
 
@@ -451,9 +454,10 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
         }
 
         ++ScopedState.Ticks;
+        ++ScopedState.LifetimeTicks;
         ScopedState.StateTime += ScopedDt;
 
-        if (!ScopedState.Initialized)
+        if (!ScopedState.Initialized || ScopedState.InitializedTreeId != ScopedState.TreeId)
         {
             const std::uint16_t ScopedLeaf =
                 SelectLeaf(InRegistry, ScopedEntity, ScopedState, *ScopedTree, ScopedTree->Root, 1, InTags);
@@ -464,6 +468,7 @@ void StateTreeSystem::RunWithTags(Ecs::Registry& InRegistry, float InDt, Ecs::Co
             }
             BuildPath(*ScopedTree, ScopedLeaf, ScopedState);
             ScopedState.Initialized = true;
+            ScopedState.InitializedTreeId = ScopedState.TreeId;
         }
         else
         {
@@ -586,5 +591,44 @@ void RegisterStateTreeSystem(Ecs::SystemGraph& InGraph, StateTreeSystem& InSyste
                                      GameplayTagsComponent, StateTreeComponent>();
     (void)InGraph.Add(Ecs::Phase::FixedUpdate, "state_tree", Ecs::BindGameplaySystem<&StateTreeSystemThunk>(),
                       &InSystem, 0, 0, ScopedAccess);
+}
+}
+
+
+namespace Fby
+{
+bool RegisterStateTreeSnapshotCodec(Ecs::SnapshotSchema& InSchema)
+{
+    Ecs::SnapshotComponent ScopedCodec;
+    ScopedCodec.name = "StateTreeComponent";
+    ScopedCodec.typeId = Reflect::Fnv1a(Reflect::Reflection<StateTreeComponent>::kName);
+    ScopedCodec.layoutHash = Reflect::LayoutHash<StateTreeComponent>();
+    ScopedCodec.size = static_cast<std::uint32_t>(sizeof(StateTreeComponent));
+    ScopedCodec.has = +[](const Ecs::Registry& InRegistry, Entity InEntity)
+    { return InRegistry.all_of<StateTreeComponent>(InEntity); };
+    ScopedCodec.capture = +[](const Ecs::Registry& InRegistry, Entity InEntity, std::span<std::byte> OutBytes)
+    {
+        const StateTreeComponent* ScopedComponent = InRegistry.try_get<StateTreeComponent>(InEntity);
+        if (ScopedComponent == nullptr || OutBytes.size() < sizeof(StateTreeComponent))
+        {
+            return false;
+        }
+        std::memcpy(OutBytes.data(), ScopedComponent, sizeof(StateTreeComponent));
+        return true;
+    };
+    ScopedCodec.restore = +[](Ecs::Registry& InRegistry, Entity InEntity, std::span<const std::byte> InBytes)
+    {
+        if (InBytes.size() < sizeof(StateTreeComponent))
+        {
+            return false;
+        }
+        StateTreeComponent ScopedComponent{};
+        std::memcpy(&ScopedComponent, InBytes.data(), sizeof(StateTreeComponent));
+        InRegistry.emplace_or_replace<StateTreeComponent>(InEntity, ScopedComponent);
+        return true;
+    };
+    ScopedCodec.remove = +[](Ecs::Registry& InRegistry, Entity InEntity)
+    { InRegistry.remove<StateTreeComponent>(InEntity); };
+    return InSchema.AddCodec(ScopedCodec);
 }
 }

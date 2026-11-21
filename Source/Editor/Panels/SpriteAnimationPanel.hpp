@@ -28,6 +28,7 @@ struct SpriteAnimationInspectorState
     std::uint16_t eventCount = 0;
     std::array<char, 64> clipName{"sprite_clip"};
     std::array<char, 260> clipPath{"assets/clips/sprite_clip.toml"};
+    std::array<char, 260> asepritePath{"assets/aseprite/hero.json"};
     std::string saveStatus{"ready"};
     // Set by the editor host. With both valid the sheet preview draws the real
     // texture layer instead of the placeholder cells.

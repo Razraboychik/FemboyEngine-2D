@@ -59,6 +59,7 @@ std::vector<std::byte> EncodeSceneBinary(const SceneData& InScene)
     const auto ScopedAuthor = InScene.meta.author.empty() ? flatbuffers::Offset<flatbuffers::String>{}
                                                           : ScopedBuilder.CreateString(InScene.meta.author);
     const auto ScopedRoot = Fb::CreateScene(ScopedBuilder, InScene.meta.version, ScopedName, ScopedAuthor,
+                                            static_cast<std::uint8_t>(InScene.meta.profile),
                                             ScopedBuilder.CreateVector(ScopedEntityOffsets));
     ScopedBuilder.Finish(ScopedRoot, "FBSC");
 
@@ -104,6 +105,10 @@ std::expected<SceneData, std::string> DecodeSceneBinary(std::span<const std::byt
     if (const flatbuffers::String* ScopedAuthor = ScopedRoot->author())
     {
         ScopedScene.meta.author.assign(ScopedAuthor->c_str(), ScopedAuthor->size());
+    }
+    if (ScopedRoot->profile() <= static_cast<std::uint8_t>(ViewProfile::Hex))
+    {
+        ScopedScene.meta.profile = static_cast<ViewProfile>(ScopedRoot->profile());
     }
 
     if (const flatbuffers::Vector<flatbuffers::Offset<Fb::Entity>>* ScopedEntities = ScopedRoot->entities())

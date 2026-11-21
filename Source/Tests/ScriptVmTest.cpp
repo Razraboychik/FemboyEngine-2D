@@ -449,6 +449,39 @@ bool TestProgramUnload()
     return true;
 }
 
+bool TestProgramReload()
+{
+    using namespace Fby::Script;
+    const auto BuildConstant = [](float InValue)
+    {
+        ProgramBuilder ScopedBuilder;
+        const std::uint16_t ScopedConstant = ScopedBuilder.AddConstant(InValue);
+        ScopedBuilder.Emit(OpCode::LoadF32, 0, 0, ScopedConstant);
+        ScopedBuilder.Emit(OpCode::Halt);
+        (void)ScopedBuilder.AddFunction(ScriptEvent::Update, 0);
+        std::string ScopedError;
+        return ScopedBuilder.Build(0, 0, &ScopedError);
+    };
+    const std::vector<std::byte> ScopedFirst = BuildConstant(1.0f);
+    const std::vector<std::byte> ScopedSecond = BuildConstant(2.0f);
+    Check(!ScopedFirst.empty() && !ScopedSecond.empty(), "reload programs build");
+
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "reload runtime initializes");
+    std::string ScopedError;
+    std::uint32_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedFirst, &ScopedError);
+    const std::uint32_t ScopedOld = ScopedHandle;
+    Check(ScopedHandle != Fby::kScriptNoProgram, "reload first program loads");
+    Check(ScopedRuntime.ReloadProgram(&ScopedHandle, ScopedSecond, &ScopedError), "program hot reloads");
+    Check(ScopedHandle != ScopedOld, "reload swaps the handle");
+    Check(ScopedRuntime.ProgramCount() == 1, "reload keeps one live program");
+    Check(ScopedRuntime.Program(ScopedOld) == nullptr, "old program is released");
+    Check(ScopedRuntime.Program(ScopedHandle) != nullptr, "new program is live");
+    Check(!ScopedRuntime.ReloadProgram(&ScopedHandle, {}, &ScopedError), "invalid reload is rejected");
+    Check(ScopedRuntime.ProgramCount() == 1, "failed reload keeps the old program");
+    return true;
+}
+
 bool TestTextScript()
 {
     using namespace Fby::Script;
@@ -760,6 +793,98 @@ event update {
     return true;
 }
 
+bool TestLiveDebugStress()
+{
+    using namespace Fby::Script;
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    constexpr std::string_view ScopedSource = R"FBY(
+event update {
+    self.Transform2D.Rotation = self.Transform2D.Rotation + 1.0;
+}
+)FBY";
+    std::string ScopedError;
+    std::vector<std::byte> ScopedProgram;
+    Check(CompileTextScript(ScopedSource, ScopedComponents, {}, &ScopedProgram, &ScopedError),
+          "live debug stress script compiles");
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "live debug stress runtime initializes");
+    const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
+    Fby::ScriptComponent ScopedComponent;
+    ScopedComponent.Program = ScopedHandle;
+    ScopedComponent.Flags = Fby::kScriptFlagEnabled;
+    ScopedRegistry.emplace<Fby::ScriptComponent>(ScopedEntity, ScopedComponent);
+    Fby::JobSystem ScopedJobs(1);
+    Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
+
+    VmDebugState ScopedDebug;
+    ScopedDebug.Enabled = true;
+    ScopedRuntime.SetDebugState(&ScopedDebug);
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 1000; ++ScopedIteration)
+    {
+        ScopedRuntime.Vm().RequestPauseAtEntry(ScopedDebug);
+        Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+        Check(ScopedDebug.Paused, "stress pause is stable");
+        ScopedDebug.ClearPause();
+        Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+        Check(!ScopedDebug.Paused, "stress resume is stable");
+    }
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 1000.0f,
+          "stress executes every paused/resumed update");
+    ScopedRuntime.SetDebugState(nullptr);
+    return true;
+}
+
+bool TestLiveDebugSystem()
+{
+    using namespace Fby::Script;
+    Fby::Scene::ComponentRegistry ScopedComponents;
+    Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
+    constexpr std::string_view ScopedSource = R"FBY(
+event update {
+    self.Transform2D.Rotation = 1.0;
+}
+)FBY";
+    std::string ScopedError;
+    std::vector<std::byte> ScopedProgram;
+    Check(CompileTextScript(ScopedSource, ScopedComponents, {}, &ScopedProgram, &ScopedError),
+          "live debug script compiles");
+    Fby::ScriptRuntime ScopedRuntime;
+    Check(ScopedRuntime.Initialize(), "live debug runtime initializes");
+    const std::uint16_t ScopedHandle = ScopedRuntime.LoadProgram(ScopedProgram, &ScopedError);
+    Check(ScopedHandle != Fby::kScriptNoProgram, "live debug program loads");
+
+    Fby::Scene::Registry ScopedRegistry;
+    const Fby::Entity ScopedEntity = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedEntity);
+    Fby::ScriptComponent ScopedComponent;
+    ScopedComponent.Program = ScopedHandle;
+    ScopedComponent.Flags = Fby::kScriptFlagEnabled;
+    ScopedRegistry.emplace<Fby::ScriptComponent>(ScopedEntity, ScopedComponent);
+
+    Fby::JobSystem ScopedJobs(1);
+    Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
+    VmDebugState ScopedDebug;
+    ScopedDebug.Enabled = true;
+    ScopedRuntime.Vm().RequestPauseAtEntry(ScopedDebug);
+    ScopedRuntime.SetDebugState(&ScopedDebug);
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+    Check(ScopedDebug.Paused, "live debug pauses at entry");
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 0.0f,
+          "paused script does not write its component");
+
+    ScopedDebug.ClearPause();
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+    Check(!ScopedDebug.Paused, "live debug resumes");
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 1.0f,
+          "resumed script writes its component");
+    ScopedRuntime.SetDebugState(nullptr);
+    return true;
+}
+
 bool TestTextCoroutineDelay()
 {
     using namespace Fby::Script;
@@ -793,6 +918,16 @@ event update {
     Fby::JobSystem ScopedJobs(1);
     Fby::Ecs::SystemContext ScopedContext{ScopedRegistry, ScopedJobs};
 
+    VmDebugState ScopedDebug;
+    ScopedDebug.Enabled = true;
+    ScopedRuntime.Vm().RequestPauseAtEntry(ScopedDebug);
+    ScopedRuntime.SetDebugState(&ScopedDebug);
+    Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
+    Check(ScopedDebug.Paused, "coroutine debug pauses at entry");
+    Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 0.0f,
+          "paused coroutine does not write its first statement");
+    ScopedDebug.ClearPause();
+
     Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
     Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 1.0f, "delayed coroutine starts");
     ScopedContext.frameIndex = 1;
@@ -803,6 +938,7 @@ event update {
     Fby::FemboyScriptSystem(ScopedContext, ScopedRuntime);
     Check(ScopedRegistry.get<Fby::Transform2D>(ScopedEntity).Rotation == 11.0f,
           "delayed coroutine resumes on its wake frame");
+    ScopedRuntime.SetDebugState(nullptr);
     return true;
 }
 
@@ -814,6 +950,7 @@ int main()
     TestCorruptProgramRejected();
     TestMalformedBindingsRejected();
     TestProgramUnload();
+    TestProgramReload();
     TestTextScript();
     TestGraphHalfVelocity();
     TestGraphCycleRejected();
@@ -827,6 +964,8 @@ int main()
     TestTextForwardFunctions();
     TestTextCoroutineScheduler();
     TestTextCoroutineDelay();
+    TestLiveDebugSystem();
+    TestLiveDebugStress();
 
     if (GFailures != 0)
     {

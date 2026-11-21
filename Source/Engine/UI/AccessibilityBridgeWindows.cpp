@@ -18,6 +18,7 @@
 #include <uiautomationcoreapi.h>
 
 #include <cstdio>
+#include <new>
 #include <unordered_map>
 #include <cstring>
 
@@ -150,10 +151,16 @@ void SetBstr(VARIANT* Out, const char* InText) noexcept
         Out->bstrVal = SysAllocString(L"");
         return;
     }
-    wchar_t* ScopedBuffer = new wchar_t[static_cast<std::size_t>(ScopedWide)];
-    MultiByteToWideChar(CP_UTF8, 0, InText, -1, ScopedBuffer, ScopedWide);
-    Out->bstrVal = SysAllocString(ScopedBuffer);
-    delete[] ScopedBuffer;
+    // Allocate the BSTR directly: no throwing temporary in a noexcept path.
+    BSTR ScopedBuffer = SysAllocStringLen(nullptr, static_cast<UINT>(ScopedWide - 1));
+    if (ScopedBuffer == nullptr ||
+        MultiByteToWideChar(CP_UTF8, 0, InText, -1, ScopedBuffer, ScopedWide) <= 0)
+    {
+        SysFreeString(ScopedBuffer);
+        Out->bstrVal = SysAllocString(L"");
+        return;
+    }
+    Out->bstrVal = ScopedBuffer;
 }
 
 void SetRectArray(VARIANT* Out, const RECT& InRect) noexcept
@@ -825,7 +832,7 @@ NodeProvider* CreateNodeProvider(std::uint32_t InId) noexcept
     {
         return nullptr;
     }
-    return new NodeProvider(InId);
+    return new (std::nothrow) NodeProvider(InId);
 }
 
 LRESULT CALLBACK BridgeWndProc(HWND InHwnd, UINT InMessage, WPARAM InWParam, LPARAM InLParam)
@@ -860,7 +867,11 @@ bool PlatformAccessibilityBridgeStart(void* InNativeWindow, const AccessibilityB
         return false;
     }
     MSettings = InSettings;
-    MRoot = new RootProvider();
+    MRoot = new (std::nothrow) RootProvider();
+    if (MRoot == nullptr)
+    {
+        return false;
+    }
     MPreviousProc =
         reinterpret_cast<WNDPROC>(SetWindowLongPtrW(MHwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&BridgeWndProc)));
     MActive = true;

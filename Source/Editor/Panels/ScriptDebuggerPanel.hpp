@@ -6,6 +6,7 @@
 #include "Engine/Script/Bytecode.hpp"
 #include "Engine/Script/ScriptSystem.hpp"
 #include "Engine/Script/Vm.hpp"
+#include "Engine/Script/DebuggerCondition.hpp"
 
 #include <array>
 #include <cstdint>
@@ -64,6 +65,9 @@ public:
     // Loads bytecode compiled by the LogicGraph panel, so the same debugger can
     // step graph programs and drive the canvas highlight.
     [[nodiscard]] bool LoadGraphProgram(std::span<const std::byte> InProgram, std::string_view InName);
+    // Binds an already-loaded game program instead of compiling a private copy.
+    [[nodiscard]] bool AttachProgram(std::uint32_t InHandle);
+    void DetachProgram() noexcept;
 
     // Test seam: compile the current source without an ImGui context.
     [[nodiscard]] bool Compile(const Scene::ComponentRegistry& InComponents);
@@ -74,6 +78,19 @@ public:
     void ClearBreakpoints() noexcept;
 
     void SetSource(std::string_view InSource);
+    // Null restores the panel-owned runtime.
+    void AttachRuntime(ScriptRuntime* InRuntime) noexcept
+    {
+        if (MExternalRuntime != nullptr)
+        {
+            MExternalRuntime->SetDebugState(nullptr);
+        }
+        MExternalRuntime = InRuntime;
+        if (MExternalRuntime != nullptr)
+        {
+            MExternalRuntime->SetDebugState(&MDebug);
+        }
+    }
 
     // The second compile path: text -> bytecode -> native module in one action.
     // The editor passes the same cook options the LogicGraph panel uses.
@@ -106,7 +123,18 @@ private:
     void ToggleBreakpoint(std::uint32_t InLine);
     void Resume(Ecs::Registry& InRegistry, Entity InEntity);
     [[nodiscard]] bool HasLineBreakpoint(std::uint32_t InLine) const noexcept;
+    [[nodiscard]] bool ConditionPasses(std::uint32_t InLine);
+    [[nodiscard]] std::uint32_t BreakpointIndex(std::uint32_t InLine) const noexcept;
+    void EvaluateWatch();
 
+    [[nodiscard]] ScriptRuntime& Runtime() noexcept
+    {
+        return MExternalRuntime != nullptr ? *MExternalRuntime : MRuntime;
+    }
+    [[nodiscard]] const ScriptRuntime& Runtime() const noexcept
+    {
+        return MExternalRuntime != nullptr ? *MExternalRuntime : MRuntime;
+    }
     [[nodiscard]] std::span<const std::byte> ProgramBytes() const noexcept;
     [[nodiscard]] const Script::BoundProgram* BoundProgram() const noexcept;
 
@@ -115,11 +143,18 @@ private:
     std::vector<std::byte> MBytes;
     Script::CompiledProgram MParsed{};
     ScriptRuntime MRuntime{};
+    ScriptRuntime* MExternalRuntime = nullptr;
     Script::VmDebugState MDebug{};
     Script::VmStopInfo MLastStop{};
     // Breakpoints are authored per source line and re-resolved to program
     // counters after every compile, so editing the source keeps them.
     std::array<std::uint32_t, 64> MBreakpointLines{};
+    std::array<std::array<char, 64>, 64> MBreakpointConditions{};
+    std::array<bool, 64> MBreakpointLogs{};
+    std::array<std::string, 32> MLogLines{};
+    std::uint32_t MLogCount = 0;
+    std::array<char, 64> MWatchInput{"r0"};
+    std::string MWatchResult{"-"};
     std::uint32_t MBreakpointLineCount = 0;
     std::uint16_t MHandle = kScriptNoProgram;
     std::uint32_t MFrameIndex = 0;

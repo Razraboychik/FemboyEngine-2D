@@ -322,19 +322,21 @@ public:
             const float ScopedG = static_cast<float>((ScopedItem.color >> 8) & 0xFFu) / 255.0f;
             const float ScopedB = static_cast<float>((ScopedItem.color >> 16) & 0xFFu) / 255.0f;
             const float ScopedA = static_cast<float>((ScopedItem.color >> 24) & 0xFFu) / 255.0f;
+            const float ScopedNormalMeta =
+                EncodeNormalVertexMeta(NormalMapLayer(ScopedItem.flags), NormalMapStrength(ScopedItem.flags));
             const SmokeVertex ScopedCorners[6] = {
                 {{ScopedX - ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
                 {{ScopedX + ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
                 {{ScopedX + ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
                 {{ScopedX - ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
                 {{ScopedX + ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
                 {{ScopedX - ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
             };
             std::memcpy(ScopedVertices + ScopedCount, ScopedCorners, sizeof(ScopedCorners));
             ScopedCount += 6;
@@ -346,6 +348,19 @@ public:
                                                  sizeof(SmokeVertex)};
         MCommandList->IASetVertexBuffers(0, 1, &ScopedVbv);
         MCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        std::array<float, 32> ScopedLightConstants{};
+        const std::size_t ScopedLightCount = InPacket.lights.size() < 4u ? InPacket.lights.size() : 4u;
+        for (std::size_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+        {
+            const GpuLight& ScopedLight = InPacket.lights[ScopedI];
+            ScopedLightConstants[ScopedI * 4u + 0u] = ScopedLight.PositionAndRadius.X;
+            ScopedLightConstants[ScopedI * 4u + 1u] = ScopedLight.PositionAndRadius.Y;
+            ScopedLightConstants[ScopedI * 4u + 2u] = ScopedLight.PositionAndRadius.Z;
+            ScopedLightConstants[16u + ScopedI * 4u + 0u] = ScopedLight.ColorAndIntensity.X;
+            ScopedLightConstants[16u + ScopedI * 4u + 1u] = ScopedLight.ColorAndIntensity.Y;
+            ScopedLightConstants[16u + ScopedI * 4u + 2u] = ScopedLight.ColorAndIntensity.Z;
+            ScopedLightConstants[16u + ScopedI * 4u + 3u] = ScopedLight.ColorAndIntensity.W;
+        }
         const auto ScopedDraw = [this](std::uint32_t InFirstVertex, std::uint32_t InVertexCount,
                                        std::uint32_t InTexture)
         {
@@ -361,6 +376,9 @@ public:
         };
         if (InPacket.batches.empty())
         {
+            MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
+            MCommandList->SetPipelineState(MPipeline.Get());
+            MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
             ScopedDraw(0, static_cast<std::uint32_t>(ScopedCount), InPacket.textureArray);
         }
         else
@@ -384,13 +402,14 @@ public:
                 }
                 else
                 {
-                    MCommandList->SetGraphicsRootSignature(MRootSignature.Get());
+                    MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
                     MCommandList->SetPipelineState(MPipeline.Get());
+                    MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
                 }
                 ScopedDraw(ScopedBatch.firstItem * 6, ScopedBatch.itemCount * 6, ScopedTexture);
             }
             MCommandList->SetPipelineState(MPipeline.Get());
-            MCommandList->SetGraphicsRootSignature(MRootSignature.Get());
+            MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
         }
         MVertexBuffer->Unmap(0, nullptr);
         if (!InPacket.meshItems.empty())
@@ -498,15 +517,16 @@ public:
                 }
                 else
                 {
-                    MCommandList->SetGraphicsRootSignature(MRootSignature.Get());
+                    MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
                     MCommandList->SetPipelineState(MPipeline.Get());
+                    MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
                 }
                 MCommandList->DrawInstanced(static_cast<UINT>(ScopedMeshCount - ScopedStart), 1,
                                             static_cast<UINT>(ScopedStart), 0);
             }
             MVertexBuffer->Unmap(0, nullptr);
             MCommandList->SetPipelineState(MPipeline.Get());
-            MCommandList->SetGraphicsRootSignature(MRootSignature.Get());
+            MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
         }
     }
 
@@ -2120,6 +2140,7 @@ public:
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         };
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedPso{};
         ScopedPso.pRootSignature = MMaterialRootSignature.Get();
@@ -2221,6 +2242,7 @@ private:
         float Uv[2];
         float Color[4];
         float Layer;
+        float NormalMeta = 0.0f;
     };
 
     struct MotionVertex
@@ -3679,6 +3701,24 @@ float4 PSMain(VSOutput input) : SV_Target
         {
             return false;
         }
+        D3D12_ROOT_PARAMETER ScopedLightConstants{};
+        ScopedLightConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        ScopedLightConstants.Constants.ShaderRegister = 1;
+        ScopedLightConstants.Constants.Num32BitValues = 32;
+        ScopedLightConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        D3D12_ROOT_PARAMETER ScopedSpriteParams[2] = {ScopedRootParameter, ScopedLightConstants};
+        D3D12_ROOT_SIGNATURE_DESC ScopedSpriteDesc = ScopedRootDesc;
+        ScopedSpriteDesc.NumParameters = 2;
+        ScopedSpriteDesc.pParameters = ScopedSpriteParams;
+        ComPtr<ID3DBlob> ScopedSpriteBlob;
+        if (FAILED(D3D12SerializeRootSignature(&ScopedSpriteDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+                                               &ScopedSpriteBlob, &ScopedErrors)) ||
+            FAILED(MDevice->CreateRootSignature(0, ScopedSpriteBlob->GetBufferPointer(),
+                                                ScopedSpriteBlob->GetBufferSize(),
+                                                IID_PPV_ARGS(&MSpriteLightRootSignature))))
+        {
+            return false;
+        }
         D3D12_ROOT_PARAMETER ScopedMaterialParams[2]{};
         ScopedMaterialParams[0] = ScopedRootParameter;
         ScopedMaterialParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -3702,9 +3742,10 @@ float4 PSMain(VSOutput input) : SV_Target
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         };
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedPso{};
-        ScopedPso.pRootSignature = MRootSignature.Get();
+        ScopedPso.pRootSignature = MSpriteLightRootSignature.Get();
         ScopedPso.VS = ScopedVS;
         ScopedPso.PS = ScopedPS;
         ScopedPso.InputLayout = {ScopedLayout, static_cast<UINT>(std::size(ScopedLayout))};
@@ -3981,6 +4022,7 @@ float4 PSMain(VSOutput input) : SV_Target
     ComPtr<ID3D12GraphicsCommandList> MCommandList;
     ComPtr<ID3D12Fence> MFence;
     ComPtr<ID3D12RootSignature> MRootSignature;
+    ComPtr<ID3D12RootSignature> MSpriteLightRootSignature;
     ComPtr<ID3D12PipelineState> MPipeline;
     ComPtr<ID3D12RootSignature> MMaterialRootSignature;
     Extent2D MExtent{320, 240};

@@ -47,6 +47,10 @@ namespace
             return InField.size == sizeof(BigNum::Decimal128);
         case Reflect::FieldKind::Vector2DArray:
             return InField.size > 0 && InField.size % sizeof(Vector2D) == 0;
+        case Reflect::FieldKind::UInt16Array:
+            return InField.size > 0 && InField.size % sizeof(std::uint16_t) == 0;
+        case Reflect::FieldKind::FloatArray:
+            return InField.size > 0 && InField.size % sizeof(float) == 0;
     }
     return false;
 }
@@ -358,7 +362,11 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
     // A replacing load is applied to a scratch registry and swapped in only after
     // every stage succeeds; the live world is untouched on failure.
     Registry ScopedStaged;
-    Registry& ScopedWorld = InOptions.clearExisting ? ScopedStaged : InRegistry;
+    if (!InOptions.clearExisting)
+    {
+        ScopedStaged.CloneFrom(InRegistry);
+    }
+    Registry& ScopedWorld = ScopedStaged;
 
     // Validate before mutating anything. A prefab that fails halfway through
     for (std::size_t ScopedEntityIndex = 0; ScopedEntityIndex < InScene.entities.size(); ++ScopedEntityIndex)
@@ -541,10 +549,7 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
         }
     }
 
-    if (InOptions.clearExisting)
-    {
-        InRegistry.Swap(ScopedWorld);
-    }
+    InRegistry.Swap(ScopedWorld);
     LogInfo("scene", "applied '{}': {} entities{}", InScene.meta.name, ScopedRemap.entities.size(),
             InOptions.clearExisting ? " (world replaced)" : " (appended)");
     return ScopedRemap;
@@ -556,12 +561,16 @@ std::string SaveSceneToml(const Registry& InRegistry, const ComponentRegistry& I
 }
 
 SceneLoadResult LoadSceneToml(Registry& InRegistry, const ComponentRegistry& InComponents, std::string_view InToml,
-                              SceneLoadOptions InOptions)
+                              SceneLoadOptions InOptions, SceneMeta* OutMeta)
 {
     std::expected<SceneData, std::string> ScopedDecoded = DecodeSceneToml(InToml, InComponents);
     if (!ScopedDecoded)
     {
         return std::unexpected(std::move(ScopedDecoded.error()));
+    }
+    if (OutMeta != nullptr)
+    {
+        *OutMeta = ScopedDecoded->meta;
     }
     return ApplyScene(InRegistry, InComponents, *ScopedDecoded, InOptions);
 }
@@ -573,12 +582,16 @@ std::vector<std::byte> SaveSceneBinary(const Registry& InRegistry, const Compone
 }
 
 SceneLoadResult LoadSceneBinary(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                std::span<const std::byte> InBinary, SceneLoadOptions InOptions)
+                                std::span<const std::byte> InBinary, SceneLoadOptions InOptions, SceneMeta* OutMeta)
 {
     std::expected<SceneData, std::string> ScopedDecoded = DecodeSceneBinary(InBinary, InComponents);
     if (!ScopedDecoded)
     {
         return std::unexpected(std::move(ScopedDecoded.error()));
+    }
+    if (OutMeta != nullptr)
+    {
+        *OutMeta = ScopedDecoded->meta;
     }
     return ApplyScene(InRegistry, InComponents, *ScopedDecoded, InOptions);
 }
@@ -622,7 +635,7 @@ bool SaveSceneFileBinary(const std::filesystem::path& InPath, const Registry& In
 }
 
 SceneLoadResult LoadSceneFileToml(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                  const std::filesystem::path& InPath, SceneLoadOptions InOptions)
+                                  const std::filesystem::path& InPath, SceneLoadOptions InOptions, SceneMeta* OutMeta)
 {
     std::string ScopedText;
     std::string ScopedError;
@@ -630,11 +643,11 @@ SceneLoadResult LoadSceneFileToml(Registry& InRegistry, const ComponentRegistry&
     {
         return std::unexpected(std::move(ScopedError));
     }
-    return LoadSceneToml(InRegistry, InComponents, ScopedText, InOptions);
+    return LoadSceneToml(InRegistry, InComponents, ScopedText, InOptions, OutMeta);
 }
 
 SceneLoadResult LoadSceneFileBinary(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                    const std::filesystem::path& InPath, SceneLoadOptions InOptions)
+                                    const std::filesystem::path& InPath, SceneLoadOptions InOptions, SceneMeta* OutMeta)
 {
     std::string ScopedBytes;
     std::string ScopedError;
@@ -644,6 +657,6 @@ SceneLoadResult LoadSceneFileBinary(Registry& InRegistry, const ComponentRegistr
     }
     const auto* ScopedData = reinterpret_cast<const std::byte*>(ScopedBytes.data());
     return LoadSceneBinary(InRegistry, InComponents, std::span<const std::byte>(ScopedData, ScopedBytes.size()),
-                           InOptions);
+                           InOptions, OutMeta);
 }
 }

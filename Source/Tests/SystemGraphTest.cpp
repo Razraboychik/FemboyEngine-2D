@@ -174,8 +174,10 @@ int main()
         Fby::Ecs::SystemGraph Graph;
         Check(Graph.Add(Fby::Ecs::Phase::PreUpdate, "first", &RunFirst, &User), "add removable");
         Check(Graph.Add(Fby::Ecs::Phase::PreUpdate, "second", &RunSecond, nullptr, FirstBit), "add dependent");
+        const std::uint64_t ScopedSecondBit = Graph.BitFor("second");
         Check(Graph.RemoveUser(&User), "remove the first system");
-        Check(Graph.Count() == 1, "one system remains");
+        Check(Graph.Count() == 2 && Graph.ActiveCount() == 1, "removed slot stays as a stable tombstone");
+        Check(Graph.BitFor("second") == ScopedSecondBit, "later system keeps its dependency bit");
         Check(Graph.Build(), "graph rebuilds after removal");
         GOrder = 0;
         GSecond = 0;

@@ -64,9 +64,14 @@ void GameplayTagDatabase::Clear() noexcept
 
 int GameplayTagDatabase::Find(std::string_view InPath) const noexcept
 {
+    const std::string_view ScopedPath = Trim(InPath);
+    if (ScopedPath.empty())
+    {
+        return -1;
+    }
     for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
-        if (PathAt(ScopedI) == InPath)
+        if (PathAt(ScopedI) == ScopedPath)
         {
             return static_cast<int>(ScopedI);
         }
@@ -135,6 +140,27 @@ int GameplayTagDatabase::Add(std::string_view InPath) noexcept
     {
         return ScopedExisting;
     }
+    std::uint32_t ScopedMissing = 0;
+    std::string_view ScopedAncestor = ScopedPath;
+    while (true)
+    {
+        const std::size_t ScopedDot = ScopedAncestor.rfind('.');
+        if (ScopedDot == std::string_view::npos)
+        {
+            break;
+        }
+        ScopedAncestor = ScopedAncestor.substr(0, ScopedDot);
+        if (Find(ScopedAncestor) >= 0)
+        {
+            break;
+        }
+        ++ScopedMissing;
+        if (Count + ScopedMissing + 1u > kCapacity)
+        {
+            SetError("tag database is full");
+            return -1;
+        }
+    }
     if (!EnsureParents(ScopedPath))
     {
         return -1;
@@ -150,22 +176,22 @@ bool GameplayTagDatabase::RemoveAt(std::uint32_t InIndex) noexcept
         SetError("tag index is out of range");
         return false;
     }
-    const std::string_view ScopedPath = PathAt(InIndex);
-    if (ScopedPath.empty())
+    const std::string_view ScopedOriginal = PathAt(InIndex);
+    if (ScopedOriginal.empty())
     {
         SetError("tag path is empty");
         return false;
     }
-    std::uint32_t ScopedFirst = Count;
-    std::uint32_t ScopedLast = 0;
+    // The view aliases Paths[InIndex]; clearing that slot below would dangle it.
+    std::array<char, kPathCapacity> ScopedPathStorage{};
+    std::memcpy(ScopedPathStorage.data(), ScopedOriginal.data(), ScopedOriginal.size());
+    const std::string_view ScopedPath(ScopedPathStorage.data(), ScopedOriginal.size());
     bool ScopedFound = false;
     for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
         const std::string_view ScopedCurrent = PathAt(ScopedI);
         if (ScopedCurrent == ScopedPath || HasPrefix(ScopedCurrent, ScopedPath))
         {
-            ScopedFirst = std::min(ScopedFirst, ScopedI);
-            ScopedLast = ScopedI;
             ScopedFound = true;
         }
     }
@@ -173,16 +199,44 @@ bool GameplayTagDatabase::RemoveAt(std::uint32_t InIndex) noexcept
     {
         return false;
     }
-    if (ScopedLast + 1u != Count)
+    for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
-        SetError("removal would renumber later tag ids");
+        const std::string_view ScopedCurrent = PathAt(ScopedI);
+        if (ScopedCurrent == ScopedPath || HasPrefix(ScopedCurrent, ScopedPath))
+        {
+            Paths[ScopedI] = {};
+        }
+    }
+    ++Revision;
+    return true;
+}
+
+void GameplayTagDatabase::ReserveSlot() noexcept
+{
+    if (Count < kCapacity)
+    {
+        Paths[Count] = {};
+        ++Count;
+        ++Revision;
+    }
+}
+
+bool GameplayTagDatabase::RestoreSlot(std::uint32_t InIndex, std::string_view InPath) noexcept
+{
+    ClearError();
+    if (InIndex >= kCapacity || !IsValidGameplayTagPath(InPath) || InPath.size() >= kPathCapacity)
+    {
+        SetError("tag slot or path is invalid");
         return false;
     }
-    for (std::uint32_t ScopedI = ScopedFirst; ScopedI <= ScopedLast; ++ScopedI)
+    if (Find(InPath) >= 0)
     {
-        Paths[ScopedI] = {};
+        SetError("duplicate tag path");
+        return false;
     }
-    Count = ScopedFirst;
+    Paths[InIndex] = {};
+    std::memcpy(Paths[InIndex].data(), InPath.data(), InPath.size());
+    Count = std::max(Count, InIndex + 1u);
     ++Revision;
     return true;
 }
@@ -295,7 +349,11 @@ void GameplayTagDatabase::ApplyToRegistry(GameplayTagRegistry& InRegistry) const
     InRegistry.Clear();
     for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
-        (void)InRegistry.Register(PathAt(ScopedI));
+        const std::string_view ScopedPath = PathAt(ScopedI);
+        if (!ScopedPath.empty())
+        {
+            (void)InRegistry.Register(ScopedPath);
+        }
     }
 }
 

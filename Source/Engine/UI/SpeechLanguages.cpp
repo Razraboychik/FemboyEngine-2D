@@ -253,7 +253,12 @@ std::uint32_t BuildSpeechLanguageFallback(std::string_view InRequested,
         std::memcpy(OutChain[ScopedCount++], "en", 3);
         return ScopedCount;
     }
-    std::memcpy(OutChain[ScopedCount++], ScopedRequested, std::strlen(ScopedRequested) + 1);
+    std::size_t ScopedRequestedLength = 0;
+    while (ScopedRequestedLength < sizeof(ScopedRequested) && ScopedRequested[ScopedRequestedLength] != 0)
+    {
+        ++ScopedRequestedLength;
+    }
+    std::memcpy(OutChain[ScopedCount++], ScopedRequested, ScopedRequestedLength + 1);
     const std::string_view ScopedPrimary = SpeechPrimarySubtag(ScopedRequested);
     if (!EqualsIgnoreCase(ScopedPrimary, ScopedRequested) && !EqualsIgnoreCase(ScopedPrimary, OutChain[0]))
     {

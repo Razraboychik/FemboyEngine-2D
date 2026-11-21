@@ -3,6 +3,8 @@
 #include "Engine/Core/Assert.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/SkeletonAssetRef.hpp"
+#include "Engine/ECS/StructPayloadComponent.hpp"
+#include "Engine/ECS/StateTree.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
 #include "Engine/ECS/RegistryOps.hpp"
@@ -12,6 +14,7 @@
 #include "Engine/Gameplay/GameplaySnapshot.hpp"
 #include "Engine/Physics/Gravity.hpp"
 #include "Engine/Physics/PhysicsJoints.hpp"
+#include "Engine/Physics/SdfCharacter.hpp"
 #include "Engine/UI/Hypertext.hpp"
 #include "Engine/UI/PinkUI.hpp"
 
@@ -650,6 +653,58 @@ void RemoveCollider(Registry& InRegistry, Entity InEntity)
     InRegistry.remove<Collider2D>(InEntity);
 }
 
+bool HasStructPayload(const Registry& InRegistry, Entity InEntity)
+{
+    return InRegistry.all_of<StructPayloadComponent>(InEntity);
+}
+
+bool CaptureStructPayload(const Registry& InRegistry, Entity InEntity, std::span<std::byte> InDestination)
+{
+    const auto* ScopedPayload = InRegistry.try_get<StructPayloadComponent>(InEntity);
+    if (ScopedPayload == nullptr || InDestination.size() < sizeof(StructPayloadComponent))
+    {
+        return false;
+    }
+    std::memcpy(InDestination.data(), ScopedPayload, sizeof(StructPayloadComponent));
+    return true;
+}
+
+bool RestoreStructPayload(Registry& InRegistry, Entity InEntity, std::span<const std::byte> InSource)
+{
+    if (InSource.size() != sizeof(StructPayloadComponent))
+    {
+        return false;
+    }
+    StructPayloadComponent ScopedPayload;
+    std::memcpy(&ScopedPayload, InSource.data(), sizeof(ScopedPayload));
+    auto* ScopedExisting = InRegistry.try_get<StructPayloadComponent>(InEntity);
+    if (ScopedExisting == nullptr)
+    {
+        ScopedExisting = &InRegistry.emplace<StructPayloadComponent>(InEntity);
+    }
+    *ScopedExisting = ScopedPayload;
+    return true;
+}
+
+void RemoveStructPayload(Registry& InRegistry, Entity InEntity)
+{
+    InRegistry.remove<StructPayloadComponent>(InEntity);
+}
+
+void AddStructPayloadCodec(SnapshotSchema& InSchema)
+{
+    SnapshotComponent ScopedCodec;
+    ScopedCodec.name = "StructPayloadComponent";
+    ScopedCodec.typeId = SnapshotTypeId(ScopedCodec.name);
+    ScopedCodec.layoutHash = SnapshotTypeId("StructPayloadComponent/v1");
+    ScopedCodec.size = sizeof(StructPayloadComponent);
+    ScopedCodec.has = &HasStructPayload;
+    ScopedCodec.capture = &CaptureStructPayload;
+    ScopedCodec.restore = &RestoreStructPayload;
+    ScopedCodec.remove = &RemoveStructPayload;
+    (void)InSchema.AddCodec(ScopedCodec);
+}
+
 void AddPhysicsCodecs(SnapshotSchema& InSchema)
 {
     const auto ScopedAddRaw = [&InSchema](std::string_view InName, std::uint32_t InSize,
@@ -871,7 +926,10 @@ SnapshotSchema SnapshotSchema::BuiltIns()
     (void)ScopedSchema.Add<LevelGravityComponent>();
     (void)ScopedSchema.Add<GravityBodyComponent>();
     Detail::AddPhysicsCodecs(ScopedSchema);
+    Detail::AddStructPayloadCodec(ScopedSchema);
     RegisterGameplaySnapshotCodecs(ScopedSchema);
+    (void)RegisterStateTreeSnapshotCodec(ScopedSchema);
+    (void)RegisterSdfCharacterSnapshotCodec(ScopedSchema);
     return ScopedSchema;
 }
 
@@ -1307,7 +1365,7 @@ bool RestoreSnapshot(Registry& InRegistry, const SnapshotSchema& InSchema, std::
     {
         return false;
     }
-    if (!InExtras.extension.empty() && InExtras.extension.size() < ScopedView.extension.size())
+    if (ScopedView.extension.size() > InExtras.extension.size())
     {
         return false;
     }
@@ -1501,7 +1559,7 @@ bool RestoreDelta(Registry& InRegistry, const SnapshotSchema& InSchema, std::spa
     {
         return false;
     }
-    if (!InExtras.extension.empty() && InExtras.extension.size() < ScopedView.extension.size())
+    if (ScopedView.extension.size() > InExtras.extension.size())
     {
         return false;
     }

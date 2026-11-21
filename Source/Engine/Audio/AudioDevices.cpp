@@ -1,6 +1,8 @@
 // FemboyEngine2D - audio device enumeration and capture monitor implementation.
 #include "Engine/Audio/AudioDevices.hpp"
 
+#include <algorithm>
+
 #include "miniaudio.h"
 
 #include <cmath>
@@ -12,6 +14,12 @@ namespace Fby
 {
 namespace
 {
+template <std::size_t N> [[nodiscard]] std::size_t DeviceIdLength(const char (&InId)[N]) noexcept
+{
+    const char* ScopedEnd = std::find(InId, InId + N, '\0');
+    return static_cast<std::size_t>(ScopedEnd - InId);
+}
+
 static_assert(sizeof(ma_device_id) <= kAudioRawIdBytes, "raw device id storage is too small");
 
 [[nodiscard]] std::uint64_t Fnv1a(const std::uint8_t* InBytes, std::size_t InCount) noexcept
@@ -28,7 +36,7 @@ static_assert(sizeof(ma_device_id) <= kAudioRawIdBytes, "raw device id storage i
 void FormatId(const ma_device_id& InId, char* OutId) noexcept
 {
     const std::uint64_t ScopedHash = Fnv1a(reinterpret_cast<const std::uint8_t*>(&InId), sizeof(InId));
-    std::snprintf(OutId, kAudioDeviceIdChars, "%016llx", static_cast<unsigned long long>(ScopedHash));
+    (void)std::snprintf(OutId, kAudioDeviceIdChars, "%016llx", static_cast<unsigned long long>(ScopedHash));
 }
 
 void CopyName(const char* InName, char* OutName) noexcept
@@ -38,7 +46,7 @@ void CopyName(const char* InName, char* OutName) noexcept
     {
         return;
     }
-    std::snprintf(OutName, kAudioDeviceNameChars, "%s", InName);
+    (void)std::snprintf(OutName, kAudioDeviceNameChars, "%s", InName);
 }
 
 }
@@ -210,13 +218,13 @@ bool AudioDeviceEnumerator::Refresh() noexcept
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedInputs.Count; ++ScopedIndex)
     {
         ScopedHash = Fnv1a(reinterpret_cast<const std::uint8_t*>(ScopedInputs.Devices[ScopedIndex].Id),
-                           std::strlen(ScopedInputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
+                           DeviceIdLength(ScopedInputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
         ScopedHash ^= ScopedInputs.Devices[ScopedIndex].Default ? 0x9E3779B9ull : 0ull;
     }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedOutputs.Count; ++ScopedIndex)
     {
         ScopedHash = Fnv1a(reinterpret_cast<const std::uint8_t*>(ScopedOutputs.Devices[ScopedIndex].Id),
-                           std::strlen(ScopedOutputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
+                           DeviceIdLength(ScopedOutputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
         ScopedHash ^= ScopedOutputs.Devices[ScopedIndex].Default ? 0x85EBCA6Bull : 0ull;
     }
     ScopedHash ^= static_cast<std::uint64_t>(ScopedInputs.Count) * 131ull;

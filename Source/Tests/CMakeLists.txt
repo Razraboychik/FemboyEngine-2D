@@ -53,6 +53,9 @@ add_test(NAME rollback_replay COMMAND fby_rollback_replay_test)
 
 # Fixed-width big integers: two's complement arithmetic, conversion and formatting.
 fby_add_engine_test(fby_bigint_test bigint BigIntTest.cpp)
+fby_add_engine_test(fby_struct_value_test struct_value StructValueTest.cpp)
+fby_add_engine_test(fby_modding_test modding ModdingTest.cpp)
+fby_add_engine_test(fby_mod_api_test mod_api ModApiTest.cpp)
 
 # Fixed-capacity big number store: stable handles, generation checks and pool reuse.
 fby_add_engine_test(fby_bignumber_store_test bignumber_store BigNumberStoreTest.cpp)
@@ -490,6 +493,8 @@ add_test(NAME script_aot COMMAND fby_script_aot_test)
 # Pink UI: mdspan grid layout, anchors, hit testing, one-batch packing and the
 fby_add_engine_test(fby_pink_ui_test pink_ui PinkUITest.cpp)
 
+# UI-independent code editor model and context completion index.
+
 # DSP mixer graph: routing, ducking, reverb, lock-free command ring and zero
 add_executable(fby_dsp_mixer_test DspMixerTest.cpp)
 target_link_libraries(fby_dsp_mixer_test PRIVATE FemboyEngine2D::Engine)
@@ -648,6 +653,15 @@ fby_add_engine_test(fby_sprite_overlay_test sprite_overlay SpriteOverlayTest.cpp
 
 # Isometric grid math, tilemaps, skeletal IK/retargeting and clip compression.
 fby_add_engine_test(fby_grid_skeletal_test grid_skeletal GridSkeletalTest.cpp)
+fby_add_engine_test(fby_autotile_test autotile AutoTileTest.cpp)
+fby_add_engine_test(fby_pixel_perfect_test pixel_perfect PixelPerfectTest.cpp)
+fby_add_engine_test(fby_normal_map_test normal_map NormalMapTest.cpp)
+fby_add_engine_test(fby_normal_map_lighting_test normal_map_lighting NormalMapLightingTest.cpp)
+fby_add_engine_test(fby_normal_map_visual_test normal_map_visual NormalMapVisualTest.cpp)
+fby_add_engine_test(fby_debugger_condition_test debugger_condition DebuggerConditionTest.cpp)
+fby_add_engine_test(fby_script_file_reloader_test script_file_reloader ScriptFileReloaderTest.cpp)
+fby_add_engine_test(fby_tiled_importer_test tiled_importer TiledImporterTest.cpp)
+fby_add_engine_test(fby_aseprite_importer_test aseprite_importer AsepriteImporterTest.cpp)
 
 # Navigation: A* over rect and hex maps, tilemap cost maps and agent steering.
 fby_add_engine_test(fby_navigation_test navigation NavigationTest.cpp)
@@ -739,6 +753,12 @@ if(TARGET fby_editor)
     set_target_properties(fby_editor_infrastructure_test PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME editor_infrastructure COMMAND fby_editor_infrastructure_test)
+
+    add_executable(fby_physics_profile_test PhysicsProfileTest.cpp)
+    target_link_libraries(fby_physics_profile_test PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_physics_profile_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME physics_profile COMMAND fby_physics_profile_test)
 
     add_executable(fby_project_tag_config_test ProjectTagConfigTest.cpp)
     target_link_libraries(fby_project_tag_config_test PRIVATE FemboyEngine2D::Editor)

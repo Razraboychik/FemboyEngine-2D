@@ -183,7 +183,35 @@ fragment float4 mesh_fragment(MeshVertexOut in [[stage_in]],
                               sampler atlasSampler [[sampler(0)]])
 {
     const float4 texel = atlas.sample(atlasSampler, in.uv, in.layer);
-    const float4 color = texel * in.color;
+    float4 color = texel * in.color;
+    const uint normalLayer = (in.flags >> 16u) & 0xFFu;
+    const float normalStrength = float((in.flags >> 11u) & 0x1Fu) / 31.0f;
+    if (normalLayer >= 1u && normalStrength > 0.0f)
+    {
+        float3 normal = atlas.sample(atlasSampler, in.uv, normalLayer).xyz * 2.0f - 1.0f;
+        normal.xy *= normalStrength;
+        normal = normalize(float3(normal.xy, max(normal.z, 0.05f)));
+        float3 lit = float3(0.15f, 0.15f, 0.15f);
+        for (uint index = 0u; index < 4u; ++index)
+        {
+            const float radius = lights.positionRadius[index].z;
+            if (radius <= 0.0f)
+            {
+                continue;
+            }
+            const float2 delta = lights.positionRadius[index].xy - in.position.xy;
+            const float distance = length(delta);
+            if (distance >= radius)
+            {
+                continue;
+            }
+            const float2 direction = delta / max(distance, 0.0001f);
+            const float ndl = saturate(dot(normal.xy, direction));
+            const float falloff = 1.0f - distance / radius;
+            lit += lights.color[index].rgb * lights.color[index].a * falloff * falloff * (0.25f + 0.75f * ndl);
+        }
+        color.rgb *= lit;
+    }
     if (color.a < 0.002)
     {
         discard_fragment();
@@ -236,9 +264,16 @@ vertex SpriteVertexOut sprite_vertex(uint vertexId [[vertex_id]],
     return out;
 }
 
+struct SpriteLights
+{
+    float4 positionRadius[4];
+    float4 color[4];
+};
+
 fragment float4 sprite_fragment(SpriteVertexOut in [[stage_in]],
                                 texture2d_array<float> atlas [[texture(0)]],
-                                sampler atlasSampler [[sampler(0)]])
+                                sampler atlasSampler [[sampler(0)]],
+                                constant SpriteLights& lights [[buffer(2)]])
 {
     if ((in.flags & (1u << 6)) != 0u)
     {

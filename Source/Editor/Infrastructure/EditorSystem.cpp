@@ -555,6 +555,7 @@ struct EditorSystem::Impl
     Scene::ComponentRegistry components;
     EditorCamera camera;
     std::filesystem::path currentScene;
+    ViewProfile currentViewProfile = ViewProfile::Default;
     std::string status;
     double statusTime = 0.0;
     // The native save dialog answers on the SDL dialog thread, so a new scene
@@ -615,6 +616,7 @@ struct EditorSystem::Impl
     TextPreviewPanel textPreview;
     bool showTextPreview = false;
     ScriptDebuggerPanel scriptDebugger;
+    ScriptRuntime* scriptRuntime = nullptr;
     TilemapEditorPanel tilemap;
     VirtualTexturePanel virtualTexture;
     Rhi::VirtualTextureSystem* virtualTextureSource = nullptr;
@@ -628,7 +630,9 @@ struct EditorSystem::Impl
     PlayInEditor pie;
     std::vector<std::byte> pieArena;
     Ecs::SystemGraph* graph = nullptr;
+    int buildTarget = 0;
     bool piePaused = false;
+    bool piePausedByDebugger = false;
     bool piePauseSfx = true;
     bool piePauseMusic = false;
     bool piePauseHud = true;
@@ -777,6 +781,9 @@ struct EditorSystem::Impl
     bool showAnimationGraph = true;
     bool showDirectionalBlendSpace = true;
     bool showDemo = false;
+    bool commandPaletteOpen = false;
+    bool commandPaletteFocus = false;
+    std::array<char, 64> commandFilter{};
 
     std::string assetDir;
     std::string selectedAsset;
@@ -852,6 +859,90 @@ struct EditorSystem::Impl
         LogInfo("editor", "{}", status);
     }
 
+    void DrawCommandPalette(Ecs::SystemContext& InContext)
+    {
+        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P) && !ImGui::GetIO().WantTextInput)
+        {
+            commandPaletteOpen = true;
+            commandPaletteFocus = true;
+            commandFilter.fill(0);
+        }
+        if (commandPaletteOpen)
+        {
+            ImGui::OpenPopup("##command_palette");
+            commandPaletteOpen = false;
+        }
+        if (!ImGui::BeginPopup("##command_palette"))
+        {
+            return;
+        }
+        ImGui::SetNextWindowSize(ImVec2(520.0f, 0.0f), ImGuiCond_Appearing);
+        if (commandPaletteFocus)
+        {
+            ImGui::SetKeyboardFocusHere();
+            commandPaletteFocus = false;
+        }
+        ImGui::SetNextItemWidth(-1.0f);
+        (void)ImGui::InputTextWithHint("##command_filter", "type a command...", commandFilter.data(), commandFilter.size());
+        const std::string_view ScopedFilter(commandFilter.data());
+        const auto Matches = [ScopedFilter](const char* InName)
+        {
+            if (ScopedFilter.empty())
+            {
+                return true;
+            }
+            return std::search(InName, InName + std::strlen(InName), ScopedFilter.begin(), ScopedFilter.end(),
+                               [](char InLeft, char InRight)
+                               {
+                                   return std::tolower(static_cast<unsigned char>(InLeft)) ==
+                                          std::tolower(static_cast<unsigned char>(InRight));
+                               }) != InName + std::strlen(InName);
+        };
+        int ScopedShown = 0;
+        const auto Item = [&](const char* InName, auto&& InAction)
+        {
+            if (!Matches(InName))
+            {
+                return;
+            }
+            ++ScopedShown;
+            if (ImGui::Selectable(InName))
+            {
+                InAction();
+                ImGui::CloseCurrentPopup();
+            }
+        };
+        Item("Save scene", [&] { (void)SaveCurrentScene(InContext, false); });
+        Item("Undo", [&] { (void)commands.Undo(); });
+        Item("Redo", [&] { (void)commands.Redo(); });
+        Item("Play or resume PIE", [&]
+             {
+                 if (pie.Active())
+                 {
+                     pieCommand = PieCommand::TogglePause;
+                 }
+                 else
+                 {
+                     pieCommand = PieCommand::Play;
+                 }
+             });
+        Item("Stop PIE", [&] { pieCommand = PieCommand::Stop; });
+        Item("Build & Pack Game", [&] { StartReleaseCook(); });
+        Item("Toggle Content Browser", [&] { showAssets = !showAssets; });
+        Item("Toggle Console", [&] { showConsole = !showConsole; });
+        Item("Toggle Material Graph", [&] { showMaterialGraph = !showMaterialGraph; });
+        Item("Toggle VisualScript", [&] { showVisualScript = !showVisualScript; });
+        Item("Toggle Script Debugger", [&] { showScriptDebugger = !showScriptDebugger; });
+        Item("Toggle Tilemap", [&] { showTilemap = !showTilemap; });
+        Item("Toggle UI Layout", [&] { showUiLayout = !showUiLayout; });
+        Item("Toggle Render Tuning", [&] { showRenderTuning = !showRenderTuning; });
+        if (ScopedShown == 0)
+        {
+            ImGui::TextDisabled("no commands");
+        }
+        ImGui::EndPopup();
+    }
+
     void StartReleaseCook()
     {
         if (!projectOpen || !projectConfig.Paths().IsValid())
@@ -900,6 +991,8 @@ struct EditorSystem::Impl
                                        ScopedEngineRoot.generic_string(), ScopedPacker.generic_string());
         ScopedConfig.compileAot = visualScript.Initialized() && visualScript.Graph().nodeCount != 0;
         ScopedConfig.stageRuntime = stageRuntimeBundle;
+        (void)std::snprintf(ScopedConfig.target, sizeof(ScopedConfig.target), "%s",
+                            buildTarget == 1 ? "mobile" : "desktop");
         char ScopedError[kReleaseMessageBytes]{};
         Script::LogicGraph* ScopedGraph = ScopedConfig.compileAot ? &visualScript.Graph() : nullptr;
         if (!releaseCooker.Start(ScopedConfig, ScopedGraph, ScopedError, sizeof(ScopedError)))
@@ -1074,7 +1167,6 @@ struct EditorSystem::Impl
         }
         // BuiltIns() is the same schema the rollback session uses. The snapshot
         Ecs::SnapshotSchema ScopedSchema = Ecs::SnapshotSchema::BuiltIns();
-        (void)Fby::RegisterSdfCharacterSnapshotCodec(ScopedSchema);
         // The replication protocol expects the first baseline at tick 1; the
         // sandbox second copy applies that baseline before any delta.
         ExternalClientDesc ScopedExternal;
@@ -1090,8 +1182,14 @@ struct EditorSystem::Impl
         }
         const PlayInEditor::Result ScopedResult =
             InMultiplayer
-                ? pie.StartMultiplayer(InContext.registry, ScopedSchema, InContext, 1, 1, nullptr, &ScopedExternal)
-                : pie.Start(InContext.registry, ScopedSchema, InContext);
+                ? pie.StartMultiplayer(InContext.registry, ScopedSchema, InContext, 1, 1, nullptr, &ScopedExternal,
+                                       currentViewProfile != ViewProfile::Default
+                                           ? currentViewProfile
+                                           : projectConfig.Project().viewProfile)
+                : pie.Start(InContext.registry, ScopedSchema, InContext, 1, nullptr,
+                            currentViewProfile != ViewProfile::Default
+                                ? currentViewProfile
+                                : projectConfig.Project().viewProfile);
         if (ScopedResult != PlayInEditor::Result::Ok)
         {
             SetStatus(std::format("PIE start failed: {}", PlayInEditor::ResultName(ScopedResult)));
@@ -1153,7 +1251,9 @@ struct EditorSystem::Impl
         // clears both the host and the replicated client world.
         pie.Stop();
         ReleasePieClientTarget();
+        scriptDebugger.DetachProgram();
         piePaused = false;
+        piePausedByDebugger = false;
         if (InContext.audio != nullptr)
         {
             InContext.audio->SetBusPaused(Fby::AudioBus::GameSfx, false);
@@ -1171,6 +1271,29 @@ struct EditorSystem::Impl
 
     void ProcessPIE(Ecs::SystemContext& InContext)
     {
+        if (pie.Active())
+        {
+            if (!piePaused && scriptDebugger.Paused())
+            {
+                piePaused = true;
+                piePausedByDebugger = true;
+                if (graph != nullptr)
+                {
+                    graph->SetPaused(true, !piePauseHud);
+                }
+                SetStatus("PIE paused by Script Debugger");
+            }
+            else if (piePaused && piePausedByDebugger && !scriptDebugger.Paused())
+            {
+                piePaused = false;
+                piePausedByDebugger = false;
+                if (graph != nullptr)
+                {
+                    graph->SetPaused(false);
+                }
+                SetStatus("PIE resumed after Script Debugger");
+            }
+        }
         bool ScopedStepOnce = false;
         switch (pieCommand)
         {
@@ -1954,6 +2077,18 @@ struct EditorSystem::Impl
                 ImGui::TextDisabled("%zu control point(s)", ScopedPointCount);
                 break;
             }
+            case Reflect::FieldKind::UInt16Array:
+            {
+                BeginPropertyRow(ScopedLabel.c_str());
+                ImGui::TextDisabled("%zu u16 value(s)", InField.size / sizeof(std::uint16_t));
+                break;
+            }
+            case Reflect::FieldKind::FloatArray:
+            {
+                BeginPropertyRow(ScopedLabel.c_str());
+                ImGui::TextDisabled("%zu float value(s)", InField.size / sizeof(float));
+                break;
+            }
         }
         ImGui::PopID();
         if (ScopedTrackable)
@@ -2373,6 +2508,26 @@ struct EditorSystem::Impl
                 }
             }
             ImGui::PopID();
+        }
+
+        if (const auto* ScopedNormal = ScopedRegistry.try_get<NormalMap2D>(ScopedEntity))
+        {
+            ImGui::SeparatorText("Normal Map");
+            if (ScopedNormal->Layer < 1u)
+            {
+                ImGui::TextDisabled("Layer 0 is reserved; set a normal-map layer >= 1.");
+            }
+            else if (textureArray.IsValid())
+            {
+                const ImTextureID ScopedPreview = thumbnails.Get(textureArray, ScopedNormal->Layer);
+                if (ScopedPreview != ImTextureID_Invalid)
+                {
+                    ImGui::Image(ScopedPreview, ImVec2(128.0f, 128.0f));
+                    ImGui::SameLine();
+                }
+                ImGui::Text("layer %u, strength %.2f", ScopedNormal->Layer,
+                            static_cast<double>(ScopedNormal->Strength));
+            }
         }
 
         // The skeleton is a large SoA block whose persistent form is the asset, not the component.
@@ -3582,6 +3737,10 @@ struct EditorSystem::Impl
         }
         ImGui::SameLine();
         ImGui::Checkbox("Scene text", &showSceneText);
+        ImGui::SameLine();
+        const char* ScopedBuildTargets[] = {"desktop", "mobile"};
+        ImGui::SetNextItemWidth(100.0f);
+        (void)ImGui::Combo("##build_target", &buildTarget, ScopedBuildTargets, 2);
         ImGui::SameLine();
         ImGui::BeginDisabled(releaseCooker.Running() || !projectOpen);
         if (ImGui::Button("Build & Pack Game"))
@@ -5124,6 +5283,8 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
         InContext.gameplayAttributes = &MImpl->gameplayAttributes;
     }
     MImpl->desc = InDesc;
+    MImpl->scriptRuntime = InDesc.scriptRuntime;
+    MImpl->scriptDebugger.AttachRuntime(InDesc.scriptRuntime);
     MImpl->visible = InDesc.startVisible;
     MImpl->showDemo = InDesc.showDemoWindow;
     MImpl->iniPath = InDesc.iniPath.string();
@@ -5296,7 +5457,6 @@ bool EditorSystem::Initialize(Ecs::SystemContext& InContext, const EditorDesc& I
     // Allocate the PIE arena once, at editor startup.
     MImpl->pieArena.resize(kPieArenaBytes);
     Ecs::SnapshotSchema ScopedPieSchema = Ecs::SnapshotSchema::BuiltIns();
-    (void)Fby::RegisterSdfCharacterSnapshotCodec(ScopedPieSchema);
     if (!MImpl->pie.Initialize(MImpl->pieArena, ScopedPieSchema, MImpl->pieArena.size()))
     {
         LogWarn("editor", "PIE arena initialization failed; the Play button will report the reason");
@@ -5649,6 +5809,7 @@ void EditorSystem::Shutdown()
             LogWarn("editor", "could not persist project settings on shutdown: {}", ScopedPersistError);
         }
     }
+    MImpl->scriptDebugger.AttachRuntime(nullptr);
     MImpl->StopProjectSystems();
     LogInfo("editor", "shutdown: project systems stopped");
     // Stop() destroys the PIE bodies and its isolated Box2D world; Shutdown
@@ -5656,6 +5817,7 @@ void EditorSystem::Shutdown()
     MImpl->pieInitialized = false;
     MImpl->graph = nullptr;
     MImpl->piePaused = false;
+    MImpl->piePausedByDebugger = false;
 
     if (MImpl->window != nullptr)
     {
@@ -6087,6 +6249,7 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+    MImpl->DrawCommandPalette(InContext);
     ImGuizmo::BeginFrame();
 
     // Follow the monitor the window is on.
@@ -6317,7 +6480,27 @@ void EditorSystem::Tick(Ecs::SystemContext& InContext)
     if (MImpl->showScriptDebugger)
     {
         ImGui::SetNextWindowDockID(MImpl->DockHostFor("Material Graph"), ImGuiCond_FirstUseEver);
-        MImpl->scriptDebugger.Draw(InContext.registry, MImpl->components, SelectedEntity(InContext.registry),
+        Ecs::Registry& ScopedDebugRegistry = MImpl->pie.Active() ? MImpl->pie.World() : InContext.registry;
+        Entity ScopedDebugEntity = SelectedEntity(ScopedDebugRegistry);
+        if (ScopedDebugEntity == kNullEntity)
+        {
+            const auto ScopedScriptsView = ScopedDebugRegistry.view<ScriptComponent>();
+            for (const Entity ScopedScriptEntity : ScopedScriptsView)
+            {
+                ScopedDebugEntity = ScopedScriptEntity;
+                break;
+            }
+        }
+        if (MImpl->pie.Active())
+        {
+            if (const auto* ScopedLiveScript = ScopedDebugRegistry.try_get<ScriptComponent>(ScopedDebugEntity);
+                ScopedLiveScript != nullptr && ScopedLiveScript->Program < kScriptMaxPrograms &&
+                MImpl->scriptDebugger.ProgramHandle() != ScopedLiveScript->Program)
+            {
+                (void)MImpl->scriptDebugger.AttachProgram(ScopedLiveScript->Program);
+            }
+        }
+        MImpl->scriptDebugger.Draw(ScopedDebugRegistry, MImpl->components, ScopedDebugEntity,
                                    &MImpl->showScriptDebugger, &MImpl->visualScript);
         // Graph programs pause on a node span; mark that node on the canvas.
         MImpl->visualScript.SetDebugHighlight(MImpl->scriptDebugger.CurrentGraphNode());
@@ -7344,7 +7527,9 @@ bool EditorSystem::LoadScene(Ecs::SystemContext& InContext, const std::filesyste
     // SkeletonAssetRef resolves through the same VFS the editor already uses
     ScopedOptions.assets = InContext.assets != nullptr ? InContext.assets : MImpl->vfs;
     ScopedOptions.assetDb = InContext.assetDb;
-    const auto ScopedResult = Scene::LoadSceneFileToml(InContext.registry, MImpl->components, InPath, ScopedOptions);
+    Scene::SceneMeta ScopedSceneMeta;
+    const auto ScopedResult =
+        Scene::LoadSceneFileToml(InContext.registry, MImpl->components, InPath, ScopedOptions, &ScopedSceneMeta);
     if (!ScopedResult)
     {
         if (InError != nullptr)
@@ -7359,6 +7544,7 @@ bool EditorSystem::LoadScene(Ecs::SystemContext& InContext, const std::filesyste
     MImpl->commands.CancelTransaction();
     MImpl->commands.ClearHistory();
     MImpl->currentScene = InPath;
+    MImpl->currentViewProfile = ScopedSceneMeta.profile;
     MImpl->aiStateTree.SetScenePath(InPath);
     (void)MImpl->aiStateTree.LoadCompiledFromSceneToml();
     MImpl->animationGraph.SetScenePath(InPath);
@@ -7384,6 +7570,7 @@ bool EditorSystem::SaveScene(Ecs::SystemContext& InContext, const std::filesyste
     Scene::SceneMeta ScopedMeta;
     ScopedMeta.name = InPath.stem().string();
     ScopedMeta.author = "FemboyEngine2D editor";
+    ScopedMeta.profile = MImpl->currentViewProfile;
     if (!Scene::SaveSceneFileToml(InPath, InContext.registry, MImpl->components, ScopedMeta, InError))
     {
         return false;

@@ -334,7 +334,8 @@ bool VirtualFileSystem::AddEntry(std::string InPath, VfsEntry InEntry, std::stri
     return true;
 }
 
-bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, std::string* InError)
+bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, std::string* InError,
+                                       std::uint32_t* OutMountId)
 {
     const std::scoped_lock ScopedLock(MMutex);
     namespace fs = std::filesystem;
@@ -351,6 +352,10 @@ bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, 
 
     auto ScopedMount = std::make_unique<MountRecord>();
     ScopedMount->id = MNextMountId++;
+    if (OutMountId != nullptr)
+    {
+        *OutMountId = ScopedMount->id;
+    }
     ScopedMount->priority = InPriority;
     ScopedMount->root = ScopedRootPath.string();
 
@@ -440,7 +445,8 @@ void VirtualFileSystem::RefreshDirectoryMounts()
     }
 }
 
-bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std::string* InError)
+bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std::string* InError,
+                                 std::uint32_t* OutMountId)
 {
     const std::scoped_lock ScopedLock(MMutex);
     const auto ScopedFail = [InError](std::string InMessage)
@@ -484,6 +490,10 @@ bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std
 
     auto ScopedMount = std::make_unique<MountRecord>();
     ScopedMount->id = MNextMountId++;
+    if (OutMountId != nullptr)
+    {
+        *OutMountId = ScopedMount->id;
+    }
     ScopedMount->priority = InPriority;
     ScopedMount->isPak = true;
     ScopedMount->pak = std::move(ScopedMapping);
@@ -515,7 +525,7 @@ bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std
             continue;
         }
         const char* ScopedPathBytes = reinterpret_cast<const char*>(ScopedBytes.data() + ScopedPathPosition);
-        if (std::memchr(ScopedPathBytes, ' ', ScopedEntry.pathSize) != nullptr)
+        if (std::memchr(ScopedPathBytes, '\0', ScopedEntry.pathSize) != nullptr)
         {
             continue;
         }
@@ -799,11 +809,6 @@ std::optional<VfsEntry> VirtualFileSystem::Materialize(std::string_view InPath) 
     {
         return std::nullopt;
     }
-    if (!ScopedIt->second.data.empty())
-    {
-        return ScopedIt->second;
-    }
-
     const MountRecord* ScopedOwner = nullptr;
     for (const std::unique_ptr<MountRecord>& ScopedMount : MMounts)
     {
@@ -811,6 +816,29 @@ std::optional<VfsEntry> VirtualFileSystem::Materialize(std::string_view InPath) 
         {
             ScopedOwner = ScopedMount.get();
             break;
+        }
+    }
+    if (!ScopedIt->second.data.empty())
+    {
+        // A directory shadow may carry a span into a mapping that an unmount or
+        // refresh has already released. Validate it against MLazyMappings before
+        // handing out a stale pointer; pak-backed spans stay owned by their mount.
+        if (ScopedOwner != nullptr && !ScopedOwner->isPak)
+        {
+            const auto ScopedLazy = MLazyMappings.find(ScopedKey);
+            if (ScopedLazy == MLazyMappings.end() || !ScopedLazy->second ||
+                ScopedLazy->second->Bytes().data() != ScopedIt->second.data.data())
+            {
+                ScopedIt->second.data = {};
+            }
+            else
+            {
+                return ScopedIt->second;
+            }
+        }
+        else
+        {
+            return ScopedIt->second;
         }
     }
     if (ScopedOwner == nullptr || ScopedOwner->isPak)

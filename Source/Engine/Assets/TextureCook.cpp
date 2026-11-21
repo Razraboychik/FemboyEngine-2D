@@ -1033,6 +1033,11 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
     }
 
     stbi_set_flip_vertically_on_load(0);
+    if (InSource.empty() || InSource.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    {
+        SetError(InError, "image source is empty or exceeds the decoder's input limit");
+        return false;
+    }
     int ScopedWidth = 0;
     int ScopedHeight = 0;
     int ScopedChannels = 0;

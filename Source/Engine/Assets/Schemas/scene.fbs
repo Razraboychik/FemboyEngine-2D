@@ -38,6 +38,7 @@ table Scene
     version:uint = 2;
     name:string;
     author:string;
+    profile:ubyte = 0;
     entities:[Entity];
     chain_anchors:[ChainAnchor];
     world_extension:[ubyte];

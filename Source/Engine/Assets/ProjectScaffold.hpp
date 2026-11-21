@@ -9,21 +9,11 @@
 namespace Fby::Assets::Scaffold
 {
 
-enum class ProjectTemplate : std::uint8_t
-{
-    Empty = 0,
-    Platformer,
-    TopDown,
-    UiApp,
-    Count,
-};
-
-[[nodiscard]] const char* ProjectTemplateName(ProjectTemplate InTemplate) noexcept;
-// Starter scene written as scenes/main.toml. Every entity uses only reflected
-// components, so the scene loads and saves in the editor without conversion.
-[[nodiscard]] std::string ProjectTemplateScene(ProjectTemplate InTemplate);
+// Starter scene written as scenes/main.toml. It is deliberately empty: the
+// project decides which components and physics profile it needs.
+[[nodiscard]] std::string DefaultProjectScene();
 // Short authored guide written next to the generated GameMain.cpp.
-[[nodiscard]] std::string ProjectTemplateReadme(ProjectTemplate InTemplate, std::string_view InProjectName);
+[[nodiscard]] std::string ProjectReadme(std::string_view InProjectName);
 
 // Placeholders:
 inline constexpr std::string_view kCMakeListsTemplate = R"FBY_CMAKE(
@@ -87,6 +77,10 @@ default_scene = "scenes/main.toml"
 # FixedUpdate runs at this frequency; PhysicsSystem receives 1.0 / fixed_update_hz.
 fixed_update_hz = 120.0
 max_fixed_steps = 8
+
+[physics]
+# Default scene policy: default, side-view, top-down, isometric or hex.
+profile = "@PROFILE@"
 
 [render]
 vsync = true
@@ -423,98 +417,25 @@ namespace Detail
     return Detail::ReplaceToken(ScopedText, "@PROJECT_TARGET@", InProjectTarget);
 }
 
-inline const char* ProjectTemplateName(ProjectTemplate InTemplate) noexcept
+[[nodiscard]] inline std::string DefaultProjectScene()
 {
-    switch (InTemplate)
-    {
-        case ProjectTemplate::Platformer:
-            return "2D Platformer";
-        case ProjectTemplate::TopDown:
-            return "Top-Down";
-        case ProjectTemplate::UiApp:
-            return "UI App";
-        default:
-            return "Empty";
-    }
+    return "version = 2\nname = \"main\"\nauthor = \"FemboyEngine\"\nprofile = \"default\"\n";
 }
 
-inline std::string ProjectTemplateScene(ProjectTemplate InTemplate)
-{
-    if (InTemplate == ProjectTemplate::Empty)
-    {
-        return "version = 1\nname = \"main\"\nauthor = \"FemboyEngine\"\n";
-    }
-    std::string ScopedScene =
-        "version = 1\nname = \"main\"\nauthor = \"FemboyEngine\"\n\n"
-        "[[entity]]\nid = 0\nname = \"camera\"\n\n"
-        "[[entity.components]]\ntype = \"Camera2D\"\nCenter = [640.0, 360.0]\n"
-        "ViewSize = [1280.0, 720.0]\nZoom = 1.0\nRotation = 0.0\n";
-    const auto AddActor = [&ScopedScene](std::uint32_t InId, const char* InName, float InX, float InY,
-                                         const char* InColor)
-    {
-        ScopedScene += "\n[[entity]]\nid = ";
-        ScopedScene += std::to_string(InId);
-        ScopedScene += "\nname = \"";
-        ScopedScene += InName;
-        ScopedScene += "\"\n\n[[entity.components]]\ntype = \"Transform2D\"\nPosition = [";
-        ScopedScene += std::to_string(InX);
-        ScopedScene += ", ";
-        ScopedScene += std::to_string(InY);
-        ScopedScene += "]\nScale = [1.0, 1.0]\nRotation = 0.0\n\n[[entity.components]]\ntype = \"Sprite2D\"\n"
-                       "Size = [48.0, 48.0]\nUVMin = [0.0, 0.0]\nUVMax = [1.0, 1.0]\nLayer = 1\nColor = \"";
-        ScopedScene += InColor;
-        ScopedScene += "\"\nFlags = 0\n\n[[entity.components]]\ntype = \"DrawOrder\"\nLayer = 1\nDepth = 0.0\n"
-                       "MaterialBucket = 0\n";
-    };
-    if (InTemplate == ProjectTemplate::Platformer)
-    {
-        AddActor(1, "player", 320.0f, 240.0f, "#4FC3F7FF");
-        AddActor(2, "ground", 640.0f, 620.0f, "#8D6E63FF");
-        AddActor(3, "platform", 880.0f, 420.0f, "#8D6E63FF");
-    }
-    else if (InTemplate == ProjectTemplate::TopDown)
-    {
-        AddActor(1, "player", 640.0f, 360.0f, "#4FC3F7FF");
-        AddActor(2, "enemy", 900.0f, 360.0f, "#EF5350FF");
-    }
-    else if (InTemplate == ProjectTemplate::UiApp)
-    {
-        AddActor(1, "screen-root", 640.0f, 360.0f, "#263238FF");
-        AddActor(2, "panel", 640.0f, 360.0f, "#37474FFF");
-    }
-    return ScopedScene;
-}
-
-inline std::string ProjectTemplateReadme(ProjectTemplate InTemplate, std::string_view InProjectName)
+[[nodiscard]] inline std::string ProjectReadme(std::string_view InProjectName)
 {
     std::string ScopedText = "# ";
     ScopedText += InProjectName;
-    ScopedText += "\n\nTemplate: ";
-    ScopedText += ProjectTemplateName(InTemplate);
     ScopedText +=
         "\n\nScenes live in `assets/scenes/`, textures in `assets/textures/`, audio in\n"
         "`assets/audio/`. Open the project with the editor, edit `scenes/main.toml`, and\n"
         "press **Build & Pack Game** when the game is ready.\n\n"
         "The generated `GameMain.cpp` is a clean-slate loop: it mounts `assets/`, creates\n"
-        "the window and RHI, and leaves gameplay to the project. Replace the starter scene\n"
-        "entities with your own; the engine does not require a particular component set.\n";
-    if (InTemplate == ProjectTemplate::Platformer)
-    {
-        ScopedText += "\nThe starter scene has a camera, a player actor, ground and a platform.\n"
-                      "Add physics and controls in `GameMain.cpp` or through a project plugin.\n";
-    }
-    else if (InTemplate == ProjectTemplate::TopDown)
-    {
-        ScopedText += "\nThe starter scene has a camera, a player and an enemy actor.\n"
-                      "Tilemap authoring is available in the editor; this scene is a minimal start.\n";
-    }
-    else if (InTemplate == ProjectTemplate::UiApp)
-    {
-        ScopedText += "\nThe starter scene is a UI canvas placeholder; build the widget tree in the\n"
-                      "editor's UI Layout panel and save it back to the scene.\n";
-    }
+        "the window and RHI, and leaves gameplay to the project. The starter scene is empty;\n"
+        "add the components and profile your game needs.\n";
     return ScopedText;
 }
+
 
 [[nodiscard]] inline std::string CMakeLists(std::string_view InProjectName, std::string_view InProjectTarget)
 {
@@ -522,11 +443,13 @@ inline std::string ProjectTemplateReadme(ProjectTemplate InTemplate, std::string
 }
 
 [[nodiscard]] inline std::string ProjectToml(std::string_view InProjectName, std::string_view InProjectTarget,
-                                             std::string_view InTextureFormat = "bc7-srgb")
+                                             std::string_view InTextureFormat = "bc7-srgb",
+                                             std::string_view InProfile = "default")
 {
     (void)InProjectTarget;
     std::string ScopedText = Expand(kProjectTomlTemplate, InProjectName, InProjectName);
-    return Detail::ReplaceToken(ScopedText, "@TEXTURE_FORMAT@", InTextureFormat);
+    ScopedText = Detail::ReplaceToken(ScopedText, "@TEXTURE_FORMAT@", InTextureFormat);
+    return Detail::ReplaceToken(ScopedText, "@PROFILE@", InProfile);
 }
 
 [[nodiscard]] inline std::string GameMain(std::string_view InProjectName, std::string_view InProjectTarget)

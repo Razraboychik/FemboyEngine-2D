@@ -30,6 +30,7 @@ public:
     void Reset(std::uint32_t InWidth, std::uint32_t InHeight, Grid::ProjectionMode InMode);
     [[nodiscard]] bool SaveToText(std::string* OutText) const;
     [[nodiscard]] bool LoadFromText(std::string_view InText, std::string* InError = nullptr);
+    [[nodiscard]] bool ImportTiled(std::string_view InXml, std::string* InError = nullptr);
     void SetBrush(std::uint16_t InTileIndex, bool InSolid, std::uint8_t InHeight);
     [[nodiscard]] bool Paint(Grid::Cell InCell);
     [[nodiscard]] bool Erase(Grid::Cell InCell);

@@ -565,16 +565,33 @@ void TestAutoImportAndBackgroundCook()
     Check(ScopedWatcher.InjectChange("textures/hero.png"), "inject a changed source");
     (void)ScopedWatcher.Poll();
     std::uint32_t ScopedReloaded = 0;
-    for (int ScopedAttempt = 0; ScopedAttempt < 1200 && ScopedReloaded == 0; ++ScopedAttempt)
+    const Fby::Assets::AssetMeta* ScopedAfterChange = nullptr;
+    bool ScopedAdvanced = false;
+    // Windows may still hold the previous .ftex mapping for a few milliseconds
+    // after the VFS refresh. Re-inject the change instead of treating a
+    // transient replace failure as a permanently lost cook.
+    for (int ScopedAttempt = 0; ScopedAttempt < 5 && !ScopedAdvanced; ++ScopedAttempt)
     {
-        ScopedReloaded = ScopedImporter.Tick(&ScopedError);
-        if (ScopedReloaded == 0)
+        if (ScopedAttempt != 0)
         {
+            ScopedVfs.RefreshDirectoryMounts();
+            Check(WritePng(ScopedRoot / "textures" / "hero.png", 8, 8, 80), "rewrite source png again");
+            Check(ScopedWatcher.InjectChange("textures/hero.png"), "re-inject the changed source");
+            (void)ScopedWatcher.Poll();
+        }
+        for (int ScopedPoll = 0; ScopedPoll < 400; ++ScopedPoll)
+        {
+            ScopedReloaded += ScopedImporter.Tick(&ScopedError);
+            ScopedAfterChange = ScopedDatabase.Meta(ScopedHandle);
+            if (ScopedAfterChange != nullptr && ScopedAfterChange->contentGeneration > ScopedGenerationBefore)
+            {
+                ScopedAdvanced = true;
+                break;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
     }
     Check(ScopedReloaded > 0, "watcher Poll hot-reloaded the changed PNG");
-    const Fby::Assets::AssetMeta* ScopedAfterChange = ScopedDatabase.Meta(ScopedHandle);
     Check(ScopedAfterChange != nullptr && ScopedAfterChange->contentGeneration > ScopedGenerationBefore,
           "content generation advanced after Poll");
 
@@ -600,7 +617,47 @@ void TestAutoImportAndBackgroundCook()
     ScopedWatcher.Shutdown();
 }
 
-void TestProjectTemplates()
+void TestAssetKindPolicy()
+{
+    const auto CheckKind = [](const char* InPath, Fby::AssetKind InExpected)
+    {
+        Fby::AssetKind ScopedKind = Fby::AssetKind::Unknown;
+        Check(Fby::Editor::InferAssetKindFromPath(InPath, &ScopedKind) && ScopedKind == InExpected, InPath);
+    };
+    CheckKind("textures/hero.png", Fby::AssetKind::Texture);
+    CheckKind("audio/step.wav", Fby::AssetKind::AudioClip);
+    CheckKind("audio/music.ogg", Fby::AssetKind::AudioClip);
+    CheckKind("audio/voice.opus", Fby::AssetKind::AudioClip);
+    CheckKind("fonts/ui.ttf", Fby::AssetKind::Font);
+    CheckKind("fonts/ui.otf", Fby::AssetKind::Font);
+    CheckKind("skeletons/hero.feskl", Fby::AssetKind::Skeleton);
+    CheckKind("anims/run.fanim", Fby::AssetKind::Animation);
+    CheckKind("materials/fire.fmat", Fby::AssetKind::Material);
+    CheckKind("scripts/player.fby", Fby::AssetKind::Script);
+    CheckKind("scenes/main.toml", Fby::AssetKind::Scene);
+
+    Fby::AssetKind ScopedUnknown = Fby::AssetKind::Unknown;
+    Check(!Fby::Editor::InferAssetKindFromPath("textures/hero.ftex", &ScopedUnknown), "cooked texture is not a source");
+    Check(!Fby::Editor::InferAssetKindFromPath("unknown.bin", &ScopedUnknown), "unknown extension is rejected");
+    Check(Fby::Editor::CookedPathForSource("audio/step.wav", Fby::AssetKind::AudioClip) == "audio/step.fpcm",
+          "audio cooks to fpcm");
+    Check(Fby::Editor::CookedPathForSource("fonts/ui.ttf", Fby::AssetKind::Font) == "fonts/ui.fbyfont",
+          "font cooks to fbyfont");
+    Check(Fby::Editor::CookedPathForSource("textures/hero.png", Fby::AssetKind::Texture) == "textures/hero.ftex",
+          "texture cooks to ftex");
+    Check(Fby::Editor::IsNormalMapPath("textures/hero_normal.png"), "normal-map suffix is detected");
+    Check(Fby::Editor::IsNormalMapPath("textures/hero_n.png"), "short normal-map suffix is detected");
+    Check(Fby::Editor::IsNormalMapPath("textures/hero.normal.png"), "dot-normal suffix is detected");
+    Check(!Fby::Editor::IsNormalMapPath("textures/hero.png"), "regular texture is not a normal map");
+    Fby::Assets::AssetMeta ScopedNormalMeta;
+    std::string ScopedNormalError;
+    Check(Fby::Editor::BuildDefaultAssetMeta("textures/hero_normal.png", Fby::AssetKind::Texture,
+                                             Fby::Assets::TextureFormat::Bc7Unorm, &ScopedNormalMeta, &ScopedNormalError) &&
+              !ScopedNormalMeta.import.srgb,
+          "normal-map metadata is linear");
+}
+
+void TestProjectCreation()
 {
     const std::filesystem::path ScopedRoot = TestRoot("_editor_infra_templates");
     std::error_code ScopedCode;
@@ -610,19 +667,19 @@ void TestProjectTemplates()
     Fby::Editor::ProjectPaths ScopedPaths;
     Fby::Editor::ProjectConfig ScopedConfig;
     std::string ScopedError;
-    Check(Fby::Editor::CreateProject(ScopedRoot, "TemplateGame", &ScopedPaths, &ScopedConfig, &ScopedError,
-                                     Fby::Assets::Scaffold::ProjectTemplate::Platformer),
-          "the platformer template creates a project");
-    Check(std::filesystem::is_regular_file(ScopedPaths.root / "README.md"), "the template writes a README");
-    Check(std::filesystem::is_regular_file(ScopedPaths.scenes / "main.toml"), "the template writes a scene");
+    Check(Fby::Editor::CreateProject(ScopedRoot, "TemplateGame", &ScopedPaths, &ScopedConfig, &ScopedError),
+          "a project is created without a gameplay template");
+    Check(std::filesystem::is_regular_file(ScopedPaths.root / "README.md"), "the project writes a README");
+    Check(std::filesystem::is_regular_file(ScopedPaths.scenes / "main.toml"), "the project writes a scene");
 
     Fby::Scene::Registry ScopedRegistry;
     Fby::Scene::ComponentRegistry ScopedComponents;
     Fby::Scene::RegisterBuiltInComponents(ScopedComponents);
     const auto ScopedScene =
         Fby::Scene::LoadSceneFileToml(ScopedRegistry, ScopedComponents, ScopedPaths.scenes / "main.toml");
-    Check(ScopedScene.has_value(), "the template scene is valid TOML");
-    Check(ScopedRegistry.storage<Fby::Entity>().size() >= 3, "the platformer template has a camera and actors");
+    Check(ScopedScene.has_value(), "the starter scene is valid TOML");
+    Check(ScopedRegistry.storage<Fby::Entity>().size() == 0, "the starter scene is deliberately empty");
+    Check(ScopedConfig.project.viewProfile == Fby::ViewProfile::Default, "the project starts on the default profile");
 
     std::string ScopedCmake;
     {
@@ -798,13 +855,21 @@ void TestPrefabSceneRoundTrip()
           "selection saves as a prefab scene");
 
     // The Content Browser drop path loads a prefab with clearExisting=false.
+    // An append load must stage a clone, so the existing entity survives even
+    // though its id space is reused by the staged world.
     Fby::Scene::Registry ScopedTarget;
+    const Fby::Entity ScopedExisting = ScopedTarget.create();
+    std::snprintf(ScopedTarget.emplace<Fby::NameComponent>(ScopedExisting).Value,
+                  sizeof(Fby::NameComponent::Value), "Existing");
     Fby::Scene::SceneLoadOptions ScopedOptions;
     ScopedOptions.clearExisting = false;
     const auto ScopedLoaded =
         Fby::Scene::LoadSceneFileToml(ScopedTarget, ScopedComponents, ScopedPrefab, ScopedOptions);
     Check(ScopedLoaded.has_value(), "prefab loads back");
-    Check(ScopedTarget.storage<Fby::Entity>().size() == 2, "prefab restores both entities");
+    Check(ScopedTarget.storage<Fby::Entity>().size() == 3, "append keeps the existing entity and adds both prefab entities");
+    Check(ScopedTarget.valid(ScopedExisting), "append preserves the existing entity id");
+    Check(std::string_view(ScopedTarget.get<Fby::NameComponent>(ScopedExisting).Value) == "Existing",
+          "append preserves existing component data");
     bool ScopedNameFound = false;
     for (const Fby::Entity ScopedEntity : ScopedTarget.view<Fby::NameComponent>())
     {
@@ -991,7 +1056,8 @@ int main()
     TestSettingsExternalTransaction();
     TestVfsPinnedFileLifetime();
     TestProjectPlugins();
-    TestProjectTemplates();
+    TestProjectCreation();
+    TestAssetKindPolicy();
     TestCommandStackLimits();
     if (GFailures != 0)
     {

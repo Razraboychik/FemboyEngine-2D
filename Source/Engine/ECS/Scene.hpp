@@ -1,6 +1,7 @@
 // FemboyEngine2D - scene and prefab serialization.
 #pragma once
 
+#include "Engine/Core/ViewProfile.hpp"
 #include "Engine/ECS/ComponentRegistry.hpp"
 
 #include <cstddef>
@@ -25,7 +26,7 @@ class AssetDatabase;
 namespace Fby::Scene
 {
 
-inline constexpr std::uint32_t kSceneVersion = 1;
+inline constexpr std::uint32_t kSceneVersion = 2;
 inline constexpr std::uint32_t kInvalidEntityIndex = 0xFFFFFFFFu;
 
 struct SceneMeta
@@ -33,6 +34,8 @@ struct SceneMeta
     std::string name = "untitled";
     std::string author;
     std::uint32_t version = kSceneVersion;
+    // Per-scene simulation policy; scenes in one project may mix them.
+    ViewProfile profile = ViewProfile::Default;
 };
 
 struct SceneComponent
@@ -103,11 +106,13 @@ using SceneLoadResult = std::expected<EntityRemap, std::string>;
 [[nodiscard]] std::string SaveSceneToml(const Registry& InRegistry, const ComponentRegistry& InComponents,
                                         SceneMeta InMeta = {});
 [[nodiscard]] SceneLoadResult LoadSceneToml(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                            std::string_view InToml, SceneLoadOptions InOptions = {});
+                                            std::string_view InToml, SceneLoadOptions InOptions = {},
+                                            SceneMeta* OutMeta = nullptr);
 [[nodiscard]] std::vector<std::byte> SaveSceneBinary(const Registry& InRegistry, const ComponentRegistry& InComponents,
                                                      SceneMeta InMeta = {});
 [[nodiscard]] SceneLoadResult LoadSceneBinary(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                              std::span<const std::byte> InBinary, SceneLoadOptions InOptions = {});
+                                              std::span<const std::byte> InBinary, SceneLoadOptions InOptions = {},
+                                              SceneMeta* OutMeta = nullptr);
 // Appends without clearing: this is the prefab path.
 [[nodiscard]] SceneLoadResult InstantiatePrefabToml(Registry& InRegistry, const ComponentRegistry& InComponents,
                                                     std::string_view InToml);
@@ -121,7 +126,9 @@ using SceneLoadResult = std::expected<EntityRemap, std::string>;
                                        const ComponentRegistry& InComponents, SceneMeta InMeta = {},
                                        std::string* InError = nullptr);
 [[nodiscard]] SceneLoadResult LoadSceneFileToml(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                                const std::filesystem::path& InPath, SceneLoadOptions InOptions = {});
+                                                const std::filesystem::path& InPath, SceneLoadOptions InOptions = {},
+                                                SceneMeta* OutMeta = nullptr);
 [[nodiscard]] SceneLoadResult LoadSceneFileBinary(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                                  const std::filesystem::path& InPath, SceneLoadOptions InOptions = {});
+                                                  const std::filesystem::path& InPath, SceneLoadOptions InOptions = {},
+                                                  SceneMeta* OutMeta = nullptr);
 }

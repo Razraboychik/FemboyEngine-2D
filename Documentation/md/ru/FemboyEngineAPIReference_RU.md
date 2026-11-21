@@ -3,7 +3,7 @@
 **Движок на C++23 в парадигме data-oriented: полная публичная поверхность, контракты и пошаговый пример**
 
 
-Version 0.7.0-alpha.1 (Alpha) · 2026-11-18 · Russian
+Version 0.7.0-alpha.1 (Alpha) · 2026-11-21 · Russian
 
 
 ---
@@ -196,7 +196,7 @@ Snapshot v5 — канонический образ реестра с контр
 
 | API | Контракт |
 |---|---|
-| GetOrAdd<T>(registry, entity) | Добавляет компонент при отсутствии и возвращает стабильную ссылку. |
+| Emplace<T>(entity, args...) | Добавляет компонент при отсутствии и возвращает стабильную ссылку. |
 | ecs::SnapshotWriter / SnapshotReader | Пишет и валидирует канонический образ; контрольная сумма — FNV-1a по payload. |
 | Fby::Net::NetRollbackSession | Использует snapshot v5 и воспроизводит тики при опоздании ввода (раздел 10). |
 
@@ -441,7 +441,7 @@ typedef struct FbyPlatformApi {
 
 - 1. Запустите редактор и создайте проект через New Project. Дашборд создаёт <engineRoot>/Projects/<name> с assets/{textures,audio,scenes}, configs/ и project.femproj.
 - 2. Импортируйте спрайт в assets/textures. Наблюдатель импортирует файл, пишет .femeta и готовит слой текстурного массива .ftex.
-- 3. Создайте assets/scenes/main.toml с одним SpriteRenderer, одним Transform2D и одним RigidBody2D + Collider2D.
+- 3. Создайте assets/scenes/main.toml с одним Sprite2D, одним Transform2D и одним RigidBody2D + Collider2D.
 - 4. Зарегистрируйте системы: ввод в PreUpdate, физика в FixedUpdate, движение в Update, PinkUI в Render.
 - 5. Дайте камере CameraStackSystem и вызовите SetDisplayScale() из SDL_GetWindowDisplayScale, чтобы глифы UI были чёткими на HiDPI.
 - 6. Подключите AccessibilityKernel из настроек проекта; BlindMode и DeafMode читаются из project.femproj, а не зашиты в код.
@@ -496,33 +496,33 @@ python Documentation/Tools/GenerateApplicationGuide.py
 Генерируется из заголовков при каждом запуске. Символ из этого списка объявлен в поставляемом дереве; заголовок и строка — авторитетное расположение.
 
 
-### Editor/Infrastructure (119)
+### Editor/Infrastructure (121)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `AccessibilityEffectRegistry` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 47 |
-| `AIStateTreeCanvasPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 54 |
-| `AnimationGraphCanvasPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 55 |
-| `AnimationTimelinePanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 56 |
+| `AccessibilityEffectRegistry` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 48 |
+| `AIStateTreeCanvasPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 55 |
+| `AnimationGraphCanvasPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 56 |
+| `AnimationTimelinePanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 57 |
 | `AssetDatabaseWatchSystem` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 20 |
-| `AssetDatabaseWatchSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 57 |
+| `AssetDatabaseWatchSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 58 |
 | `AssetImportService` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 30 |
-| `AssetImportService` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 58 |
+| `AssetImportService` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 59 |
 | `Callbacks` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 38 |
 | `Change` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 126 |
 | `Codec` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 234 |
 | `Command` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 249 |
 | `CommandKind` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 33 |
 | `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 30 |
-| `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 59 |
+| `CommandStack` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 60 |
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 27 |
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 39 |
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 90 |
-| `ContentBrowserPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 60 |
+| `ContentBrowserPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 61 |
 | `CookRequest` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 148 |
 | `CookResult` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 159 |
-| `EditorCamera` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 101 |
-| `EditorDesc` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 72 |
+| `EditorCamera` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 105 |
+| `EditorDesc` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 73 |
 | `EditorFontRole` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 22 |
 | `EditorFonts` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 84 |
 | `EditorFonts` | Infrastructure | `Source/Editor/Infrastructure/EditorTypography.hpp` | 7 |
@@ -531,65 +531,67 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `EditorPalette` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 78 |
 | `EditorSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSettings.hpp` | 33 |
 | `EditorSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 15 |
-| `EditorSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 61 |
+| `EditorSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 62 |
 | `EditorSymbolColors` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 62 |
 | `EditorSymbolRole` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 43 |
-| `EditorSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 110 |
+| `EditorSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 114 |
 | `EditorThemeId` | Infrastructure | `Source/Editor/Infrastructure/EditorTheme.hpp` | 32 |
 | `Entry` | Infrastructure | `Source/Editor/Infrastructure/TextureThumbnails.hpp` | 55 |
-| `ExternalClientDesc` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 38 |
-| `FrameGenerationMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 140 |
-| `FrameGenerationPolicySetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 133 |
-| `HudTargetMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 149 |
+| `ExternalClientDesc` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 39 |
+| `FrameGenerationMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 141 |
+| `FrameGenerationPolicySetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 134 |
+| `HudTargetMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 150 |
+| `ImDrawList` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 11 |
 | `ImFont` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 10 |
 | `ImGuiIO` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 11 |
-| `Impl` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 254 |
+| `Impl` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 258 |
 | `InteractionTransaction` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 16 |
 | `LoadedSource` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 138 |
-| `MaterialGraphPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 62 |
+| `MaterialGraphPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 63 |
 | `MaterialGraphRuntime` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 41 |
 | `MaterialRuntimeStats` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 25 |
-| `MotionComfortSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 172 |
-| `NetSession` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 32 |
-| `NetworkDiagnosticsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 63 |
-| `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 100 |
-| `OpaqueRenderMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 93 |
+| `MotionComfortSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 175 |
+| `NetSession` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 33 |
+| `NetworkDiagnosticsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 64 |
+| `OitMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 101 |
+| `OpaqueRenderMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 94 |
 | `PendingEdit` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 275 |
 | `PendingSpawn` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 287 |
-| `PhysicsDebugFlags` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 19 |
-| `PhysicsDebugFrame` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 47 |
-| `PhysicsDebugLine` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 32 |
-| `PhysicsDebugPoint` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 40 |
-| `PhysicsDebugVisualizer` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 58 |
-| `PiePlayerInput` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 28 |
+| `PhysicsDebugFlags` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 21 |
+| `PhysicsDebugFrame` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 49 |
+| `PhysicsDebugLine` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 34 |
+| `PhysicsDebugPoint` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 42 |
+| `PhysicsDebugVisualizer` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 63 |
+| `PiePlayerInput` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 29 |
 | `PlaybackIcon` | Infrastructure | `Source/Editor/Infrastructure/EditorWidgets.hpp` | 14 |
-| `PlayInEditor` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 45 |
-| `PluginHost` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 42 |
-| `Profiler` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 27 |
-| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 67 |
-| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 287 |
-| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 64 |
-| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 353 |
-| `ProjectDashboard` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 65 |
-| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 68 |
-| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 309 |
+| `PlayInEditor` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 46 |
+| `PluginHost` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 43 |
+| `Profiler` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 28 |
+| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 68 |
+| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 291 |
+| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 65 |
+| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 355 |
+| `ProjectDashboard` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 66 |
+| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 69 |
+| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 313 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 21 |
-| `ProjectPluginEntry` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 164 |
-| `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 183 |
+| `ProjectPluginEntry` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 165 |
+| `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 186 |
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 22 |
-| `ProjectSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 66 |
+| `ProjectSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 67 |
 | `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 267 |
 | `ReleaseCookConfig` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 70 |
-| `ReleaseCooker` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 163 |
-| `ReleaseCookProgress` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 125 |
-| `ReleaseCookResult` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 146 |
+| `ReleaseCooker` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 165 |
+| `ReleaseCookProgress` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 127 |
+| `ReleaseCookResult` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 148 |
 | `ReleaseCookStage` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 28 |
 | `ResolvedHudSettings` | Infrastructure | `Source/Editor/Infrastructure/ResolvedRenderSettings.hpp` | 35 |
 | `ResolvedRenderSettings` | Infrastructure | `Source/Editor/Infrastructure/ResolvedRenderSettings.hpp` | 14 |
 | `Result` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 45 |
-| `Result` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 48 |
-| `SdfCollisionSystem` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 13 |
-| `Services` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 225 |
+| `Result` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 49 |
+| `ScriptRuntime` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 18 |
+| `SdfCollisionSystem` | Infrastructure | `Source/Editor/Infrastructure/PhysicsDebugDraw.hpp` | 15 |
+| `Services` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 228 |
 | `SettingDesc` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 28 |
 | `SettingKind` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 20 |
 | `SettingScope` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 11 |
@@ -597,27 +599,27 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Source` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 19 |
 | `SpawnComponent` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 301 |
 | `SpawnHeader` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 294 |
-| `SpawnTransaction` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 190 |
+| `SpawnTransaction` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 198 |
 | `StableSource` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 145 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 88 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 55 |
 | `Stats` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 97 |
-| `TemporalUpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 156 |
+| `TemporalUpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 157 |
 | `TextureArrayAsset` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 23 |
 | `TextureBinding` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 175 |
 | `TextureThumbnailCache` | Infrastructure | `Source/Editor/Infrastructure/TextureThumbnails.hpp` | 17 |
-| `UpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 107 |
-| `UpscalePolicy` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 116 |
-| `UpscalerBackendSetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 123 |
-| `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 69 |
+| `UpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 108 |
+| `UpscalePolicy` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 117 |
+| `UpscalerBackendSetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 124 |
+| `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 70 |
 | `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 17 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 20 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 15 |
-| `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 18 |
-| `VirtualTextureSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 37 |
-| `VirtualTextureSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 33 |
-| `VirtualTextureSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 22 |
-| `VisualScriptPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 70 |
+| `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 19 |
+| `VirtualTextureSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 38 |
+| `VirtualTextureSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 34 |
+| `VirtualTextureSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 23 |
+| `VisualScriptPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 71 |
 | `WindowManager` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 16 |
 
 ### Editor/Panels (109)
@@ -644,7 +646,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `CanvasModelOps` | Panels | `Source/Editor/Panels/NodeCanvasPanel.hpp` | 21 |
 | `CommandStack` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 25 |
 | `CommandStack` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 30 |
-| `ComponentRegistry` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 18 |
+| `ComponentRegistry` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 19 |
 | `Config` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 35 |
 | `ContentBrowserPanel` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 27 |
 | `CrashDiagnosticsPanel` | Panels | `Source/Editor/Panels/CrashDiagnosticsPanel.hpp` | 13 |
@@ -671,14 +673,14 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `LogBoySystem` | Panels | `Source/Editor/Panels/LogBoyPanel.hpp` | 186 |
 | `LogicGraphDocument` | Panels | `Source/Editor/Panels/VisualScriptPanel.hpp` | 23 |
 | `MaterialGraphPanel` | Panels | `Source/Editor/Panels/MaterialGraphPanel.hpp` | 20 |
-| `Mode` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 84 |
+| `Mode` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 92 |
 | `NetSession` | Panels | `Source/Editor/Panels/NetworkDiagnosticsPanel.hpp` | 13 |
 | `NetworkDiagnosticsPanel` | Panels | `Source/Editor/Panels/NetworkDiagnosticsPanel.hpp` | 22 |
 | `NodeCanvasPanel` | Panels | `Source/Editor/Panels/NodeCanvasPanel.hpp` | 54 |
 | `ParticleFxPanel` | Panels | `Source/Editor/Panels/ParticleFxPanel.hpp` | 17 |
 | `PIEAnimFrame` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 110 |
 | `PieClientViewport` | Panels | `Source/Editor/Panels/PieClientViewport.hpp` | 15 |
-| `PIEFrameSlot` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 302 |
+| `PIEFrameSlot` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 307 |
 | `PlaneView` | Panels | `Source/Editor/Panels/DirectionalBlendSpacePanel.hpp` | 122 |
 | `ProjectConfigStore` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 31 |
 | `ProjectConfigStore` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 25 |
@@ -689,7 +691,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `RenderTuningPanel` | Panels | `Source/Editor/Panels/RenderTuningPanel.hpp` | 18 |
 | `SceneDiagnosticsPanel` | Panels | `Source/Editor/Panels/SceneDiagnosticsPanel.hpp` | 56 |
 | `SceneDiagnosticsSample` | Panels | `Source/Editor/Panels/SceneDiagnosticsPanel.hpp` | 15 |
-| `ScriptDebuggerPanel` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 28 |
+| `ScriptDebuggerPanel` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 29 |
 | `ScriptRuntime` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 16 |
 | `SdfCharacterPanel` | Panels | `Source/Editor/Panels/SdfCharacterPanel.hpp` | 9 |
 | `SdfLightingPanel` | Panels | `Source/Editor/Panels/SdfLightingPanel.hpp` | 19 |
@@ -704,7 +706,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `SystemContext` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 24 |
 | `SystemContext` | Panels | `Source/Editor/Panels/SkeletonAssetPanel.hpp` | 13 |
 | `SystemContext` | Panels | `Source/Editor/Panels/SpriteAnimationPanel.hpp` | 13 |
-| `SystemContext` | Panels | `Source/Editor/Panels/UiLayoutPanel.hpp` | 12 |
+| `SystemContext` | Panels | `Source/Editor/Panels/UiLayoutPanel.hpp` | 14 |
 | `SystemContext` | Panels | `Source/Editor/Panels/VideoPanel.hpp` | 11 |
 | `SystemName` | Panels | `Source/Editor/Panels/LogBoyPanel.hpp` | 189 |
 | `TextPreviewPanel` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 28 |
@@ -713,7 +715,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `TilemapEditorPanel` | Panels | `Source/Editor/Panels/TilemapEditorPanel.hpp` | 20 |
 | `TimelinePanelContext` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 22 |
 | `TransportGroupPanel` | Panels | `Source/Editor/Panels/TransportGroupPanel.hpp` | 14 |
-| `UiLayoutPanel` | Panels | `Source/Editor/Panels/UiLayoutPanel.hpp` | 18 |
+| `UiLayoutPanel` | Panels | `Source/Editor/Panels/UiLayoutPanel.hpp` | 20 |
 | `UserSettingsPanel` | Panels | `Source/Editor/Panels/UserSettingsPanel.hpp` | 16 |
 | `VideoPanel` | Panels | `Source/Editor/Panels/VideoPanel.hpp` | 17 |
 | `VirtualFileSystem` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 18 |
@@ -721,7 +723,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VirtualFileSystem` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 19 |
 | `VirtualTexturePanel` | Panels | `Source/Editor/Panels/VirtualTexturePanel.hpp` | 18 |
 | `VirtualTextureSystem` | Panels | `Source/Editor/Panels/VirtualTexturePanel.hpp` | 10 |
-| `VisualScriptPanel` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 24 |
+| `VisualScriptPanel` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 25 |
 | `VisualScriptPanel` | Panels | `Source/Editor/Panels/VisualScriptPanel.hpp` | 32 |
 | `VoiceDevicePanel` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 27 |
 | `VoiceEffectPolicy` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 18 |
@@ -755,7 +757,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `TweenDesc` | Animation | `Source/Engine/Animation/Tween.hpp` | 60 |
 | `TweenGroup` | Animation | `Source/Engine/Animation/Tween.hpp` | 191 |
 
-### Engine/Assets (65)
+### Engine/Assets (73)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -773,13 +775,16 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ArchiveReader` | Assets | `Source/Engine/Assets/FemArchiver.hpp` | 129 |
 | `ArchiveReader` | Assets | `Source/Engine/Assets/FemArchiver.hpp` | 148 |
 | `ArchiveStatus` | Assets | `Source/Engine/Assets/FemArchiver.hpp` | 36 |
+| `AsepriteFrame` | Assets | `Source/Engine/Assets/AsepriteImporter.hpp` | 13 |
+| `AsepriteSheet` | Assets | `Source/Engine/Assets/AsepriteImporter.hpp` | 31 |
+| `AsepriteTag` | Assets | `Source/Engine/Assets/AsepriteImporter.hpp` | 23 |
 | `AssetDatabase` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 36 |
 | `AssetDependency` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 83 |
 | `AssetHandle` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 22 |
 | `AssetImportSettings` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 45 |
 | `AssetMeta` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 61 |
 | `AssetRecord` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 27 |
-| `AstcBlock` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 25 |
+| `AstcBlock` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 27 |
 | `AtlasDesc` | Assets | `Source/Engine/Assets/TextureArray.hpp` | 31 |
 | `AtlasLayer` | Assets | `Source/Engine/Assets/TextureArray.hpp` | 21 |
 | `AtlasPackError` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 57 |
@@ -788,9 +793,9 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `AtlasUv` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 41 |
 | `AudioClipHeader` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 87 |
 | `BlockExtent` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 103 |
-| `CleanRenderExtract` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 151 |
+| `CleanRenderExtract` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 145 |
 | `CookedAudioView` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 116 |
-| `CookedTexture` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 41 |
+| `CookedTexture` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 45 |
 | `CookedTextureView` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 203 |
 | `CookProgressFlags` | Assets | `Source/Engine/Assets/CookProgress.hpp` | 31 |
 | `CookProgressRecord` | Assets | `Source/Engine/Assets/CookProgress.hpp` | 38 |
@@ -801,31 +806,36 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FempakInput` | Assets | `Source/Engine/Assets/FempakWriter.hpp` | 15 |
 | `FempakWriter` | Assets | `Source/Engine/Assets/FempakWriter.hpp` | 22 |
 | `LocaleTable` | Assets | `Source/Engine/Assets/Localization.hpp` | 14 |
+| `LocalizationCompileResult` | Assets | `Source/Engine/Assets/LocalizationCompiler.hpp` | 16 |
+| `LocalizationDecompileResult` | Assets | `Source/Engine/Assets/LocalizationCompiler.hpp` | 23 |
 | `LocalizationGender` | Assets | `Source/Engine/Assets/Localization.hpp` | 21 |
 | `LocalizationPack` | Assets | `Source/Engine/Assets/Localization.hpp` | 13 |
 | `LocalizationTable` | Assets | `Source/Engine/Assets/Localization.hpp` | 28 |
 | `MappedFile` | Assets | `Source/Engine/Assets/VFS.hpp` | 20 |
-| `MountRecord` | Assets | `Source/Engine/Assets/VFS.hpp` | 134 |
-| `PakEntry` | Assets | `Source/Engine/Assets/PakFormat.hpp` | 26 |
-| `PakHeader` | Assets | `Source/Engine/Assets/PakFormat.hpp` | 16 |
+| `MountRecord` | Assets | `Source/Engine/Assets/VFS.hpp` | 136 |
+| `PakEntry` | Assets | `Source/Engine/Assets/PakFormat.hpp` | 29 |
+| `PakHeader` | Assets | `Source/Engine/Assets/PakFormat.hpp` | 19 |
 | `PcmFormat` | Assets | `Source/Engine/Assets/AudioClipFormat.hpp` | 21 |
 | `PinnedFile` | Assets | `Source/Engine/Assets/VFS.hpp` | 67 |
-| `ProjectTemplate` | Assets | `Source/Engine/Assets/ProjectScaffold.hpp` | 12 |
-| `ReloadNotice` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 94 |
+| `ReloadNotice` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 99 |
 | `SpriteAtlas` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 47 |
 | `SpriteAtlasAsset` | Assets | `Source/Engine/Assets/SpriteAtlas.hpp` | 77 |
-| `StagedRow` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 116 |
+| `StagedRow` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 121 |
 | `StringEntry` | Assets | `Source/Engine/Assets/Localization.hpp` | 15 |
 | `TextureAlphaMode` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 43 |
 | `TextureArrayAsset` | Assets | `Source/Engine/Assets/TextureArray.hpp` | 51 |
-| `TextureCookOptions` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 31 |
+| `TextureCookOptions` | Assets | `Source/Engine/Assets/TextureCook.hpp` | 33 |
 | `TextureFormat` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 22 |
 | `TextureHeader` | Assets | `Source/Engine/Assets/TextureFormat.hpp` | 184 |
+| `TiledLayer` | Assets | `Source/Engine/Assets/TiledImporter.hpp` | 21 |
+| `TiledMap` | Assets | `Source/Engine/Assets/TiledImporter.hpp` | 39 |
+| `TiledObject` | Assets | `Source/Engine/Assets/TiledImporter.hpp` | 28 |
+| `TiledTileset` | Assets | `Source/Engine/Assets/TiledImporter.hpp` | 13 |
 | `VfsEntry` | Assets | `Source/Engine/Assets/VFS.hpp` | 59 |
 | `VirtualFileSystem` | Assets | `Source/Engine/Assets/TextureArray.hpp` | 16 |
 | `VirtualFileSystem` | Assets | `Source/Engine/Assets/VFS.hpp` | 73 |
 
-### Engine/Audio (123)
+### Engine/Audio (124)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -882,11 +892,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `OpusHeadInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 107 |
 | `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 209 |
 | `Peer` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 131 |
-| `PlayerState` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 88 |
+| `PlayerState` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 93 |
 | `RateBucket` | Audio | `Source/Engine/Audio/VoiceNetworkBridge.hpp` | 67 |
 | `ResolvedZone` | Audio | `Source/Engine/Audio/AudioZones.hpp` | 115 |
 | `ReverbParams` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 96 |
-| `ReverbSpace` | Audio | `Source/Engine/Audio/AudioReverb.hpp` | 9 |
+| `ReverbSpace` | Audio | `Source/Engine/Audio/AudioReverb.hpp` | 11 |
 | `ReverbState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 311 |
 | `SlotRuntime` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 385 |
 | `SourceRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 219 |
@@ -902,7 +912,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VoiceConditionOutput` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 333 |
 | `VoiceConditionSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 284 |
 | `VoiceConditionState` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 324 |
-| `VoiceDecoder` | Audio | `Source/Engine/Audio/VoiceCodec.hpp` | 51 |
+| `VoiceDecoder` | Audio | `Source/Engine/Audio/VoiceCodec.hpp` | 52 |
 | `VoiceDenoiseTier` | Audio | `Source/Engine/Audio/VoiceDsp.hpp` | 10 |
 | `VoiceDistortionSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 157 |
 | `VoiceDspChain` | Audio | `Source/Engine/Audio/VoiceDsp.hpp` | 99 |
@@ -932,10 +942,10 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VoicePresetResolution` | Audio | `Source/Engine/Audio/VoicePreset.hpp` | 124 |
 | `VoicePresetSelection` | Audio | `Source/Engine/Audio/VoicePreset.hpp` | 105 |
 | `VoiceRadioSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 115 |
-| `VoiceReactiveSfx` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 79 |
-| `VoiceReactiveSfxInput` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 53 |
+| `VoiceReactiveSfx` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 84 |
+| `VoiceReactiveSfxInput` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 55 |
 | `VoiceReactiveSfxPlayer` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 43 |
-| `VoiceReactiveSfxSettings` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 58 |
+| `VoiceReactiveSfxSettings` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 63 |
 | `VoiceRingModulationSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 171 |
 | `VoiceRouting` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 30 |
 | `VoiceSession` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 15 |
@@ -943,6 +953,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VoiceSession` | Audio | `Source/Engine/Audio/VoiceSession.hpp` | 65 |
 | `VoiceSfxEvent` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 31 |
 | `VoiceSfxKind` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 17 |
+| `VoiceSfxSynthesisStatus` | Audio | `Source/Engine/Audio/VoiceSfxSynth.hpp` | 21 |
 | `VoiceSpatialPosition` | Audio | `Source/Engine/Audio/VoiceSession.hpp` | 37 |
 | `VoiceSpatialSettings` | Audio | `Source/Engine/Audio/VoiceSession.hpp` | 22 |
 | `VoiceState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 350 |
@@ -953,7 +964,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VoiceWhisperSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 185 |
 | `VorbisIdentInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 122 |
 
-### Engine/Core (117)
+### Engine/Core (119)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -974,9 +985,9 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Clock` | Core | `Source/Engine/Core/Time.hpp` | 28 |
 | `ClockTime` | Core | `Source/Engine/Core/Calendar.hpp` | 34 |
 | `Color32` | Core | `Source/Engine/Core/Types.hpp` | 203 |
-| `ComponentDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 51 |
-| `ComponentRegistry` | Core | `Source/Engine/Core/PluginHost.hpp` | 43 |
-| `ComponentType` | Core | `Source/Engine/Core/PluginHost.hpp` | 29 |
+| `ComponentDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 55 |
+| `ComponentRegistry` | Core | `Source/Engine/Core/PluginHost.hpp` | 60 |
+| `ComponentType` | Core | `Source/Engine/Core/PluginHost.hpp` | 33 |
 | `DataTable` | Core | `Source/Engine/Core/DataTable.hpp` | 13 |
 | `DateTime` | Core | `Source/Engine/Core/Calendar.hpp` | 46 |
 | `DecimalStore` | Core | `Source/Engine/Core/DecimalStore.hpp` | 17 |
@@ -985,7 +996,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `EddsaKeyPair` | Core | `Source/Engine/Core/CryptoAsymmetric.hpp` | 31 |
 | `Error` | Core | `Source/Engine/Core/Error.hpp` | 23 |
 | `ErrorCode` | Core | `Source/Engine/Core/Error.hpp` | 11 |
-| `FieldDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 40 |
+| `FbyModApi` | Core | `Source/Engine/Core/PluginHost.hpp` | 21 |
+| `FieldDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 44 |
 | `FieldKind` | Core | `Source/Engine/Core/Mirror.hpp` | 17 |
 | `FileFilter` | Core | `Source/Engine/Core/WindowManager.hpp` | 206 |
 | `FormatSpec` | Core | `Source/Engine/Core/BigInt.hpp` | 36 |
@@ -998,13 +1010,13 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Handle` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 20 |
 | `Handle` | Core | `Source/Engine/Core/Types.hpp` | 275 |
 | `Handle` | Core | `Source/Engine/Core/WindowHost.hpp` | 20 |
-| `Host` | Core | `Source/Engine/Core/Plugin.hpp` | 19 |
+| `Host` | Core | `Source/Engine/Core/Plugin.hpp` | 20 |
 | `InputState` | Core | `Source/Engine/Core/WindowManager.hpp` | 126 |
 | `JobSystem` | Core | `Source/Engine/Core/JobSystem.hpp` | 25 |
 | `Key` | Core | `Source/Engine/Core/WindowManager.hpp` | 58 |
 | `KeyLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 197 |
 | `KeyUpperLess` | Core | `Source/Engine/Core/FlatMap.hpp` | 209 |
-| `LoadedPlugin` | Core | `Source/Engine/Core/PluginHost.hpp` | 80 |
+| `LoadedPlugin` | Core | `Source/Engine/Core/PluginHost.hpp` | 163 |
 | `LogLevel` | Core | `Source/Engine/Core/Log.hpp` | 13 |
 | `LogRetention` | Core | `Source/Engine/Core/Log.hpp` | 31 |
 | `Mat4` | Core | `Source/Engine/Core/Mat4.hpp` | 15 |
@@ -1017,20 +1029,20 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `PauseSettings` | Core | `Source/Engine/Core/Pause.hpp` | 19 |
 | `Pcg32` | Core | `Source/Engine/Core/Pcg32.hpp` | 20 |
 | `PipelineTag` | Core | `Source/Engine/Core/Types.hpp` | 303 |
-| `PluginHost` | Core | `Source/Engine/Core/PluginHost.hpp` | 92 |
-| `PluginSystem` | Core | `Source/Engine/Core/PluginHost.hpp` | 70 |
-| `Profiler` | Core | `Source/Engine/Core/Profiler.hpp` | 45 |
+| `PluginHost` | Core | `Source/Engine/Core/PluginHost.hpp` | 175 |
+| `PluginSystem` | Core | `Source/Engine/Core/PluginHost.hpp` | 153 |
+| `Profiler` | Core | `Source/Engine/Core/Profiler.hpp` | 47 |
 | `ProfileRow` | Core | `Source/Engine/Core/ProfilerPanel.hpp` | 26 |
 | `ProfilerPanel` | Core | `Source/Engine/Core/ProfilerPanel.hpp` | 39 |
-| `ProfileSample` | Core | `Source/Engine/Core/Profiler.hpp` | 30 |
+| `ProfileSample` | Core | `Source/Engine/Core/Profiler.hpp` | 32 |
 | `ProfileSortMode` | Core | `Source/Engine/Core/ProfilerPanel.hpp` | 16 |
-| `ProfileStats` | Core | `Source/Engine/Core/Profiler.hpp` | 18 |
+| `ProfileStats` | Core | `Source/Engine/Core/Profiler.hpp` | 20 |
 | `ProjectionMode` | Core | `Source/Engine/Core/Grid.hpp` | 17 |
 | `Rect` | Core | `Source/Engine/Core/Types.hpp` | 173 |
 | `ReducedAngle` | Core | `Source/Engine/Core/SimMath.hpp` | 29 |
-| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 69 |
-| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 295 |
-| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 311 |
+| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 73 |
+| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 301 |
+| `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 317 |
 | `ReplayFrame` | Core | `Source/Engine/Core/Replay.hpp` | 249 |
 | `ReplayKeyframe` | Core | `Source/Engine/Core/Replay.hpp` | 16 |
 | `ReplaySession` | Core | `Source/Engine/Core/Replay.hpp` | 25 |
@@ -1038,7 +1050,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `RoundingMode` | Core | `Source/Engine/Core/Decimal.hpp` | 22 |
 | `RunResult` | Core | `Source/Engine/Core/ProcessLaunch.hpp` | 80 |
 | `SamplerTag` | Core | `Source/Engine/Core/Types.hpp` | 304 |
-| `Scope` | Core | `Source/Engine/Core/Profiler.hpp` | 151 |
+| `Scope` | Core | `Source/Engine/Core/Profiler.hpp` | 167 |
 | `SecureRng` | Core | `Source/Engine/Core/SecureRng.hpp` | 11 |
 | `Sha256Context` | Core | `Source/Engine/Core/Sha256.hpp` | 17 |
 | `Slot` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 255 |
@@ -1063,10 +1075,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `TypeTable` | Core | `Source/Engine/Core/Definitions.hpp` | 95 |
 | `TypeTraits` | Core | `Source/Engine/Core/Definitions.hpp` | 172 |
 | `TypeTraits` | Core | `Source/Engine/Core/Definitions.hpp` | 271 |
-| `Unregistered` | Core | `Source/Engine/Core/Mirror.hpp` | 62 |
+| `Unregistered` | Core | `Source/Engine/Core/Mirror.hpp` | 66 |
 | `Vector2D` | Core | `Source/Engine/Core/Types.hpp` | 13 |
 | `Vector3D` | Core | `Source/Engine/Core/Types.hpp` | 90 |
 | `Vector4D` | Core | `Source/Engine/Core/Types.hpp` | 139 |
+| `ViewProfile` | Core | `Source/Engine/Core/ViewProfile.hpp` | 9 |
 | `WindowDesc` | Core | `Source/Engine/Core/WindowManager.hpp` | 227 |
 | `WindowExtent` | Core | `Source/Engine/Core/WindowManager.hpp` | 49 |
 | `WindowHost` | Core | `Source/Engine/Core/WindowHost.hpp` | 17 |
@@ -1074,6 +1087,16 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `WindowMode` | Core | `Source/Engine/Core/WindowManager.hpp` | 218 |
 | `WindowRecord` | Core | `Source/Engine/Core/WindowHost.hpp` | 30 |
 | `X25519KeyPair` | Core | `Source/Engine/Core/CryptoAsymmetric.hpp` | 20 |
+
+### Engine/Data (5)
+
+| Символ | Вид | Заголовок | Строка |
+|---|---|---|---|
+| `StructField` | Data | `Source/Engine/Data/StructValue.hpp` | 42 |
+| `StructPayload` | Data | `Source/Engine/Data/StructValue.hpp` | 327 |
+| `StructType` | Data | `Source/Engine/Data/StructValue.hpp` | 70 |
+| `StructTypeRegistry` | Data | `Source/Engine/Data/StructValue.hpp` | 81 |
+| `StructValue` | Data | `Source/Engine/Data/StructValue.hpp` | 189 |
 
 ### Engine/Documents (6)
 
@@ -1086,20 +1109,20 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Slot` | Documents | `Source/Engine/Documents/Document.hpp` | 105 |
 | `VirtualFileSystem` | Documents | `Source/Engine/Documents/Document.hpp` | 14 |
 
-### Engine/ECS (292)
+### Engine/ECS (302)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
 | `AccessibilityKernel` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 16 |
 | `AccessibilityServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 100 |
 | `AccessibilitySystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 123 |
-| `AccessibilitySystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 351 |
+| `AccessibilitySystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 357 |
 | `AccessValidation` | ECS | `Source/Engine/ECS/FCS/AccessValidation.hpp` | 17 |
 | `AccessValidation` | ECS | `Source/Engine/ECS/FCS/AccessValidation.hpp` | 84 |
-| `AICommandComponent` | ECS | `Source/Engine/ECS/StateTree.hpp` | 175 |
-| `AICommandKind` | ECS | `Source/Engine/ECS/StateTree.hpp` | 163 |
+| `AICommandComponent` | ECS | `Source/Engine/ECS/StateTree.hpp` | 180 |
+| `AICommandKind` | ECS | `Source/Engine/ECS/StateTree.hpp` | 168 |
 | `AnimationClipBinding` | ECS | `Source/Engine/ECS/AnimationClipPose.hpp` | 22 |
-| `AnimationPose` | ECS | `Source/Engine/ECS/AnimationClipPose.hpp` | 41 |
+| `AnimationPose` | ECS | `Source/Engine/ECS/AnimationClipPose.hpp` | 44 |
 | `AnimationTimeline` | ECS | `Source/Engine/ECS/AnimationTimeline.hpp` | 90 |
 | `AnimBoneKey` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 75 |
 | `AnimClip` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 87 |
@@ -1109,14 +1132,15 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `AnimRestBone` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 105 |
 | `AnimStateComponent` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 138 |
 | `AnimTransition` | ECS | `Source/Engine/ECS/AnimGraph.hpp` | 49 |
-| `Archetype` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 294 |
-| `AssetDatabase` | ECS | `Source/Engine/ECS/Scene.hpp` | 21 |
+| `Archetype` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 295 |
+| `AssetDatabase` | ECS | `Source/Engine/ECS/Scene.hpp` | 22 |
 | `AssetDatabase` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 28 |
 | `AssetServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 71 |
 | `AudioServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 77 |
 | `AudioSystem` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 11 |
 | `AudioSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 121 |
-| `AudioSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 306 |
+| `AudioSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 312 |
+| `AutoTileRule` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 115 |
 | `BigIntComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 169 |
 | `BoneAttachment2D` | ECS | `Source/Engine/ECS/BoneAttachment.hpp` | 19 |
 | `BoneAttachmentSystem` | ECS | `Source/Engine/ECS/BoneAttachment.hpp` | 35 |
@@ -1128,10 +1152,10 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ChainSaveV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 28 |
 | `ChangeMaskBit` | ECS | `Source/Engine/ECS/ChangeMask.hpp` | 20 |
 | `CharacterDesc` | ECS | `Source/Engine/ECS/Descriptors.hpp` | 51 |
-| `Chunk` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 287 |
+| `Chunk` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 288 |
 | `ChunkCopyRange` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 90 |
 | `ChunkHeader` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 45 |
-| `ChunkStorage` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 159 |
+| `ChunkStorage` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 160 |
 | `ClothIdTag` | ECS | `Source/Engine/ECS/StableIds.hpp` | 13 |
 | `ClothSaveV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 59 |
 | `ClothSystem` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 18 |
@@ -1152,7 +1176,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `CommandType` | ECS | `Source/Engine/ECS/CommandLog.hpp` | 22 |
 | `CommandWorldCallbacks` | ECS | `Source/Engine/ECS/CommandLog.hpp` | 52 |
 | `ComponentChangeMask` | ECS | `Source/Engine/ECS/ChangeMask.hpp` | 53 |
-| `ComponentMeta` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 106 |
+| `ComponentMeta` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 107 |
 | `ComponentOps` | ECS | `Source/Engine/ECS/ComponentRegistry.hpp` | 43 |
 | `ComponentOpsFor` | ECS | `Source/Engine/ECS/ComponentRegistry.hpp` | 68 |
 | `ComponentRegistry` | ECS | `Source/Engine/ECS/ComponentRegistry.hpp` | 129 |
@@ -1161,10 +1185,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `CompressedKey` | ECS | `Source/Engine/ECS/AnimationCompression.hpp` | 19 |
 | `CompressedTrack` | ECS | `Source/Engine/ECS/AnimationCompression.hpp` | 31 |
 | `CompressionReport` | ECS | `Source/Engine/ECS/AnimationCompression.hpp` | 63 |
+| `ConstCoreServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 192 |
 | `ConstCoreSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 116 |
-| `ConstCoreSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 192 |
+| `ConstCoreSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 198 |
 | `ConstRenderSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 119 |
-| `ConstRenderSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 261 |
+| `ConstRenderSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 267 |
 | `ConstView` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 367 |
 | `Context` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 608 |
 | `CoreServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 55 |
@@ -1188,12 +1213,12 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `EachIterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 485 |
 | `EachRange` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 262 |
 | `EachRange` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 522 |
-| `EditorSelected` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 104 |
+| `EditorSelected` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 135 |
 | `EmitterIdTag` | ECS | `Source/Engine/ECS/StableIds.hpp` | 14 |
 | `EmitterSaveV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 79 |
-| `Entity` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 48 |
-| `EntityRecord` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 719 |
-| `EntityRemap` | ECS | `Source/Engine/ECS/Scene.hpp` | 59 |
+| `Entity` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 49 |
+| `EntityRecord` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 720 |
+| `EntityRemap` | ECS | `Source/Engine/ECS/Scene.hpp` | 62 |
 | `EntityStorage` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 710 |
 | `Entry` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 687 |
 | `Entry` | ECS | `Source/Engine/ECS/Schedule.hpp` | 53 |
@@ -1210,24 +1235,25 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `GameplayServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 107 |
 | `GameplaySkillSystem` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 25 |
 | `GameplaySystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 120 |
-| `GameplaySystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 284 |
+| `GameplaySystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 290 |
 | `GameplayTagRegistry` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 22 |
 | `GpuEntity` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 31 |
 | `GpuSpriteInstance` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 245 |
-| `GraphSystem` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 91 |
-| `Hidden` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 109 |
+| `GraphSystem` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 95 |
+| `HexAutoTileRule` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 127 |
+| `Hidden` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 140 |
 | `IkChain` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 43 |
 | `IkComponent` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 64 |
 | `IkGoalComponent` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 77 |
 | `IkSolver` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 19 |
 | `InputUserComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 36 |
 | `Interpolation` | ECS | `Source/Engine/ECS/AnimationTimeline.hpp` | 29 |
-| `IterationGuard` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 264 |
+| `IterationGuard` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 265 |
 | `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 191 |
 | `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 451 |
 | `Iterator` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 717 |
 | `ITextShaper` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 42 |
-| `Lifetime` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 98 |
+| `Lifetime` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 129 |
 | `Light2DComponent` | ECS | `Source/Engine/ECS/Lighting.hpp` | 37 |
 | `Light2DOccluderComponent` | ECS | `Source/Engine/ECS/Lighting.hpp` | 109 |
 | `Light2DResultComponent` | ECS | `Source/Engine/ECS/Lighting.hpp` | 69 |
@@ -1245,10 +1271,13 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `LocalizedTextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 227 |
 | `LocalTransform2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 27 |
 | `Mat3` | ECS | `Source/Engine/ECS/Skeleton.hpp` | 32 |
-| `NameComponent` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 116 |
+| `NameComponent` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 147 |
 | `NarrativeLabelComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 158 |
-| `NativeCleanupHook` | ECS | `Source/Engine/ECS/RegistryOps.hpp` | 12 |
+| `NativeCleanupHook` | ECS | `Source/Engine/ECS/RegistryOps.hpp` | 16 |
+| `NativeCleanupHooks` | ECS | `Source/Engine/ECS/RegistryOps.hpp` | 24 |
+| `NormalMap2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 100 |
 | `PackedTransform2D` | ECS | `Source/Engine/ECS/RenderEcs.hpp` | 229 |
+| `Parallax2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 116 |
 | `Parent2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 35 |
 | `Phase` | ECS | `Source/Engine/ECS/Schedule.hpp` | 17 |
 | `PhysicsBodyDesc` | ECS | `Source/Engine/ECS/Descriptors.hpp` | 22 |
@@ -1257,14 +1286,15 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `PhysicsShapeKind` | ECS | `Source/Engine/ECS/Descriptors.hpp` | 15 |
 | `PhysicsSystem` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 13 |
 | `PhysicsSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 117 |
-| `PhysicsSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 216 |
+| `PhysicsSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 222 |
+| `PixelPerfectCamera` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 123 |
 | `PrefabAsset` | ECS | `Source/Engine/ECS/Descriptors.hpp` | 88 |
 | `PrefabEntityDesc` | ECS | `Source/Engine/ECS/Descriptors.hpp` | 76 |
 | `PrefabEntityFlags` | ECS | `Source/Engine/ECS/Descriptors.hpp` | 98 |
 | `PrefabEntityOverride` | ECS | `Source/Engine/ECS/PrefabSystem.hpp` | 18 |
-| `PrefabInstance` | ECS | `Source/Engine/ECS/PrefabInstance.hpp` | 50 |
+| `PrefabInstance` | ECS | `Source/Engine/ECS/PrefabInstance.hpp` | 55 |
 | `PrefabInstanceComponent` | ECS | `Source/Engine/ECS/PrefabInstance.hpp` | 21 |
-| `PrefabInstanceMemberComponent` | ECS | `Source/Engine/ECS/PrefabInstance.hpp` | 43 |
+| `PrefabInstanceMemberComponent` | ECS | `Source/Engine/ECS/PrefabInstance.hpp` | 48 |
 | `PrefabOverrides` | ECS | `Source/Engine/ECS/PrefabSystem.hpp` | 31 |
 | `PrefabSystem` | ECS | `Source/Engine/ECS/PrefabSystem.hpp` | 36 |
 | `QuantizedPose` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 165 |
@@ -1276,18 +1306,18 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `RenderPassMask` | ECS | `Source/Engine/ECS/Presentation.hpp` | 126 |
 | `RenderServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 64 |
 | `RenderSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 118 |
-| `RenderSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 239 |
+| `RenderSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 245 |
 | `ReplayPlayback` | ECS | `Source/Engine/ECS/ReplayRecorder.hpp` | 103 |
 | `ReplayRecorder` | ECS | `Source/Engine/ECS/ReplayRecorder.hpp` | 32 |
 | `RetargetMap` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 131 |
 | `RetargetPair` | ECS | `Source/Engine/ECS/SkeletonIk.hpp` | 118 |
 | `RHI` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 32 |
 | `RigidBodySnapshot` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 169 |
-| `SceneComponent` | ECS | `Source/Engine/ECS/Scene.hpp` | 38 |
-| `SceneData` | ECS | `Source/Engine/ECS/Scene.hpp` | 52 |
-| `SceneEntity` | ECS | `Source/Engine/ECS/Scene.hpp` | 45 |
-| `SceneLoadOptions` | ECS | `Source/Engine/ECS/Scene.hpp` | 76 |
-| `SceneMeta` | ECS | `Source/Engine/ECS/Scene.hpp` | 31 |
+| `SceneComponent` | ECS | `Source/Engine/ECS/Scene.hpp` | 41 |
+| `SceneData` | ECS | `Source/Engine/ECS/Scene.hpp` | 55 |
+| `SceneEntity` | ECS | `Source/Engine/ECS/Scene.hpp` | 48 |
+| `SceneLoadOptions` | ECS | `Source/Engine/ECS/Scene.hpp` | 79 |
+| `SceneMeta` | ECS | `Source/Engine/ECS/Scene.hpp` | 32 |
 | `Schedule` | ECS | `Source/Engine/ECS/Schedule.hpp` | 48 |
 | `ScopedAccess` | ECS | `Source/Engine/ECS/FCS/AccessValidation.hpp` | 104 |
 | `SdfBrickMap` | ECS | `Source/Engine/ECS/Lighting.hpp` | 17 |
@@ -1314,6 +1344,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `SnapshotRestoreExtras` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 273 |
 | `SnapshotSchema` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 93 |
 | `SnapshotSchema` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 208 |
+| `SnapshotSchema` | ECS | `Source/Engine/ECS/StateTree.hpp` | 19 |
 | `SnapshotView` | ECS | `Source/Engine/ECS/Snapshot.hpp` | 257 |
 | `Sprite2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 47 |
 | `SpriteAnimationComponent` | ECS | `Source/Engine/ECS/SpriteAnimation.hpp` | 21 |
@@ -1324,20 +1355,22 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `SpriteOverlay2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 64 |
 | `SpriteSheetComponent` | ECS | `Source/Engine/ECS/SpriteAnimation.hpp` | 40 |
 | `StableIdAllocator` | ECS | `Source/Engine/ECS/StableIds.hpp` | 25 |
-| `StateTreeComponent` | ECS | `Source/Engine/ECS/StateTree.hpp` | 195 |
-| `StateTreeDefinition` | ECS | `Source/Engine/ECS/StateTree.hpp` | 152 |
-| `StateTreeEvaluator` | ECS | `Source/Engine/ECS/StateTree.hpp` | 55 |
-| `StateTreeEvaluatorKind` | ECS | `Source/Engine/ECS/StateTree.hpp` | 28 |
-| `StateTreeNode` | ECS | `Source/Engine/ECS/StateTree.hpp` | 115 |
-| `StateTreeNodeKind` | ECS | `Source/Engine/ECS/StateTree.hpp` | 105 |
-| `StateTreeSystem` | ECS | `Source/Engine/ECS/StateTree.hpp` | 239 |
-| `StateTreeTask` | ECS | `Source/Engine/ECS/StateTree.hpp` | 87 |
-| `StateTreeTaskKind` | ECS | `Source/Engine/ECS/StateTree.hpp` | 73 |
-| `StateTreeTransition` | ECS | `Source/Engine/ECS/StateTree.hpp` | 134 |
-| `SystemAccess` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 65 |
+| `StateTreeComponent` | ECS | `Source/Engine/ECS/StateTree.hpp` | 200 |
+| `StateTreeDefinition` | ECS | `Source/Engine/ECS/StateTree.hpp` | 157 |
+| `StateTreeEvaluator` | ECS | `Source/Engine/ECS/StateTree.hpp` | 60 |
+| `StateTreeEvaluatorKind` | ECS | `Source/Engine/ECS/StateTree.hpp` | 33 |
+| `StateTreeNode` | ECS | `Source/Engine/ECS/StateTree.hpp` | 120 |
+| `StateTreeNodeKind` | ECS | `Source/Engine/ECS/StateTree.hpp` | 110 |
+| `StateTreeSystem` | ECS | `Source/Engine/ECS/StateTree.hpp` | 249 |
+| `StateTreeTask` | ECS | `Source/Engine/ECS/StateTree.hpp` | 92 |
+| `StateTreeTaskKind` | ECS | `Source/Engine/ECS/StateTree.hpp` | 78 |
+| `StateTreeTransition` | ECS | `Source/Engine/ECS/StateTree.hpp` | 139 |
+| `StructPayloadComponent` | ECS | `Source/Engine/ECS/StructPayloadComponent.hpp` | 13 |
+| `SurfaceNormal2D` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 108 |
+| `SystemAccess` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 69 |
 | `SystemContext` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 129 |
 | `SystemGraph` | ECS | `Source/Engine/ECS/Schedule.hpp` | 15 |
-| `SystemGraph` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 116 |
+| `SystemGraph` | ECS | `Source/Engine/ECS/SystemGraph.hpp` | 120 |
 | `TargetIndexEntry` | ECS | `Source/Engine/ECS/LightSource.hpp` | 244 |
 | `TextComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 199 |
 | `TextConditionComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 283 |
@@ -1347,10 +1380,10 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `TextServices` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 90 |
 | `TextShapeCache` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 41 |
 | `TextShapeComponent` | ECS | `Source/Engine/ECS/Components.hpp` | 242 |
-| `TilemapAssetRefComponent` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 130 |
+| `TilemapAssetRefComponent` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 153 |
 | `TilemapComponent` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 63 |
-| `TilemapRenderSystem` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 150 |
-| `TileQuad` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 142 |
+| `TilemapRenderSystem` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 173 |
+| `TileQuad` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 165 |
 | `TimelineEvent` | ECS | `Source/Engine/ECS/AnimationTimeline.hpp` | 67 |
 | `TimelineEventKind` | ECS | `Source/Engine/ECS/AnimationTimeline.hpp` | 36 |
 | `TimelineKey` | ECS | `Source/Engine/ECS/AnimationTimeline.hpp` | 43 |
@@ -1364,8 +1397,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `TransportPath` | ECS | `Source/Engine/ECS/Components.hpp` | 100 |
 | `TransportSurface` | ECS | `Source/Engine/ECS/Components.hpp` | 90 |
 | `UiSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 122 |
-| `UiSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 326 |
-| `UvCacheEntry` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 176 |
+| `UiSystemView` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 332 |
+| `UvCacheEntry` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 199 |
 | `Vehicle2D` | ECS | `Source/Engine/ECS/Components.hpp` | 54 |
 | `VehicleFlags` | ECS | `Source/Engine/ECS/Components.hpp` | 46 |
 | `Velocity` | ECS | `Source/Engine/ECS/CoreComponents.hpp` | 41 |
@@ -1373,14 +1406,14 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `View` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 107 |
 | `ViewIterationGuard` | ECS | `Source/Engine/ECS/FCS/Registry.hpp` | 42 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/DirectionalAnimationPlayer.hpp` | 16 |
-| `VirtualFileSystem` | ECS | `Source/Engine/ECS/Scene.hpp` | 18 |
+| `VirtualFileSystem` | ECS | `Source/Engine/ECS/Scene.hpp` | 19 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/SkeletonAsset.hpp` | 18 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 15 |
 | `VirtualFileSystem` | ECS | `Source/Engine/ECS/Tilemap.hpp` | 20 |
 | `Wheel2D` | ECS | `Source/Engine/ECS/Components.hpp` | 70 |
 | `WindowManager` | ECS | `Source/Engine/ECS/SystemContext.hpp` | 14 |
-| `World` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 284 |
-| `WorldMemoryStats` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 241 |
+| `World` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 285 |
+| `WorldMemoryStats` | ECS | `Source/Engine/ECS/FCS/World.hpp` | 242 |
 | `WorldSnapshotV3` | ECS | `Source/Engine/ECS/SnapshotWorld.hpp` | 86 |
 
 ### Engine/Effects (16)
@@ -1388,7 +1421,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
 | `Binding` | Effects | `Source/Engine/Effects/ParticleScene.hpp` | 93 |
-| `EmitterState` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 174 |
+| `EmitterState` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 175 |
 | `ParticleEffectComponent` | Effects | `Source/Engine/Effects/ParticleScene.hpp` | 24 |
 | `ParticleEffectComponentFlags` | Effects | `Source/Engine/Effects/ParticleScene.hpp` | 17 |
 | `ParticleEffectPreset` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 120 |
@@ -1402,14 +1435,14 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ParticleShape` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 23 |
 | `ParticleShapeAtlas` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 58 |
 | `ParticleShapeFrame` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 51 |
-| `ParticleState` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 187 |
+| `ParticleState` | Effects | `Source/Engine/Effects/ParticleEffects.hpp` | 188 |
 
 ### Engine/Gameplay (32)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `ActiveGameplayEffect` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 66 |
-| `DefIndexEntry` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 164 |
+| `ActiveGameplayEffect` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 70 |
+| `DefIndexEntry` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 168 |
 | `Entry` | Gameplay | `Source/Engine/Gameplay/GameplayAttributes.hpp` | 50 |
 | `Entry` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 152 |
 | `GameplayAttribute` | Gameplay | `Source/Engine/Gameplay/GameplayAttributes.hpp` | 21 |
@@ -1417,26 +1450,26 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `GameplayAttributeRegistry` | Gameplay | `Source/Engine/Gameplay/GameplayAttributes.hpp` | 35 |
 | `GameplayAttributesComponent` | Gameplay | `Source/Engine/Gameplay/GameplayAttributes.hpp` | 66 |
 | `GameplayAttributeValues` | Gameplay | `Source/Engine/Gameplay/GameplayAttributes.hpp` | 60 |
-| `GameplayEffectDef` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 45 |
-| `GameplayEffectEvent` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 95 |
-| `GameplayEffectEventType` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 88 |
-| `GameplayEffectFlags` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 32 |
-| `GameplayEffectsComponent` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 78 |
-| `GameplayEffectStackPolicy` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 22 |
-| `GameplayEffectSystem` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 107 |
+| `GameplayEffectDef` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 46 |
+| `GameplayEffectEvent` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 99 |
+| `GameplayEffectEventType` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 92 |
+| `GameplayEffectFlags` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 33 |
+| `GameplayEffectsComponent` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 82 |
+| `GameplayEffectStackPolicy` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 23 |
+| `GameplayEffectSystem` | Gameplay | `Source/Engine/Gameplay/GameplayEffects.hpp` | 111 |
 | `GameplayModifierOp` | Gameplay | `Source/Engine/Gameplay/GameplayAttributes.hpp` | 75 |
 | `GameplaySkillDef` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 55 |
-| `GameplaySkillEvent` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 98 |
+| `GameplaySkillEvent` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 100 |
 | `GameplaySkillEventType` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 33 |
 | `GameplaySkillFailReason` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 41 |
-| `GameplaySkillsComponent` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 89 |
-| `GameplaySkillSlot` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 77 |
+| `GameplaySkillsComponent` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 91 |
+| `GameplaySkillSlot` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 79 |
 | `GameplaySkillState` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 27 |
-| `GameplaySkillSystem` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 110 |
+| `GameplaySkillSystem` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 112 |
 | `GameplaySkillTargetKind` | Gameplay | `Source/Engine/Gameplay/GameplaySkills.hpp` | 19 |
 | `GameplayTag` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 22 |
 | `GameplayTagContainer` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 170 |
-| `GameplayTagDatabase` | Gameplay | `Source/Engine/Gameplay/GameplayTagDatabase.hpp` | 18 |
+| `GameplayTagDatabase` | Gameplay | `Source/Engine/Gameplay/GameplayTagDatabase.hpp` | 19 |
 | `GameplayTagMask` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 38 |
 | `GameplayTagRegistry` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 132 |
 | `GameplayTagsComponent` | Gameplay | `Source/Engine/Gameplay/GameplayTags.hpp` | 211 |
@@ -1459,6 +1492,27 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `InputSystem` | Input | `Source/Engine/Input/InputSystem.hpp` | 134 |
 | `InputTriggerKind` | Input | `Source/Engine/Input/InputSystem.hpp` | 52 |
 | `UserSlot` | Input | `Source/Engine/Input/InputSystem.hpp` | 180 |
+
+### Engine/Modding (16)
+
+| Символ | Вид | Заголовок | Строка |
+|---|---|---|---|
+| `Command` | Modding | `Source/Engine/Modding/ModApiHost.hpp` | 84 |
+| `Config` | Modding | `Source/Engine/Modding/ModApiHost.hpp` | 25 |
+| `EventType` | Modding | `Source/Engine/Modding/ModApiHost.hpp` | 93 |
+| `FbyModResult` | Modding | `Source/Engine/Modding/ModAPI.h` | 26 |
+| `GameplayEffectSystem` | Modding | `Source/Engine/Modding/ModApiHost.hpp` | 16 |
+| `GameplaySkillSystem` | Modding | `Source/Engine/Modding/ModApiHost.hpp` | 17 |
+| `GameplayTagRegistry` | Modding | `Source/Engine/Modding/ModApiHost.hpp` | 15 |
+| `LoadedMod` | Modding | `Source/Engine/Modding/ModHost.hpp` | 46 |
+| `ModApiHost` | Modding | `Source/Engine/Modding/ModApiHost.hpp` | 22 |
+| `ModApiHost` | Modding | `Source/Engine/Modding/ModHost.hpp` | 24 |
+| `ModHost` | Modding | `Source/Engine/Modding/ModHost.hpp` | 55 |
+| `ModHostConfig` | Modding | `Source/Engine/Modding/ModHost.hpp` | 26 |
+| `ModManifest` | Modding | `Source/Engine/Modding/ModManifest.hpp` | 24 |
+| `ModSide` | Modding | `Source/Engine/Modding/ModManifest.hpp` | 17 |
+| `ScriptRuntime` | Modding | `Source/Engine/Modding/ModHost.hpp` | 10 |
+| `Subscriber` | Modding | `Source/Engine/Modding/ModApiHost.hpp` | 99 |
 
 ### Engine/Navigation (25)
 
@@ -1490,7 +1544,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `PathStats` | Navigation | `Source/Engine/Navigation/Navigation.hpp` | 116 |
 | `TilemapComponent` | Navigation | `Source/Engine/Navigation/PagedNavGrid.hpp` | 14 |
 
-### Engine/Network (96)
+### Engine/Network (97)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -1502,17 +1556,17 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Frame` | Network | `Source/Engine/Network/NetLink.hpp` | 84 |
 | `FrameInfo` | Network | `Source/Engine/Network/NetRollback.hpp` | 221 |
 | `FrameMeta` | Network | `Source/Engine/Network/NetRollback.hpp` | 473 |
-| `InputChannel` | Network | `Source/Engine/Network/NetProtocol.hpp` | 56 |
-| `InputChannelStats` | Network | `Source/Engine/Network/NetProtocol.hpp` | 44 |
+| `InputChannel` | Network | `Source/Engine/Network/NetProtocol.hpp` | 65 |
+| `InputChannelStats` | Network | `Source/Engine/Network/NetProtocol.hpp` | 53 |
 | `InputPacket` | Network | `Source/Engine/Network/NetProtocol.hpp` | 24 |
 | `InputRingBuffer` | Network | `Source/Engine/Network/NetRollback.hpp` | 123 |
-| `LobbyError` | Network | `Source/Engine/Network/Lobby.hpp` | 37 |
+| `LobbyError` | Network | `Source/Engine/Network/Lobby.hpp` | 38 |
 | `LobbyMessageType` | Network | `Source/Engine/Network/Lobby.hpp` | 25 |
-| `LobbyRoomInfo` | Network | `Source/Engine/Network/Lobby.hpp` | 73 |
-| `LobbyServer` | Network | `Source/Engine/Network/Lobby.hpp` | 93 |
-| `LobbyServerConfig` | Network | `Source/Engine/Network/Lobby.hpp` | 82 |
+| `LobbyRoomInfo` | Network | `Source/Engine/Network/Lobby.hpp` | 74 |
+| `LobbyServer` | Network | `Source/Engine/Network/Lobby.hpp` | 94 |
+| `LobbyServerConfig` | Network | `Source/Engine/Network/Lobby.hpp` | 83 |
 | `LocalEntry` | Network | `Source/Engine/Network/NetRollback.hpp` | 205 |
-| `Member` | Network | `Source/Engine/Network/Lobby.hpp` | 126 |
+| `Member` | Network | `Source/Engine/Network/Lobby.hpp` | 138 |
 | `MemoryEndpoint` | Network | `Source/Engine/Network/NetLink.hpp` | 46 |
 | `MemoryEndpoint` | Network | `Source/Engine/Network/NetLink.hpp` | 113 |
 | `MemoryNetwork` | Network | `Source/Engine/Network/NetLink.hpp` | 53 |
@@ -1526,8 +1580,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `NetInputFrame` | Network | `Source/Engine/Network/NetRollback.hpp` | 70 |
 | `NetInputStatus` | Network | `Source/Engine/Network/NetRollback.hpp` | 99 |
 | `NetLink` | Network | `Source/Engine/Network/NetLink.hpp` | 19 |
-| `NetLobbyClient` | Network | `Source/Engine/Network/Lobby.hpp` | 160 |
-| `NetLobbyClientConfig` | Network | `Source/Engine/Network/Lobby.hpp` | 151 |
+| `NetLobbyClient` | Network | `Source/Engine/Network/Lobby.hpp` | 173 |
+| `NetLobbyClientConfig` | Network | `Source/Engine/Network/Lobby.hpp` | 164 |
 | `NetPlayerId` | Network | `Source/Engine/Network/NetRollback.hpp` | 59 |
 | `NetPlayerSlot` | Network | `Source/Engine/Network/Session.hpp` | 134 |
 | `NetRole` | Network | `Source/Engine/Network/Session.hpp` | 32 |
@@ -1544,15 +1598,16 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `NetTickMode` | Network | `Source/Engine/Network/Session.hpp` | 40 |
 | `NetTopology` | Network | `Source/Engine/Network/NetTopology.hpp` | 11 |
 | `NetTopologyPlan` | Network | `Source/Engine/Network/NetTopology.hpp` | 24 |
-| `NetTransport` | Network | `Source/Engine/Network/Transport.hpp` | 130 |
+| `NetTransport` | Network | `Source/Engine/Network/Transport.hpp` | 132 |
 | `Outstanding` | Network | `Source/Engine/Network/Transport.hpp` | 103 |
-| `Peer` | Network | `Source/Engine/Network/SecureSessionTransport.hpp` | 87 |
-| `PendingEvent` | Network | `Source/Engine/Network/Session.hpp` | 279 |
+| `Peer` | Network | `Source/Engine/Network/SecureSessionTransport.hpp` | 89 |
+| `PendingEvent` | Network | `Source/Engine/Network/Session.hpp` | 282 |
 | `PendingState` | Network | `Source/Engine/Network/Replication.hpp` | 129 |
 | `Phase` | Network | `Source/Engine/Network/SecureChannel.hpp` | 263 |
 | `PhysicsSystem` | Network | `Source/Engine/Network/NetRollback.hpp` | 20 |
-| `RateEntry` | Network | `Source/Engine/Network/SecureSessionTransport.hpp` | 120 |
-| `Reassembly` | Network | `Source/Engine/Network/Transport.hpp` | 115 |
+| `RateEntry` | Network | `Source/Engine/Network/Lobby.hpp` | 129 |
+| `RateEntry` | Network | `Source/Engine/Network/SecureSessionTransport.hpp` | 123 |
+| `Reassembly` | Network | `Source/Engine/Network/Transport.hpp` | 116 |
 | `RelevanceBand` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 32 |
 | `RelevanceCell` | Network | `Source/Engine/Network/RelevanceGrid.hpp` | 71 |
 | `RelevanceConfig` | Network | `Source/Engine/Network/NetRollback.hpp` | 34 |
@@ -1566,7 +1621,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ReplicationStatus` | Network | `Source/Engine/Network/Replication.hpp` | 28 |
 | `Result` | Network | `Source/Engine/Network/NetRollback.hpp` | 243 |
 | `RollbackReport` | Network | `Source/Engine/Network/NetRollback.hpp` | 229 |
-| `Room` | Network | `Source/Engine/Network/Lobby.hpp` | 132 |
+| `Room` | Network | `Source/Engine/Network/Lobby.hpp` | 144 |
 | `SecureChannel` | Network | `Source/Engine/Network/SecureChannel.hpp` | 198 |
 | `SecureChannelConfig` | Network | `Source/Engine/Network/SecureChannel.hpp` | 151 |
 | `SecureCookieIssuer` | Network | `Source/Engine/Network/SecureChannel.hpp` | 131 |
@@ -1591,12 +1646,12 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `WebSocketState` | Network | `Source/Engine/Network/WebSocket.hpp` | 24 |
 | `WebSocketStats` | Network | `Source/Engine/Network/WebSocket.hpp` | 38 |
 
-### Engine/Physics (142)
+### Engine/Physics (144)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
 | `BodyColumns` | Physics | `Source/Engine/Physics/DodPhysicsBackend.hpp` | 59 |
-| `BodyRecord` | Physics | `Source/Engine/Physics/Physics.hpp` | 307 |
+| `BodyRecord` | Physics | `Source/Engine/Physics/Physics.hpp` | 308 |
 | `BodyType` | Physics | `Source/Engine/Physics/Physics.hpp` | 53 |
 | `ChainBreakEvent` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 314 |
 | `ChainError` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 146 |
@@ -1609,8 +1664,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ClothRenderSystem` | Physics | `Source/Engine/Physics/ClothRenderSystem.hpp` | 15 |
 | `ClothSystem` | Physics | `Source/Engine/Physics/Cloth.hpp` | 110 |
 | `Collider2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 90 |
-| `CollisionFilterMatrix` | Physics | `Source/Engine/Physics/CollisionFilter.hpp` | 48 |
-| `CollisionLayer` | Physics | `Source/Engine/Physics/CollisionFilter.hpp` | 15 |
+| `CollisionFilterMatrix` | Physics | `Source/Engine/Physics/CollisionFilter.hpp` | 49 |
+| `CollisionLayer` | Physics | `Source/Engine/Physics/CollisionFilter.hpp` | 16 |
 | `ConnectionRuntime` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 590 |
 | `ContactRecord` | Physics | `Source/Engine/Physics/DodPhysicsBackend.hpp` | 130 |
 | `DodPhysicsBackend` | Physics | `Source/Engine/Physics/DodPhysicsBackend.hpp` | 16 |
@@ -1650,19 +1705,20 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ParticleEmitterComponent` | Physics | `Source/Engine/Physics/Particles.hpp` | 34 |
 | `ParticleEmitterFlags` | Physics | `Source/Engine/Physics/Particles.hpp` | 18 |
 | `ParticleEmitterGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 69 |
-| `ParticleSeedPush` | Physics | `Source/Engine/Physics/Particles.hpp` | 92 |
-| `ParticleStateGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 100 |
+| `ParticleSeedPush` | Physics | `Source/Engine/Physics/Particles.hpp` | 93 |
+| `ParticleStateGpu` | Physics | `Source/Engine/Physics/Particles.hpp` | 101 |
 | `PhysicsBackendKind` | Physics | `Source/Engine/Physics/Physics.hpp` | 32 |
 | `PhysicsBodyRemapEntry` | Physics | `Source/Engine/Physics/SnapshotRemap.hpp` | 17 |
 | `PhysicsBodyRemapTable` | Physics | `Source/Engine/Physics/SnapshotRemap.hpp` | 24 |
 | `PhysicsCapabilities` | Physics | `Source/Engine/Physics/Physics.hpp` | 39 |
 | `PhysicsContactEvent` | Physics | `Source/Engine/Physics/Physics.hpp` | 118 |
-| `PhysicsDesc` | Physics | `Source/Engine/Physics/Physics.hpp` | 154 |
+| `PhysicsDesc` | Physics | `Source/Engine/Physics/Physics.hpp` | 155 |
 | `PhysicsEventType` | Physics | `Source/Engine/Physics/Physics.hpp` | 111 |
-| `PhysicsFixedStepSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 340 |
+| `PhysicsFixedStepSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 341 |
 | `PhysicsJointSystem` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 444 |
+| `PhysicsProfileDesc` | Physics | `Source/Engine/Physics/PhysicsProfile.hpp` | 9 |
 | `PhysicsRayHit` | Physics | `Source/Engine/Physics/Physics.hpp` | 129 |
-| `PhysicsSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 168 |
+| `PhysicsSystem` | Physics | `Source/Engine/Physics/Physics.hpp` | 169 |
 | `PhysicsSystem` | Physics | `Source/Engine/Physics/TransportGroups.hpp` | 13 |
 | `Projectile2D` | Physics | `Source/Engine/Physics/Physics.hpp` | 143 |
 | `ProjectileHitEvent` | Physics | `Source/Engine/Physics/ProjectileSystem.hpp` | 12 |
@@ -1671,7 +1727,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `RigidBodyFlags` | Physics | `Source/Engine/Physics/Physics.hpp` | 60 |
 | `Runtime` | Physics | `Source/Engine/Physics/Cloth.hpp` | 156 |
 | `SdfAtlasImage` | Physics | `Source/Engine/Physics/SdfAtlas.hpp` | 18 |
-| `SdfBonePart` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 24 |
+| `SdfBonePart` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 28 |
 | `SdfBrickGpu` | Physics | `Source/Engine/Physics/SdfBrickMap.hpp` | 48 |
 | `SdfBrickHeader` | Physics | `Source/Engine/Physics/SdfBrickMap.hpp` | 32 |
 | `SdfBrickHeader` | Physics | `Source/Engine/Physics/SdfCollision.hpp` | 107 |
@@ -1680,11 +1736,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `SdfBrickMapDesc` | Physics | `Source/Engine/Physics/SdfBrickMap.hpp` | 63 |
 | `SdfBrickState` | Physics | `Source/Engine/Physics/SdfBrickMap.hpp` | 24 |
 | `SdfCarveOp` | Physics | `Source/Engine/Physics/SdfDestructible.hpp` | 25 |
-| `SdfCarveReplayContext` | Physics | `Source/Engine/Physics/SdfDestructionCommands.hpp` | 37 |
+| `SdfCarveReplayContext` | Physics | `Source/Engine/Physics/SdfDestructionCommands.hpp` | 45 |
 | `SdfCarveShape` | Physics | `Source/Engine/Physics/SdfDestructible.hpp` | 17 |
-| `SdfCharacterComponent` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 41 |
-| `SdfCharacterField` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 78 |
-| `SdfCharacterMeshData` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 110 |
+| `SdfCharacterComponent` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 45 |
+| `SdfCharacterField` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 82 |
+| `SdfCharacterMeshData` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 114 |
 | `SdfCollisionDesc` | Physics | `Source/Engine/Physics/SdfCollision.hpp` | 49 |
 | `SdfCollisionSystem` | Physics | `Source/Engine/Physics/SdfCollision.hpp` | 109 |
 | `SdfComposeLayer` | Physics | `Source/Engine/Physics/SdfComposer.hpp` | 25 |
@@ -1727,6 +1783,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `SdfWorldDesc` | Physics | `Source/Engine/Physics/SdfWorld.hpp` | 31 |
 | `SdfWorldImprint` | Physics | `Source/Engine/Physics/SdfWorld.hpp` | 20 |
 | `ShallowWaterGrid` | Physics | `Source/Engine/Physics/Fluid.hpp` | 134 |
+| `SnapshotSchema` | Physics | `Source/Engine/Physics/SdfCharacter.hpp` | 20 |
 | `Storage` | Physics | `Source/Engine/Physics/Cloth.hpp` | 155 |
 | `Storage` | Physics | `Source/Engine/Physics/PhysicsJoints.hpp` | 642 |
 | `SystemGraph` | Physics | `Source/Engine/Physics/Physics.hpp` | 24 |
@@ -1742,16 +1799,16 @@ python Documentation/Tools/GenerateApplicationGuide.py
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `AchievementFlags` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 95 |
-| `AchievementRequest` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 104 |
-| `CloudSaveComponent` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 124 |
-| `CloudSaveFlags` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 115 |
+| `AchievementFlags` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 96 |
+| `AchievementRequest` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 105 |
+| `CloudSaveComponent` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 125 |
+| `CloudSaveFlags` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 116 |
 | `DisplayInfo` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 14 |
-| `EgsStoreSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 178 |
-| `GogAchievementSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 224 |
-| `GogStorageSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 258 |
+| `EgsStoreSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 179 |
+| `GogAchievementSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 225 |
+| `GogStorageSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 259 |
 | `HardwareInfo` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 31 |
-| `PlatformAccountComponent` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 137 |
+| `PlatformAccountComponent` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 138 |
 | `PlatformCommand` | Platform | `Source/Engine/Platform/PlatformService.hpp` | 35 |
 | `PlatformCommandLog` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 46 |
 | `PlatformCommandType` | Platform | `Source/Engine/Platform/PlatformService.hpp` | 24 |
@@ -1761,10 +1818,10 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `PlatformServiceCallbacks` | Platform | `Source/Engine/Platform/PlatformService.hpp` | 51 |
 | `PlatformServiceDesc` | Platform | `Source/Engine/Platform/PlatformService.hpp` | 71 |
 | `PlatformServiceStats` | Platform | `Source/Engine/Platform/PlatformService.hpp` | 59 |
-| `PlatformState` | Platform | `Source/Engine/Platform/PlatformService.hpp` | 132 |
-| `StagedSave` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 204 |
-| `StagedSave` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 291 |
-| `SteamAchievementSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 148 |
+| `PlatformState` | Platform | `Source/Engine/Platform/PlatformService.hpp` | 138 |
+| `StagedSave` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 205 |
+| `StagedSave` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 292 |
+| `SteamAchievementSystem` | Platform | `Source/Engine/Platform/PlatformSystems.hpp` | 149 |
 | `StorageInfo` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 41 |
 | `SystemInfo` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 64 |
 | `SystemProfile` | Platform | `Source/Engine/Platform/SystemInfo.hpp` | 53 |
@@ -1778,7 +1835,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Backend` | RHI | `Source/Engine/RHI/RHI.hpp` | 20 |
 | `BackendCapabilities` | RHI | `Source/Engine/RHI/UpscalerCapabilities.hpp` | 28 |
 | `BackendSelection` | RHI | `Source/Engine/RHI/UpscalerBackend.hpp` | 28 |
-| `CameraData` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 255 |
+| `CameraData` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 292 |
 | `CameraDistortionFlags` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 30 |
 | `CameraDistortionSettings` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 40 |
 | `CameraStackDesc` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 56 |
@@ -1798,12 +1855,12 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `CustomFrameGenerator` | RHI | `Source/Engine/RHI/CustomFrameGenerator.hpp` | 10 |
 | `DeviceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 121 |
 | `DeviceInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 186 |
-| `DirtyRange` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 236 |
+| `DirtyRange` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 273 |
 | `DlssAdapter` | RHI | `Source/Engine/RHI/DlssAdapter.hpp` | 33 |
 | `DlssQualityMode` | RHI | `Source/Engine/RHI/DlssAdapter.hpp` | 9 |
 | `DlssRuntimeAvailability` | RHI | `Source/Engine/RHI/DlssRuntime.hpp` | 9 |
 | `DlssRuntimeProbe` | RHI | `Source/Engine/RHI/DlssRuntimeProbe.hpp` | 14 |
-| `DrawBatch` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 216 |
+| `DrawBatch` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 253 |
 | `DrawIndexedIndirectCommand` | RHI | `Source/Engine/RHI/GpuVisibility.hpp` | 15 |
 | `DxAdapterInfo` | RHI | `Source/Engine/RHI/Dx/DxProbe.hpp` | 10 |
 | `DynamicResolution` | RHI | `Source/Engine/RHI/DynamicResolution.hpp` | 19 |
@@ -1812,9 +1869,9 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ExportStatus` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 100 |
 | `Extent2D` | RHI | `Source/Engine/RHI/RHI.hpp` | 112 |
 | `ExtractStats` | RHI | `Source/Engine/RHI/ChangeMaskExtract.hpp` | 21 |
-| `FidelityFxRuntimeAvailability` | RHI | `Source/Engine/RHI/FidelityFxRuntime.hpp` | 25 |
-| `FrameAccessibility` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 277 |
-| `FrameAccessibilityFlags` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 264 |
+| `FidelityFxRuntimeAvailability` | RHI | `Source/Engine/RHI/FidelityFxRuntime.hpp` | 28 |
+| `FrameAccessibility` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 314 |
+| `FrameAccessibilityFlags` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 301 |
 | `FrameComposer` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 99 |
 | `FrameComposerStats` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 80 |
 | `FrameExportDesc` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 53 |
@@ -1825,9 +1882,9 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FrameGenerationStatus` | RHI | `Source/Engine/RHI/FrameGenerationPolicy.hpp` | 9 |
 | `FramePacingConfig` | RHI | `Source/Engine/RHI/FramePacing.hpp` | 10 |
 | `FramePacingState` | RHI | `Source/Engine/RHI/FramePacing.hpp` | 17 |
-| `FramePacket` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 387 |
+| `FramePacket` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 424 |
 | `FrameSink` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 85 |
-| `FrameStats` | RHI | `Source/Engine/RHI/RHI.hpp` | 358 |
+| `FrameStats` | RHI | `Source/Engine/RHI/RHI.hpp` | 365 |
 | `FrameTimestampIndex` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 80 |
 | `Fsr2Adapter` | RHI | `Source/Engine/RHI/Fsr2Adapter.hpp` | 86 |
 | `Fsr2Pass` | RHI | `Source/Engine/RHI/Fsr2Pass.hpp` | 10 |
@@ -1844,7 +1901,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `HashEntry` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 218 |
 | `HiZPushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 70 |
 | `IFrameGenerator` | RHI | `Source/Engine/RHI/FrameGeneration.hpp` | 27 |
-| `ImageLayout` | RHI | `Source/Engine/RHI/RHI.hpp` | 319 |
+| `ImageLayout` | RHI | `Source/Engine/RHI/RHI.hpp` | 326 |
 | `JobSystem` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 24 |
 | `KeySorter` | RHI | `Source/Engine/RHI/Sort.hpp` | 14 |
 | `LoadRequest` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 241 |
@@ -1883,12 +1940,12 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `MeshSkinRange` | RHI | `Source/Engine/RHI/Mesh.hpp` | 46 |
 | `MeshVertex` | RHI | `Source/Engine/RHI/Mesh.hpp` | 17 |
 | `MotionHistory2D` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 33 |
-| `MotionVectorItem` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 369 |
-| `NativeDeviceHandles` | RHI | `Source/Engine/RHI/RHI.hpp` | 806 |
-| `NativeTextureView` | RHI | `Source/Engine/RHI/RHI.hpp` | 325 |
+| `MotionVectorItem` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 406 |
+| `NativeDeviceHandles` | RHI | `Source/Engine/RHI/RHI.hpp` | 813 |
+| `NativeTextureView` | RHI | `Source/Engine/RHI/RHI.hpp` | 332 |
 | `OitPass` | RHI | `Source/Engine/RHI/OitPass.hpp` | 11 |
 | `PageSlot` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 209 |
-| `ParallelChunkRef` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 301 |
+| `ParallelChunkRef` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 315 |
 | `PlatformKind` | RHI | `Source/Engine/RHI/UpscalerCapabilities.hpp` | 11 |
 | `PostFxAccessibilityEffect` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 33 |
 | `PostFxConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 97 |
@@ -1897,35 +1954,35 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `PostFxSettings` | RHI | `Source/Engine/RHI/PostProcess.hpp` | 56 |
 | `PreUploadedPacket` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 1076 |
 | `PushConstants` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 51 |
-| `RenderBlendMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 271 |
+| `RenderBlendMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 278 |
 | `RenderCommandRecord` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 58 |
 | `RenderFlags` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 43 |
-| `RenderGraph` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 135 |
+| `RenderGraph` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 146 |
 | `RenderGraphContext` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 80 |
-| `RenderGraphPass` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 122 |
-| `RenderItem` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 94 |
-| `RenderPassDesc` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 110 |
+| `RenderGraphPass` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 133 |
+| `RenderItem` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 131 |
+| `RenderPassDesc` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 121 |
 | `RenderPassKind` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 27 |
 | `RenderResourceKind` | RHI | `Source/Engine/RHI/RenderGraph.hpp` | 34 |
 | `RenderTarget` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 260 |
-| `RenderTargetDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 288 |
-| `RenderTargetFormat` | RHI | `Source/Engine/RHI/RHI.hpp` | 280 |
-| `RenderTargetHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 308 |
-| `RHI` | RHI | `Source/Engine/RHI/RHI.hpp` | 429 |
+| `RenderTargetDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 295 |
+| `RenderTargetFormat` | RHI | `Source/Engine/RHI/RHI.hpp` | 287 |
+| `RenderTargetHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 315 |
+| `RHI` | RHI | `Source/Engine/RHI/RHI.hpp` | 436 |
 | `SdfCharacterRenderCache` | RHI | `Source/Engine/RHI/SdfCharacterRender.hpp` | 17 |
 | `SdfField` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 22 |
 | `SdfGiVolume` | RHI | `Source/Engine/RHI/FrameComposer.hpp` | 23 |
 | `SdfGpuBlock` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 102 |
-| `SdfLightingFrame` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 325 |
-| `SdfLightingOccluder` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 317 |
+| `SdfLightingFrame` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 362 |
+| `SdfLightingOccluder` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 354 |
 | `SdfShadowConstants` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 37 |
 | `SdfShadowDesc` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 18 |
 | `SdfShadowPass` | RHI | `Source/Engine/RHI/RenderPasses.hpp` | 66 |
 | `SequenceFooter` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 42 |
 | `SequenceHeader` | RHI | `Source/Engine/RHI/FrameExporter.hpp` | 31 |
-| `ShaderPipelineDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 244 |
-| `ShaderPipelineDomain` | RHI | `Source/Engine/RHI/RHI.hpp` | 238 |
-| `ShaderPipelineHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 259 |
+| `ShaderPipelineDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 251 |
+| `ShaderPipelineDomain` | RHI | `Source/Engine/RHI/RHI.hpp` | 245 |
+| `ShaderPipelineHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 266 |
 | `SkinnedVertex` | RHI | `Source/Engine/RHI/Mesh.hpp` | 30 |
 | `Slot` | RHI | `Source/Engine/RHI/CameraStack.hpp` | 146 |
 | `SpatialUpscaleMode` | RHI | `Source/Engine/RHI/RHI.hpp` | 164 |
@@ -1938,11 +1995,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `TemporalResolvePass` | RHI | `Source/Engine/RHI/TemporalResolvePass.hpp` | 11 |
 | `TextureArray` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 226 |
 | `TextureArrayDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 223 |
-| `TextureArrayHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 405 |
+| `TextureArrayHandle` | RHI | `Source/Engine/RHI/RHI.hpp` | 412 |
 | `Tile` | RHI | `Source/Engine/RHI/StaticBake.hpp` | 90 |
 | `TintEntry` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 81 |
 | `TransientRing` | RHI | `Source/Engine/RHI/RingBuffer.hpp` | 15 |
-| `UiBackendInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 335 |
+| `UiBackendInfo` | RHI | `Source/Engine/RHI/RHI.hpp` | 342 |
 | `UpscalerBackend` | RHI | `Source/Engine/RHI/UpscalerBackend.hpp` | 9 |
 | `UpscalerCaps` | RHI | `Source/Engine/RHI/RHI.hpp` | 172 |
 | `ViewportMode` | RHI | `Source/Engine/RHI/ViewportModes.hpp` | 15 |
@@ -1955,11 +2012,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VirtualTextureAddress` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 74 |
 | `VirtualTextureCamera` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 65 |
 | `VirtualTextureDesc` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 39 |
-| `VirtualTextureHandle` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 294 |
+| `VirtualTextureHandle` | RHI | `Source/Engine/RHI/RenderItem.hpp` | 331 |
 | `VirtualTexturePageLocation` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 11 |
 | `VirtualTextureResource` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 434 |
-| `VirtualTextureResourceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 417 |
-| `VirtualTextureRhiTarget` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 118 |
+| `VirtualTextureResourceDesc` | RHI | `Source/Engine/RHI/RHI.hpp` | 424 |
+| `VirtualTextureRhiTarget` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 123 |
 | `VirtualTextureSample` | RHI | `Source/Engine/RHI/VirtualTextureGpu.hpp` | 58 |
 | `VirtualTextureStats` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 51 |
 | `VirtualTextureSystem` | RHI | `Source/Engine/RHI/VirtualTextureSystem.hpp` | 117 |
@@ -1969,11 +2026,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VisibleSprite` | RHI | `Source/Engine/RHI/ViewportPresenter.hpp` | 87 |
 | `VulkanRHI` | RHI | `Source/Engine/RHI/Vulkan/VulkanRHIInternal.hpp` | 450 |
 
-### Engine/Script (81)
+### Engine/Script (85)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `ActiveScript` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 195 |
+| `ActiveScript` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 218 |
 | `AotBuilder` | Script | `Source/Engine/Script/AotBuilder.hpp` | 71 |
 | `AotBuildOptions` | Script | `Source/Engine/Script/AotBuilder.hpp` | 43 |
 | `AotBuildResult` | Script | `Source/Engine/Script/AotBuilder.hpp` | 60 |
@@ -1996,10 +2053,11 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Context` | Script | `Source/Engine/Script/AotAbi.hpp` | 177 |
 | `CoroutineFrame` | Script | `Source/Engine/Script/AotAbi.hpp` | 158 |
 | `CoroutineSlot` | Script | `Source/Engine/Script/AotHost.hpp` | 115 |
-| `CoroutineSlot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 207 |
+| `CoroutineSlot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 230 |
 | `CoroutineState` | Script | `Source/Engine/Script/AotAbi.hpp` | 166 |
 | `DebugField` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 127 |
 | `DebugFrame` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 107 |
+| `DebuggerCondition` | Script | `Source/Engine/Script/DebuggerCondition.hpp` | 11 |
 | `DebugSectionHeader` | Script | `Source/Engine/Script/Bytecode.hpp` | 215 |
 | `DebugSpan` | Script | `Source/Engine/Script/Bytecode.hpp` | 193 |
 | `DebugSpanFlags` | Script | `Source/Engine/Script/Bytecode.hpp` | 184 |
@@ -2018,11 +2076,12 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `LogicMathOp` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 56 |
 | `LogicNode` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 333 |
 | `LogicNodeKind` | Script | `Source/Engine/Script/GraphCompiler.hpp` | 111 |
-| `MapEntry` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 137 |
+| `MapEntry` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 145 |
 | `Module` | Script | `Source/Engine/Script/AotAbi.hpp` | 526 |
 | `NativeId` | Script | `Source/Engine/Script/Bytecode.hpp` | 18 |
 | `Object` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 115 |
 | `ObjectKind` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 108 |
+| `Op` | Script | `Source/Engine/Script/DebuggerCondition.hpp` | 13 |
 | `OpCode` | Script | `Source/Engine/Script/Bytecode.hpp` | 280 |
 | `PendingField` | Script | `Source/Engine/Script/Bytecode.hpp` | 679 |
 | `PhysicsSystem` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 19 |
@@ -2033,6 +2092,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ResolvedComponent` | Script | `Source/Engine/Script/EcsBridge.hpp` | 93 |
 | `ScriptComponent` | Script | `Source/Engine/Script/ScriptComponent.hpp` | 16 |
 | `ScriptEvent` | Script | `Source/Engine/Script/Bytecode.hpp` | 250 |
+| `ScriptFileReloader` | Script | `Source/Engine/Script/ScriptFileReloader.hpp` | 13 |
 | `ScriptHeap` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 60 |
 | `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 24 |
 | `ScriptRuntime` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 28 |
@@ -2040,8 +2100,9 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 153 |
 | `ScriptVm` | Script | `Source/Engine/Script/Vm.hpp` | 305 |
 | `Slot` | Script | `Source/Engine/Script/AotHost.hpp` | 103 |
-| `Slot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 173 |
+| `Slot` | Script | `Source/Engine/Script/ScriptSystem.hpp` | 194 |
 | `SourceLocation` | Script | `Source/Engine/Script/ScriptDebug.hpp` | 17 |
+| `State` | Script | `Source/Engine/Script/ScriptFileReloader.hpp` | 16 |
 | `TextCompileOptions` | Script | `Source/Engine/Script/TextScript.hpp` | 14 |
 | `TransportGroupSystem` | Script | `Source/Engine/Script/Vm.hpp` | 18 |
 | `ValueTag` | Script | `Source/Engine/Script/ScriptHeap.hpp` | 15 |
@@ -2059,7 +2120,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
-| `AssetSlot` | Text | `Source/Engine/Text/TextStore.hpp` | 218 |
+| `AssetSlot` | Text | `Source/Engine/Text/TextStore.hpp` | 220 |
 | `BookAnchor` | Text | `Source/Engine/Text/BookAsset.hpp` | 107 |
 | `BookAssetError` | Text | `Source/Engine/Text/BookAsset.hpp` | 140 |
 | `BookAssetView` | Text | `Source/Engine/Text/BookAsset.hpp` | 127 |
@@ -2089,10 +2150,10 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ITextShaper` | Text | `Source/Engine/Text/TextShaper.hpp` | 89 |
 | `LayoutEntry` | Text | `Source/Engine/Text/TextService.hpp` | 548 |
 | `LayoutKey` | Text | `Source/Engine/Text/TextService.hpp` | 528 |
-| `MappedTextAsset` | Text | `Source/Engine/Text/TextAssetFile.hpp` | 17 |
+| `MappedTextAsset` | Text | `Source/Engine/Text/TextAssetFile.hpp` | 18 |
 | `MarkupStackEntry` | Text | `Source/Engine/Text/TextMarkup.hpp` | 76 |
 | `MarkupVariantEntry` | Text | `Source/Engine/Text/TextService.hpp` | 574 |
-| `ScriptBackend` | Text | `Source/Engine/Text/TextShapeSystem.hpp` | 124 |
+| `ScriptBackend` | Text | `Source/Engine/Text/TextShapeSystem.hpp` | 136 |
 | `ScriptShaper` | Text | `Source/Engine/Text/TextShaper.hpp` | 207 |
 | `ShapedGlyph` | Text | `Source/Engine/Text/TextShaper.hpp` | 56 |
 | `ShapedGlyphHit` | Text | `Source/Engine/Text/TextShapedLayout.hpp` | 153 |
@@ -2150,18 +2211,18 @@ python Documentation/Tools/GenerateApplicationGuide.py
 |---|---|---|---|
 | `AccessibilityBridgeSettings` | UI | `Source/Engine/UI/AccessibilityBridge.hpp` | 14 |
 | `AccessibilityEditorSettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 254 |
-| `AccessibilityEffectKind` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 26 |
-| `AccessibilityEffectProfile` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 84 |
-| `AccessibilityEffectRegistry` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 122 |
-| `AccessibilityEffectTag` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 58 |
+| `AccessibilityEffectKind` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 27 |
+| `AccessibilityEffectProfile` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 85 |
+| `AccessibilityEffectRegistry` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 123 |
+| `AccessibilityEffectTag` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 59 |
 | `AccessibilityEvent` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 107 |
 | `AccessibilityEventKind` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 98 |
-| `AccessibilityExtensionRegistry` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 103 |
+| `AccessibilityExtensionRegistry` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 104 |
 | `AccessibilityFlags` | UI | `Source/Engine/UI/Accessibility.hpp` | 212 |
 | `AccessibilityKernel` | UI | `Source/Engine/UI/Accessibility.hpp` | 316 |
 | `AccessibilityNodeView` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 82 |
 | `AccessibilityOverlay` | UI | `Source/Engine/UI/AccessibilityOverlay.hpp` | 30 |
-| `AccessibilityPaletteExtension` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 42 |
+| `AccessibilityPaletteExtension` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 43 |
 | `AccessibilityPresentationSettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 237 |
 | `AccessibilityProfile` | UI | `Source/Engine/UI/Accessibility.hpp` | 276 |
 | `AccessibilityProjectionStats` | UI | `Source/Engine/UI/AccessibilityProjection.hpp` | 12 |
@@ -2169,7 +2230,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `AccessibilitySettings` | UI | `Source/Engine/UI/Accessibility.hpp` | 221 |
 | `AccessibilitySlot` | UI | `Source/Engine/UI/AccessibilityTheme.hpp` | 61 |
 | `AccessibilityStateBits` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 58 |
-| `AccessibilityTemperatureBand` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 49 |
+| `AccessibilityTemperatureBand` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 50 |
 | `AccessibilityTextStyle` | UI | `Source/Engine/UI/AccessibilityTheme.hpp` | 82 |
 | `AccessibilityTheme` | UI | `Source/Engine/UI/AccessibilityTheme.hpp` | 92 |
 | `AccessibilityThemeRegistry` | UI | `Source/Engine/UI/AccessibilityTheme.hpp` | 116 |
@@ -2178,21 +2239,21 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ActionNarration` | UI | `Source/Engine/UI/ActionNarration.hpp` | 102 |
 | `ActionNarrationSettings` | UI | `Source/Engine/UI/ActionNarration.hpp` | 55 |
 | `ActionVocabulary` | UI | `Source/Engine/UI/ActionNarration.hpp` | 41 |
-| `AlcoholEffect` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 63 |
-| `AlcoholEffectLayer` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 77 |
+| `AlcoholEffect` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 64 |
+| `AlcoholEffectLayer` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 78 |
 | `AtspiEventKind` | UI | `Source/Engine/UI/AtspiModel.hpp` | 66 |
 | `AtspiInterface` | UI | `Source/Engine/UI/AtspiModel.hpp` | 16 |
 | `AtspiState` | UI | `Source/Engine/UI/AtspiModel.hpp` | 33 |
 | `AudioSystem` | UI | `Source/Engine/UI/Accessibility.hpp` | 30 |
 | `AvSpeechTts` | UI | `Source/Engine/UI/Tts.hpp` | 88 |
-| `BuildStatus` | UI | `Source/Engine/UI/PinkUI.hpp` | 1457 |
+| `BuildStatus` | UI | `Source/Engine/UI/PinkUI.hpp` | 1466 |
 | `CardBoardComponent` | UI | `Source/Engine/UI/CardBoard.hpp` | 49 |
 | `CardBoardSystem` | UI | `Source/Engine/UI/CardBoard.hpp` | 74 |
 | `ColorMatrix3` | UI | `Source/Engine/UI/Accessibility.hpp` | 46 |
 | `ColorVisionDeficiency` | UI | `Source/Engine/UI/Accessibility.hpp` | 38 |
 | `CompositeTts` | UI | `Source/Engine/UI/Tts.hpp` | 196 |
 | `DedupEntry` | UI | `Source/Engine/UI/ActionNarration.hpp` | 134 |
-| `Dropdown` | UI | `Source/Engine/UI/PinkUI.hpp` | 537 |
+| `Dropdown` | UI | `Source/Engine/UI/PinkUI.hpp` | 539 |
 | `FlashGuard` | UI | `Source/Engine/UI/Accessibility.hpp` | 63 |
 | `FocusDirection` | UI | `Source/Engine/UI/PinkUI.hpp` | 214 |
 | `FocusPolicy` | UI | `Source/Engine/UI/PinkUI.hpp` | 190 |
@@ -2206,7 +2267,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FontFamilyManifest` | UI | `Source/Engine/UI/FontFamilyAsset.hpp` | 17 |
 | `FontPixelFormat` | UI | `Source/Engine/UI/FontAtlas.hpp` | 37 |
 | `FontStyle` | UI | `Source/Engine/UI/FontAtlas.hpp` | 65 |
-| `FrameOutput` | UI | `Source/Engine/UI/PinkUI.hpp` | 1432 |
+| `FrameOutput` | UI | `Source/Engine/UI/PinkUI.hpp` | 1441 |
 | `GlyphRecord` | UI | `Source/Engine/UI/FontAtlas.hpp` | 80 |
 | `GridView` | UI | `Source/Engine/UI/PinkUI.hpp` | 427 |
 | `HyperlinkRange` | UI | `Source/Engine/UI/Hypertext.hpp` | 51 |
@@ -2216,9 +2277,9 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `HypertextView` | UI | `Source/Engine/UI/Hypertext.hpp` | 67 |
 | `ITextShaper` | UI | `Source/Engine/UI/PinkUI.hpp` | 34 |
 | `LayeredTts` | UI | `Source/Engine/UI/Tts.hpp` | 344 |
-| `LayoutCache` | UI | `Source/Engine/UI/PinkUI.hpp` | 746 |
+| `LayoutCache` | UI | `Source/Engine/UI/PinkUI.hpp` | 751 |
 | `LazyFontFamily` | UI | `Source/Engine/UI/FontFamilyAsset.hpp` | 101 |
-| `ListView` | UI | `Source/Engine/UI/PinkUI.hpp` | 563 |
+| `ListView` | UI | `Source/Engine/UI/PinkUI.hpp` | 566 |
 | `LocalizationTable` | UI | `Source/Engine/UI/Accessibility.hpp` | 28 |
 | `LocalizationTable` | UI | `Source/Engine/UI/AccessibilityTree.hpp` | 13 |
 | `LocalizationTable` | UI | `Source/Engine/UI/ActionNarration.hpp` | 18 |
@@ -2236,14 +2297,14 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `NarratorOwner` | UI | `Source/Engine/UI/Narrator.hpp` | 28 |
 | `NarratorPriority` | UI | `Source/Engine/UI/Narrator.hpp` | 18 |
 | `NarratorSettings` | UI | `Source/Engine/UI/Narrator.hpp` | 37 |
-| `NvgPattern` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 33 |
+| `NvgPattern` | UI | `Source/Engine/UI/AccessibilityEffects.hpp` | 34 |
 | `OledShiftState` | UI | `Source/Engine/UI/PinkUI.hpp` | 466 |
 | `PinkSdfDraw` | UI | `Source/Engine/UI/PinkSdf.hpp` | 74 |
 | `PinkSdfFlags` | UI | `Source/Engine/UI/PinkSdf.hpp` | 24 |
 | `PinkSdfGpuPrimitive` | UI | `Source/Engine/UI/PinkSdf.hpp` | 51 |
 | `PinkSdfPrimitive` | UI | `Source/Engine/UI/PinkSdf.hpp` | 33 |
 | `PinkSdfShape` | UI | `Source/Engine/UI/PinkSdf.hpp` | 15 |
-| `RadialProgress` | UI | `Source/Engine/UI/PinkUI.hpp` | 587 |
+| `RadialProgress` | UI | `Source/Engine/UI/PinkUI.hpp` | 591 |
 | `RetainedFont` | UI | `Source/Engine/UI/FontAtlas.hpp` | 293 |
 | `Route` | UI | `Source/Engine/UI/Tts.hpp` | 217 |
 | `SapiTts` | UI | `Source/Engine/UI/Tts.hpp` | 54 |
@@ -2261,12 +2322,12 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `SubtitleLine` | UI | `Source/Engine/UI/Accessibility.hpp` | 143 |
 | `SubtitleQueue` | UI | `Source/Engine/UI/Accessibility.hpp` | 167 |
 | `SystemContext` | UI | `Source/Engine/UI/PinkUI.hpp` | 29 |
-| `TabBar` | UI | `Source/Engine/UI/PinkUI.hpp` | 518 |
+| `TabBar` | UI | `Source/Engine/UI/PinkUI.hpp` | 519 |
 | `TextAlign` | UI | `Source/Engine/UI/PinkUI.hpp` | 225 |
 | `TextShapeParams` | UI | `Source/Engine/UI/PinkUI.hpp` | 35 |
 | `TextVerticalAlign` | UI | `Source/Engine/UI/PinkUI.hpp` | 232 |
 | `TimedSoundCue` | UI | `Source/Engine/UI/Accessibility.hpp` | 156 |
-| `TooltipPlacer` | UI | `Source/Engine/UI/PinkUI.hpp` | 598 |
+| `TooltipPlacer` | UI | `Source/Engine/UI/PinkUI.hpp` | 602 |
 | `TtsBackend` | UI | `Source/Engine/UI/Accessibility.hpp` | 31 |
 | `TtsBackend` | UI | `Source/Engine/UI/Tts.hpp` | 37 |
 | `TtsPriority` | UI | `Source/Engine/UI/Tts.hpp` | 12 |
@@ -2284,8 +2345,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `WidgetCanvas` | UI | `Source/Engine/UI/Accessibility.hpp` | 34 |
 | `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 293 |
 | `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 486 |
-| `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 610 |
-| `WidgetCanvasSystem` | UI | `Source/Engine/UI/PinkUI.hpp` | 1470 |
+| `WidgetCanvas` | UI | `Source/Engine/UI/PinkUI.hpp` | 615 |
+| `WidgetCanvasSystem` | UI | `Source/Engine/UI/PinkUI.hpp` | 1479 |
 | `WidgetComponent` | UI | `Source/Engine/UI/PinkUI.hpp` | 254 |
 | `WidgetComponentFlags` | UI | `Source/Engine/UI/PinkUI.hpp` | 266 |
 | `WidgetDesc` | UI | `Source/Engine/UI/PinkUI.hpp` | 312 |
@@ -2310,15 +2371,15 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `DecodeStatus` | Video | `Source/Engine/Video/VideoTypes.hpp` | 33 |
 | `DemuxStatus` | Video | `Source/Engine/Video/WebmDemuxer.hpp` | 74 |
 | `Element` | Video | `Source/Engine/Video/WebmDemuxer.hpp` | 127 |
-| `FrameBuffer` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 160 |
-| `FrameSlot` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 167 |
+| `FrameBuffer` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 162 |
+| `FrameSlot` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 169 |
 | `LacedAudioPacket` | Video | `Source/Engine/Video/WebmDemuxer.hpp` | 201 |
-| `MappedFile` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 24 |
-| `RHI` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 29 |
+| `MappedFile` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 25 |
+| `RHI` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 30 |
 | `SystemGraph` | Video | `Source/Engine/Video/VideoStream.hpp` | 24 |
 | `VideoAudioDecoder` | Video | `Source/Engine/Video/VideoAudioDecoder.hpp` | 15 |
 | `VideoAudioStream` | Video | `Source/Engine/Video/VideoAudioStream.hpp` | 27 |
-| `VideoPlayer` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 35 |
+| `VideoPlayer` | Video | `Source/Engine/Video/VideoPlayer.hpp` | 36 |
 | `VideoStreamComponent` | Video | `Source/Engine/Video/VideoStream.hpp` | 36 |
 | `VideoStreamFlags` | Video | `Source/Engine/Video/VideoTypes.hpp` | 20 |
 | `VideoSystem` | Video | `Source/Engine/Video/VideoStream.hpp` | 56 |
@@ -2359,19 +2420,24 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FBY_ASSERT` | `Source/Engine/Core/Assert.hpp` | 31 |
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 22 |
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 32 |
-| `FBY_DEFINE_PLUGIN` | `Source/Engine/Core/Plugin.hpp` | 55 |
+| `FBY_DEFINE_PLUGIN` | `Source/Engine/Core/Plugin.hpp` | 61 |
 | `FBY_DETAIL_CONCAT` | `Source/Engine/Core/Definitions.hpp` | 265 |
 | `FBY_DETAIL_CONCAT_INNER` | `Source/Engine/Core/Definitions.hpp` | 264 |
 | `FBY_EFFECT_TAGS` | `Source/Engine/Core/PluginAPI.h` | 104 |
-| `FBY_FIELD` | `Source/Engine/Core/Mirror.hpp` | 285 |
+| `FBY_FIELD` | `Source/Engine/Core/Mirror.hpp` | 291 |
 | `FBY_FLUID_HAS_MDSPAN` | `Source/Engine/Physics/Fluid.hpp` | 16 |
 | `FBY_FLUID_HAS_MDSPAN` | `Source/Engine/Physics/Fluid.hpp` | 18 |
 | `FBY_HAS_MDSPAN` | `Source/Engine/ECS/Skeleton.hpp` | 18 |
 | `FBY_HAS_MDSPAN` | `Source/Engine/ECS/Skeleton.hpp` | 20 |
-| `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 105 |
-| `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 108 |
+| `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 109 |
 | `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 112 |
+| `FBY_HAS_STATIC_REFLECTION` | `Source/Engine/Core/Mirror.hpp` | 116 |
 | `FBY_HAS_STD_FLAT_MAP` | `Source/Engine/Core/FlatMap.hpp` | 19 |
+| `FBY_MOD_API_H` | `Source/Engine/Modding/ModAPI.h` | 8 |
+| `FBY_MOD_API_VERSION` | `Source/Engine/Modding/ModAPI.h` | 17 |
+| `FBY_MOD_MAX_COMMAND_BYTES` | `Source/Engine/Modding/ModAPI.h` | 20 |
+| `FBY_MOD_MAX_EVENT_BYTES` | `Source/Engine/Modding/ModAPI.h` | 19 |
+| `FBY_MOD_MAX_QUERY_TYPES` | `Source/Engine/Modding/ModAPI.h` | 18 |
 | `FBY_PALETTE_EXTENSION_COLORS` | `Source/Engine/Core/PluginAPI.h` | 103 |
 | `FBY_PLATFORM_ABI_VERSION` | `Source/Plugins/PlatformService/PlatformAPI.h` | 11 |
 | `FBY_PLATFORM_CALL` | `Source/Plugins/PlatformService/PlatformAPI.h` | 15 |
@@ -2380,18 +2446,19 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FBY_PLATFORM_EXPORT` | `Source/Plugins/PlatformService/PlatformAPI.h` | 17 |
 | `FBY_PLUGIN_ABI_VERSION` | `Source/Engine/Core/PluginAPI.h` | 30 |
 | `FBY_PLUGIN_API_H` | `Source/Engine/Core/PluginAPI.h` | 18 |
-| `FBY_PLUGIN_COMPONENT` | `Source/Engine/Core/Plugin.hpp` | 52 |
-| `FBY_PLUGIN_ENTRY` | `Source/Engine/Core/PluginAPI.h` | 214 |
+| `FBY_PLUGIN_COMPONENT` | `Source/Engine/Core/Plugin.hpp` | 58 |
+| `FBY_PLUGIN_ENTRY` | `Source/Engine/Core/PluginAPI.h` | 224 |
+| `FBY_PLUGIN_ENTRY` | `Source/Engine/Core/PluginAPI.h` | 226 |
 | `FBY_PLUGIN_EXPORT` | `Source/Engine/Core/PluginAPI.h` | 33 |
 | `FBY_PLUGIN_EXPORT` | `Source/Engine/Core/PluginAPI.h` | 35 |
 | `FBY_PLUGIN_EXPORT` | `Source/Engine/Core/PluginAPI.h` | 37 |
-| `FBY_PLUGIN_INFO_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 206 |
-| `FBY_PLUGIN_LOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 207 |
-| `FBY_PLUGIN_UNLOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 208 |
-| `FBY_PROJECT_ASSETS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 147 |
-| `FBY_PROJECT_MAX_RENDER_ITEMS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 140 |
-| `FBY_REFLECT_COMPONENT` | `Source/Engine/Core/Mirror.hpp` | 292 |
-| `FBY_REFLECT_COMPONENT_EMPTY` | `Source/Engine/Core/Mirror.hpp` | 308 |
+| `FBY_PLUGIN_INFO_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 216 |
+| `FBY_PLUGIN_LOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 217 |
+| `FBY_PLUGIN_UNLOAD_SYMBOL` | `Source/Engine/Core/PluginAPI.h` | 218 |
+| `FBY_PROJECT_ASSETS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 141 |
+| `FBY_PROJECT_MAX_RENDER_ITEMS` | `Source/Engine/Assets/ProjectScaffold.hpp` | 134 |
+| `FBY_REFLECT_COMPONENT` | `Source/Engine/Core/Mirror.hpp` | 298 |
+| `FBY_REFLECT_COMPONENT_EMPTY` | `Source/Engine/Core/Mirror.hpp` | 314 |
 | `FBY_REGISTER_TYPE` | `Source/Engine/Core/Definitions.hpp` | 268 |
 | `FBY_RELEVANCE_HAS_MDSPAN` | `Source/Engine/Network/RelevanceGrid.hpp` | 19 |
 | `FBY_RELEVANCE_HAS_MDSPAN` | `Source/Engine/Network/RelevanceGrid.hpp` | 21 |
@@ -2405,7 +2472,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FBY_UI_HAS_MDSPAN` | `Source/Engine/UI/PinkUI.hpp` | 24 |
 | `FBY_UNREACHABLE` | `Source/Engine/Core/Assert.hpp` | 45 |
 | `FBY_VERIFY` | `Source/Engine/Core/Assert.hpp` | 36 |
-| `FBY_VK_DECLARE` | `Source/Engine/RHI/Vulkan/VulkanLoader.hpp` | 127 |
+| `FBY_VK_DECLARE` | `Source/Engine/RHI/Vulkan/VulkanLoader.hpp` | 138 |
 | `FBY_VK_DEVICE_FUNCTIONS` | `Source/Engine/RHI/Vulkan/VulkanLoader.hpp` | 36 |
 | `FBY_VK_GLOBAL_FUNCTIONS` | `Source/Engine/RHI/Vulkan/VulkanLoader.hpp` | 15 |
 | `FBY_VK_INSTANCE_FUNCTIONS` | `Source/Engine/RHI/Vulkan/VulkanLoader.hpp` | 20 |

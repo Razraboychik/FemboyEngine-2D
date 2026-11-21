@@ -624,6 +624,277 @@ session.SubmitRemoteInput(0, frame);""")),
                 "серверно-авторитетное движение; затем взаимодействия, оружие и ИИ. Добавляйте поля репликации вместе с "
                 "фичей-владельцем, а не одним поздним «networking pass». Если система читает wall-clock, delta кадра или "
                 "render handle, она не готова к роллбэку.")),
+            ("h2", B("5.2 Stable ids, tombstones and capacity",
+                      "5.2 Стабильные id, tombstones и ёмкость")),
+            ("p", B(
+                "Gameplay tags and SystemGraph deliberately never renumber a live slot. Removing a tag or a system "
+                "leaves a tombstone, because scene tag masks and dependency bitmasks refer to ids, not names. That "
+                "stability has a price: Count is a high-water mark, not a live count. Treat it as the allocated id "
+                "range and use PathAt()/Find() or ActiveCount() when you need the live set.",
+                "Gameplay-теги и SystemGraph намеренно никогда не перенумеровывают живой слот. Удаление тега или "
+                "системы оставляет tombstone, потому что маски тегов в сцене и битмаски зависимостей ссылаются на "
+                "id, а не на имена. У стабильности есть цена: Count — это high-water mark, а не число живых "
+                "элементов. Воспринимайте его как выделенный диапазон id, а живой набор получайте через "
+                "PathAt()/Find() или ActiveCount().")),
+            ("bullets", B(
+                [
+                    "Prefer Rename over Remove + Add for a tag that keeps its meaning; rename preserves the id and all scene masks.",
+                    "Remove a tag only when it is retired. RemoveAt() clears the whole subtree, keeps later ids and leaves tombstones.",
+                    "Never reuse a tombstone for a different path. A scene that still carries the old bit would silently change meaning.",
+                    "Do not use Count as a live-tag counter and do not iterate it without skipping empty PathAt() slots.",
+                    "Plan the taxonomy before shipping. A project has kCapacity stable tag slots for its lifetime; removals consume them until a deliberate schema migration.",
+                    "If a project approaches the limit, migrate explicitly: export the tag paths, recreate the database, remap every GameplayTagsComponent mask and every saved scene in the same change. Clear() alone changes ids and is not a migration.",
+                    "Runtime servers load the tag database once; tombstones cost only memory and are invisible to gameplay. Editor churn is the case that needs discipline.",
+                    "SystemGraph.RemoveUser() disables a slot in place; use ActiveCount() for diagnostics and keep dependency masks alive until Clear().",
+                    "Call SystemGraph.Clear() only at a full teardown where no system, tool or plugin still holds a BitFor() mask. Repeated plugin load/unload consumes slots until that teardown.",
+                ],
+                [
+                    "Предпочитайте Rename вместо Remove + Add для тега, который сохраняет смысл: rename сохраняет id и все маски в сценах.",
+                    "Удаляйте тег только когда он выводится из обращения. RemoveAt() очищает всё поддерево, сохраняет более поздние id и оставляет tombstones.",
+                    "Никогда не переиспользуйте tombstone для другого пути: сцена со старым битом молча изменит смысл.",
+                    "Не используйте Count как счётчик живых тегов и не обходите его без пропуска пустых слотов PathAt().",
+                    "Планируйте таксономию до релиза. У проекта kCapacity стабильных слотов тегов на всё время жизни; удаления расходуют их до осознанной миграции схемы.",
+                    "Если проект приближается к лимиту, мигрируйте явно: экспортируйте пути тегов, пересоздайте базу, пересчитайте все маски GameplayTagsComponent и все сохранённые сцены одним изменением. Clear() сам по себе меняет id и миграцией не является.",
+                    "Runtime-серверы загружают базу тегов один раз; tombstones стоят только памяти и невидимы геймплею. Дисциплина нужна прежде всего редактору при частых правках.",
+                    "SystemGraph.RemoveUser() отключает слот на месте; для диагностики используйте ActiveCount(), а маски зависимостей держите живыми до Clear().",
+                    "Вызывайте SystemGraph.Clear() только при полном teardown, когда ни система, ни инструмент, ни плагин больше не держат маску BitFor(). Повторная загрузка/выгрузка плагинов расходует слоты до этого teardown.",
+                ])),
+            ("code", code(r"""const std::uint32_t retired = tags.Find("Character.State.Deprecated");
+if (retired >= 0)
+{
+    tags.RemoveAt(retired); // subtree becomes tombstones; later ids stay
+}
+for (std::uint32_t i = 0; i < tags.Count; ++i)
+{
+    const std::string_view path = tags.PathAt(i);
+    if (!path.empty())
+    {
+        DrawLiveTag(i, path); // Count is the id range, not the live count
+    }
+}
+
+graph.RemoveUser(pluginUser); // slot disabled in place; masks stay valid
+const std::uint32_t running = graph.ActiveCount();
+// At full teardown only:
+graph.Clear();""")),
+            ("p", B(
+                "Scene and lobby files are format v2 in this release. The v2 scene carries GUID-based skeleton "
+                "references and the current StateTree layout, and the v2 lobby carries the nonce-correlated ack. "
+                "v1 files and v1 peers are rejected instead of being misread; re-save projects and upgrade both "
+                "ends of a lobby session together.",
+                "Файлы сцен и lobby в этом релизе имеют формат v2. Сцена v2 несёт skeleton-ссылки на GUID и текущий "
+                "layout StateTree, а lobby v2 — ack с корреляцией nonce. Файлы v1 и пиры v1 отвергаются, а не "
+                "читаются неверно; пересохраните проекты и обновляйте оба конца lobby-сессии вместе.")),
+            ("h2", B("5.3 Bounded authoring payloads for existing systems",
+                      "5.3 Ограниченные authoring-payload для существующих систем")),
+            ("p", B(
+                "Data::StructValue is the engine's FInstancedStruct-like layer. It carries a fixed-size, "
+                "trivially copyable value plus a stable type id and schema hash. It is not a second ECS and not "
+                "a second GAS: GameplayTags, GameplayEffects and GameplaySkills stay the owners of their rules. "
+                "Existing definitions expose an optional Data::StructPayload Params field for project/plugin data; "
+                "the systems copy it but never interpret it.",
+                "Data::StructValue — слой движка в духе FInstancedStruct. Он хранит значение фиксированного "
+                "размера, trivially copyable, вместе со стабильным type id и schema hash. Это не второй ECS и не "
+                "второй GAS: GameplayTags, GameplayEffects и GameplaySkills остаются владельцами своих правил. "
+                "Существующие определения имеют необязательное поле Data::StructPayload Params для данных "
+                "проекта/плагина; системы копируют его, но не интерпретируют.")),
+            ("bullets", B(
+                [
+                    "Hard limits: 64 bytes per value, 4 values per payload, 256 registered types. Plan around them instead of adding heap payloads to components.",
+                    "Only trivially copyable, standard-layout types. No std::string, vector, pointers or virtual functions inside a value.",
+                    "Register each type once during startup with a stable name. MakeStructTypeId() hashes the name, never typeid() or an address.",
+                    "SchemaHash covers field names, kinds, offsets and sizes. A changed layout must be a new schema and old files must be rejected.",
+                    "Use the component for rare per-entity authoring data, never for Transform2D, Velocity, physics or per-frame hot state.",
+                    "Prefer typed components for core fields. Use the payload only for mods, project-specific parameters, cues and similar data.",
+                    "TOML encode/decode is field-based and rejects unknown types, schema mismatches and out-of-range values.",
+                    "Register the snapshot codec in the host schema; the payload is raw-copied only after schema validation.",
+                ],
+                [
+                    "Жёсткие лимиты: 64 байта на значение, 4 значения на payload, 256 зарегистрированных типов. Планируйте под них, а не добавляйте heap-payload в компоненты.",
+                    "Только trivially copyable, standard-layout типы. Внутри значения нет std::string, vector, указателей и виртуальных функций.",
+                    "Регистрируйте тип один раз при старте со стабильным именем. MakeStructTypeId() хэширует имя, а не typeid() или адрес.",
+                    "SchemaHash покрывает имена, виды, offset и размеры полей. Изменённый layout — это новая схема, старые файлы должны отвергаться.",
+                    "Компонент — для редких authoring-данных сущности, никогда для Transform2D, Velocity, физики или per-frame hot state.",
+                    "Для core-полей используйте типизированные компоненты. Payload — для модов, параметров проекта, cues и подобного.",
+                    "TOML encode/decode полевой и отвергает неизвестные типы, несовпадение схемы и значения вне диапазона.",
+                    "Snapshot-кодек регистрируется в схеме хоста; payload копируется сырыми байтами только после проверки схемы.",
+                ])),
+            ("code", code(r"""struct Durability
+{
+    float Current = 100.0f;
+    float Maximum = 100.0f;
+};
+
+constexpr std::array<Data::StructField, 2> kDurabilityFields{
+    {"current", Reflect::FieldKind::Float, offsetof(Durability, Current), sizeof(float)},
+    {"maximum", Reflect::FieldKind::Float, offsetof(Durability, Maximum), sizeof(float)},
+};
+
+Data::StructTypeRegistry types;
+Data::RegisterStructType<Durability>(types, "Item.Durability", kDurabilityFields);
+const Data::StructType* durability = types.Find("Item.Durability");
+
+GameplayEffectDef effect;
+effect.Id = 7;
+effect.Params.Add(*durability, Durability{12.0f, 20.0f});
+effects.AddDef(effect); // existing GAS-like effect system owns the rules
+
+StructPayloadComponent payload;
+payload.Payload.Add(*durability, Durability{3.0f, 4.0f});
+registry.emplace<StructPayloadComponent>(entity, payload);""")),
+            ("h2", B("5.4 Mod packages without gameplay interfaces",
+                      "5.4 Пакеты модов без игровых интерфейсов")),
+            ("p", B(
+                "A mod is data first: a manifest, a mounted package and optionally a trusted native plugin. "
+                "It does not implement a C++ interface and it does not replace a gameplay class. Existing "
+                "GameplayTags, GameplayEffects, GameplaySkills and StateTree definitions remain the rule owners; "
+                "a mod adds rows, tags, systems and content, or carries project-specific values in StructPayload.",
+                "Мод — это прежде всего данные: манифест, смонтированный пакет и, опционально, доверенный native-"
+                "плагин. Он не реализует C++-интерфейс и не подменяет игровой класс. Существующие определения "
+                "GameplayTags, GameplayEffects, GameplaySkills и StateTree остаются владельцами правил; мод "
+                "добавляет строки, теги, системы и контент либо хранит проектные значения в StructPayload.")),
+            ("code", code(r"""# <mods>/hardcore/mod.toml
+id = "hardcore"
+name = "Hardcore"
+version = "1.2.0"
+engine_api = 6
+side = "both"
+priority = 100
+package = "hardcore.fempak"
+hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+# optional and only loaded when the host explicitly allows native code
+plugin = "hardcore.dll"
+scripts = ["scripts/hardcore.fbys"]
+dependencies = ["core"]""")),
+            ("p", B(
+                "The host discovers mod.toml files, validates every path and hash, resolves dependencies and cycles, "
+                "then mounts packages in deterministic order. Dependencies load first; equal-ready mods load by "
+                "ascending priority and id. A later mount overrides a lower-priority path through the VFS shadow "
+                "table. The whole load is transactional: a bad package unmounts everything loaded before it.",
+                "Хост находит mod.toml, проверяет пути и хэши, разрешает зависимости и циклы, затем монтирует "
+                "пакеты в детерминированном порядке. Зависимости загружаются первыми; готовые моды — по "
+                "возрастанию priority и id. Более поздний mount перекрывает путь меньшего приоритета через "
+                "таблицу теней VFS. Загрузка транзакционна: плохой пакет размонтирует всё, что было загружено до него.")),
+            ("code", code(r"""Modding::ModHostConfig config;
+config.Vfs = &vfs;
+config.Plugins = &plugins;       // optional
+config.AllowNative = false;      // downloaded mods stay data-only
+config.RequireSignature = true;
+config.BasePriority = 100;
+config.HostSide = Modding::ModSide::Server;
+config.Scripts = &scripts; // optional ScriptRuntime
+
+Modding::ModHost mods(config);
+std::string error;
+if (!mods.LoadAll("mods", &error))
+{
+    LogError("mods", "{}", error);
+}
+// Server handshake: compare this with the peer before simulation starts.
+const std::string setHash = mods.ModSetHash();
+// ...
+mods.UnloadAll(&error);""")),
+            ("bullets", B(
+                [
+                    "Never load native plugins from an untrusted download unless the user explicitly trusts them; native code is full process code.",
+                    "Require the package SHA-256 for file packages and a trusted EdDSA key for signed manifests; v1 directory packages are a development path.",
+                    "A mod must not depend on a private C++ layout. It uses stable IDs, tags, effect/skill rows, systems, commands and events.",
+                    "Mod systems run in SystemGraph phases and obey the same fixed-step, CommandBuffer and determinism rules as first-party systems.",
+                    "Server-authoritative games exchange ModSetHash and reject peers with a different simulation set; cosmetic-only sets need a separate policy.",
+                    "Use Data::StructPayload for mod-specific per-entity values instead of inventing a component per mod.",
+                    "Native mod data access is still a trusted-ABI surface: the current C ABI exposes system registration and layout probes, not a full safe entity/component SDK.",
+                ],
+                [
+                    "Никогда не загружайте native-плагины из недоверенной загрузки без явного доверия: native-код получает весь процесс.",
+                    "Для файловых пакетов требуйте SHA-256, для подписанных манифестов — доверенный EdDSA-ключ; каталог-пакет v1 — путь разработки.",
+                    "Мод не должен зависеть от приватного C++ layout. Он использует стабильные id, теги, строки effect/skill, системы, команды и события.",
+                    "Системы мода работают в фазах SystemGraph и подчиняются тем же правилам fixed-step, CommandBuffer и детерминизма, что и first-party системы.",
+                    "В серверных играх обменивайтесь ModSetHash и отвергайте пиров с другим simulation-набором; для cosmetic-only нужна отдельная политика.",
+                    "Для проектных per-entity значений мода используйте Data::StructPayload, а не новый компонент на каждый мод.",
+                    "Доступ native-модов к данным пока доверенная ABI-поверхность: текущий C ABI даёт регистрацию систем и layout-пробы, но не полный безопасный entity/component SDK.",
+                ])),
+            ("h2", B("5.5 Safe mod data ABI versus the trusted plugin ABI",
+                      "5.5 Безопасная data ABI модов и доверенная plugin ABI")),
+            ("p", B(
+                "There are two different contracts. FbyHostApi is the trusted first-party plugin ABI: it may "
+                "expose an opaque Registry pointer and native system registration. FbyModApi is the safe data "
+                "ABI: opaque entity handles, numeric component ids, bounded reads, deferred commands and no "
+                "pointers into chunks. A downloaded mod should only receive the second contract. A trusted "
+                "native plugin may receive both through FbyHostApi::mod_api.",
+                "Есть два разных контракта. FbyHostApi — доверенная ABI first-party плагинов: она может отдавать "
+                "непрозрачный Registry pointer и регистрацию native-систем. FbyModApi — безопасная data ABI: "
+                "opaque entity handles, числовые component id, bounded-чтение, отложенные команды и никаких "
+                "указателей в чанки. Скачиваемый мод должен получать только второй контракт. Доверенный "
+                "native-плагин может получить оба через FbyHostApi::mod_api.")),
+            ("code", code(r"""/* Trusted plugin */
+if (FbyHostHasModApi(rawHost))
+{
+    const FbyModApi* mod = (const FbyModApi*)rawHost->mod_api;
+    FbyModComponentId health = 0;
+    if (mod->component_find(mod->user, "Health", &health) == FBY_MOD_OK)
+    {
+        FbyModEntity entity = mod->entity_create(mod->user);
+        Fby::Health value{100.0f};
+        mod->command_write(mod->user, entity, health, &value, sizeof(value));
+        mod->flush_commands(mod->user); /* safe point only */
+    }
+}""")),
+            ("bullets", B(
+                [
+                    "Component ids are process-local numbers, never C++ typeid or addresses; verify size and layout hash before writing a value.",
+                    "component_read copies into the caller's buffer. A short buffer returns FBY_MOD_WRONG_SIZE with the required size.",
+                    "command_write and command_remove only queue work; flush_commands applies it at a safe point. Flush is rejected during a query.",
+                    "Queries carry a structural revision. Creating, destroying or flushing during a query makes the query stale; end it and start again.",
+                    "Entity handles are opaque index+generation values. A destroyed entity returns FBY_MOD_STALE_ENTITY, not a dangling pointer.",
+                    "Events have stable host-assigned ids and a 256-byte payload limit. Publishing copies the payload before callbacks run.",
+                    "register_tag/register_effect/register_skill bind to the existing tag, effect and skill systems; they add rows, not a second GAS.",
+                    "Call ModApiHost::InstallFlushSystem() so queued writes flush in a graph phase; the host must outlive the graph.",
+                    "A native plugin that receives FbyHostApi::registry is trusted code. Do not hand that pointer to an untrusted mod.",
+                    "The safe ABI is append-only: check struct_size and FbyModApiHas() before using fields added in later engine versions.",
+                ],
+                [
+                    "Component id — process-local число, не C++ typeid и не адрес; перед записью проверяйте size и layout hash.",
+                    "component_read копирует в буфер вызывающего. Маленький буфер возвращает FBY_MOD_WRONG_SIZE с требуемым размером.",
+                    "command_write и command_remove только ставят работу в очередь; flush_commands применяет её в безопасной точке. Flush запрещён во время query.",
+                    "Query несёт structural revision. Создание, удаление или flush во время query делают его stale; завершите и начните заново.",
+                    "Entity handle — opaque index+generation. Уничтоженная сущность возвращает FBY_MOD_STALE_ENTITY, а не висячий указатель.",
+                    "У событий стабильные host-assigned id и лимит payload 256 байт. Публикация копирует payload до вызова callbacks.",
+                    "register_tag/register_effect/register_skill привязываются к существующим системам тегов, эффектов и скиллов; они добавляют строки, а не второй GAS.",
+                    "Вызывайте ModApiHost::InstallFlushSystem(), чтобы очередь записывалась в фазе графа; хост должен пережить граф.",
+                    "Native-плагин, получивший FbyHostApi::registry, — доверенный код. Не передавайте этот указатель недоверенному моду.",
+                    "Safe ABI append-only: проверяйте struct_size и FbyModApiHas() перед использованием полей новых версий движка.",
+                ])),
+            ("h2", B("5.6 View profiles and scene policy",
+                      "5.6 Профили вида и политика сцены")),
+            ("p", B(
+                "A project selects a default view profile, and every scene may override it. The profile is "
+                "simulation policy, not a render mode: side-view uses gravity and Box2D, top-down removes gravity, "
+                "isometric keeps the same 2D plane with a projection layer, and hex uses grid movement with "
+                "top-down physics for loose objects only. Scenes in one project may mix these profiles.",
+                "Проект выбирает профиль вида по умолчанию, а каждая сцена может его переопределить. Профиль — "
+                "это политика симуляции, а не режим рендера: side-view использует гравитацию и Box2D, top-down "
+                "убирает гравитацию, изометрия остаётся 2D-плоскостью с projection-слоем, а hex использует "
+                "grid movement и top-down физику только для свободных объектов. Сцены одного проекта могут "
+                "смешивать эти профили.")),
+            ("code", code(r"""view_profile = "side-view"   # project default
+
+# scenes/main.toml
+version = 2
+name = "main"
+profile = "hex"             # overrides the project for this scene""")),
+            ("bullets", B(
+                [
+                    "New projects start with an empty scene and the default profile; choose the profile in Project Settings and override it per scene.",
+                    "A scene profile is stored in both TOML and the binary scene and is applied when PIE starts.",
+                    "Hex and isometric scenes still use world XY; hex adjacency, occupancy and pathfinding belong to the grid layer.",
+                    "Use DOD for large top-down worlds and Box2D for joints, CCD and side-view stacking; the profile selects the default, the project can override the backend.",
+                ],
+                [
+                    "Новый проект начинается с пустой сцены и профиля default; профиль выбирается в Project Settings и переопределяется на сцене.",
+                    "Профиль сцены хранится и в TOML, и в бинарной сцене, и применяется при старте PIE.",
+                    "Hex- и изометрические сцены по-прежнему используют мировые XY; соседство гексов, occupancy и pathfinding относятся к grid-слою.",
+                    "Для больших top-down миров используйте DOD, для суставов, CCD и side-view стопок — Box2D; профиль задаёт значение по умолчанию, проект может переопределить backend.",
+                ])),
         ],
     },
     {
@@ -1266,6 +1537,7 @@ Materials.Shutdown(gpu);""",
             )),
         ],
     },
+
 ]
 
 

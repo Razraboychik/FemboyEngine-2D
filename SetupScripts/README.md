@@ -59,7 +59,11 @@ all-in-one macOS setup. Vendor SDK download is no longer a separate script: use
   goes to `third_party/dlss`.
 - `SetupWindows.ps1` is the implementation behind the Windows `.bat` wrappers.
   It supports `-Component Cpp|Archiver|Upscalers|All`, `-SkipSystem`, `-Force`,
-  `-WithVendorSdks` and `-AcceptVendorLicenses`.
+  `-WithVendorSdks`, `-AcceptVendorLicenses` and `-WithAndroidNdk`.
+- `-WithAndroidNdk` downloads Google's Windows NDK (default `r27c`,
+  override with `FBY_ANDROID_NDK_VERSION`) into `third_party/android-ndk` and
+  sets `ANDROID_NDK_HOME` for the setup process. It installs only the NDK, not
+  Android Studio, the SDK, Gradle or a signing identity.
 - Linux and macOS accept `--with-vendor-sdks` and `--accept-vendor-licenses`.
 - `RegisterFemboyProjects.ps1` is Windows-only and registers the `.femproj`
   association with the built editor.

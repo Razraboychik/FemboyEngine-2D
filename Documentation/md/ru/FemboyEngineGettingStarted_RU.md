@@ -1,4 +1,4 @@
-# FemboyEngine 0.7.0-alpha.1 — начало работы
+# FemboyEngine 0.7.0-alpha.1 — как сделать игру
 
 Этот документ описывает, что нужно установить и какие файлы должны лежать рядом с движком, чтобы запустить редактор, рантайм и инструменты разработки на Windows, Linux и macOS.
 
@@ -377,3 +377,209 @@ ninja --version
 | Нет шрифтов в редакторе | отсутствуют TTF или манифест семейства | вернуть `assets/fonts/` из репозитория |
 | Ошибка CMake про harfbuzz или SheenBidi | повреждён или удалён каталог `third_party/` | восстановить `third_party/harfbuzz-download/` и `third_party/sheenbidi-download/` из репозитория |
 | Windows-сборка падает на заголовках | нет Windows SDK | установить Build Tools с рабочей нагрузкой C++ |
+
+## От пустого проекта до играбельной сцены
+
+Новый проект содержит пустой `assets/scenes/main.toml`, профиль по умолчанию и никаких
+навязанных актёров. Редактор не решает за вас, какая это игра.
+
+1. Создайте проект в dashboard. Шаблон жанра не применяется.
+2. В **Project Settings → Physics** выберите профиль: Default, Side View, Top-Down,
+   Isometric или Hex Isometric.
+3. Откройте `scenes/main.toml` и добавьте только нужные сущности. Минимальный side-view
+   старт — камера, спрайт игрока и земля.
+
+```toml
+version = 2
+name = "main"
+author = "you"
+profile = "side-view"
+
+[[entity]]
+id = 0
+name = "camera"
+
+[[entity.components]]
+type = "Camera2D"
+Center = [640.0, 360.0]
+ViewSize = [1280.0, 720.0]
+Zoom = 1.0
+Rotation = 0.0
+
+[[entity]]
+id = 1
+name = "player"
+
+[[entity.components]]
+type = "Transform2D"
+Position = [320.0, 240.0]
+Scale = [1.0, 1.0]
+Rotation = 0.0
+
+[[entity.components]]
+type = "Sprite2D"
+Size = [48.0, 48.0]
+UVMin = [0.0, 0.0]
+UVMax = [1.0, 1.0]
+Layer = 1
+Color = "#4FC3F7FF"
+Flags = 0
+```
+
+4. Назначьте текстуру через инспектор; `UVMin`/`UVMax` выбирают ячейку.
+5. Добавляйте `RigidBody2D` и `Collider2D` только если сущность должна симулироваться.
+6. Нажмите Play (PIE). Профиль сцены применяется; если он `Default`, берётся профиль проекта.
+
+Для top-down поставьте `profile = "top-down"` — профиль обнуляет гравитацию. Для гексов —
+`profile = "hex"`; соседство и occupancy остаются в grid/tilemap слое, а свободные объекты
+могут использовать физику.
+
+### Тайлмапы и Tiled
+
+Добавьте `TilemapComponent` на сущность и откройте **Window → Tilemap**. Панель редактирует
+компонент напрямую. **Import Tiled** читает `.tmx` с CSV-слоями:
+
+- orthogonal → TopDown;
+- isometric → IsoRect;
+- hexagonal → IsoHex;
+- CSV и несжатый base64 поддерживаются; сжатые слои отвергаются с сообщением;
+- карты больше 64×64 нужно делить или стримить;
+- object groups дают name/type/позицию/размер и point-объекты для spawn-маркеров.
+
+Auto-tiling доступен через API:
+
+```cpp
+Fby::Tilemap::AutoTileRule rule;
+rule.Tiles[0] = 1;   // одиночный
+rule.Tiles[15] = 16; // окружённый
+Fby::Tilemap::AutoTileAll(map, rule);
+```
+
+### Анимация Aseprite
+
+Экспортируйте PNG и JSON из Aseprite. В инспекторе Sprite Animation укажите **Aseprite JSON**
+и нажмите **Import Aseprite**. Первый frame tag становится клипом; без тегов импортируются
+все кадры. Кадры должны иметь одинаковую ячейку, а лист — делиться на её размер. Импорт
+заполняет стартовую клетку, число кадров, длительность и сетку `SpriteSheetComponent`.
+Non-grid экспорт остаётся доступен инструментам, но не fixed-cell анимации.
+
+### Скрипты и отладка
+
+Откройте **Window → Script Debugger**. Он компилирует FemboyScript в bytecode и даёт:
+
+- breakpoints по строкам;
+- step/resume;
+- Locals и Self fields;
+- watch/eval для `rN`, чисел и именованных локальных переменных;
+- условия breakpoint’ов вида `r3 >= 12.5`;
+- call stack;
+- подсветку узла LogicGraph;
+- Compile + Nativize для релиза.
+
+Отладчик владеет отдельным runtime, поэтому пауза не останавливает игровой мир. Используйте
+тот же source и component registry, что и игра; ошибки компиляции видны в Status.
+
+### Build & Pack
+
+Нажмите **Build & Pack Game** в dashboard или `Ctrl+B`. Release cooker:
+
+1. валидирует проект;
+2. кукает текстуры/аудио/локализацию;
+3. собирает игру;
+4. пишет архивы в `archives/`;
+5. показывает путь в статусе редактора.
+
+Desktop-пайплайн доступен из UI, а не только из терминала. Android/iOS экспорта в этой
+сборке ещё нет.
+
+### Профилирование сцены
+
+Используйте **Render Tuning**, **Scene Diagnostics**, **Network Diagnostics** и LogBoy.
+Они читают те же компоненты, что игра; отдельная debug-сборка не нужна. При просадке
+сравнивайте `FrameStats` и тайминги систем в графе до изменения арта или физики.
+
+## UI-дизайнер
+
+Откройте **Window → UI Layout**. Панель редактирует `WidgetLayoutAsset` напрямую:
+
+- добавление Panel/Label/Button/Image;
+- выбор на preview-canvas;
+- drag для перемещения и нижний правый маркер для resize;
+- сетка и snapping;
+- anchors, offsets, текст, tint, fill/text цвета, opacity, focus policy, visible/enabled,
+  clip/read-only флаги, UV, NineSlice insets и значения ProgressBar/Slider;
+- смена parent через combo или drag в дереве;
+- duplicate и delete;
+- undo/redo через `Ctrl+Z` / `Ctrl+Y`;
+- сохранение в `assets/ui/*.toml` и загрузка обратно.
+
+Preview показывает прямоугольники и selection, а не живой PinkUI-рендер: это инструмент
+выравнивания геометрии до запуска игры.
+
+## Command palette
+
+Нажмите `Ctrl+P` и введите фильтр:
+
+- Save scene;
+- Build & Pack Game;
+- Content Browser;
+- Console;
+- Material Graph;
+- VisualScript;
+- Script Debugger;
+- Tilemap;
+- UI Layout;
+- Render Tuning.
+
+## Отладка PIE
+
+Редактор передаёт живой `ScriptRuntime` в Script Debugger. В PIE отладчик работает с
+`pie.World()`; если ничего не выбрано — берёт первую сущность с `ScriptComponent`. Пауза
+отладчика ставит PIE и граф на паузу; продолжение снимает только эту паузу, ручная пауза PIE
+не затрагивается.
+
+## Live-breakpoints и build target
+
+Script Debugger привязывается к live-программе выбранной сущности (`ScriptComponent`) во время
+PIE: breakpoints, условия, locals и call stack относятся к тому же bytecode, который исполняет
+игра. Coroutine-программы идут тем же debug-путём и сохраняют suspend state; AOT-модули на время
+отладки исполняются через bytecode VM; native stepping недоступен.
+
+Build & Pack показывает target `desktop` / `mobile`. `mobile` передаёт `--target mobile` в
+`fby_fempak` и кукает ASTC-ассеты; это asset-cook target, а не экспорт Android/iOS executable
+и не подпись.
+
+## Surface normals
+
+Освещаемый спрайт может иметь `SurfaceNormal2D`:
+
+```toml
+[[entity.components]]
+type = "SurfaceNormal2D"
+Normal = [0.0, 1.0]
+Strength = 1.0
+```
+
+Солвер 2D-света делает dot направления на свет с этой нормалью и смешивает вклад по `Strength`.
+Это per-sprite surface-normal освещение; texture normal maps используют per-pixel путь ниже.
+
+
+## Texture normal maps
+
+Normal map — обычная текстура с линейным импортом. Называйте файлы с `_n`, `_normal` или
+`.normal`; импортёр сам ставит `srgb = false`. Normal map должен лежать в том же texture array,
+что и спрайт. Добавьте `NormalMap2D`:
+
+```toml
+[[entity.components]]
+type = "NormalMap2D"
+Layer = 1
+Strength = 1.0
+```
+
+`Layer` — слой texture array; слой 0 отключает путь. Sprite shader восстанавливает нормаль из
+RGB, применяет `Strength` и считает свет по пикселям. D3D11 использует до 64 point lights,
+D3D12 и Metal — четыре, Vulkan — cluster-light путь с фиксированным directional fallback при
+выключенном cluster lighting. Inspector показывает выбранный normal layer как превью.
+
+`SurfaceNormal2D` остаётся дешёвым per-sprite fallback.

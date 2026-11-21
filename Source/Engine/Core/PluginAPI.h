@@ -186,11 +186,21 @@ extern "C"
         /* Optional append-only service. nullptr when the host has no voice
          * preset registry; detect it with FbyHostHasVoice(). */
         const FbyVoiceApi* voice;
+        /* Optional safe data ABI (FbyModApi). Opaque here so this C header does
+         * not depend on ModAPI.h; probe it with FbyHostHasModApi(). */
+        const void* mod_api;
     } FbyHostApi;
 
     /* Layout-safe capability probe: old hosts are shorter, so checking the
      * structure size is valid even when the plugin was built against a newer
      * header. */
+    static inline int FbyHostHasModApi(const FbyHostApi* InHost)
+    {
+        return InHost != NULL &&
+               InHost->struct_size >= (uint32_t)(offsetof(FbyHostApi, mod_api) + sizeof(InHost->mod_api)) &&
+               InHost->mod_api != NULL;
+    }
+
     static inline int FbyHostHasVoice(const FbyHostApi* InHost)
     {
         return InHost != NULL &&

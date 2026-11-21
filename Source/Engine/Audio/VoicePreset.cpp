@@ -25,8 +25,14 @@ namespace
     {
         return false;
     }
-    const std::size_t ScopedLength = std::strlen(InText);
-    return ScopedLength < InCapacity;
+    for (std::size_t ScopedIndex = 0; ScopedIndex < InCapacity; ++ScopedIndex)
+    {
+        if (InText[ScopedIndex] == '\0')
+        {
+            return ScopedIndex != 0;
+        }
+    }
+    return false;
 }
 
 [[nodiscard]] bool IsValidId(const char* InId) noexcept

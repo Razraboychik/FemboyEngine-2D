@@ -84,6 +84,10 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<BoneAttachment2D>(false);
     InRegistry.Register<DrawOrder>();
     InRegistry.Register<Camera2D>();
+    InRegistry.Register<PixelPerfectCamera>();
+    InRegistry.Register<Parallax2D>();
+    InRegistry.Register<SurfaceNormal2D>();
+    InRegistry.Register<NormalMap2D>();
     InRegistry.Register<Lifetime>();
     InRegistry.Register<Light2DComponent>();
     InRegistry.Register<Light2DTargetComponent>();

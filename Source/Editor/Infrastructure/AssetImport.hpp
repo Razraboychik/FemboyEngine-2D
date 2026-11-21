@@ -19,6 +19,10 @@ namespace Fby::Editor
 // "textures/hero.png" -> "textures/hero.ftex"; audio -> .fpcm; video/scene
 [[nodiscard]] std::string CookedPathForSource(std::string_view InSourcePath, AssetKind InKind);
 
+// Conventional normal-map source names (`_n`, `_normal`, `.normal`) are cooked
+// linear; authoring can still override the metadata afterwards.
+[[nodiscard]] bool IsNormalMapPath(std::string_view InSourcePath) noexcept;
+
 // Canonical path, deterministic id/guid, cooked path and default import block.
 [[nodiscard]] bool BuildDefaultAssetMeta(std::string_view InSourcePath, AssetKind InKind,
                                          Assets::TextureFormat InTextureFormat, Assets::AssetMeta* OutMeta,

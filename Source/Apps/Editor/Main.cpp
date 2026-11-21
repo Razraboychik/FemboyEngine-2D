@@ -1495,6 +1495,7 @@ int main(int argc, char** argv)
     ScopedEditorDesc.defaultTextureFormat = Fby::Assets::TextureFormat::Bc7Srgb;
     ScopedEditorDesc.watchAssets = true;
     ScopedEditorDesc.showProjectDashboard = true;
+    ScopedEditorDesc.scriptRuntime = &ScopedScripts;
     // Play Multiplayer launches the sandbox from the editor's own directory, so
     // a second copy always matches this build; a missing binary falls back to
     // the local client world.

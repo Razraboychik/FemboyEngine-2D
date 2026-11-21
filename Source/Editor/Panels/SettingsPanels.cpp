@@ -40,9 +40,18 @@ void CopyProjectField(char* InDestination, std::size_t InCapacity, const char* I
     {
         return;
     }
-    const std::size_t ScopedLength = std::min<std::size_t>(std::strlen(InSource), InCapacity - 1);
+    if (InSource == nullptr)
+    {
+        InDestination[0] = 0;
+        return;
+    }
+    std::size_t ScopedLength = 0;
+    while (ScopedLength + 1 < InCapacity && InSource[ScopedLength] != 0)
+    {
+        ++ScopedLength;
+    }
     std::memcpy(InDestination, InSource, ScopedLength);
-    InDestination[ScopedLength] = '\0';
+    InDestination[ScopedLength] = 0;
 }
 
 void Persist(ProjectConfigStore& InStore)
@@ -477,11 +486,20 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 
     ImGui::SeparatorText("Gameplay Tags");
     ImGui::TextDisabled("One project database. Definitions are global; per-entity values live on the entity.");
-    ImGui::TextDisabled("Ids follow list order and the runtime registry is rebuilt for every Apply.");
+    ImGui::TextDisabled("Tag ids are stable slots; removing a tag leaves a tombstone and never renumbers later ids.");
     GameplayTagDatabase& ScopedTagDb = ScopedValues.gameplayTags;
-    if (MSelectedTag >= static_cast<int>(ScopedTagDb.Count))
+    if (MSelectedTag >= static_cast<int>(ScopedTagDb.Count) ||
+        (MSelectedTag >= 0 && ScopedTagDb.PathAt(static_cast<std::uint32_t>(MSelectedTag)).empty()))
     {
-        MSelectedTag = ScopedTagDb.Count == 0 ? -1 : static_cast<int>(ScopedTagDb.Count - 1);
+        MSelectedTag = -1;
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedTagDb.Count; ++ScopedI)
+        {
+            if (!ScopedTagDb.PathAt(ScopedI).empty())
+            {
+                MSelectedTag = static_cast<int>(ScopedI);
+                break;
+            }
+        }
     }
 
     ImGui::InputTextWithHint("##tag_search", "Filter tags", MTagSearch.data(), MTagSearch.size());
@@ -492,11 +510,15 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
 
     std::array<std::uint16_t, GameplayTagDatabase::kCapacity> ScopedOrder{};
+    std::uint32_t ScopedLiveCount = 0;
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedTagDb.Count; ++ScopedI)
     {
-        ScopedOrder[ScopedI] = static_cast<std::uint16_t>(ScopedI);
+        if (!ScopedTagDb.PathAt(ScopedI).empty())
+        {
+            ScopedOrder[ScopedLiveCount++] = static_cast<std::uint16_t>(ScopedI);
+        }
     }
-    std::sort(ScopedOrder.begin(), ScopedOrder.begin() + ScopedTagDb.Count,
+    std::sort(ScopedOrder.begin(), ScopedOrder.begin() + ScopedLiveCount,
               [&ScopedTagDb](std::uint16_t InA, std::uint16_t InB)
               {
                   return ScopedTagDb.PathAt(InA) < ScopedTagDb.PathAt(InB);
@@ -504,7 +526,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 
     ImGui::BeginChild("##gameplay_tag_list", ImVec2(0.0f, 180.0f), true);
     const std::string_view ScopedFilter(MTagSearch.data());
-    for (std::uint32_t ScopedRank = 0; ScopedRank < ScopedTagDb.Count; ++ScopedRank)
+    for (std::uint32_t ScopedRank = 0; ScopedRank < ScopedLiveCount; ++ScopedRank)
     {
         const std::uint32_t ScopedIndex = ScopedOrder[ScopedRank];
         const std::string_view ScopedPath = ScopedTagDb.PathAt(ScopedIndex);
@@ -527,7 +549,8 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
     ImGui::EndChild();
 
-    if (MSelectedTag >= 0 && MSelectedTag < static_cast<int>(ScopedTagDb.Count))
+    if (MSelectedTag >= 0 && MSelectedTag < static_cast<int>(ScopedTagDb.Count) &&
+        !ScopedTagDb.PathAt(static_cast<std::uint32_t>(MSelectedTag)).empty())
     {
         const std::string_view ScopedSelectedPath = ScopedTagDb.PathAt(static_cast<std::uint32_t>(MSelectedTag));
         if (MSelectedTag != MLastSelectedTag)
@@ -617,6 +640,14 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
 
     ImGui::SeparatorText("Physics");
+    constexpr const char* kViewProfileNames[] = {"Default", "Side View", "Top-Down", "Isometric", "Hex Isometric"};
+    int ScopedViewProfile = static_cast<int>(ScopedValues.viewProfile);
+    if (ImGui::Combo("View profile", &ScopedViewProfile, kViewProfileNames, 5))
+    {
+        ScopedValues.viewProfile = static_cast<Fby::ViewProfile>(
+            std::clamp(ScopedViewProfile, 0, static_cast<int>(Fby::ViewProfile::Hex)));
+    }
+    ImGui::TextDisabled("Scenes may override the project profile.");
     constexpr const char* kPhysicsBackendNames[] = {"Auto", "Box2D", "DOD"};
     int ScopedPhysicsBackend = static_cast<int>(ScopedValues.physicsBackend);
     if (ImGui::Combo("Backend", &ScopedPhysicsBackend, kPhysicsBackendNames, 3))

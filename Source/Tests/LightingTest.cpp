@@ -88,6 +88,42 @@ void TestFalloff()
     FBY_CHECK(NearByte(LightColor(ScopedRegistry, ScopedSprite), 0, 0, 0));
 }
 
+void TestSurfaceNormalDirection()
+{
+    Fby::Ecs::Registry ScopedRegistry;
+    const Fby::Entity ScopedSprite = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedSprite,
+                                            Fby::Transform2D{Fby::Vector2D{100.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
+    ScopedRegistry.emplace<Fby::Sprite2D>(ScopedSprite);
+    Fby::Light2DTargetComponent ScopedTarget;
+    ScopedRegistry.emplace<Fby::Light2DTargetComponent>(ScopedSprite, ScopedTarget);
+
+    const Fby::Entity ScopedLight = ScopedRegistry.create();
+    ScopedRegistry.emplace<Fby::Transform2D>(ScopedLight, Fby::Transform2D{});
+    Fby::Light2DComponent ScopedLightComponent;
+    ScopedLightComponent.Radius = 200.0f;
+    ScopedLightComponent.Intensity = 1.0f;
+    ScopedRegistry.emplace<Fby::Light2DComponent>(ScopedLight, ScopedLightComponent);
+
+    Fby::LightingSystem ScopedSystem;
+    Fby::LightingSettings ScopedSettings;
+    ScopedSettings.Ambient = Fby::Color32::FromBytes(0, 0, 0);
+    ScopedSettings.AmbientIntensity = 0.0f;
+    ScopedSettings.Tonemap = false;
+    (void)ScopedSystem.Run(ScopedRegistry, ScopedSettings);
+    FBY_CHECK(NearByte(LightColor(ScopedRegistry, ScopedSprite), 0, 64));
+
+    Fby::SurfaceNormal2D ScopedNormal;
+    ScopedNormal.Normal = Fby::Vector2D{1.0f, 0.0f};
+    ScopedRegistry.emplace<Fby::SurfaceNormal2D>(ScopedSprite, ScopedNormal);
+    (void)ScopedSystem.Run(ScopedRegistry, ScopedSettings);
+    FBY_CHECK(NearByte(LightColor(ScopedRegistry, ScopedSprite), 0, 0, 1));
+
+    ScopedRegistry.get<Fby::SurfaceNormal2D>(ScopedSprite).Normal = Fby::Vector2D{-1.0f, 0.0f};
+    (void)ScopedSystem.Run(ScopedRegistry, ScopedSettings);
+    FBY_CHECK(NearByte(LightColor(ScopedRegistry, ScopedSprite), 0, 64));
+}
+
 void TestAmbientEmissiveAndTonemap()
 {
     Fby::Ecs::Registry ScopedRegistry;
@@ -402,6 +438,7 @@ void TestSdfLightingFrame()
 int main()
 {
     TestFalloff();
+    TestSurfaceNormalDirection();
     TestAmbientEmissiveAndTonemap();
     TestSdfShadows();
     TestDynamicOccluders();

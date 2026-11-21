@@ -62,8 +62,10 @@ void TestTagDatabase()
     FBY_CHECK(GameplayTagContainerHas(ScopedTags, ScopedRegistry, ScopedStatus));
 
     FBY_CHECK(ScopedDb.RemoveAt(1));
-    FBY_CHECK(ScopedDb.Count == 1);
+    FBY_CHECK(ScopedDb.Count == 3);
+    FBY_CHECK(ScopedDb.PathAt(1).empty() && ScopedDb.PathAt(2).empty());
     FBY_CHECK(ScopedDb.Find("Character") == 0);
+    FBY_CHECK(ScopedDb.Find("Character.Status") < 0);
 }
 
 void TestNavigationShaping()

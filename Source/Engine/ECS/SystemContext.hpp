@@ -189,11 +189,17 @@ template <CoreSystemFunction InFunction> [[nodiscard]] SystemFunction BindCoreSy
 // Read-only core view: the registry is const, so every component view yields
 // const references. A system that only inspects the world takes this view and
 // cannot create, destroy or write through the ECS.
+struct ConstCoreServices
+{
+    const CommandBuffer* commands = nullptr;
+    const FrameArena* frameArena = nullptr;
+};
+
 struct ConstCoreSystemView
 {
     const Registry& registry;
     JobSystem& jobs;
-    const CoreServices& core;
+    ConstCoreServices core;
     float dt = 0.0f;
     std::uint64_t frameIndex = 0;
     float interpolationAlpha = 1.0f;
@@ -375,7 +381,7 @@ inline CoreSystemView SystemContext::CoreView() noexcept
 
 inline ConstCoreSystemView SystemContext::ConstCoreView() const noexcept
 {
-    return {registry, jobs, *this, dt, frameIndex, interpolationAlpha};
+    return {registry, jobs, ConstCoreServices{commands, frameArena}, dt, frameIndex, interpolationAlpha};
 }
 
 inline PhysicsSystemView SystemContext::PhysicsView() noexcept

@@ -173,9 +173,7 @@ void ProjectDashboard::CreateFromFields()
         MError = "Project name must be a plain folder name: no separators, no ':', no '..'.";
         return;
     }
-    if (!CreateProject(MLocation, MProjectName, &MPendingProject, &MPendingConfig, &MPendingError,
-                       static_cast<Assets::Scaffold::ProjectTemplate>(
-                           std::clamp(MProjectTemplate, 0, static_cast<int>(Assets::Scaffold::ProjectTemplate::Count) - 1))))
+    if (!CreateProject(MLocation, MProjectName, &MPendingProject, &MPendingConfig, &MPendingError))
     {
         MError = MPendingError;
         return;
@@ -411,10 +409,6 @@ void ProjectDashboard::DrawNew(WindowManager* InWindow)
         UseDefaultLocation();
     }
 
-    const char* ScopedTemplateNames[] = {"Empty", "2D Platformer", "Top-Down", "UI App"};
-    ImGui::SetNextItemWidth(-120.0f);
-    (void)ImGui::Combo("Template", &MProjectTemplate, ScopedTemplateNames, 4);
-    ImGui::Spacing();
     ImGui::TextDisabled("Creates:");
     ImGui::BulletText("assets/textures, assets/audio, assets/scenes");
     ImGui::BulletText("configs/");

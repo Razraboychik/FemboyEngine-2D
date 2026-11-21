@@ -111,6 +111,42 @@ void AppendFieldToml(std::string& Out, const SceneComponent& InComponent, const 
             Out += "]";
             break;
         }
+        case Reflect::FieldKind::UInt16Array:
+        {
+            const std::size_t ScopedCount = InField.size / sizeof(std::uint16_t);
+            const auto* ScopedBase = static_cast<const std::byte*>(InComponent.data.data()) + InField.offset;
+            Out += "[";
+            for (std::size_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
+            {
+                std::uint16_t ScopedValue = 0;
+                std::memcpy(&ScopedValue, ScopedBase + ScopedI * sizeof(std::uint16_t), sizeof(ScopedValue));
+                if (ScopedI != 0)
+                {
+                    Out += ", ";
+                }
+                Out += std::to_string(ScopedValue);
+            }
+            Out += "]";
+            break;
+        }
+        case Reflect::FieldKind::FloatArray:
+        {
+            const std::size_t ScopedCount = InField.size / sizeof(float);
+            const auto* ScopedBase = static_cast<const std::byte*>(InComponent.data.data()) + InField.offset;
+            Out += "[";
+            for (std::size_t ScopedI = 0; ScopedI < ScopedCount; ++ScopedI)
+            {
+                float ScopedValue = 0.0f;
+                std::memcpy(&ScopedValue, ScopedBase + ScopedI * sizeof(float), sizeof(ScopedValue));
+                if (ScopedI != 0)
+                {
+                    Out += ", ";
+                }
+                Out += FormatFloat(ScopedValue);
+            }
+            Out += "]";
+            break;
+        }
         case Reflect::FieldKind::Decimal:
         {
             BigNum::Decimal128 ScopedValue;
@@ -363,6 +399,61 @@ void AppendFieldToml(std::string& Out, const SceneComponent& InComponent, const 
             }
             return true;
         }
+        case Reflect::FieldKind::UInt16Array:
+        {
+            const toml::array* ScopedArray = InNode.as_array();
+            const std::size_t ScopedCapacity = InField.size / sizeof(std::uint16_t);
+            if (ScopedArray == nullptr || ScopedArray->size() > ScopedCapacity)
+            {
+                *InError = "expected an array with no more than the field capacity";
+                return false;
+            }
+            std::vector<std::uint16_t> ScopedValues;
+            for (const toml::node& ScopedElement : *ScopedArray)
+            {
+                const auto ScopedValue = ScopedElement.value<std::int64_t>();
+                if (!ScopedValue || *ScopedValue < 0 || *ScopedValue > 0xFFFF)
+                {
+                    *InError = "array elements must be 16-bit unsigned integers";
+                    return false;
+                }
+                ScopedValues.push_back(static_cast<std::uint16_t>(*ScopedValue));
+            }
+            std::byte* ScopedBase = static_cast<std::byte*>(InComponent) + InField.offset;
+            std::memset(ScopedBase, 0, InField.size);
+            for (std::size_t ScopedI = 0; ScopedI < ScopedValues.size(); ++ScopedI)
+            {
+                std::memcpy(ScopedBase + ScopedI * sizeof(std::uint16_t), &ScopedValues[ScopedI],
+                            sizeof(std::uint16_t));
+            }
+            return true;
+        }
+        case Reflect::FieldKind::FloatArray:
+        {
+            const toml::array* ScopedArray = InNode.as_array();
+            const std::size_t ScopedCapacity = InField.size / sizeof(float);
+            if (ScopedArray == nullptr || ScopedArray->size() > ScopedCapacity)
+            {
+                *InError = "expected an array with no more than the field capacity";
+                return false;
+            }
+            std::byte* ScopedBase = static_cast<std::byte*>(InComponent) + InField.offset;
+            std::memset(ScopedBase, 0, InField.size);
+            std::size_t ScopedI = 0;
+            for (const toml::node& ScopedElement : *ScopedArray)
+            {
+                const auto ScopedValue = ScopedElement.value<double>();
+                if (!ScopedValue)
+                {
+                    *InError = "array elements must be numbers";
+                    return false;
+                }
+                const float ScopedFloat = static_cast<float>(*ScopedValue);
+                std::memcpy(ScopedBase + ScopedI * sizeof(float), &ScopedFloat, sizeof(float));
+                ++ScopedI;
+            }
+            return true;
+        }
         case Reflect::FieldKind::UInt64:
         {
             std::uint64_t ScopedValue = 0;
@@ -453,12 +544,15 @@ std::string EncodeSceneToml(const SceneData& InScene)
     ScopedOut += "name = \"";
     ScopedOut += EscapeTomlString(InScene.meta.name);
     ScopedOut += "\"\n";
-    if (!InScene.meta.author.empty())
     {
         ScopedOut += "author = \"";
         ScopedOut += EscapeTomlString(InScene.meta.author);
         ScopedOut += "\"\n";
     }
+
+    ScopedOut += "profile = \"";
+    ScopedOut += ViewProfileKey(InScene.meta.profile);
+    ScopedOut += "\"\n";
 
     for (std::size_t ScopedI = 0; ScopedI < InScene.entities.size(); ++ScopedI)
     {
@@ -525,6 +619,13 @@ std::expected<SceneData, std::string> DecodeSceneToml(std::string_view InToml, c
     if (const auto ScopedAuthor = ScopedRoot["author"].value<std::string>())
     {
         ScopedScene.meta.author = *ScopedAuthor;
+    }
+    if (const auto ScopedProfile = ScopedRoot["profile"].value<std::string>(); ScopedProfile.has_value())
+    {
+        if (!ParseViewProfile(*ScopedProfile, &ScopedScene.meta.profile))
+        {
+            return std::unexpected("unknown scene profile '" + *ScopedProfile + "'");
+        }
     }
 
     const toml::node* ScopedEntitiesNode = ScopedRoot.get("entity");

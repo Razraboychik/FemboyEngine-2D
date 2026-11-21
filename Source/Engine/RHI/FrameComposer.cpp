@@ -141,6 +141,34 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     const bool ScopedHasHidden = !ScopedRegistry.view<Hidden>().empty();
     const bool ScopedHasLightResult = !ScopedRegistry.view<Light2DResultComponent>().empty();
     const bool ScopedHasOverlay = !ScopedRegistry.view<SpriteOverlay2D>().empty();
+    const bool ScopedHasParallax = !ScopedRegistry.view<Parallax2D>().empty();
+    const bool ScopedHasNormalMap = !ScopedRegistry.view<NormalMap2D>().empty();
+    const auto ScopedNormalFlags = [&ScopedRegistry, ScopedHasNormalMap](Entity InEntity)
+    {
+        if (!ScopedHasNormalMap)
+        {
+            return 0u;
+        }
+        if (const auto* ScopedNormal = ScopedRegistry.try_get<NormalMap2D>(InEntity))
+        {
+            return Rhi::EncodeNormalMap(ScopedNormal->Layer, ScopedNormal->Strength);
+        }
+        return 0u;
+    };
+    const auto ScopedSpritePosition = [&ScopedRegistry, &InCamera, ScopedHasParallax](Entity InEntity,
+                                                                                       const Transform2D& InTransform)
+    {
+        Vector2D ScopedPosition = InTransform.Position;
+        if (ScopedHasParallax)
+        {
+            if (const auto* ScopedParallax = ScopedRegistry.try_get<Parallax2D>(InEntity))
+            {
+                ScopedPosition += InCamera.center *
+                                  Vector2D{1.0f - ScopedParallax->Factor.X, 1.0f - ScopedParallax->Factor.Y};
+            }
+        }
+        return ScopedPosition;
+    };
     // Every sprite may emit a crossfade overlay, so the item arrays reserve two
     // slots per entity before the tile quads.
     const std::size_t ScopedSpriteCount = ScopedView.size_hint();
@@ -331,7 +359,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                                 ? 0u
                                 : std::min(ScopedOrder->MaterialBucket, Rhi::kMaxMaterialBuckets - 1u);
                         MItems[ScopedWrite] =
-                            Rhi::RenderItem{ScopedTransform->Position,
+                            Rhi::RenderItem{ScopedSpritePosition(ScopedEntity, *ScopedTransform),
                                             ScopedSprite->Size * ScopedTransform->Scale,
                                             ScopedSprite->UVMin,
                                             ScopedSprite->UVMax,
@@ -339,6 +367,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                                             ScopedColor,
                                             ScopedTransform->Rotation,
                                             Rhi::EncodeDepth(ScopedSprite->Flags, ScopedOrder->Depth, ScopedOpaque)};
+                        MItems[ScopedWrite].flags |= ScopedNormalFlags(ScopedEntity);
                         MKeys[ScopedWrite] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
                                                                         ScopedOrder->Layer, ScopedOrder->Depth);
                         if (MTemporalEnabled)
@@ -401,7 +430,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                             ++ScopedWrite;
                             const float ScopedOverlayDepth = ScopedOrder->Depth + ScopedOverlay->DepthBias;
                             MItems[ScopedWrite] =
-                                Rhi::RenderItem{ScopedTransform->Position,
+                                Rhi::RenderItem{ScopedSpritePosition(ScopedEntity, *ScopedTransform),
                                                 ScopedSprite->Size * ScopedTransform->Scale,
                                                 ScopedOverlay->UVMin,
                                                 ScopedOverlay->UVMax,
@@ -409,6 +438,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                                                 ScopedOverlayPacked,
                                                 ScopedTransform->Rotation,
                                                 Rhi::EncodeDepth(ScopedOverlay->Flags, ScopedOverlayDepth, false)};
+                            MItems[ScopedWrite].flags |= ScopedNormalFlags(ScopedEntity);
                             MKeys[ScopedWrite] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
                                                                             ScopedOrder->Layer, ScopedOverlayDepth);
                         }
@@ -473,10 +503,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                 ++MStats.OitItems;
             }
             MItems[ScopedIndex] = Rhi::RenderItem{
-                ScopedTransform.Position, ScopedSprite.Size * ScopedTransform.Scale,
+                ScopedSpritePosition(ScopedEntity, ScopedTransform), ScopedSprite.Size * ScopedTransform.Scale,
                 ScopedSprite.UVMin,       ScopedSprite.UVMax,
                 ScopedSprite.Layer,       ScopedColor,
                 ScopedTransform.Rotation, Rhi::EncodeDepth(ScopedSprite.Flags, ScopedOrder.Depth, ScopedOpaque)};
+            MItems[ScopedIndex].flags |= ScopedNormalFlags(ScopedEntity);
             if (MTemporalEnabled)
             {
                 const std::size_t ScopedHistoryIndex =
@@ -546,10 +577,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                     }
                     const float ScopedOverlayDepth = ScopedOrder.Depth + ScopedOverlay->DepthBias;
                     MItems[ScopedIndex] = Rhi::RenderItem{
-                        ScopedTransform.Position, ScopedSprite.Size * ScopedTransform.Scale,
+                        ScopedSpritePosition(ScopedEntity, ScopedTransform), ScopedSprite.Size * ScopedTransform.Scale,
                         ScopedOverlay->UVMin,     ScopedOverlay->UVMax,
                         ScopedOverlay->Layer,     ScopedOverlayPacked,
                         ScopedTransform.Rotation, Rhi::EncodeDepth(ScopedOverlay->Flags, ScopedOverlayDepth, false)};
+                    MItems[ScopedIndex].flags |= ScopedNormalFlags(ScopedEntity);
                     MKeys[ScopedIndex] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
                                                                     ScopedOrder.Layer, ScopedOverlayDepth);
                     ++ScopedIndex;

@@ -62,14 +62,31 @@ void PrintUsage()
     {
         return false;
     }
+    const auto ScopedNibble = [](char InChar) -> int
+    {
+        if (InChar >= '0' && InChar <= '9')
+        {
+            return InChar - '0';
+        }
+        if (InChar >= 'a' && InChar <= 'f')
+        {
+            return InChar - 'a' + 10;
+        }
+        if (InChar >= 'A' && InChar <= 'F')
+        {
+            return InChar - 'A' + 10;
+        }
+        return -1;
+    };
     for (std::size_t ScopedIndex = 0; ScopedIndex < 32; ++ScopedIndex)
     {
-        unsigned ScopedValue = 0;
-        if (std::sscanf(InText + ScopedIndex * 2, "%2x", &ScopedValue) != 1)
+        const int ScopedHigh = ScopedNibble(InText[ScopedIndex * 2]);
+        const int ScopedLow = ScopedNibble(InText[ScopedIndex * 2 + 1]);
+        if (ScopedHigh < 0 || ScopedLow < 0)
         {
             return false;
         }
-        (*OutKey)[ScopedIndex] = static_cast<std::byte>(ScopedValue & 0xFFu);
+        (*OutKey)[ScopedIndex] = static_cast<std::byte>((ScopedHigh << 4) | ScopedLow);
     }
     return true;
 }

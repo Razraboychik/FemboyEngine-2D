@@ -569,6 +569,20 @@ public:
 
         if (!InPacket.items.empty())
         {
+            std::array<GpuLight, 64> ScopedLights{};
+            const std::size_t ScopedLightCount = InPacket.lights.size() < ScopedLights.size()
+                                                     ? InPacket.lights.size()
+                                                     : ScopedLights.size();
+            for (std::size_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+            {
+                ScopedLights[ScopedI] = InPacket.lights[ScopedI];
+            }
+            D3D11_MAPPED_SUBRESOURCE ScopedLightMapped{};
+            if (SUCCEEDED(MContext->Map(MSpriteLightBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ScopedLightMapped)))
+            {
+                std::memcpy(ScopedLightMapped.pData, ScopedLights.data(), sizeof(ScopedLights));
+                MContext->Unmap(MSpriteLightBuffer.Get(), 0);
+            }
             const std::size_t ScopedSpriteVertices = InPacket.items.size() * 6u;
             if (ScopedSpriteVertices > MVertexCapacity)
             {
@@ -626,6 +640,8 @@ public:
                     ScopedVertex.Color[2] = ScopedB;
                     ScopedVertex.Color[3] = ScopedA;
                     ScopedVertex.Layer = static_cast<float>(ScopedItem.layer);
+                    ScopedVertex.NormalMeta =
+                        EncodeNormalVertexMeta(NormalMapLayer(ScopedItem.flags), NormalMapStrength(ScopedItem.flags));
                 }
             }
             MContext->Unmap(MVertexBuffer.Get(), 0);
@@ -634,8 +650,9 @@ public:
             MContext->IASetVertexBuffers(0, 1, MVertexBuffer.GetAddressOf(), &ScopedStride, &ScopedOffset);
             if (InPacket.batches.empty())
             {
-                ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(InPacket.textureArray)};
-                MContext->PSSetShaderResources(0, 1, ScopedViews);
+                ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(InPacket.textureArray),
+                                                           MSpriteLightSrv.Get()};
+                MContext->PSSetShaderResources(0, 2, ScopedViews);
                 MContext->Draw(static_cast<UINT>(ScopedCount), 0);
                 ++MStats.drawCalls;
             }
@@ -650,8 +667,9 @@ public:
                     }
                     const std::uint32_t ScopedTexture =
                         ScopedBatch.textureArray != 0 ? ScopedBatch.textureArray : InPacket.textureArray;
-                    ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(ScopedTexture)};
-                    MContext->PSSetShaderResources(0, 1, ScopedViews);
+                    ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(ScopedTexture),
+                                                               MSpriteLightSrv.Get()};
+                    MContext->PSSetShaderResources(0, 2, ScopedViews);
                     MContext->Draw(static_cast<UINT>(ScopedBatch.itemCount) * 6u,
                                    static_cast<UINT>(ScopedBatch.firstItem) * 6u);
                     ++MStats.drawCalls;
@@ -740,10 +758,12 @@ public:
                         {ScopedClipX, ScopedClipY, 0.5f},
                         {ScopedVertex.uv.X, ScopedVertex.uv.Y},
                         {ScopedR, ScopedG, ScopedB, ScopedA},
-                        static_cast<float>(ScopedItem.layer)};
+                        static_cast<float>(ScopedItem.layer),
+                        0.0f};
                 }
-                ID3D11ShaderResourceView* ScopedMeshViews[] = {TextureViewFor(ScopedItem.textureArray)};
-                MContext->PSSetShaderResources(0, 1, ScopedMeshViews);
+                ID3D11ShaderResourceView* ScopedMeshViews[] = {TextureViewFor(ScopedItem.textureArray),
+                                                               MSpriteLightSrv.Get()};
+                MContext->PSSetShaderResources(0, 2, ScopedMeshViews);
                 const UINT ScopedStride = sizeof(SmokeVertex);
                 const UINT ScopedOffset = 0;
                 MContext->IASetVertexBuffers(0, 1, MVertexBuffer.GetAddressOf(), &ScopedStride, &ScopedOffset);
@@ -1644,6 +1664,7 @@ private:
         float Uv[2];
         float Color[4];
         float Layer;
+        float NormalMeta = 0.0f;
     };
 
     struct MotionVertex
@@ -2107,6 +2128,7 @@ float4 PSMain(VSOutput input) : SV_Target
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
         };
         if (FAILED(MDevice->CreateVertexShader(ScopedVSData, ScopedVSSize, nullptr, &MVertexShader)) ||
             FAILED(MDevice->CreatePixelShader(ScopedPSData, ScopedPSSize, nullptr, &MPixelShader)) ||
@@ -2189,6 +2211,18 @@ float4 PSMain(VSOutput input) : SV_Target
         ScopedBuffer.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         ScopedBuffer.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         if (FAILED(MDevice->CreateBuffer(&ScopedBuffer, nullptr, &MVertexBuffer)))
+        {
+            return false;
+        }
+        D3D11_BUFFER_DESC ScopedLightBuffer{};
+        ScopedLightBuffer.ByteWidth = static_cast<UINT>(sizeof(GpuLight) * 64u);
+        ScopedLightBuffer.Usage = D3D11_USAGE_DYNAMIC;
+        ScopedLightBuffer.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        ScopedLightBuffer.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        ScopedLightBuffer.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        ScopedLightBuffer.StructureByteStride = sizeof(GpuLight);
+        if (FAILED(MDevice->CreateBuffer(&ScopedLightBuffer, nullptr, &MSpriteLightBuffer)) ||
+            FAILED(MDevice->CreateShaderResourceView(MSpriteLightBuffer.Get(), nullptr, &MSpriteLightSrv)))
         {
             return false;
         }
@@ -2440,6 +2474,8 @@ float4 PSMain(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     ComPtr<ID3D11DepthStencilView> MDepthView;
     ComPtr<ID3D11DepthStencilState> MDepthState;
     ComPtr<ID3D11Buffer> MVertexBuffer;
+    ComPtr<ID3D11Buffer> MSpriteLightBuffer;
+    ComPtr<ID3D11ShaderResourceView> MSpriteLightSrv;
     ComPtr<ID3D11VertexShader> MMotionVertexShader;
     ComPtr<ID3D11PixelShader> MMotionPixelShader;
     ComPtr<ID3D11InputLayout> MMotionInputLayout;

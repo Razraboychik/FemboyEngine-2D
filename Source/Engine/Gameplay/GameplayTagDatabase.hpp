@@ -33,10 +33,15 @@ struct GameplayTagDatabase
     // the path is invalid, duplicated with a different spelling, or the fixed
     // capacity is exhausted.
     [[nodiscard]] int Add(std::string_view InPath) noexcept;
-    // Removes the tag and its whole subtree by path prefix. Removal is
-    // suffix-only: ids never renumber, so a removal whose subtree is followed by
-    // another live tag is rejected. Clear() or a deliberate reorder invalidates ids.
+    // Removes the tag and its whole subtree by path prefix. The slot becomes a
+    // tombstone: later ids keep their values and Count stays the high-water mark
+    // until Clear(), so scene tag masks stay valid across a removal.
     [[nodiscard]] bool RemoveAt(std::uint32_t InIndex) noexcept;
+
+    // Preserves an exact id while loading a serialized database. Empty slots are
+    // tombstones; Count is the high-water mark, not the live tag count.
+    void ReserveSlot() noexcept;
+    [[nodiscard]] bool RestoreSlot(std::uint32_t InIndex, std::string_view InPath) noexcept;
     // Renames the tag and every descendant, preserving their relative order.
     [[nodiscard]] bool Rename(std::uint32_t InIndex, std::string_view InNewPath) noexcept;
 

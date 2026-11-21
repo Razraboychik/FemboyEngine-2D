@@ -5,7 +5,13 @@ get_filename_component(FBY_ENGINE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." 
 
 set(FBY_ENGINE_SOURCES
     Assets/AnimationClipAsset.cpp
+    Assets/AsepriteImporter.cpp
     Assets/AssetDatabase.cpp
+    Data/StructValue.cpp
+    Modding/ModManifest.cpp
+    Modding/ModHost.cpp
+    Modding/ModApiHost.cpp
+    Data/StructValueToml.cpp
     Assets/ProjectBundle.cpp
     Assets/AssetMeta.cpp
     Assets/AudioClipFormat.cpp
@@ -16,6 +22,7 @@ set(FBY_ENGINE_SOURCES
     Assets/LocalizationCompiler.cpp
     Assets/PngWriter.cpp
     Assets/TextureArray.cpp
+    Assets/TiledImporter.cpp
     Assets/SpriteAtlas.cpp
     Assets/VFS.cpp
     Documents/Document.cpp
@@ -124,6 +131,7 @@ set(FBY_ENGINE_SOURCES
     Physics/VehicleWheels.cpp
     Physics/Fluid.cpp
     Physics/Physics.cpp
+    Physics/PhysicsProfile.cpp
     Physics/ProjectileSystem.cpp
     Physics/PhysicsJoints.cpp
     Physics/PhysicsJointsScene.cpp
@@ -147,6 +155,7 @@ set(FBY_ENGINE_SOURCES
     RHI/MaterialGraph.cpp
     RHI/MaterialPipelineCache.cpp
     RHI/RHI.cpp
+    RHI/PixelPerfect.cpp
     RHI/RenderGraph.cpp
     RHI/RenderPasses.cpp
     RHI/OitPass.cpp
@@ -181,6 +190,7 @@ set(FBY_ENGINE_SOURCES
     Script/EcsBridge.cpp
     Script/GraphCompiler.cpp
     Script/ScriptHeap.cpp
+    Script/ScriptFileReloader.cpp
     Script/TextScript.cpp
     Text/BookAsset.cpp
     Text/BookCook.cpp

@@ -162,6 +162,7 @@ PluginHost::PluginHost(ComponentRegistry& InComponents, void* InEcsRegistry)
     MApi.component_layout_hash = &PluginHost::HostLayoutHash;
     MApi.add_system = &PluginHost::HostAddSystem;
     MApi.voice = nullptr;
+    MApi.mod_api = MModApi;
 }
 
 PluginHost::~PluginHost()

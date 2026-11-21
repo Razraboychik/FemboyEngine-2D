@@ -907,6 +907,20 @@ void MetalRHI::RecordPacket(id<MTLCommandBuffer> commandBuffer, id<MTLTexture> c
         CameraData camera = packet.camera;
         [encoder setRenderPipelineState:MSpritePipeline];
         [encoder setVertexBytes:&camera length:sizeof(camera) atIndex:1];
+        std::array<float, 32> ScopedLights{};
+        const std::size_t ScopedLightCount = packet.lights.size() < 4u ? packet.lights.size() : 4u;
+        for (std::size_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+        {
+            const GpuLight& ScopedLight = packet.lights[ScopedI];
+            ScopedLights[ScopedI * 4u + 0u] = ScopedLight.PositionAndRadius.X;
+            ScopedLights[ScopedI * 4u + 1u] = ScopedLight.PositionAndRadius.Y;
+            ScopedLights[ScopedI * 4u + 2u] = ScopedLight.PositionAndRadius.Z;
+            ScopedLights[16u + ScopedI * 4u + 0u] = ScopedLight.ColorAndIntensity.X;
+            ScopedLights[16u + ScopedI * 4u + 1u] = ScopedLight.ColorAndIntensity.Y;
+            ScopedLights[16u + ScopedI * 4u + 2u] = ScopedLight.ColorAndIntensity.Z;
+            ScopedLights[16u + ScopedI * 4u + 3u] = ScopedLight.ColorAndIntensity.W;
+        }
+        [encoder setFragmentBytes:ScopedLights.data() length:sizeof(ScopedLights) atIndex:2];
 
         // Per-batch texture-array binding, mirroring VulkanRHI::DrawPacket.
         //
