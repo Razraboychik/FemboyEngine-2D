@@ -1392,7 +1392,9 @@ bool VulkanRHI::CreatePipeline()
 
     if (!CreatePipelineForPass(MRenderPass, &MPipeline) ||
         !CreatePipelineForPass(MRenderPass, &MBasePipeline, false, false,
-                               Fby::Rhi::RenderBlendMode::Opaque, true))
+                               Fby::Rhi::RenderBlendMode::Opaque, true, false) ||
+        !CreatePipelineForPass(MRenderPass, &MSdfPipeline, false, false,
+                               Fby::Rhi::RenderBlendMode::Opaque, false, true))
     {
         return false;
     }
@@ -1401,7 +1403,8 @@ bool VulkanRHI::CreatePipeline()
 
 // One sprite pipeline per render pass.
 bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline, bool InDepthTest,
-                                      bool InBlendless, Fby::Rhi::RenderBlendMode InBlend, bool InBaseFragment)
+                                      bool InBlendless, Fby::Rhi::RenderBlendMode InBlend, bool InBaseFragment,
+                                      bool InSdfFragment)
 {
     Vk::Api& ScopedApi = Vk::GetApi();
 
@@ -1421,8 +1424,10 @@ bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* Out
     };
 
     VkShaderModule ScopedVertexModule = ScopedMakeModule(Shaders::quad_vert);
-    VkShaderModule ScopedFragmentModule = InBaseFragment ? ScopedMakeModule(Shaders::quad_base_frag)
-                                                         : ScopedMakeModule(Shaders::quad_frag);
+    VkShaderModule ScopedFragmentModule = InBaseFragment
+                                              ? ScopedMakeModule(Shaders::quad_base_frag)
+                                              : (InSdfFragment ? ScopedMakeModule(Shaders::quad_sdf_frag)
+                                                               : ScopedMakeModule(Shaders::quad_frag));
     if (ScopedVertexModule == VK_NULL_HANDLE || ScopedFragmentModule == VK_NULL_HANDLE)
     {
         return false;

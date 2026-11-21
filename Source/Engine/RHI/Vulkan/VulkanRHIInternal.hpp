@@ -698,14 +698,14 @@ private:
     bool CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline, bool InDepthTest = false,
                                bool InBlendless = false,
                                Fby::Rhi::RenderBlendMode InBlend = Fby::Rhi::RenderBlendMode::Opaque,
-                               bool InBaseFragment = false);
+                               bool InBaseFragment = false, bool InSdfFragment = false);
     [[nodiscard]] RenderTarget* FindRenderTarget(std::uint32_t InId) noexcept;
     void DestroyRenderTargetResources(RenderTarget& InTarget) noexcept;
     void RecordDepthPrepass(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket, bool InAccessibility);
 
     void DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, VkPipeline InBasePipeline,
-                    const FramePacket& InPacket, bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot,
-                    bool InDepthOnly = false);
+                    VkPipeline InSdfPipeline, const FramePacket& InPacket, bool InOffscreen, bool InSrgb,
+                    std::uint32_t InSdfSlot, bool InDepthOnly = false);
     void PreUploadInstances(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
     // GI probe upload must run outside a render pass: it records a host-write
     // memory barrier, which is illegal inside vkCmdBeginRenderPass.
@@ -785,6 +785,7 @@ private:
     VkPipelineLayout MPipelineLayout = VK_NULL_HANDLE;
     VkPipeline MPipeline = VK_NULL_HANDLE;
     VkPipeline MBasePipeline = VK_NULL_HANDLE;
+    VkPipeline MSdfPipeline = VK_NULL_HANDLE;
     VkPipeline MPipelineOpaque = VK_NULL_HANDLE;
     VkDescriptorSetLayout MOitResolveSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool MOitResolvePool = VK_NULL_HANDLE;

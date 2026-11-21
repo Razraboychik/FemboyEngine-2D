@@ -2262,7 +2262,7 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
     {
         const bool ScopedTargetSrgb = IsSrgbFormat(ScopedTarget->format);
         MActiveRenderPass = ScopedTarget->renderPass;
-        DrawPacket(ScopedCommandBuffer, ScopedTarget->pipeline, VK_NULL_HANDLE, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
+        DrawPacket(ScopedCommandBuffer, ScopedTarget->pipeline, VK_NULL_HANDLE, VK_NULL_HANDLE, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
         DrawMeshes(ScopedCommandBuffer, ScopedTarget->meshPipeline, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
         RecordOitResolve(ScopedCommandBuffer, ScopedTarget->renderPass, InPacket);
         MActiveRenderPass = VK_NULL_HANDLE;
@@ -2570,7 +2570,7 @@ void VulkanRHI::RecordDepthPrepass(VkCommandBuffer InCommandBuffer, const FrameP
     }
     else if (MDepthPrepassRequested)
     {
-        DrawPacket(InCommandBuffer, MDepthPrepassPipeline, VK_NULL_HANDLE, InPacket, false, false, 0, true);
+        DrawPacket(InCommandBuffer, MDepthPrepassPipeline, VK_NULL_HANDLE, VK_NULL_HANDLE, InPacket, false, false, 0, true);
     }
     ScopedApi.vkCmdEndRenderPass(InCommandBuffer);
     if (ScopedUseCull && InPacket.gpuOpaqueMain && !ScopedReuseCull)
@@ -2770,8 +2770,8 @@ void VulkanRHI::UploadGiProbes(VkCommandBuffer InCommandBuffer, const FramePacke
 }
 
 void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, VkPipeline InBasePipeline,
-                           const FramePacket& InPacket, bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot,
-                           bool InDepthOnly)
+                           VkPipeline InSdfPipeline, const FramePacket& InPacket, bool InOffscreen, bool InSrgb,
+                           std::uint32_t InSdfSlot, bool InDepthOnly)
 {
     if (InPacket.items.empty())
     {
@@ -3054,8 +3054,12 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
             const bool ScopedSdf =
                 (ScopedFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
                                       Rhi::kRenderFlagSdfGlow)) != 0u;
-            if (!ScopedSdf && (NormalMapLayer(ScopedFirst.flags) < 1u ||
-                               NormalMapStrength(ScopedFirst.flags) <= 0.0f))
+            if (ScopedSdf && InSdfPipeline != VK_NULL_HANDLE)
+            {
+                ScopedBatchPipeline = InSdfPipeline;
+            }
+            else if (!ScopedSdf && (NormalMapLayer(ScopedFirst.flags) < 1u ||
+                                    NormalMapStrength(ScopedFirst.flags) <= 0.0f))
             {
                 ScopedBatchPipeline = InBasePipeline;
             }
@@ -3725,7 +3729,7 @@ void VulkanRHI::Submit(const FramePacket& InPacket)
     if (!MBlindFrame)
     {
         MActiveRenderPass = MRenderPass;
-        DrawPacket(ScopedCommandBuffer, MPipeline, MBasePipeline, InPacket, false, false, ScopedSdfSlot);
+        DrawPacket(ScopedCommandBuffer, MPipeline, MBasePipeline, MSdfPipeline, InPacket, false, false, ScopedSdfSlot);
         DrawMeshes(ScopedCommandBuffer, MMeshPipeline, InPacket, false, false, ScopedSdfSlot);
         RecordOitResolve(ScopedCommandBuffer, MRenderPass, InPacket);
         MActiveRenderPass = VK_NULL_HANDLE;
@@ -3738,7 +3742,7 @@ bool VulkanRHI::DrawOverlay(const FramePacket& InPacket)
     {
         return false;
     }
-    DrawPacket(MCommandBuffers[MFrameIndex], MPipeline, MBasePipeline, InPacket, false, false, 0);
+    DrawPacket(MCommandBuffers[MFrameIndex], MPipeline, MBasePipeline, MSdfPipeline, InPacket, false, false, 0);
     return true;
 }
 
@@ -4698,6 +4702,10 @@ void VulkanRHI::Shutdown()
         if (MBasePipeline != VK_NULL_HANDLE)
         {
             ScopedApi.vkDestroyPipeline(MDevice, MBasePipeline, nullptr);
+        }
+        if (MSdfPipeline != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipeline(MDevice, MSdfPipeline, nullptr);
         }
         if (MOitResolvePipeline != VK_NULL_HANDLE)
         {
