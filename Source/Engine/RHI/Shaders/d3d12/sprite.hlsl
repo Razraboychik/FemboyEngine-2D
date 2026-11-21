@@ -5,8 +5,8 @@ cbuffer SpriteLights : register(b1)
     float4 LightPosRadius[4];
     float4 LightColor[4];
 };
-struct VSInput { float3 position : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; float layer : TEXCOORD1; float normalMeta : TEXCOORD2; };
-struct VSOutput { float4 position : SV_Position; float2 uv : TEXCOORD0; float4 color : COLOR; float layer : TEXCOORD1; float4 materialVarying : TEXCOORD2; float normalMeta : TEXCOORD3; };
+struct VSInput { float3 position : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; float layer : TEXCOORD1; float normalMeta : TEXCOORD2; uint flags : TEXCOORD3; };
+struct VSOutput { float4 position : SV_Position; float2 uv : TEXCOORD0; float4 color : COLOR; float layer : TEXCOORD1; float4 materialVarying : TEXCOORD2; float normalMeta : TEXCOORD3; uint flags : TEXCOORD4; };
 VSOutput VSMain(VSInput input)
 {
     VSOutput output;
@@ -15,6 +15,7 @@ VSOutput VSMain(VSInput input)
     output.color = input.color;
     output.layer = input.layer;
     output.normalMeta = input.normalMeta;
+    output.flags = input.flags;
     output.materialVarying = float4(0.0, 0.0, 0.0, 0.0);
     return output;
 }

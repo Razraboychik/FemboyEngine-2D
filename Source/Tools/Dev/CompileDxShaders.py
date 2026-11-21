@@ -40,6 +40,8 @@ NAMES = {
     "d3d12_sprite_VSMain": "D3D12SpriteVsSm5",
     "d3d12_sprite_PSMain": "D3D12SpritePsSm5",
     "d3d12_sprite_base_PSMain": "D3D12SpriteBasePsSm5",
+    "d3d12_sprite_sdf_PSMain": "D3D12SpriteSdfPsSm5",
+    "d3d12_sprite_sdf_VSMain": "D3D12SpriteSdfVsSm5",
     "d3d12_motion_VSMain": "D3D12MotionVsSm5",
     "d3d12_motion_PSMain": "D3D12MotionPsSm5",
     "d3d12_temporal_VSMain": "D3D12TemporalVsSm5",
@@ -126,13 +128,15 @@ def main() -> int:
             if backend == "d3d11":
                 names = names + ("sprite_base",)
             if backend == "d3d12":
-                names = names + ("sprite_base",)
+                names = names + ("sprite_base", "sprite_sdf")
             if backend == "d3d12":
                 names = names + ("material_sprite",)
             for name in names:
                 entries = ("VSMain", "PSMain")
                 if name == "sprite_base":
                     entries = ("PSMain",)
+                if name == "sprite_sdf":
+                    entries = ("VSMain", "PSMain")
                 if backend == "d3d11" and name == "sharpen":
                     entries = ("PSMain",)
                 if name == "material_sprite":

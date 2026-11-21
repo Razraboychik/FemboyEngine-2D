@@ -219,10 +219,38 @@ inline constexpr std::uint64_t kDepthScale = (1ull << kDepthBits) - 1ull;
 static_assert(kDepthBits == 32);
 static_assert((std::uint64_t{65535} << kSequenceBits) <= kDepthScale);
 inline constexpr std::uint32_t kMaxMaterialBuckets = 1u << kMaterialBits;
-// The last bucket is reserved for normal-mapped sprites so the D3D11 base and
-// normal pixel shaders never share a batch.
+// Material buckets are also the sprite-variant contract. The high buckets are
+// reserved so base, normal, SDF text, outline and glow never share a batch.
+enum class SpriteVariant : std::uint32_t
+{
+    Base = 0,
+    Normal = 1,
+    SdfText = 2,
+    SdfOutline = 3,
+    SdfGlow = 4,
+};
+inline constexpr std::uint32_t kSpriteVariantBucketBase = 240u;
+inline constexpr std::uint32_t kSdfTextMaterialBucket = kSpriteVariantBucketBase + 2u;
+inline constexpr std::uint32_t kSdfOutlineMaterialBucket = kSpriteVariantBucketBase + 3u;
+inline constexpr std::uint32_t kSdfGlowMaterialBucket = kSpriteVariantBucketBase + 4u;
 inline constexpr std::uint32_t kNormalMaterialBucket = kMaxMaterialBuckets - 1u;
-inline constexpr std::uint32_t kMaxUserMaterialBucket = kNormalMaterialBucket - 1u;
+inline constexpr std::uint32_t kMaxUserMaterialBucket = kSpriteVariantBucketBase - 1u;
+
+// DrawBatch::pipeline carries either a material handle or one of these compact
+// sprite-variant markers. Material handles never set the high bit.
+inline constexpr std::uint32_t kSpriteVariantPipelineBit = 1u << 31;
+[[nodiscard]] constexpr std::uint32_t SpriteVariantPipeline(SpriteVariant InVariant) noexcept
+{
+    return kSpriteVariantPipelineBit | static_cast<std::uint32_t>(InVariant);
+}
+[[nodiscard]] constexpr bool IsSpriteVariantPipeline(std::uint32_t InPipeline) noexcept
+{
+    return (InPipeline & kSpriteVariantPipelineBit) != 0u;
+}
+[[nodiscard]] constexpr SpriteVariant DecodeSpriteVariant(std::uint32_t InPipeline) noexcept
+{
+    return static_cast<SpriteVariant>(InPipeline & 0xFFu);
+}
 inline constexpr std::uint32_t kMaterialKeyShift = kDepthBits + kSequenceBits;
 inline constexpr std::uint32_t kLayerKeyShift = kMaterialKeyShift + kMaterialBits;
 

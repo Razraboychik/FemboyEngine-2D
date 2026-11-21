@@ -3051,20 +3051,24 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
         {
             const Rhi::RenderItem& ScopedFirst =
                 InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
-            const bool ScopedSdf =
-                (ScopedFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
-                                      Rhi::kRenderFlagSdfGlow)) != 0u;
-            if (ScopedSdf && InSdfPipeline != VK_NULL_HANDLE)
+            if (Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline))
             {
-                ScopedBatchPipeline = InSdfPipeline;
-            }
-            else if (!ScopedSdf && (NormalMapLayer(ScopedFirst.flags) < 1u ||
-                                    NormalMapStrength(ScopedFirst.flags) <= 0.0f))
-            {
-                ScopedBatchPipeline = InBasePipeline;
+                const Rhi::SpriteVariant ScopedVariant = Rhi::DecodeSpriteVariant(ScopedBatch.pipeline);
+                if (ScopedVariant == Rhi::SpriteVariant::Base)
+                {
+                    ScopedBatchPipeline = InBasePipeline != VK_NULL_HANDLE ? InBasePipeline : InPipeline;
+                }
+                else if (ScopedVariant != Rhi::SpriteVariant::Normal && InSdfPipeline != VK_NULL_HANDLE)
+                {
+                    ScopedBatchPipeline = InSdfPipeline;
+                }
+                else
+                {
+                    ScopedBatchPipeline = InPipeline;
+                }
             }
         }
-        if (!InDepthOnly && ScopedBatch.pipeline != 0)
+        if (!InDepthOnly && ScopedBatch.pipeline != 0 && !Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline))
         {
             const VkPipeline ScopedMaterial = ResolveMaterialPipeline(ScopedBatch.pipeline, InOffscreen, InSrgb);
             if (ScopedMaterial != VK_NULL_HANDLE)

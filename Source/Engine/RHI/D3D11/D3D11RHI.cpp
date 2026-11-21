@@ -686,14 +686,9 @@ public:
                     ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(ScopedTexture),
                                                                MSpriteLightSrv.Get()};
                     MContext->PSSetShaderResources(0, 2, ScopedViews);
-                    const Rhi::RenderItem& ScopedBatchFirst =
-                        InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
-                    const bool ScopedBatchSdf =
-                        (ScopedBatchFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
-                                                   Rhi::kRenderFlagSdfGlow)) != 0u;
                     const bool ScopedBatchNormal =
-                        ScopedBatchSdf || (NormalMapLayer(ScopedBatchFirst.flags) >= 1u &&
-                                          NormalMapStrength(ScopedBatchFirst.flags) > 0.0f);
+                        Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline) &&
+                        Rhi::DecodeSpriteVariant(ScopedBatch.pipeline) != Rhi::SpriteVariant::Base;
                     MContext->PSSetShader(ScopedBatchNormal ? MPixelShader.Get() : MBasePixelShader.Get(), nullptr, 0);
                     MContext->Draw(static_cast<UINT>(ScopedBatch.itemCount) * 6u,
                                    static_cast<UINT>(ScopedBatch.firstItem) * 6u);

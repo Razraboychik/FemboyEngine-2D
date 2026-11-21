@@ -333,17 +333,23 @@ public:
                 EncodeNormalVertexMeta(NormalMapLayer(ScopedItem.flags), NormalMapStrength(ScopedItem.flags));
             const SmokeVertex ScopedCorners[6] = {
                 {{ScopedX - ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX + ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX + ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX - ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX + ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX - ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
             };
             std::memcpy(ScopedVertices + ScopedCount, ScopedCorners, sizeof(ScopedCorners));
             ScopedCount += 6;
@@ -417,15 +423,13 @@ public:
                 else
                 {
                     MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
-                    const Rhi::RenderItem& ScopedBatchFirst =
-                        InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
-                    const bool ScopedBatchSdf =
-                        (ScopedBatchFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
-                                                   Rhi::kRenderFlagSdfGlow)) != 0u;
-                    const bool ScopedBatchNormal =
-                        ScopedBatchSdf || (NormalMapLayer(ScopedBatchFirst.flags) >= 1u &&
-                                          NormalMapStrength(ScopedBatchFirst.flags) > 0.0f);
-                    MCommandList->SetPipelineState(ScopedBatchNormal ? MPipeline.Get() : MBasePipeline.Get());
+                    ID3D12PipelineState* ScopedBatchState = MBasePipeline.Get();
+                    if (Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline) &&
+                        Rhi::DecodeSpriteVariant(ScopedBatch.pipeline) != Rhi::SpriteVariant::Base)
+                    {
+                        ScopedBatchState = MPipeline.Get();
+                    }
+                    MCommandList->SetPipelineState(ScopedBatchState);
                     MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
                 }
                 ScopedDraw(ScopedBatch.firstItem * 6, ScopedBatch.itemCount * 6, ScopedTexture);
@@ -509,7 +513,9 @@ public:
                         {ScopedWorldX, ScopedWorldY, 0.5f},
                         {ScopedVertex.uv.X, ScopedVertex.uv.Y},
                         {ScopedR, ScopedG, ScopedB, ScopedA},
-                        static_cast<float>(ScopedItem.layer)};
+                        static_cast<float>(ScopedItem.layer),
+                        0.0f,
+                        0};
                 }
                 const auto ScopedMeshSrv = MTextureSrvIndex.find(ScopedItem.textureArray);
                 if (ScopedMeshSrv == MTextureSrvIndex.end())
@@ -2163,6 +2169,7 @@ public:
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 3, DXGI_FORMAT_R32_UINT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         };
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedPso{};
         ScopedPso.pRootSignature = MMaterialRootSignature.Get();
@@ -2265,6 +2272,7 @@ private:
         float Color[4];
         float Layer;
         float NormalMeta = 0.0f;
+        std::uint32_t Flags = 0;
     };
 
     struct MotionVertex
@@ -3765,6 +3773,7 @@ float4 PSMain(VSOutput input) : SV_Target
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 3, DXGI_FORMAT_R32_UINT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         };
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedPso{};
         ScopedPso.pRootSignature = MSpriteLightRootSignature.Get();
@@ -3799,6 +3808,7 @@ float4 PSMain(VSOutput input) : SV_Target
         ScopedBasePso.PS = {Shaders::Dx::D3D12SpriteBasePsSm5.data(), Shaders::Dx::D3D12SpriteBasePsSm5.size()};
         if (FAILED(MDevice->CreateGraphicsPipelineState(&ScopedBasePso, IID_PPV_ARGS(&MBasePipeline))))
         {
+            std::fprintf(stderr, "d3d12: base PSO failed\n");
             return false;
         }
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedAdditivePso = ScopedPso;

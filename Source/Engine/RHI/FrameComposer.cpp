@@ -52,6 +52,22 @@ namespace
 [[nodiscard]] std::uint32_t PipelineForBucket(std::span<const std::uint32_t> InPipelines,
                                               std::uint32_t InBucket) noexcept
 {
+    if (InBucket == kSdfTextMaterialBucket)
+    {
+        return SpriteVariantPipeline(SpriteVariant::SdfText);
+    }
+    if (InBucket == kSdfOutlineMaterialBucket)
+    {
+        return SpriteVariantPipeline(SpriteVariant::SdfOutline);
+    }
+    if (InBucket == kSdfGlowMaterialBucket)
+    {
+        return SpriteVariantPipeline(SpriteVariant::SdfGlow);
+    }
+    if (InBucket == kNormalMaterialBucket)
+    {
+        return SpriteVariantPipeline(SpriteVariant::Normal);
+    }
     if (InBucket == 0u || InBucket >= InPipelines.size())
     {
         return 0u;
@@ -414,12 +430,22 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                         const bool ScopedOpaque =
                             ScopedSprite->Color.A() == 255u && (ScopedSprite->Flags & ScopedBlendBits) == 0u;
                         const std::uint32_t ScopedNormalBits = ScopedNormalFlags(ScopedEntity);
+                        const std::uint32_t ScopedSdfBits =
+                            ScopedSprite->Flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                                   Rhi::kRenderFlagSdfGlow);
                         const std::uint32_t ScopedBucket =
-                            ScopedNormalBits != 0u
-                                ? Rhi::kNormalMaterialBucket
-                                : (MMaterialPipelines.empty()
-                                       ? 0u
-                                       : std::min(ScopedOrder->MaterialBucket, Rhi::kMaxUserMaterialBucket));
+                            (ScopedSdfBits & Rhi::kRenderFlagSdfText) != 0u
+                                ? Rhi::kSdfTextMaterialBucket
+                                : ((ScopedSdfBits & Rhi::kRenderFlagSdfOutline) != 0u
+                                       ? Rhi::kSdfOutlineMaterialBucket
+                                       : ((ScopedSdfBits & Rhi::kRenderFlagSdfGlow) != 0u
+                                              ? Rhi::kSdfGlowMaterialBucket
+                                              : (ScopedNormalBits != 0u
+                                                     ? Rhi::kNormalMaterialBucket
+                                                     : (MMaterialPipelines.empty()
+                                                            ? 0u
+                                                            : std::min(ScopedOrder->MaterialBucket,
+                                                                       Rhi::kMaxUserMaterialBucket)))));
                         MItems[ScopedWrite] =
                             Rhi::RenderItem{ScopedSpritePosition(ScopedEntity, *ScopedTransform),
                                             ScopedSprite->Size * ScopedTransform->Scale,
