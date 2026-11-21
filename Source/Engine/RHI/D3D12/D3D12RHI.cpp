@@ -70,6 +70,7 @@ class D3D12RHI final : public RHI
 public:
     bool Initialize(const DeviceDesc& InDesc) override
     {
+        MSdfDisabled = std::getenv("FBY_D3D12_DISABLE_SDF") != nullptr;
         constexpr std::uint32_t kMaxBackendItems = 1u << 16;
         const std::uint32_t ScopedRequestedItems = std::max(1u, InDesc.maxItemsPerFrame);
         const std::uint32_t ScopedItems = std::min(ScopedRequestedItems, kMaxBackendItems);
@@ -4124,6 +4125,7 @@ float4 PSMain(VSOutput input) : SV_Target
     bool MBloomReady = false;
     ComPtr<ID3D12PipelineLibrary> MPipelineLibrary;
     bool MPipelineLibraryLoaded = false;
+    bool MSdfDisabled = false;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12PipelineState>> MMaterialPipelines;
     std::unordered_map<std::uint32_t, ShaderPipelineDomain> MMaterialPipelineDomains;
     std::uint32_t MNextMaterialPipeline = 1;

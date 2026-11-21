@@ -206,7 +206,28 @@ SDF shadow mask, instance ring и static mesh arena. Lite помогает ав�
 - Проверять время кадра и аллокации в RelWithDebInfo, затем подтверждать в
   Release; Debug-цифры не относятся к релизу.
 
-## 10. Связанные документы
+
+
+## 10. Варианты sprite pipeline
+
+Спрайты батчатся по явному shader-варианту, а не по per-pixel проверке режима:
+
+- base;
+- normal map;
+- SDF text;
+- SDF outline;
+- SDF glow.
+
+Вариант входит в render key. `FrameComposer` сортирует по нему, поэтому batch не
+смешивает base-спрайт с normal-mapped или SDF-спрайтом. D3D11 и D3D12 используют
+отдельные base/normal pipelines; D3D12 и Vulkan — SDF pipeline без записи глубины;
+Metal использует то же разделение на уровне исходников.
+
+D3D12 SDF можно отключить через `FBY_D3D12_DISABLE_SDF=1`; тогда используется
+обычный sprite pipeline. SDF smoke-тест рендерит реальный кадр и проверяет центр
+глифа, поэтому несовпадение pipeline не проходит молча.
+
+## 11. Связанные документы
 
 - [Editor settings reference](EditorSettingsReference_RU.md)
 - [Project settings recommendations](ProjectSettingsRecommendations_RU.md)
