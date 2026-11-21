@@ -663,8 +663,11 @@ public:
                                                            MSpriteLightSrv.Get()};
                 MContext->PSSetShaderResources(0, 2, ScopedViews);
                 const Rhi::RenderItem& ScopedFirst = InPacket.items.front();
-                const bool ScopedNormal = NormalMapLayer(ScopedFirst.flags) >= 1u &&
-                                          NormalMapStrength(ScopedFirst.flags) > 0.0f;
+                const bool ScopedSdf =
+                    (ScopedFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                          Rhi::kRenderFlagSdfGlow)) != 0u;
+                const bool ScopedNormal = ScopedSdf || (NormalMapLayer(ScopedFirst.flags) >= 1u &&
+                                                        NormalMapStrength(ScopedFirst.flags) > 0.0f);
                 MContext->PSSetShader(ScopedNormal ? MPixelShader.Get() : MBasePixelShader.Get(), nullptr, 0);
                 MContext->Draw(static_cast<UINT>(ScopedCount), 0);
                 ++MStats.drawCalls;
@@ -685,8 +688,12 @@ public:
                     MContext->PSSetShaderResources(0, 2, ScopedViews);
                     const Rhi::RenderItem& ScopedBatchFirst =
                         InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
-                    const bool ScopedBatchNormal = NormalMapLayer(ScopedBatchFirst.flags) >= 1u &&
-                                                   NormalMapStrength(ScopedBatchFirst.flags) > 0.0f;
+                    const bool ScopedBatchSdf =
+                        (ScopedBatchFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                                   Rhi::kRenderFlagSdfGlow)) != 0u;
+                    const bool ScopedBatchNormal =
+                        ScopedBatchSdf || (NormalMapLayer(ScopedBatchFirst.flags) >= 1u &&
+                                          NormalMapStrength(ScopedBatchFirst.flags) > 0.0f);
                     MContext->PSSetShader(ScopedBatchNormal ? MPixelShader.Get() : MBasePixelShader.Get(), nullptr, 0);
                     MContext->Draw(static_cast<UINT>(ScopedBatch.itemCount) * 6u,
                                    static_cast<UINT>(ScopedBatch.firstItem) * 6u);

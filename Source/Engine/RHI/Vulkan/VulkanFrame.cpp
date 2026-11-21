@@ -3051,7 +3051,11 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
         {
             const Rhi::RenderItem& ScopedFirst =
                 InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
-            if (NormalMapLayer(ScopedFirst.flags) < 1u || NormalMapStrength(ScopedFirst.flags) <= 0.0f)
+            const bool ScopedSdf =
+                (ScopedFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                      Rhi::kRenderFlagSdfGlow)) != 0u;
+            if (!ScopedSdf && (NormalMapLayer(ScopedFirst.flags) < 1u ||
+                               NormalMapStrength(ScopedFirst.flags) <= 0.0f))
             {
                 ScopedBatchPipeline = InBasePipeline;
             }

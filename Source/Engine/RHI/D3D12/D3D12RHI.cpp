@@ -385,8 +385,12 @@ public:
         {
             MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
             const Rhi::RenderItem& ScopedOnly = InPacket.items.front();
+            const bool ScopedOnlySdf =
+                (ScopedOnly.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                     Rhi::kRenderFlagSdfGlow)) != 0u;
             const bool ScopedOnlyNormal =
-                NormalMapLayer(ScopedOnly.flags) >= 1u && NormalMapStrength(ScopedOnly.flags) > 0.0f;
+                ScopedOnlySdf || (NormalMapLayer(ScopedOnly.flags) >= 1u &&
+                                  NormalMapStrength(ScopedOnly.flags) > 0.0f);
             MCommandList->SetPipelineState(ScopedOnlyNormal ? MPipeline.Get() : MBasePipeline.Get());
             MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
             ScopedDraw(0, static_cast<std::uint32_t>(ScopedCount), InPacket.textureArray);
@@ -415,8 +419,12 @@ public:
                     MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
                     const Rhi::RenderItem& ScopedBatchFirst =
                         InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
-                    const bool ScopedBatchNormal = NormalMapLayer(ScopedBatchFirst.flags) >= 1u &&
-                                                   NormalMapStrength(ScopedBatchFirst.flags) > 0.0f;
+                    const bool ScopedBatchSdf =
+                        (ScopedBatchFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                                   Rhi::kRenderFlagSdfGlow)) != 0u;
+                    const bool ScopedBatchNormal =
+                        ScopedBatchSdf || (NormalMapLayer(ScopedBatchFirst.flags) >= 1u &&
+                                          NormalMapStrength(ScopedBatchFirst.flags) > 0.0f);
                     MCommandList->SetPipelineState(ScopedBatchNormal ? MPipeline.Get() : MBasePipeline.Get());
                     MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
                 }
