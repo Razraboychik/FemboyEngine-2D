@@ -651,6 +651,7 @@ public:
                     ScopedVertex.Layer = static_cast<float>(ScopedItem.layer);
                     ScopedVertex.NormalMeta =
                         EncodeNormalVertexMeta(NormalMapLayer(ScopedItem.flags), NormalMapStrength(ScopedItem.flags));
+                    ScopedVertex.Flags = ScopedItem.flags;
                 }
             }
             MContext->Unmap(MVertexBuffer.Get(), 0);
@@ -686,10 +687,22 @@ public:
                     ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(ScopedTexture),
                                                                MSpriteLightSrv.Get()};
                     MContext->PSSetShaderResources(0, 2, ScopedViews);
-                    const bool ScopedBatchNormal =
-                        Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline) &&
-                        Rhi::DecodeSpriteVariant(ScopedBatch.pipeline) != Rhi::SpriteVariant::Base;
-                    MContext->PSSetShader(ScopedBatchNormal ? MPixelShader.Get() : MBasePixelShader.Get(), nullptr, 0);
+                    ID3D11PixelShader* ScopedBatchShader = MBasePixelShader.Get();
+                    if (Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline))
+                    {
+                        const Rhi::SpriteVariant ScopedVariant = Rhi::DecodeSpriteVariant(ScopedBatch.pipeline);
+                        if (ScopedVariant == Rhi::SpriteVariant::SdfText ||
+                            ScopedVariant == Rhi::SpriteVariant::SdfOutline ||
+                            ScopedVariant == Rhi::SpriteVariant::SdfGlow)
+                        {
+                            ScopedBatchShader = MSdfPixelShader.Get();
+                        }
+                        else if (ScopedVariant != Rhi::SpriteVariant::Base)
+                        {
+                            ScopedBatchShader = MPixelShader.Get();
+                        }
+                    }
+                    MContext->PSSetShader(ScopedBatchShader, nullptr, 0);
                     MContext->Draw(static_cast<UINT>(ScopedBatch.itemCount) * 6u,
                                    static_cast<UINT>(ScopedBatch.firstItem) * 6u);
                     ++MStats.drawCalls;
@@ -779,7 +792,8 @@ public:
                         {ScopedVertex.uv.X, ScopedVertex.uv.Y},
                         {ScopedR, ScopedG, ScopedB, ScopedA},
                         static_cast<float>(ScopedItem.layer),
-                        0.0f};
+                        0.0f,
+                        0u};
                 }
                 ID3D11ShaderResourceView* ScopedMeshViews[] = {TextureViewFor(ScopedItem.textureArray),
                                                                MSpriteLightSrv.Get()};
@@ -1686,6 +1700,7 @@ private:
         float Color[4];
         float Layer;
         float NormalMeta = 0.0f;
+        std::uint32_t Flags = 0;
     };
 
     struct MotionVertex
@@ -2132,6 +2147,8 @@ float4 PSMain(VSOutput input) : SV_Target
         SIZE_T ScopedPSSize = Shaders::Dx::D3D11SpritePsSm5.size();
         const void* ScopedBasePSData = Shaders::Dx::D3D11SpriteBasePsSm5.data();
         SIZE_T ScopedBasePSSize = Shaders::Dx::D3D11SpriteBasePsSm5.size();
+        const void* ScopedSdfPSData = Shaders::Dx::D3D11SpriteSdfPsSm5.data();
+        SIZE_T ScopedSdfPSSize = Shaders::Dx::D3D11SpriteSdfPsSm5.size();
         if (ScopedLegacyShaderModel)
         {
             if (FAILED(D3DCompile(ScopedShader, sizeof(ScopedShader), "sprite11.hlsl", nullptr, nullptr, "VSMain",
@@ -2152,10 +2169,12 @@ float4 PSMain(VSOutput input) : SV_Target
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 3, DXGI_FORMAT_R32_UINT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0},
         };
         if (FAILED(MDevice->CreateVertexShader(ScopedVSData, ScopedVSSize, nullptr, &MVertexShader)) ||
             FAILED(MDevice->CreatePixelShader(ScopedPSData, ScopedPSSize, nullptr, &MPixelShader)) ||
             FAILED(MDevice->CreatePixelShader(ScopedBasePSData, ScopedBasePSSize, nullptr, &MBasePixelShader)) ||
+            FAILED(MDevice->CreatePixelShader(ScopedSdfPSData, ScopedSdfPSSize, nullptr, &MSdfPixelShader)) ||
             FAILED(MDevice->CreateInputLayout(ScopedLayout, static_cast<UINT>(std::size(ScopedLayout)),
                                               ScopedVSData, ScopedVSSize, &MInputLayout)))
         {
@@ -2488,6 +2507,7 @@ float4 PSMain(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     ComPtr<ID3D11VertexShader> MVertexShader;
     ComPtr<ID3D11PixelShader> MPixelShader;
     ComPtr<ID3D11PixelShader> MBasePixelShader;
+    ComPtr<ID3D11PixelShader> MSdfPixelShader;
     ComPtr<ID3D11InputLayout> MInputLayout;
     ComPtr<ID3D11BlendState> MBlendState;
     ComPtr<ID3D11BlendState> MAdditiveBlendState;

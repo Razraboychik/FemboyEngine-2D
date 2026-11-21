@@ -6,6 +6,8 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 
 int main()
@@ -27,7 +29,10 @@ int main()
         return 1;
     }
     Fby::Rhi::DeviceDesc ScopedDevice;
-    ScopedDevice.backend = Fby::Rhi::Backend::D3D12;
+    const char* ScopedBackend = std::getenv("FBY_SDF_BACKEND");
+    ScopedDevice.backend = ScopedBackend != nullptr && std::strcmp(ScopedBackend, "d3d11") == 0
+                               ? Fby::Rhi::Backend::D3D11
+                               : Fby::Rhi::Backend::D3D12;
     ScopedDevice.nativeWindow = ScopedWindow.NativeWindow();
     ScopedDevice.size = {kExtent, kExtent};
     ScopedDevice.vsync = false;

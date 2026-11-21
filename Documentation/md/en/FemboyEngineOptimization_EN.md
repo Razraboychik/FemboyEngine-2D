@@ -224,8 +224,8 @@ Sprites are batched by an explicit shader variant, not by a per-pixel mode check
 
 The variant is part of the render key. `FrameComposer` sorts by it, so a batch never
 mixes a base sprite with a normal-mapped or SDF sprite. D3D11 and D3D12 use dedicated
-base/normal pipelines; D3D12 and Vulkan use a depth-disabled SDF pipeline; Metal uses
-the same split at source level.
+base/normal pipelines; D3D11, D3D12 and Vulkan use a depth-disabled SDF pipeline; Metal
+uses the same split at source level.
 
 The D3D12 SDF path can be disabled with `FBY_D3D12_DISABLE_SDF=1`; it then falls back
 to the normal sprite pipeline. The SDF smoke test renders a real frame and checks the
