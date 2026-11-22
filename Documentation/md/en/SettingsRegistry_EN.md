@@ -76,6 +76,12 @@ ServerAuthoritative
 registry does not invent a display order or a colour. The game's UI layer decides
 how categories are presented.
 
+Every descriptor may carry a `LocalizationKey`; the label is a developer fallback,
+not the translated text. `MakeSnapshot()` captures the effective values in
+descriptor order for a hot path. A runtime system keeps integer indices and reads
+`Snapshot::Float(index)`, `Bool(index)` or `ColorValue(index)` without a string
+lookup per frame.
+
 ## 5. Apply callbacks
 
 A setter stores the value and, for a non-dangerous setting, invokes its apply

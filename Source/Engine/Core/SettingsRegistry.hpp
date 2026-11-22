@@ -121,6 +121,7 @@ struct Descriptor
     std::string Id;
     std::string Category;
     std::string Label;
+    std::string LocalizationKey;
     std::string Tooltip;
     std::string Unit;
     std::string ConfirmationText;
@@ -148,6 +149,45 @@ struct Descriptor
 class Registry
 {
 public:
+    // Immutable hot-path view: descriptor order and values are fixed at creation.
+    // Runtime systems read by integer index instead of hashing a string per frame.
+    class Snapshot
+    {
+    public:
+        [[nodiscard]] std::size_t Size() const noexcept
+        {
+            return MValues.size();
+        }
+        [[nodiscard]] const Value& At(std::size_t InIndex) const noexcept
+        {
+            static const Value ScopedEmpty{};
+            return InIndex < MValues.size() ? MValues[InIndex] : ScopedEmpty;
+        }
+        [[nodiscard]] bool Bool(std::size_t InIndex, bool InFallback = false) const noexcept
+        {
+            const Value& Scoped = At(InIndex);
+            return Scoped.Kind == Type::Bool ? Scoped.BoolValue : InFallback;
+        }
+        [[nodiscard]] double Float(std::size_t InIndex, double InFallback = 0.0) const noexcept
+        {
+            const Value& Scoped = At(InIndex);
+            return Scoped.Kind == Type::Float ? Scoped.FloatValue : InFallback;
+        }
+        [[nodiscard]] const Color& ColorValue(std::size_t InIndex) const noexcept
+        {
+            static const Color ScopedEmpty{};
+            const Value& Scoped = At(InIndex);
+            return Scoped.Kind == Type::Color ? Scoped.ColorValue : ScopedEmpty;
+        }
+
+    private:
+        friend class Registry;
+        explicit Snapshot(std::vector<Value> InValues) : MValues(std::move(InValues))
+        {
+        }
+        std::vector<Value> MValues;
+    };
+
     struct Builder
     {
         Registry* Owner = nullptr;
@@ -161,6 +201,11 @@ public:
         Builder& Label(std::string InLabel)
         {
             Owner->MDescriptors[Index].Label = std::move(InLabel);
+            return *this;
+        }
+        Builder& LocalizationKey(std::string InKey)
+        {
+            Owner->MDescriptors[Index].LocalizationKey = std::move(InKey);
             return *this;
         }
         Builder& Tooltip(std::string InTooltip)
@@ -253,6 +298,12 @@ public:
     {
         return Add(std::move(InId), Type::Color, Value::MakeColor(Color{}));
     }
+    Builder ColorRole(std::string InId)
+    {
+        Builder Scoped = Add(std::move(InId), Type::Color, Value::MakeColor(Color{}));
+        Scoped.Category("Theme");
+        return Scoped;
+    }
     Builder String(std::string InId)
     {
         return Add(std::move(InId), Type::String, Value::MakeString({}));
@@ -290,6 +341,23 @@ public:
     [[nodiscard]] std::span<const Descriptor> Descriptors() const noexcept
     {
         return MDescriptors;
+    }
+
+    [[nodiscard]] std::size_t IndexOf(std::string_view InId) const noexcept
+    {
+        const auto Scoped = MIndex.find(std::string(InId));
+        return Scoped == MIndex.end() ? static_cast<std::size_t>(-1) : Scoped->second;
+    }
+
+    [[nodiscard]] Snapshot MakeSnapshot() const
+    {
+        std::vector<Value> ScopedValues;
+        ScopedValues.reserve(MDescriptors.size());
+        for (const Descriptor& Scoped : MDescriptors)
+        {
+            ScopedValues.push_back(Effective(Scoped.Id));
+        }
+        return Snapshot(std::move(ScopedValues));
     }
 
     [[nodiscard]] bool SetProject(std::string_view InId, Value InValue, std::string* InError = nullptr)

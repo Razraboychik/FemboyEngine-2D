@@ -33,6 +33,7 @@ int main()
     ScopedRegistry.Float("audio.master")
         .Category("Audio")
         .Label("Master")
+        .LocalizationKey("settings.audio.master")
         .Unit("dB")
         .Default(Fby::Settings::Value::MakeFloat(-3.0))
         .Range(-60.0, 0.0)
@@ -49,15 +50,23 @@ int main()
         .Dangerous("Disable render", "Ctrl+Alt+F12")
         .Scope(Fby::Settings::Scope::User)
         .Safe(Fby::Settings::Value::MakeBool(false));
-    ScopedRegistry.ColorSetting("theme.accent")
+    ScopedRegistry.ColorRole("theme.accent")
         .Default(Fby::Settings::Value::MakeColor({1.0f, 0.5f, 0.0f, 1.0f}));
 
     Check(ScopedRegistry.Freeze(), "schema freezes");
     Check(ScopedRegistry.IsFrozen(), "schema reports frozen");
     Check(!ScopedRegistry.Freeze(), "second freeze is rejected");
+    Check(ScopedRegistry.Find("audio.master")->LocalizationKey == "settings.audio.master",
+          "localization key is stored");
+    Check(ScopedRegistry.Find("theme.accent")->Category == "Theme", "colour role is categorized as theme");
+    const Fby::Settings::Registry::Snapshot ScopedSnapshot = ScopedRegistry.MakeSnapshot();
+    Check(ScopedSnapshot.Size() == ScopedRegistry.Descriptors().size(), "snapshot has one value per descriptor");
 
     Check(ScopedRegistry.Effective("audio.master").FloatValue == -3.0, "default is effective");
+    const std::size_t ScopedMasterIndex = ScopedRegistry.IndexOf("audio.master");
+    Check(ScopedSnapshot.Float(ScopedMasterIndex) == -3.0, "snapshot captures the default");
     Check(ScopedRegistry.SetProject("audio.master", Fby::Settings::Value::MakeFloat(-8.0)), "project value accepted");
+    Check(ScopedSnapshot.Float(ScopedMasterIndex) == -3.0, "snapshot stays immutable after a set");
     Check(ScopedRegistry.Effective("audio.master").FloatValue == -8.0, "project value is effective");
     Check(ScopedRegistry.SetUser("audio.master", Fby::Settings::Value::MakeFloat(-20.0)), "user value accepted");
     Check(ScopedRegistry.Effective("audio.master").FloatValue == -20.0, "user value wins");

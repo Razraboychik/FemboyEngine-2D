@@ -2191,7 +2191,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VoiceWhisperSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 185 |
 | `VorbisIdentInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 122 |
 
-### Engine/Core (130)
+### Engine/Core (131)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -2205,7 +2205,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `BinaryKind` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 262 |
 | `BinaryKind` | Core | `Source/Engine/Core/DecimalStore.hpp` | 208 |
 | `BufferTag` | Core | `Source/Engine/Core/Types.hpp` | 301 |
-| `Builder` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 151 |
+| `Builder` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 191 |
 | `BuildInfo` | Core | `Source/Engine/Core/BuildInfo.hpp` | 12 |
 | `BuildProfile` | Core | `Source/Engine/Core/BuildProfile.hpp` | 135 |
 | `CameraView` | Core | `Source/Engine/Core/Grid.hpp` | 353 |
@@ -2276,7 +2276,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 73 |
 | `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 301 |
 | `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 317 |
-| `Registry` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 148 |
+| `Registry` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 149 |
 | `RenderPolicy` | Core | `Source/Engine/Core/OutputPolicy.hpp` | 13 |
 | `ReplayFrame` | Core | `Source/Engine/Core/Replay.hpp` | 249 |
 | `ReplayKeyframe` | Core | `Source/Engine/Core/Replay.hpp` | 16 |
@@ -2291,6 +2291,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `Sha256Context` | Core | `Source/Engine/Core/Sha256.hpp` | 17 |
 | `Slot` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 255 |
 | `Slot` | Core | `Source/Engine/Core/DecimalStore.hpp` | 201 |
+| `Snapshot` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 154 |
 | `SplashClock` | Core | `Source/Engine/Core/Splash.hpp` | 10 |
 | `Status` | Core | `Source/Engine/Core/BigInt.hpp` | 18 |
 | `Stopwatch` | Core | `Source/Engine/Core/Time.hpp` | 215 |
