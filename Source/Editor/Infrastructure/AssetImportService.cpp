@@ -124,13 +124,25 @@ void CopyFixed(char* InDestination, std::size_t InCapacity, std::string_view InV
         }
     }
 #if defined(_WIN32)
-    if (::MoveFileExW(ScopedTemporary.wstring().c_str(), InPath.wstring().c_str(),
-                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0)
+    // A reader or scanner may still hold a short-lived handle on the previous
+    // cooked file. Retry sharing violations and access denials before giving up.
+    for (int ScopedAttempt = 0; ScopedAttempt < 8; ++ScopedAttempt)
     {
-        std::filesystem::remove(ScopedTemporary, ScopedCode);
-        SetError(InError, "cannot replace " + InPath.string());
-        return false;
+        if (::MoveFileExW(ScopedTemporary.wstring().c_str(), InPath.wstring().c_str(),
+                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0)
+        {
+            return true;
+        }
+        const DWORD ScopedError = ::GetLastError();
+        if (ScopedError != ERROR_ACCESS_DENIED && ScopedError != ERROR_SHARING_VIOLATION)
+        {
+            break;
+        }
+        ::Sleep(2);
     }
+    std::filesystem::remove(ScopedTemporary, ScopedCode);
+    SetError(InError, "cannot replace " + InPath.string());
+    return false;
 #else
     if (::rename(ScopedTemporary.c_str(), InPath.c_str()) != 0)
     {
