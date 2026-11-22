@@ -109,6 +109,16 @@ for (const BusDef& Bus : GameBuses)
 }
 ```
 
+`ProjectSettings.audioBuses` stores the same topology in `project.femproj`:
+
+```toml
+[[audio.buses]]
+id = "voice"
+name = "Dialogue"
+parent = "master"
+default_db = -2.0
+```
+
 The bus list is developer data. The engine provides the registry and the DSP
 graph; it does not impose a fixed set of categories.
 `Audio::RegisterAudioBusSettings` registers one user-editable dB setting per

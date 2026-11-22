@@ -110,6 +110,16 @@ for (const BusDef& Bus : GameBuses)
 }
 ```
 
+`ProjectSettings.audioBuses` хранит ту же топологию в `project.femproj`:
+
+```toml
+[[audio.buses]]
+id = "voice"
+name = "Dialogue"
+parent = "master"
+default_db = -2.0
+```
+
 Список шин — данные разработчика. Движок даёт реестр и DSP-граф, но не
 навязывает фиксированный набор категорий. `Audio::RegisterAudioBusSettings`
 регистрирует одну user-editable dB-настройку на каждую объявленную шину и

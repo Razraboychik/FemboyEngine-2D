@@ -1,4 +1,5 @@
 // FemboyEngine2D - generated settings panel model tests.
+#include "Editor/Infrastructure/ProjectConfig.hpp"
 #include "Editor/Infrastructure/SettingsPanelModel.hpp"
 
 #include <cstdio>
@@ -63,6 +64,30 @@ int main()
     Check(ScopedRegistry.Effective("audio.voice").FloatValue == -20.0, "panel edit reaches the registry");
     Check(ScopedModel.Reset(ScopedRegistry, "audio.voice"), "reset removes the user override");
     Check(ScopedRegistry.Effective("audio.voice").FloatValue == -3.0, "reset restores the default");
+
+    Fby::Editor::ProjectConfig ScopedProject;
+    ScopedProject.project.audioBusCount = 2;
+    std::snprintf(ScopedProject.project.audioBuses[0].id, sizeof(ScopedProject.project.audioBuses[0].id), "%s", "music");
+    std::snprintf(ScopedProject.project.audioBuses[0].name, sizeof(ScopedProject.project.audioBuses[0].name), "%s",
+                  "Music");
+    std::snprintf(ScopedProject.project.audioBuses[0].parent, sizeof(ScopedProject.project.audioBuses[0].parent), "%s",
+                  "master");
+    ScopedProject.project.audioBuses[0].defaultDb = -6.0f;
+    std::snprintf(ScopedProject.project.audioBuses[1].id, sizeof(ScopedProject.project.audioBuses[1].id), "%s", "voice");
+    std::snprintf(ScopedProject.project.audioBuses[1].name, sizeof(ScopedProject.project.audioBuses[1].name), "%s",
+                  "Dialogue");
+    std::snprintf(ScopedProject.project.audioBuses[1].parent, sizeof(ScopedProject.project.audioBuses[1].parent), "%s",
+                  "music");
+    ScopedProject.project.audioBuses[1].defaultDb = -2.0f;
+    Fby::Editor::ProjectConfig ScopedDecodedProject;
+    std::string ScopedDecodeError;
+    const bool ScopedDecoded = Fby::Editor::DecodeProjectToml(Fby::Editor::EncodeProjectToml(ScopedProject),
+                                                              &ScopedDecodedProject, &ScopedDecodeError);
+    Check(ScopedDecoded, "project audio buses encode and decode");
+    Check(ScopedDecodedProject.project.audioBusCount == 2, "audio bus count round-trips");
+    Check(std::string(ScopedDecodedProject.project.audioBuses[1].id) == "voice", "audio bus id round-trips");
+    Check(std::string(ScopedDecodedProject.project.audioBuses[1].parent) == "music",
+          "audio bus parent round-trips");
 
     if (GFailures != 0)
     {

@@ -496,7 +496,7 @@ Open work is tracked in the project issue tracker.
 Generated from the headers on every run. A symbol listed here is declared in the shipped tree; the header and line are the authoritative location.
 
 
-### Editor/Infrastructure (124)
+### Editor/Infrastructure (125)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -568,16 +568,17 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `PlayInEditor` | Infrastructure | `Source/Editor/Infrastructure/PlayInEditor.hpp` | 46 |
 | `PluginHost` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 43 |
 | `Profiler` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 28 |
+| `ProjectAudioBus` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 188 |
 | `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 68 |
-| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 291 |
+| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 307 |
 | `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 65 |
-| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 355 |
+| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 371 |
 | `ProjectDashboard` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 66 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 69 |
-| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 313 |
+| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 329 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 21 |
 | `ProjectPluginEntry` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 165 |
-| `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 186 |
+| `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 198 |
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 22 |
 | `ProjectSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 67 |
 | `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 267 |
