@@ -2072,7 +2072,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `Applied` | Audio | `Source/Engine/Audio/VoicePreset.hpp` | 154 |
 | `AudioBus` | Audio | `Source/Engine/Audio/Audio.hpp` | 27 |
 | `AudioBusComponent` | Audio | `Source/Engine/Audio/Audio.hpp` | 44 |
-| `AudioBusSetting` | Audio | `Source/Engine/Audio/AudioSettings.hpp` | 13 |
+| `AudioBusDefinition` | Audio | `Source/Engine/Audio/AudioSettings.hpp` | 13 |
 | `AudioCaptureMonitor` | Audio | `Source/Engine/Audio/AudioDevices.hpp` | 144 |
 | `AudioClip` | Audio | `Source/Engine/Audio/Audio.hpp` | 75 |
 | `AudioCommand` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 138 |
@@ -2096,11 +2096,11 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `BiquadState` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 369 |
 | `BusAtomics` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 370 |
 | `BusFilterParams` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 108 |
-| `BusRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 236 |
+| `BusRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 239 |
 | `BusShadow` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 291 |
 | `BusState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 338 |
 | `CommandQueue` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 170 |
-| `CookedClipRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 211 |
+| `CookedClipRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 214 |
 | `DspClipView` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 205 |
 | `DspGraph` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 216 |
 | `DspGraph` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 16 |
@@ -2121,7 +2121,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `OggPage` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 37 |
 | `OggPageReader` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 58 |
 | `OpusHeadInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 107 |
-| `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 218 |
+| `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 221 |
 | `Peer` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 131 |
 | `PlayerState` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 93 |
 | `RateBucket` | Audio | `Source/Engine/Audio/VoiceNetworkBridge.hpp` | 67 |
@@ -2130,7 +2130,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `ReverbSpace` | Audio | `Source/Engine/Audio/AudioReverb.hpp` | 11 |
 | `ReverbState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 311 |
 | `SlotRuntime` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 385 |
-| `SourceRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 228 |
+| `SourceRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 231 |
 | `State` | Audio | `Source/Engine/Audio/AudioDevices.hpp` | 164 |
 | `Stats` | Audio | `Source/Engine/Audio/AudioZones.hpp` | 96 |
 | `VoiceAec` | Audio | `Source/Engine/Audio/VoiceAec.hpp` | 44 |

@@ -155,14 +155,15 @@ int main()
     Check(ScopedLoaded.Effective("audio.master").FloatValue == -60.0, "loaded user value survives round-trip");
     std::filesystem::remove(ScopedPath, ScopedFileError);
 
-    std::array<Fby::Audio::AudioBusSetting, 3> ScopedBuses{{
-        {"music", "Music", Fby::kMusicBus, -6.0f},
-        {"voice", "Dialogue", Fby::kFirstDynamicBus, -2.0f},
-        {"ambient", "Ambient", Fby::kFirstDynamicBus + 1u, -10.0f},
+    std::array<Fby::Audio::AudioBusDefinition, 3> ScopedBuses{{
+        {"music", "Music", "master", -6.0f},
+        {"voice", "Dialogue", "music", -2.0f},
+        {"ambient", "Ambient", "music", -10.0f},
     }};
+    std::array<Fby::BusId, 3> ScopedBusIds{Fby::kMusicBus, Fby::kFirstDynamicBus, Fby::kFirstDynamicBus + 1u};
     Fby::Settings::Registry ScopedAudioRegistry;
     Fby::AudioSystem ScopedAudioSystem;
-    Fby::Audio::RegisterAudioBusSettings(ScopedAudioRegistry, ScopedBuses, &ScopedAudioSystem);
+    Fby::Audio::RegisterAudioBusSettings(ScopedAudioRegistry, ScopedBuses, ScopedBusIds, &ScopedAudioSystem);
     Check(ScopedAudioRegistry.Freeze(), "audio bus schema freezes");
     Check(ScopedAudioRegistry.Descriptors().size() == 3, "one setting per declared bus");
     Check(ScopedAudioRegistry.Find("audio.bus.voice") != nullptr, "voice bus setting exists");

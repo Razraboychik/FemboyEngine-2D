@@ -483,6 +483,15 @@ float AudioSystem::BusVolume(AudioBus InBus) const noexcept
     return MMixer.BusGain(BusIdFor(InBus));
 }
 
+bool AudioSystem::CreateBus(BusId InParent, float InGain, BusId* OutBus) noexcept
+{
+    if (InParent >= kMaxBuses || OutBus == nullptr)
+    {
+        return false;
+    }
+    return MMixer.CreateBus(InParent, InGain, OutBus) == DspResult::Ok;
+}
+
 bool AudioSystem::SetBusVolumeDb(BusId InBus, float InDecibels) noexcept
 {
     if (InBus >= kMaxBuses)

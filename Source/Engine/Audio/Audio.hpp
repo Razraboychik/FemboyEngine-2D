@@ -140,6 +140,9 @@ public:
     // Dynamic bus entry point used by developer-authored settings. The value is
     // stored in dB and converted to gain at the DSP boundary.
     [[nodiscard]] bool SetBusVolumeDb(BusId InBus, float InDecibels) noexcept;
+    // Creates a dynamic bus under an existing parent. Used by project-authored
+    // audio definitions; the built-in buses keep their fixed ids.
+    [[nodiscard]] bool CreateBus(BusId InParent, float InGain, BusId* OutBus) noexcept;
     // Pauses one built-in bus without losing its authored volume. Pause is
     // combined with the component mute bit, so a later unmute does not clear a
     // deliberate pause.
