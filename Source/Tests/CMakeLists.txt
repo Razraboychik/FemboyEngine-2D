@@ -769,11 +769,6 @@ if(TARGET fby_editor)
     set_target_properties(fby_editor_infrastructure_test PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME editor_infrastructure COMMAND fby_editor_infrastructure_test)
-    if(FBY_WITH_UBSAN)
-        # Asset hot-reload timing is hardware-dependent under UBSan; the normal
-        # build keeps this test enabled and exercises the same replace path.
-        set_tests_properties(editor_infrastructure PROPERTIES DISABLED TRUE)
-    endif()
 
     add_executable(fby_physics_profile_test PhysicsProfileTest.cpp)
     target_link_libraries(fby_physics_profile_test PRIVATE FemboyEngine2D::Editor)
@@ -1241,6 +1236,7 @@ if(FbyTestNames)
         ENVIRONMENT "FBY_STORAGE_DIR=${CMAKE_BINARY_DIR}/tests-saved")
 endif()
 
-if(FBY_WITH_UBSAN AND NOT TARGET fby_matc)
-    set_tests_properties(material_dx12_e2e PROPERTIES DISABLED TRUE)
+if(FBY_WITH_UBSAN)
+    set_tests_properties(editor_infrastructure PROPERTIES
+        ENVIRONMENT "FBY_STORAGE_DIR=${CMAKE_BINARY_DIR}/tests-saved;FBY_SKIP_HOT_RELOAD_TEST=1")
 endif()
