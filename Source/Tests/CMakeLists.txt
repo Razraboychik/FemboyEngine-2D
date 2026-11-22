@@ -694,6 +694,14 @@ fby_add_engine_test(fby_sdf_primitives_test sdf_primitives SdfPrimitivesTest.cpp
 fby_add_engine_test(fby_sdf_character_test sdf_character SdfCharacterTest.cpp)
 
 if(TARGET fby_editor)
+    add_executable(fby_editor_smoke_runner EditorSmokeRunner.cpp)
+    set_target_properties(fby_editor_smoke_runner PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME editor_app_smoke
+             COMMAND $<TARGET_FILE:fby_editor_smoke_runner> $<TARGET_FILE:fby_editor_app>
+                     ${CMAKE_CURRENT_BINARY_DIR}/smoke/project.femproj
+                     ${CMAKE_CURRENT_BINARY_DIR}/fby_editor_smoke.log)
+    set_tests_properties(editor_app_smoke PROPERTIES TIMEOUT 180)
     # Directional blend space authoring panel: default document, preview
     # sampling, anchor editing, topology switching and the panel file codec.
     add_executable(fby_directional_blend_panel_test DirectionalBlendSpacePanelTest.cpp)
