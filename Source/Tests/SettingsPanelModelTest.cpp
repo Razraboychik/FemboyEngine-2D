@@ -1,5 +1,6 @@
 // FemboyEngine2D - generated settings panel model tests.
 #include "Editor/Infrastructure/AccessibilitySettings.hpp"
+#include "Editor/Infrastructure/EditorSettingsRegistry.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
 #include "Editor/Infrastructure/SettingsPanelModel.hpp"
 
@@ -102,6 +103,17 @@ int main()
     Check(ScopedAccessibility.SetProject("accessibility.minimum_contrast", Fby::Settings::Value::MakeFloat(99.0)),
           "contrast is clamped");
     Check(ScopedProfile.presentation.minimumContrastRatio == 21.0f, "contrast reaches the profile");
+
+    Fby::Editor::EditorSettings ScopedEditorSettings;
+    Fby::Settings::Registry ScopedEditorRegistry;
+    Fby::Editor::RegisterEditorSettings(ScopedEditorRegistry, ScopedEditorSettings);
+    Check(ScopedEditorRegistry.Freeze(), "editor settings schema freezes");
+    Check(ScopedEditorRegistry.SetProject("editor.ui_scale", Fby::Settings::Value::MakeFloat(1.5)),
+          "editor UI scale is editable");
+    Check(ScopedEditorSettings.uiScale == 1.5f, "editor UI scale reaches the struct");
+    Check(ScopedEditorRegistry.SetProject("editor.undo_memory_mb", Fby::Settings::Value::MakeInt(4096)),
+          "editor undo budget is clamped");
+    Check(ScopedEditorSettings.undoMemoryMB == 256, "editor undo budget clamp is visible");
 
     if (GFailures != 0)
     {

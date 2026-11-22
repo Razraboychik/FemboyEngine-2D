@@ -8,6 +8,7 @@ add_library(fby_editor STATIC
     Infrastructure/CommandStack.cpp
     Infrastructure/EditorFonts.cpp
     Infrastructure/EditorSettings.cpp
+    Infrastructure/EditorSettingsRegistry.cpp
     Infrastructure/EditorTheme.cpp
     Infrastructure/EditorTypography.cpp
     Infrastructure/EditorSystem.cpp

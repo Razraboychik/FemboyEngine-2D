@@ -168,7 +168,9 @@ per-install dB-overrides по тому же стабильному bus id; proje
 топологией, user-файл — значениями игрока. Существующий accessibility-профиль
 регистрируется через `Editor::RegisterAccessibilitySettings`, поэтому его
 сериализованные поля становятся обычными дескрипторами реестра без изменения
-хранения в project-файле. Реестр — единая схема для них.
+хранения в project-файле. `Editor::RegisterEditorSettings` выставляет UI scale,
+body font, text spacing, log/undo budgets, frame limit, VSync и theme через тот
+же реестр; `EditorSettings` остаётся авторитетным хранилищем. Реестр — единая схема для них.
 `SaveSettingsToml` и `LoadSettingsToml` пишут значения только одного scope и
 игнорируют неизвестные ключи для forward compatibility. Редактор и UI игры
 должны строить контролы из `Descriptors()`.

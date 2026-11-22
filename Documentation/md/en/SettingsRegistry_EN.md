@@ -167,7 +167,10 @@ per-install dB overrides keyed by the same stable bus id; the project file owns
 the bus topology and the user file owns the player's values. The existing
 accessibility profile is registered through
 `Editor::RegisterAccessibilitySettings`, so its serialized fields become ordinary
-registry descriptors without changing their project storage. The registry is the single
+registry descriptors without changing their project storage.
+`Editor::RegisterEditorSettings` exposes the editor UI scale, body font, text
+spacing, log/undo budgets, frame limit, VSync and theme through the same registry;
+`EditorSettings` remains the serialized authority. The registry is the single
 schema those layers read. `SaveSettingsToml` and `LoadSettingsToml` write only
 values for one scope and ignore unknown keys for forward compatibility. The
 editor and game UI should build their controls from `Descriptors()`.
