@@ -496,7 +496,7 @@ Open work is tracked in the project issue tracker.
 Generated from the headers on every run. A symbol listed here is declared in the shipped tree; the header and line are the authoritative location.
 
 
-### Editor/Infrastructure (125)
+### Editor/Infrastructure (126)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -615,8 +615,9 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `UpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 108 |
 | `UpscalePolicy` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 117 |
 | `UpscalerBackendSetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 124 |
+| `UserAudioBus` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 17 |
 | `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 70 |
-| `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 17 |
+| `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 27 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 20 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 15 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 19 |

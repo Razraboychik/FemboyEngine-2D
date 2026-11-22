@@ -1722,7 +1722,7 @@ ScopedMaterials.Shutdown(InRhi);
 Генерируется из заголовков при каждом запуске. Символ из этого списка объявлен в поставляемом дереве; заголовок и строка — авторитетное расположение.
 
 
-### Editor/Infrastructure (125)
+### Editor/Infrastructure (126)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -1841,8 +1841,9 @@ ScopedMaterials.Shutdown(InRhi);
 | `UpscaleMode` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 108 |
 | `UpscalePolicy` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 117 |
 | `UpscalerBackendSetting` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 124 |
+| `UserAudioBus` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 17 |
 | `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 70 |
-| `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 17 |
+| `UserSettings` | Infrastructure | `Source/Editor/Infrastructure/UserSettings.hpp` | 27 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 20 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 15 |
 | `VirtualFileSystem` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 19 |

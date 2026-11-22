@@ -5,12 +5,22 @@
 #include "Engine/RHI/DlssAdapter.hpp"
 #include "Engine/RHI/Fsr2Adapter.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
 
 namespace Fby::Editor
 {
+
+// Per-install override for one project-declared audio bus.
+struct UserAudioBus
+{
+    char id[32] = {};
+    float volumeDb = 0.0f;
+
+    [[nodiscard]] friend bool operator==(const UserAudioBus&, const UserAudioBus&) noexcept = default;
+};
 
 // Player settings are intentionally separate from ProjectSettings: they live in
 // a per-install file and never alter the project's art/pipeline policy.
@@ -45,6 +55,9 @@ struct UserSettings
     bool voiceModerationMumble = true;
     bool voiceReactiveSfx = true;
     float voiceReactiveSfxGain = 0.5f;
+    // Per-install overrides keyed by the project's stable audio bus id.
+    std::array<UserAudioBus, 12> audioBuses{};
+    std::uint8_t audioBusCount = 0;
 
     [[nodiscard]] friend bool operator==(const UserSettings&, const UserSettings&) noexcept = default;
 };

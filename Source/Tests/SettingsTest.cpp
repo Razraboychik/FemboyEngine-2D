@@ -347,6 +347,15 @@ int main()
     UserSettings ScopedLoaded;
     FBY_CHECK(LoadUserSettings(ScopedPath.string(), &ScopedLoaded, &ScopedError));
     FBY_CHECK(ScopedLoaded == ScopedClamped);
+    ScopedLoaded.audioBusCount = 1;
+    std::snprintf(ScopedLoaded.audioBuses[0].id, sizeof(ScopedLoaded.audioBuses[0].id), "%s", "voice");
+    ScopedLoaded.audioBuses[0].volumeDb = -12.0f;
+    FBY_CHECK(SaveUserSettings(ScopedPath.string(), ScopedLoaded, &ScopedError));
+    UserSettings ScopedAudioLoaded;
+    FBY_CHECK(LoadUserSettings(ScopedPath.string(), &ScopedAudioLoaded, &ScopedError));
+    FBY_CHECK(ScopedAudioLoaded.audioBusCount == 1);
+    FBY_CHECK(std::string(ScopedAudioLoaded.audioBuses[0].id) == "voice");
+    FBY_CHECK(ScopedAudioLoaded.audioBuses[0].volumeDb == -12.0f);
     std::error_code ScopedRemoveError;
     std::filesystem::remove(ScopedPath, ScopedRemoveError);
 

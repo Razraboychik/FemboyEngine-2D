@@ -162,7 +162,9 @@ in sync after undo.
 ## 10. Persistence and UI
 
 Project defaults, per-install user overrides, the generated settings panel and
-per-project audio-bus data are separate layers. The registry is the single
+per-project audio-bus data are separate layers. `UserSettings.audioBuses` stores
+per-install dB overrides keyed by the same stable bus id; the project file owns
+the bus topology and the user file owns the player's values. The registry is the single
 schema those layers read. `SaveSettingsToml` and `LoadSettingsToml` write only
 values for one scope and ignore unknown keys for forward compatibility. The
 editor and game UI should build their controls from `Descriptors()`.
