@@ -164,7 +164,10 @@ in sync after undo.
 Project defaults, per-install user overrides, the generated settings panel and
 per-project audio-bus data are separate layers. `UserSettings.audioBuses` stores
 per-install dB overrides keyed by the same stable bus id; the project file owns
-the bus topology and the user file owns the player's values. The registry is the single
+the bus topology and the user file owns the player's values. The existing
+accessibility profile is registered through
+`Editor::RegisterAccessibilitySettings`, so its serialized fields become ordinary
+registry descriptors without changing their project storage. The registry is the single
 schema those layers read. `SaveSettingsToml` and `LoadSettingsToml` write only
 values for one scope and ignore unknown keys for forward compatibility. The
 editor and game UI should build their controls from `Descriptors()`.

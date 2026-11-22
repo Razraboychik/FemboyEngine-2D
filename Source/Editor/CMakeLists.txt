@@ -1,6 +1,7 @@
 # FemboyEngine2D - editor library.
 
 add_library(fby_editor STATIC
+    Infrastructure/AccessibilitySettings.cpp
     Infrastructure/AssetDatabaseWatchSystem.cpp
     Infrastructure/AssetImport.cpp
     Infrastructure/AssetImportService.cpp

@@ -165,7 +165,10 @@ Settings уже использует эту сгенерированную па�
 Project defaults, per-install user overrides, сгенерированная панель настроек и
 данные звуковых шин — отдельные слои. `UserSettings.audioBuses` хранит
 per-install dB-overrides по тому же стабильному bus id; project-файл владеет
-топологией, user-файл — значениями игрока. Реестр — единая схема для них.
+топологией, user-файл — значениями игрока. Существующий accessibility-профиль
+регистрируется через `Editor::RegisterAccessibilitySettings`, поэтому его
+сериализованные поля становятся обычными дескрипторами реестра без изменения
+хранения в project-файле. Реестр — единая схема для них.
 `SaveSettingsToml` и `LoadSettingsToml` пишут значения только одного scope и
 игнорируют неизвестные ключи для forward compatibility. Редактор и UI игры
 должны строить контролы из `Descriptors()`.

@@ -1,4 +1,5 @@
 // FemboyEngine2D - generated settings panel model tests.
+#include "Editor/Infrastructure/AccessibilitySettings.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
 #include "Editor/Infrastructure/SettingsPanelModel.hpp"
 
@@ -88,6 +89,19 @@ int main()
     Check(std::string(ScopedDecodedProject.project.audioBuses[1].id) == "voice", "audio bus id round-trips");
     Check(std::string(ScopedDecodedProject.project.audioBuses[1].parent) == "music",
           "audio bus parent round-trips");
+
+    Fby::AccessibilityProfile ScopedProfile;
+    Fby::Settings::Registry ScopedAccessibility;
+    Fby::Editor::RegisterAccessibilitySettings(ScopedAccessibility, ScopedProfile);
+    Check(ScopedAccessibility.Freeze(), "accessibility schema freezes");
+    Check(ScopedAccessibility.Find("accessibility.deaf") != nullptr, "deaf mode is registered");
+    Check(ScopedAccessibility.SetProject("accessibility.deaf", Fby::Settings::Value::MakeBool(true)),
+          "deaf mode is editable");
+    Check(Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityDeafMode),
+          "deaf mode reaches the profile");
+    Check(ScopedAccessibility.SetProject("accessibility.minimum_contrast", Fby::Settings::Value::MakeFloat(99.0)),
+          "contrast is clamped");
+    Check(ScopedProfile.presentation.minimumContrastRatio == 21.0f, "contrast reaches the profile");
 
     if (GFailures != 0)
     {
