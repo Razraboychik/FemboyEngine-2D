@@ -19,11 +19,11 @@ int main(int argc, char** argv)
 
     std::string ScopedCommand;
 #if defined(_WIN32)
-    ScopedCommand = "cmd /c \"set FBY_EDITOR_QUIT_AFTER_FRAMES=5&& set FBY_EDITOR_SMOKE_PROJECT=" +
+    ScopedCommand = "cmd /c \"set SDL_AUDIODRIVER=dummy&& set FBY_EDITOR_QUIT_AFTER_FRAMES=5&& set FBY_EDITOR_SMOKE_PROJECT=" +
                     ScopedProject + "&& \"" + ScopedEditor + "\" > \"" + ScopedLog +
                     "\" 2>&1\"";
 #else
-    ScopedCommand = "FBY_EDITOR_QUIT_AFTER_FRAMES=5 FBY_EDITOR_SMOKE_PROJECT=\"" + ScopedProject +
+    ScopedCommand = "SDL_AUDIODRIVER=dummy FBY_EDITOR_QUIT_AFTER_FRAMES=5 FBY_EDITOR_SMOKE_PROJECT=\"" + ScopedProject +
                     "\" \"" + ScopedEditor + "\" > \"" + ScopedLog + "\" 2>&1";
 #endif
     const int ScopedResult = std::system(ScopedCommand.c_str());
