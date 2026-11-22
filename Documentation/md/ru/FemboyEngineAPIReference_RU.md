@@ -3,7 +3,7 @@
 **Движок на C++23 в парадигме data-oriented: полная публичная поверхность, контракты и пошаговый пример**
 
 
-Version 0.6.0-alpha.1 (Alpha) · 2026-11-21 · Russian
+Version 0.6.0-alpha.1 (Alpha) · 2026-11-22 · Russian
 
 
 ---
@@ -2422,6 +2422,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 22 |
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 32 |
 | `FBY_DEFINE_PLUGIN` | `Source/Engine/Core/Plugin.hpp` | 61 |
+| `FBY_DEPRECATED` | `Source/Engine/Core/ApiVersion.hpp` | 31 |
 | `FBY_DETAIL_CONCAT` | `Source/Engine/Core/Definitions.hpp` | 265 |
 | `FBY_DETAIL_CONCAT_INNER` | `Source/Engine/Core/Definitions.hpp` | 264 |
 | `FBY_EFFECT_TAGS` | `Source/Engine/Core/PluginAPI.h` | 104 |

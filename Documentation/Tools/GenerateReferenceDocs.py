@@ -63,6 +63,8 @@ Documents = (
     {"Stem": "Physics"},
     {"Stem": "FemboyEngineFrameGeneration"},
     {"Stem": "FemboyEngineOptimization"},
+    {"Stem": "APIStability"},
+    {"Stem": "UXChecklist"},
 )
 Languages = ("en", "ru")
 

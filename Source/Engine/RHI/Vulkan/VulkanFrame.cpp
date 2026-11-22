@@ -1632,9 +1632,8 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
             ScopedSceneView.subresourceRange.levelCount = 1;
             ScopedSceneView.subresourceRange.layerCount = 1;
             // The scene view must exist before the framebuffer names it, so the
-            // attachment array is built after the image view is created. The
-            // same ordering bug in the accessibility framebuffer faulted on the
-            // first vkCmdBeginRenderPass that used it.
+            // attachment array is built after the image view is created. This
+            // keeps the first vkCmdBeginRenderPass pointed at a valid attachment.
             const bool ScopedSceneResourcesOk =
                 ScopedSceneAllocate.memoryTypeIndex != std::numeric_limits<std::uint32_t>::max() &&
                 ScopedApi.vkAllocateMemory(MDevice, &ScopedSceneAllocate, nullptr, &ScopedTarget->sceneMemory) ==

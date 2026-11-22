@@ -46,9 +46,9 @@ int main()
         std::fprintf(stderr, "vulkan_rhi: backend info mismatch\n");
         return 1;
     }
-    // The spatial upscale chain must initialise; a descriptor-pool regression used
-    // to leave FSR1/RCAS silently unavailable. The pass also exposes the bicubic
-    // filter, so the capability must be reported.
+    // The spatial upscale chain must initialise and report FSR1, FSR2 and the
+    // bicubic filter; a missing capability points to a descriptor-pool or pass
+    // setup failure.
     if (!ScopedGpu->Info().upscalers.fsr1 || !ScopedGpu->Info().upscalers.fsr2 ||
         !ScopedGpu->Info().upscalers.bicubic)
     {

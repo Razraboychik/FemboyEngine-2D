@@ -56,6 +56,8 @@ PAIRED_DOCUMENTS = (
     "Physics",
     "FemboyEngineFrameGeneration",
     "FemboyEngineOptimization",
+    "APIStability",
+    "UXChecklist",
 )
 
 # Files that are allowed directly in Documentation/. Source documents live in

@@ -1,6 +1,8 @@
 // FemboyEngine2D - deterministic mutation tests for the shipped parsers.
+#include "Engine/Assets/AsepriteImporter.hpp"
 #include "Engine/Assets/FemArchiver.hpp"
 #include "Engine/Assets/FempakWriter.hpp"
+#include "Engine/Assets/TiledImporter.hpp"
 #include "Engine/Assets/VFS.hpp"
 #include "Engine/Network/NetProtocol.hpp"
 
@@ -173,6 +175,80 @@ void TestFempakMutations()
     std::filesystem::remove(ScopedTemp, ScopedCode);
 }
 
+void TestAsepriteMutations()
+{
+    constexpr const char* kSheet = R"({
+  "frames": {
+    "idle 0": {"frame": {"x": 0, "y": 0, "w": 16, "h": 16}, "duration": 120},
+    "idle 1": {"frame": {"x": 16, "y": 0, "w": 16, "h": 16}, "duration": 80}
+  },
+  "meta": {
+    "image": "hero.png",
+    "size": {"w": 64, "h": 32},
+    "frameTags": [{"name": "idle", "from": 0, "to": 1, "direction": "forward"}]
+  }
+})";
+    std::string ScopedBase = kSheet;
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 4000; ++ScopedIteration)
+    {
+        std::string ScopedMutated = ScopedBase;
+        const std::uint32_t ScopedMode = NextRandom() % 4u;
+        if (ScopedMode == 0u && !ScopedMutated.empty())
+        {
+            ScopedMutated[NextRandom() % ScopedMutated.size()] = static_cast<char>(NextRandom() & 0x7Fu);
+        }
+        else if (ScopedMode == 1u)
+        {
+            ScopedMutated.resize(NextRandom() % (ScopedMutated.size() + 1u));
+        }
+        else if (ScopedMode == 2u && !ScopedMutated.empty())
+        {
+            ScopedMutated.erase(NextRandom() % ScopedMutated.size(), 1u + (NextRandom() % 8u));
+        }
+        else
+        {
+            ScopedMutated.insert(NextRandom() % (ScopedMutated.size() + 1u), 1u + (NextRandom() % 8u), 'x');
+        }
+        Fby::Assets::AsepriteSheet ScopedSheet;
+        std::string ScopedError;
+        (void)Fby::Assets::ParseAsepriteJson(ScopedMutated, &ScopedSheet, &ScopedError);
+    }
+}
+
+void TestTiledMutations()
+{
+    constexpr const char* kMap = R"(<?xml version="1.0"?>
+<map version="1.10" orientation="orthogonal" width="2" height="2" tilewidth="16" tileheight="16">
+ <tileset firstgid="1" source="tiles.tsx"/>
+ <layer name="ground"><data encoding="csv">1,2,0,3</data></layer>
+</map>)";
+    std::string ScopedBase = kMap;
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 4000; ++ScopedIteration)
+    {
+        std::string ScopedMutated = ScopedBase;
+        const std::uint32_t ScopedMode = NextRandom() % 4u;
+        if (ScopedMode == 0u && !ScopedMutated.empty())
+        {
+            ScopedMutated[NextRandom() % ScopedMutated.size()] = static_cast<char>(NextRandom() & 0x7Fu);
+        }
+        else if (ScopedMode == 1u)
+        {
+            ScopedMutated.resize(NextRandom() % (ScopedMutated.size() + 1u));
+        }
+        else if (ScopedMode == 2u && !ScopedMutated.empty())
+        {
+            ScopedMutated.erase(NextRandom() % ScopedMutated.size(), 1u + (NextRandom() % 8u));
+        }
+        else
+        {
+            ScopedMutated.insert(NextRandom() % (ScopedMutated.size() + 1u), 1u + (NextRandom() % 8u), '<');
+        }
+        Fby::Assets::TiledMap ScopedMap;
+        std::string ScopedError;
+        (void)Fby::Assets::ParseTiledMap(ScopedMutated, &ScopedMap, &ScopedError);
+    }
+}
+
 void TestLzMutations()
 {
     std::vector<std::byte> ScopedPlain(1024);
@@ -214,6 +290,8 @@ int main()
     TestInputPacketMutations();
     TestArchiveMutations();
     TestFempakMutations();
+    TestAsepriteMutations();
+    TestTiledMutations();
     TestLzMutations();
 
     if (GFailures == 0)

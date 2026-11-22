@@ -136,7 +136,7 @@ struct SoundTrigger
     Vector2D position{};
     float duration = 3.0f;
     std::uint32_t priority = 0;
-    // Reserved: speaker direction, icon id, ...
+    // Reserved for the speaker direction and the accessibility icon id.
     std::uint32_t flags = 0;
 };
 

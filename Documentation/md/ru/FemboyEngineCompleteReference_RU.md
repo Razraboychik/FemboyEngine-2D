@@ -3,7 +3,7 @@
 **Архитектура, рендеринг, ECS, холсты анимации/ИИ с контрактами циклов блендинга и PIE-передачи, глобальный аудит, DOD-оптимизация и продакшн-дистрибуция**
 
 
-Version 0.6.0-alpha.1 (Alpha) · 2026-11-21 · Russian
+Version 0.6.0-alpha.1 (Alpha) · 2026-11-22 · Russian
 
 
 ---
@@ -3648,6 +3648,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 22 |
 | `FBY_ASSERT_MSG` | `Source/Engine/Core/Assert.hpp` | 32 |
 | `FBY_DEFINE_PLUGIN` | `Source/Engine/Core/Plugin.hpp` | 61 |
+| `FBY_DEPRECATED` | `Source/Engine/Core/ApiVersion.hpp` | 31 |
 | `FBY_DETAIL_CONCAT` | `Source/Engine/Core/Definitions.hpp` | 265 |
 | `FBY_DETAIL_CONCAT_INNER` | `Source/Engine/Core/Definitions.hpp` | 264 |
 | `FBY_EFFECT_TAGS` | `Source/Engine/Core/PluginAPI.h` | 104 |

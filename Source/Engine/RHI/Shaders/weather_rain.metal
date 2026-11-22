@@ -20,8 +20,10 @@ struct WeatherGpuConstants
 
 struct Particle
 {
-    float4 state0; // xy position, z age, w life
-    float4 state1; // xy velocity, z type, w size
+    // xy position, z age, w lifetime.
+    float4 state0;
+    // xy velocity, z type, w size.
+    float4 state1;
     float4 color;
     float4 seed;
 };

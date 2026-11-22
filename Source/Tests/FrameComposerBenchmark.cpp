@@ -71,11 +71,10 @@ void RunCase(std::uint32_t InCount)
 #if defined(NDEBUG)
     if (InCount >= 100000u)
     {
-        // Regression guard for optimized builds. The temporal path must stay
-        // inside the frame budget; a hash map here once made extract ten times
-        // slower. Unoptimized builds only check the item counts above.
-        // Generous enough for a loaded CI machine, tight enough to catch the
-        // 18 ms regression a per-sprite hash map once caused.
+        // Regression guard for optimized builds: the temporal path must stay
+        // inside the frame budget. The limit is loose enough for a loaded CI
+        // machine and tight enough to catch extractor regressions. Unoptimized
+        // builds only check the item counts above.
         constexpr double kExtractBudgetMilliseconds = 25.0;
         constexpr double kMotionBudgetMilliseconds = 50.0;
         if (ScopedPlainStats.ExtractMilliseconds > kExtractBudgetMilliseconds)

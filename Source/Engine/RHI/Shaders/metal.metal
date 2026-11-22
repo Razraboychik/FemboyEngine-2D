@@ -26,14 +26,16 @@ struct MeshVertex
     float2 position;
     float2 uv;
     uint color;
-    uint padding; // range index
+    // Index into the frame skin-range table.
+    uint padding;
     uint2 bones;
     float2 weights;
 };
 
 struct SkinnedVertex
 {
-    float4 position; // homogeneous LBS result
+    // Homogeneous position produced by linear blend skinning.
+    float4 position;
     float2 uv;
     uint color;
     uint padding;
@@ -50,7 +52,8 @@ struct MeshDrawData
     float4x4 model;
     uint vertexBase;
     uint layer;
-    uint flags; // bit 0: static geometry
+    // Bit 0 marks static geometry.
+    uint flags;
     uint padding;
 };
 
@@ -91,11 +94,9 @@ struct SpriteVertexOut
     uint flags [[flat]];
 };
 
-// ---------------------------------------------------------------------------
 // Linear blend skinning. ONE dispatch covers every dynamic range in the frame:
 // the vertex's padding field selects its MeshSkinRange, exactly like the Vulkan
 // compute shader.
-// ---------------------------------------------------------------------------
 kernel void mesh_skinning(device const MeshVertex* bindVertices [[buffer(0)]],
                           device SkinnedVertex* skinnedVertices [[buffer(1)]],
                           constant float4x4* palette [[buffer(2)]],
@@ -219,10 +220,8 @@ fragment float4 mesh_fragment(MeshVertexOut in [[stage_in]],
     return color;
 }
 
-// ---------------------------------------------------------------------------
 // Sprite path (the 48-byte RenderItem contract). Kept in the same library so a
 // Metal build has one compilation unit and one pipeline cache key space.
-// ---------------------------------------------------------------------------
 vertex SpriteVertexOut sprite_vertex(uint vertexId [[vertex_id]],
                                      uint instanceId [[instance_id]],
                                      constant RenderItem* items [[buffer(0)]],
@@ -373,10 +372,8 @@ fragment float4 sprite_fragment(SpriteVertexOut in [[stage_in]],
     return color;
 }
 
-// ---------------------------------------------------------------------------
 // Spatial upscale: one fullscreen triangle with nearest, bilinear or bicubic
 // filtering. FSR1 has no MSL port and uses the bicubic filter.
-// ---------------------------------------------------------------------------
 struct UpscaleVertexOut
 {
     float4 position [[position]];
@@ -449,10 +446,8 @@ fragment float4 upscale_fragment(UpscaleVertexOut in [[stage_in]],
     return weightSum > 0.0f ? accumulated / weightSum : source.sample(sourceSampler, in.uv);
 }
 
-// ---------------------------------------------------------------------------
 // Temporal resolve: current/history colour with motion reprojection and a
 // depth-based disocclusion reject, matching the HLSL and GLSL semantics.
-// ---------------------------------------------------------------------------
 struct TemporalParams
 {
     float historyWeight;
@@ -484,9 +479,7 @@ fragment float4 temporal_fragment(UpscaleVertexOut in [[stage_in]],
     return mix(current, history, saturate(historyWeight));
 }
 
-// ---------------------------------------------------------------------------
 // HUD composite: fullscreen blended overlay with nearest/linear upscaling.
-// ---------------------------------------------------------------------------
 struct HudParams
 {
     // 1 = nearest, 0 = linear.
@@ -508,10 +501,8 @@ fragment float4 hud_composite_fragment(UpscaleVertexOut in [[stage_in]],
     return hud.sample(linearSampler, in.uv);
 }
 
-// ---------------------------------------------------------------------------
 // Motion vectors: the CPU expands rotated quads into NDC positions with a
 // per-vertex UV delta, so the pass only forwards the delta.
-// ---------------------------------------------------------------------------
 struct MotionVertex
 {
     packed_float3 position;
