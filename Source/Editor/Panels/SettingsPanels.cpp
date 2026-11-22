@@ -811,6 +811,32 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
     if (ImGui::CollapsingHeader("Output policies (safe mode)"))
     {
+        const auto& ScopedRuntimePolicy = Fby::Output::Policy::Instance();
+        const char* ScopedRenderPolicy = "full";
+        if (ScopedRuntimePolicy.Render() == Fby::Output::RenderPolicy::NoWorld)
+        {
+            ScopedRenderPolicy = "no_world";
+        }
+        else if (ScopedRuntimePolicy.Render() == Fby::Output::RenderPolicy::Disabled)
+        {
+            ScopedRenderPolicy = "disabled";
+        }
+        else if (ScopedRuntimePolicy.Render() == Fby::Output::RenderPolicy::Headless)
+        {
+            ScopedRenderPolicy = "headless";
+        }
+        const char* ScopedAudioPolicy = "full";
+        if (ScopedRuntimePolicy.Audio() == Fby::Output::AudioPolicy::CaptionsOnly)
+        {
+            ScopedAudioPolicy = "captions_only";
+        }
+        else if (ScopedRuntimePolicy.Audio() == Fby::Output::AudioPolicy::Disabled)
+        {
+            ScopedAudioPolicy = "disabled";
+        }
+        (void)MOutputPolicySettings.SetProject("render.policy",
+                                                Fby::Settings::Value::MakeEnum(ScopedRenderPolicy));
+        (void)MOutputPolicySettings.SetProject("audio.policy", Fby::Settings::Value::MakeEnum(ScopedAudioPolicy));
         MOutputPolicyPanel.DrawInline();
     }
     bool ScopedBlind = AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityBlindMode);
