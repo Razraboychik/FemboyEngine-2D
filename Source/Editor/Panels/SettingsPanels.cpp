@@ -1273,11 +1273,25 @@ void ProjectSettingsPanel::Apply(Ecs::SystemContext& InContext)
         return;
     }
     const ProjectSettings& ScopedValues = Values();
+    InitializeAudioSettings(InContext);
+    bool ScopedDynamicBuses = false;
+    if (ScopedValues.audioBusCount > 0 && MAudioSettingsReady)
+    {
+        ScopedDynamicBuses =
+            MAudioSettings.Find("audio.bus." + std::string(ScopedValues.audioBuses[0].id)) != nullptr;
+    }
     if (InContext.audio != nullptr)
     {
-        InContext.audio->SetBusVolume(AudioBus::Master, ScopedValues.masterVolume);
-        InContext.audio->SetBusVolume(AudioBus::Sfx, ScopedValues.sfxVolume);
-        InContext.audio->SetBusVolume(AudioBus::Music, ScopedValues.musicVolume);
+        if (ScopedDynamicBuses)
+        {
+            (void)MAudioSettings.ApplyAll();
+        }
+        else
+        {
+            InContext.audio->SetBusVolume(AudioBus::Master, ScopedValues.masterVolume);
+            InContext.audio->SetBusVolume(AudioBus::Sfx, ScopedValues.sfxVolume);
+            InContext.audio->SetBusVolume(AudioBus::Music, ScopedValues.musicVolume);
+        }
         InContext.audio->SetMasterMuted(
             AccessibilityHasFlag(ScopedValues.accessibility.runtime.flags, AccessibilityDeafMode));
     }
