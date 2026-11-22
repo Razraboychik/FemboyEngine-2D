@@ -760,6 +760,19 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedAudio.insert("aec_tail_ms", static_cast<double>(ScopedProject.voiceAecTailMs));
     ScopedAudio.insert("aec_step", static_cast<double>(ScopedProject.voiceAecStep));
     ScopedAudio.insert("agc_target_db", static_cast<double>(ScopedProject.voiceAgcTargetDb));
+    toml::array ScopedBusArray;
+    const std::uint8_t ScopedBusCount = std::min<std::uint8_t>(ScopedProject.audioBusCount, kMaxProjectAudioBuses);
+    for (std::uint8_t ScopedIndex = 0; ScopedIndex < ScopedBusCount; ++ScopedIndex)
+    {
+        const ProjectAudioBus& ScopedBus = ScopedProject.audioBuses[ScopedIndex];
+        toml::table ScopedBusTable;
+        ScopedBusTable.insert("id", std::string(ProjectString(ScopedBus.id, sizeof(ScopedBus.id))));
+        ScopedBusTable.insert("name", std::string(ProjectString(ScopedBus.name, sizeof(ScopedBus.name))));
+        ScopedBusTable.insert("parent", std::string(ProjectString(ScopedBus.parent, sizeof(ScopedBus.parent))));
+        ScopedBusTable.insert("default_db", static_cast<double>(ScopedBus.defaultDb));
+        ScopedBusArray.push_back(std::move(ScopedBusTable));
+    }
+    ScopedAudio.insert("buses", std::move(ScopedBusArray));
     ScopedRoot.insert("audio", std::move(ScopedAudio));
 
     toml::table ScopedRender;
@@ -1132,6 +1145,29 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             static_cast<float>(std::clamp(FloatField(*ScopedAudio, "aec_step", 0.25), 0.01, 1.0));
         ScopedConfig.project.voiceAgcTargetDb =
             static_cast<float>(std::clamp(FloatField(*ScopedAudio, "agc_target_db", -18.0), -40.0, -3.0));
+        if (const toml::array* ScopedBuses = (*ScopedAudio)["buses"].as_array(); ScopedBuses != nullptr)
+        {
+            ScopedConfig.project.audioBusCount = 0;
+            for (const toml::node& ScopedNode : *ScopedBuses)
+            {
+                if (ScopedConfig.project.audioBusCount >= kMaxProjectAudioBuses)
+                {
+                    break;
+                }
+                const toml::table* ScopedTable = ScopedNode.as_table();
+                if (ScopedTable == nullptr)
+                {
+                    continue;
+                }
+                ProjectAudioBus& ScopedBus = ScopedConfig.project.audioBuses[ScopedConfig.project.audioBusCount];
+                CopyProjectString(ScopedBus.id, sizeof(ScopedBus.id), StringField(*ScopedTable, "id"));
+                CopyProjectString(ScopedBus.name, sizeof(ScopedBus.name), StringField(*ScopedTable, "name"));
+                CopyProjectString(ScopedBus.parent, sizeof(ScopedBus.parent), StringField(*ScopedTable, "parent"));
+                ScopedBus.defaultDb =
+                    static_cast<float>(std::clamp(FloatField(*ScopedTable, "default_db", 0.0), -60.0, 6.0));
+                ++ScopedConfig.project.audioBusCount;
+            }
+        }
     }
     if (const toml::table* ScopedRender = Section(ScopedRoot, "render"); ScopedRender != nullptr)
     {

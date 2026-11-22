@@ -183,6 +183,18 @@ struct MotionComfortSettings
     [[nodiscard]] friend bool operator==(const MotionComfortSettings&, const MotionComfortSettings&) noexcept = default;
 };
 
+inline constexpr std::uint32_t kMaxProjectAudioBuses = 12;
+
+struct ProjectAudioBus
+{
+    char id[32] = {};
+    char name[64] = {};
+    char parent[32] = {};
+    float defaultDb = 0.0f;
+
+    [[nodiscard]] friend bool operator==(const ProjectAudioBus&, const ProjectAudioBus&) noexcept = default;
+};
+
 struct ProjectSettings
 {
     static constexpr std::uint32_t kMaxPlugins = 8;
@@ -207,6 +219,10 @@ struct ProjectSettings
     float masterVolume = 1.0f;
     float sfxVolume = 1.0f;
     float musicVolume = 1.0f;
+    // Developer-authored mixer topology. An empty list keeps the three legacy
+    // volume fields as the fallback; a non-empty list is the authoritative set.
+    std::array<ProjectAudioBus, kMaxProjectAudioBuses> audioBuses{};
+    std::uint8_t audioBusCount = 0;
 
     // Empty means the system default. The voice panel resolves a missing id to
     // the default and writes the fallback back into the project.
