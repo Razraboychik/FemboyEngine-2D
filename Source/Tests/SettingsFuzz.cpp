@@ -23,3 +23,38 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* InData, std::size_t In
     }
     return 0;
 }
+#if defined(FBY_FUZZ_STANDALONE)
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <iostream>
+#include <vector>
+
+int main(int InArgc, char** InArgv)
+{
+    if (InArgc < 2)
+    {
+        std::cerr << "usage: fby_settings_fuzz <corpus-directory>\n";
+        return 2;
+    }
+    std::size_t ScopedInputs = 0;
+    for (const std::filesystem::directory_entry& ScopedEntry :
+         std::filesystem::recursive_directory_iterator(InArgv[1]))
+    {
+        if (!ScopedEntry.is_regular_file())
+        {
+            continue;
+        }
+        std::ifstream ScopedFile(ScopedEntry.path(), std::ios::binary);
+        std::vector<std::uint8_t> ScopedBytes((std::istreambuf_iterator<char>(ScopedFile)),
+                                              std::istreambuf_iterator<char>());
+        if (!ScopedBytes.empty())
+        {
+            (void)LLVMFuzzerTestOneInput(ScopedBytes.data(), ScopedBytes.size());
+            ++ScopedInputs;
+        }
+    }
+    std::cout << "fuzz corpus: " << ScopedInputs << " input(s)\n";
+    return ScopedInputs == 0 ? 1 : 0;
+}
+#endif

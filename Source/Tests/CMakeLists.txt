@@ -1256,7 +1256,12 @@ option(FBY_BUILD_FUZZERS "Build libFuzzer targets" OFF)
 if(FBY_BUILD_FUZZERS AND TARGET fby_editor)
     add_executable(fby_settings_fuzz SettingsFuzz.cpp)
     target_link_libraries(fby_settings_fuzz PRIVATE FemboyEngine2D::Editor)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if(WIN32)
+        # The Windows libFuzzer runtime is built with the static CRT while the
+        # editor uses the DLL CRT. A standalone corpus runner keeps the target
+        # buildable; CI enables the libFuzzer mode on platforms whose CRT matches.
+        target_compile_definitions(fby_settings_fuzz PRIVATE FBY_FUZZ_STANDALONE)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer,address)
         target_link_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer,address)
     endif()
