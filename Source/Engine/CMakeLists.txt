@@ -64,6 +64,7 @@ set(FBY_ENGINE_SOURCES
     Core/Pause.cpp
     Core/SecureRng.cpp
     Core/SettingsSerialization.cpp
+    Core/OutputPolicySettings.cpp
     Audio/AudioSettings.cpp
     Core/ThirdPartyNotices.cpp
     Core/ThreadAffinity.cpp

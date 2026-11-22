@@ -23,6 +23,13 @@ Fby::Output::AudioPolicy
 `NoWorld` оставляет интерфейс, ввод и accessibility, пропуская world pass.
 `Disabled` полностью пропускает канал. `Headless` также убирает окно и swapchain.
 
+## 1a. Регистрация настроек
+
+`Settings::RegisterOutputPolicySettings` регистрирует `render.policy` и
+`audio.policy` как опасные user-настройки с safe-значением `full`, текстом
+восстановления и recovery hotkey. Игра может скрыть их, показать в своём
+accessibility-профиле или оставить только в developer-меню.
+
 ## 2. Режим без рендера
 
 При политике `Disabled` игра должна пропускать world composition, тени,

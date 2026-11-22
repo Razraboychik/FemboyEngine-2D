@@ -2,6 +2,7 @@
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Audio/AudioSettings.hpp"
 #include "Engine/Core/OutputPolicy.hpp"
+#include "Engine/Core/OutputPolicySettings.hpp"
 #include "Engine/Core/SettingsRegistry.hpp"
 #include "Engine/Core/SettingsSerialization.hpp"
 #include "Engine/ECS/Components.hpp"

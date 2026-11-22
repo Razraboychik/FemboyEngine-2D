@@ -24,6 +24,13 @@ Fby::Output::AudioPolicy
 world pass is skipped. `Disabled` skips the channel entirely. `Headless` also
 removes the window and swapchain.
 
+## 1a. Registering the settings
+
+`Settings::RegisterOutputPolicySettings` registers `render.policy` and
+`audio.policy` as dangerous user settings with safe values `full`, recovery text
+and a recovery hotkey. A game can hide them, expose them in its accessibility
+profile, or restrict them to a developer menu.
+
 ## 2. Render-disabled mode
 
 When the render policy is `Disabled`, the game should skip world composition,
