@@ -5,8 +5,8 @@ The report is deliberately read-only. It exists so a developer can inspect a
 platform's real vendor surface before deciding whether a build needs a slimmer
 checkout; it never deletes or rewrites a vendor file.
 
-    python Source/Tools/Dev/ReportVendorUsage.py --build build-dev
-    python Source/Tools/Dev/ReportVendorUsage.py --build build-ci --json-output build/vendor.json
+    python Source/Tools/Dev/ReportVendorUsage.py --build build/dev
+    python Source/Tools/Dev/ReportVendorUsage.py --build build/ci --json-output build/vendor.json
 """
 
 from __future__ import annotations

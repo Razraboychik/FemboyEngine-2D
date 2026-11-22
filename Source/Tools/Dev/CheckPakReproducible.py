@@ -6,7 +6,7 @@ invariant is that one build converges: the same inputs, with different file
 modification times and in a different directory, must produce the same
 `.fempak` bytes. This script runs `fby_fempak pack` twice and compares SHA-256.
 
-    python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
+    python Source/Tools/Dev/CheckPakReproducible.py --tool build/dev/bin/tools/fby_fempak
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def digest(path: pathlib.Path) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tool", default="build/bin/tools/fby_fempak", help="path to fby_fempak")
+    parser.add_argument("--tool", default="build/dev/bin/tools/fby_fempak", help="path to fby_fempak")
     parser.add_argument("--workdir", default="build", help="parent directory for the scratch tree")
     parser.add_argument("--keep", action="store_true", help="keep the temporary directory")
     args = parser.parse_args()

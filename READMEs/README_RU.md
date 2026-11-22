@@ -301,13 +301,13 @@ build/package-гейт. Физическое поведение Metal GPU на m
 Основные исполняемые файлы:
 
 ```text
-build/bin/fby_sandbox
-build/bin/fby_editor
-build/bin/fby_server
-build/bin/fby_lobby
-build/bin/tools/fby_fempak
-build/bin/tools/fby_scene_tool
-build/bin/tools/fby_aotc
+build/dev/bin/fby_sandbox
+build/dev/bin/fby_editor
+build/dev/bin/fby_server
+build/dev/bin/fby_lobby
+build/dev/bin/tools/fby_fempak
+build/dev/bin/tools/fby_scene_tool
+build/dev/bin/tools/fby_aotc
 ```
 
 Опциональные vendor-апскейлеры включаются явно: SDK DLSS и FidelityFX не
@@ -318,7 +318,7 @@ build/bin/tools/fby_aotc
 [Генерацию кадров](../Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).
 
 Приложения ищут `assets` в `FBY_ASSET_DIR`, `cwd/assets` или родительских
-каталогах исполняемого файла, поэтому запуск из `build/bin` в IDE работает без
+каталогах исполняемого файла, поэтому запуск из `build/dev/bin` в IDE работает без
 копирования файлов. `Saved/` (логи, конфиг, кеш) по-прежнему следует за рабочей
 директорией; `FBY_STORAGE_DIR` переносит его.
 

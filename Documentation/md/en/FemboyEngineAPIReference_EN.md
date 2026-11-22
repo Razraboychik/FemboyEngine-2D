@@ -230,7 +230,7 @@ Material authoring and material compilation live on opposite sides of the engine
 
 ```bash
 # Author the graph once, cook it in the build step
-build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
+build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
 
 ```
 

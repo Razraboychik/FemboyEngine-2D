@@ -88,7 +88,7 @@ int main()
               Fby::Rhi::FrameGenerationStatus::ResetHistory);
     FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 60.0f, false) == Fby::Rhi::FrameGenerationStatus::Ready);
 
-    const std::filesystem::path ScopedDlssDir = "build-audit/fby_dlss_test";
+    const std::filesystem::path ScopedDlssDir = "build/audit/fby_dlss_test";
     std::error_code ScopedDlssCreateError;
     std::filesystem::create_directories(ScopedDlssDir, ScopedDlssCreateError);
     const std::string ScopedDlssFile = (ScopedDlssDir / "nvngx_dlss.dll").string();
@@ -116,7 +116,7 @@ int main()
     ScopedMacInfo.gpuVendor = 4;
     FBY_CHECK(!Fby::Rhi::CapabilitiesFromDevice(ScopedMacInfo).MetalFx);
     FBY_CHECK(Fby::Rhi::BackendAvailable(ScopedDeviceCaps, Fby::Rhi::UpscalerBackend::Dlss));
-    const std::filesystem::path ScopedFfxDir = "build-audit/fby_ffx_test";
+    const std::filesystem::path ScopedFfxDir = "build/audit/fby_ffx_test";
     std::error_code ScopedFfxCreateError;
     std::filesystem::create_directories(ScopedFfxDir, ScopedFfxCreateError);
     const std::string ScopedFfxFile = (ScopedFfxDir / "amd_fidelityfx_upscaler_vk.dll").string();
@@ -179,7 +179,7 @@ int main()
     FBY_CHECK(Fby::Rhi::DlssRenderScale(Fby::Rhi::DlssQualityMode::Quality) > 0.5f);
     FBY_CHECK(Fby::Rhi::DlssRenderScale(Fby::Rhi::DlssQualityMode::UltraPerformance) < 0.5f);
 
-    const Fby::Rhi::DlssRuntimeProbe ScopedDlssProbe = Fby::Rhi::ProbeDlssRuntime("build-audit/fby_dlss_test");
+    const Fby::Rhi::DlssRuntimeProbe ScopedDlssProbe = Fby::Rhi::ProbeDlssRuntime("build/audit/fby_dlss_test");
     FBY_CHECK(ScopedDlssProbe.Present);
     FBY_CHECK(!ScopedDlssProbe.Loadable);
     std::error_code ScopedDlssCleanup;
@@ -341,7 +341,7 @@ int main()
     FBY_CHECK(ScopedClamped.renderScale <= 1.0f);
     FBY_CHECK(ScopedClamped.hudRenderScale <= 1.0f);
 
-    const std::filesystem::path ScopedPath = "build-audit/settings_test.toml";
+    const std::filesystem::path ScopedPath = "build/audit/settings_test.toml";
     std::string ScopedError;
     FBY_CHECK(SaveUserSettings(ScopedPath.string(), ScopedClamped, &ScopedError));
     UserSettings ScopedLoaded;

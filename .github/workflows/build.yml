@@ -51,7 +51,7 @@ jobs:
       - name: Configure
         run: cmake --preset ci-clangcl
       - name: Dependency lock
-        run: python Source/Tools/Dev/CheckDependencyLock.py --build build-ci --require
+        run: python Source/Tools/Dev/CheckDependencyLock.py --build build/ci --require
       - name: Build
         run: |
           cmake --build --preset ci-clangcl 2>&1 | Tee-Object -FilePath build.log
@@ -60,13 +60,13 @@ jobs:
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
-        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-ci/bin/tools/fby_fempak.exe
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/ci/bin/tools/fby_fempak.exe
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-ci/bin --artifacts build-ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --out build-ci/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/ci/bin --artifacts build/ci/bin/tools --require fby_editor.exe --require fby_fempak.exe --forbid Documentation/FEATURE_NOTES.md --out build/ci/release-manifest.json
       - name: Desktop package
-        run: python Source/Tools/Dev/PackageDesktop.py --platform windows --preset ci-clangcl --build-dir build-ci --output build/package --skip-build
+        run: python Source/Tools/Dev/PackageDesktop.py --platform windows --preset ci-clangcl --build-dir build/ci --output build/package --skip-build
       - name: Vendor usage report
-        run: python Source/Tools/Dev/ReportVendorUsage.py --build build-ci --output build-ci/vendor-usage.md --strict
+        run: python Source/Tools/Dev/ReportVendorUsage.py --build build/ci --output build/ci/vendor-usage.md --strict
       - name: Test
         # Hardware smoke tests need a display and an adapter; they run in the
         # advisory step below and must not gate the headless compiler job.
@@ -103,14 +103,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Configure
-        run: cmake -S . -B build-msvc -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=ON -DFBY_BUILD_TESTS=ON
+        run: cmake -S . -B build/msvc -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=ON -DFBY_BUILD_TESTS=ON
       - name: Build
-        run: cmake --build build-msvc --parallel 8 -- -k 0 2>&1 | Tee-Object -FilePath build-msvc.log
+        run: cmake --build build/msvc --parallel 8 -- -k 0 2>&1 | Tee-Object -FilePath build/msvc.log
       - name: Build errors
         if: failure()
-        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build-msvc.log
+        run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build/msvc.log
       - name: Test
-        run: ctest --test-dir build-msvc --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings|d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark" 2>&1 | Tee-Object -FilePath test-msvc.log
+        run: ctest --test-dir build/msvc --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings|d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark" 2>&1 | Tee-Object -FilePath test-msvc.log
       - name: Test errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test-msvc.log
@@ -141,9 +141,9 @@ jobs:
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
-        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/dev/bin/tools/fby_fempak
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --out build/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/dev/bin --artifacts build/dev/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --out build/release-manifest.json
       - name: Desktop package
         run: python Source/Tools/Dev/PackageDesktop.py --platform linux --build-dir build --output build/package --skip-build
       - name: Test
@@ -191,7 +191,7 @@ jobs:
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
-        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/dev/bin/tools/fby_fempak
       - name: Test
         run: |
           set -o pipefail
@@ -221,7 +221,7 @@ jobs:
       - name: Build second
         run: cmake --build build-repro --target fby_fempak --parallel 8 -- -k 0
       - name: Compare cooked archives
-        run: python Source/Tools/Dev/ComparePakAcrossBuilds.py --first build/bin/tools/fby_fempak --second build-repro/bin/tools/fby_fempak --workdir build
+        run: python Source/Tools/Dev/ComparePakAcrossBuilds.py --first build/dev/bin/tools/fby_fempak --second build-repro/bin/tools/fby_fempak --workdir build
 
   linux-asan:
     env:
@@ -235,11 +235,11 @@ jobs:
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev xvfb mesa-vulkan-drivers libvulkan1 vulkan-tools
       - name: Configure
-        run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
+        run: cmake -S . -B build/asan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
         run: |
           set -o pipefail
-          cmake --build build-asan --parallel 8 -- -k 0 2>&1 | tee build.log
+          cmake --build build/asan --parallel 8 -- -k 0 2>&1 | tee build.log
       - name: Build errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
@@ -249,7 +249,7 @@ jobs:
           LSAN_OPTIONS: detect_leaks=1:report_objects=1:suppressions=${{ github.workspace }}/Source/Tools/Dev/lsan.supp
         run: |
           set -o pipefail
-          xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$" 2>&1 | tee test.log
+          xvfb-run -a ctest --test-dir build/asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$" 2>&1 | tee test.log
       - name: Test errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
@@ -259,7 +259,7 @@ jobs:
           LSAN_OPTIONS: detect_leaks=1:report_objects=1:suppressions=${{ github.workspace }}/Source/Tools/Dev/lsan.supp
         run: |
           set -o pipefail
-          xvfb-run -a ctest --test-dir build-asan --output-on-failure --timeout 300 2>&1 | tee test.log
+          xvfb-run -a ctest --test-dir build/asan --output-on-failure --timeout 300 2>&1 | tee test.log
       - name: Test errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
@@ -276,18 +276,18 @@ jobs:
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev xvfb mesa-vulkan-drivers libvulkan1 vulkan-tools
       - name: Configure
-        run: cmake -S . -B build-ubsan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_UBSAN=ON
+        run: cmake -S . -B build/ubsan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_UBSAN=ON
       - name: Build
         run: |
           set -o pipefail
-          cmake --build build-ubsan --parallel 8 -- -k 0 2>&1 | tee build.log
+          cmake --build build/ubsan --parallel 8 -- -k 0 2>&1 | tee build.log
       - name: Build errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Parsers, text and core under UBSan
         run: |
           set -o pipefail
-          xvfb-run -a ctest --test-dir build-ubsan --output-on-failure --timeout 300 -R "^(fuzz_parsers|fuzz_noise|bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden)$" 2>&1 | tee test.log
+          xvfb-run -a ctest --test-dir build/ubsan --output-on-failure --timeout 300 -R "^(fuzz_parsers|fuzz_noise|bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden)$" 2>&1 | tee test.log
       - name: Test errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test.log
@@ -312,10 +312,10 @@ jobs:
           "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Configure
-        run: cmake -S . -B build-asan -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
+        run: cmake -S . -B build/asan -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_WITH_ASAN=ON
       - name: Build
         run: |
-          cmake --build build-asan --parallel 8 -- -k 0 2>&1 | Tee-Object -FilePath build.log
+          cmake --build build/asan --parallel 8 -- -k 0 2>&1 | Tee-Object -FilePath build.log
           exit $LASTEXITCODE
       - name: Build errors
         if: failure()
@@ -324,7 +324,7 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1:allocator_may_return_null=1
         run: |
-          ctest --test-dir build-asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$" 2>&1 | Tee-Object -FilePath test.log
+          ctest --test-dir build/asan --output-on-failure --timeout 300 -R "^(bigint|decimal|script_bigint|text|text_render|text_format|text_markup|text_asset_format|text_asset_file|font_builder|text_shaper|text_shape_cache|text_shape_system|font_paging|text_coverage|text_hot_path|text_golden|fuzz_parsers|fuzz_noise|notices|definitions|logboy)$" 2>&1 | Tee-Object -FilePath test.log
           exit $LASTEXITCODE
       - name: Test errors
         if: failure()
@@ -353,11 +353,11 @@ jobs:
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
-        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build-macos-release/bin/tools/fby_fempak
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/macos-release/bin/tools/fby_fempak
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build-macos-release/bin --artifacts build-macos-release/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --out build-macos-release/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/macos-release/bin --artifacts build/macos-release/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --out build/macos-release/release-manifest.json
       - name: Desktop package
-        run: python Source/Tools/Dev/PackageDesktop.py --platform macos --build-dir build-macos-release --output build-macos-release/package --skip-build
+        run: python Source/Tools/Dev/PackageDesktop.py --platform macos --build-dir build/macos-release --output build/macos-release/package --skip-build
       - name: Test
         # Hosted macOS CPU timing and loopback UDP are noisy; the full suite is
         # the Windows/Linux gate. This run covers the editor, input, text,

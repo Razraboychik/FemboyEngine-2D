@@ -25,7 +25,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-DEFAULT_BUILD = ROOT / "build-asan"
+DEFAULT_BUILD = ROOT / "build/asan"
 # The text stack and the unit tests; the GUI-backed suites need a desktop
 # session and are covered by the interactive gate.
 DEFAULT_FILTER = (

@@ -73,9 +73,9 @@ rejected by the 1.4 device gate.
 
 ```bat
 cmake --build build --target fby_requirements_benchmark fby_editor_requirements_benchmark
-build/bin/tests/fby_requirements_benchmark.exe
-build/bin/tests/fby_editor_requirements_benchmark.exe
-build/bin/tests/fby_mesh_indirect_smoke_test.exe
+build/dev/bin/tests/fby_requirements_benchmark.exe
+build/dev/bin/tests/fby_editor_requirements_benchmark.exe
+build/dev/bin/tests/fby_mesh_indirect_smoke_test.exe
 ```
 
 Record the machine and compiler with every run. A change that makes FCS slower
@@ -149,18 +149,18 @@ The Sandbox now accepts `--frames <count>` so PGO can use a real game loop inste
 of a Composer-only probe:
 
 ```bat
-cmake -S . -B build-pgo-gen -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+cmake -S . -B build/pgo-gen -G Ninja -DCMAKE_BUILD_TYPE=Release ^
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ^
   -DFBY_PGO_GENERATE=ON
-cmake --build build-pgo-gen --target fby_sandbox
+cmake --build build/pgo-gen --target fby_sandbox
 set LLVM_PROFILE_FILE=%CD%\build\pgo-game\sandbox-%p.raw
-build-pgo-gen\bin\fby_sandbox.exe 15000 --frames 120 --no-vsync
+build/pgo-gen\bin\fby_sandbox.exe 15000 --frames 120 --no-vsync
 llvm-profdata merge -o build\pgo-game\default.profdata build\pgo-game\*.raw
 
-cmake -S . -B build-pgo-use -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+cmake -S . -B build/pgo-use -G Ninja -DCMAKE_BUILD_TYPE=Release ^
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ^
   -DFBY_PGO_PROFILE=%CD%\build\pgo-game\default.profdata
-cmake --build build-pgo-use --target fby_sandbox
+cmake --build build/pgo-use --target fby_sandbox
 ```
 
 The 15k-sprite Sandbox run produced a ~400 KiB profile and exited cleanly after

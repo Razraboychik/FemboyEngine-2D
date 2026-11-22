@@ -111,9 +111,9 @@ Xcode Command Line Tools обязательны: они дают `clang++`, Meta
 Из корня репозитория:
 
 ```
-cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
-cmake --build build-dev
-ctest --test-dir build-dev --output-on-failure
+cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
+cmake --build build/dev
+ctest --test-dir build/dev --output-on-failure
 ```
 
 На Windows те же команды выполняются в окружении `vcvars64`; зависимости и инструменты подготавливает `SetupScripts/Windows/SetupWindows.ps1`. Основные опции CMake: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
@@ -122,11 +122,11 @@ ctest --test-dir build-dev --output-on-failure
 
 | Каталог | Что внутри |
 |---|---|
-| `build-dev/bin` | приложения: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, плагины платформ и `plugins/` |
-| `build-dev/bin/tools` | консольные инструменты: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
-| `build-dev/bin/tests` | тестовые исполняемые файлы (`fby_*_test`), их запускает `ctest` |
-| `build-dev/bin/lib` | статические библиотеки |
-| `build-dev/bin/plugins` | нативные плагины движка |
+| `build/dev/bin` | приложения: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, плагины платформ и `plugins/` |
+| `build/dev/bin/tools` | консольные инструменты: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
+| `build/dev/bin/tests` | тестовые исполняемые файлы (`fby_*_test`), их запускает `ctest` |
+| `build/dev/bin/lib` | статические библиотеки |
+| `build/dev/bin/plugins` | нативные плагины движка |
 
 Файлы `*.pdb` рядом с исполняемыми файлами — это отладочные символы, которые создаёт компилятор. Они нужны только отладчику и не требуются для запуска; в релизной поставке их можно не распространять.
 
@@ -193,7 +193,7 @@ clangd должен использовать тот же Clang, которым �
 ```json
 {
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/build-audit",
+    "--compile-commands-dir=${workspaceFolder}/build/audit",
     "--query-driver=C:/Users/<user>/AppData/Local/Programs/LLVM/bin/clang++.exe"
   ]
 }
@@ -210,9 +210,9 @@ clangd должен использовать тот же Clang, которым �
 | `dev-clang` | `clang++` | Debug, тесты, `compile_commands.json` |
 | `release-clang` | `clang++` | RelWithDebInfo, тесты |
 | `dev-clangcl` | `clang-cl` | Debug через проверенный Windows-toolchain |
-| `audit-clang` | `clang++` | существующий `build-audit` для clangd |
+| `audit-clang` | `clang++` | существующий `build/audit` для clangd |
 
-Разные компиляторы должны использовать **разные build-каталоги**. Нельзя переконфигурировать `build-audit` с clang++ на clang-cl: CMakeCache останется от старого toolchain.
+Разные компиляторы должны использовать **разные build-каталоги**. Нельзя переконфигурировать `build/audit` с clang++ на clang-cl: CMakeCache останется от старого toolchain.
 
 ### Отладка
 
@@ -223,7 +223,7 @@ clangd должен использовать тот же Clang, которым �
   "name": "Editor (Debug)",
   "type": "cppdbg",
   "request": "launch",
-  "program": "${workspaceFolder}/build-dev/bin/fby_editor.exe",
+  "program": "${workspaceFolder}/build/dev/bin/fby_editor.exe",
   "cwd": "${workspaceFolder}",
   "MIMode": "gdb",
   "miDebuggerPath": "gdb.exe"
@@ -250,14 +250,14 @@ clangd должен использовать тот же Clang, которым �
 
 ```
 cd %USERPROFILE%\FemboyEngine
-build-dev\bin\fby_editor.exe
+build/dev\bin\fby_editor.exe
 ```
 
 Linux и macOS:
 
 ```
 cd /path/to/project
-./build-dev/bin/fby_editor
+./build/dev/bin/fby_editor
 ```
 
 Все изменяемые файлы движок складывает в `Saved/` в рабочем каталоге, поэтому каталог проекта остаётся чистым:
@@ -276,7 +276,7 @@ cd /path/to/project
 
 | Путь | Обязателен | Назначение |
 |---|---|---|
-| `build-dev/bin/fby_editor` | да | сам редактор |
+| `build/dev/bin/fby_editor` | да | сам редактор |
 | `assets/` | да | шрифты, локализация, сцены, атласы, конфиги проекта |
 | `assets/fonts/IBMPlexSans-Regular.ttf`, `...-Bold.ttf`, `...-Italic.ttf`, `...-BoldItalic.ttf`, `IBMPlexMono-Regular.ttf` | да | семейство шрифтов редактора и текста сцены |
 | `assets/fonts/IBMPlex.family.toml` | да | манифест семейства: пять слотов стилей |
@@ -284,11 +284,11 @@ cd /path/to/project
 | `assets/loc/ui.fbin` | да | таблица локализации интерфейса |
 | `assets/scenes/*.toml` | да | сцены проекта |
 | `project.femproj` | да | описание проекта: сцена по умолчанию, симуляция, рендер, доступность |
-| `build-dev/` | да | дерево сборки CMake: там лежат исполняемые файлы и результаты сборки |
-| `build-dev/bin/fby_sandbox` | нет | второй процесс для режима Play-in-Editor по сети |
+| `build/dev/` | да | дерево сборки CMake: там лежат исполняемые файлы и результаты сборки |
+| `build/dev/bin/fby_sandbox` | нет | второй процесс для режима Play-in-Editor по сети |
 | `Saved/` | создаётся | логи, отчёты о падениях, кэш и настройки редактора |
 | `Saved/Config/editor.ini` | создаётся | раскладка панелей и настройки редактора для этой машины |
-| `build-dev/bin/plugins/` | нет | нативные плагины движка |
+| `build/dev/bin/plugins/` | нет | нативные плагины движка |
 | Vulkan Loader в системе | да | окно и GPU-рендер на Windows и Linux |
 | `Projects/` | нет | каталог по умолчанию для новых проектов |
 
@@ -298,7 +298,7 @@ cd /path/to/project
 
 ## Инструменты разработки
 
-Кроме редактора в `build-dev/bin` собираются отдельные исполняемые файлы. Все они — обычные консольные программы, читают файлы и не требуют GUI.
+Кроме редактора в `build/dev/bin` собираются отдельные исполняемые файлы. Все они — обычные консольные программы, читают файлы и не требуют GUI.
 
 | Инструмент | Назначение | Что нужно из файлов |
 |---|---|---|
@@ -315,7 +315,7 @@ cd /path/to/project
 | `fby_loc_tool` | проверка и сборка таблиц локализации | `.toml` локализации |
 | `fby_shaderc` | компиляция шейдеров в SPIR-V | `.vert`/`.frag`; вызывается сборкой автоматически |
 
-Инструменты лежат в `build-dev/bin/tools`, тестовые исполняемые файлы — в `build-dev/bin/tests`.
+Инструменты лежат в `build/dev/bin/tools`, тестовые исполняемые файлы — в `build/dev/bin/tests`.
 
 Сборка и тесты запускаются через пресеты CMake; установка зависимостей — в `SetupScripts/<OS>/*`.
 
@@ -325,7 +325,7 @@ cd /path/to/project
 
 ### Windows
 
-1. Правый щелчок по `build-dev\bin\fby_editor.exe` → «Отправить» → «Рабочий стол (создать ярлык)».
+1. Правый щелчок по `build/dev\bin\fby_editor.exe` → «Отправить» → «Рабочий стол (создать ярлык)».
 2. Свойства ярлыка: «Рабочая папка» = корень проекта (например `%USERPROFILE%\FemboyEngine`), «Объект» = полный путь к `fby_editor.exe`.
 3. Переименовать ярлык в «FemboyEngine» и перетащить на панель задач или в меню «Пуск».
 4. Для отдельного проекта сделать второй ярлык с тем же «Объектом», но «Рабочей папкой» = папка проекта. Это и есть «выбор проекта» без диалога.

@@ -149,12 +149,12 @@ cmake -S MyGame -B MyGame/build -DFBY_ENGINE_ROOT=/path/to/FemboyEngine2D
 
 | Цель | Выход |
 |---|---|
-| `fby_editor_app` | `build/bin/fby_editor` |
-| `fby_sandbox` | `build/bin/fby_sandbox` |
-| `fby_fempak` | `build/bin/fby_fempak` |
-| `fby_aotc` | `build/bin/fby_aotc` |
-| `fby_fontc` | `build/bin/fby_fontc` |
-| `fby_scene_tool` | `build/bin/fby_scene_tool` |
+| `fby_editor_app` | `build/dev/bin/fby_editor` |
+| `fby_sandbox` | `build/dev/bin/fby_sandbox` |
+| `fby_fempak` | `build/dev/bin/fby_fempak` |
+| `fby_aotc` | `build/dev/bin/fby_aotc` |
+| `fby_fontc` | `build/dev/bin/fby_fontc` |
+| `fby_scene_tool` | `build/dev/bin/fby_scene_tool` |
 
 ## Тесты и style gate
 
@@ -166,7 +166,7 @@ python Source/Tools/Dev/CheckStyle.py
 ```
 
 Тесты CTest — самостоятельные исполняемые файлы без фреймворка. Они работают
-headless и запускаются по отдельности из `build/bin`.
+headless и запускаются по отдельности из `build/dev/bin`.
 
 ## Выбор RHI
 

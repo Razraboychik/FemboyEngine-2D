@@ -957,8 +957,8 @@ struct EditorSystem::Impl
         }
         const std::filesystem::path ScopedEngineRoot = ResolveEngineRoot();
         std::filesystem::path ScopedPacker;
-        for (const char* ScopedBuild : {"build", "build-dev", "build-linux-release", "build-macos-release",
-                                        "build-windows-release", "build-clangcl", "build-ci"})
+        for (const char* ScopedBuild : {"build", "build/dev", "build/linux-release", "build/macos-release",
+                                        "build/windows-release", "build/clangcl", "build/ci"})
         {
             for (const char* ScopedSubdir : {"tools", ""})
             {
@@ -981,9 +981,9 @@ struct EditorSystem::Impl
         if (ScopedPacker.empty())
         {
 #if defined(_WIN32)
-            ScopedPacker = ScopedEngineRoot / "build" / "bin" / "tools" / "fby_fempak.exe";
+            ScopedPacker = ScopedEngineRoot / "build" / "dev" / "bin" / "tools" / "fby_fempak.exe";
 #else
-            ScopedPacker = ScopedEngineRoot / "build" / "bin" / "tools" / "fby_fempak";
+            ScopedPacker = ScopedEngineRoot / "build" / "dev" / "bin" / "tools" / "fby_fempak";
 #endif
         }
         ReleaseCookConfig ScopedConfig =

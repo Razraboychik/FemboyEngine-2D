@@ -230,7 +230,7 @@ RHI — рукописный слой Vulkan/Metal. Кадры записыва�
 
 ```bash
 # Author the graph once, cook it in the build step
-build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
+build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
 
 ```
 

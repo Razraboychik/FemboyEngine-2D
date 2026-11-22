@@ -2,8 +2,8 @@
 param(
     [int]$Frames = 30,
     [string]$Only = "",
-    [string]$Executable = "build-audit/bin/tests/fby_optimization_ab.exe",
-    [string]$OutputDirectory = "build-audit/benchmarks"
+    [string]$Executable = "build/audit/bin/tests/fby_optimization_ab.exe",
+    [string]$OutputDirectory = "build/audit/benchmarks"
 )
 
 $ErrorActionPreference = "Stop"

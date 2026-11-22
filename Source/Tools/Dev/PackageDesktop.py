@@ -26,9 +26,9 @@ sys.dont_write_bytecode = True
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PRESETS = {
-    "windows": ("windows-release", "build-windows-release"),
-    "linux": ("linux-release", "build-linux-release"),
-    "macos": ("macos-release", "build-macos-release"),
+    "windows": ("windows-release", "build/windows-release"),
+    "linux": ("linux-release", "build/linux-release"),
+    "macos": ("macos-release", "build/macos-release"),
 }
 VERSION = (ROOT / "Version.txt").read_text(encoding="utf-8").strip()
 SOURCE_URL = "https://github.com/Razraboychik/FemboyEngine-2D"

@@ -33,7 +33,7 @@ def run_once(binary, args, static, timeout):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--binary", default="build-dev/bin/tests/fby_optimization_ab.exe")
+    parser.add_argument("--binary", default="build/dev/bin/tests/fby_optimization_ab.exe")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--width", type=int, default=15360)
     parser.add_argument("--height", type=int, default=8640)

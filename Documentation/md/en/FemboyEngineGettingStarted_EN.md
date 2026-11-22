@@ -114,9 +114,9 @@ Xcode Command Line Tools are mandatory: they provide `clang++`, the Metal framew
 From the repository root:
 
 ```
-cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
-cmake --build build-dev
-ctest --test-dir build-dev --output-on-failure
+cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
+cmake --build build/dev
+ctest --test-dir build/dev --output-on-failure
 ```
 
 On Windows the same commands run inside a `vcvars64` environment; `SetupScripts/Windows/SetupWindows.ps1` prepares the dependencies and the toolchain. Main CMake options: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
@@ -125,11 +125,11 @@ The executables are grouped by purpose:
 
 | Directory | Contents |
 |---|---|
-| `build-dev/bin` | applications: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, platform plugins and `plugins/` |
-| `build-dev/bin/tools` | console tools: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
-| `build-dev/bin/tests` | test executables (`fby_*_test`) that `ctest` runs |
-| `build-dev/bin/lib` | static libraries |
-| `build-dev/bin/plugins` | native engine plugins |
+| `build/dev/bin` | applications: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, platform plugins and `plugins/` |
+| `build/dev/bin/tools` | console tools: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
+| `build/dev/bin/tests` | test executables (`fby_*_test`) that `ctest` runs |
+| `build/dev/bin/lib` | static libraries |
+| `build/dev/bin/plugins` | native engine plugins |
 
 The `*.pdb` files next to the executables are debug symbols written by the compiler. They are only used by a debugger and are not needed to run anything; a release package does not have to ship them.
 
@@ -196,7 +196,7 @@ clangd must use the same Clang that builds the project:
 ```json
 {
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/build-audit",
+    "--compile-commands-dir=${workspaceFolder}/build/audit",
     "--query-driver=C:/Users/<user>/AppData/Local/Programs/LLVM/bin/clang++.exe"
   ]
 }
@@ -213,9 +213,9 @@ Do not enable C/C++ IntelliSense and clangd at the same time: that produces two 
 | `dev-clang` | `clang++` | Debug, tests, `compile_commands.json` |
 | `release-clang` | `clang++` | RelWithDebInfo, tests |
 | `dev-clangcl` | `clang-cl` | Debug with the validated Windows toolchain |
-| `audit-clang` | `clang++` | existing `build-audit` for clangd |
+| `audit-clang` | `clang++` | existing `build/audit` for clangd |
 
-Different compilers must use **different build directories**. Do not reconfigure `build-audit` from clang++ to clang-cl: the CMakeCache belongs to the old toolchain.
+Different compilers must use **different build directories**. Do not reconfigure `build/audit` from clang++ to clang-cl: the CMakeCache belongs to the old toolchain.
 
 ### Debugging
 
@@ -226,7 +226,7 @@ For `cppdbg`, use gdb from MinGW/LLVM; CodeLLDB uses LLVM's lldb. Example:
   "name": "Editor (Debug)",
   "type": "cppdbg",
   "request": "launch",
-  "program": "${workspaceFolder}/build-dev/bin/fby_editor.exe",
+  "program": "${workspaceFolder}/build/dev/bin/fby_editor.exe",
   "cwd": "${workspaceFolder}",
   "MIMode": "gdb",
   "miDebuggerPath": "gdb.exe"
@@ -253,14 +253,14 @@ The editor opens the project from its **current working directory**: it looks fo
 
 ```
 cd %USERPROFILE%\FemboyEngine
-build-dev\bin\fby_editor.exe
+build/dev\bin\fby_editor.exe
 ```
 
 Linux and macOS:
 
 ```
 cd /path/to/project
-./build-dev/bin/fby_editor
+./build/dev/bin/fby_editor
 ```
 
 Everything the engine writes at runtime goes to `Saved/` in the working directory, so the project directory stays clean:
@@ -279,7 +279,7 @@ Environment variables: `FBY_STORAGE_DIR` moves the `Saved/` root (for example to
 
 | Path | Required | Purpose |
 |---|---|---|
-| `build-dev/bin/fby_editor` | yes | the editor itself |
+| `build/dev/bin/fby_editor` | yes | the editor itself |
 | `assets/` | yes | fonts, localization, scenes, atlases, project configs |
 | `assets/fonts/IBMPlexSans-Regular.ttf`, `...-Bold.ttf`, `...-Italic.ttf`, `...-BoldItalic.ttf`, `IBMPlexMono-Regular.ttf` | yes | the font family used by the editor and by scene text |
 | `assets/fonts/IBMPlex.family.toml` | yes | family manifest with the five style slots |
@@ -287,11 +287,11 @@ Environment variables: `FBY_STORAGE_DIR` moves the `Saved/` root (for example to
 | `assets/loc/ui.fbin` | yes | interface localization table |
 | `assets/scenes/*.toml` | yes | project scenes |
 | `project.femproj` | yes | project description: default scene, simulation, render, accessibility |
-| `build-dev/` | yes | the CMake build tree: executables and build results live there |
-| `build-dev/bin/fby_sandbox` | no | second process for networked Play-in-Editor |
+| `build/dev/` | yes | the CMake build tree: executables and build results live there |
+| `build/dev/bin/fby_sandbox` | no | second process for networked Play-in-Editor |
 | `Saved/` | created | logs, crash reports, caches and editor settings |
 | `Saved/Config/editor.ini` | created | panel layout and editor settings for this machine |
-| `build-dev/bin/plugins/` | no | native engine plugins |
+| `build/dev/bin/plugins/` | no | native engine plugins |
 | Vulkan Loader installed on the system | yes | window and GPU rendering on Windows and Linux |
 | `Projects/` | no | default location for new projects |
 
@@ -301,7 +301,7 @@ A project is a directory with a `project.femproj` file and `assets/`, `configs/`
 
 ## Development tools
 
-Besides the editor, `build-dev/bin` contains separate executables. All of them are console programs that read files and need no GUI.
+Besides the editor, `build/dev/bin` contains separate executables. All of them are console programs that read files and need no GUI.
 
 | Tool | Purpose | Files it needs |
 |---|---|---|
@@ -318,7 +318,7 @@ Besides the editor, `build-dev/bin` contains separate executables. All of them a
 | `fby_loc_tool` | validate and build localization tables | localization `.toml` |
 | `fby_shaderc` | compile shaders to SPIR-V | `.vert`/`.frag`; the build calls it automatically |
 
-The tools live in `build-dev/bin/tools`; the test executables in `build-dev/bin/tests`.
+The tools live in `build/dev/bin/tools`; the test executables in `build/dev/bin/tests`.
 
 Build and test through the CMake presets; dependency setup lives in `SetupScripts/<OS>/*`.
 
@@ -328,7 +328,7 @@ The working directory is the only thing that distinguishes "launching the engine
 
 ### Windows
 
-1. Right-click `build-dev\bin\fby_editor.exe` → Send to → Desktop (create shortcut).
+1. Right-click `build/dev\bin\fby_editor.exe` → Send to → Desktop (create shortcut).
 2. Open the shortcut properties: "Start in" = project root (for example `%USERPROFILE%\FemboyEngine`), "Target" = full path to `fby_editor.exe`.
 3. Rename it to "FemboyEngine" and drag it to the taskbar or the Start menu.
 4. For a specific project, create a second shortcut with the same target and "Start in" = the project folder. That is the project selection without a dialog.

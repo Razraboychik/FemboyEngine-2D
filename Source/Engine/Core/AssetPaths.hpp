@@ -33,8 +33,8 @@ namespace Fby::Core
 
 // Finds the repository/install `assets` directory without relying on the
 // caller's working directory. Resolution order: FBY_ASSET_DIR, cwd/assets, then
-// assets next to the executable and up to three parent directories (the build
-// tree puts the binary in build/bin, three levels below the repository root).
+// assets next to the executable and up to four parent directories (the build
+// tree puts the binary in build/dev/bin, four levels below the repository root).
 [[nodiscard]] inline std::filesystem::path FindAssetRoot(std::string_view InArgv0)
 {
     std::error_code ScopedError;

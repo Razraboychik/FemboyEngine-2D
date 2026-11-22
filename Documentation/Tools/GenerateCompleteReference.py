@@ -2303,11 +2303,11 @@ EXTRA_SECTIONS: list[dict] = [
             {
                 "type": "note",
                 "text": B(
-                    "The build orchestrator needs the fby_fempak executable in build/bin. If the editor was built "
+                    "The build orchestrator needs the fby_fempak executable in build/dev/bin. If the editor was built "
                     "with FBY_BUILD_TOOLS=OFF, Start() fails before spawning anything and the status bar names "
                     "the missing packer. The AOT stage is optional by construction: a project with no bound "
                     "LogicGraph still cooks and secures its assets, and the result reports keyBaked=false.",
-                    "Оркестратору сборки нужен исполняемый файл fby_fempak в build/bin. Если редактор собран с "
+                    "Оркестратору сборки нужен исполняемый файл fby_fempak в build/dev/bin. Если редактор собран с "
                     "FBY_BUILD_TOOLS=OFF, Start() завершается до запуска процессов, а статус-бар называет "
                     "отсутствующий упаковщик. Стадия AOT необязательна по конструкции: проект без привязанного "
                     "LogicGraph всё равно кукает и шифрует ассеты, а результат сообщает keyBaked=false.",
@@ -2952,7 +2952,7 @@ EXTRA_SECTIONS: list[dict] = [
                 "type": "code",
                 "lang": "bash",
                 "text": "# fby_matc <graph.fgraph> [-o <cooked.femmat>]\n"
-                        "build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat\n"
+                        "build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat\n"
                         "\n"
                         "# The tool refuses a graph that does not validate, prints the hash and the SPIR-V word\n"
                         "# counts, and never writes a payload the runtime would reject.\n",

@@ -7,7 +7,7 @@ ledger) fails the run, so a release candidate cannot be assembled from a stale
 or partial build.
 
     python Source/Tools/Dev/ReleaseChecklist.py \
-        --artifacts build/bin --require fby_editor.exe --require tools/fby_fempak.exe \
+        --artifacts build/dev/bin --require fby_editor.exe --require tools/fby_fempak.exe \
         --forbid Documentation/FEATURE_NOTES.md \
         --out build/release-manifest.json
 """
@@ -43,7 +43,7 @@ def main() -> int:
     parser.add_argument("--out", default="release-manifest.json")
     args = parser.parse_args()
 
-    roots = [pathlib.Path(item) for item in args.artifacts] or [pathlib.Path("build/bin")]
+    roots = [pathlib.Path(item) for item in args.artifacts] or [pathlib.Path("build/dev/bin")]
     failures: list[str] = []
     entries: list[dict[str, object]] = []
 

@@ -268,7 +268,7 @@ RHI — рукописный слой Vulkan/Metal. Кадры записыва�
 
 ```bash
 # Author the graph once, cook it in the build step
-build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
+build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
 
 ```
 
@@ -1423,7 +1423,7 @@ ImGui::Text("encrypted: %s", CookCipherName(Progress.cipher));
 | GOG Galaxy | game.femarc + плагин + Galaxy shim | те же байты, ABI шима | Сборка Galaxy, облачные сохранения |
 | Все магазины | Идентификатор seed, BuildProfile | Хеш графа + LayoutHash компонентов | Хранить seed офлайн, менять при утечке |
 
-> Оркестратору сборки нужен исполняемый файл fby_fempak в build/bin. Если редактор собран с FBY_BUILD_TOOLS=OFF, Start() завершается до запуска процессов, а статус-бар называет отсутствующий упаковщик. Стадия AOT необязательна по конструкции: проект без привязанного LogicGraph всё равно кукает и шифрует ассеты, а результат сообщает keyBaked=false.
+> Оркестратору сборки нужен исполняемый файл fby_fempak в build/dev/bin. Если редактор собран с FBY_BUILD_TOOLS=OFF, Start() завершается до запуска процессов, а статус-бар называет отсутствующий упаковщик. Стадия AOT необязательна по конструкции: проект без привязанного LogicGraph всё равно кукает и шифрует ассеты, а результат сообщает keyBaked=false.
 
 
 ## 34. SystemGraph: контракт параллельного планирования, затем контракт циклов блендинга
@@ -1667,7 +1667,7 @@ void BlendBones(float* __restrict OutX, float* __restrict OutY,
 
 ```bash
 # fby_matc <graph.fgraph> [-o <cooked.femmat>]
-build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
+build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
 
 # The tool refuses a graph that does not validate, prints the hash and the SPIR-V word
 # counts, and never writes a payload the runtime would reject.

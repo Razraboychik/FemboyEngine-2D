@@ -280,6 +280,14 @@ cmake --build --preset windows-release
 ctest --preset windows-release --output-on-failure
 ```
 
+Or use the developer wrapper, which keeps the same layout:
+
+```bat
+Toolsby.ps1 build dev
+Toolsby.ps1 test dev
+Toolsby.ps1 run dev
+```
+
 Linux and macOS use the matching presets; they select Vulkan and Metal
 respectively and build the editor, tools and tests:
 
@@ -299,13 +307,13 @@ The per-platform status, seams and cook flow are tracked in
 Main executables:
 
 ```text
-build/bin/fby_sandbox
-build/bin/fby_editor
-build/bin/fby_server
-build/bin/fby_lobby
-build/bin/tools/fby_fempak
-build/bin/tools/fby_scene_tool
-build/bin/tools/fby_aotc
+build/dev/bin/fby_sandbox
+build/dev/bin/fby_editor
+build/dev/bin/fby_server
+build/dev/bin/fby_lobby
+build/dev/bin/tools/fby_fempak
+build/dev/bin/tools/fby_scene_tool
+build/dev/bin/tools/fby_aotc
 ```
 
 Optional vendor upscalers are opt-in: DLSS and FidelityFX SDKs are not committed.
@@ -315,12 +323,12 @@ custom frame generation do not require either SDK. See
 [Frame Generation](Documentation/md/en/FemboyEngineFrameGeneration_EN.md).
 
 Applications look for `assets` in `FBY_ASSET_DIR`, `cwd/assets` or the
-executable's own directory and up to three parents, so a run from `build/bin`
+executable's own directory and up to four parents, so a run from `build/dev/bin`
 works without copying files. `Saved/` (logs, config, cache) follows the working
 directory; `FBY_STORAGE_DIR` moves it.
 
 The apps resolve `assets` from `FBY_ASSET_DIR`, `cwd/assets`, or the executable's
-parent directories, so an IDE launch from `build/bin` works without copying
+parent directories, so an IDE launch from `build/dev/bin` works without copying
 files. `Saved/` (logs, config, cache) still follows the working directory;
 `FBY_STORAGE_DIR` moves it.
 

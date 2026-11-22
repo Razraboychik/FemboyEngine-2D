@@ -11,7 +11,7 @@ runs only when a Vulkan 1.4 device and the vendor runtimes are present.
 | GPU | NVIDIA GeForce RTX 4060 Laptop GPU |
 | Driver | NVIDIA 621.24, Vulkan API 1.4.357 (NGX runtime unchanged) |
 | OS | Windows 11 x64 |
-| Build | `build-ffx`, `FBY_WITH_FIDELITYFX=ON`, `FBY_WITH_DLSS=ON`, tests ON |
+| Build | `build/ffx`, `FBY_WITH_FIDELITYFX=ON`, `FBY_WITH_DLSS=ON`, tests ON |
 | Runtimes | `amd_fidelityfx_upscaler_vk.dll`, `amd_fidelityfx_framegeneration_vk.dll`, `amd_fidelityfx_loader_vk.dll`, `nvngx.dll`, `nvngx_dlss.dll`, `nvngx_dlssg.dll` beside the test executable |
 
 The AMD Radeon 890M on the same laptop reports Vulkan 1.3.302 and is rejected by
@@ -61,7 +61,7 @@ $env:FBY_VULKAN_DEVICE = "NVIDIA"
 # or force one ICD:
 $env:VK_ICD_FILENAMES = "C:\Windows\System32\DriverStore\FileRepository\...\nv-vk64.json"
 $env:FBY_GPU_LOG = "1"
-.\build-ffx\bin\tests\fby_static_bake_gpu_test.exe
+.\build/ffx\bin\tests\fby_static_bake_gpu_test.exe
 ```
 
 `FBY_GPU_LOG=1` prints the selected device. A run is valid only when the log

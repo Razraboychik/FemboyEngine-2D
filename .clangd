@@ -1,10 +1,10 @@
 # FemboyEngine2D - clangd project configuration.
 #
-# build-audit is the existing RelWithDebInfo database. Regenerate it with
+# build/audit is the existing RelWithDebInfo database. Regenerate it with
 #   cmake --preset audit-clang
-# or point clangd at build-dev after configuring the dev-clang preset.
+# or point clangd at build/dev after configuring the dev-clang preset.
 CompileFlags:
-  CompilationDatabase: build-audit
+  CompilationDatabase: build/audit
   Add:
     - -std=c++26
 Diagnostics:

@@ -268,7 +268,7 @@ Material authoring and material compilation live on opposite sides of the engine
 
 ```bash
 # Author the graph once, cook it in the build step
-build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
+build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
 
 ```
 
@@ -1423,7 +1423,7 @@ ImGui::Text("encrypted: %s", CookCipherName(Progress.cipher));
 | GOG Galaxy | game.femarc + plugin + Galaxy shim | same bytes, shim ABI | Galaxy build, cloud saves |
 | All stores | Seed identity, BuildProfile | Graph hash + component LayoutHash | Keep seed offline, rotate on leak |
 
-> The build orchestrator needs the fby_fempak executable in build/bin. If the editor was built with FBY_BUILD_TOOLS=OFF, Start() fails before spawning anything and the status bar names the missing packer. The AOT stage is optional by construction: a project with no bound LogicGraph still cooks and secures its assets, and the result reports keyBaked=false.
+> The build orchestrator needs the fby_fempak executable in build/dev/bin. If the editor was built with FBY_BUILD_TOOLS=OFF, Start() fails before spawning anything and the status bar names the missing packer. The AOT stage is optional by construction: a project with no bound LogicGraph still cooks and secures its assets, and the result reports keyBaked=false.
 
 
 ## 34. SystemGraph: the parallel scheduling contract, then the blend-cycle contract
@@ -1667,7 +1667,7 @@ Cooking a material is one command, and the output travels like any other cooked 
 
 ```bash
 # fby_matc <graph.fgraph> [-o <cooked.femmat>]
-build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
+build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat
 
 # The tool refuses a graph that does not validate, prints the hash and the SPIR-V word
 # counts, and never writes a payload the runtime would reject.

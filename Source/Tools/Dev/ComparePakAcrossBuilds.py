@@ -6,7 +6,7 @@ build's `fby_fempak` on an identical tree (under the workspace, because the tool
 cannot write to the OS temp directory) and compares the SHA-256 of the archives.
 
     python Source/Tools/Dev/ComparePakAcrossBuilds.py \
-        --first build/bin/tools/fby_fempak --second build-repro/bin/tools/fby_fempak
+        --first build/dev/bin/tools/fby_fempak --second build-repro/bin/tools/fby_fempak
 """
 
 from __future__ import annotations
