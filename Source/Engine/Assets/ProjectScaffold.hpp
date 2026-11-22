@@ -53,7 +53,7 @@ add_executable(@PROJECT_TARGET@ GameMain.cpp)
 target_link_libraries(@PROJECT_TARGET@ PRIVATE FemboyEngine2D::Engine)
 
 # The clean-slate loop mounts this absolute path, so the executable works from
-# build/dev/bin without assuming a process working directory.
+# build/bin without assuming a process working directory.
 target_compile_definitions(@PROJECT_TARGET@ PRIVATE
     FBY_PROJECT_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
