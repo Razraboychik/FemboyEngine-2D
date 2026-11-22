@@ -143,6 +143,7 @@ public:
     // Creates a dynamic bus under an existing parent. Used by project-authored
     // audio definitions; the built-in buses keep their fixed ids.
     [[nodiscard]] bool CreateBus(BusId InParent, float InGain, BusId* OutBus) noexcept;
+    [[nodiscard]] bool DestroyBus(BusId InBus) noexcept;
     // Pauses one built-in bus without losing its authored volume. Pause is
     // combined with the component mute bit, so a later unmute does not clear a
     // deliberate pause.

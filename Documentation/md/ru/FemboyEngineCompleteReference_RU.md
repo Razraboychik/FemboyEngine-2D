@@ -1887,7 +1887,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `DragPayload` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 60 |
 | `EditorFonts` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 20 |
 | `EditorFonts` | Panels | `Source/Editor/Panels/VisualScriptPanel.hpp` | 20 |
-| `EditorSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 109 |
+| `EditorSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 113 |
 | `EditSource` | Panels | `Source/Editor/Panels/AIStateTreeCanvasPanel.hpp` | 58 |
 | `EditSource` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 128 |
 | `Entry` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 43 |
@@ -2098,11 +2098,11 @@ ScopedMaterials.Shutdown(InRhi);
 | `BiquadState` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 369 |
 | `BusAtomics` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 370 |
 | `BusFilterParams` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 108 |
-| `BusRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 239 |
+| `BusRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 240 |
 | `BusShadow` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 291 |
 | `BusState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 338 |
 | `CommandQueue` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 170 |
-| `CookedClipRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 214 |
+| `CookedClipRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 215 |
 | `DspClipView` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 205 |
 | `DspGraph` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 216 |
 | `DspGraph` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 16 |
@@ -2123,7 +2123,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `OggPage` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 37 |
 | `OggPageReader` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 58 |
 | `OpusHeadInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 107 |
-| `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 221 |
+| `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 222 |
 | `Peer` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 131 |
 | `PlayerState` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 93 |
 | `RateBucket` | Audio | `Source/Engine/Audio/VoiceNetworkBridge.hpp` | 67 |
@@ -2132,7 +2132,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `ReverbSpace` | Audio | `Source/Engine/Audio/AudioReverb.hpp` | 11 |
 | `ReverbState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 311 |
 | `SlotRuntime` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 385 |
-| `SourceRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 231 |
+| `SourceRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 232 |
 | `State` | Audio | `Source/Engine/Audio/AudioDevices.hpp` | 164 |
 | `Stats` | Audio | `Source/Engine/Audio/AudioZones.hpp` | 96 |
 | `VoiceAec` | Audio | `Source/Engine/Audio/VoiceAec.hpp` | 44 |

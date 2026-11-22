@@ -700,6 +700,12 @@ if(TARGET fby_editor)
     set_target_properties(fby_settings_panel_model_test PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
     add_test(NAME settings_panel_model COMMAND fby_settings_panel_model_test)
+
+    add_executable(fby_settings_panel_ui_test SettingsPanelUiTest.cpp)
+    target_link_libraries(fby_settings_panel_ui_test PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_settings_panel_ui_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME settings_panel_ui COMMAND fby_settings_panel_ui_test)
     add_executable(fby_editor_smoke_runner EditorSmokeRunner.cpp)
     set_target_properties(fby_editor_smoke_runner PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
@@ -1245,4 +1251,15 @@ endif()
 if(FBY_WITH_UBSAN)
     set_tests_properties(editor_infrastructure PROPERTIES
         ENVIRONMENT "FBY_STORAGE_DIR=${CMAKE_BINARY_DIR}/tests-saved;FBY_SKIP_HOT_RELOAD_TEST=1")
+endif()
+option(FBY_BUILD_FUZZERS "Build libFuzzer targets" OFF)
+if(FBY_BUILD_FUZZERS AND TARGET fby_editor)
+    add_executable(fby_settings_fuzz SettingsFuzz.cpp)
+    target_link_libraries(fby_settings_fuzz PRIVATE FemboyEngine2D::Editor)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer,address)
+        target_link_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer,address)
+    endif()
+    set_target_properties(fby_settings_fuzz PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 endif()

@@ -156,17 +156,22 @@ hotkey восстановления или fallback после crash-loop. Об�
 направляет в выбранный scope. `Reset` удаляет override и повторно применяет
 эффективное значение. `SettingsRegistryPanel` — ImGui-рендерер: группирует
 строки по категориям, рисует типизированный widget, использует confirmation
-modal для опасных значений и не хардкодит id или тип настройки. Микшер Project
-Settings уже использует эту сгенерированную панель для master/SFX/music и
-синхронизирует поля проекта после undo.
+modal для опасных значений и не хардкодит id или тип настройки. Enum-дескрипторы
+рисуются как combo, поэтому политики редактируемы; опасные enum-значения
+используют тот же confirmation modal. Микшер Project Settings уже использует эту
+сгенерированную панель для master/SFX/music и синхронизирует поля проекта после
+undo. Accessibility- и editor-секции перед отрисовкой вызывают двустороннюю
+синхронизацию, поэтому legacy-контролы и registry-вид не расходятся.
 
 ## 10. Хранение и UI
 
 Project defaults, per-install user overrides, сгенерированная панель настроек и
 данные звуковых шин — отдельные слои. `UserSettings.audioBuses` хранит
 per-install dB-overrides по тому же стабильному bus id; project-файл владеет
-топологией, user-файл — значениями игрока. Существующий accessibility-профиль
-регистрируется через `Editor::RegisterAccessibilitySettings`, поэтому его
+топологией, user-файл — значениями игрока. Необязательная цель `fby_settings_fuzz` собирается с
+`-DFBY_BUILD_FUZZERS=ON`; seed corpus лежит в `Source/Tests/FuzzCorpus/Settings`.
+Она прогоняет decode, повторный encode и reload project-файла без работы с
+файловой системой. Существующий accessibility-профиль регистрируется через `Editor::RegisterAccessibilitySettings`, поэтому его
 сериализованные поля становятся обычными дескрипторами реестра без изменения
 хранения в project-файле. `Editor::RegisterEditorSettings` выставляет UI scale,
 body font, text spacing, log/undo budgets, frame limit, VSync и theme через тот

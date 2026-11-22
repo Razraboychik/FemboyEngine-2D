@@ -155,17 +155,23 @@ exposes `LocalizationKey`, confirmation text and recovery hotkey, and routes edi
 through the selected scope. `Reset` removes the override and re-applies the
 effective value. `SettingsRegistryPanel` is the ImGui renderer: it groups rows by
 category, draws the typed widget, uses a confirmation modal for dangerous values
-and never hardcodes a setting id or type. The Project Settings mixer already uses
-this generated panel for its master/SFX/music values and keeps the project fields
-in sync after undo.
+and never hardcodes a setting id or type. Enum descriptors render as a combo, so
+policies are editable; dangerous enum changes use the same confirmation modal.
+The Project Settings mixer already uses this generated panel for its
+master/SFX/music values and keeps the project fields in sync after undo. The
+accessibility and editor sections call a bidirectional sync before drawing, which
+keeps the legacy controls and the registry view consistent.
 
 ## 10. Persistence and UI
 
 Project defaults, per-install user overrides, the generated settings panel and
 per-project audio-bus data are separate layers. `UserSettings.audioBuses` stores
 per-install dB overrides keyed by the same stable bus id; the project file owns
-the bus topology and the user file owns the player's values. The existing
-accessibility profile is registered through
+the bus topology and the user file owns the player's values. The optional `fby_settings_fuzz` target is built with
+`-DFBY_BUILD_FUZZERS=ON`; its seed corpus lives in
+`Source/Tests/FuzzCorpus/Settings`. It exercises project decode, re-encode and
+reload without touching the filesystem. The existing accessibility profile is
+registered through
 `Editor::RegisterAccessibilitySettings`, so its serialized fields become ordinary
 registry descriptors without changing their project storage.
 `Editor::RegisterEditorSettings` exposes the editor UI scale, body font, text

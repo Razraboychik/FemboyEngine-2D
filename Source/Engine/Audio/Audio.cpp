@@ -492,6 +492,15 @@ bool AudioSystem::CreateBus(BusId InParent, float InGain, BusId* OutBus) noexcep
     return MMixer.CreateBus(InParent, InGain, OutBus) == DspResult::Ok;
 }
 
+bool AudioSystem::DestroyBus(BusId InBus) noexcept
+{
+    if (InBus < kFirstDynamicBus || InBus >= kMaxBuses)
+    {
+        return false;
+    }
+    return MMixer.DestroyBus(InBus) == DspResult::Ok;
+}
+
 bool AudioSystem::SetBusVolumeDb(BusId InBus, float InDecibels) noexcept
 {
     if (InBus >= kMaxBuses)

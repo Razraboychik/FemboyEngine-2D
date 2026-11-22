@@ -7405,6 +7405,7 @@ bool EditorSystem::OpenProject(Ecs::SystemContext& InContext, const ProjectPaths
         LogWarn("editor", "project background systems not started: {}", ScopedSystemsError);
     }
     MImpl->projectOpen = true;
+    MImpl->projectSettings.ResetGeneratedState();
     MImpl->projectSettings.Apply(InContext);
     // EditorSettingsPanel::Apply pushes the loaded log limits into the sink.
     MImpl->editorSettings.Apply(InContext);

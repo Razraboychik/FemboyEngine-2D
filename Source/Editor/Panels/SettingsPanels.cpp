@@ -363,6 +363,7 @@ void ProjectSettingsPanel::InitializeAudioSettings(Ecs::SystemContext& InContext
     {
         return;
     }
+    MAudioSystem = InContext.audio;
     const ProjectSettings& ScopedProject = MStore->Project();
     const std::uint8_t ScopedBusCount =
         std::min<std::uint8_t>(ScopedProject.audioBusCount, kMaxProjectAudioBuses);
@@ -418,6 +419,53 @@ void ProjectSettingsPanel::InitializeAudioSettings(Ecs::SystemContext& InContext
     (void)MAudioSettings.SetProject("audio.music", Fby::Settings::Value::MakeFloat(ScopedProject.musicVolume));
     MAudioPanel.SetRegistry(&MAudioSettings, Fby::Settings::Scope::Project);
     MAudioSettingsReady = true;
+}
+
+void ProjectSettingsPanel::SyncAccessibilitySettings()
+{
+    if (!MAccessibilityRegistryReady || MStore == nullptr)
+    {
+        return;
+    }
+    const AccessibilityProfile& ScopedProfile = MStore->Project().accessibility;
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.deaf", Fby::Settings::Value::MakeBool(
+                                  Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityDeafMode)));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.flash_guard", Fby::Settings::Value::MakeBool(Fby::AccessibilityHasFlag(
+                                         ScopedProfile.runtime.flags, Fby::AccessibilityFlashGuard)));
+    (void)MAccessibilityRegistry.SetProject("accessibility.subtitles",
+                                            Fby::Settings::Value::MakeBool(ScopedProfile.runtime.showSubtitles));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.flash_threshold", Fby::Settings::Value::MakeFloat(ScopedProfile.runtime.flashThreshold));
+    (void)MAccessibilityRegistry.SetProject("accessibility.flash_gain",
+                                            Fby::Settings::Value::MakeFloat(ScopedProfile.runtime.flashGain));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.minimum_contrast",
+        Fby::Settings::Value::MakeFloat(ScopedProfile.presentation.minimumContrastRatio));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.motion_scale", Fby::Settings::Value::MakeFloat(ScopedProfile.presentation.motionScale));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.oled_shift", Fby::Settings::Value::MakeBool(ScopedProfile.presentation.oledPixelShift));
+}
+
+void ProjectSettingsPanel::ResetGeneratedState() noexcept
+{
+    if (MAudioSystem != nullptr)
+    {
+        for (BusId ScopedBus : MProjectBusIds)
+        {
+            if (ScopedBus >= kFirstDynamicBus && ScopedBus < kMaxBuses)
+            {
+                (void)MAudioSystem->DestroyBus(ScopedBus);
+            }
+        }
+    }
+    MProjectBusIds.fill(kInvalidBus);
+    MAudioSettings = Settings::Registry();
+    MAudioSettingsReady = false;
+    MAudioSystem = nullptr;
+    MAudioPanel.SetRegistry(nullptr, Settings::Scope::Project);
 }
 
 ProjectSettings& ProjectSettingsPanel::Values() noexcept
@@ -756,6 +804,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         MAccessibilityPanel.SetRegistry(&MAccessibilityRegistry, Fby::Settings::Scope::Project);
         MAccessibilityRegistryReady = true;
     }
+    SyncAccessibilitySettings();
     if (ImGui::CollapsingHeader("Generated accessibility settings"))
     {
         MAccessibilityPanel.DrawInline();
@@ -1415,6 +1464,28 @@ void EditorSettingsPanel::CommitIfFinished(Ecs::SystemContext& InContext)
     }
 }
 
+void EditorSettingsPanel::SyncGeneratedEditorSettings()
+{
+    if (!MGeneratedReady || MStore == nullptr)
+    {
+        return;
+    }
+    const EditorSettings& ScopedValues = MStore->Editor();
+    (void)MGeneratedRegistry.SetProject("editor.ui_scale", Fby::Settings::Value::MakeFloat(ScopedValues.uiScale));
+    (void)MGeneratedRegistry.SetProject("editor.font_panel_body",
+                                        Fby::Settings::Value::MakeFloat(ScopedValues.fontPanelBody));
+    (void)MGeneratedRegistry.SetProject("editor.text_line_spacing",
+                                        Fby::Settings::Value::MakeFloat(ScopedValues.textLineSpacing));
+    (void)MGeneratedRegistry.SetProject("editor.log_max_files",
+                                        Fby::Settings::Value::MakeInt(ScopedValues.logMaxFiles));
+    (void)MGeneratedRegistry.SetProject("editor.undo_memory_mb",
+                                        Fby::Settings::Value::MakeInt(ScopedValues.undoMemoryMB));
+    (void)MGeneratedRegistry.SetProject("editor.frame_rate_limit",
+                                        Fby::Settings::Value::MakeInt(ScopedValues.frameRateLimit));
+    (void)MGeneratedRegistry.SetProject("editor.vsync", Fby::Settings::Value::MakeBool(ScopedValues.vsync));
+    (void)MGeneratedRegistry.SetProject("editor.theme", Fby::Settings::Value::MakeString(ScopedValues.theme));
+}
+
 void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 {
     if (MStore == nullptr)
@@ -1441,6 +1512,7 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         MGeneratedPanel.SetRegistry(&MGeneratedRegistry, Fby::Settings::Scope::Project);
         MGeneratedReady = true;
     }
+    SyncGeneratedEditorSettings();
     if (ImGui::CollapsingHeader("Generated editor settings"))
     {
         MGeneratedPanel.DrawInline();

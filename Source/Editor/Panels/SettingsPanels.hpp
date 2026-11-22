@@ -71,12 +71,15 @@ public:
     }
     [[nodiscard]] ProjectSettings& Values() noexcept;
     [[nodiscard]] const ProjectSettings& Values() const noexcept;
+    // Tears down project-declared DSP buses before the next project is applied.
+    void ResetGeneratedState() noexcept;
 
 private:
     void CommitIfFinished(Ecs::SystemContext& InContext);
     void BeginOrRecord(Ecs::SystemContext& InContext,
                        const std::array<std::byte, sizeof(ProjectSettings)>& InBefore) noexcept;
     void InitializeAudioSettings(Ecs::SystemContext& InContext);
+    void SyncAccessibilitySettings();
 
     CommandStack* MCommands = nullptr;
     ProjectConfigStore* MStore = nullptr;
@@ -97,6 +100,7 @@ private:
     Settings::Registry MAudioSettings;
     SettingsRegistryPanel MAudioPanel;
     std::array<BusId, kMaxProjectAudioBuses> MProjectBusIds{};
+    AudioSystem* MAudioSystem = nullptr;
     bool MAudioSettingsReady = false;
     Settings::Registry MOutputPolicySettings;
     SettingsRegistryPanel MOutputPolicyPanel;
@@ -133,6 +137,7 @@ private:
     void CommitIfFinished(Ecs::SystemContext& InContext);
     void BeginOrRecord(Ecs::SystemContext& InContext,
                        const std::array<std::byte, sizeof(EditorSettings)>& InBefore) noexcept;
+    void SyncGeneratedEditorSettings();
 
     CommandStack* MCommands = nullptr;
     ProjectConfigStore* MStore = nullptr;

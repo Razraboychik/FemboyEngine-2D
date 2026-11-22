@@ -4,6 +4,7 @@
 #include <imgui.h>
 
 #include <cstdio>
+#include <vector>
 
 namespace Fby::Editor
 {
@@ -163,8 +164,32 @@ void SettingsRegistryPanel::DrawRow(const SettingsRow& InRow)
             break;
         }
         case Settings::Type::Enum:
-            ImGui::TextUnformatted(ScopedLabel);
+        {
+            std::vector<const char*> ScopedNames;
+            ScopedNames.reserve(ScopedDescriptor->EnumValues.size());
+            int ScopedSelected = 0;
+            for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedDescriptor->EnumValues.size(); ++ScopedIndex)
+            {
+                ScopedNames.push_back(ScopedDescriptor->EnumValues[ScopedIndex].c_str());
+                if (ScopedDescriptor->EnumValues[ScopedIndex] == ScopedValue.EnumValue)
+                {
+                    ScopedSelected = static_cast<int>(ScopedIndex);
+                }
+            }
+            if (ScopedNames.empty())
+            {
+                ImGui::TextUnformatted(ScopedLabel);
+                break;
+            }
+            ScopedChanged = ImGui::Combo(ScopedLabel, &ScopedSelected, ScopedNames.data(),
+                                         static_cast<int>(ScopedNames.size()));
+            if (ScopedChanged)
+            {
+                ScopedValue = Settings::Value::MakeEnum(
+                    ScopedDescriptor->EnumValues[static_cast<std::size_t>(ScopedSelected)]);
+            }
             break;
+        }
     }
 
     if (ScopedChanged)
