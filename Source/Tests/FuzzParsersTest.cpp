@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -27,6 +28,17 @@ void Check(bool InCondition, const char* InMessage)
 }
 
 std::uint64_t GState = 0x9E3779B97F4A7C15ull;
+
+std::uint32_t FuzzCount(std::uint32_t InBase)
+{
+    const char* ScopedEnv = std::getenv("FBY_FUZZ_ITERATIONS");
+    if (ScopedEnv == nullptr)
+    {
+        return InBase;
+    }
+    const unsigned long long ScopedRequested = std::strtoull(ScopedEnv, nullptr, 10);
+    return ScopedRequested == 0ull ? InBase : static_cast<std::uint32_t>(ScopedRequested);
+}
 
 std::uint32_t NextRandom()
 {
@@ -63,7 +75,7 @@ void TestInputPacketMutations()
     const std::size_t ScopedBytes = Fby::Net::EncodeInputPacket(ScopedPacket, ScopedEncoded);
     Check(ScopedBytes > 0, "valid input packet encodes");
 
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 4000; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(4000); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedMutated = ScopedEncoded;
         ScopedMutated.resize(ScopedBytes);
@@ -81,7 +93,7 @@ void TestInputPacketMutations()
         (void)Fby::Net::DecodeInputPacket(ScopedMutated, &ScopedDecoded);
     }
 
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 1000; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(1000); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedRandom;
         FillRandom(ScopedRandom, NextRandom() % 256u);
@@ -107,7 +119,7 @@ void TestArchiveMutations()
     ScopedArchive.resize(ScopedArchiveBytes);
 
     std::vector<std::byte> ScopedDecryptBuffer(8192);
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 3000; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(3000); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedMutated = ScopedArchive;
         const std::uint32_t ScopedFlips = 1u + (NextRandom() % 3u);
@@ -120,7 +132,7 @@ void TestArchiveMutations()
         (void)Fby::Assets::FemArchiver::Open(ScopedMutated, nullptr, ScopedDecryptBuffer, ScopedReader);
     }
 
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 500; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(500); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedRandom;
         FillRandom(ScopedRandom, NextRandom() % 512u);
@@ -141,7 +153,7 @@ void TestFempakMutations()
 
     const std::filesystem::path ScopedTemp =
         std::filesystem::temp_directory_path() / "fby_fuzz_input.fempak";
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 400; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(400); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedMutated = ScopedValid;
         if ((ScopedIteration % 4u) == 3u)
@@ -189,7 +201,7 @@ void TestAsepriteMutations()
   }
 })";
     std::string ScopedBase = kSheet;
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 4000; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(4000); ++ScopedIteration)
     {
         std::string ScopedMutated = ScopedBase;
         const std::uint32_t ScopedMode = NextRandom() % 4u;
@@ -223,7 +235,7 @@ void TestTiledMutations()
  <layer name="ground"><data encoding="csv">1,2,0,3</data></layer>
 </map>)";
     std::string ScopedBase = kMap;
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 4000; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(4000); ++ScopedIteration)
     {
         std::string ScopedMutated = ScopedBase;
         const std::uint32_t ScopedMode = NextRandom() % 4u;
@@ -264,7 +276,7 @@ void TestLzMutations()
     ScopedCompressed.resize(ScopedCompressedBytes);
 
     std::vector<std::byte> ScopedOutput(ScopedPlain.size() + 64u);
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 3000; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(3000); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedMutated = ScopedCompressed;
         const std::uint32_t ScopedFlips = 1u + (NextRandom() % 3u);
@@ -276,7 +288,7 @@ void TestLzMutations()
         (void)Fby::Assets::FbyLzDecompress(ScopedMutated, ScopedOutput);
     }
 
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 1000; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(1000); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedRandom;
         FillRandom(ScopedRandom, NextRandom() % 256u);

@@ -81,9 +81,12 @@ fby_add_engine_test(fby_pause_test pause PauseTest.cpp)
 # Parser mutation sweep: input packet, .femarc and the FbyLz codec.
 fby_add_engine_test(fby_api_contract_test api_contract ApiContractTest.cpp)
 fby_add_engine_test(fby_soak_smoke_test soak_smoke SoakSmokeTest.cpp)
+fby_add_engine_test(fby_wall_clock_soak_test wall_clock_soak WallClockSoakTest.cpp)
 fby_add_engine_test(fby_fuzz_parsers_test fuzz_parsers FuzzParsersTest.cpp)
+set_tests_properties(fuzz_parsers PROPERTIES LABELS "fuzz")
 # Noise handshake and record mutation sweep.
 fby_add_engine_test(fby_fuzz_noise_test fuzz_noise FuzzNoiseTest.cpp)
+set_tests_properties(fuzz_noise PROPERTIES LABELS "fuzz")
 # Compiled-in toolchain and dependency metadata.
 fby_add_engine_test(fby_build_info_test build_info BuildInfoTest.cpp)
 # Safe-area layout and resolved widget rects.
