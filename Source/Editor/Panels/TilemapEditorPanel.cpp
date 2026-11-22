@@ -462,7 +462,6 @@ void TilemapEditorPanel::DrawToolbar(Ecs::Registry& InRegistry, Entity InSelecte
             MStatus = "the selected entity has no TilemapComponent";
         }
     }
-    ImGui::EndDisabled();
     ImGui::SameLine();
     if (ImGui::Button("Clear"))
     {
