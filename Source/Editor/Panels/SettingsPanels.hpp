@@ -4,6 +4,7 @@
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
 #include "Editor/Panels/SettingsRegistryPanel.hpp"
+#include "Engine/Audio/AudioSettings.hpp"
 #include "Engine/Core/SettingsRegistry.hpp"
 #include "Engine/RHI/BackendCapabilities.hpp"
 #include "Engine/RHI/RHI.hpp"
@@ -72,7 +73,7 @@ private:
     void CommitIfFinished(Ecs::SystemContext& InContext);
     void BeginOrRecord(Ecs::SystemContext& InContext,
                        const std::array<std::byte, sizeof(ProjectSettings)>& InBefore) noexcept;
-    void InitializeAudioSettings();
+    void InitializeAudioSettings(Ecs::SystemContext& InContext);
 
     CommandStack* MCommands = nullptr;
     ProjectConfigStore* MStore = nullptr;
@@ -92,6 +93,7 @@ private:
     bool MDirty = false;
     Settings::Registry MAudioSettings;
     SettingsRegistryPanel MAudioPanel;
+    std::array<BusId, kMaxProjectAudioBuses> MProjectBusIds{};
     bool MAudioSettingsReady = false;
 };
 

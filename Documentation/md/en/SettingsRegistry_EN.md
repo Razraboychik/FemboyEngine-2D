@@ -119,8 +119,10 @@ parent = "master"
 default_db = -2.0
 ```
 
-The bus list is developer data. The engine provides the registry and the DSP
-graph; it does not impose a fixed set of categories.
+The bus list is developer data. On project open the editor creates the declared
+DSP buses, maps each one to a generated dB setting and falls back to the legacy
+master/SFX/music values when the list is empty. The engine does not impose a
+fixed set of categories.
 `Audio::RegisterAudioBusSettings` registers one user-editable dB setting per
 declared bus and maps each setting to `AudioSystem::SetBusVolumeDb`.
 

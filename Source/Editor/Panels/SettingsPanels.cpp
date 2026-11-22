@@ -357,12 +357,40 @@ void ProjectSettingsPanel::Initialize(CommandStack& InCommands, ProjectConfigSto
     MDirty = false;
 }
 
-void ProjectSettingsPanel::InitializeAudioSettings()
+void ProjectSettingsPanel::InitializeAudioSettings(Ecs::SystemContext& InContext)
 {
     if (MAudioSettingsReady || MStore == nullptr)
     {
         return;
     }
+    const ProjectSettings& ScopedProject = MStore->Project();
+    const std::uint8_t ScopedBusCount =
+        std::min<std::uint8_t>(ScopedProject.audioBusCount, kMaxProjectAudioBuses);
+    if (ScopedBusCount > 0 && InContext.audio != nullptr)
+    {
+        std::array<Fby::Audio::AudioBusDefinition, kMaxProjectAudioBuses> ScopedDefinitions{};
+        for (std::uint8_t ScopedIndex = 0; ScopedIndex < ScopedBusCount; ++ScopedIndex)
+        {
+            const ProjectAudioBus& ScopedBus = ScopedProject.audioBuses[ScopedIndex];
+            ScopedDefinitions[ScopedIndex] = {std::string_view(ScopedBus.id), std::string_view(ScopedBus.name),
+                                              std::string_view(ScopedBus.parent), ScopedBus.defaultDb};
+        }
+        if (Fby::Audio::CreateAudioBuses(*InContext.audio,
+                                         std::span<const Fby::Audio::AudioBusDefinition>(ScopedDefinitions.data(),
+                                                                                         ScopedBusCount),
+                                         std::span<Fby::BusId>(MProjectBusIds.data(), ScopedBusCount)))
+        {
+            Fby::Audio::RegisterAudioBusSettings(
+                MAudioSettings,
+                std::span<const Fby::Audio::AudioBusDefinition>(ScopedDefinitions.data(), ScopedBusCount),
+                std::span<const Fby::BusId>(MProjectBusIds.data(), ScopedBusCount), InContext.audio);
+            (void)MAudioSettings.Freeze();
+            MAudioPanel.SetRegistry(&MAudioSettings, Fby::Settings::Scope::Project);
+            MAudioSettingsReady = true;
+            return;
+        }
+    }
+
     auto ScopedAdd = [this](const char* InId, const char* InLabel, float ProjectSettings::*InMember)
     {
         MAudioSettings.Float(InId)
@@ -385,7 +413,6 @@ void ProjectSettingsPanel::InitializeAudioSettings()
     ScopedAdd("audio.sfx", "SFX", &ProjectSettings::sfxVolume);
     ScopedAdd("audio.music", "Music", &ProjectSettings::musicVolume);
     (void)MAudioSettings.Freeze();
-    const ProjectSettings& ScopedProject = MStore->Project();
     (void)MAudioSettings.SetProject("audio.master", Fby::Settings::Value::MakeFloat(ScopedProject.masterVolume));
     (void)MAudioSettings.SetProject("audio.sfx", Fby::Settings::Value::MakeFloat(ScopedProject.sfxVolume));
     (void)MAudioSettings.SetProject("audio.music", Fby::Settings::Value::MakeFloat(ScopedProject.musicVolume));
@@ -698,7 +725,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::TextDisabled("Auto uses DOD when the budget is 4096 or more and the world has no joints.");
 
     ImGui::SeparatorText("Mixer");
-    InitializeAudioSettings();
+    InitializeAudioSettings(InContext);
     if (MAudioSettingsReady)
     {
         const ProjectSettings& ScopedProjectValues = MStore->Project();
