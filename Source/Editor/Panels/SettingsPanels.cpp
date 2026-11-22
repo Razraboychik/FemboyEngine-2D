@@ -357,6 +357,42 @@ void ProjectSettingsPanel::Initialize(CommandStack& InCommands, ProjectConfigSto
     MDirty = false;
 }
 
+void ProjectSettingsPanel::InitializeAudioSettings()
+{
+    if (MAudioSettingsReady || MStore == nullptr)
+    {
+        return;
+    }
+    auto ScopedAdd = [this](const char* InId, const char* InLabel, float ProjectSettings::*InMember)
+    {
+        MAudioSettings.Float(InId)
+            .Category("Mixer")
+            .Label(InLabel)
+            .Unit("linear")
+            .Default(Fby::Settings::Value::MakeFloat(1.0))
+            .Range(0.0, 2.0)
+            .Scope(Fby::Settings::Scope::Project)
+            .Apply(
+                [this, InMember](const Fby::Settings::Value& InValue)
+                {
+                    if (MStore != nullptr)
+                    {
+                        MStore->Project().*InMember = static_cast<float>(InValue.FloatValue);
+                    }
+                });
+    };
+    ScopedAdd("audio.master", "Master", &ProjectSettings::masterVolume);
+    ScopedAdd("audio.sfx", "SFX", &ProjectSettings::sfxVolume);
+    ScopedAdd("audio.music", "Music", &ProjectSettings::musicVolume);
+    (void)MAudioSettings.Freeze();
+    const ProjectSettings& ScopedProject = MStore->Project();
+    (void)MAudioSettings.SetProject("audio.master", Fby::Settings::Value::MakeFloat(ScopedProject.masterVolume));
+    (void)MAudioSettings.SetProject("audio.sfx", Fby::Settings::Value::MakeFloat(ScopedProject.sfxVolume));
+    (void)MAudioSettings.SetProject("audio.music", Fby::Settings::Value::MakeFloat(ScopedProject.musicVolume));
+    MAudioPanel.SetRegistry(&MAudioSettings, Fby::Settings::Scope::Project);
+    MAudioSettingsReady = true;
+}
+
 ProjectSettings& ProjectSettingsPanel::Values() noexcept
 {
     return MStore->Project();
@@ -662,9 +698,18 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::TextDisabled("Auto uses DOD when the budget is 4096 or more and the world has no joints.");
 
     ImGui::SeparatorText("Mixer");
-    ImGui::SliderFloat("Master", &ScopedValues.masterVolume, 0.0f, 2.0f, "%.2f");
-    ImGui::SliderFloat("SFX", &ScopedValues.sfxVolume, 0.0f, 2.0f, "%.2f");
-    ImGui::SliderFloat("Music", &ScopedValues.musicVolume, 0.0f, 2.0f, "%.2f");
+    InitializeAudioSettings();
+    if (MAudioSettingsReady)
+    {
+        const ProjectSettings& ScopedProjectValues = MStore->Project();
+        (void)MAudioSettings.SetProject("audio.master",
+                                        Fby::Settings::Value::MakeFloat(ScopedProjectValues.masterVolume));
+        (void)MAudioSettings.SetProject("audio.sfx",
+                                        Fby::Settings::Value::MakeFloat(ScopedProjectValues.sfxVolume));
+        (void)MAudioSettings.SetProject("audio.music",
+                                        Fby::Settings::Value::MakeFloat(ScopedProjectValues.musicVolume));
+    }
+    MAudioPanel.DrawInline();
 
     // One profile: the same values reach the game frame, the editor window and
     // the OLED policy, so a project and the person editing it cannot disagree.

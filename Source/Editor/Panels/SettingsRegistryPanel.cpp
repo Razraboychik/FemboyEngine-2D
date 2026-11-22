@@ -38,7 +38,23 @@ void SettingsRegistryPanel::Draw(const char* InTitle, bool* InOpen)
         ImGui::End();
         return;
     }
+    DrawRows();
+    ImGui::End();
+    DrawConfirmation();
+}
 
+void SettingsRegistryPanel::DrawInline()
+{
+    if (MRegistry == nullptr)
+    {
+        return;
+    }
+    DrawRows();
+    DrawConfirmation();
+}
+
+void SettingsRegistryPanel::DrawRows()
+{
     if (ImGui::InputTextWithHint("##settings-search", "Search settings", MSearch.data(), MSearch.size()))
     {
         MModel.SetConfig({.ShowAdvanced = MShowAdvanced,
@@ -83,8 +99,6 @@ void SettingsRegistryPanel::Draw(const char* InTitle, bool* InOpen)
         ImGui::Separator();
         ImGui::TextWrapped("%s", MStatus.c_str());
     }
-    ImGui::End();
-    DrawConfirmation();
 }
 
 void SettingsRegistryPanel::DrawRow(const SettingsRow& InRow)

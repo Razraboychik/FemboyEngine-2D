@@ -143,7 +143,9 @@ exposes `LocalizationKey`, confirmation text and recovery hotkey, and routes edi
 through the selected scope. `Reset` removes the override and re-applies the
 effective value. `SettingsRegistryPanel` is the ImGui renderer: it groups rows by
 category, draws the typed widget, uses a confirmation modal for dangerous values
-and never hardcodes a setting id or type.
+and never hardcodes a setting id or type. The Project Settings mixer already uses
+this generated panel for its master/SFX/music values and keeps the project fields
+in sync after undo.
 
 ## 10. Persistence and UI
 

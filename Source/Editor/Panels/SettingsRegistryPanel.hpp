@@ -17,8 +17,11 @@ class SettingsRegistryPanel
 public:
     void SetRegistry(Settings::Registry* InRegistry, Settings::Scope InScope);
     void Draw(const char* InTitle, bool* InOpen);
+    // Draws the generated rows inside an existing window.
+    void DrawInline();
 
 private:
+    void DrawRows();
     void DrawRow(const SettingsRow& InRow);
     void DrawConfirmation();
 
