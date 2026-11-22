@@ -1,6 +1,8 @@
 // FemboyEngine2D - AudioSystem implementation.
 #include "Engine/Audio/Audio.hpp"
 
+#include <cmath>
+
 #include "Engine/Audio/AudioStream.hpp"
 #include "Engine/Audio/OggOpus.hpp"
 
@@ -479,6 +481,16 @@ void AudioSystem::SetBusVolume(AudioBus InBus, float InVolume)
 float AudioSystem::BusVolume(AudioBus InBus) const noexcept
 {
     return MMixer.BusGain(BusIdFor(InBus));
+}
+
+bool AudioSystem::SetBusVolumeDb(BusId InBus, float InDecibels) noexcept
+{
+    if (InBus >= kMaxBuses)
+    {
+        return false;
+    }
+    const float ScopedGain = std::pow(10.0f, InDecibels / 20.0f);
+    return MMixer.SetBusGain(InBus, std::clamp(ScopedGain, 0.0f, 8.0f)) == DspResult::Ok;
 }
 
 void AudioSystem::SetBusPaused(AudioBus InBus, bool InPaused) noexcept

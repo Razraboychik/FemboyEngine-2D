@@ -105,6 +105,8 @@ for (const BusDef& Bus : GameBuses)
 
 The bus list is developer data. The engine provides the registry and the DSP
 graph; it does not impose a fixed set of categories.
+`Audio::RegisterAudioBusSettings` registers one user-editable dB setting per
+declared bus and maps each setting to `AudioSystem::SetBusVolumeDb`.
 
 ## 7. Theme colours
 

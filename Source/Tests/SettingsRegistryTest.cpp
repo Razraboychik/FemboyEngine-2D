@@ -1,9 +1,13 @@
 // FemboyEngine2D - settings schema, scopes, danger and safe-mode tests.
 #include "Engine/Audio/Audio.hpp"
+#include "Engine/Audio/AudioSettings.hpp"
 #include "Engine/Core/OutputPolicy.hpp"
 #include "Engine/Core/SettingsRegistry.hpp"
 #include "Engine/Core/SettingsSerialization.hpp"
+#include "Engine/ECS/Components.hpp"
+#include "Engine/RHI/FrameComposer.hpp"
 
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -110,6 +114,14 @@ int main()
     ScopedOutput.RestoreSafeMode();
     Check(!ScopedOutput.SafeModeRequested() && ScopedOutput.IsPlayerVisible(), "safe mode restores both outputs");
 
+    ScopedOutput.SetRenderPolicy(Fby::Output::RenderPolicy::Disabled);
+    Fby::Ecs::Registry ScopedWorld;
+    Fby::Rhi::CameraData ScopedCamera;
+    Fby::Rhi::FrameComposer ScopedFrame;
+    ScopedFrame.BuildFramePacket(ScopedWorld, ScopedCamera, Fby::Color32{}, 0);
+    Check(ScopedFrame.Packet().items.empty(), "disabled render policy emits an empty world packet");
+    ScopedOutput.RestoreSafeMode();
+
     const std::filesystem::path ScopedPath = std::filesystem::path("build") / "settings_registry_test.toml";
     std::error_code ScopedFileError;
     std::filesystem::remove(ScopedPath, ScopedFileError);
@@ -133,6 +145,20 @@ int main()
     Check(ScopedLoadedCount == 1, "one known user setting loads");
     Check(ScopedLoaded.Effective("audio.master").FloatValue == -60.0, "loaded user value survives round-trip");
     std::filesystem::remove(ScopedPath, ScopedFileError);
+
+    std::array<Fby::Audio::AudioBusSetting, 3> ScopedBuses{{
+        {"music", "Music", Fby::kMusicBus, -6.0f},
+        {"voice", "Dialogue", Fby::kFirstDynamicBus, -2.0f},
+        {"ambient", "Ambient", Fby::kFirstDynamicBus + 1u, -10.0f},
+    }};
+    Fby::Settings::Registry ScopedAudioRegistry;
+    Fby::AudioSystem ScopedAudioSystem;
+    Fby::Audio::RegisterAudioBusSettings(ScopedAudioRegistry, ScopedBuses, &ScopedAudioSystem);
+    Check(ScopedAudioRegistry.Freeze(), "audio bus schema freezes");
+    Check(ScopedAudioRegistry.Descriptors().size() == 3, "one setting per declared bus");
+    Check(ScopedAudioRegistry.Find("audio.bus.voice") != nullptr, "voice bus setting exists");
+    Check(ScopedAudioRegistry.SetUser("audio.bus.voice", Fby::Settings::Value::MakeFloat(-20.0)),
+          "voice bus setting is user-editable");
 
     if (GFailures != 0)
     {
