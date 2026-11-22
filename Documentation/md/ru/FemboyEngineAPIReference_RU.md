@@ -496,7 +496,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 Генерируется из заголовков при каждом запуске. Символ из этого списка объявлен в поставляемом дереве; заголовок и строка — авторитетное расположение.
 
 
-### Editor/Infrastructure (121)
+### Editor/Infrastructure (124)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -518,6 +518,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/AssetDatabaseWatchSystem.hpp` | 27 |
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 39 |
 | `Config` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 90 |
+| `Config` | Infrastructure | `Source/Editor/Infrastructure/SettingsPanelModel.hpp` | 36 |
 | `ContentBrowserPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 61 |
 | `CookRequest` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 148 |
 | `CookResult` | Infrastructure | `Source/Editor/Infrastructure/AssetImportService.hpp` | 159 |
@@ -595,6 +596,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `SettingDesc` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 28 |
 | `SettingKind` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 20 |
 | `SettingScope` | Infrastructure | `Source/Editor/Infrastructure/SettingsSchema.hpp` | 11 |
+| `SettingsPanelModel` | Infrastructure | `Source/Editor/Infrastructure/SettingsPanelModel.hpp` | 33 |
+| `SettingsRow` | Infrastructure | `Source/Editor/Infrastructure/SettingsPanelModel.hpp` | 18 |
 | `Slot` | Infrastructure | `Source/Editor/Infrastructure/MaterialGraphRuntime.hpp` | 118 |
 | `Source` | Infrastructure | `Source/Editor/Infrastructure/EditTransactions.hpp` | 19 |
 | `SpawnComponent` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 301 |
@@ -622,7 +625,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VisualScriptPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 71 |
 | `WindowManager` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 16 |
 
-### Editor/Panels (109)
+### Editor/Panels (110)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -695,6 +698,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `ScriptRuntime` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 16 |
 | `SdfCharacterPanel` | Panels | `Source/Editor/Panels/SdfCharacterPanel.hpp` | 9 |
 | `SdfLightingPanel` | Panels | `Source/Editor/Panels/SdfLightingPanel.hpp` | 19 |
+| `SettingsRegistryPanel` | Panels | `Source/Editor/Panels/SettingsRegistryPanel.hpp` | 15 |
 | `SinkUser` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 88 |
 | `SkeletonInspectorState` | Panels | `Source/Editor/Panels/SkeletonAssetPanel.hpp` | 19 |
 | `SpawnContext` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 68 |

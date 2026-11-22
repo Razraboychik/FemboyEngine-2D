@@ -135,7 +135,17 @@ user and session overrides for those descriptors. It is intended for a
 `--safe-mode` launch, a recovery hotkey or a crash-loop fallback. It does not
 touch non-dangerous settings.
 
-## 9. Persistence and UI
+## 9. Generated panel model
+
+`Editor::SettingsPanelModel` builds rows from the frozen descriptor span. It
+filters hidden and advanced entries, applies a search over id, label and category,
+exposes `LocalizationKey`, confirmation text and recovery hotkey, and routes edits
+through the selected scope. `Reset` removes the override and re-applies the
+effective value. `SettingsRegistryPanel` is the ImGui renderer: it groups rows by
+category, draws the typed widget, uses a confirmation modal for dangerous values
+and never hardcodes a setting id or type.
+
+## 10. Persistence and UI
 
 Project defaults, per-install user overrides, the generated settings panel and
 per-project audio-bus data are separate layers. The registry is the single
@@ -143,7 +153,7 @@ schema those layers read. `SaveSettingsToml` and `LoadSettingsToml` write only
 values for one scope and ignore unknown keys for forward compatibility. The
 editor and game UI should build their controls from `Descriptors()`.
 
-## 10. Current limits
+## 11. Current limits
 
 - The registry does not create audio buses; the game maps bus ids to its DSP
   graph.

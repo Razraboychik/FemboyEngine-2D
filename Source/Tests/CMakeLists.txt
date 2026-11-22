@@ -695,6 +695,11 @@ fby_add_engine_test(fby_sdf_primitives_test sdf_primitives SdfPrimitivesTest.cpp
 fby_add_engine_test(fby_sdf_character_test sdf_character SdfCharacterTest.cpp)
 
 if(TARGET fby_editor)
+    add_executable(fby_settings_panel_model_test SettingsPanelModelTest.cpp)
+    target_link_libraries(fby_settings_panel_model_test PRIVATE FemboyEngine2D::Editor)
+    set_target_properties(fby_settings_panel_model_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME settings_panel_model COMMAND fby_settings_panel_model_test)
     add_executable(fby_editor_smoke_runner EditorSmokeRunner.cpp)
     set_target_properties(fby_editor_smoke_runner PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")

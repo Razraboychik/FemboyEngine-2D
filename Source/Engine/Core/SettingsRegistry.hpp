@@ -436,6 +436,29 @@ public:
         }
     }
 
+    [[nodiscard]] bool ClearOverride(std::string_view InId, Scope InScope, std::string* InError = nullptr)
+    {
+        const Descriptor* Scoped = Find(InId);
+        if (Scoped == nullptr || !MFrozen)
+        {
+            SetError(InError, "unknown setting or schema is not frozen");
+            return false;
+        }
+        if (InScope == Scope::User)
+        {
+            MUser.erase(std::string(InId));
+        }
+        else if (InScope == Scope::Session)
+        {
+            MSession.erase(std::string(InId));
+        }
+        else
+        {
+            MProject.erase(std::string(InId));
+        }
+        return Apply(InId, InError);
+    }
+
     [[nodiscard]] bool Apply(std::string_view InId, std::string* InError = nullptr)
     {
         const Descriptor* Scoped = Find(InId);

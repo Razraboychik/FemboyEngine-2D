@@ -1,0 +1,74 @@
+// FemboyEngine2D - generated settings panel model tests.
+#include "Editor/Infrastructure/SettingsPanelModel.hpp"
+
+#include <cstdio>
+#include <string>
+
+namespace
+{
+int GFailures = 0;
+
+void Check(bool InCondition, const char* InMessage)
+{
+    if (!InCondition)
+    {
+        std::fprintf(stderr, "FAIL: %s\n", InMessage);
+        ++GFailures;
+    }
+}
+}
+
+int main()
+{
+    Fby::Settings::Registry ScopedRegistry;
+    ScopedRegistry.Float("audio.voice").Category("Audio").Label("Voice").Range(-60.0, 6.0).Default(Fby::Settings::Value::MakeFloat(-3.0)).Scope(Fby::Settings::Scope::User);
+    ScopedRegistry.Bool("video.hdr").Category("Video").Label("HDR").Default(Fby::Settings::Value::MakeBool(true));
+    ScopedRegistry.Bool("advanced.debug").Category("Video").Label("Debug").Advanced().Default(Fby::Settings::Value::MakeBool(false));
+    ScopedRegistry.Bool("hidden.secret").Category("Video").Label("Secret").Flags(Fby::Settings::FlagHidden).Default(Fby::Settings::Value::MakeBool(false));
+    ScopedRegistry.Bool("render.disabled").Category("Rendering").Label("Disable render").Dangerous("Disable render output", "Ctrl+Alt+F12").Scope(Fby::Settings::Scope::User).Safe(Fby::Settings::Value::MakeBool(false));
+    Check(ScopedRegistry.Freeze(), "panel schema freezes");
+
+    Fby::Editor::SettingsPanelModel ScopedModel;
+    Fby::Editor::SettingsPanelModel::Config ScopedConfig;
+    ScopedConfig.Scope = Fby::Settings::Scope::User;
+    ScopedModel.SetConfig(ScopedConfig);
+    ScopedModel.Rebuild(ScopedRegistry);
+    Check(ScopedModel.Rows().size() == 3, "advanced and hidden rows are filtered by default");
+    Check(ScopedModel.Find("audio.voice") != nullptr, "audio row exists");
+
+    ScopedConfig.ShowAdvanced = true;
+    ScopedConfig.ShowHidden = true;
+    ScopedModel.SetConfig(ScopedConfig);
+    ScopedModel.Rebuild(ScopedRegistry);
+    Check(ScopedModel.Rows().size() == 5, "advanced and hidden rows can be shown");
+
+    ScopedConfig.Search = "voice";
+    ScopedModel.SetConfig(ScopedConfig);
+    ScopedModel.Rebuild(ScopedRegistry);
+    Check(ScopedModel.Rows().size() == 1, "search filters by label or id");
+
+    ScopedConfig.Search.clear();
+    ScopedModel.SetConfig(ScopedConfig);
+    ScopedModel.Rebuild(ScopedRegistry);
+    std::string ScopedError;
+    Check(!ScopedModel.Set(ScopedRegistry, "render.disabled", Fby::Settings::Value::MakeBool(true), false, &ScopedError),
+          "dangerous panel edit needs confirmation");
+    Check(ScopedModel.NeedsConfirmation("render.disabled"), "dangerous metadata is visible to the panel");
+    Check(ScopedModel.ConfirmationText("render.disabled") == "Disable render output", "confirmation text is exposed");
+    Check(ScopedModel.RecoveryHotkey("render.disabled") == "Ctrl+Alt+F12", "recovery hotkey is exposed");
+    Check(ScopedModel.Set(ScopedRegistry, "render.disabled", Fby::Settings::Value::MakeBool(true), true),
+          "confirmed dangerous edit is accepted");
+    Check(ScopedModel.Set(ScopedRegistry, "audio.voice", Fby::Settings::Value::MakeFloat(-20.0), false),
+          "ordinary panel edit is accepted");
+    Check(ScopedRegistry.Effective("audio.voice").FloatValue == -20.0, "panel edit reaches the registry");
+    Check(ScopedModel.Reset(ScopedRegistry, "audio.voice"), "reset removes the user override");
+    Check(ScopedRegistry.Effective("audio.voice").FloatValue == -3.0, "reset restores the default");
+
+    if (GFailures != 0)
+    {
+        std::fprintf(stderr, "%d settings panel test(s) failed\n", GFailures);
+        return 1;
+    }
+    std::printf("settings_panel_model: OK\n");
+    return 0;
+}

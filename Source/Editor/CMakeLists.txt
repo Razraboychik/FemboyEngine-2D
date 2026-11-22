@@ -17,6 +17,7 @@ add_library(fby_editor STATIC
     Infrastructure/PlayInEditor.cpp
     Infrastructure/ProjectConfig.cpp
     Infrastructure/ProjectPlugins.cpp
+    Infrastructure/SettingsPanelModel.cpp
     Infrastructure/UserSettings.cpp
     Infrastructure/ReleaseCooker.cpp
     Infrastructure/TextureThumbnails.cpp
@@ -46,6 +47,7 @@ add_library(fby_editor STATIC
     Panels/SdfLightingPanel.cpp
     Panels/ScriptDebuggerPanel.cpp
     Panels/SettingsPanels.cpp
+    Panels/SettingsRegistryPanel.cpp
     Panels/SkeletonAssetPanel.cpp
     Panels/SpriteAnimationPanel.cpp
     Panels/TilemapEditorPanel.cpp

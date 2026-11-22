@@ -136,7 +136,17 @@ Registry.ColorSetting("theme.ui.accent")
 hotkey восстановления или fallback после crash-loop. Обычные настройки не
 затрагиваются.
 
-## 9. Хранение и UI
+## 9. Модель сгенерированной панели
+
+`Editor::SettingsPanelModel` строит строки из замороженного span дескрипторов.
+Он фильтрует hidden и advanced, применяет поиск по id, label и категории,
+отдаёт `LocalizationKey`, confirmation text и recovery hotkey, а правки
+направляет в выбранный scope. `Reset` удаляет override и повторно применяет
+эффективное значение. `SettingsRegistryPanel` — ImGui-рендерер: группирует
+строки по категориям, рисует типизированный widget, использует confirmation
+modal для опасных значений и не хардкодит id или тип настройки.
+
+## 10. Хранение и UI
 
 Project defaults, per-install user overrides, сгенерированная панель настроек и
 данные звуковых шин — отдельные слои. Реестр — единая схема для них.
@@ -144,7 +154,7 @@ Project defaults, per-install user overrides, сгенерированная п�
 игнорируют неизвестные ключи для forward compatibility. Редактор и UI игры
 должны строить контролы из `Descriptors()`.
 
-## 10. Текущие ограничения
+## 11. Текущие ограничения
 
 - Реестр не создаёт звуковые шины; игра связывает bus id со своим DSP-графом.
 - Живая панель настроек должна строиться поверх span дескрипторов.
