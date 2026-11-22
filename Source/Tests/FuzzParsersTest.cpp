@@ -12,6 +12,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <vector>
 
 namespace
@@ -28,6 +29,16 @@ void Check(bool InCondition, const char* InMessage)
 }
 
 std::uint64_t GState = 0x9E3779B97F4A7C15ull;
+
+std::string ReadSeed(const char* InName, const char* InFallback)
+{
+    std::ifstream ScopedStream(std::string("Source/Tests/FuzzCorpus/") + InName, std::ios::binary);
+    if (!ScopedStream)
+    {
+        return InFallback;
+    }
+    return std::string((std::istreambuf_iterator<char>(ScopedStream)), std::istreambuf_iterator<char>());
+}
 
 std::uint32_t FuzzCount(std::uint32_t InBase)
 {
@@ -200,7 +211,7 @@ void TestAsepriteMutations()
     "frameTags": [{"name": "idle", "from": 0, "to": 1, "direction": "forward"}]
   }
 })";
-    std::string ScopedBase = kSheet;
+    std::string ScopedBase = ReadSeed("aseprite_seed.json", kSheet);
     for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(4000); ++ScopedIteration)
     {
         std::string ScopedMutated = ScopedBase;
@@ -234,7 +245,7 @@ void TestTiledMutations()
  <tileset firstgid="1" source="tiles.tsx"/>
  <layer name="ground"><data encoding="csv">1,2,0,3</data></layer>
 </map>)";
-    std::string ScopedBase = kMap;
+    std::string ScopedBase = ReadSeed("tiled_seed.tmx", kMap);
     for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(4000); ++ScopedIteration)
     {
         std::string ScopedMutated = ScopedBase;
