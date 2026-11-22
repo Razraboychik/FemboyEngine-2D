@@ -31,6 +31,14 @@ removes the window and swapchain.
 and a recovery hotkey. A game can hide them, expose them in its accessibility
 profile, or restrict them to a developer menu.
 
+## 1b. Editor exposure
+
+Project Settings renders the generated accessibility section and an
+`Output policies (safe mode)` section. Both use the same registry panel: dangerous
+policy values open a confirmation modal with the recovery hotkey, while ordinary
+accessibility values apply immediately. Editor Settings renders its generated
+subset in the same way.
+
 ## 2. Render-disabled mode
 
 When the render policy is `Disabled`, the game should skip world composition,

@@ -30,6 +30,14 @@ Fby::Output::AudioPolicy
 восстановления и recovery hotkey. Игра может скрыть их, показать в своём
 accessibility-профиле или оставить только в developer-меню.
 
+## 1b. Отображение в редакторе
+
+Project Settings показывает сгенерированную accessibility-секцию и секцию
+`Output policies (safe mode)`. Обе используют одну registry-панель: опасные
+policy-значения открывают confirmation modal с recovery hotkey, обычные
+accessibility-значения применяются сразу. Editor Settings показывает свой
+сгенерированный набор так же.
+
 ## 2. Режим без рендера
 
 При политике `Disabled` игра должна пропускать world composition, тени,

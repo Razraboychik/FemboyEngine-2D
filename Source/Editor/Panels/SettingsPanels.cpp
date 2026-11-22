@@ -742,6 +742,28 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     // the OLED policy, so a project and the person editing it cannot disagree.
     AccessibilityProfile& ScopedProfile = ScopedValues.accessibility;
     ImGui::SeparatorText("Accessibility");
+    if (!MOutputPolicySettingsReady)
+    {
+        Fby::Settings::RegisterOutputPolicySettings(MOutputPolicySettings);
+        (void)MOutputPolicySettings.Freeze();
+        MOutputPolicyPanel.SetRegistry(&MOutputPolicySettings, Fby::Settings::Scope::Project);
+        MOutputPolicySettingsReady = true;
+    }
+    if (!MAccessibilityRegistryReady)
+    {
+        Fby::Editor::RegisterAccessibilitySettings(MAccessibilityRegistry, MStore->Project().accessibility);
+        (void)MAccessibilityRegistry.Freeze();
+        MAccessibilityPanel.SetRegistry(&MAccessibilityRegistry, Fby::Settings::Scope::Project);
+        MAccessibilityRegistryReady = true;
+    }
+    if (ImGui::CollapsingHeader("Generated accessibility settings"))
+    {
+        MAccessibilityPanel.DrawInline();
+    }
+    if (ImGui::CollapsingHeader("Output policies (safe mode)"))
+    {
+        MOutputPolicyPanel.DrawInline();
+    }
     bool ScopedBlind = AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityBlindMode);
     if (ImGui::Checkbox("Blind mode (render skip + narrative log)", &ScopedBlind))
     {
@@ -1398,6 +1420,17 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         MCommands->CaptureComponent(Fby::kNullEntity, MCodec, ScopedBefore) == CommandStack::Result::Ok;
 
     ImGui::TextDisabled("Environment settings. Persisted to project.femproj and editor.ini.");
+    if (!MGeneratedReady)
+    {
+        Fby::Editor::RegisterEditorSettings(MGeneratedRegistry, ScopedValues);
+        (void)MGeneratedRegistry.Freeze();
+        MGeneratedPanel.SetRegistry(&MGeneratedRegistry, Fby::Settings::Scope::Project);
+        MGeneratedReady = true;
+    }
+    if (ImGui::CollapsingHeader("Generated editor settings"))
+    {
+        MGeneratedPanel.DrawInline();
+    }
     ImGui::Separator();
     if (MStore->Paths().IsValid())
     {

@@ -90,6 +90,19 @@ int main()
     Check(std::string(ScopedDecodedProject.project.audioBuses[1].id) == "voice", "audio bus id round-trips");
     Check(std::string(ScopedDecodedProject.project.audioBuses[1].parent) == "music",
           "audio bus parent round-trips");
+    const std::string ScopedEncodedProject = Fby::Editor::EncodeProjectToml(ScopedProject);
+    for (std::size_t ScopedLength = 0; ScopedLength < ScopedEncodedProject.size(); ScopedLength += 17)
+    {
+        Fby::Editor::ProjectConfig ScopedTruncated;
+        std::string ScopedTruncatedError;
+        (void)Fby::Editor::DecodeProjectToml(
+            std::string_view(ScopedEncodedProject).substr(0, ScopedLength), &ScopedTruncated, &ScopedTruncatedError);
+    }
+    Fby::Editor::ProjectConfig ScopedLegacyProject;
+    std::string ScopedLegacyError;
+    Check(Fby::Editor::DecodeProjectToml("[project]\nname = \"legacy\"\n", &ScopedLegacyProject, &ScopedLegacyError),
+          "legacy project without audio buses decodes");
+    Check(ScopedLegacyProject.project.audioBusCount == 0, "legacy project keeps an empty bus list");
 
     Fby::AccessibilityProfile ScopedProfile;
     Fby::Settings::Registry ScopedAccessibility;

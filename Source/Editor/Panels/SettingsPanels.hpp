@@ -4,7 +4,10 @@
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
 #include "Editor/Panels/SettingsRegistryPanel.hpp"
+#include "Editor/Infrastructure/AccessibilitySettings.hpp"
+#include "Editor/Infrastructure/EditorSettingsRegistry.hpp"
 #include "Engine/Audio/AudioSettings.hpp"
+#include "Engine/Core/OutputPolicySettings.hpp"
 #include "Engine/Core/SettingsRegistry.hpp"
 #include "Engine/RHI/BackendCapabilities.hpp"
 #include "Engine/RHI/RHI.hpp"
@@ -95,6 +98,12 @@ private:
     SettingsRegistryPanel MAudioPanel;
     std::array<BusId, kMaxProjectAudioBuses> MProjectBusIds{};
     bool MAudioSettingsReady = false;
+    Settings::Registry MOutputPolicySettings;
+    SettingsRegistryPanel MOutputPolicyPanel;
+    bool MOutputPolicySettingsReady = false;
+    Settings::Registry MAccessibilityRegistry;
+    SettingsRegistryPanel MAccessibilityPanel;
+    bool MAccessibilityRegistryReady = false;
 };
 
 class EditorSettingsPanel
@@ -133,5 +142,8 @@ private:
     EditorSettings MApplied{};
     bool MAppliedValid = false;
     bool MDirty = false;
+    Settings::Registry MGeneratedRegistry;
+    SettingsRegistryPanel MGeneratedPanel;
+    bool MGeneratedReady = false;
 };
 }

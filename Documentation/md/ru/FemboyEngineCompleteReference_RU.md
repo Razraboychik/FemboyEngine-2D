@@ -1876,7 +1876,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `BooksPanel` | Panels | `Source/Editor/Panels/BooksPanel.hpp` | 18 |
 | `CanvasModelOps` | Panels | `Source/Editor/Panels/NodeCanvasPanel.hpp` | 21 |
 | `CommandStack` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 25 |
-| `CommandStack` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 33 |
+| `CommandStack` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 36 |
 | `ComponentRegistry` | Panels | `Source/Editor/Panels/ScriptDebuggerPanel.hpp` | 19 |
 | `Config` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 35 |
 | `ContentBrowserPanel` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 27 |
@@ -1887,7 +1887,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `DragPayload` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 60 |
 | `EditorFonts` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 20 |
 | `EditorFonts` | Panels | `Source/Editor/Panels/VisualScriptPanel.hpp` | 20 |
-| `EditorSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 100 |
+| `EditorSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 109 |
 | `EditSource` | Panels | `Source/Editor/Panels/AIStateTreeCanvasPanel.hpp` | 58 |
 | `EditSource` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 128 |
 | `Entry` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 43 |
@@ -1913,10 +1913,10 @@ ScopedMaterials.Shutdown(InRhi);
 | `PieClientViewport` | Panels | `Source/Editor/Panels/PieClientViewport.hpp` | 15 |
 | `PIEFrameSlot` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 307 |
 | `PlaneView` | Panels | `Source/Editor/Panels/DirectionalBlendSpacePanel.hpp` | 122 |
-| `ProjectConfigStore` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 34 |
+| `ProjectConfigStore` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 37 |
 | `ProjectConfigStore` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 25 |
 | `ProjectDashboard` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 22 |
-| `ProjectSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 37 |
+| `ProjectSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 40 |
 | `QueryKind` | Panels | `Source/Editor/Panels/LogBoyPanel.hpp` | 430 |
 | `Registry` | Panels | `Source/Editor/Panels/SdfLightingPanel.hpp` | 10 |
 | `RenderTuningPanel` | Panels | `Source/Editor/Panels/RenderTuningPanel.hpp` | 18 |
@@ -1935,14 +1935,14 @@ ScopedMaterials.Shutdown(InRhi);
 | `SystemContext` | Panels | `Source/Editor/Panels/DataTablePanel.hpp` | 11 |
 | `SystemContext` | Panels | `Source/Editor/Panels/DocumentsPanel.hpp` | 12 |
 | `SystemContext` | Panels | `Source/Editor/Panels/RenderTuningPanel.hpp` | 12 |
-| `SystemContext` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 27 |
+| `SystemContext` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 30 |
 | `SystemContext` | Panels | `Source/Editor/Panels/SkeletonAssetPanel.hpp` | 13 |
 | `SystemContext` | Panels | `Source/Editor/Panels/SpriteAnimationPanel.hpp` | 13 |
 | `SystemContext` | Panels | `Source/Editor/Panels/UiLayoutPanel.hpp` | 14 |
 | `SystemContext` | Panels | `Source/Editor/Panels/VideoPanel.hpp` | 11 |
 | `SystemName` | Panels | `Source/Editor/Panels/LogBoyPanel.hpp` | 189 |
 | `TextPreviewPanel` | Panels | `Source/Editor/Panels/TextPreviewPanel.hpp` | 28 |
-| `TextureThumbnailCache` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 35 |
+| `TextureThumbnailCache` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 38 |
 | `TextureThumbnailCache` | Panels | `Source/Editor/Panels/SpriteAnimationPanel.hpp` | 19 |
 | `TilemapEditorPanel` | Panels | `Source/Editor/Panels/TilemapEditorPanel.hpp` | 20 |
 | `TimelinePanelContext` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 22 |
@@ -1965,7 +1965,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `VoiceReactiveSfxSettings` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 19 |
 | `VoiceSession` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 13 |
 | `VoiceSystem` | Panels | `Source/Editor/Panels/VoiceDevicePanel.hpp` | 14 |
-| `WidgetCanvas` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 21 |
+| `WidgetCanvas` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 24 |
 | `WindowManager` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 14 |
 
 ### Engine/AI (7)
