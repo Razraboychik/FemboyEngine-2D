@@ -63,6 +63,7 @@ set(FBY_ENGINE_SOURCES
     Core/PluginHost.cpp
     Core/Pause.cpp
     Core/SecureRng.cpp
+    Core/SettingsSerialization.cpp
     Core/ThirdPartyNotices.cpp
     Core/ThreadAffinity.cpp
     Core/WindowManager.cpp

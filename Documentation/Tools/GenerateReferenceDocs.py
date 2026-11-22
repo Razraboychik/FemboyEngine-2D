@@ -65,6 +65,8 @@ Documents = (
     {"Stem": "FemboyEngineOptimization"},
     {"Stem": "APIStability"},
     {"Stem": "UXChecklist"},
+    {"Stem": "SettingsRegistry"},
+    {"Stem": "AccessibilityOutput"},
 )
 Languages = ("en", "ru")
 

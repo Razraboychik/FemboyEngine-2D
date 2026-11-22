@@ -1,5 +1,6 @@
 // FemboyEngine2D - frame packet composition implementation.
 #include "Engine/RHI/FrameComposer.hpp"
+#include "Engine/Core/OutputPolicy.hpp"
 #include "Engine/Physics/SdfGi.hpp"
 
 #include "Engine/ECS/Components.hpp"
@@ -93,6 +94,14 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     }
     assert(MBuildThread == ScopedBuildThread && "FrameComposer must be built from one thread");
 #endif
+    if (!Output::Policy::Instance().RenderWorldEnabled())
+    {
+        MCount = 0;
+        MBatches.clear();
+        MLastCullComplete = true;
+        return;
+    }
+
     if (MSceneId == 0)
     {
         MSceneId = NextSceneId();

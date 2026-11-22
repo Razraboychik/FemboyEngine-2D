@@ -80,6 +80,7 @@ fby_add_engine_test(fby_parallel_safe_audit_test parallel_safe_audit ParallelSaf
 fby_add_engine_test(fby_pause_test pause PauseTest.cpp)
 # Parser mutation sweep: input packet, .femarc and the FbyLz codec.
 fby_add_engine_test(fby_api_contract_test api_contract ApiContractTest.cpp)
+fby_add_engine_test(fby_settings_registry_test settings_registry SettingsRegistryTest.cpp)
 fby_add_engine_test(fby_soak_smoke_test soak_smoke SoakSmokeTest.cpp)
 fby_add_engine_test(fby_wall_clock_soak_test wall_clock_soak WallClockSoakTest.cpp)
 fby_add_engine_test(fby_fuzz_parsers_test fuzz_parsers FuzzParsersTest.cpp)

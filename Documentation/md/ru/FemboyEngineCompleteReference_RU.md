@@ -2091,11 +2091,11 @@ ScopedMaterials.Shutdown(InRhi);
 | `BiquadState` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 369 |
 | `BusAtomics` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 370 |
 | `BusFilterParams` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 108 |
-| `BusRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 227 |
+| `BusRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 233 |
 | `BusShadow` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 291 |
 | `BusState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 338 |
 | `CommandQueue` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 170 |
-| `CookedClipRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 202 |
+| `CookedClipRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 208 |
 | `DspClipView` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 205 |
 | `DspGraph` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 216 |
 | `DspGraph` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 16 |
@@ -2116,7 +2116,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `OggPage` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 37 |
 | `OggPageReader` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 58 |
 | `OpusHeadInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 107 |
-| `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 209 |
+| `OwnedPcmRecord` | Audio | `Source/Engine/Audio/Audio.hpp` | 215 |
 | `Peer` | Audio | `Source/Engine/Audio/VoiceChannel.hpp` | 131 |
 | `PlayerState` | Audio | `Source/Engine/Audio/VoiceReactiveSfx.hpp` | 93 |
 | `RateBucket` | Audio | `Source/Engine/Audio/VoiceNetworkBridge.hpp` | 67 |
@@ -2125,7 +2125,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `ReverbSpace` | Audio | `Source/Engine/Audio/AudioReverb.hpp` | 11 |
 | `ReverbState` | Audio | `Source/Engine/Audio/DspGraph.hpp` | 311 |
 | `SlotRuntime` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 385 |
-| `SourceRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 219 |
+| `SourceRuntime` | Audio | `Source/Engine/Audio/Audio.hpp` | 225 |
 | `State` | Audio | `Source/Engine/Audio/AudioDevices.hpp` | 164 |
 | `Stats` | Audio | `Source/Engine/Audio/AudioZones.hpp` | 96 |
 | `VoiceAec` | Audio | `Source/Engine/Audio/VoiceAec.hpp` | 44 |
@@ -2190,19 +2190,21 @@ ScopedMaterials.Shutdown(InRhi);
 | `VoiceWhisperSettings` | Audio | `Source/Engine/Audio/VoiceEffects.hpp` | 185 |
 | `VorbisIdentInfo` | Audio | `Source/Engine/Audio/OggOpus.hpp` | 122 |
 
-### Engine/Core (119)
+### Engine/Core (130)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
 | `AssetId` | Core | `Source/Engine/Core/AssetId.hpp` | 43 |
 | `AssetKind` | Core | `Source/Engine/Core/AssetId.hpp` | 15 |
 | `AudioBus` | Core | `Source/Engine/Core/Pause.hpp` | 11 |
+| `AudioPolicy` | Core | `Source/Engine/Core/OutputPolicy.hpp` | 21 |
 | `AudioSystem` | Core | `Source/Engine/Core/Pause.hpp` | 10 |
 | `BigIntT` | Core | `Source/Engine/Core/BigInt.hpp` | 179 |
 | `BigNumberStore` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 41 |
 | `BinaryKind` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 262 |
 | `BinaryKind` | Core | `Source/Engine/Core/DecimalStore.hpp` | 208 |
 | `BufferTag` | Core | `Source/Engine/Core/Types.hpp` | 301 |
+| `Builder` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 151 |
 | `BuildInfo` | Core | `Source/Engine/Core/BuildInfo.hpp` | 12 |
 | `BuildProfile` | Core | `Source/Engine/Core/BuildProfile.hpp` | 135 |
 | `CameraView` | Core | `Source/Engine/Core/Grid.hpp` | 353 |
@@ -2210,6 +2212,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `CivilDate` | Core | `Source/Engine/Core/Calendar.hpp` | 23 |
 | `Clock` | Core | `Source/Engine/Core/Time.hpp` | 28 |
 | `ClockTime` | Core | `Source/Engine/Core/Calendar.hpp` | 34 |
+| `Color` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 41 |
 | `Color32` | Core | `Source/Engine/Core/Types.hpp` | 203 |
 | `ComponentDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 55 |
 | `ComponentRegistry` | Core | `Source/Engine/Core/PluginHost.hpp` | 60 |
@@ -2218,6 +2221,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `DateTime` | Core | `Source/Engine/Core/Calendar.hpp` | 46 |
 | `DecimalStore` | Core | `Source/Engine/Core/DecimalStore.hpp` | 17 |
 | `DecimalT` | Core | `Source/Engine/Core/Decimal.hpp` | 34 |
+| `Descriptor` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 119 |
 | `DurationStyle` | Core | `Source/Engine/Core/Time.hpp` | 581 |
 | `EddsaKeyPair` | Core | `Source/Engine/Core/CryptoAsymmetric.hpp` | 31 |
 | `Error` | Core | `Source/Engine/Core/Error.hpp` | 23 |
@@ -2226,6 +2230,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `FieldDesc` | Core | `Source/Engine/Core/Mirror.hpp` | 44 |
 | `FieldKind` | Core | `Source/Engine/Core/Mirror.hpp` | 17 |
 | `FileFilter` | Core | `Source/Engine/Core/WindowManager.hpp` | 206 |
+| `Flags` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 107 |
 | `FormatSpec` | Core | `Source/Engine/Core/BigInt.hpp` | 36 |
 | `FrameArena` | Core | `Source/Engine/Core/FrameArena.hpp` | 12 |
 | `FrameTimer` | Core | `Source/Engine/Core/Time.hpp` | 511 |
@@ -2257,6 +2262,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `PipelineTag` | Core | `Source/Engine/Core/Types.hpp` | 303 |
 | `PluginHost` | Core | `Source/Engine/Core/PluginHost.hpp` | 175 |
 | `PluginSystem` | Core | `Source/Engine/Core/PluginHost.hpp` | 153 |
+| `Policy` | Core | `Source/Engine/Core/OutputPolicy.hpp` | 28 |
 | `Profiler` | Core | `Source/Engine/Core/Profiler.hpp` | 47 |
 | `ProfileRow` | Core | `Source/Engine/Core/ProfilerPanel.hpp` | 26 |
 | `ProfilerPanel` | Core | `Source/Engine/Core/ProfilerPanel.hpp` | 39 |
@@ -2269,6 +2275,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 73 |
 | `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 301 |
 | `Reflection` | Core | `Source/Engine/Core/Mirror.hpp` | 317 |
+| `Registry` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 148 |
+| `RenderPolicy` | Core | `Source/Engine/Core/OutputPolicy.hpp` | 13 |
 | `ReplayFrame` | Core | `Source/Engine/Core/Replay.hpp` | 249 |
 | `ReplayKeyframe` | Core | `Source/Engine/Core/Replay.hpp` | 16 |
 | `ReplaySession` | Core | `Source/Engine/Core/Replay.hpp` | 25 |
@@ -2277,6 +2285,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `RunResult` | Core | `Source/Engine/Core/ProcessLaunch.hpp` | 80 |
 | `SamplerTag` | Core | `Source/Engine/Core/Types.hpp` | 304 |
 | `Scope` | Core | `Source/Engine/Core/Profiler.hpp` | 167 |
+| `Scope` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 24 |
 | `SecureRng` | Core | `Source/Engine/Core/SecureRng.hpp` | 11 |
 | `Sha256Context` | Core | `Source/Engine/Core/Sha256.hpp` | 17 |
 | `Slot` | Core | `Source/Engine/Core/BigNumberStore.hpp` | 255 |
@@ -2294,6 +2303,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `TimerHandle` | Core | `Source/Engine/Core/Time.hpp` | 246 |
 | `TimerPool` | Core | `Source/Engine/Core/Time.hpp` | 271 |
 | `TouchPoint` | Core | `Source/Engine/Core/WindowManager.hpp` | 38 |
+| `Type` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 31 |
 | `TypeNameOverride` | Core | `Source/Engine/Core/Definitions.hpp` | 42 |
 | `TypeNameOverride` | Core | `Source/Engine/Core/Definitions.hpp` | 287 |
 | `TypeObject` | Core | `Source/Engine/Core/Definitions.hpp` | 187 |
@@ -2302,6 +2312,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `TypeTraits` | Core | `Source/Engine/Core/Definitions.hpp` | 172 |
 | `TypeTraits` | Core | `Source/Engine/Core/Definitions.hpp` | 271 |
 | `Unregistered` | Core | `Source/Engine/Core/Mirror.hpp` | 66 |
+| `Value` | Core | `Source/Engine/Core/SettingsRegistry.hpp` | 51 |
 | `Vector2D` | Core | `Source/Engine/Core/Types.hpp` | 13 |
 | `Vector3D` | Core | `Source/Engine/Core/Types.hpp` | 90 |
 | `Vector4D` | Core | `Source/Engine/Core/Types.hpp` | 139 |

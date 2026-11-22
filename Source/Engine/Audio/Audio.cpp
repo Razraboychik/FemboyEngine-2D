@@ -527,6 +527,16 @@ bool AudioSystem::SetBusZoneParameters(AudioBus InBus, float InReverbGain, float
     return MMixer.SetBusFilter(BusIdFor(InBus), ScopedParams) == DspResult::Ok;
 }
 
+void AudioSystem::SetProcessingEnabled(bool InEnabled) noexcept
+{
+    MProcessingEnabled.store(InEnabled, std::memory_order_release);
+}
+
+bool AudioSystem::ProcessingEnabled() const noexcept
+{
+    return MProcessingEnabled.load(std::memory_order_acquire);
+}
+
 void AudioSystem::SetMasterMuted(bool InMuted) noexcept
 {
     (void)MMixer.SetBusMuted(kMasterBus, InMuted);
@@ -652,6 +662,15 @@ bool AudioSystem::SetVoiceSpatial(std::uint32_t InVoice, float InVolume, float I
 
 void AudioSystem::Mix(float* Output, std::uint32_t InFrameCount) noexcept
 {
+    if (!ProcessingEnabled())
+    {
+        if (Output != nullptr)
+        {
+            std::fill_n(Output, static_cast<std::size_t>(InFrameCount) * 2u, 0.0f);
+        }
+        return;
+    }
+
     // The one audio-thread entry point: run the mixer, then the stereo limiter.
     MMixer.Process(Output, InFrameCount);
     MLimiter.Process(Output, InFrameCount, 2);

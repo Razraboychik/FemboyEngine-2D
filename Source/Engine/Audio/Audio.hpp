@@ -155,6 +155,12 @@ public:
     void SetMasterMuted(bool InMuted) noexcept;
     [[nodiscard]] bool MasterMuted() const noexcept;
 
+    // Disables the whole audio calculation path, not just the output gain.
+    // Sound events, captions and gameplay code keep running; the device callback
+    // receives silence until processing is enabled again.
+    void SetProcessingEnabled(bool InEnabled) noexcept;
+    [[nodiscard]] bool ProcessingEnabled() const noexcept;
+
     // Last stage after DspGraph. Configure once after Initialize(); the limiter
     void ConfigureLimiter(const LimiterDesc& InDesc = {}) noexcept;
     [[nodiscard]] const AudioLimiter& Limiter() const noexcept
@@ -254,6 +260,7 @@ private:
 
     DspGraph MMixer{};
     AudioLimiter MLimiter{};
+    std::atomic<bool> MProcessingEnabled{true};
     FloatRing* MReferenceRing = nullptr;
 
     std::array<std::uint16_t, kMaxAudioVoices> MVoiceGenerations{};
