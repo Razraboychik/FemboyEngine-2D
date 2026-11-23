@@ -161,7 +161,9 @@ modal для опасных значений и не хардкодит id ил�
 используют тот же confirmation modal. Микшер Project Settings уже использует эту
 сгенерированную панель для master/SFX/music и синхронизирует поля проекта после
 undo. Accessibility- и editor-секции перед отрисовкой вызывают двустороннюю
-синхронизацию, поэтому legacy-контролы и registry-вид не расходятся.
+синхронизацию. Legacy-контролы для UI scale, VSync, panel text, line spacing,
+log files, undo memory, frame limit, theme и мигрированных accessibility-полей
+больше не рисуются; этими контролами владеет generated-секция.
 
 ## 10. Хранение и UI
 

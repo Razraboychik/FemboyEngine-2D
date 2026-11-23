@@ -159,8 +159,10 @@ and never hardcodes a setting id or type. Enum descriptors render as a combo, so
 policies are editable; dangerous enum changes use the same confirmation modal.
 The Project Settings mixer already uses this generated panel for its
 master/SFX/music values and keeps the project fields in sync after undo. The
-accessibility and editor sections call a bidirectional sync before drawing, which
-keeps the legacy controls and the registry view consistent.
+accessibility and editor sections call a bidirectional sync before drawing. The
+legacy controls for UI scale, VSync, panel text, line spacing, log files, undo
+memory, frame limit, theme and the migrated accessibility fields are no longer
+drawn; the generated section owns those controls.
 
 ## 10. Persistence and UI
 

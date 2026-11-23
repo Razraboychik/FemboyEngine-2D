@@ -1579,8 +1579,6 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         }
     }
     ImGui::SeparatorText("Display");
-    ImGui::Checkbox("VSync", &ScopedValues.vsync);
-    ImGui::SliderFloat("UI scale", &ScopedValues.uiScale, 0.75f, 2.0f, "%.2f");
     ImGui::Checkbox("Show grid", &ScopedValues.showGrid);
     const char* ScopedWindowModeNames[] = {"Windowed", "Borderless fullscreen", "Exclusive fullscreen"};
     int ScopedWindowMode = static_cast<int>(std::min<std::uint8_t>(ScopedValues.windowMode, 2));
@@ -1710,29 +1708,17 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 
     ImGui::SeparatorText("Typography (16 px readable floor)");
     ImGui::SliderFloat("Panel titles", &ScopedValues.fontPanelTitle, 16.0f, 36.0f, "%.0f px");
-    ImGui::SliderFloat("Panel text", &ScopedValues.fontPanelBody, 16.0f, 30.0f, "%.0f px");
     ImGui::SliderFloat("Tooltips", &ScopedValues.fontTooltip, 16.0f, 30.0f, "%.0f px");
     ImGui::SliderFloat("Script node titles", &ScopedValues.fontScriptNodeTitle, 16.0f, 32.0f, "%.0f px");
     ImGui::SliderFloat("Script input pins", &ScopedValues.fontScriptPinInput, 16.0f, 28.0f, "%.0f px");
     ImGui::SliderFloat("Script output pins", &ScopedValues.fontScriptPinOutput, 16.0f, 28.0f, "%.0f px");
     ImGui::SliderFloat("Scene text", &ScopedValues.fontSceneText, 16.0f, 40.0f, "%.0f px");
-    ImGui::SliderFloat("Line spacing", &ScopedValues.textLineSpacing, -4.0f, 24.0f, "%.0f px");
     ImGui::SliderFloat("Letter spacing", &ScopedValues.textLetterSpacing, -2.0f, 12.0f, "%.1f px");
     ImGui::SliderFloat("Word spacing", &ScopedValues.textWordSpacing, -4.0f, 24.0f, "%.1f px");
     ImGui::TextDisabled("Font sizes are logical px; line/letter/word spacing is added per line and glyph. The atlas "
                         "reloads on the next frame when a font size changes.");
 
     ImGui::SeparatorText("Logs");
-    int ScopedLogFiles = static_cast<int>(std::min<std::uint32_t>(ScopedValues.logMaxFiles, 512u));
-    if (ImGui::SliderInt("Files per category", &ScopedLogFiles, 1, 512))
-    {
-        ScopedValues.logMaxFiles = static_cast<std::uint32_t>(std::max(ScopedLogFiles, 1));
-    }
-    if (ImGui::IsItemHovered())
-    {
-        EditorTooltip("The newest files of each log category are kept. Older files are deleted when the sink opens "
-                      "or when this setting is applied.");
-    }
     int ScopedLogLines = static_cast<int>(std::min<std::uint32_t>(ScopedValues.logMaxLinesPerFile, 2000000u));
     if (ImGui::InputInt("Lines per file", &ScopedLogLines, 10000, 50000))
     {
@@ -1803,16 +1789,6 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         EditorTooltip("Descriptors kept for the Content Browser previews. Lowering the limit frees the old "
                       "descriptors on Apply; disabling the cache also stops new previews.");
     }
-    int ScopedUndoMemory = static_cast<int>(ScopedValues.undoMemoryMB);
-    if (ImGui::SliderInt("Undo memory (MB)", &ScopedUndoMemory, 1, 256))
-    {
-        ScopedValues.undoMemoryMB = static_cast<std::uint32_t>(std::clamp(ScopedUndoMemory, 1, 256));
-    }
-    if (ImGui::IsItemHovered())
-    {
-        EditorTooltip("Arena reserved for compressed undo deltas. Applying a smaller value reallocates it and "
-                      "clears the undo history.");
-    }
     int ScopedUndoCommands = static_cast<int>(ScopedValues.undoCommandLimit);
     if (ImGui::SliderInt("Undo commands", &ScopedUndoCommands, 16, 512))
     {
@@ -1843,16 +1819,6 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
     ImGui::SameLine();
     ImGui::TextDisabled("Drops the undo stack and all cached previews now.");
-    int ScopedFrameLimit = static_cast<int>(ScopedValues.frameRateLimit);
-    if (ImGui::SliderInt("Frame rate limit", &ScopedFrameLimit, 0, 240, ScopedFrameLimit == 0 ? "unlimited" : "%d FPS"))
-    {
-        ScopedValues.frameRateLimit = static_cast<std::uint16_t>(std::clamp(ScopedFrameLimit, 0, 240));
-    }
-    if (ImGui::IsItemHovered())
-    {
-        EditorTooltip("0 runs unthrottled. A limit sleeps the main loop and frees CPU/GPU time while the "
-                      "editor is idle; it does not change the authored frame rate.");
-    }
     ImGui::Checkbox("Throttle when unfocused", &ScopedValues.pauseWhenUnfocused);
     if (ImGui::IsItemHovered())
     {
@@ -1866,14 +1832,6 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::Checkbox("ImGui demo window", &ScopedValues.showDemoWindow);
 
     ImGui::SeparatorText("Editor theme and symbol colours");
-    const char* ScopedThemeIds[] = {"graphite", "very-dark", "midnight", "forest", "plum", "amber", "crimson"};
-    const char* ScopedThemeNames[] = {"Graphite", "Very dark (not black)", "Midnight RGB", "Forest RGB", "Plum RGB",
-                                      "Amber", "Crimson"};
-    int ScopedTheme = static_cast<int>(ParseEditorTheme(ScopedValues.theme));
-    if (ImGui::Combo("Panel theme", &ScopedTheme, ScopedThemeNames, 7))
-    {
-        CopyProjectField(ScopedValues.theme, sizeof(ScopedValues.theme), ScopedThemeIds[ScopedTheme]);
-    }
     EditSymbolColor("Text colour", &ScopedValues.textColor);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(160.0f);
