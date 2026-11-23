@@ -10,7 +10,7 @@
 
 [[component]]
 name = "SDL3"
-version = "release-3.4.18"
+version = "release-3.4.20"
 spdx = "Zlib"
 purpose = "Window, input, platform layer and Vulkan surface"
 copyright = "Copyright (c) 1997-2025 Sam Lantinga"
@@ -45,7 +45,7 @@ license_file = "third_party/flatbuffers-master/flatbuffers-master/LICENSE"
 
 [[component]]
 name = "miniaudio"
-version = "0.11.23"
+version = "0.11.25"
 spdx = "MIT-0 OR Unlicense"
 purpose = "Audio device and mixer backend"
 copyright = "Copyright (c) David Reid"
@@ -71,7 +71,7 @@ url = "https://github.com/KhronosGroup/Vulkan-Headers"
 
 [[component]]
 name = "glslang"
-version = "15.3.0"
+version = "16.6.0"
 spdx = "BSD-3-Clause OR Apache-2.0"
 purpose = "Runtime GLSL to SPIR-V compilation"
 copyright = "Copyright (c) The Khronos Group Inc."

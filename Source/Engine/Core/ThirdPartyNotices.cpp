@@ -7,7 +7,7 @@ namespace Fby::Notices
 namespace
 {
 constexpr NoticeEntry kEntries[] = {
-    {R"FBYNOTICE(SDL3)FBYNOTICE", R"FBYNOTICE(release-3.4.18)FBYNOTICE", R"FBYNOTICE(Zlib)FBYNOTICE", R"FBYNOTICE(Window, input, platform layer and Vulkan surface)FBYNOTICE", R"FBYNOTICE(Copyright (c) 1997-2025 Sam Lantinga)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: Zlib. See https://github.com/libsdl-org/SDL.)FBYNOTICE"},
+    {R"FBYNOTICE(SDL3)FBYNOTICE", R"FBYNOTICE(release-3.4.20)FBYNOTICE", R"FBYNOTICE(Zlib)FBYNOTICE", R"FBYNOTICE(Window, input, platform layer and Vulkan surface)FBYNOTICE", R"FBYNOTICE(Copyright (c) 1997-2025 Sam Lantinga)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: Zlib. See https://github.com/libsdl-org/SDL.)FBYNOTICE"},
     {R"FBYNOTICE(Box2D)FBYNOTICE", R"FBYNOTICE(v3.0.0)FBYNOTICE", R"FBYNOTICE(MIT)FBYNOTICE", R"FBYNOTICE(2D rigid-body physics)FBYNOTICE", R"FBYNOTICE(Copyright (c) 2022 Erin Catto)FBYNOTICE", R"FBYNOTICE(MIT License
 
 Copyright (c) 2022 Erin Catto
@@ -248,7 +248,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.)FBYNOTICE"},
-    {R"FBYNOTICE(miniaudio)FBYNOTICE", R"FBYNOTICE(0.11.23)FBYNOTICE", R"FBYNOTICE(MIT-0 OR Unlicense)FBYNOTICE", R"FBYNOTICE(Audio device and mixer backend)FBYNOTICE", R"FBYNOTICE(Copyright (c) David Reid)FBYNOTICE", R"FBYNOTICE(This software is available as a choice of the following licenses. Choose
+    {R"FBYNOTICE(miniaudio)FBYNOTICE", R"FBYNOTICE(0.11.25)FBYNOTICE", R"FBYNOTICE(MIT-0 OR Unlicense)FBYNOTICE", R"FBYNOTICE(Audio device and mixer backend)FBYNOTICE", R"FBYNOTICE(Copyright (c) David Reid)FBYNOTICE", R"FBYNOTICE(This software is available as a choice of the following licenses. Choose
 whichever you prefer.
 
 ===============================================================================
@@ -340,7 +340,7 @@ https://datatracker.ietf.org/ipr/1914/
 Broadcom Corporation:
 https://datatracker.ietf.org/ipr/1526/)FBYNOTICE"},
     {R"FBYNOTICE(Vulkan-Headers)FBYNOTICE", R"FBYNOTICE(v1.4.366)FBYNOTICE", R"FBYNOTICE(Apache-2.0)FBYNOTICE", R"FBYNOTICE(Vulkan API declarations)FBYNOTICE", R"FBYNOTICE(Copyright (c) 2015-2025 The Khronos Group Inc.)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: Apache-2.0. See https://github.com/KhronosGroup/Vulkan-Headers.)FBYNOTICE"},
-    {R"FBYNOTICE(glslang)FBYNOTICE", R"FBYNOTICE(15.3.0)FBYNOTICE", R"FBYNOTICE(BSD-3-Clause OR Apache-2.0)FBYNOTICE", R"FBYNOTICE(Runtime GLSL to SPIR-V compilation)FBYNOTICE", R"FBYNOTICE(Copyright (c) The Khronos Group Inc.)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: BSD-3-Clause OR Apache-2.0. See https://github.com/KhronosGroup/glslang.)FBYNOTICE"},
+    {R"FBYNOTICE(glslang)FBYNOTICE", R"FBYNOTICE(16.6.0)FBYNOTICE", R"FBYNOTICE(BSD-3-Clause OR Apache-2.0)FBYNOTICE", R"FBYNOTICE(Runtime GLSL to SPIR-V compilation)FBYNOTICE", R"FBYNOTICE(Copyright (c) The Khronos Group Inc.)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: BSD-3-Clause OR Apache-2.0. See https://github.com/KhronosGroup/glslang.)FBYNOTICE"},
     {R"FBYNOTICE(stb)FBYNOTICE", R"FBYNOTICE(vendored)FBYNOTICE", R"FBYNOTICE(MIT OR Unlicense)FBYNOTICE", R"FBYNOTICE(Image and font decoding)FBYNOTICE", R"FBYNOTICE(Copyright (c) Sean Barrett and contributors)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: MIT OR Unlicense. See https://github.com/nothings/stb.)FBYNOTICE"},
     {R"FBYNOTICE(Dear ImGui)FBYNOTICE", R"FBYNOTICE(1.93.1)FBYNOTICE", R"FBYNOTICE(MIT)FBYNOTICE", R"FBYNOTICE(Editor user interface)FBYNOTICE", R"FBYNOTICE(Copyright (c) 2014-2026 Omar Cornut)FBYNOTICE", R"FBYNOTICE(The MIT License (MIT)
 
@@ -1102,14 +1102,14 @@ Do not edit it by hand; change the manifest and regenerate.
 
 | Component | Version | License (SPDX) | Purpose |
 |---|---|---|---|
-| SDL3 | release-3.4.18 | Zlib | Window, input, platform layer and Vulkan surface |
+| SDL3 | release-3.4.20 | Zlib | Window, input, platform layer and Vulkan surface |
 | Box2D | v3.0.0 | MIT | 2D rigid-body physics |
 | toml++ | 3.4.0 | MIT | Project descriptor and scene TOML parser |
 | FlatBuffers | 25.12.19 | Apache-2.0 | Localization and scene binary schemas |
-| miniaudio | 0.11.23 | MIT-0 OR Unlicense | Audio device and mixer backend |
+| miniaudio | 0.11.25 | MIT-0 OR Unlicense | Audio device and mixer backend |
 | Opus | vendored | BSD-3-Clause | Ogg Opus decoding and voice encoding |
 | Vulkan-Headers | v1.4.366 | Apache-2.0 | Vulkan API declarations |
-| glslang | 15.3.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
+| glslang | 16.6.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
 | stb | vendored | MIT OR Unlicense | Image and font decoding |
 | Dear ImGui | 1.93.1 | MIT | Editor user interface |
 | ImGuizmo | vendored | MIT | Editor transform gizmo |
@@ -1126,7 +1126,7 @@ Do not edit it by hand; change the manifest and regenerate.
 
 ## License texts
 
-### SDL3 release-3.4.18
+### SDL3 release-3.4.20
 
 - SPDX: `Zlib`
 - Copyright: Copyright (c) 1997-2025 Sam Lantinga
@@ -1405,7 +1405,7 @@ Apache License
    limitations under the License.
 ```
 
-### miniaudio 0.11.23
+### miniaudio 0.11.25
 
 - SPDX: `MIT-0 OR Unlicense`
 - Copyright: Copyright (c) David Reid
@@ -1525,7 +1525,7 @@ https://datatracker.ietf.org/ipr/1526/
 The upstream license text is not vendored in this checkout. SPDX: Apache-2.0. See https://github.com/KhronosGroup/Vulkan-Headers.
 ```
 
-### glslang 15.3.0
+### glslang 16.6.0
 
 - SPDX: `BSD-3-Clause OR Apache-2.0`
 - Copyright: Copyright (c) The Khronos Group Inc.

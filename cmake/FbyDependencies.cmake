@@ -2,7 +2,7 @@
 
 include(FetchContent)
 
-set(FBY_SDL_VERSION "release-3.4.18" CACHE STRING "SDL3 git tag to fetch")
+set(FBY_SDL_VERSION "release-3.4.20" CACHE STRING "SDL3 git tag to fetch")
 set(FBY_VULKAN_HEADERS_VERSION "v1.4.366" CACHE STRING "Vulkan-Headers git tag to fetch")
 
 # Local dependency overrides

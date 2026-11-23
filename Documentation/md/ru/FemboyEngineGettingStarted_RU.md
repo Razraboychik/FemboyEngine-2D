@@ -87,7 +87,7 @@ FSR2 и собственная генерация кадров собирают�
 3. Установить CMake 3.31 и Ninja 1.12 (можно из поставки Build Tools).
 4. Установить Vulkan SDK 1.4 — он даёт `vulkan-1.dll` и `VULKAN_SDK`.
 5. Установить 7-Zip (по желанию).
-6. Скачать архивы, которые обычно качает скрипт: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3` и распаковать их в те же каталоги `third_party/`, что создаёт скрипт. HarfBuzz и SheenBidi скачивать не нужно: они уже лежат в репозитории.
+6. Скачать архивы, которые обычно качает скрипт: SDL3 `release-3.4.20`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.25`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3` и распаковать их в те же каталоги `third_party/`, что создаёт скрипт. HarfBuzz и SheenBidi скачивать не нужно: они уже лежат в репозитории.
 
 ### Linux
 

@@ -43,7 +43,7 @@ SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 The all-in-one entry points are SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh and SetupScripts/macOS/Setup.command.
 
-Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.2.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system (or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan loader.
+Pinned versions: SDL3 release-3.4.20, Vulkan-Headers v1.4.366, glslang 16.6.0, miniaudio 0.11.25, Box2D v3.2.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system (or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan loader.
 
 ```cpp
 cmake -S . -B build -G Ninja \

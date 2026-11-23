@@ -90,7 +90,7 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 3. Install CMake 3.31 and Ninja 1.12 (the Build Tools copy is fine).
 4. Install the Vulkan SDK 1.4 — it provides `vulkan-1.dll` and `VULKAN_SDK`.
 5. Install 7-Zip (optional).
-6. Download the archives the script would fetch and unpack them into the same `third_party/` directories: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3`. HarfBuzz and SheenBidi need no download: they are already in the repository.
+6. Download the archives the script would fetch and unpack them into the same `third_party/` directories: SDL3 `release-3.4.20`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.25`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3`. HarfBuzz and SheenBidi need no download: they are already in the repository.
 
 ### Linux
 

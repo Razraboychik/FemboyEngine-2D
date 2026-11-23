@@ -242,8 +242,8 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 ./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
 ```
 
-Versions are fixed at SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang
-`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, libunibreak `6.1` and LZMA SDK
+Versions are fixed at SDL3 `release-3.4.20`, Vulkan-Headers `v1.4.366`, glslang
+`15.3.0`, miniaudio `0.11.25`, Box2D `v3.2.0`, libunibreak `6.1` and LZMA SDK
 `25.01`. Vendor
 upscaler SDKs are optional and are not part of the archive; see
 [Frame Generation](Documentation/md/en/FemboyEngineFrameGeneration_EN.md).

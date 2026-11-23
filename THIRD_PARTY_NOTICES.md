@@ -11,14 +11,14 @@ Do not edit it by hand; change the manifest and regenerate.
 
 | Component | Version | License (SPDX) | Purpose |
 |---|---|---|---|
-| SDL3 | release-3.4.18 | Zlib | Window, input, platform layer and Vulkan surface |
+| SDL3 | release-3.4.20 | Zlib | Window, input, platform layer and Vulkan surface |
 | Box2D | v3.0.0 | MIT | 2D rigid-body physics |
 | toml++ | 3.4.0 | MIT | Project descriptor and scene TOML parser |
 | FlatBuffers | 25.12.19 | Apache-2.0 | Localization and scene binary schemas |
-| miniaudio | 0.11.23 | MIT-0 OR Unlicense | Audio device and mixer backend |
+| miniaudio | 0.11.25 | MIT-0 OR Unlicense | Audio device and mixer backend |
 | Opus | vendored | BSD-3-Clause | Ogg Opus decoding and voice encoding |
 | Vulkan-Headers | v1.4.366 | Apache-2.0 | Vulkan API declarations |
-| glslang | 15.3.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
+| glslang | 16.6.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
 | stb | vendored | MIT OR Unlicense | Image and font decoding |
 | Dear ImGui | 1.93.1 | MIT | Editor user interface |
 | ImGuizmo | vendored | MIT | Editor transform gizmo |
@@ -35,7 +35,7 @@ Do not edit it by hand; change the manifest and regenerate.
 
 ## License texts
 
-### SDL3 release-3.4.18
+### SDL3 release-3.4.20
 
 - SPDX: `Zlib`
 - Copyright: Copyright (c) 1997-2025 Sam Lantinga
@@ -310,7 +310,7 @@ Apache License
    limitations under the License.
 ```
 
-### miniaudio 0.11.23
+### miniaudio 0.11.25
 
 - SPDX: `MIT-0 OR Unlicense`
 - Copyright: Copyright (c) David Reid
@@ -429,7 +429,7 @@ https://datatracker.ietf.org/ipr/1526/
 The upstream license text is not vendored in this checkout. SPDX: Apache-2.0. See https://github.com/KhronosGroup/Vulkan-Headers.
 ```
 
-### glslang 15.3.0
+### glslang 16.6.0
 
 - SPDX: `BSD-3-Clause OR Apache-2.0`
 - Copyright: Copyright (c) The Khronos Group Inc.
