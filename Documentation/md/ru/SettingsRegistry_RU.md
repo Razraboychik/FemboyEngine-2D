@@ -170,7 +170,12 @@ log files, undo memory, frame limit, theme и мигрированных accessi
 Project defaults, per-install user overrides, сгенерированная панель настроек и
 данные звуковых шин — отдельные слои. `UserSettings.audioBuses` хранит
 per-install dB-overrides по тому же стабильному bus id; project-файл владеет
-топологией, user-файл — значениями игрока. Необязательная цель `fby_settings_fuzz` собирается с
+топологией, user-файл — значениями игрока. Необязательный ImGui interaction-тест собирается с
+`-DFBY_BUILD_UI_TESTS=ON` и целью `fby_settings_panel_engine_test`. Он использует
+официальный ImGui Test Engine и делает реальный клик по combo, меняющий enum.
+Для hooks нужен `IMGUI_ENABLE_TEST_ENGINE`; тестовую цель нужно собирать явно,
+потому что обычные editor-executable не линкуют runtime Test Engine.
+Необязательная цель `fby_settings_fuzz` собирается с
 `-DFBY_BUILD_FUZZERS=ON`; seed corpus лежит в `Source/Tests/FuzzCorpus/Settings`.
 Она прогоняет decode, повторный encode и reload project-файла без работы с
 файловой системой. На Windows используется static-CRT fuzz-сборка:

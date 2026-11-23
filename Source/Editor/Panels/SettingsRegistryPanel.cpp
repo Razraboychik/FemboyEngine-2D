@@ -105,11 +105,9 @@ void SettingsRegistryPanel::DrawRows()
 
 void SettingsRegistryPanel::DrawRow(const SettingsRow& InRow)
 {
-    ImGui::PushID(InRow.Id.c_str());
     const Settings::Descriptor* ScopedDescriptor = MRegistry->Find(InRow.Id);
     if (ScopedDescriptor == nullptr)
     {
-        ImGui::PopID();
         return;
     }
     const bool ScopedDangerous = (InRow.Flags & Settings::FlagDangerous) != 0u;
@@ -238,7 +236,6 @@ void SettingsRegistryPanel::DrawRow(const SettingsRow& InRow)
             MStatus = ScopedError;
         }
     }
-    ImGui::PopID();
 }
 
 void SettingsRegistryPanel::DrawConfirmation()

@@ -1280,3 +1280,30 @@ if(FBY_BUILD_FUZZERS AND TARGET fby_editor)
     set_target_properties(fby_settings_fuzz PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 endif()
+
+if(FBY_BUILD_UI_TESTS AND TARGET fby_editor)
+    set(FBY_TEST_ENGINE_DIR "${CMAKE_SOURCE_DIR}/third_party/imgui_test_engine/imgui_test_engine")
+    add_library(fby_imgui_test_engine STATIC
+        "${FBY_TEST_ENGINE_DIR}/imgui_capture_tool.cpp"
+        "${FBY_TEST_ENGINE_DIR}/imgui_te_context.cpp"
+        "${FBY_TEST_ENGINE_DIR}/imgui_te_coroutine.cpp"
+        "${FBY_TEST_ENGINE_DIR}/imgui_te_engine.cpp"
+        "${FBY_TEST_ENGINE_DIR}/imgui_te_exporters.cpp"
+        "${FBY_TEST_ENGINE_DIR}/imgui_te_perftool.cpp"
+        "${FBY_TEST_ENGINE_DIR}/imgui_te_ui.cpp"
+        "${FBY_TEST_ENGINE_DIR}/imgui_te_utils.cpp")
+    target_include_directories(fby_imgui_test_engine PUBLIC "${FBY_TEST_ENGINE_DIR}" "${CMAKE_SOURCE_DIR}/third_party/imgui-master/imgui-master")
+    target_compile_definitions(fby_imgui_test_engine PUBLIC IMGUI_TEST_ENGINE_ENABLE_COROUTINE_STDTHREAD_IMPL=1)
+    target_link_libraries(fby_imgui_test_engine PUBLIC fby_imgui)
+    find_package(Threads REQUIRED)
+    target_link_libraries(fby_imgui_test_engine PUBLIC Threads::Threads)
+    add_executable(fby_imgui_combo_probe ImGuiComboProbe.cpp)
+    target_link_libraries(fby_imgui_combo_probe PRIVATE fby_imgui_test_engine)
+    set_target_properties(fby_imgui_combo_probe PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME imgui_combo_probe COMMAND fby_imgui_combo_probe)
+
+    add_executable(fby_settings_panel_engine_test SettingsPanelEngineTest.cpp)
+    target_link_libraries(fby_settings_panel_engine_test PRIVATE FemboyEngine2D::Editor fby_imgui_test_engine)
+    set_target_properties(fby_settings_panel_engine_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
+    add_test(NAME settings_panel_engine COMMAND fby_settings_panel_engine_test)
+endif()

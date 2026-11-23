@@ -169,7 +169,12 @@ drawn; the generated section owns those controls.
 Project defaults, per-install user overrides, the generated settings panel and
 per-project audio-bus data are separate layers. `UserSettings.audioBuses` stores
 per-install dB overrides keyed by the same stable bus id; the project file owns
-the bus topology and the user file owns the player's values. The optional `fby_settings_fuzz` target is built with
+the bus topology and the user file owns the player's values. The optional ImGui interaction test is built with
+`-DFBY_BUILD_UI_TESTS=ON` and target `fby_settings_panel_engine_test`. It uses
+the official ImGui Test Engine and performs a real combo click that changes the
+enum. The Test Engine hooks require `IMGUI_ENABLE_TEST_ENGINE`; the test target
+must be built explicitly because normal editor executables do not link the Test
+Engine runtime. The optional `fby_settings_fuzz` target is built with
 `-DFBY_BUILD_FUZZERS=ON`; its seed corpus lives in
 `Source/Tests/FuzzCorpus/Settings`. It exercises project decode, re-encode and
 reload without touching the filesystem. Windows uses a static-CRT fuzz build:
