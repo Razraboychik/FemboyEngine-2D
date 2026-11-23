@@ -66,6 +66,7 @@ Documents = (
     {"Stem": "APIStability"},
     {"Stem": "UXChecklist"},
     {"Stem": "SettingsRegistry"},
+    {"Stem": "FontsAndLicenses"},
     {"Stem": "AccessibilityOutput"},
 )
 Languages = ("en", "ru")

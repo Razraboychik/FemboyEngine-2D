@@ -764,7 +764,7 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `TweenDesc` | Animation | `Source/Engine/Animation/Tween.hpp` | 60 |
 | `TweenGroup` | Animation | `Source/Engine/Animation/Tween.hpp` | 191 |
 
-### Engine/Assets (73)
+### Engine/Assets (75)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -812,6 +812,8 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `FemArchiver` | Assets | `Source/Engine/Assets/FemArchiver.hpp` | 131 |
 | `FempakInput` | Assets | `Source/Engine/Assets/FempakWriter.hpp` | 15 |
 | `FempakWriter` | Assets | `Source/Engine/Assets/FempakWriter.hpp` | 22 |
+| `LicenseEntry` | Assets | `Source/Engine/Assets/LicenseRegistry.hpp` | 15 |
+| `LicenseRegistry` | Assets | `Source/Engine/Assets/LicenseRegistry.hpp` | 24 |
 | `LocaleTable` | Assets | `Source/Engine/Assets/Localization.hpp` | 14 |
 | `LocalizationCompileResult` | Assets | `Source/Engine/Assets/LocalizationCompiler.hpp` | 16 |
 | `LocalizationDecompileResult` | Assets | `Source/Engine/Assets/LocalizationCompiler.hpp` | 23 |
@@ -2137,11 +2139,13 @@ python Documentation/Tools/GenerateApplicationGuide.py
 | `VmStopInfo` | Script | `Source/Engine/Script/Vm.hpp` | 173 |
 | `VmSuspendState` | Script | `Source/Engine/Script/Vm.hpp` | 292 |
 
-### Engine/Text (84)
+### Engine/Text (86)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
 | `AssetSlot` | Text | `Source/Engine/Text/TextStore.hpp` | 220 |
+| `BaseFontInfo` | Text | `Source/Engine/Text/BaseFonts.hpp` | 23 |
+| `BaseFontRole` | Text | `Source/Engine/Text/BaseFonts.hpp` | 16 |
 | `BookAnchor` | Text | `Source/Engine/Text/BookAsset.hpp` | 107 |
 | `BookAssetError` | Text | `Source/Engine/Text/BookAsset.hpp` | 140 |
 | `BookAssetView` | Text | `Source/Engine/Text/BookAsset.hpp` | 127 |

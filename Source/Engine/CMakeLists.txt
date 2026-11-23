@@ -25,6 +25,7 @@ set(FBY_ENGINE_SOURCES
     Assets/TiledImporter.cpp
     Assets/SpriteAtlas.cpp
     Assets/VFS.cpp
+    Assets/LicenseRegistry.cpp
     Documents/Document.cpp
     Effects/ParticleEffects.cpp
     Effects/ParticleScene.cpp
@@ -200,6 +201,7 @@ set(FBY_ENGINE_SOURCES
     Text/BookSession.cpp
     Text/TextBidi.cpp
     Text/TextShapeCache.cpp
+    Text/BaseFonts.cpp
     Text/TextShaper.cpp
     Text/UnicodeBreak.cpp
     UI/ActionNarration.cpp

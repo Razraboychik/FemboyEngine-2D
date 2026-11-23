@@ -59,6 +59,7 @@ PAIRED_DOCUMENTS = (
     "APIStability",
     "UXChecklist",
     "SettingsRegistry",
+    "FontsAndLicenses",
     "AccessibilityOutput",
 )
 
