@@ -15,7 +15,7 @@ Do not edit it by hand; change the manifest and regenerate.
 | Box2D | v3.0.0 | MIT | 2D rigid-body physics |
 | toml++ | 3.4.0 | MIT | Project descriptor and scene TOML parser |
 | FlatBuffers | 25.12.19 | Apache-2.0 | Localization and scene binary schemas |
-| miniaudio | 0.11.25 | MIT-0 OR Unlicense | Audio device and mixer backend |
+| miniaudio | 0.11.26 | MIT-0 OR Unlicense | Audio device and mixer backend |
 | Opus | vendored | BSD-3-Clause | Ogg Opus decoding and voice encoding |
 | Vulkan-Headers | v1.4.366 | Apache-2.0 | Vulkan API declarations |
 | glslang | 16.6.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
@@ -310,7 +310,7 @@ Apache License
    limitations under the License.
 ```
 
-### miniaudio 0.11.25
+### miniaudio 0.11.26
 
 - SPDX: `MIT-0 OR Unlicense`
 - Copyright: Copyright (c) David Reid

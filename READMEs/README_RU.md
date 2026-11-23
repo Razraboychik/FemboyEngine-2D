@@ -245,7 +245,7 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 ```
 
 Версии закреплены: SDL3 `release-3.4.20`, Vulkan-Headers `v1.4.366`, glslang
-`15.3.0`, miniaudio `0.11.25`, Box2D `v3.2.0`, libunibreak `6.1` и LZMA SDK
+`15.3.0`, miniaudio `0.11.26`, Box2D `v3.2.0`, libunibreak `6.1` и LZMA SDK
 `25.01`. Vendor SDK
 апскейлеров опциональны и не входят в архив; см.
 [Генерацию кадров](../Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).

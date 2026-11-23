@@ -248,7 +248,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.)FBYNOTICE"},
-    {R"FBYNOTICE(miniaudio)FBYNOTICE", R"FBYNOTICE(0.11.25)FBYNOTICE", R"FBYNOTICE(MIT-0 OR Unlicense)FBYNOTICE", R"FBYNOTICE(Audio device and mixer backend)FBYNOTICE", R"FBYNOTICE(Copyright (c) David Reid)FBYNOTICE", R"FBYNOTICE(This software is available as a choice of the following licenses. Choose
+    {R"FBYNOTICE(miniaudio)FBYNOTICE", R"FBYNOTICE(0.11.26)FBYNOTICE", R"FBYNOTICE(MIT-0 OR Unlicense)FBYNOTICE", R"FBYNOTICE(Audio device and mixer backend)FBYNOTICE", R"FBYNOTICE(Copyright (c) David Reid)FBYNOTICE", R"FBYNOTICE(This software is available as a choice of the following licenses. Choose
 whichever you prefer.
 
 ===============================================================================
@@ -1106,7 +1106,7 @@ Do not edit it by hand; change the manifest and regenerate.
 | Box2D | v3.0.0 | MIT | 2D rigid-body physics |
 | toml++ | 3.4.0 | MIT | Project descriptor and scene TOML parser |
 | FlatBuffers | 25.12.19 | Apache-2.0 | Localization and scene binary schemas |
-| miniaudio | 0.11.25 | MIT-0 OR Unlicense | Audio device and mixer backend |
+| miniaudio | 0.11.26 | MIT-0 OR Unlicense | Audio device and mixer backend |
 | Opus | vendored | BSD-3-Clause | Ogg Opus decoding and voice encoding |
 | Vulkan-Headers | v1.4.366 | Apache-2.0 | Vulkan API declarations |
 | glslang | 16.6.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
@@ -1405,7 +1405,7 @@ Apache License
    limitations under the License.
 ```
 
-### miniaudio 0.11.25
+### miniaudio 0.11.26
 
 - SPDX: `MIT-0 OR Unlicense`
 - Copyright: Copyright (c) David Reid
