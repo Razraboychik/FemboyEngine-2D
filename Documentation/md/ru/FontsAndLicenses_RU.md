@@ -22,8 +22,6 @@
 | `noto.thai` | Noto Sans Thai | тайский | Noto-OFL |
 | `noto.han` | Noto Sans SC | хань, paged-атлас | Noto-OFL |
 | `press_start` | Press Start 2P | 8-битный display-текст | PressStart2P-OFL |
-| `silkscreen` | Silkscreen | компактный пиксельный display | Silkscreen-OFL |
-| `plex.mono` | IBM Plex Mono | код и отладка | IBMPlex-OFL |
 
 `Text::MountBaseFonts` монтирует каталог в `TextFontStack`,
 `Text::BaseFontCatalog` отдаёт те же данные инструментам. Набор покрывает

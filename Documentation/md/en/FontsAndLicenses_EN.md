@@ -22,8 +22,6 @@ with the font, not a notification to the authors.
 | `noto.thai` | Noto Sans Thai | Thai | Noto-OFL |
 | `noto.han` | Noto Sans SC | Han, paged atlas | Noto-OFL |
 | `press_start` | Press Start 2P | 8-bit display text | PressStart2P-OFL |
-| `silkscreen` | Silkscreen | compact pixel display text | Silkscreen-OFL |
-| `plex.mono` | IBM Plex Mono | code and debug text | IBMPlex-OFL |
 
 `Text::MountBaseFonts` mounts the catalogue into a `TextFontStack`;
 `Text::BaseFontCatalog` exposes the same data to tools. The set covers Latin,

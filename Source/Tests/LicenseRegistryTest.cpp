@@ -21,9 +21,9 @@ int main()
         std::fprintf(stderr, "FAIL: load licenses: %s\n", ScopedError.c_str());
         return 1;
     }
-    if (ScopedLicenses.Count() < 5)
+    if (ScopedLicenses.Count() < 4)
     {
-        std::fprintf(stderr, "FAIL: expected at least five bundled licenses, got %zu\n", ScopedLicenses.Count());
+        std::fprintf(stderr, "FAIL: expected at least four bundled licenses, got %zu\n", ScopedLicenses.Count());
         return 1;
     }
     if (ScopedLicenses.Text("Noto-OFL").find("SIL OPEN FONT LICENSE") == std::string_view::npos)
@@ -51,6 +51,14 @@ int main()
     if (Fby::Text::BaseFontCatalog().size() < 8)
     {
         std::fprintf(stderr, "FAIL: base font catalogue is too small\n");
+        return 1;
+    }
+    Fby::Text::TextFontStack ScopedStack;
+    const std::uint32_t ScopedMounted = Fby::Text::MountBaseFonts(ScopedStack, ScopedVfs, &ScopedError);
+    if (ScopedMounted != Fby::Text::BaseFontCatalog().size())
+    {
+        std::fprintf(stderr, "FAIL: mounted %u/%zu base fonts: %s\n", ScopedMounted,
+                     Fby::Text::BaseFontCatalog().size(), ScopedError.c_str());
         return 1;
     }
     std::printf("license_registry: OK (%zu licenses, %zu base fonts)\n", ScopedLicenses.Count(),

@@ -7,7 +7,7 @@ namespace Fby::Text
 {
 namespace
 {
-constexpr std::array<BaseFontInfo, 10> kBaseFonts{{
+constexpr std::array<BaseFontInfo, 8> kBaseFonts{{
     {"inter.latin", "fonts/Inter-Regular.ttf", "Inter-OFL", BaseFontRole::Sans, TextScript::Latin, 32.0f, 2048,
      false, false},
     {"inter.cyrillic", "fonts/Inter-Regular.ttf", "Inter-OFL", BaseFontRole::Sans, TextScript::Cyrillic, 32.0f, 2048,
@@ -23,11 +23,7 @@ constexpr std::array<BaseFontInfo, 10> kBaseFonts{{
     {"noto.han", "fonts/tests/NotoSansSC-Regular.ttf", "Noto-OFL", BaseFontRole::Sans, TextScript::Han, 32.0f, 1024,
      true, true},
     {"press_start", "fonts/base/PressStart2P-Regular.ttf", "PressStart2P-OFL", BaseFontRole::Display,
-     TextScript::Latin, 32.0f, 1024, false, true},
-    {"silkscreen", "fonts/base/Silkscreen-Regular.ttf", "Silkscreen-OFL", BaseFontRole::Display, TextScript::Latin,
-     32.0f, 1024, false, true},
-    {"plex.mono", "fonts/IBMPlexMono-Regular.ttf", "IBMPlex-OFL", BaseFontRole::Mono, TextScript::Latin, 18.0f, 1024,
-     false, true},
+     TextScript::Latin, 32.0f, 2048, false, true},
 }};
 }
 
