@@ -4,7 +4,7 @@
 
 **Version:** 0.6.0-alpha.1
 **Status:** Alpha
-**Date:** 2026-11-22
+**Date:** 2026-11-23
 **Document:** FBY-ARCH-0.1
 
 ---

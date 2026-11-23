@@ -56,6 +56,7 @@ void SettingsRegistryPanel::DrawInline()
 
 void SettingsRegistryPanel::DrawRows()
 {
+    MHits.clear();
     if (ImGui::InputTextWithHint("##settings-search", "Search settings", MSearch.data(), MSearch.size()))
     {
         MModel.SetConfig({.ShowAdvanced = MShowAdvanced,
@@ -192,6 +193,9 @@ void SettingsRegistryPanel::DrawRow(const SettingsRow& InRow)
         }
     }
 
+    const ImVec2 ScopedItemMin = ImGui::GetItemRectMin();
+    const ImVec2 ScopedItemMax = ImGui::GetItemRectMax();
+    MHits.push_back({InRow.Id, ScopedItemMin.x, ScopedItemMin.y, ScopedItemMax.x, ScopedItemMax.y});
     if (ScopedChanged)
     {
         if (ScopedDangerous)

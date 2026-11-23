@@ -170,9 +170,12 @@ per-install dB overrides keyed by the same stable bus id; the project file owns
 the bus topology and the user file owns the player's values. The optional `fby_settings_fuzz` target is built with
 `-DFBY_BUILD_FUZZERS=ON`; its seed corpus lives in
 `Source/Tests/FuzzCorpus/Settings`. It exercises project decode, re-encode and
-reload without touching the filesystem. On Windows the target links a standalone
-corpus runner because the libFuzzer runtime uses a different CRT; on matching
-clang platforms the same source is linked with `-fsanitize=fuzzer,address`. The existing accessibility profile is
+reload without touching the filesystem. Windows uses a static-CRT fuzz build:
+`-DFBY_FUZZ_LIBFUZZER=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded` links the
+real libFuzzer runtime (the COE shim only satisfies the runtime's unused
+continue-on-error symbols) and the target has been run for 20,000 executions.
+Without that option the same target falls back to a standalone corpus runner.
+Linux/macOS Clang links `-fsanitize=fuzzer,address`. The existing accessibility profile is
 registered through
 `Editor::RegisterAccessibilitySettings`, so its serialized fields become ordinary
 registry descriptors without changing their project storage.

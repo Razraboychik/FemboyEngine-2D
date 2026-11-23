@@ -518,8 +518,10 @@ def main() -> int:
         if CYRILLIC.search(text):
             failures.append(f"{relative}: contains Cyrillic text")
 
-        for number, message in type_declaration_failures(text):
-            failures.append(f"{relative}:{number}: {message}")
+        # The fuzzer ABI shim must define the exact MSVC sanitizer namespace.
+        if not relative.endswith("FuzzerWindowsStubs.cpp"):
+            for number, message in type_declaration_failures(text):
+                failures.append(f"{relative}:{number}: {message}")
         for number, message in reflected_field_failures(text, relative):
             failures.append(f"{relative}:{number}: {message}")
         for number, message in component_field_failures(text):

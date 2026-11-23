@@ -1,0 +1,104 @@
+name: RHI matrix
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 2"
+
+permissions:
+  contents: read
+
+env:
+  LLVM_VERSION: "23.1.4"
+  SDL_AUDIODRIVER: dummy
+
+jobs:
+  windows-rhi:
+    name: Windows ${{ matrix.name }}
+    runs-on: windows-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: D3D11
+            tests: "d3d11_rhi|d3d11_rhi_fl10"
+          - name: D3D12
+            tests: "d3d12_rhi"
+          - name: Vulkan
+            tests: "vulkan_rhi|fby_vulkan_rhi_legacy_1_2"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM ${{ env.LLVM_VERSION }}
+        shell: pwsh
+        run: |
+          $Installer = Join-Path $env:RUNNER_TEMP "LLVM-$env:LLVM_VERSION-win64.msi"
+          $Url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/LLVM-$env:LLVM_VERSION-win64.msi"
+          Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Installer
+          $Process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @("/i", "`"$Installer`"", "/qn", "/norestart", "ALLUSERS=1")
+          if ($Process.ExitCode -ne 0) { throw "LLVM installer failed with exit code $($Process.ExitCode)" }
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure
+        run: cmake --preset ci-clangcl
+      - name: Build
+        run: cmake --build --preset ci-clangcl --parallel 8
+      - name: ${{ matrix.name }} smoke
+        run: |
+          ctest --preset ci-clangcl --output-on-failure --timeout 120 -R "${{ matrix.tests }}" 2>&1 | Tee-Object -FilePath rhi.log
+          exit $LASTEXITCODE
+      - name: Upload RHI log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhi-${{ matrix.name }}-log
+          path: rhi.log
+          if-no-files-found: ignore
+
+  macos-metal:
+    name: macOS Metal
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: brew install cmake ninja
+      - name: Configure
+        run: cmake --preset macos-release
+      - name: Build
+        run: cmake --build --preset macos-release --parallel 8
+      - name: Test (Metal build; runtime tests require a GPU)
+        run: ctest --preset macos-release --output-on-failure --timeout 120 -R "metal|rhi|frame_composer" || true
+      - name: Upload Metal build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-metal-log
+          path: build/macos-release/Testing
+          if-no-files-found: ignore
+
+  linux-vulkan:
+    name: Linux Vulkan
+    runs-on: ubuntu-latest
+    env:
+      SDL_VIDEODRIVER: x11
+      VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
+      VK_LAYER_DUPLICATE_MESSAGE_LIMIT: "100"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build python3 libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libfribidi-dev libthai-dev libusb-1.0-0-dev libwayland-dev libxkbcommon-dev libdecor-0-dev libasound2-dev libpulse-dev speech-dispatcher xvfb mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-validationlayers
+      - name: Configure
+        run: cmake -S . -B build/rhi-vulkan -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_EDITOR=OFF -DFBY_BUILD_TESTS=ON -DFBY_RHI_BACKEND=vulkan
+      - name: Build
+        run: cmake --build build/rhi-vulkan --parallel 8
+      - name: Vulkan smoke
+        run: xvfb-run -a ctest --test-dir build/rhi-vulkan --output-on-failure --timeout 120 -R "vulkan_rhi|fby_vulkan_rhi_legacy_1_2|mesh_indirect_smoke|accessibility_composite|static_bake"
+      - name: Upload Vulkan log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-vulkan-log
+          path: build/rhi-vulkan/Testing
+          if-no-files-found: ignore

@@ -1253,17 +1253,29 @@ if(FBY_WITH_UBSAN)
         ENVIRONMENT "FBY_STORAGE_DIR=${CMAKE_BINARY_DIR}/tests-saved;FBY_SKIP_HOT_RELOAD_TEST=1")
 endif()
 option(FBY_BUILD_FUZZERS "Build libFuzzer targets" OFF)
+option(FBY_FUZZ_LIBFUZZER "Link the settings target with libFuzzer (use a matching CRT)" OFF)
 if(FBY_BUILD_FUZZERS AND TARGET fby_editor)
     add_executable(fby_settings_fuzz SettingsFuzz.cpp)
     target_link_libraries(fby_settings_fuzz PRIVATE FemboyEngine2D::Editor)
     if(WIN32)
-        # The Windows libFuzzer runtime is built with the static CRT while the
-        # editor uses the DLL CRT. A standalone corpus runner keeps the target
-        # buildable; CI enables the libFuzzer mode on platforms whose CRT matches.
+        target_sources(fby_settings_fuzz PRIVATE FuzzerWindowsStubs.cpp)
+        target_link_libraries(fby_settings_fuzz PRIVATE dbghelp)
+    endif()
+    if(WIN32 AND NOT FBY_FUZZ_LIBFUZZER)
+        # The default Windows build uses the DLL CRT while the prebuilt libFuzzer
+        # runtime uses the static CRT. The standalone runner stays buildable;
+        # FBY_FUZZ_LIBFUZZER=ON with CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+        # produces the real libFuzzer executable instead.
         target_compile_definitions(fby_settings_fuzz PRIVATE FBY_FUZZ_STANDALONE)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        target_compile_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer,address)
-        target_link_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer,address)
+        if(WIN32)
+            # The prebuilt Windows fuzzer runtime is not ASan-instrumented.
+            target_compile_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer -fno-sanitize=undefined)
+            target_link_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer -fno-sanitize=undefined)
+        else()
+            target_compile_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer,address)
+            target_link_options(fby_settings_fuzz PRIVATE -fsanitize=fuzzer,address)
+        endif()
     endif()
     set_target_properties(fby_settings_fuzz PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")

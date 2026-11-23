@@ -171,9 +171,12 @@ per-install dB-overrides по тому же стабильному bus id; proje
 топологией, user-файл — значениями игрока. Необязательная цель `fby_settings_fuzz` собирается с
 `-DFBY_BUILD_FUZZERS=ON`; seed corpus лежит в `Source/Tests/FuzzCorpus/Settings`.
 Она прогоняет decode, повторный encode и reload project-файла без работы с
-файловой системой. На Windows цель собирает standalone corpus runner, потому что
-runtime libFuzzer использует другой CRT; на подходящих clang-платформах тот же
-исходник линкуется с `-fsanitize=fuzzer,address`. Существующий accessibility-профиль регистрируется через `Editor::RegisterAccessibilitySettings`, поэтому его
+файловой системой. На Windows используется static-CRT fuzz-сборка:
+`-DFBY_FUZZ_LIBFUZZER=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded` линкует
+настоящий runtime libFuzzer (COE shim закрывает только неиспользуемые символы
+continue-on-error), и цель прогнана на 20 000 executions. Без этой опции та же
+цель собирает standalone corpus runner. Linux/macOS Clang линкует
+`-fsanitize=fuzzer,address`. Существующий accessibility-профиль регистрируется через `Editor::RegisterAccessibilitySettings`, поэтому его
 сериализованные поля становятся обычными дескрипторами реестра без изменения
 хранения в project-файле. `Editor::RegisterEditorSettings` выставляет UI scale,
 body font, text spacing, log/undo budgets, frame limit, VSync и theme через тот

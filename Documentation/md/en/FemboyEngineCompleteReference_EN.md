@@ -3,7 +3,7 @@
 **Architecture, rendering, ECS, the animation/AI canvases with blend-cycle and PIE contracts, DOD pipelines and production distribution**
 
 
-Version 0.6.0-alpha.1 (Alpha) · 2026-11-22 · English
+Version 0.6.0-alpha.1 (Alpha) · 2026-11-23 · English
 
 
 ---
@@ -1853,7 +1853,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `VisualScriptPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 71 |
 | `WindowManager` | Infrastructure | `Source/Editor/Infrastructure/EditorFonts.hpp` | 16 |
 
-### Editor/Panels (110)
+### Editor/Panels (111)
 
 | Symbol | Kind | Header | Line |
 |---|---|---|---|
@@ -1926,7 +1926,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `ScriptRuntime` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 16 |
 | `SdfCharacterPanel` | Panels | `Source/Editor/Panels/SdfCharacterPanel.hpp` | 9 |
 | `SdfLightingPanel` | Panels | `Source/Editor/Panels/SdfLightingPanel.hpp` | 19 |
-| `SettingsRegistryPanel` | Panels | `Source/Editor/Panels/SettingsRegistryPanel.hpp` | 15 |
+| `SettingsRegistryPanel` | Panels | `Source/Editor/Panels/SettingsRegistryPanel.hpp` | 25 |
+| `SettingsRowHit` | Panels | `Source/Editor/Panels/SettingsRegistryPanel.hpp` | 16 |
 | `SinkUser` | Panels | `Source/Editor/Panels/AnimationTimelinePanel.hpp` | 88 |
 | `SkeletonInspectorState` | Panels | `Source/Editor/Panels/SkeletonAssetPanel.hpp` | 19 |
 | `SpawnContext` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 68 |

@@ -1,6 +1,6 @@
 # FemboyEngine2D Application Guide
 
-*ECS in a production project, optimisation and the distribution SDK — 2026-11-22*
+*ECS in a production project, optimisation and the distribution SDK — 2026-11-23*
 
 ## 1. What this guide is for
 

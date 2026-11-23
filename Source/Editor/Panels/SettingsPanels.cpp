@@ -844,22 +844,6 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     {
         AccessibilitySetFlag(&ScopedProfile.runtime.flags, AccessibilityBlindMode, ScopedBlind);
     }
-    bool ScopedDeaf = AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityDeafMode);
-    if (ImGui::Checkbox("Deaf mode (Master mute + subtitles)", &ScopedDeaf))
-    {
-        AccessibilitySetFlag(&ScopedProfile.runtime.flags, AccessibilityDeafMode, ScopedDeaf);
-    }
-    ImGui::Checkbox("Show subtitles without muting", &ScopedProfile.runtime.showSubtitles);
-    bool ScopedFlash = AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityFlashGuard);
-    if (ImGui::Checkbox("FlashGuard", &ScopedFlash))
-    {
-        AccessibilitySetFlag(&ScopedProfile.runtime.flags, AccessibilityFlashGuard, ScopedFlash);
-    }
-    ImGui::BeginDisabled(!ScopedFlash);
-    ImGui::SliderFloat("Flash threshold", &ScopedProfile.runtime.flashThreshold, 0.02f, 0.45f, "%.3f");
-    ImGui::SliderFloat("Flash residual gain", &ScopedProfile.runtime.flashGain, 0.05f, 1.0f, "%.2f");
-    ImGui::EndDisabled();
-
     const char* ScopedGameVisionNames[] = {"None", "Protanopia", "Deuteranopia", "Tritanopia"};
     int ScopedGameVision =
         static_cast<int>(std::min<std::uint8_t>(static_cast<std::uint8_t>(ScopedProfile.runtime.colorVision), 3));
@@ -980,18 +964,13 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::TextDisabled("Project policy read by the camera and composite pass; no plugin required.");
 
     ImGui::SeparatorText("OLED safety");
-    ImGui::Checkbox("Minute OLED Pixel Shifter", &ScopedProfile.presentation.oledPixelShift);
-    ImGui::SameLine();
-    ImGui::TextDisabled("(integer 2 px orbit)");
     ImGui::BeginDisabled(!ScopedProfile.presentation.oledPixelShift);
     ImGui::SliderFloat("Shift interval", &ScopedProfile.presentation.oledIntervalSeconds, 15.0f, 300.0f, "%.0f s");
     ImGui::EndDisabled();
 
-    ImGui::SeparatorText("Motion, HUD and contrast");
-    ImGui::SliderFloat("Motion scale", &ScopedProfile.presentation.motionScale, 0.0f, 1.0f, "%.2f");
+    ImGui::SeparatorText("Motion, HUD");
     ImGui::SliderFloat("HUD fade after idle", &ScopedProfile.presentation.hudFadeAfterIdleSeconds, 0.0f, 120.0f,
                        "%.0f s");
-    ImGui::SliderFloat("Minimum contrast ratio", &ScopedProfile.presentation.minimumContrastRatio, 1.0f, 21.0f, "%.1f");
 
     ImGui::SeparatorText("Cooker");
     (void)DrawCookFormatCombo(&ScopedValues.textureFormat);
