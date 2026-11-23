@@ -1,6 +1,7 @@
 // FemboyEngine2D - plain-text asset license registry.
 #pragma once
 
+#include "Engine/Assets/AssetMeta.hpp"
 #include "Engine/Assets/VFS.hpp"
 
 #include <map>
@@ -41,6 +42,7 @@ public:
     }
 
     void BindAsset(std::string_view InAssetPath, std::string_view InLicenseName);
+    [[nodiscard]] bool BindAssetMeta(const AssetMeta& InMeta, std::string* InError = nullptr);
     [[nodiscard]] std::string_view LicenseForAsset(std::string_view InAssetPath) const;
 
 private:

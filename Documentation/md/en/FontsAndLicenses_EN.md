@@ -21,7 +21,6 @@ with the font, not a notification to the authors.
 | `noto.devanagari` | Noto Sans Devanagari | Devanagari | Noto-OFL |
 | `noto.thai` | Noto Sans Thai | Thai | Noto-OFL |
 | `noto.han` | Noto Sans SC | Han, paged atlas | Noto-OFL |
-| `press_start` | Press Start 2P | 8-bit display text | PressStart2P-OFL |
 
 `Text::MountBaseFonts` mounts the catalogue into a `TextFontStack`;
 `Text::BaseFontCatalog` exposes the same data to tools. The set covers Latin,
@@ -59,7 +58,17 @@ std::string_view assetLicense = licenses.LicenseForAsset("images/hero.png");
 ```
 
 `BindBaseFontLicenses` loads the bundled licenses and binds every base font to
-its license id. A developer can add an author notice with `Add(name, text)` when
+its license id. Asset metadata can carry the id directly:
+
+```toml
+type = "texture"
+source = "images/hero.png"
+license = "MyAsset-Author-Notice"
+```
+
+`BindAssetMeta` rejects an asset whose license id is not in the registry. The
+registry walks nested directories, derives ids from relative stems, and rejects
+empty license files or duplicate ids. A developer can add an author notice with `Add(name, text)` when
 the text is generated or stored elsewhere; no C++ source change is required for
 ordinary files.
 

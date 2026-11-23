@@ -307,6 +307,16 @@ bool ParseAssetMetaFile(std::string_view InText, AssetMeta* InMeta, AssetDepende
             return false;
         }
     }
+    if (const auto ScopedLicense = ScopedTable["license"].value<std::string>(); ScopedLicense)
+    {
+        if (ScopedLicense->size() >= sizeof(InMeta->license))
+        {
+            SetError(InError, "femeta: license id exceeds the metadata capacity");
+            return false;
+        }
+        std::memcpy(InMeta->license, ScopedLicense->data(), ScopedLicense->size());
+        InMeta->license[ScopedLicense->size()] = ' ';
+    }
     if (const auto ScopedCooked = ScopedTable["cooked"].value<std::string>(); ScopedCooked)
     {
         if (!CopyPath(InMeta->cookedPath, *ScopedCooked, InError))

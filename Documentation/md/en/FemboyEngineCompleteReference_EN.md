@@ -2012,7 +2012,7 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `AsepriteSheet` | Assets | `Source/Engine/Assets/AsepriteImporter.hpp` | 31 |
 | `AsepriteTag` | Assets | `Source/Engine/Assets/AsepriteImporter.hpp` | 23 |
 | `AssetDatabase` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 36 |
-| `AssetDependency` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 83 |
+| `AssetDependency` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 85 |
 | `AssetHandle` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 22 |
 | `AssetImportSettings` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 45 |
 | `AssetMeta` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 61 |
@@ -2038,8 +2038,8 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `FemArchiver` | Assets | `Source/Engine/Assets/FemArchiver.hpp` | 131 |
 | `FempakInput` | Assets | `Source/Engine/Assets/FempakWriter.hpp` | 15 |
 | `FempakWriter` | Assets | `Source/Engine/Assets/FempakWriter.hpp` | 22 |
-| `LicenseEntry` | Assets | `Source/Engine/Assets/LicenseRegistry.hpp` | 15 |
-| `LicenseRegistry` | Assets | `Source/Engine/Assets/LicenseRegistry.hpp` | 24 |
+| `LicenseEntry` | Assets | `Source/Engine/Assets/LicenseRegistry.hpp` | 16 |
+| `LicenseRegistry` | Assets | `Source/Engine/Assets/LicenseRegistry.hpp` | 25 |
 | `LocaleTable` | Assets | `Source/Engine/Assets/Localization.hpp` | 14 |
 | `LocalizationCompileResult` | Assets | `Source/Engine/Assets/LocalizationCompiler.hpp` | 16 |
 | `LocalizationDecompileResult` | Assets | `Source/Engine/Assets/LocalizationCompiler.hpp` | 23 |

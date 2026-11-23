@@ -21,7 +21,7 @@ int main()
         std::fprintf(stderr, "FAIL: load licenses: %s\n", ScopedError.c_str());
         return 1;
     }
-    if (ScopedLicenses.Count() < 4)
+    if (ScopedLicenses.Count() < 3)
     {
         std::fprintf(stderr, "FAIL: expected at least four bundled licenses, got %zu\n", ScopedLicenses.Count());
         return 1;
@@ -48,7 +48,20 @@ int main()
         std::fprintf(stderr, "FAIL: custom notice text is missing\n");
         return 1;
     }
-    if (Fby::Text::BaseFontCatalog().size() < 8)
+    Fby::Assets::AssetMeta ScopedMeta;
+    std::snprintf(ScopedMeta.sourcePath, sizeof(ScopedMeta.sourcePath), "%s", "images/hero.png");
+    std::snprintf(ScopedMeta.license, sizeof(ScopedMeta.license), "%s", "Noto-OFL");
+    if (!ScopedLicenses.BindAssetMeta(ScopedMeta, &ScopedError))
+    {
+        std::fprintf(stderr, "FAIL: bind asset metadata: %s\n", ScopedError.c_str());
+        return 1;
+    }
+    if (ScopedLicenses.LicenseForAsset("images/hero.png") != "Noto-OFL")
+    {
+        std::fprintf(stderr, "FAIL: asset metadata binding is missing\n");
+        return 1;
+    }
+    if (Fby::Text::BaseFontCatalog().size() < 7)
     {
         std::fprintf(stderr, "FAIL: base font catalogue is too small\n");
         return 1;

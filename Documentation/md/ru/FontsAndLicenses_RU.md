@@ -21,7 +21,6 @@
 | `noto.devanagari` | Noto Sans Devanagari | деванагари | Noto-OFL |
 | `noto.thai` | Noto Sans Thai | тайский | Noto-OFL |
 | `noto.han` | Noto Sans SC | хань, paged-атлас | Noto-OFL |
-| `press_start` | Press Start 2P | 8-битный display-текст | PressStart2P-OFL |
 
 `Text::MountBaseFonts` монтирует каталог в `TextFontStack`,
 `Text::BaseFontCatalog` отдаёт те же данные инструментам. Набор покрывает
@@ -59,7 +58,17 @@ std::string_view assetLicense = licenses.LicenseForAsset("images/hero.png");
 ```
 
 `BindBaseFontLicenses` загружает базовые лицензии и привязывает каждый шрифт к
-его id. Разработчик может добавить уведомление через `Add(name, text)`, если
+его id. Метаданные ассета могут содержать id напрямую:
+
+```toml
+type = "texture"
+source = "images/hero.png"
+license = "MyAsset-Author-Notice"
+```
+
+`BindAssetMeta` отклоняет ассет, если license id отсутствует в реестре. Реестр
+обходит вложенные каталоги, строит id из относительного stem и отклоняет пустые
+файлы и повторяющиеся id. Разработчик может добавить уведомление через `Add(name, text)`, если
 текст генерируется или лежит вне обычного файла; менять C++ для обычных файлов
 не нужно.
 

@@ -65,6 +65,8 @@ struct AssetMeta
     AssetId id{};
     AssetKind kind = AssetKind::Unknown;
     char sourcePath[kAssetPathCapacity]{};
+    // License id from Licenses/<name>.txt; empty means no per-asset notice.
+    char license[64]{};
     char cookedPath[kAssetPathCapacity]{};
     // Hash of the authored bytes (watch debounce)
     std::uint64_t sourceHash = 0;
