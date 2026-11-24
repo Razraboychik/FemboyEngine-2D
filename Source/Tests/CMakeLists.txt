@@ -1249,7 +1249,7 @@ if(FbyTestNames)
         ENVIRONMENT "FBY_STORAGE_DIR=${CMAKE_BINARY_DIR}/tests-saved")
 endif()
 
-if(FBY_WITH_UBSAN)
+if(FBY_WITH_UBSAN AND TARGET fby_editor)
     set_tests_properties(editor_infrastructure PROPERTIES
         ENVIRONMENT "FBY_STORAGE_DIR=${CMAKE_BINARY_DIR}/tests-saved;FBY_SKIP_HOT_RELOAD_TEST=1")
 endif()
