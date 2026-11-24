@@ -538,6 +538,9 @@ add_library(fby_miniz STATIC
     "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz_zip.c")
 target_include_directories(fby_miniz PUBLIC "${FBY_ENGINE_REPO_ROOT}/third_party/miniz")
 set_target_properties(fby_miniz PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
+    fby_asan_apply(fby_miniz)
+endif()
 
 target_link_libraries(fby_engine
     PUBLIC
