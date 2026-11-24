@@ -32,6 +32,7 @@ Do not edit it by hand; change the manifest and regenerate.
 | SheenBidi | 3.0.0 | Apache-2.0 | Unicode Bidirectional Algorithm (UAX #9) runs |
 | IBM Plex Sans / IBM Plex Mono | IBM Plex 6.4.0 | OFL-1.1 | Default text family: regular, bold, italic, bold italic and mono slots |
 | Noto Sans Arabic/Devanagari/Thai/SC test fonts | Google Fonts | OFL-1.1 | Complex-script shaping and full-glyph SDF tests |
+| miniz | 3.1.2 | Unlicense | Raw DEFLATE compression for incident ZIP archives |
 
 ## License texts
 
@@ -1294,6 +1295,37 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### miniz 3.1.2
+
+- SPDX: `Unlicense`
+- Copyright: Copyright 2013-2014 RAD Game Tools and Valve Software; Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+- Upstream: https://github.com/richgel999/miniz
+
+```text
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+
+All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## Engine license

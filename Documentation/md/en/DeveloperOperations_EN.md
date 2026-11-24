@@ -107,7 +107,7 @@ recording is off.
 
 ## 7. Limits
 
-The ZIP is store-only (no compression) and is an optional copy of the directory.
+The ZIP uses Deflate for files where it is smaller and stores the rest unchanged.
 The crash marker is written with `CreateFileA`/`open` and no allocation. The
 full bundle is built only on the next start, so a fatal path never allocates.
 A session lock covers a process killed before its crash handler runs: a normal

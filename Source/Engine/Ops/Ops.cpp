@@ -3,6 +3,8 @@
 
 #include "Engine/Text/BaseFonts.hpp"
 
+#include "miniz.h"
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -95,14 +97,30 @@ void Append32(std::vector<std::byte>& OutBytes, std::uint32_t InValue)
     }
 }
 
+bool DeflateRaw(const std::string& InData, std::string* OutData)
+{
+    std::size_t ScopedOutSize = 0;
+    void* ScopedCompressed = tdefl_compress_mem_to_heap(InData.data(), InData.size(), &ScopedOutSize,
+                                                        TDEFL_DEFAULT_MAX_PROBES);
+    if (ScopedCompressed == nullptr)
+    {
+        return false;
+    }
+    OutData->assign(static_cast<const char*>(ScopedCompressed), ScopedOutSize);
+    mz_free(ScopedCompressed);
+    return true;
+}
+
 bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFiles, std::string* InError)
 {
     struct Entry
     {
         std::string Name;
         std::string Data;
+        std::string Payload;
         std::uint32_t Crc = 0;
         std::uint32_t Offset = 0;
+        std::uint16_t Method = 0;
     };
     std::vector<Entry> ScopedEntries;
     for (const std::string& ScopedRelative : InFiles)
@@ -117,6 +135,16 @@ bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFi
         ScopedEntry.Name = ScopedRelative;
         ScopedEntry.Data.assign(std::istreambuf_iterator<char>(ScopedFile), std::istreambuf_iterator<char>());
         ScopedEntry.Crc = Crc32(ScopedEntry.Data);
+        std::string ScopedDeflated;
+        if (DeflateRaw(ScopedEntry.Data, &ScopedDeflated) && ScopedDeflated.size() < ScopedEntry.Data.size())
+        {
+            ScopedEntry.Payload = std::move(ScopedDeflated);
+            ScopedEntry.Method = 8;
+        }
+        else
+        {
+            ScopedEntry.Payload = ScopedEntry.Data;
+        }
         ScopedEntries.push_back(std::move(ScopedEntry));
     }
     std::vector<std::byte> ScopedZip;
@@ -127,11 +155,11 @@ bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFi
         Append32(ScopedZip, 0x04034B50u);
         Append16(ScopedZip, 20);
         Append16(ScopedZip, 0);
-        Append16(ScopedZip, 0);
+        Append16(ScopedZip, ScopedEntry.Method);
         Append16(ScopedZip, 0);
         Append16(ScopedZip, 0);
         Append32(ScopedZip, ScopedEntry.Crc);
-        Append32(ScopedZip, static_cast<std::uint32_t>(ScopedEntry.Data.size()));
+        Append32(ScopedZip, static_cast<std::uint32_t>(ScopedEntry.Payload.size()));
         Append32(ScopedZip, static_cast<std::uint32_t>(ScopedEntry.Data.size()));
         Append16(ScopedZip, static_cast<std::uint16_t>(ScopedEntry.Name.size()));
         Append16(ScopedZip, 0);
@@ -139,7 +167,7 @@ bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFi
         {
             ScopedZip.push_back(static_cast<std::byte>(ScopedChar));
         }
-        for (const char ScopedChar : ScopedEntry.Data)
+        for (const char ScopedChar : ScopedEntry.Payload)
         {
             ScopedZip.push_back(static_cast<std::byte>(ScopedChar));
         }
@@ -150,11 +178,11 @@ bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFi
         Append16(ScopedCentral, 20);
         Append16(ScopedCentral, 20);
         Append16(ScopedCentral, 0);
-        Append16(ScopedCentral, 0);
+        Append16(ScopedCentral, ScopedEntry.Method);
         Append16(ScopedCentral, 0);
         Append16(ScopedCentral, 0);
         Append32(ScopedCentral, ScopedEntry.Crc);
-        Append32(ScopedCentral, static_cast<std::uint32_t>(ScopedEntry.Data.size()));
+        Append32(ScopedCentral, static_cast<std::uint32_t>(ScopedEntry.Payload.size()));
         Append32(ScopedCentral, static_cast<std::uint32_t>(ScopedEntry.Data.size()));
         Append16(ScopedCentral, static_cast<std::uint16_t>(ScopedEntry.Name.size()));
         Append16(ScopedCentral, 0);

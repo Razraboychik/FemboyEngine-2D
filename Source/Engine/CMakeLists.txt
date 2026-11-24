@@ -531,6 +531,14 @@ target_include_directories(fby_engine
     PRIVATE
         "${FBY_ENGINE_REPO_ROOT}/third_party/stb")
 
+add_library(fby_miniz STATIC
+    "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz.c"
+    "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz_tdef.c"
+    "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz_tinfl.c"
+    "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz_zip.c")
+target_include_directories(fby_miniz PUBLIC "${FBY_ENGINE_REPO_ROOT}/third_party/miniz")
+set_target_properties(fby_miniz PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_link_libraries(fby_engine
     PUBLIC
         fby::compiler_flags
@@ -543,6 +551,7 @@ target_link_libraries(fby_engine
         fby::box2d
         fby::flatbuffers
         fby::unibreak
+        fby_miniz
         FemboyEngine2D::AssetCook)
 
 if(FBY_WITH_HARFBUZZ AND TARGET harfbuzz)

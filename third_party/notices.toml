@@ -191,3 +191,12 @@ purpose = "Complex-script shaping and full-glyph SDF tests"
 copyright = "Copyright (c) Google Inc. and Noto contributors"
 url = "https://github.com/google/fonts"
 license_file = "assets/fonts/tests/OFL.txt"
+
+[[component]]
+name = "miniz"
+version = "3.1.2"
+spdx = "Unlicense"
+purpose = "Raw DEFLATE compression for incident ZIP archives"
+copyright = "Copyright 2013-2014 RAD Game Tools and Valve Software; Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC"
+url = "https://github.com/richgel999/miniz"
+license_file = "third_party/miniz/LICENSE"
