@@ -64,6 +64,8 @@ struct IncidentRequest
     std::string BuildInfo;
     std::string SettingsText;
     std::string LogText;
+    // Optional store-only ZIP written after the directory. Empty means no archive.
+    std::string ArchivePath;
     std::span<const std::byte> ReplayBytes;
     const Assets::LicenseRegistry* Licenses = nullptr;
     const Legal::LegalService* Legal = nullptr;

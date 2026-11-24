@@ -1,5 +1,6 @@
 // FemboyEngine2D - editor application.
 #include "Engine/Core/CrashHandler.hpp"
+#include "Engine/Ops/Ops.hpp"
 #include "Engine/Core/AssetPaths.hpp"
 #include "Engine/Core/StoragePaths.hpp"
 #include "Engine/Core/Time.hpp"
@@ -937,6 +938,23 @@ void SpawnFallbackWorld(Fby::Ecs::Registry& InRegistry)
 }
 }
 
+
+void WriteCrashIncidentBundle(const char* InDirectory, const char* InReason) noexcept
+{
+    try
+    {
+        Fby::Ops::IncidentRequest ScopedRequest;
+        ScopedRequest.Directory = std::string(InDirectory) + "/incident";
+        ScopedRequest.Reason = InReason != nullptr ? InReason : "crash";
+        ScopedRequest.BuildInfo = "editor crash bundle";
+        std::string ScopedError;
+        (void)Fby::Ops::WriteIncidentBundle(ScopedRequest, &ScopedError);
+    }
+    catch (...)
+    {
+    }
+}
+
 int main(int argc, char** argv)
 {
     Fby::SetLogLevel(Fby::LogLevel::Info);
@@ -1511,6 +1529,10 @@ int main(int argc, char** argv)
     {
         Fby::LogError("editor_app", "editor initialization failed");
         return 3;
+    }
+    if (ScopedEditor.Config().Config().ops.incidentOnCrash)
+    {
+        Fby::Core::SetCrashIncidentHook(&WriteCrashIncidentBundle);
     }
 
     const Fby::Entity ScopedSkeletalAnimationEntity = SpawnSkeletonDemo(ScopedRegistry);

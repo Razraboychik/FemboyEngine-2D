@@ -109,13 +109,15 @@ int main()
     ScopedIncident.BuildInfo = "test build";
     ScopedIncident.SettingsText = "x = 1\n";
     ScopedIncident.LogText = "log line\n";
+    ScopedIncident.ArchivePath = "build/ops_incident_test.zip";
     ScopedIncident.ReplayBytes = ScopedReplayBytes;
     ScopedIncident.Licenses = &ScopedLicenses;
     ScopedIncident.Legal = &ScopedLegal;
     const Fby::Ops::IncidentResult ScopedBundle = Fby::Ops::WriteIncidentBundle(ScopedIncident, &ScopedError);
     if (!ScopedBundle.Ok || !std::filesystem::exists("build/ops_incident_test/manifest.toml") ||
         !std::filesystem::exists("build/ops_incident_test/replay.fbyrply") ||
-        !std::filesystem::exists("build/ops_incident_test/Licenses"))
+        !std::filesystem::exists("build/ops_incident_test/Licenses") ||
+        !std::filesystem::exists("build/ops_incident_test.zip"))
     {
         std::fprintf(stderr, "FAIL: incident bundle: %s\n", ScopedError.c_str());
         return 1;

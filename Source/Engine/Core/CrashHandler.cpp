@@ -33,9 +33,18 @@ namespace
 std::atomic<bool> GInstalled{false};
 std::atomic<bool> GInHandler{false};
 std::atomic<unsigned int> GReportSequence{1};
+CrashIncidentHook GCrashIncidentHook = nullptr;
 std::terminate_handler GPreviousTerminate = nullptr;
 char GApplicationName[64] = "femboy";
 char GSessionDirectory[1024] = {};
+
+void InvokeCrashIncidentHook(const char* InReason) noexcept
+{
+    if (GCrashIncidentHook != nullptr && GSessionDirectory[0] != '\0')
+    {
+        GCrashIncidentHook(GSessionDirectory, InReason);
+    }
+}
 
 [[nodiscard]] std::uint64_t ProcessId() noexcept
 {
@@ -200,6 +209,7 @@ void HandleTerminate() noexcept
     if (!GInHandler.exchange(true))
     {
         WriteReportFile("std::terminate", "an exception escaped or a noexcept boundary was violated");
+        InvokeCrashIncidentHook("std::terminate");
     }
     std::abort();
 }
@@ -255,6 +265,7 @@ LONG WINAPI UnhandledException(EXCEPTION_POINTERS* InExceptionInfo) noexcept
     // The filter must not run twice for the same fault.
     (void)GInHandler.exchange(true);
     WriteReportFile("unhandled exception", ScopedDetails);
+    InvokeCrashIncidentHook("unhandled exception");
     WriteMiniDump(InExceptionInfo);
     ::TerminateProcess(::GetCurrentProcess(), 3);
     return EXCEPTION_EXECUTE_HANDLER;
@@ -316,6 +327,11 @@ void InstallCrashHandler(std::string_view InApplicationName) noexcept
     GInstalled.store(true, std::memory_order_release);
 }
 
+void SetCrashIncidentHook(CrashIncidentHook InHook) noexcept
+{
+    GCrashIncidentHook = InHook;
+}
+
 void UninstallCrashHandler() noexcept
 {
     if (!GInstalled.load(std::memory_order_relaxed))
@@ -353,7 +369,14 @@ bool WriteCrashReport(std::string_view InApplicationName, std::string_view InRea
         return false;
     }
     const unsigned int ScopedSequence = GReportSequence.fetch_add(1, std::memory_order_relaxed);
-    return WriteReportFile(InReason, InDetails, ScopedSequence);
+    const bool ScopedWritten = WriteReportFile(InReason, InDetails, ScopedSequence);
+    if (ScopedWritten && GCrashIncidentHook != nullptr)
+    {
+        char ScopedReason[192] = {};
+        std::snprintf(ScopedReason, sizeof(ScopedReason), "%.*s", static_cast<int>(InReason.size()), InReason.data());
+        GCrashIncidentHook(GSessionDirectory, ScopedReason);
+    }
+    return ScopedWritten;
 }
 
 std::string_view LastCrashDirectory() noexcept

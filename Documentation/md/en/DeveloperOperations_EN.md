@@ -36,7 +36,11 @@ Incidents/<name>/
 ```
 
 The request controls the directory, reason, build info, log limit and which
-parts are included. There is no network upload and no hidden telemetry.
+parts are included. `ArchivePath` optionally writes a store-only ZIP of the same
+files. There is no network upload and no hidden telemetry. When
+`incident_on_crash` is enabled, the editor installs a crash hook that writes an
+incident directory beside the crash report; the hook runs in a fatal path and
+must stay minimal.
 
 ## 3. Provenance and credits
 
@@ -101,7 +105,7 @@ recording is off.
 
 ## 7. Limits
 
-The bundle is a directory, not a ZIP. There is no crash-handler hook in this
-change; the game/editor calls `WriteIncidentBundle` at the point it chooses.
-Doctor checks the project data it can see; it cannot prove external store
-compliance or legal validity.
+The ZIP is store-only (no compression) and is an optional copy of the directory.
+The crash hook is best-effort and runs while the process is dying; it must not
+allocate or block heavily. Doctor checks the project data it can see; it cannot
+prove external store compliance or legal validity.

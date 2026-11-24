@@ -56,6 +56,127 @@ std::string EscapeMarkdown(std::string_view InText)
     return Scoped;
 }
 
+std::uint32_t Crc32(std::string_view InData)
+{
+    std::uint32_t ScopedCrc = 0xFFFFFFFFu;
+    for (const char ScopedChar : InData)
+    {
+        ScopedCrc ^= static_cast<std::uint8_t>(ScopedChar);
+        for (std::uint32_t ScopedBit = 0; ScopedBit < 8; ++ScopedBit)
+        {
+            ScopedCrc = (ScopedCrc >> 1) ^ (0xEDB88320u & (0u - (ScopedCrc & 1u)));
+        }
+    }
+    return ScopedCrc ^ 0xFFFFFFFFu;
+}
+
+void Append16(std::vector<std::byte>& OutBytes, std::uint16_t InValue)
+{
+    OutBytes.push_back(static_cast<std::byte>(InValue & 0xFFu));
+    OutBytes.push_back(static_cast<std::byte>((InValue >> 8) & 0xFFu));
+}
+
+void Append32(std::vector<std::byte>& OutBytes, std::uint32_t InValue)
+{
+    for (std::uint32_t ScopedByte = 0; ScopedByte < 4; ++ScopedByte)
+    {
+        OutBytes.push_back(static_cast<std::byte>((InValue >> (ScopedByte * 8)) & 0xFFu));
+    }
+}
+
+bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFiles, std::string* InError)
+{
+    struct Entry
+    {
+        std::string Name;
+        std::string Data;
+        std::uint32_t Crc = 0;
+        std::uint32_t Offset = 0;
+    };
+    std::vector<Entry> ScopedEntries;
+    for (const std::string& ScopedRelative : InFiles)
+    {
+        std::ifstream ScopedFile(ScopedRelative, std::ios::binary);
+        if (!ScopedFile)
+        {
+            SetError(InError, "cannot read incident archive entry: " + ScopedRelative);
+            return false;
+        }
+        Entry ScopedEntry;
+        ScopedEntry.Name = ScopedRelative;
+        ScopedEntry.Data.assign(std::istreambuf_iterator<char>(ScopedFile), std::istreambuf_iterator<char>());
+        ScopedEntry.Crc = Crc32(ScopedEntry.Data);
+        ScopedEntries.push_back(std::move(ScopedEntry));
+    }
+    std::vector<std::byte> ScopedZip;
+    std::vector<std::byte> ScopedCentral;
+    for (Entry& ScopedEntry : ScopedEntries)
+    {
+        ScopedEntry.Offset = static_cast<std::uint32_t>(ScopedZip.size());
+        Append32(ScopedZip, 0x04034B50u);
+        Append16(ScopedZip, 20);
+        Append16(ScopedZip, 0);
+        Append16(ScopedZip, 0);
+        Append16(ScopedZip, 0);
+        Append16(ScopedZip, 0);
+        Append32(ScopedZip, ScopedEntry.Crc);
+        Append32(ScopedZip, static_cast<std::uint32_t>(ScopedEntry.Data.size()));
+        Append32(ScopedZip, static_cast<std::uint32_t>(ScopedEntry.Data.size()));
+        Append16(ScopedZip, static_cast<std::uint16_t>(ScopedEntry.Name.size()));
+        Append16(ScopedZip, 0);
+        for (const char ScopedChar : ScopedEntry.Name)
+        {
+            ScopedZip.push_back(static_cast<std::byte>(ScopedChar));
+        }
+        for (const char ScopedChar : ScopedEntry.Data)
+        {
+            ScopedZip.push_back(static_cast<std::byte>(ScopedChar));
+        }
+    }
+    for (const Entry& ScopedEntry : ScopedEntries)
+    {
+        Append32(ScopedCentral, 0x02014B50u);
+        Append16(ScopedCentral, 20);
+        Append16(ScopedCentral, 20);
+        Append16(ScopedCentral, 0);
+        Append16(ScopedCentral, 0);
+        Append16(ScopedCentral, 0);
+        Append16(ScopedCentral, 0);
+        Append32(ScopedCentral, ScopedEntry.Crc);
+        Append32(ScopedCentral, static_cast<std::uint32_t>(ScopedEntry.Data.size()));
+        Append32(ScopedCentral, static_cast<std::uint32_t>(ScopedEntry.Data.size()));
+        Append16(ScopedCentral, static_cast<std::uint16_t>(ScopedEntry.Name.size()));
+        Append16(ScopedCentral, 0);
+        Append16(ScopedCentral, 0);
+        Append16(ScopedCentral, 0);
+        Append16(ScopedCentral, 0);
+        Append32(ScopedCentral, 0);
+        Append32(ScopedCentral, ScopedEntry.Offset);
+        for (const char ScopedChar : ScopedEntry.Name)
+        {
+            ScopedCentral.push_back(static_cast<std::byte>(ScopedChar));
+        }
+    }
+    const std::uint32_t ScopedCentralOffset = static_cast<std::uint32_t>(ScopedZip.size());
+    ScopedZip.insert(ScopedZip.end(), ScopedCentral.begin(), ScopedCentral.end());
+    Append32(ScopedZip, 0x06054B50u);
+    Append16(ScopedZip, 0);
+    Append16(ScopedZip, 0);
+    Append16(ScopedZip, static_cast<std::uint16_t>(ScopedEntries.size()));
+    Append16(ScopedZip, static_cast<std::uint16_t>(ScopedEntries.size()));
+    Append32(ScopedZip, static_cast<std::uint32_t>(ScopedCentral.size()));
+    Append32(ScopedZip, ScopedCentralOffset);
+    Append16(ScopedZip, 0);
+    std::ofstream ScopedOut(std::string(InPath), std::ios::binary | std::ios::trunc);
+    if (!ScopedOut)
+    {
+        SetError(InError, "cannot open incident archive for writing");
+        return false;
+    }
+    ScopedOut.write(reinterpret_cast<const char*>(ScopedZip.data()), static_cast<std::streamsize>(ScopedZip.size()));
+    return static_cast<bool>(ScopedOut);
+}
+
 bool WriteText(const std::filesystem::path& InPath, std::string_view InText, std::string* InError)
 {
     std::ofstream ScopedFile(InPath, std::ios::binary | std::ios::trunc);
@@ -274,6 +395,20 @@ IncidentResult WriteIncidentBundle(const IncidentRequest& InRequest, std::string
     if (!ScopedWrite("manifest.toml", ScopedManifest.str()))
     {
         return ScopedResult;
+    }
+    if (!InRequest.ArchivePath.empty())
+    {
+        std::vector<std::string> ScopedArchiveFiles;
+        ScopedArchiveFiles.reserve(ScopedResult.Files.size());
+        for (const std::string& ScopedRelative : ScopedResult.Files)
+        {
+            ScopedArchiveFiles.push_back((ScopedRoot / ScopedRelative).string());
+        }
+        if (!WriteStoreZip(InRequest.ArchivePath, ScopedArchiveFiles, InError))
+        {
+            return ScopedResult;
+        }
+        ScopedAdd(InRequest.ArchivePath);
     }
     ScopedResult.Ok = true;
     ScopedResult.Directory = InRequest.Directory;

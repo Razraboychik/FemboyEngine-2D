@@ -1688,10 +1688,10 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `DoctorReport` | Ops | `Source/Engine/Ops/Ops.hpp` | 44 |
 | `DoctorSeverity` | Ops | `Source/Engine/Ops/Ops.hpp` | 20 |
 | `IncidentRequest` | Ops | `Source/Engine/Ops/Ops.hpp` | 60 |
-| `IncidentResult` | Ops | `Source/Engine/Ops/Ops.hpp` | 75 |
+| `IncidentResult` | Ops | `Source/Engine/Ops/Ops.hpp` | 77 |
 | `ProjectDoctor` | Ops | `Source/Engine/Ops/Ops.hpp` | 53 |
-| `ReplayArchive` | Ops | `Source/Engine/Ops/Ops.hpp` | 99 |
-| `ReplayPolicy` | Ops | `Source/Engine/Ops/Ops.hpp` | 90 |
+| `ReplayArchive` | Ops | `Source/Engine/Ops/Ops.hpp` | 101 |
+| `ReplayPolicy` | Ops | `Source/Engine/Ops/Ops.hpp` | 92 |
 
 ### Engine/Physics (144)
 
