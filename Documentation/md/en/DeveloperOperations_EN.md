@@ -38,9 +38,9 @@ Incidents/<name>/
 The request controls the directory, reason, build info, log limit and which
 parts are included. `ArchivePath` optionally writes a store-only ZIP of the same
 files. There is no network upload and no hidden telemetry. When
-`incident_on_crash` is enabled, the editor installs a crash hook that writes an
-incident directory beside the crash report; the hook runs in a fatal path and
-must stay minimal.
+`incident_on_crash` is enabled, the editor installs a signal-safe hook that writes
+only `incident-request.txt` beside the crash report. The next editor start scans
+`Saved/Crashes` and builds the full bundle at a safe point.
 
 ## 3. Provenance and credits
 
@@ -106,6 +106,6 @@ recording is off.
 ## 7. Limits
 
 The ZIP is store-only (no compression) and is an optional copy of the directory.
-The crash hook is best-effort and runs while the process is dying; it must not
-allocate or block heavily. Doctor checks the project data it can see; it cannot
+The crash marker is written with `CreateFileA`/`open` and no allocation. The
+full bundle is built only on the next start, so a fatal path never allocates. Doctor checks the project data it can see; it cannot
 prove external store compliance or legal validity.

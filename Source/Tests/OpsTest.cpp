@@ -122,6 +122,20 @@ int main()
         std::fprintf(stderr, "FAIL: incident bundle: %s\n", ScopedError.c_str());
         return 1;
     }
+    std::filesystem::create_directories("build/ops_crash_test/1000");
+    Fby::Ops::WriteCrashMarker("build/ops_crash_test/1000", "fatal signal");
+    if (!std::filesystem::exists("build/ops_crash_test/1000/incident-request.txt"))
+    {
+        std::fprintf(stderr, "FAIL: crash marker was not written\n");
+        return 1;
+    }
+    if (Fby::Ops::CollectPendingCrashIncidents("build/ops_crash_test", "test", "x", &ScopedError) != 1 ||
+        !std::filesystem::exists("build/ops_crash_test/1000/incident/README.txt") ||
+        std::filesystem::exists("build/ops_crash_test/1000/incident-request.txt"))
+    {
+        std::fprintf(stderr, "FAIL: crash marker collection: %s\n", ScopedError.c_str());
+        return 1;
+    }
     std::printf("ops: OK (%zu doctor issues, %zu incident files, %zu credits bytes)\n", ScopedReport.Issues.size(),
                 ScopedBundle.Files.size(), ScopedCredits.size());
     return 0;

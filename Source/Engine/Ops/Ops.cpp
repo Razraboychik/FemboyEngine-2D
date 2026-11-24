@@ -8,6 +8,17 @@
 #include <fstream>
 #include <set>
 #include <sstream>
+#include <cstdio>
+#include <cstring>
+#if defined(_WIN32)
+#if !defined(WIN32_LEAN_AND_MEAN)
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace Fby::Ops
 {
@@ -442,6 +453,80 @@ std::string BuildCreditsMarkdown(std::span<const Assets::AssetMeta> InAssets,
         Scoped += "### " + ScopedEntry.Name + "\n\n```text\n" + ScopedEntry.Text + "\n```\n\n";
     }
     return Scoped;
+}
+
+
+void WriteCrashMarker(const char* InCrashDirectory, const char* InReason) noexcept
+{
+    if (InCrashDirectory == nullptr || InCrashDirectory[0] == '\0')
+    {
+        return;
+    }
+    char ScopedPath[1200] = {};
+    std::snprintf(ScopedPath, sizeof(ScopedPath), "%s/incident-request.txt", InCrashDirectory);
+    const char* ScopedReason = InReason != nullptr ? InReason : "crash";
+    const std::size_t ScopedLength = std::strlen(ScopedReason);
+#if defined(_WIN32)
+    const HANDLE ScopedFile = ::CreateFileA(ScopedPath, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                                            FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (ScopedFile != INVALID_HANDLE_VALUE)
+    {
+        DWORD ScopedWritten = 0;
+        (void)::WriteFile(ScopedFile, ScopedReason, static_cast<DWORD>(ScopedLength), &ScopedWritten, nullptr);
+        (void)::CloseHandle(ScopedFile);
+    }
+#else
+    const int ScopedFile = ::open(ScopedPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (ScopedFile >= 0)
+    {
+        (void)::write(ScopedFile, ScopedReason, ScopedLength);
+        (void)::close(ScopedFile);
+    }
+#endif
+}
+
+std::uint32_t CollectPendingCrashIncidents(std::string_view InCrashRoot, std::string_view InBuildInfo,
+                                           std::string_view InSettingsText, std::string* InError)
+{
+    std::uint32_t ScopedCollected = 0;
+    std::error_code ScopedIterationError;
+    const std::filesystem::directory_iterator ScopedEnd;
+    std::filesystem::directory_iterator ScopedIterator(std::filesystem::path(std::string(InCrashRoot)),
+                                                       ScopedIterationError);
+    while (!ScopedIterationError && ScopedIterator != ScopedEnd)
+    {
+        const std::filesystem::directory_entry ScopedEntry = *ScopedIterator;
+        std::error_code ScopedEntryError;
+        if (ScopedEntry.is_directory(ScopedEntryError) && !ScopedEntryError)
+        {
+            const std::filesystem::path ScopedMarker = ScopedEntry.path() / "incident-request.txt";
+            if (std::filesystem::exists(ScopedMarker))
+            {
+                std::ifstream ScopedFile(ScopedMarker, std::ios::binary);
+                std::string ScopedReason((std::istreambuf_iterator<char>(ScopedFile)),
+                                         std::istreambuf_iterator<char>());
+                ScopedFile.close();
+                if (ScopedReason.empty())
+                {
+                    ScopedReason = "crash";
+                }
+                IncidentRequest ScopedRequest;
+                ScopedRequest.Directory = (ScopedEntry.path() / "incident").string();
+                ScopedRequest.Reason = ScopedReason;
+                ScopedRequest.BuildInfo = std::string(InBuildInfo);
+                ScopedRequest.SettingsText = std::string(InSettingsText);
+                const IncidentResult ScopedResult = WriteIncidentBundle(ScopedRequest, InError);
+                if (ScopedResult.Ok)
+                {
+                    std::error_code ScopedRemoveError;
+                    std::filesystem::remove(ScopedMarker, ScopedRemoveError);
+                    ++ScopedCollected;
+                }
+            }
+        }
+        ScopedIterator.increment(ScopedIterationError);
+    }
+    return ScopedCollected;
 }
 
 bool ReplayPolicy::ShouldStop(std::uint32_t InFrames) const noexcept

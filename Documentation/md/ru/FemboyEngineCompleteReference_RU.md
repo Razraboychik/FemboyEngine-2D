@@ -2916,8 +2916,8 @@ ScopedMaterials.Shutdown(InRhi);
 | `IncidentRequest` | Ops | `Source/Engine/Ops/Ops.hpp` | 60 |
 | `IncidentResult` | Ops | `Source/Engine/Ops/Ops.hpp` | 77 |
 | `ProjectDoctor` | Ops | `Source/Engine/Ops/Ops.hpp` | 53 |
-| `ReplayArchive` | Ops | `Source/Engine/Ops/Ops.hpp` | 101 |
-| `ReplayPolicy` | Ops | `Source/Engine/Ops/Ops.hpp` | 92 |
+| `ReplayArchive` | Ops | `Source/Engine/Ops/Ops.hpp` | 111 |
+| `ReplayPolicy` | Ops | `Source/Engine/Ops/Ops.hpp` | 102 |
 
 ### Engine/Physics (144)
 

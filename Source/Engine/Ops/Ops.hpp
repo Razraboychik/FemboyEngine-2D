@@ -84,6 +84,16 @@ struct IncidentResult
 // Writes a local, inspectable incident directory. There is no network code here.
 [[nodiscard]] IncidentResult WriteIncidentBundle(const IncidentRequest& InRequest, std::string* InError = nullptr);
 
+// Signal-path marker. It writes one small file and performs no allocation, so a
+// crash hook can call it while the process is dying.
+void WriteCrashMarker(const char* InCrashDirectory, const char* InReason) noexcept;
+
+// Scans crash directories for markers left by the previous run and builds their
+// full incident bundles at a safe startup point. Returns the number collected.
+[[nodiscard]] std::uint32_t CollectPendingCrashIncidents(std::string_view InCrashRoot, std::string_view InBuildInfo,
+                                                         std::string_view InSettingsText,
+                                                         std::string* InError = nullptr);
+
 // Markdown credits generated from asset provenance and the license registry.
 [[nodiscard]] std::string BuildCreditsMarkdown(std::span<const Assets::AssetMeta> InAssets,
                                                const Assets::LicenseRegistry& InLicenses);

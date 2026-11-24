@@ -941,18 +941,7 @@ void SpawnFallbackWorld(Fby::Ecs::Registry& InRegistry)
 
 void WriteCrashIncidentBundle(const char* InDirectory, const char* InReason) noexcept
 {
-    try
-    {
-        Fby::Ops::IncidentRequest ScopedRequest;
-        ScopedRequest.Directory = std::string(InDirectory) + "/incident";
-        ScopedRequest.Reason = InReason != nullptr ? InReason : "crash";
-        ScopedRequest.BuildInfo = "editor crash bundle";
-        std::string ScopedError;
-        (void)Fby::Ops::WriteIncidentBundle(ScopedRequest, &ScopedError);
-    }
-    catch (...)
-    {
-    }
+    Fby::Ops::WriteCrashMarker(InDirectory, InReason);
 }
 
 int main(int argc, char** argv)
@@ -1533,6 +1522,14 @@ int main(int argc, char** argv)
     if (ScopedEditor.Config().Config().ops.incidentOnCrash)
     {
         Fby::Core::SetCrashIncidentHook(&WriteCrashIncidentBundle);
+        std::string ScopedPendingError;
+        const std::uint32_t ScopedCollected = Fby::Ops::CollectPendingCrashIncidents(
+            Fby::Core::CrashRoot().string(), "editor", Fby::Editor::EncodeProjectToml(ScopedEditor.Config().Config()),
+            &ScopedPendingError);
+        if (ScopedCollected > 0)
+        {
+            Fby::LogInfo("editor", "collected {} pending crash incident bundle(s)", ScopedCollected);
+        }
     }
 
     const Fby::Entity ScopedSkeletalAnimationEntity = SpawnSkeletonDemo(ScopedRegistry);
