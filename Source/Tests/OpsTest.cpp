@@ -136,6 +136,15 @@ int main()
         std::fprintf(stderr, "FAIL: crash marker collection: %s\n", ScopedError.c_str());
         return 1;
     }
+    if (!Fby::Ops::MarkSessionActive("build/ops_session_test.lock", "test", &ScopedError) ||
+        Fby::Ops::CollectUncleanShutdown("build/ops_session_test.lock", "build/ops_session_bundle", "test", "x",
+                                         &ScopedError) != 1 ||
+        std::filesystem::exists("build/ops_session_test.lock") ||
+        !std::filesystem::exists("build/ops_session_bundle/README.txt"))
+    {
+        std::fprintf(stderr, "FAIL: unclean shutdown collection: %s\n", ScopedError.c_str());
+        return 1;
+    }
     std::printf("ops: OK (%zu doctor issues, %zu incident files, %zu credits bytes)\n", ScopedReport.Issues.size(),
                 ScopedBundle.Files.size(), ScopedCredits.size());
     return 0;

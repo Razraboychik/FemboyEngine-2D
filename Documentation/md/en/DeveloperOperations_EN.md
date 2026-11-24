@@ -101,11 +101,14 @@ recording is off.
 - no network or automatic upload;
 - missing files are reported, not invented;
 - the editor is a client of the Ops APIs, not their owner;
+- an actual signal probe and a synthetic crash-marker test are part of CTest;
 - a shipped game can call the same APIs without ImGui.
 
 ## 7. Limits
 
 The ZIP is store-only (no compression) and is an optional copy of the directory.
 The crash marker is written with `CreateFileA`/`open` and no allocation. The
-full bundle is built only on the next start, so a fatal path never allocates. Doctor checks the project data it can see; it cannot
+full bundle is built only on the next start, so a fatal path never allocates.
+A session lock covers a process killed before its crash handler runs: a normal
+exit removes it, and a stale lock becomes an "unclean shutdown" bundle. Doctor checks the project data it can see; it cannot
 prove external store compliance or legal validity.

@@ -939,6 +939,17 @@ void SpawnFallbackWorld(Fby::Ecs::Registry& InRegistry)
 }
 
 
+
+std::string GSessionLockPath;
+
+void ClearSessionLockAtExit()
+{
+    if (!GSessionLockPath.empty())
+    {
+        Fby::Ops::ClearSessionActive(GSessionLockPath);
+    }
+}
+
 void WriteCrashIncidentBundle(const char* InDirectory, const char* InReason) noexcept
 {
     Fby::Ops::WriteCrashMarker(InDirectory, InReason);
@@ -1490,6 +1501,15 @@ int main(int argc, char** argv)
     Fby::Core::Profiler ScopedProfiler;
     Fby::Editor::EditorDesc ScopedEditorDesc;
     Fby::Core::InstallCrashHandler("fby_editor");
+    GSessionLockPath = (Fby::Core::CrashRoot() / "editor-session.lock").string();
+    {
+        std::string ScopedSessionError;
+        (void)Fby::Ops::CollectUncleanShutdown(GSessionLockPath,
+                                               (Fby::Core::CrashRoot() / "unclean-shutdown" / "incident").string(),
+                                               "editor", "", &ScopedSessionError);
+        (void)Fby::Ops::MarkSessionActive(GSessionLockPath, "editor", &ScopedSessionError);
+        std::atexit(&ClearSessionLockAtExit);
+    }
     Fby::SetLogCategory("editor");
     (void)Fby::Core::EnsureDirectory(Fby::Core::ConfigDirectory());
     ScopedEditorDesc.iniPath = Fby::Core::ConfigDirectory() / "editor.ini";

@@ -463,7 +463,19 @@ void WriteCrashMarker(const char* InCrashDirectory, const char* InReason) noexce
         return;
     }
     char ScopedPath[1200] = {};
-    std::snprintf(ScopedPath, sizeof(ScopedPath), "%s/incident-request.txt", InCrashDirectory);
+    std::size_t ScopedPathLength = 0;
+    for (const char* ScopedChar = InCrashDirectory; *ScopedChar != '\0' && ScopedPathLength + 1 < sizeof(ScopedPath);
+         ++ScopedChar)
+    {
+        ScopedPath[ScopedPathLength++] = *ScopedChar;
+    }
+    static constexpr char kMarkerSuffix[] = "/incident-request.txt";
+    for (const char* ScopedChar = kMarkerSuffix; *ScopedChar != '\0' && ScopedPathLength + 1 < sizeof(ScopedPath);
+         ++ScopedChar)
+    {
+        ScopedPath[ScopedPathLength++] = *ScopedChar;
+    }
+    ScopedPath[ScopedPathLength] = '\0';
     const char* ScopedReason = InReason != nullptr ? InReason : "crash";
     const std::size_t ScopedLength = std::strlen(ScopedReason);
 #if defined(_WIN32)
@@ -483,6 +495,56 @@ void WriteCrashMarker(const char* InCrashDirectory, const char* InReason) noexce
         (void)::close(ScopedFile);
     }
 #endif
+}
+
+
+bool MarkSessionActive(std::string_view InLockPath, std::string_view InApplicationName, std::string* InError)
+{
+    const std::filesystem::path ScopedPath{std::string(InLockPath)};
+    std::error_code ScopedCode;
+    std::filesystem::create_directories(ScopedPath.parent_path(), ScopedCode);
+    if (ScopedCode)
+    {
+        SetError(InError, "cannot create session lock directory");
+        return false;
+    }
+    std::ofstream ScopedFile(ScopedPath, std::ios::binary | std::ios::trunc);
+    if (!ScopedFile)
+    {
+        SetError(InError, "cannot write session lock");
+        return false;
+    }
+    ScopedFile << "application = " << InApplicationName << '\n';
+    return static_cast<bool>(ScopedFile);
+}
+
+void ClearSessionActive(std::string_view InLockPath) noexcept
+{
+    std::error_code ScopedError;
+    std::filesystem::remove(std::filesystem::path(std::string(InLockPath)), ScopedError);
+}
+
+std::uint32_t CollectUncleanShutdown(std::string_view InLockPath, std::string_view InBundlePath,
+                                     std::string_view InBuildInfo, std::string_view InSettingsText,
+                                     std::string* InError)
+{
+    const std::filesystem::path ScopedLock{std::string(InLockPath)};
+    if (!std::filesystem::exists(ScopedLock))
+    {
+        return 0;
+    }
+    IncidentRequest ScopedRequest;
+    ScopedRequest.Directory = std::string(InBundlePath);
+    ScopedRequest.Reason = "unclean shutdown";
+    ScopedRequest.BuildInfo = std::string(InBuildInfo);
+    ScopedRequest.SettingsText = std::string(InSettingsText);
+    const IncidentResult ScopedResult = WriteIncidentBundle(ScopedRequest, InError);
+    if (!ScopedResult.Ok)
+    {
+        return 0;
+    }
+    ClearSessionActive(InLockPath);
+    return 1;
 }
 
 std::uint32_t CollectPendingCrashIncidents(std::string_view InCrashRoot, std::string_view InBuildInfo,
