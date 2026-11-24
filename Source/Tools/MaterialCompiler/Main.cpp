@@ -196,7 +196,7 @@ namespace
 #else
     std::vector<char*> ScopedArgv;
     ScopedArgv.reserve(ScopedArguments->size() + 1);
-    for (std::string& ScopedArgument : *ScopedArguments)
+    for (const std::string& ScopedArgument : *ScopedArguments)
     {
         ScopedArgv.push_back(ScopedArgument.data());
     }

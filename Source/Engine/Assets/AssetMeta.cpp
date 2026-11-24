@@ -319,7 +319,7 @@ bool ParseAssetMetaFile(std::string_view InText, AssetMeta* InMeta, AssetDepende
     }
     const auto ScopedCopyOptional = [InError](auto& InField, auto InNode, const char* InName)
     {
-        const auto ScopedValue = InNode.value<std::string>();
+        const auto ScopedValue = InNode.template value<std::string>();
         if (!ScopedValue)
         {
             return true;
