@@ -1,0 +1,12 @@
+END USER LICENSE AGREEMENT TEMPLATE
+
+This is a template shipped with FemboyEngine2D. Replace it with the project's
+own legally reviewed EULA before distributing a game.
+
+The game grants the user a personal, non-exclusive, non-transferable license to
+use the software for its intended purpose. The user may not redistribute the
+software except as permitted by the applicable store or by the project owner.
+
+The software is provided "as is" without warranty of any kind to the extent
+permitted by law. The project owner remains responsible for the final text,
+jurisdiction, age requirements, refund policy and store-specific terms.

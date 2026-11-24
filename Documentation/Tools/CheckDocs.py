@@ -60,6 +60,7 @@ PAIRED_DOCUMENTS = (
     "UXChecklist",
     "SettingsRegistry",
     "FontsAndLicenses",
+    "LegalEULA",
     "AccessibilityOutput",
 )
 

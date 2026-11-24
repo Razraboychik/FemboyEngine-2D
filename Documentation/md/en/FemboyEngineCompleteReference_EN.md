@@ -3,7 +3,7 @@
 **Architecture, rendering, ECS, the animation/AI canvases with blend-cycle and PIE contracts, DOD pipelines and production distribution**
 
 
-Version 0.6.0-alpha.1 (Alpha) · 2026-11-23 · English
+Version 0.6.0-alpha.1 (Alpha) · 2026-11-24 · English
 
 
 ---
@@ -2740,6 +2740,16 @@ Generated from the headers on every run. A symbol listed here is declared in the
 | `InputSystem` | Input | `Source/Engine/Input/InputSystem.hpp` | 134 |
 | `InputTriggerKind` | Input | `Source/Engine/Input/InputSystem.hpp` | 52 |
 | `UserSlot` | Input | `Source/Engine/Input/InputSystem.hpp` | 180 |
+
+### Engine/Legal (5)
+
+| Symbol | Kind | Header | Line |
+|---|---|---|---|
+| `DeclineAction` | Legal | `Source/Engine/Legal/LegalService.hpp` | 14 |
+| `LegalAcceptance` | Legal | `Source/Engine/Legal/LegalService.hpp` | 40 |
+| `LegalDocument` | Legal | `Source/Engine/Legal/LegalService.hpp` | 21 |
+| `LegalManifest` | Legal | `Source/Engine/Legal/LegalService.hpp` | 29 |
+| `LegalService` | Legal | `Source/Engine/Legal/LegalService.hpp` | 51 |
 
 ### Engine/Modding (16)
 

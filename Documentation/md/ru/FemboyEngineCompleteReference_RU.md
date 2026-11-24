@@ -3,7 +3,7 @@
 **Архитектура, рендеринг, ECS, холсты анимации/ИИ с контрактами циклов блендинга и PIE-передачи, глобальный аудит, DOD-оптимизация и продакшн-дистрибуция**
 
 
-Version 0.6.0-alpha.1 (Alpha) · 2026-11-23 · Russian
+Version 0.6.0-alpha.1 (Alpha) · 2026-11-24 · Russian
 
 
 ---
@@ -2740,6 +2740,16 @@ ScopedMaterials.Shutdown(InRhi);
 | `InputSystem` | Input | `Source/Engine/Input/InputSystem.hpp` | 134 |
 | `InputTriggerKind` | Input | `Source/Engine/Input/InputSystem.hpp` | 52 |
 | `UserSlot` | Input | `Source/Engine/Input/InputSystem.hpp` | 180 |
+
+### Engine/Legal (5)
+
+| Символ | Вид | Заголовок | Строка |
+|---|---|---|---|
+| `DeclineAction` | Legal | `Source/Engine/Legal/LegalService.hpp` | 14 |
+| `LegalAcceptance` | Legal | `Source/Engine/Legal/LegalService.hpp` | 40 |
+| `LegalDocument` | Legal | `Source/Engine/Legal/LegalService.hpp` | 21 |
+| `LegalManifest` | Legal | `Source/Engine/Legal/LegalService.hpp` | 29 |
+| `LegalService` | Legal | `Source/Engine/Legal/LegalService.hpp` | 51 |
 
 ### Engine/Modding (16)
 

@@ -44,7 +44,9 @@ set(FBY_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 add_custom_target(fby_licenses ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Licenses" "${FBY_OUTPUT_DIR}/Licenses"
-    COMMENT "Copying asset license notices")
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Legal" "${FBY_OUTPUT_DIR}/Legal"
+    COMMENT "Copying asset licenses and project legal documents")
 # Absolute engine repository root. Nested generated projects set CMAKE_SOURCE_DIR
 set(FBY_ENGINE_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" CACHE INTERNAL "FemboyEngine2D repository root")
 

@@ -1,0 +1,18 @@
+# FemboyEngine2D - project legal agreement manifest.
+# Replace the template documents with the project's own reviewed legal text.
+[agreement]
+id = "base-game-eula"
+version = "1.0.0"
+updated = "2026-11-24"
+required = true
+decline_action = "quit"
+
+[[document]]
+language = "en"
+title = "End User License Agreement"
+path = "Legal/EULA_EN.txt"
+
+[[document]]
+language = "ru"
+title = "Лицензионное соглашение конечного пользователя"
+path = "Legal/EULA_RU.txt"
