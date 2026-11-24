@@ -141,9 +141,9 @@ jobs:
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
-        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/dev/bin/tools/fby_fempak
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Release checklist
-        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/dev/bin --artifacts build/dev/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --out build/release-manifest.json
+        run: python Source/Tools/Dev/ReleaseChecklist.py --artifacts build/bin --artifacts build/bin/tools --require fby_editor --require fby_fempak --forbid Documentation/FEATURE_NOTES.md --out build/release-manifest.json
       - name: Desktop package
         run: python Source/Tools/Dev/PackageDesktop.py --platform linux --build-dir build --output build/package --skip-build
       - name: Test
@@ -191,7 +191,7 @@ jobs:
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build.log
       - name: Pak reproducibility
-        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/dev/bin/tools/fby_fempak
+        run: python Source/Tools/Dev/CheckPakReproducible.py --tool build/bin/tools/fby_fempak
       - name: Test
         run: |
           set -o pipefail
@@ -221,7 +221,7 @@ jobs:
       - name: Build second
         run: cmake --build build-repro --target fby_fempak --parallel 8 -- -k 0
       - name: Compare cooked archives
-        run: python Source/Tools/Dev/ComparePakAcrossBuilds.py --first build/dev/bin/tools/fby_fempak --second build-repro/bin/tools/fby_fempak --workdir build
+        run: python Source/Tools/Dev/ComparePakAcrossBuilds.py --first build/bin/tools/fby_fempak --second build-repro/bin/tools/fby_fempak --workdir build
 
   linux-asan:
     env:
