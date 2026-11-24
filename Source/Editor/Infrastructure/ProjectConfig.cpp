@@ -1006,6 +1006,7 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedOps.insert("incident_include_logs", ScopedOpsSettings.incidentIncludeLogs);
     ScopedOps.insert("incident_include_replay", ScopedOpsSettings.incidentIncludeReplay);
     ScopedOps.insert("incident_include_licenses", ScopedOpsSettings.incidentIncludeLicenses);
+    ScopedOps.insert("incident_archive", ScopedOpsSettings.incidentArchive);
     ScopedOps.insert("incident_max_log_bytes", static_cast<std::int64_t>(ScopedOpsSettings.incidentMaxLogBytes));
     ScopedOps.insert("incident_directory", std::string(ProjectString(
                                                ScopedOpsSettings.incidentDirectory,
@@ -1425,6 +1426,8 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             BoolField(*ScopedOps, "incident_include_replay", ScopedConfig.ops.incidentIncludeReplay);
         ScopedConfig.ops.incidentIncludeLicenses =
             BoolField(*ScopedOps, "incident_include_licenses", ScopedConfig.ops.incidentIncludeLicenses);
+        ScopedConfig.ops.incidentArchive =
+            BoolField(*ScopedOps, "incident_archive", ScopedConfig.ops.incidentArchive);
         ScopedConfig.ops.incidentMaxLogBytes = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
             IntField(*ScopedOps, "incident_max_log_bytes", ScopedConfig.ops.incidentMaxLogBytes), 0, 268435456));
         const std::string ScopedIncidentDirectory = StringField(*ScopedOps, "incident_directory");

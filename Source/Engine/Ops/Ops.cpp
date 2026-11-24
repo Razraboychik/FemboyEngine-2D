@@ -535,6 +535,7 @@ std::uint32_t CollectUncleanShutdown(std::string_view InLockPath, std::string_vi
     }
     IncidentRequest ScopedRequest;
     ScopedRequest.Directory = std::string(InBundlePath);
+    ScopedRequest.ArchivePath = ScopedRequest.Directory + ".zip";
     ScopedRequest.Reason = "unclean shutdown";
     ScopedRequest.BuildInfo = std::string(InBuildInfo);
     ScopedRequest.SettingsText = std::string(InSettingsText);
@@ -574,6 +575,7 @@ std::uint32_t CollectPendingCrashIncidents(std::string_view InCrashRoot, std::st
                 }
                 IncidentRequest ScopedRequest;
                 ScopedRequest.Directory = (ScopedEntry.path() / "incident").string();
+                ScopedRequest.ArchivePath = ScopedRequest.Directory + ".zip";
                 ScopedRequest.Reason = ScopedReason;
                 ScopedRequest.BuildInfo = std::string(InBuildInfo);
                 ScopedRequest.SettingsText = std::string(InSettingsText);

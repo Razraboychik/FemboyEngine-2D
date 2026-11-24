@@ -210,6 +210,8 @@ struct ProjectOpsSettings
     bool incidentIncludeLogs = true;
     bool incidentIncludeReplay = true;
     bool incidentIncludeLicenses = true;
+    // Write a store-only ZIP next to the incident directory.
+    bool incidentArchive = true;
     std::uint32_t incidentMaxLogBytes = 4u * 1024u * 1024u;
     char incidentDirectory[128] = "Incidents";
     // Deterministic replay policy. kReplayDefaultFrames is about ten minutes at

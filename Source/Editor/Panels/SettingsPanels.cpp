@@ -616,6 +616,8 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::Checkbox("Incident: replay", &ScopedOps.incidentIncludeReplay);
     ImGui::SameLine();
     ImGui::Checkbox("Incident: licenses", &ScopedOps.incidentIncludeLicenses);
+    ImGui::SameLine();
+    ImGui::Checkbox("Incident: ZIP", &ScopedOps.incidentArchive);
     ImGui::InputText("Incident directory", ScopedOps.incidentDirectory, sizeof(ScopedOps.incidentDirectory));
     ImGui::InputScalar("Incident log limit (bytes)", ImGuiDataType_U32, &ScopedOps.incidentMaxLogBytes);
     ImGui::Checkbox("Record deterministic replays", &ScopedOps.replayAutoRecord);
@@ -664,6 +666,10 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         ScopedRequest.Licenses = &ScopedLicenses;
         ScopedRequest.Legal = &ScopedLegal;
         ScopedRequest.IncludeLicenses = ScopedOps.incidentIncludeLicenses;
+        if (ScopedOps.incidentArchive)
+        {
+            ScopedRequest.ArchivePath = std::string(ScopedOps.incidentDirectory) + ".zip";
+        }
         ScopedRequest.MaxLogBytes = ScopedOps.incidentMaxLogBytes;
         const Fby::Ops::IncidentResult ScopedResult = Fby::Ops::WriteIncidentBundle(ScopedRequest, &ScopedError);
         MOpsStatus = ScopedResult.Ok ? "Incident bundle: " + ScopedResult.Directory

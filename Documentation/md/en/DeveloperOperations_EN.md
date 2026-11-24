@@ -80,6 +80,7 @@ incident_include_settings = true
 incident_include_logs = true
 incident_include_replay = true
 incident_include_licenses = true
+incident_archive = true
 incident_max_log_bytes = 4194304
 incident_directory = "Incidents"
 replay_auto_record = false
@@ -110,5 +111,6 @@ The ZIP is store-only (no compression) and is an optional copy of the directory.
 The crash marker is written with `CreateFileA`/`open` and no allocation. The
 full bundle is built only on the next start, so a fatal path never allocates.
 A session lock covers a process killed before its crash handler runs: a normal
-exit removes it, and a stale lock becomes an "unclean shutdown" bundle. Doctor checks the project data it can see; it cannot
+exit removes it, and a stale lock becomes an "unclean shutdown" bundle.
+Crash and unclean-shutdown collection write both the directory and a ZIP. Doctor checks the project data it can see; it cannot
 prove external store compliance or legal validity.

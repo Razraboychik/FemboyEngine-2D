@@ -79,6 +79,7 @@ incident_include_settings = true
 incident_include_logs = true
 incident_include_replay = true
 incident_include_licenses = true
+incident_archive = true
 incident_max_log_bytes = 4194304
 incident_directory = "Incidents"
 replay_auto_record = false
@@ -109,6 +110,7 @@ ZIP — store-only (без сжатия) и является необязате�
 Crash-marker пишется через `CreateFileA`/`open` без аллокаций. Полный bundle
 собирается только при следующем запуске, поэтому фатальный путь не аллоцирует.
 Session lock покрывает процесс, убитый до crash-обработчика: обычный выход
-удаляет lock, устаревший lock превращается в bundle «unclean shutdown». Doctor проверяет только видимые данные проекта
+удаляет lock, устаревший lock превращается в bundle «unclean shutdown».
+Автосборка crash/unclean-shutdown создаёт и каталог, и ZIP. Doctor проверяет только видимые данные проекта
 и не может доказать соблюдение внешних условий магазина или юридическую
 корректность.
