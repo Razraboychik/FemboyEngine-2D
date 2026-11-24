@@ -198,7 +198,7 @@ namespace
     ScopedArgv.reserve(ScopedArguments->size() + 1);
     for (const std::string& ScopedArgument : *ScopedArguments)
     {
-        ScopedArgv.push_back(ScopedArgument.data());
+        ScopedArgv.push_back(const_cast<char*>(ScopedArgument.data()));
     }
     ScopedArgv.push_back(nullptr);
     pid_t ScopedProcess = 0;
