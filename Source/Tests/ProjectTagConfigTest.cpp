@@ -27,6 +27,9 @@ int main()
     Check(ScopedConfig.project.gameplayTags.Add("Character.State.Burning") >= 0, "add sibling tag");
     Check(ScopedConfig.project.gameplayTags.Add("Character.Health") >= 0, "add later tag");
     Check(ScopedConfig.project.gameplayTags.Count == 5, "ancestors are added once");
+    ScopedConfig.ops.doctorStrict = true;
+    ScopedConfig.ops.replayMaxFrames = 1234;
+    ScopedConfig.ops.incidentMaxLogBytes = 2048;
 
     const std::string ScopedToml = Fby::Editor::EncodeProjectToml(ScopedConfig);
     Check(ScopedToml.find("gameplay_tags") != std::string::npos, "project TOML contains gameplay_tags");
@@ -35,6 +38,9 @@ int main()
     Check(Fby::Editor::DecodeProjectToml(ScopedToml, &ScopedDecoded, &ScopedError), "project TOML decodes");
     Check(ScopedDecoded.project.gameplayTags == ScopedConfig.project.gameplayTags,
           "tag database survives the TOML roundtrip");
+    Check(ScopedDecoded.ops.doctorStrict && ScopedDecoded.ops.replayMaxFrames == 1234 &&
+              ScopedDecoded.ops.incidentMaxLogBytes == 2048,
+          "developer-operation settings survive the TOML roundtrip");
 
     Fby::GameplayTagRegistry ScopedRegistry;
     ScopedDecoded.project.gameplayTags.ApplyToRegistry(ScopedRegistry);

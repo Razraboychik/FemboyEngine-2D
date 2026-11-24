@@ -61,6 +61,7 @@ PAIRED_DOCUMENTS = (
     "SettingsRegistry",
     "FontsAndLicenses",
     "LegalEULA",
+    "DeveloperOperations",
     "AccessibilityOutput",
 )
 

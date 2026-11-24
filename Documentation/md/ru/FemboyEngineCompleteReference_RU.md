@@ -1722,7 +1722,7 @@ ScopedMaterials.Shutdown(InRhi);
 Генерируется из заголовков при каждом запуске. Символ из этого списка объявлен в поставляемом дереве; заголовок и строка — авторитетное расположение.
 
 
-### Editor/Infrastructure (126)
+### Editor/Infrastructure (127)
 
 | Символ | Вид | Заголовок | Строка |
 |---|---|---|---|
@@ -1796,15 +1796,16 @@ ScopedMaterials.Shutdown(InRhi);
 | `Profiler` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 28 |
 | `ProjectAudioBus` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 188 |
 | `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 68 |
-| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 307 |
+| `ProjectConfig` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 333 |
 | `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 65 |
-| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 371 |
+| `ProjectConfigStore` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 398 |
 | `ProjectDashboard` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 66 |
+| `ProjectOpsSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 198 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 69 |
-| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 329 |
+| `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 356 |
 | `ProjectPaths` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 21 |
 | `ProjectPluginEntry` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 165 |
-| `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 198 |
+| `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ProjectConfig.hpp` | 224 |
 | `ProjectSettings` | Infrastructure | `Source/Editor/Infrastructure/ReleaseCooker.hpp` | 22 |
 | `ProjectSettingsPanel` | Infrastructure | `Source/Editor/Infrastructure/EditorSystem.hpp` | 67 |
 | `Range` | Infrastructure | `Source/Editor/Infrastructure/CommandStack.hpp` | 267 |
@@ -2012,7 +2013,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `AsepriteSheet` | Assets | `Source/Engine/Assets/AsepriteImporter.hpp` | 31 |
 | `AsepriteTag` | Assets | `Source/Engine/Assets/AsepriteImporter.hpp` | 23 |
 | `AssetDatabase` | Assets | `Source/Engine/Assets/AssetDatabase.hpp` | 36 |
-| `AssetDependency` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 85 |
+| `AssetDependency` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 90 |
 | `AssetHandle` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 22 |
 | `AssetImportSettings` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 45 |
 | `AssetMeta` | Assets | `Source/Engine/Assets/AssetMeta.hpp` | 61 |
@@ -2903,6 +2904,20 @@ ScopedMaterials.Shutdown(InRhi);
 | `WebSocketOpcode` | Network | `Source/Engine/Network/WebSocket.hpp` | 14 |
 | `WebSocketState` | Network | `Source/Engine/Network/WebSocket.hpp` | 24 |
 | `WebSocketStats` | Network | `Source/Engine/Network/WebSocket.hpp` | 38 |
+
+### Engine/Ops (9)
+
+| Символ | Вид | Заголовок | Строка |
+|---|---|---|---|
+| `DoctorIssue` | Ops | `Source/Engine/Ops/Ops.hpp` | 27 |
+| `DoctorOptions` | Ops | `Source/Engine/Ops/Ops.hpp` | 35 |
+| `DoctorReport` | Ops | `Source/Engine/Ops/Ops.hpp` | 44 |
+| `DoctorSeverity` | Ops | `Source/Engine/Ops/Ops.hpp` | 20 |
+| `IncidentRequest` | Ops | `Source/Engine/Ops/Ops.hpp` | 60 |
+| `IncidentResult` | Ops | `Source/Engine/Ops/Ops.hpp` | 75 |
+| `ProjectDoctor` | Ops | `Source/Engine/Ops/Ops.hpp` | 53 |
+| `ReplayArchive` | Ops | `Source/Engine/Ops/Ops.hpp` | 99 |
+| `ReplayPolicy` | Ops | `Source/Engine/Ops/Ops.hpp` | 90 |
 
 ### Engine/Physics (144)
 

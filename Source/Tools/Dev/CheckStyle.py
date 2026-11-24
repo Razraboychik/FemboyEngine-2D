@@ -43,7 +43,7 @@ REQUIRED_DIRECTORIES = [
 # Extra first-class modules. They are not in the required list because a
 # platform-less or weather-less build is valid, but they are allowed to live
 # directly under Source/Engine.
-OPTIONAL_ENGINE_MODULES = {"Weather", "Platform", "Navigation", "Text", "Legal", "AI", "Gameplay", "Input", "Documents", "Effects", "Animation", "Data", "Modding"}
+OPTIONAL_ENGINE_MODULES = {"Weather", "Platform", "Navigation", "Text", "Legal", "Ops", "AI", "Gameplay", "Input", "Documents", "Effects", "Animation", "Data", "Modding"}
 EDITOR_MODULES = {"Panels", "Infrastructure"}
 # Weather state keys are the serialized scene schema and were shipped with
 # these lowercase names. Renaming the C++ members would break existing weather

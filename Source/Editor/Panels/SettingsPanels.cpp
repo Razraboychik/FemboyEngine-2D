@@ -595,6 +595,33 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         CopyProjectField(ScopedValues.defaultScene, sizeof(ScopedValues.defaultScene), ScopedScene);
     }
 
+    ProjectOpsSettings& ScopedOps = MStore->Config().ops;
+    ImGui::SeparatorText("Developer Operations");
+    ImGui::TextDisabled("Doctor, incident bundles and deterministic replay are local tools; nothing is uploaded.");
+    ImGui::Checkbox("Run Project Doctor when the project opens", &ScopedOps.doctorOnOpen);
+    ImGui::SameLine();
+    ImGui::Checkbox("Strict doctor", &ScopedOps.doctorStrict);
+    ImGui::Checkbox("Doctor: licenses", &ScopedOps.doctorCheckLicenses);
+    ImGui::SameLine();
+    ImGui::Checkbox("Doctor: legal", &ScopedOps.doctorCheckLegal);
+    ImGui::SameLine();
+    ImGui::Checkbox("Doctor: fonts", &ScopedOps.doctorCheckFonts);
+    ImGui::Checkbox("Create incident bundle on crash", &ScopedOps.incidentOnCrash);
+    ImGui::Checkbox("Incident: settings", &ScopedOps.incidentIncludeSettings);
+    ImGui::SameLine();
+    ImGui::Checkbox("Incident: logs", &ScopedOps.incidentIncludeLogs);
+    ImGui::SameLine();
+    ImGui::Checkbox("Incident: replay", &ScopedOps.incidentIncludeReplay);
+    ImGui::SameLine();
+    ImGui::Checkbox("Incident: licenses", &ScopedOps.incidentIncludeLicenses);
+    ImGui::InputText("Incident directory", ScopedOps.incidentDirectory, sizeof(ScopedOps.incidentDirectory));
+    ImGui::InputScalar("Incident log limit (bytes)", ImGuiDataType_U32, &ScopedOps.incidentMaxLogBytes);
+    ImGui::Checkbox("Record deterministic replays", &ScopedOps.replayAutoRecord);
+    ImGui::InputScalar("Replay keyframe interval", ImGuiDataType_U32, &ScopedOps.replayKeyframeInterval);
+    ImGui::InputScalar("Replay frame budget", ImGuiDataType_U32, &ScopedOps.replayMaxFrames);
+    ImGui::Checkbox("Verify replay on stop", &ScopedOps.replayVerifyOnStop);
+    ImGui::InputText("Replay directory", ScopedOps.replayDirectory, sizeof(ScopedOps.replayDirectory));
+
     ImGui::SeparatorText("Gameplay Tags");
     ImGui::TextDisabled("One project database. Definitions are global; per-entity values live on the entity.");
     ImGui::TextDisabled("Tag ids are stable slots; removing a tag leaves a tombstone and never renumbers later ids.");

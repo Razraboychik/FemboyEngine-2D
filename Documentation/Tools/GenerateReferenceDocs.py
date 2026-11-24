@@ -68,6 +68,7 @@ Documents = (
     {"Stem": "SettingsRegistry"},
     {"Stem": "FontsAndLicenses"},
     {"Stem": "LegalEULA"},
+    {"Stem": "DeveloperOperations"},
     {"Stem": "AccessibilityOutput"},
 )
 Languages = ("en", "ru")

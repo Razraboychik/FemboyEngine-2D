@@ -315,8 +315,31 @@ bool ParseAssetMetaFile(std::string_view InText, AssetMeta* InMeta, AssetDepende
             return false;
         }
         std::memcpy(InMeta->license, ScopedLicense->data(), ScopedLicense->size());
-        InMeta->license[ScopedLicense->size()] = ' ';
+        InMeta->license[ScopedLicense->size()] = '\0';
     }
+    const auto ScopedCopyOptional = [InError](auto& InField, auto InNode, const char* InName)
+    {
+        const auto ScopedValue = InNode.value<std::string>();
+        if (!ScopedValue)
+        {
+            return true;
+        }
+        if (ScopedValue->size() >= sizeof(InField))
+        {
+            SetError(InError, std::string("femeta: ") + InName + " exceeds its metadata capacity");
+            return false;
+        }
+        std::memcpy(InField, ScopedValue->data(), ScopedValue->size());
+        InField[ScopedValue->size()] = '\0';
+        return true;
+    };
+    if (!ScopedCopyOptional(InMeta->author, ScopedTable["author"], "author") ||
+        !ScopedCopyOptional(InMeta->sourceUrl, ScopedTable["source_url"], "source_url") ||
+        !ScopedCopyOptional(InMeta->attribution, ScopedTable["attribution"], "attribution"))
+    {
+        return false;
+    }
+    InMeta->modified = ScopedTable["modified"].value_or(false);
     if (const auto ScopedCooked = ScopedTable["cooked"].value<std::string>(); ScopedCooked)
     {
         if (!CopyPath(InMeta->cookedPath, *ScopedCooked, InError))
@@ -454,6 +477,26 @@ bool WriteAssetMetaFile(const AssetMeta& InMeta, std::span<const AssetDependency
     }
     *Out += std::format("source_hash = \"0x{:016X}\"\n", InMeta.sourceHash);
     *Out += std::format("cooked_hash = \"0x{:016X}\"\n", InMeta.cookedHash);
+    if (InMeta.license[0] != '\0')
+    {
+        *Out += std::format("license = \"{}\"\n", InMeta.license);
+    }
+    if (InMeta.author[0] != '\0')
+    {
+        *Out += std::format("author = \"{}\"\n", InMeta.author);
+    }
+    if (InMeta.sourceUrl[0] != '\0')
+    {
+        *Out += std::format("source_url = \"{}\"\n", InMeta.sourceUrl);
+    }
+    if (InMeta.attribution[0] != '\0')
+    {
+        *Out += std::format("attribution = \"{}\"\n", InMeta.attribution);
+    }
+    if (InMeta.modified)
+    {
+        *Out += "modified = true\n";
+    }
     *Out += "\n[import]\n";
     *Out += std::format("format = \"{}\"\n",
                         CompressionFormatName(static_cast<TextureFormat>(InMeta.import.textureFormat)));

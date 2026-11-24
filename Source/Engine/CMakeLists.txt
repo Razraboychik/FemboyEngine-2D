@@ -26,6 +26,7 @@ set(FBY_ENGINE_SOURCES
     Assets/SpriteAtlas.cpp
     Assets/VFS.cpp
     Legal/LegalService.cpp
+    Ops/Ops.cpp
     Assets/LicenseRegistry.cpp
     Documents/Document.cpp
     Effects/ParticleEffects.cpp

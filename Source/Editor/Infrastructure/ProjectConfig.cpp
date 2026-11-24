@@ -994,6 +994,30 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedEditorTable.insert("bridge_focus_events", ScopedEditor.bridge.RaiseFocusEvents);
     ScopedEditorTable.insert("bridge_structure_events", ScopedEditor.bridge.RaiseStructureEvents);
     ScopedEditorTable.insert("bridge_state_events", ScopedEditor.bridge.RaiseStateEvents);
+    toml::table ScopedOps;
+    const ProjectOpsSettings& ScopedOpsSettings = InConfig.ops;
+    ScopedOps.insert("doctor_on_open", ScopedOpsSettings.doctorOnOpen);
+    ScopedOps.insert("doctor_strict", ScopedOpsSettings.doctorStrict);
+    ScopedOps.insert("doctor_check_licenses", ScopedOpsSettings.doctorCheckLicenses);
+    ScopedOps.insert("doctor_check_legal", ScopedOpsSettings.doctorCheckLegal);
+    ScopedOps.insert("doctor_check_fonts", ScopedOpsSettings.doctorCheckFonts);
+    ScopedOps.insert("incident_on_crash", ScopedOpsSettings.incidentOnCrash);
+    ScopedOps.insert("incident_include_settings", ScopedOpsSettings.incidentIncludeSettings);
+    ScopedOps.insert("incident_include_logs", ScopedOpsSettings.incidentIncludeLogs);
+    ScopedOps.insert("incident_include_replay", ScopedOpsSettings.incidentIncludeReplay);
+    ScopedOps.insert("incident_include_licenses", ScopedOpsSettings.incidentIncludeLicenses);
+    ScopedOps.insert("incident_max_log_bytes", static_cast<std::int64_t>(ScopedOpsSettings.incidentMaxLogBytes));
+    ScopedOps.insert("incident_directory", std::string(ProjectString(
+                                               ScopedOpsSettings.incidentDirectory,
+                                               sizeof(ScopedOpsSettings.incidentDirectory))));
+    ScopedOps.insert("replay_auto_record", ScopedOpsSettings.replayAutoRecord);
+    ScopedOps.insert("replay_keyframe_interval", static_cast<std::int64_t>(ScopedOpsSettings.replayKeyframeInterval));
+    ScopedOps.insert("replay_max_frames", static_cast<std::int64_t>(ScopedOpsSettings.replayMaxFrames));
+    ScopedOps.insert("replay_verify_on_stop", ScopedOpsSettings.replayVerifyOnStop);
+    ScopedOps.insert("replay_directory", std::string(ProjectString(
+                                               ScopedOpsSettings.replayDirectory, sizeof(ScopedOpsSettings.replayDirectory))));
+    ScopedRoot.insert("ops", std::move(ScopedOps));
+
     ScopedRoot.insert("editor", std::move(ScopedEditorTable));
 
     std::ostringstream ScopedStream;
@@ -1381,6 +1405,50 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
         ScopedProfile.bridge.RaiseStateEvents =
             BoolField(*ScopedAccessibility, "bridge_state_events", ScopedProfile.bridge.RaiseStateEvents);
     }
+    if (const toml::table* ScopedOps = Section(ScopedRoot, "ops"); ScopedOps != nullptr)
+    {
+        ScopedConfig.ops.doctorOnOpen = BoolField(*ScopedOps, "doctor_on_open", ScopedConfig.ops.doctorOnOpen);
+        ScopedConfig.ops.doctorStrict = BoolField(*ScopedOps, "doctor_strict", ScopedConfig.ops.doctorStrict);
+        ScopedConfig.ops.doctorCheckLicenses =
+            BoolField(*ScopedOps, "doctor_check_licenses", ScopedConfig.ops.doctorCheckLicenses);
+        ScopedConfig.ops.doctorCheckLegal =
+            BoolField(*ScopedOps, "doctor_check_legal", ScopedConfig.ops.doctorCheckLegal);
+        ScopedConfig.ops.doctorCheckFonts =
+            BoolField(*ScopedOps, "doctor_check_fonts", ScopedConfig.ops.doctorCheckFonts);
+        ScopedConfig.ops.incidentOnCrash =
+            BoolField(*ScopedOps, "incident_on_crash", ScopedConfig.ops.incidentOnCrash);
+        ScopedConfig.ops.incidentIncludeSettings =
+            BoolField(*ScopedOps, "incident_include_settings", ScopedConfig.ops.incidentIncludeSettings);
+        ScopedConfig.ops.incidentIncludeLogs =
+            BoolField(*ScopedOps, "incident_include_logs", ScopedConfig.ops.incidentIncludeLogs);
+        ScopedConfig.ops.incidentIncludeReplay =
+            BoolField(*ScopedOps, "incident_include_replay", ScopedConfig.ops.incidentIncludeReplay);
+        ScopedConfig.ops.incidentIncludeLicenses =
+            BoolField(*ScopedOps, "incident_include_licenses", ScopedConfig.ops.incidentIncludeLicenses);
+        ScopedConfig.ops.incidentMaxLogBytes = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedOps, "incident_max_log_bytes", ScopedConfig.ops.incidentMaxLogBytes), 0, 268435456));
+        const std::string ScopedIncidentDirectory = StringField(*ScopedOps, "incident_directory");
+        if (!ScopedIncidentDirectory.empty())
+        {
+            CopyProjectString(ScopedConfig.ops.incidentDirectory, sizeof(ScopedConfig.ops.incidentDirectory),
+                              ScopedIncidentDirectory);
+        }
+        ScopedConfig.ops.replayAutoRecord =
+            BoolField(*ScopedOps, "replay_auto_record", ScopedConfig.ops.replayAutoRecord);
+        ScopedConfig.ops.replayKeyframeInterval = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedOps, "replay_keyframe_interval", ScopedConfig.ops.replayKeyframeInterval), 1, 10000));
+        ScopedConfig.ops.replayMaxFrames = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedOps, "replay_max_frames", ScopedConfig.ops.replayMaxFrames), 1, 10000000));
+        ScopedConfig.ops.replayVerifyOnStop =
+            BoolField(*ScopedOps, "replay_verify_on_stop", ScopedConfig.ops.replayVerifyOnStop);
+        const std::string ScopedReplayDirectory = StringField(*ScopedOps, "replay_directory");
+        if (!ScopedReplayDirectory.empty())
+        {
+            CopyProjectString(ScopedConfig.ops.replayDirectory, sizeof(ScopedConfig.ops.replayDirectory),
+                              ScopedReplayDirectory);
+        }
+    }
+
     if (const toml::table* ScopedEditor = Section(ScopedRoot, "editor"); ScopedEditor != nullptr)
     {
         ScopedConfig.editor.uiScale =

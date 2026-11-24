@@ -195,6 +195,32 @@ struct ProjectAudioBus
     [[nodiscard]] friend bool operator==(const ProjectAudioBus&, const ProjectAudioBus&) noexcept = default;
 };
 
+struct ProjectOpsSettings
+{
+    // Project Doctor. doctorOnOpen runs a read-only check when a project opens;
+    // doctorStrict turns warnings into a failing report.
+    bool doctorOnOpen = true;
+    bool doctorStrict = false;
+    bool doctorCheckLicenses = true;
+    bool doctorCheckLegal = true;
+    bool doctorCheckFonts = false;
+    // Incident bundles are written as a directory, never silently uploaded.
+    bool incidentOnCrash = false;
+    bool incidentIncludeSettings = true;
+    bool incidentIncludeLogs = true;
+    bool incidentIncludeReplay = true;
+    bool incidentIncludeLicenses = true;
+    std::uint32_t incidentMaxLogBytes = 4u * 1024u * 1024u;
+    char incidentDirectory[128] = "Incidents";
+    // Deterministic replay policy. kReplayDefaultFrames is about ten minutes at
+    // 360 Hz; the recorder stops at the budget instead of growing without bound.
+    bool replayAutoRecord = false;
+    std::uint32_t replayKeyframeInterval = 60;
+    std::uint32_t replayMaxFrames = 216000;
+    bool replayVerifyOnStop = true;
+    char replayDirectory[128] = "Replays";
+};
+
 struct ProjectSettings
 {
     static constexpr std::uint32_t kMaxPlugins = 8;
@@ -307,6 +333,7 @@ struct ProjectSettings
 struct ProjectConfig
 {
     ProjectSettings project{};
+    ProjectOpsSettings ops{};
     EditorSettings editor{};
 };
 
