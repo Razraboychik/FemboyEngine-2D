@@ -342,6 +342,7 @@ set_target_properties(fby_voice_budget_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${FBY_OUTPUT_DIR}/tests")
 fby_link_asan(fby_voice_budget_test)
 add_test(NAME voice_budget COMMAND fby_voice_budget_test)
+set_tests_properties(voice_budget PROPERTIES RUN_SERIAL TRUE)
 # Lobby: rooms, ticket issuance and match start.
 fby_add_engine_test(fby_net_lobby_test net_lobby NetLobbyTest.cpp)
 # Audio devices: fallback policy, enumeration and the capture meter.
