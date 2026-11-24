@@ -85,9 +85,10 @@ replay_verify_on_stop = true
 replay_directory = "Replays"
 ```
 
-Project Settings показывает те же поля в разделе **Developer Operations**.
-Дефолты консервативные: Doctor при открытии только читает, crash bundles
-выключены, запись replay выключена.
+Project Settings показывает те же поля в разделе **Developer Operations**, с
+кнопками **Run Project Doctor** и **Create Incident Bundle**. Дефолты
+консервативные: Doctor при открытии только читает, crash bundles выключены,
+запись replay выключена.
 
 ## 6. Правила универсальности
 

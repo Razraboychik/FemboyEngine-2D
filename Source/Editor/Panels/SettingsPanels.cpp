@@ -17,6 +17,7 @@
 #include "Engine/Physics/Physics.hpp"
 #include "Engine/Platform/SystemInfo.hpp"
 #include "Engine/UI/PinkUI.hpp"
+#include "Engine/Ops/Ops.hpp"
 
 #include <imgui.h>
 
@@ -25,6 +26,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <iterator>
 #include <span>
 #include <string>
@@ -598,7 +600,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ProjectOpsSettings& ScopedOps = MStore->Config().ops;
     ImGui::SeparatorText("Developer Operations");
     ImGui::TextDisabled("Doctor, incident bundles and deterministic replay are local tools; nothing is uploaded.");
-    ImGui::Checkbox("Run Project Doctor when the project opens", &ScopedOps.doctorOnOpen);
+    ImGui::Checkbox("Enable Project Doctor checks", &ScopedOps.doctorOnOpen);
     ImGui::SameLine();
     ImGui::Checkbox("Strict doctor", &ScopedOps.doctorStrict);
     ImGui::Checkbox("Doctor: licenses", &ScopedOps.doctorCheckLicenses);
@@ -621,6 +623,56 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::InputScalar("Replay frame budget", ImGuiDataType_U32, &ScopedOps.replayMaxFrames);
     ImGui::Checkbox("Verify replay on stop", &ScopedOps.replayVerifyOnStop);
     ImGui::InputText("Replay directory", ScopedOps.replayDirectory, sizeof(ScopedOps.replayDirectory));
+    if (ImGui::Button("Run Project Doctor") && InContext.assets != nullptr)
+    {
+        Fby::Assets::LicenseRegistry ScopedLicenses;
+        Fby::Legal::LegalService ScopedLegal;
+        std::string ScopedError;
+        (void)ScopedLicenses.LoadFromVfs(*InContext.assets, "Licenses", &ScopedError);
+        (void)ScopedLegal.LoadFromVfs(*InContext.assets, "Legal", &ScopedError);
+        Fby::Ops::DoctorOptions ScopedDoctorOptions;
+        ScopedDoctorOptions.CheckAssets = true;
+        ScopedDoctorOptions.CheckLicenses = ScopedOps.doctorCheckLicenses;
+        ScopedDoctorOptions.CheckLegal = ScopedOps.doctorCheckLegal;
+        ScopedDoctorOptions.CheckFonts = ScopedOps.doctorCheckFonts;
+        ScopedDoctorOptions.Strict = ScopedOps.doctorStrict;
+        const Fby::Ops::DoctorReport ScopedReport =
+            Fby::Ops::ProjectDoctor::Run(*InContext.assets, ScopedLicenses, &ScopedLegal, ScopedDoctorOptions);
+        MOpsStatus = std::format("Doctor: {} error(s), {} warning(s)", ScopedReport.Count(Fby::Ops::DoctorSeverity::Error),
+                                ScopedReport.Count(Fby::Ops::DoctorSeverity::Warning));
+        for (const Fby::Ops::DoctorIssue& ScopedIssue : ScopedReport.Issues)
+        {
+            if (ScopedIssue.Severity == Fby::Ops::DoctorSeverity::Error)
+            {
+                MOpsStatus += "\n" + ScopedIssue.Code + ": " + ScopedIssue.Message;
+            }
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Create Incident Bundle") && InContext.assets != nullptr)
+    {
+        Fby::Assets::LicenseRegistry ScopedLicenses;
+        Fby::Legal::LegalService ScopedLegal;
+        std::string ScopedError;
+        (void)ScopedLicenses.LoadFromVfs(*InContext.assets, "Licenses", &ScopedError);
+        (void)ScopedLegal.LoadFromVfs(*InContext.assets, "Legal", &ScopedError);
+        Fby::Ops::IncidentRequest ScopedRequest;
+        ScopedRequest.Directory = ScopedOps.incidentDirectory;
+        ScopedRequest.Reason = "editor";
+        ScopedRequest.BuildInfo = "editor incident bundle";
+        ScopedRequest.SettingsText = Fby::Editor::EncodeProjectToml(MStore->Config());
+        ScopedRequest.Licenses = &ScopedLicenses;
+        ScopedRequest.Legal = &ScopedLegal;
+        ScopedRequest.IncludeLicenses = ScopedOps.incidentIncludeLicenses;
+        ScopedRequest.MaxLogBytes = ScopedOps.incidentMaxLogBytes;
+        const Fby::Ops::IncidentResult ScopedResult = Fby::Ops::WriteIncidentBundle(ScopedRequest, &ScopedError);
+        MOpsStatus = ScopedResult.Ok ? "Incident bundle: " + ScopedResult.Directory
+                                     : "Incident bundle failed: " + ScopedError;
+    }
+    if (!MOpsStatus.empty())
+    {
+        ImGui::TextWrapped("%s", MOpsStatus.c_str());
+    }
 
     ImGui::SeparatorText("Gameplay Tags");
     ImGui::TextDisabled("One project database. Definitions are global; per-entity values live on the entity.");

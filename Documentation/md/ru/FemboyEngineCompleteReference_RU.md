@@ -1888,7 +1888,7 @@ ScopedMaterials.Shutdown(InRhi);
 | `DragPayload` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 60 |
 | `EditorFonts` | Panels | `Source/Editor/Panels/ProjectDashboard.hpp` | 20 |
 | `EditorFonts` | Panels | `Source/Editor/Panels/VisualScriptPanel.hpp` | 20 |
-| `EditorSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 113 |
+| `EditorSettingsPanel` | Panels | `Source/Editor/Panels/SettingsPanels.hpp` | 114 |
 | `EditSource` | Panels | `Source/Editor/Panels/AIStateTreeCanvasPanel.hpp` | 58 |
 | `EditSource` | Panels | `Source/Editor/Panels/AnimationGraphCanvasPanel.hpp` | 128 |
 | `Entry` | Panels | `Source/Editor/Panels/ContentBrowserPanel.hpp` | 43 |

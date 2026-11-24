@@ -15,6 +15,7 @@
 #include "Engine/Text/TextService.hpp"
 #include "Engine/Assets/ProjectBundle.hpp"
 #include "Engine/Assets/VFS.hpp"
+#include "Engine/Ops/Ops.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/Profiler.hpp"
 #include "Engine/ECS/CoreComponents.hpp"
@@ -7397,6 +7398,36 @@ bool EditorSystem::OpenProject(Ecs::SystemContext& InContext, const ProjectPaths
         {
             LogWarn("editor", "some .femeta rows could not be loaded: {}", ScopedMetaError);
         }
+    }
+    if (InContext.assets != nullptr && MImpl->projectConfig.Config().ops.doctorOnOpen)
+    {
+        Assets::LicenseRegistry ScopedLicenses;
+        Legal::LegalService ScopedLegal;
+        std::string ScopedLegalError;
+        (void)ScopedLicenses.LoadFromVfs(*InContext.assets, "Licenses", &ScopedLegalError);
+        (void)ScopedLegal.LoadFromVfs(*InContext.assets, "Legal", &ScopedLegalError);
+        const ProjectOpsSettings& ScopedOps = MImpl->projectConfig.Config().ops;
+        Ops::DoctorOptions ScopedDoctorOptions;
+        ScopedDoctorOptions.CheckAssets = true;
+        ScopedDoctorOptions.CheckLicenses = ScopedOps.doctorCheckLicenses;
+        ScopedDoctorOptions.CheckLegal = ScopedOps.doctorCheckLegal;
+        ScopedDoctorOptions.CheckFonts = ScopedOps.doctorCheckFonts;
+        ScopedDoctorOptions.Strict = ScopedOps.doctorStrict;
+        const Ops::DoctorReport ScopedReport =
+            Ops::ProjectDoctor::Run(*InContext.assets, ScopedLicenses, &ScopedLegal, ScopedDoctorOptions);
+        for (const Ops::DoctorIssue& ScopedIssue : ScopedReport.Issues)
+        {
+            if (ScopedIssue.Severity == Ops::DoctorSeverity::Error)
+            {
+                LogError("doctor", "{}: {} ({})", ScopedIssue.Code, ScopedIssue.Message, ScopedIssue.Path);
+            }
+            else if (ScopedIssue.Severity == Ops::DoctorSeverity::Warning)
+            {
+                LogWarn("doctor", "{}: {} ({})", ScopedIssue.Code, ScopedIssue.Message, ScopedIssue.Path);
+            }
+        }
+        LogInfo("doctor", "project open: {} error(s), {} warning(s)",
+                ScopedReport.Count(Ops::DoctorSeverity::Error), ScopedReport.Count(Ops::DoctorSeverity::Warning));
     }
 
     std::string ScopedSystemsError;

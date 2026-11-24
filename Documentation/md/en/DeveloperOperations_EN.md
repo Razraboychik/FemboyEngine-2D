@@ -85,8 +85,9 @@ replay_verify_on_stop = true
 replay_directory = "Replays"
 ```
 
-Project Settings exposes the same fields under **Developer Operations**. Defaults
-are conservative: Doctor on open is read-only, crash bundles are off, replay
+Project Settings exposes the same fields under **Developer Operations**, with
+**Run Project Doctor** and **Create Incident Bundle** buttons. Defaults are
+conservative: Doctor on open is read-only, crash bundles are off, replay
 recording is off.
 
 ## 6. Universal-engine rules

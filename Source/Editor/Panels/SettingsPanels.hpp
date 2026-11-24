@@ -95,6 +95,7 @@ private:
     std::array<char, 64> MTagSearch{};
     int MSelectedTag = -1;
     int MLastSelectedTag = -1;
+    std::string MOpsStatus;
     bool MAppliedValid = false;
     bool MDirty = false;
     Settings::Registry MAudioSettings;
