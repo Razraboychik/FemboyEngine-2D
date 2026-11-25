@@ -1,0 +1,17 @@
+guid = "0x014FF7DBD5B3E63C"
+asset_id = "0x4C207DBB7B7FD91F"
+type = "audio"
+source = "audio/editor/meow.ogg"
+cooked = "audio/editor/meow.fpcm"
+source_hash = "0x4F5D28F620BEB901"
+cooked_hash = "0x0000000000000000"
+
+[import]
+format = "bc7-srgb"
+max_size = 2048
+srgb = true
+mips = true
+font_style = 0
+font_size = 32
+font_oversample = 1
+font_sdf = false

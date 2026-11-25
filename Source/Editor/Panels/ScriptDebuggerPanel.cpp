@@ -1,6 +1,8 @@
 // FemboyEngine2D - FemboyScript debugger panel implementation.
 #include "Editor/Panels/ScriptDebuggerPanel.hpp"
 
+#include <charconv>
+
 #include "Editor/Infrastructure/EditorTypography.hpp"
 
 #include "Engine/Core/Mirror.hpp"
@@ -19,6 +21,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -111,7 +114,7 @@ bool ScriptDebuggerPanel::Compile(const Scene::ComponentRegistry& InComponents)
     }
     if (MHandle != kScriptNoProgram)
     {
-        (void)MRuntime.UnloadProgram(MHandle);
+        (void)Runtime().UnloadProgram(MHandle);
         MHandle = kScriptNoProgram;
     }
     MBytes.clear();
@@ -130,7 +133,7 @@ bool ScriptDebuggerPanel::Compile(const Scene::ComponentRegistry& InComponents)
         MStatus = "parse: " + ScopedError;
         return false;
     }
-    MHandle = MRuntime.LoadProgram(MBytes, &ScopedError);
+    MHandle = Runtime().LoadProgram(MBytes, &ScopedError);
     if (MHandle == kScriptNoProgram)
     {
         MStatus = "load: " + ScopedError;
@@ -141,7 +144,7 @@ bool ScriptDebuggerPanel::Compile(const Scene::ComponentRegistry& InComponents)
     MLastStop = {};
     for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
     {
-        std::array<std::uint32_t, 64> ScopedPcs{};
+        std::array<std::uint32_t, kMaxBreakpointPcs> ScopedPcs{};
         const std::uint32_t ScopedPcCount = Script::CollectPcsForLine(MParsed, MBreakpointLines[ScopedI], ScopedPcs);
         for (std::uint32_t ScopedPc = 0; ScopedPc < ScopedPcCount; ++ScopedPc)
         {
@@ -168,7 +171,7 @@ const Script::BoundProgram* ScriptDebuggerPanel::BoundProgram() const noexcept
     {
         return nullptr;
     }
-    return MRuntime.Program(MHandle);
+    return Runtime().Program(MHandle);
 }
 
 std::uint32_t ScriptDebuggerPanel::CurrentLine() const noexcept
@@ -191,6 +194,41 @@ std::uint32_t ScriptDebuggerPanel::CurrentGraphNode() const noexcept
     return ScopedLocation.IsGraphNode() ? ScopedLocation.Line : kNoGraphNode;
 }
 
+void ScriptDebuggerPanel::DetachProgram() noexcept
+{
+    MHandle = kScriptNoProgram;
+    MDebug = {};
+}
+
+bool ScriptDebuggerPanel::AttachProgram(std::uint32_t InHandle)
+{
+    const std::span<const std::byte> ScopedBytes = Runtime().ProgramBytes(InHandle);
+    if (ScopedBytes.empty())
+    {
+        MStatus = "program is not loaded in the attached runtime";
+        return false;
+    }
+    MBytes.assign(ScopedBytes.begin(), ScopedBytes.end());
+    if (!Script::ParseProgram(MBytes, &MParsed, &MStatus))
+    {
+        return false;
+    }
+    MHandle = static_cast<std::uint16_t>(InHandle);
+    MDebug = {};
+    MDebug.Enabled = true;
+    for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
+    {
+        std::array<std::uint32_t, kMaxBreakpointPcs> ScopedPcs{};
+        const std::uint32_t ScopedPcCount = Script::CollectPcsForLine(MParsed, MBreakpointLines[ScopedI], ScopedPcs);
+        for (std::uint32_t ScopedPc = 0; ScopedPc < ScopedPcCount; ++ScopedPc)
+        {
+            MDebug.SetBreakpoint(ScopedPcs[ScopedPc]);
+        }
+    }
+    MStatus = "attached to live program";
+    return true;
+}
+
 bool ScriptDebuggerPanel::LoadGraphProgram(std::span<const std::byte> InProgram, std::string_view InName)
 {
     if (!MInitialized)
@@ -204,7 +242,7 @@ bool ScriptDebuggerPanel::LoadGraphProgram(std::span<const std::byte> InProgram,
     }
     if (MHandle != kScriptNoProgram)
     {
-        (void)MRuntime.UnloadProgram(MHandle);
+        (void)Runtime().UnloadProgram(MHandle);
         MHandle = kScriptNoProgram;
     }
     MBytes.assign(InProgram.begin(), InProgram.end());
@@ -215,7 +253,7 @@ bool ScriptDebuggerPanel::LoadGraphProgram(std::span<const std::byte> InProgram,
         MStatus = "graph parse: " + ScopedError;
         return false;
     }
-    MHandle = MRuntime.LoadProgram(MBytes, &ScopedError);
+    MHandle = Runtime().LoadProgram(MBytes, &ScopedError);
     if (MHandle == kScriptNoProgram)
     {
         MStatus = "graph load: " + ScopedError;
@@ -226,7 +264,7 @@ bool ScriptDebuggerPanel::LoadGraphProgram(std::span<const std::byte> InProgram,
     MLastStop = {};
     for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
     {
-        std::array<std::uint32_t, 64> ScopedPcs{};
+        std::array<std::uint32_t, kMaxBreakpointPcs> ScopedPcs{};
         const std::uint32_t ScopedPcCount = Script::CollectPcsForLine(MParsed, MBreakpointLines[ScopedI], ScopedPcs);
         for (std::uint32_t ScopedPc = 0; ScopedPc < ScopedPcCount; ++ScopedPc)
         {
@@ -252,13 +290,14 @@ bool ScriptDebuggerPanel::CompileAndNativize(const Scene::ComponentRegistry& InC
         MStatus = "AOT: cook options are not configured";
         return false;
     }
-    MAotProgramHash = Script::HashProgramBytes(MBytes);
     std::string ScopedError;
     if (!MAot.StartProgram(MBytes, MAotOptions, &ScopedError))
     {
+        MAotProgramHash = 0;
         MStatus = "AOT: " + ScopedError;
         return false;
     }
+    MAotProgramHash = Script::HashProgramBytes(MBytes);
     char ScopedBuffer[160] = {};
     std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "compiled + nativizing %016llx",
                   static_cast<unsigned long long>(MAotProgramHash));
@@ -273,8 +312,13 @@ void ScriptDebuggerPanel::PollAot()
     {
         return;
     }
+    const Script::AotBuildResult ScopedSnapshot = MAot.Snapshot();
+    if (ScopedSnapshot.state == Script::AotBuildState::Compiling)
+    {
+        return;
+    }
     MLastAotRevision = ScopedRevision;
-    MAotResult = MAot.Snapshot();
+    MAotResult = ScopedSnapshot;
     if (MAotResult.state == Script::AotBuildState::Succeeded)
     {
         // The manifest is the cook gate's input: program hash -> native library.
@@ -287,11 +331,15 @@ void ScriptDebuggerPanel::PollAot()
         const std::filesystem::path ScopedManifestPath =
             MAotResult.libraryPath.parent_path() / (MAotOptions.moduleName + ".fbyaot");
         std::ofstream ScopedFile(ScopedManifestPath, std::ios::binary | std::ios::trunc);
+        bool ScopedManifestWritten = false;
         if (ScopedFile)
         {
             ScopedFile << ScopedManifest;
+            ScopedFile.flush();
+            ScopedManifestWritten = static_cast<bool>(ScopedFile);
         }
-        MStatus = "nativized: " + MAotResult.libraryPath.filename().string() + " (+ manifest)";
+        MStatus = "nativized: " + MAotResult.libraryPath.filename().string() +
+                  (ScopedManifestWritten ? " (+ manifest)" : " (manifest write failed)");
     }
     else if (MAotResult.state == Script::AotBuildState::Failed)
     {
@@ -310,30 +358,55 @@ bool ScriptDebuggerPanel::RunOnce(Ecs::Registry& InRegistry, Entity InEntity)
     Script::VmContext ScopedContext{InRegistry};
     ScopedContext.dt = 1.0f / 60.0f;
     ScopedContext.frameIndex = MFrameIndex++;
-    ScopedContext.rng = &MRuntime.Rng();
-    MLastStop = MRuntime.Vm().RunDebug(*ScopedBound, Script::ScriptEvent::Update, InEntity, ScopedContext, MDebug);
-    if (MLastStop.Halt == Script::VmHalt::Paused)
+    ScopedContext.rng = &Runtime().Rng();
+    for (std::uint32_t ScopedGuard = 0; ScopedGuard < 64; ++ScopedGuard)
     {
-        const Script::SourceLocation ScopedLocation = Script::LocatePc(MParsed, MLastStop.Pc);
-        char ScopedBuffer[160] = {};
-        std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "paused at %s, pc %u, line %u",
-                      PauseReasonName(MLastStop.Reason), static_cast<unsigned>(MLastStop.Pc),
-                      static_cast<unsigned>(ScopedLocation.Line));
-        MStatus = ScopedBuffer;
-        return true;
-    }
-    if (MLastStop.Halt == Script::VmHalt::Faulted)
-    {
+        MLastStop = Runtime().Vm().RunDebug(*ScopedBound, Script::ScriptEvent::Update, InEntity, ScopedContext, MDebug);
+        if (MLastStop.Halt == Script::VmHalt::Paused)
+        {
+            const Script::SourceLocation ScopedLocation = Script::LocatePc(MParsed, MLastStop.Pc);
+            const std::uint32_t ScopedBreakpoint = BreakpointIndex(ScopedLocation.Line);
+            if (ScopedBreakpoint < MBreakpointLogs.size() && MBreakpointLogs[ScopedBreakpoint])
+            {
+                if (MLogCount < MLogLines.size())
+                {
+                    char ScopedBuffer[96] = {};
+                    std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "line %u pc %u",
+                                  static_cast<unsigned>(ScopedLocation.Line), static_cast<unsigned>(MLastStop.Pc));
+                    MLogLines[MLogCount++] = ScopedBuffer;
+                }
+                MDebug.PauseRequested = false;
+                MDebug.StepBudget = 0;
+                continue;
+            }
+            if (!ConditionPasses(ScopedLocation.Line))
+            {
+                MDebug.PauseRequested = false;
+                MDebug.StepBudget = 0;
+                continue;
+            }
+            char ScopedBuffer[160] = {};
+            std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "paused at %s, pc %u, line %u",
+                          PauseReasonName(MLastStop.Reason), static_cast<unsigned>(MLastStop.Pc),
+                          static_cast<unsigned>(ScopedLocation.Line));
+            MStatus = ScopedBuffer;
+            return true;
+        }
+        if (MLastStop.Halt == Script::VmHalt::Faulted)
+        {
         const Script::SourceLocation ScopedLocation = Script::LocatePc(MParsed, MLastStop.Fault.pc);
         char ScopedBuffer[200] = {};
         std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "fault %s at pc %u (line %u)",
                       Script::VmFault::Name(MLastStop.Fault.code), static_cast<unsigned>(MLastStop.Fault.pc),
                       static_cast<unsigned>(ScopedLocation.Line));
-        MStatus = ScopedBuffer;
-        return false;
+            MStatus = ScopedBuffer;
+            return false;
+        }
+        MStatus = "completed";
+        return true;
     }
-    MStatus = "completed";
-    return true;
+    MStatus = "conditional breakpoint loop limit";
+    return false;
 }
 
 void ScriptDebuggerPanel::Resume(Ecs::Registry& InRegistry, Entity InEntity)
@@ -361,7 +434,7 @@ void ScriptDebuggerPanel::ToggleBreakpoint(std::uint32_t InLine)
     {
         return;
     }
-    std::array<std::uint32_t, 64> ScopedPcs{};
+    std::array<std::uint32_t, kMaxBreakpointPcs> ScopedPcs{};
     const std::uint32_t ScopedPcCount = MParsed.valid ? Script::CollectPcsForLine(MParsed, InLine, ScopedPcs) : 0;
     for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
     {
@@ -376,6 +449,8 @@ void ScriptDebuggerPanel::ToggleBreakpoint(std::uint32_t InLine)
         for (std::uint32_t ScopedJ = ScopedI; ScopedJ + 1 < MBreakpointLineCount; ++ScopedJ)
         {
             MBreakpointLines[ScopedJ] = MBreakpointLines[ScopedJ + 1];
+            MBreakpointConditions[ScopedJ] = MBreakpointConditions[ScopedJ + 1];
+            MBreakpointLogs[ScopedJ] = MBreakpointLogs[ScopedJ + 1];
         }
         --MBreakpointLineCount;
         return;
@@ -384,11 +459,104 @@ void ScriptDebuggerPanel::ToggleBreakpoint(std::uint32_t InLine)
     {
         return;
     }
+    MBreakpointConditions[MBreakpointLineCount] = {};
+    MBreakpointLogs[MBreakpointLineCount] = false;
     MBreakpointLines[MBreakpointLineCount++] = InLine;
     for (std::uint32_t ScopedPc = 0; ScopedPc < ScopedPcCount; ++ScopedPc)
     {
         MDebug.SetBreakpoint(ScopedPcs[ScopedPc]);
     }
+}
+
+void ScriptDebuggerPanel::EvaluateWatch()
+{
+    std::string_view ScopedText(MWatchInput.data());
+    while (!ScopedText.empty() && std::isspace(static_cast<unsigned char>(ScopedText.front())) != 0)
+    {
+        ScopedText.remove_prefix(1);
+    }
+    while (!ScopedText.empty() && std::isspace(static_cast<unsigned char>(ScopedText.back())) != 0)
+    {
+        ScopedText.remove_suffix(1);
+    }
+    if (ScopedText.empty())
+    {
+        MWatchResult = "-";
+        return;
+    }
+    std::uint32_t ScopedRegister = 0;
+    if (ScopedText.front() == 'r')
+    {
+        const auto ScopedResult =
+            std::from_chars(ScopedText.data() + 1, ScopedText.data() + ScopedText.size(), ScopedRegister);
+        if (ScopedResult.ec == std::errc{} && ScopedResult.ptr == ScopedText.data() + ScopedText.size() &&
+            ScopedRegister < MParsed.header.registerHighWater)
+        {
+            char ScopedBuffer[64] = {};
+            std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "%.6f", static_cast<double>(Runtime().Vm().F(ScopedRegister)));
+            MWatchResult = ScopedBuffer;
+            return;
+        }
+    }
+    const std::string ScopedNumber(ScopedText);
+    char* ScopedNumberEnd = nullptr;
+    const float ScopedLiteral = std::strtof(ScopedNumber.c_str(), &ScopedNumberEnd);
+    if (ScopedNumberEnd == ScopedNumber.c_str() + ScopedNumber.size())
+    {
+        MWatchResult = std::string(ScopedText);
+        return;
+    }
+    for (const Script::DebugVariable& ScopedVariable : MParsed.debug.variables)
+    {
+        if (Script::VariableName(MParsed, ScopedVariable.Register) == ScopedText)
+        {
+            char ScopedBuffer[64] = {};
+            std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "%.6f",
+                          static_cast<double>(Runtime().Vm().F(ScopedVariable.Register)));
+            MWatchResult = ScopedBuffer;
+            return;
+        }
+    }
+    MWatchResult = "unknown register or local";
+}
+
+std::uint32_t ScriptDebuggerPanel::BreakpointIndex(std::uint32_t InLine) const noexcept
+{
+    for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
+    {
+        if (MBreakpointLines[ScopedI] == InLine)
+        {
+            return ScopedI;
+        }
+    }
+    return 0xFFFFFFFFu;
+}
+
+bool ScriptDebuggerPanel::ConditionPasses(std::uint32_t InLine)
+{
+    for (std::uint32_t ScopedI = 0; ScopedI < MBreakpointLineCount; ++ScopedI)
+    {
+        if (MBreakpointLines[ScopedI] != InLine)
+        {
+            continue;
+        }
+        const std::string_view ScopedText(MBreakpointConditions[ScopedI].data());
+        if (ScopedText.empty())
+        {
+            return true;
+        }
+        Script::DebuggerCondition ScopedCondition;
+        if (!Script::ParseDebuggerCondition(ScopedText, &ScopedCondition))
+        {
+            return true;
+        }
+        if (ScopedCondition.Register >= MParsed.header.registerHighWater)
+        {
+            return true;
+        }
+        return Script::EvaluateDebuggerCondition(ScopedCondition, Runtime().Vm().F(ScopedCondition.Register));
+    }
+    return true;
 }
 
 bool ScriptDebuggerPanel::SetBreakpointLine(std::uint32_t InLine) noexcept
@@ -534,6 +702,12 @@ void ScriptDebuggerPanel::DrawBreakpoints()
         ImGui::PushID(static_cast<int>(ScopedI));
         ImGui::Text("line %u", static_cast<unsigned>(MBreakpointLines[ScopedI]));
         ImGui::SameLine();
+        ImGui::SetNextItemWidth(130.0f);
+        (void)ImGui::InputText("##condition", MBreakpointConditions[ScopedI].data(),
+                              MBreakpointConditions[ScopedI].size());
+        ImGui::SameLine();
+        (void)ImGui::Checkbox("log", &MBreakpointLogs[ScopedI]);
+        ImGui::SameLine();
         if (ImGui::SmallButton("remove"))
         {
             ToggleBreakpoint(MBreakpointLines[ScopedI]);
@@ -571,7 +745,7 @@ void ScriptDebuggerPanel::DrawState(Ecs::Registry& InRegistry, const Scene::Comp
             {
                 const std::string_view ScopedName = Script::VariableName(MParsed, ScopedVariable.Register);
                 ImGui::Text("%.*s = %.4f (r%u)", static_cast<int>(ScopedName.size()), ScopedName.data(),
-                            static_cast<double>(MRuntime.Vm().F(ScopedVariable.Register)),
+                            static_cast<double>(Runtime().Vm().F(ScopedVariable.Register)),
                             static_cast<unsigned>(ScopedVariable.Register));
                 ++ScopedShown;
             }
@@ -579,6 +753,16 @@ void ScriptDebuggerPanel::DrawState(Ecs::Registry& InRegistry, const Scene::Comp
             {
                 ImGui::TextDisabled("no named locals; %u registers in use", static_cast<unsigned>(ScopedRegisterCount));
             }
+            ImGui::Separator();
+            ImGui::SetNextItemWidth(180.0f);
+            (void)ImGui::InputText("watch", MWatchInput.data(), MWatchInput.size());
+            ImGui::SameLine();
+            if (ImGui::Button("Evaluate"))
+            {
+                EvaluateWatch();
+            }
+            ImGui::SameLine();
+            ImGui::Text("= %s", MWatchResult.c_str());
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Self fields"))
@@ -643,7 +827,7 @@ void ScriptDebuggerPanel::DrawState(Ecs::Registry& InRegistry, const Scene::Comp
             ImGui::Text("registers: %u", static_cast<unsigned>(MParsed.header.registerHighWater));
             ImGui::Text("spans: %zu", MParsed.debug.spans.size());
             ImGui::Text("executed: %llu",
-                        static_cast<unsigned long long>(MRuntime.Vm().InstructionsExecuted()));
+                        static_cast<unsigned long long>(Runtime().Vm().InstructionsExecuted()));
             ImGui::Text("pauses: %u", static_cast<unsigned>(MDebug.PauseCount));
             if (MLastStop.Faulted())
             {

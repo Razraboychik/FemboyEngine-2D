@@ -35,6 +35,10 @@ enum class FieldKind : std::uint8_t
     // Inline array of Vector2D values. The field size determines the capacity;
     // TOML writes every element and readers zero-fill unused slots.
     Vector2DArray,
+    // Inline arrays of 16-bit unsigned integers or floats. The field size
+    // determines the capacity, mirroring Vector2DArray.
+    UInt16Array,
+    FloatArray,
 };
 
 struct FieldDesc
@@ -179,10 +183,7 @@ namespace Detail
             }
             continue;
         }
-        if (ScopedA == std::byte{0} || ScopedB == std::byte{0})
-        {
-            return false;
-        }
+        return false;
     }
     return true;
 }
@@ -254,6 +255,8 @@ namespace Detail
         case FieldKind::Int128:
         case FieldKind::Decimal:
         case FieldKind::Vector2DArray:
+        case FieldKind::UInt16Array:
+        case FieldKind::FloatArray:
             return Detail::ByteRangeEqual(ScopedA, ScopedB, InField.size);
         case FieldKind::String:
             return Detail::StringFieldEqual(ScopedA, ScopedB, InField.size);

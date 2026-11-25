@@ -152,6 +152,10 @@ public:
 
     [[nodiscard]] bool Load(std::span<const std::byte> InBytes, std::string* InError = nullptr)
     {
+        if (InError != nullptr)
+        {
+            InError->clear();
+        }
         const auto ScopedFail = [InError](const char* InMessage)
         {
             if (InError != nullptr)

@@ -60,6 +60,12 @@ struct TextShapeSystemStats
         }
         if (ScopedString.empty())
         {
+            if (TextShapeComponent* ScopedEmpty = InRegistry.try_get<TextShapeComponent>(ScopedEntity))
+            {
+                ScopedEmpty->ShapeGeneration = 0;
+                ScopedEmpty->ShapeIndex = 0xFFFFFFFFu;
+                ScopedEmpty->ShapeKeyHash = 0;
+            }
             ++ScopedStats.Skipped;
             continue;
         }
@@ -106,6 +112,12 @@ struct TextShapeSystemStats
             InCache.Insert(InShaper, ScopedString, ScopedKey, InLayoutParams);
         if (!ScopedHandle.IsValid())
         {
+            if (ScopedShape != nullptr)
+            {
+                ScopedShape->ShapeGeneration = 0;
+                ScopedShape->ShapeIndex = 0xFFFFFFFFu;
+                ScopedShape->ShapeKeyHash = 0;
+            }
             ++ScopedStats.Overflow;
             continue;
         }

@@ -7,6 +7,7 @@
 #include "Engine/Network/ByteOrder.hpp"
 
 #include <cstring>
+#include <string_view>
 
 namespace Fby::Net
 {
@@ -15,8 +16,8 @@ namespace
 // The v1 transcript is FBY-shaped and not interoperable. The v2 transcript uses
 // the standard Noise XX name and an empty default prologue; the record layer
 // follows the Noise transport rules, so the record path below has two branches.
-constexpr char kFbyProtocolName[] = "Fby_XX_25519_ChaChaPoly_SHA256";
-constexpr char kNoiseProtocolName[] = "Noise_XX_25519_ChaChaPoly_SHA256";
+constexpr std::string_view kFbyProtocolName = "Fby_XX_25519_ChaChaPoly_SHA256";
+constexpr std::string_view kNoiseProtocolName = "Noise_XX_25519_ChaChaPoly_SHA256";
 constexpr char kPrologueName[] = "FemboyEngine2D-secure-channel-v1";
 // Frozen v1 record rekey label; v2 uses the Noise REKEY() chain instead.
 constexpr char kRekeyLabel[] = "FBY-REKEY";
@@ -248,9 +249,9 @@ SecureStatus SecureChannel::Start(const SecureChannelConfig& InConfig) noexcept
 
     // v2: h = HASH(standard Noise name), then only the optional ticket binding.
     // v1: the frozen FBY name, fixed prologue string and session id.
-    const char* ScopedProtocolName = MProtocolV2 ? kNoiseProtocolName : kFbyProtocolName;
+    const std::string_view ScopedProtocolName = MProtocolV2 ? kNoiseProtocolName : kFbyProtocolName;
     const std::span<const std::byte> ScopedProtocol(
-        reinterpret_cast<const std::byte*>(ScopedProtocolName), std::strlen(ScopedProtocolName));
+        reinterpret_cast<const std::byte*>(ScopedProtocolName.data()), ScopedProtocolName.size());
     if (MProtocolV2 && ScopedProtocol.size() <= Crypto::kSha256Bytes)
     {
         // Standard Noise: a protocol name no longer than the hash is the initial
@@ -1115,6 +1116,9 @@ SecureStatus SecureChannel::Open(std::span<const std::byte> InRecord, std::span<
         return SecureStatus::Ok;
     }
 
+    const std::array<std::byte, Crypto::kAeadKeyBytes> ScopedSavedRecvKey = MRecvKey;
+    const std::array<std::byte, Crypto::kAeadKeyBytes> ScopedSavedPrevRecvKey = MPrevRecvKey;
+    const std::uint64_t ScopedSavedRecvEpoch = MRecvEpoch;
     const SecureStatus ScopedDerived = DeriveReceiveKey(ScopedSequence);
     if (ScopedDerived != SecureStatus::Ok)
     {
@@ -1132,6 +1136,11 @@ SecureStatus SecureChannel::Open(std::span<const std::byte> InRecord, std::span<
     if (!OpenWithTag(ScopedKey, RecordNonce(ScopedSequence), ScopedAad,
                      InRecord.subspan(ScopedHeaderBytes), OutPlaintext.first(ScopedPlainBytes)))
     {
+        // Do not let an unauthenticated sequence permanently advance the
+        // receive key chain.
+        MRecvKey = ScopedSavedRecvKey;
+        MPrevRecvKey = ScopedSavedPrevRecvKey;
+        MRecvEpoch = ScopedSavedRecvEpoch;
         return SecureStatus::BadTag;
     }
 

@@ -166,12 +166,13 @@ void TextPreviewPanel::EnsureLocalization(VirtualFileSystem* InVfs)
     {
         return;
     }
-    const auto ScopedBytes = InVfs->Read("loc/ui.fbin");
-    if (!ScopedBytes)
+    const auto ScopedPinned = InVfs->Pin("loc/ui.fbin");
+    if (!ScopedPinned)
     {
         return;
     }
-    MLocalization = LocalizationTable::Open(*ScopedBytes, nullptr);
+    MLocalizationBytes.assign(ScopedPinned->bytes.begin(), ScopedPinned->bytes.end());
+    MLocalization = LocalizationTable::Open(MLocalizationBytes, nullptr);
     MLocalizationReady = MLocalization.IsValid();
 }
 
@@ -411,7 +412,7 @@ void TextPreviewPanel::Draw(VirtualFileSystem* InVfs, bool* InOpen)
         ScopedStyle.Flags = static_cast<std::uint16_t>(ScopedFormat);
         Text::TextSpan ScopedSpan;
         ScopedSpan.Begin = 0;
-        ScopedSpan.End = static_cast<std::uint32_t>(std::strlen(MText));
+        ScopedSpan.End = static_cast<std::uint32_t>(std::find(MText, MText + sizeof(MText), '\0') - MText);
         ScopedSpan.StyleIndex = 0;
         std::array<Text::TextSpan, 1> ScopedSpans{ScopedSpan};
         std::array<Text::TextStyle, 1> ScopedStyles{ScopedStyle};

@@ -33,6 +33,12 @@ enum class DlssQualityMode : std::uint8_t
 class DlssAdapter
 {
 public:
+    DlssAdapter() = default;
+    ~DlssAdapter();
+    DlssAdapter(const DlssAdapter&) = delete;
+    DlssAdapter& operator=(const DlssAdapter&) = delete;
+    DlssAdapter(DlssAdapter&&) = delete;
+    DlssAdapter& operator=(DlssAdapter&&) = delete;
     [[nodiscard]] bool Initialize(RHI& InGpu);
     [[nodiscard]] bool CreateFeature(void* InCommandBuffer, void* InColor, void* InDepth, void* InMotion,
                                      void* InOutput, std::uint32_t InWidth, std::uint32_t InHeight,
@@ -52,6 +58,7 @@ public:
         return MFgAvailable;
     }
     void Shutdown(RHI& InGpu) noexcept;
+    void Shutdown() noexcept;
 
 private:
     bool MAvailable = false;

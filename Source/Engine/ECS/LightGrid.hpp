@@ -34,7 +34,7 @@ public:
         MIndices.clear();
         MFallback.clear();
         MFallbackMode = false;
-        MCellSize = std::max(InCellSize, 1.0f);
+        MCellSize = std::isfinite(InCellSize) && InCellSize >= 1.0f ? InCellSize : 128.0f;
         MCellsX = 0;
         MCellsY = 0;
         if (InLights.empty())
@@ -98,10 +98,10 @@ public:
         for (std::uint32_t ScopedIndex = 0; ScopedIndex < InLights.size(); ++ScopedIndex)
         {
             const LightGridInput& ScopedLight = InLights[ScopedIndex];
-            const std::uint32_t ScopedMinX = CellX(ScopedLight.Position.X - ScopedLight.Radius);
-            const std::uint32_t ScopedMaxX = CellX(ScopedLight.Position.X + ScopedLight.Radius);
-            const std::uint32_t ScopedMinY = CellY(ScopedLight.Position.Y - ScopedLight.Radius);
-            const std::uint32_t ScopedMaxY = CellY(ScopedLight.Position.Y + ScopedLight.Radius);
+            const std::uint32_t ScopedMinX = CellX(ScopedLight.Position.X - std::max(ScopedLight.Radius, 0.0f));
+            const std::uint32_t ScopedMaxX = CellX(ScopedLight.Position.X + std::max(ScopedLight.Radius, 0.0f));
+            const std::uint32_t ScopedMinY = CellY(ScopedLight.Position.Y - std::max(ScopedLight.Radius, 0.0f));
+            const std::uint32_t ScopedMaxY = CellY(ScopedLight.Position.Y + std::max(ScopedLight.Radius, 0.0f));
             ScopedRanges[ScopedIndex * 2u] = (ScopedMinY * MCellsX) + ScopedMinX;
             ScopedRanges[ScopedIndex * 2u + 1u] = (ScopedMaxY * MCellsX) + ScopedMaxX;
             for (std::uint32_t ScopedY = ScopedMinY; ScopedY <= ScopedMaxY; ++ScopedY)

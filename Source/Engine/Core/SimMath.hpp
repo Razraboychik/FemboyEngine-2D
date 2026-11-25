@@ -98,6 +98,13 @@ struct ReducedAngle
 // reduction serves both values.
 inline void SinCos(float InRadians, float* OutSin, float* OutCos) noexcept
 {
+    if (!std::isfinite(InRadians))
+    {
+        const float ScopedNaN = std::numeric_limits<float>::quiet_NaN();
+        *OutSin = ScopedNaN;
+        *OutCos = ScopedNaN;
+        return;
+    }
     const Detail::ReducedAngle ScopedAngle = Detail::ReduceAngle(InRadians);
     const float ScopedSin = Detail::SinPolynomial(ScopedAngle.R);
     const float ScopedCos = Detail::CosPolynomial(ScopedAngle.R);
@@ -140,6 +147,10 @@ inline void SinCos(float InRadians, float* OutSin, float* OutCos) noexcept
 
 [[nodiscard]] inline float Atan2(float InY, float InX) noexcept
 {
+    if (!std::isfinite(InX) || !std::isfinite(InY))
+    {
+        return std::atan2(InY, InX);
+    }
     if (InX == 0.0f && InY == 0.0f)
     {
         return 0.0f;
@@ -306,11 +317,11 @@ inline void SinCos(float InRadians, float* OutSin, float* OutCos) noexcept
     {
         return 1.0f;
     }
-    if (InBase == 0.0f)
-    {
-        return InExponent > 0.0f ? 0.0f : std::numeric_limits<float>::infinity();
-    }
     if (!std::isfinite(InBase) || !std::isfinite(InExponent))
+    {
+        return std::pow(InBase, InExponent);
+    }
+    if (InBase == 0.0f)
     {
         return std::pow(InBase, InExponent);
     }

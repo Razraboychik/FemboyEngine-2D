@@ -35,11 +35,19 @@ struct HostUser
     }
 };
 
-void SetError(std::string* InError, const std::string& InMessage)
+void SetError(std::string* InError, const std::string& InMessage) noexcept
 {
-    if (InError != nullptr)
+    if (InError == nullptr)
+    {
+        return;
+    }
+    try
     {
         *InError = InMessage;
+    }
+    catch (...)
+    {
+        InError->clear();
     }
 }
 
@@ -927,8 +935,8 @@ const Aot::Module* AotModule::ValidateLoaded(const EcsBridge& InBridge, std::str
     }
 #if defined(_WIN32)
     using ModuleEntry = const Aot::Module* (*)();
-    const ModuleEntry ScopedEntry = reinterpret_cast<ModuleEntry>(
-        reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(MHandle), "fby_aot_module")));
+    const FARPROC ScopedProc = GetProcAddress(static_cast<HMODULE>(MHandle), "fby_aot_module");
+    const ModuleEntry ScopedEntry = reinterpret_cast<ModuleEntry>(ScopedProc);
 #else
     using ModuleEntry = const Aot::Module* (*)();
     const ModuleEntry ScopedEntry = reinterpret_cast<ModuleEntry>(dlsym(MHandle, "fby_aot_module"));

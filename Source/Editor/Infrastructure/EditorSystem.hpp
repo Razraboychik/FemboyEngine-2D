@@ -15,6 +15,7 @@
 
 namespace Fby
 {
+class ScriptRuntime;
 class VirtualFileSystem;
 
 namespace Rhi
@@ -96,6 +97,9 @@ struct EditorDesc
     // Sandbox executable launched as the PIE second copy (Play Multiplayer).
     // Empty keeps the local client world only, which is the headless/test path.
     std::filesystem::path pieClientExecutable;
+    // Runtime the debugger attaches to for PIE/live inspection. Null keeps the
+    // panel's isolated compile-and-run runtime.
+    ScriptRuntime* scriptRuntime = nullptr;
 };
 
 struct EditorCamera

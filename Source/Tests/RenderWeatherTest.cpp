@@ -106,6 +106,24 @@ int main()
     FBY_CHECK(ScopedResolved.resolvedWindX != 0.0f || ScopedResolved.resolvedWindY != 0.0f);
     FBY_CHECK((ScopedResolved.flags & WeatherRain) != 0);
 
+    // Clearing every source must clear every derived weather flag, not only
+    // rain/snow/fire; otherwise clouds/fog stay on forever.
+    WeatherContextComponent& ScopedMutableWeather = ScopedRegistry.get<WeatherContextComponent>(ScopedWeatherEntity);
+    ScopedMutableWeather.rainIntensity = 0.0f;
+    ScopedMutableWeather.snowIntensity = 0.0f;
+    ScopedMutableWeather.cloudCoverage = 0.0f;
+    ScopedMutableWeather.fogDensity = 0.0f;
+    ScopedMutableWeather.fireIntensity = 0.0f;
+    ScopedWeather.Update(ScopedContext);
+    FBY_CHECK((ScopedMutableWeather.flags & (WeatherRain | WeatherSnow | WeatherFire | WeatherClouds |
+                                             WeatherCloudShadows | WeatherFog)) == 0);
+    // Restore the active weather for the rain/cloth checks below.
+    ScopedMutableWeather.rainIntensity = 0.8f;
+    ScopedMutableWeather.cloudCoverage = 0.7f;
+    ScopedMutableWeather.fogDensity = 0.03f;
+    ScopedMutableWeather.fireIntensity = 0.2f;
+    ScopedWeather.Update(ScopedContext);
+
     ClothSystem ScopedCloth;
     FBY_CHECK(ScopedCloth.Initialize(nullptr));
     ClothDesc ScopedClothDesc{};
@@ -274,6 +292,11 @@ int main()
         ScopedAnyCompute = ScopedAnyCompute || ScopedShadowRecords[ScopedI].kind == RenderPassKind::Compute;
     }
     FBY_CHECK(!ScopedAnyCompute);
+
+    ScopedRegistry.destroy(ScopedWeatherEntity);
+    ScopedWeather.Update(ScopedContext);
+    FBY_CHECK(ScopedWeather.WindField().windAndGust.X == 0.0f);
+    FBY_CHECK(ScopedWeather.WindField().windAndGust.Y == 0.0f);
 
     ScopedCloth.Shutdown(ScopedRegistry);
     if (GFailures == 0)

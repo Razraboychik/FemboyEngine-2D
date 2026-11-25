@@ -260,7 +260,11 @@ float4 PSMain(VSOutput input) : SV_Target { return input.color; }
         return 1;
     }
     void* ScopedMapped = nullptr;
-    ScopedContext.VertexBuffer->Map(0, nullptr, &ScopedMapped);
+    if (FAILED(ScopedContext.VertexBuffer->Map(0, nullptr, &ScopedMapped)) || ScopedMapped == nullptr)
+    {
+        std::fprintf(stderr, "d3d12_smoke: vertex buffer map failed\n");
+        return 1;
+    }
     std::memcpy(ScopedMapped, ScopedVertices, sizeof(ScopedVertices));
     ScopedContext.VertexBuffer->Unmap(0, nullptr);
 

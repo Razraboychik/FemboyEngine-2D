@@ -108,9 +108,9 @@ private:
         if (MCount >= kCommandBufferCapacity)
         {
             // Dropping a structural command silently desynchronizes the world;
-            // a full per-frame command budget is a caller bug.
-            Fby::FailAssert("Fby::Ecs::CommandBuffer::Push", __FILE__, __LINE__,
-                            "command buffer capacity exceeded (kCommandBufferCapacity)");
+            // report failure so callers can roll back instead of aborting.
+            FBY_ASSERT_MSG(false, "command buffer capacity exceeded (kCommandBufferCapacity)");
+            return false;
         }
         if (MArena == nullptr || InEntity == Fby::kNullEntity)
         {

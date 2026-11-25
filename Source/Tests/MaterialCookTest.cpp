@@ -1,7 +1,9 @@
 // FemboyEngine2D - end-to-end material cook test: fby_matc plus the engine loader.
 #include "Engine/RHI/MaterialAsset.hpp"
 #include "Engine/RHI/MaterialGraph.hpp"
+#include "Tools/MaterialCompiler/DxcArguments.hpp"
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -9,6 +11,16 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <spawn.h>
+#include <sys/wait.h>
+#endif
+
+#if !defined(_WIN32)
+extern char** environ;
+#endif
 
 namespace
 {
@@ -60,6 +72,7 @@ bool WriteBytes(const std::filesystem::path& InPath, std::span<const std::byte> 
         return false;
     }
     ScopedStream.write(reinterpret_cast<const char*>(InBytes.data()), static_cast<std::streamsize>(InBytes.size()));
+    ScopedStream.close();
     return static_cast<bool>(ScopedStream);
 }
 
@@ -77,6 +90,10 @@ bool ReadBytes(const std::filesystem::path& InPath, std::vector<std::byte>* OutB
     }
     OutBytes->resize(static_cast<std::size_t>(ScopedSize));
     ScopedStream.seekg(0, std::ios::beg);
+    if (!ScopedStream)
+    {
+        return false;
+    }
     ScopedStream.read(reinterpret_cast<char*>(OutBytes->data()), ScopedSize);
     return static_cast<bool>(ScopedStream);
 }
@@ -84,12 +101,92 @@ bool ReadBytes(const std::filesystem::path& InPath, std::vector<std::byte>* OutB
 int RunCooker(const std::filesystem::path& InInput, const std::filesystem::path& InCookedPath,
               bool InSprite = false, bool InDx12 = false)
 {
-    // FBY_MATC_PATH arrives quoted from CMake, so the argument list only needs
-    // quotes around the two paths.
-    const std::string ScopedCommand = std::string(FBY_MATC_PATH) + " \"" + InInput.string() + "\" -o \"" +
-                                      InCookedPath.string() + "\"" + (InSprite ? " --sprite" : "") +
-                                      (InDx12 ? " --dx12" : "");
-    return std::system(ScopedCommand.c_str());
+    std::vector<std::string> ScopedArguments{FBY_MATC_PATH, InInput.string(), "-o", InCookedPath.string()};
+    if (InSprite)
+    {
+        ScopedArguments.push_back("--sprite");
+    }
+    if (InDx12)
+    {
+        ScopedArguments.push_back("--dx12");
+    }
+#if defined(_WIN32)
+    const auto ToWide = [](std::string_view InText)
+    {
+        if (InText.empty())
+        {
+            return std::wstring{};
+        }
+        const int ScopedLength = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, InText.data(),
+                                                     static_cast<int>(InText.size()), nullptr, 0);
+        if (ScopedLength <= 0)
+        {
+            return std::wstring{};
+        }
+        std::wstring ScopedWide(static_cast<std::size_t>(ScopedLength), L'\0');
+        if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, InText.data(), static_cast<int>(InText.size()),
+                                ScopedWide.data(), ScopedLength) != ScopedLength)
+        {
+            return std::wstring{};
+        }
+        return ScopedWide;
+    };
+    std::wstring ScopedCommandLine;
+    for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedArguments.size(); ++ScopedIndex)
+    {
+        if (ScopedIndex != 0)
+        {
+            ScopedCommandLine.push_back(L' ');
+        }
+        const std::wstring ScopedWide = ToWide(ScopedArguments[ScopedIndex]);
+        if (ScopedWide.empty())
+        {
+            return 127;
+        }
+        ScopedCommandLine += Fby::Tools::MaterialCompiler::QuoteWindowsArgument(ScopedWide);
+    }
+    STARTUPINFOW ScopedStartup{};
+    ScopedStartup.cb = sizeof(ScopedStartup);
+    PROCESS_INFORMATION ScopedProcess{};
+    if (CreateProcessW(nullptr, ScopedCommandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr,
+                       &ScopedStartup, &ScopedProcess) == FALSE)
+    {
+        return 127;
+    }
+    const DWORD ScopedWait = WaitForSingleObject(ScopedProcess.hProcess, INFINITE);
+    DWORD ScopedExit = 127;
+    if (ScopedWait != WAIT_OBJECT_0 || GetExitCodeProcess(ScopedProcess.hProcess, &ScopedExit) == FALSE)
+    {
+        ScopedExit = 127;
+    }
+    CloseHandle(ScopedProcess.hThread);
+    CloseHandle(ScopedProcess.hProcess);
+    return static_cast<int>(ScopedExit);
+#else
+    std::vector<char*> ScopedArgv;
+    ScopedArgv.reserve(ScopedArguments.size() + 1);
+    for (std::string& ScopedArgument : ScopedArguments)
+    {
+        ScopedArgv.push_back(ScopedArgument.data());
+    }
+    ScopedArgv.push_back(nullptr);
+    pid_t ScopedProcess = 0;
+    if (posix_spawnp(&ScopedProcess, FBY_MATC_PATH, nullptr, nullptr, ScopedArgv.data(), environ) != 0)
+    {
+        return 127;
+    }
+    int ScopedStatus = 0;
+    pid_t ScopedWaited = 0;
+    do
+    {
+        ScopedWaited = waitpid(ScopedProcess, &ScopedStatus, 0);
+    } while (ScopedWaited < 0 && errno == EINTR);
+    if (ScopedWaited != ScopedProcess || !WIFEXITED(ScopedStatus))
+    {
+        return 127;
+    }
+    return WEXITSTATUS(ScopedStatus);
+#endif
 }
 }
 

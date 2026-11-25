@@ -11,14 +11,14 @@ Do not edit it by hand; change the manifest and regenerate.
 
 | Component | Version | License (SPDX) | Purpose |
 |---|---|---|---|
-| SDL3 | release-3.4.18 | Zlib | Window, input, platform layer and Vulkan surface |
+| SDL3 | release-3.4.20 | Zlib | Window, input, platform layer and Vulkan surface |
 | Box2D | v3.0.0 | MIT | 2D rigid-body physics |
 | toml++ | 3.4.0 | MIT | Project descriptor and scene TOML parser |
 | FlatBuffers | 25.12.19 | Apache-2.0 | Localization and scene binary schemas |
-| miniaudio | 0.11.23 | MIT-0 OR Unlicense | Audio device and mixer backend |
+| miniaudio | 0.11.26 | MIT-0 OR Unlicense | Audio device and mixer backend |
 | Opus | vendored | BSD-3-Clause | Ogg Opus decoding and voice encoding |
 | Vulkan-Headers | v1.4.366 | Apache-2.0 | Vulkan API declarations |
-| glslang | 15.3.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
+| glslang | 16.6.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
 | stb | vendored | MIT OR Unlicense | Image and font decoding |
 | Dear ImGui | 1.93.1 | MIT | Editor user interface |
 | ImGuizmo | vendored | MIT | Editor transform gizmo |
@@ -32,10 +32,11 @@ Do not edit it by hand; change the manifest and regenerate.
 | SheenBidi | 3.0.0 | Apache-2.0 | Unicode Bidirectional Algorithm (UAX #9) runs |
 | IBM Plex Sans / IBM Plex Mono | IBM Plex 6.4.0 | OFL-1.1 | Default text family: regular, bold, italic, bold italic and mono slots |
 | Noto Sans Arabic/Devanagari/Thai/SC test fonts | Google Fonts | OFL-1.1 | Complex-script shaping and full-glyph SDF tests |
+| miniz | 3.1.2 | Unlicense | Raw DEFLATE compression for incident ZIP archives |
 
 ## License texts
 
-### SDL3 release-3.4.18
+### SDL3 release-3.4.20
 
 - SPDX: `Zlib`
 - Copyright: Copyright (c) 1997-2025 Sam Lantinga
@@ -310,7 +311,7 @@ Apache License
    limitations under the License.
 ```
 
-### miniaudio 0.11.23
+### miniaudio 0.11.26
 
 - SPDX: `MIT-0 OR Unlicense`
 - Copyright: Copyright (c) David Reid
@@ -429,7 +430,7 @@ https://datatracker.ietf.org/ipr/1526/
 The upstream license text is not vendored in this checkout. SPDX: Apache-2.0. See https://github.com/KhronosGroup/Vulkan-Headers.
 ```
 
-### glslang 15.3.0
+### glslang 16.6.0
 
 - SPDX: `BSD-3-Clause OR Apache-2.0`
 - Copyright: Copyright (c) The Khronos Group Inc.
@@ -1294,6 +1295,37 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### miniz 3.1.2
+
+- SPDX: `Unlicense`
+- Copyright: Copyright 2013-2014 RAD Game Tools and Valve Software; Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+- Upstream: https://github.com/richgel999/miniz
+
+```text
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+
+All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## Engine license

@@ -166,15 +166,18 @@ void ScheduleDependentCooks(Assets::AssetDatabase& InDatabase,
             continue;
         }
         ++InStats.cookRequests;
+        // The callback may register assets and reallocate AssetDatabase::MMetas;
+        // copy everything needed before invoking it.
+        const std::string ScopedSourcePath = ScopedMeta->sourcePath;
+        const std::uint64_t ScopedGuid = ScopedMeta->guid;
         std::string ScopedError;
-        if (!InCallbacks.scheduleCook(InCallbacks.user, ScopedMeta->sourcePath, ScopedDependents[ScopedI],
-                                      &ScopedError))
+        if (!InCallbacks.scheduleCook(InCallbacks.user, ScopedSourcePath, ScopedDependents[ScopedI], &ScopedError))
         {
             ++InStats.failures;
-            LogWarn("watch", "cannot enqueue dependent cook for '{}': {}", ScopedMeta->sourcePath, ScopedError);
+            LogWarn("watch", "cannot enqueue dependent cook for '{}': {}", ScopedSourcePath, ScopedError);
             continue;
         }
-        ScheduleDependentCooks(InDatabase, InCallbacks, InStats, ScopedMeta->guid, InDepth + 1u);
+        ScheduleDependentCooks(InDatabase, InCallbacks, InStats, ScopedGuid, InDepth + 1u);
     }
 }
 }
@@ -191,18 +194,9 @@ bool AssetDatabaseWatchSystem::IsRelevantFile(std::string_view InPath) noexcept
 
 bool AssetDatabaseWatchSystem::IsRelevantSourceFile(std::string_view InPath) noexcept
 {
-    // Cooked payloads are outputs, never sources. Excluding them here is what
-    const bool ScopedToml = EndsWithNoCase(InPath, ".toml");
-    const bool ScopedSceneToml =
-        ScopedToml && (StartsWithNoCase(InPath, "scenes/") || ContainsNoCase(InPath, "/scenes/") ||
-                       StartsWithNoCase(InPath, "prefabs/") || ContainsNoCase(InPath, "/prefabs/"));
-    const bool ScopedAtlasToml =
-        ScopedToml && (StartsWithNoCase(InPath, "atlas/") || ContainsNoCase(InPath, "/atlas/"));
-    return EndsWithNoCase(InPath, ".png") || EndsWithNoCase(InPath, ".tga") || EndsWithNoCase(InPath, ".wav") ||
-           EndsWithNoCase(InPath, ".ogg") || EndsWithNoCase(InPath, ".opus") || EndsWithNoCase(InPath, ".webm") ||
-           ScopedSceneToml || ScopedAtlasToml || EndsWithNoCase(InPath, ".feskl") ||
-           EndsWithNoCase(InPath, ".fanim") || EndsWithNoCase(InPath, ".fmat") ||
-           EndsWithNoCase(InPath, ".fscript");
+    // Single source of truth: the importer decides which extensions are assets.
+    AssetKind ScopedKind = AssetKind::Unknown;
+    return InferAssetKindFromPath(InPath, &ScopedKind);
 }
 
 bool AssetDatabaseWatchSystem::Initialize(Assets::AssetDatabase& InDatabase, const Config& InConfig,
@@ -220,8 +214,13 @@ bool AssetDatabaseWatchSystem::Initialize(Assets::AssetDatabase& InDatabase, con
     MPendingHead = MPendingTail = 0;
     MWatchedCount = 0;
     MStats = {};
+    if (!StartOsWatcher(InError))
+    {
+        Shutdown();
+        return false;
+    }
     MActive = true;
-    return StartOsWatcher(InError);
+    return true;
 }
 
 void AssetDatabaseWatchSystem::Shutdown()
@@ -273,19 +272,27 @@ std::uint32_t AssetDatabaseWatchSystem::ScanForNewSources(std::string* InError)
         return 0;
     }
     std::uint32_t ScopedImported = 0;
+    // Importing writes .femeta files beside the sources; finish the directory
+    // walk before mutating it.
+    std::vector<std::string> ScopedCandidates;
     for (const std::filesystem::directory_entry& ScopedEntry : std::filesystem::recursive_directory_iterator(
              MConfig.projectRoot, std::filesystem::directory_options::skip_permission_denied, ScopedCode))
     {
-        if (ScopedCode || !ScopedEntry.is_regular_file(ScopedCode))
+        std::error_code ScopedEntryError;
+        if (ScopedCode || !ScopedEntry.is_regular_file(ScopedEntryError))
         {
             continue;
         }
         const std::string ScopedRelative =
             Normalize(ScopedEntry.path().lexically_relative(MConfig.projectRoot).generic_string());
-        if (!IsRelevantSourceFile(ScopedRelative) || MDatabase->FindHandleBySourcePath(ScopedRelative).IsValid())
+        if (IsRelevantSourceFile(ScopedRelative) &&
+            !MDatabase->FindHandleBySourcePath(ScopedRelative).IsValid())
         {
-            continue;
+            ScopedCandidates.push_back(ScopedRelative);
         }
+    }
+    for (const std::string& ScopedRelative : ScopedCandidates)
+    {
         std::string ScopedImportError;
         const Assets::AssetHandle ScopedHandle = EnsureImported(ScopedRelative, &ScopedImportError);
         if (!ScopedHandle.IsValid())
@@ -413,9 +420,19 @@ void AssetDatabaseWatchSystem::ProcessMetaFile(std::string_view InRelativePath)
         LogWarn("watch", "invalid metadata '{}': {}", InRelativePath, ScopedError);
         return;
     }
-    // A .femeta written by this system triggers a change notification.
+    // A .femeta written by this system triggers a change notification. Updating an
+    // existing row is idempotent when the content is unchanged, so always commit it
+    // instead of discarding hand/tool edits.
     if (MDatabase->FindHandleByGuid(ScopedMeta.guid).IsValid())
     {
+        if (!MDatabase->UpdateMeta(ScopedMeta,
+                                   std::span<const Assets::AssetDependency>(ScopedDependencies, ScopedDependencyCount),
+                                   &ScopedError)
+                 .IsValid())
+        {
+            ++MStats.failures;
+            LogWarn("watch", "cannot update metadata '{}': {}", InRelativePath, ScopedError);
+        }
         return;
     }
     const Assets::AssetHandle ScopedHandle = MDatabase->RegisterMeta(
@@ -517,16 +534,27 @@ void AssetDatabaseWatchSystem::ProcessChange(const Change& InChange)
     if (MCallbacks.reload != nullptr)
     {
         const Assets::AssetMeta* ScopedCommitted = MDatabase->Meta(ScopedHandle);
-        if (ScopedCommitted != nullptr &&
-            MCallbacks.reload(MCallbacks.user, ScopedHandle, *ScopedCommitted, &ScopedError))
+        if (ScopedCommitted != nullptr)
         {
-            ++MStats.reloads;
-            LogInfo("watch", "hot reloaded '{}' (content gen {})", InChange.path, ScopedCommitted->contentGeneration);
+            // reload() may mutate/reallocate the database, so pass a snapshot
+            // instead of a reference into MMetas.
+            const Assets::AssetMeta ScopedSnapshot = *ScopedCommitted;
+            const std::uint32_t ScopedGeneration = ScopedSnapshot.contentGeneration;
+            if (MCallbacks.reload(MCallbacks.user, ScopedHandle, ScopedSnapshot, &ScopedError))
+            {
+                ++MStats.reloads;
+                LogInfo("watch", "hot reloaded '{}' (content gen {})", InChange.path, ScopedGeneration);
+            }
+            else
+            {
+                ++MStats.failures;
+                LogWarn("watch", "reload failed for '{}': {}", InChange.path, ScopedError);
+            }
         }
         else
         {
             ++MStats.failures;
-            LogWarn("watch", "reload failed for '{}': {}", InChange.path, ScopedError);
+            LogWarn("watch", "reload failed for '{}': metadata disappeared", InChange.path);
         }
     }
     else
@@ -641,9 +669,10 @@ bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
                 {
                     const std::string ScopedRelative = WideToUtf8(
                         ScopedInfo->FileName, static_cast<int>(ScopedInfo->FileNameLength / sizeof(wchar_t)));
-                    if (!ScopedRelative.empty() && IsRelevantFile(ScopedRelative))
+                    const std::string ScopedNormalized = Normalize(ScopedRelative);
+                    if (!ScopedNormalized.empty() && IsRelevantFile(ScopedNormalized))
                     {
-                        (void)PushChange(ScopedRelative);
+                        (void)PushChange(ScopedNormalized);
                     }
                     if (ScopedInfo->NextEntryOffset == 0)
                     {
@@ -682,7 +711,8 @@ bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
                 std::error_code ScopedScanError;
                 auto ScopedVisit = [&](const std::filesystem::directory_entry& InEntry)
                 {
-                    if (ScopedScanError || !InEntry.is_regular_file(ScopedScanError))
+                    std::error_code ScopedEntryError;
+                    if (!InEntry.is_regular_file(ScopedEntryError) || ScopedEntryError)
                     {
                         return;
                     }
@@ -692,12 +722,17 @@ bool AssetDatabaseWatchSystem::StartOsWatcher(std::string* InError)
                     {
                         return;
                     }
-                    const auto ScopedWriteTime = InEntry.last_write_time(ScopedScanError);
-                    if (ScopedScanError)
+                    const auto ScopedWriteTime = InEntry.last_write_time(ScopedEntryError);
+                    if (ScopedEntryError)
                     {
                         return;
                     }
-                    ScopedCurrent.emplace(ScopedRelative, FileStamp{ScopedWriteTime, InEntry.file_size(ScopedScanError)});
+                    const auto ScopedFileSize = InEntry.file_size(ScopedEntryError);
+                    if (ScopedEntryError)
+                    {
+                        return;
+                    }
+                    ScopedCurrent.emplace(ScopedRelative, FileStamp{ScopedWriteTime, ScopedFileSize});
                 };
                 if (MConfig.recursive)
                 {

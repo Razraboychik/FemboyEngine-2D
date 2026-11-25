@@ -94,11 +94,19 @@ void CopyText(char* OutText, std::size_t InCapacity, std::string_view InValue) n
                     static_cast<float>((*ScopedArray)[1].value_or(InFallback.Y))};
 }
 
-void ErrorFile(std::string* OutError, std::string_view InText)
+void ErrorFile(std::string* OutError, std::string_view InText) noexcept
 {
-    if (OutError != nullptr)
+    if (OutError == nullptr)
     {
-        *OutError = std::string(InText);
+        return;
+    }
+    try
+    {
+        OutError->assign(InText);
+    }
+    catch (...)
+    {
+        OutError->clear();
     }
 }
 }
@@ -224,7 +232,7 @@ bool PrefabSystem::SaveBinary(const PrefabAsset& InAsset, std::span<std::byte> O
                               std::size_t* OutBytesUsed) noexcept
 {
     const std::size_t ScopedSize = BinarySize(InAsset);
-    if (OutBytes.size() < ScopedSize || InAsset.count > kPrefabMaxEntities)
+    if (OutBytes.size() < ScopedSize || InAsset.count == 0 || InAsset.count > kPrefabMaxEntities)
     {
         return false;
     }
@@ -255,7 +263,8 @@ bool PrefabSystem::LoadBinary(std::span<const std::byte> InBytes, PrefabAsset& O
     PrefabBinaryHeader ScopedHeader{};
     std::memcpy(&ScopedHeader, InBytes.data(), sizeof(ScopedHeader));
     if (std::memcmp(ScopedHeader.magic, kBinaryMagic, sizeof(kBinaryMagic)) != 0 ||
-        ScopedHeader.version != kBinaryVersion || ScopedHeader.count > kPrefabMaxEntities ||
+        ScopedHeader.version != kBinaryVersion || ScopedHeader.count == 0 ||
+        ScopedHeader.count > kPrefabMaxEntities ||
         ScopedHeader.payloadBytes != ScopedHeader.count * sizeof(PrefabEntityDesc) ||
         InBytes.size() < sizeof(ScopedHeader) + ScopedHeader.payloadBytes)
     {
@@ -362,7 +371,8 @@ bool PrefabSystem::LoadFlatBuffers(std::span<const std::byte> InBytes, PrefabAss
 bool PrefabSystem::Spawn(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InCommands, const PrefabAsset& InAsset,
                          Vector2D InOrigin, std::span<Entity> OutEntities, PrefabOverrides InOverrides)
 {
-    if (InAsset.count == 0 || InAsset.count > kPrefabMaxEntities)
+    if (InAsset.count == 0 || InAsset.count > kPrefabMaxEntities ||
+        (!OutEntities.empty() && OutEntities.size() < InAsset.count))
     {
         return false;
     }
@@ -372,7 +382,7 @@ bool PrefabSystem::Spawn(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InComman
     {
         ScopedEntities[ScopedI] = InRegistry.create();
     }
-    const auto ScopedRollback = [&]() noexcept
+    const auto ScopedRollback = [&]()
     {
         for (std::uint32_t ScopedI = 0; ScopedI < InAsset.count; ++ScopedI)
         {
@@ -489,6 +499,14 @@ bool PrefabSystem::SpawnToml(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InCo
     {
         return false;
     }
-    return Spawn(InRegistry, InCommands, ScopedAsset, InOrigin, OutEntities, InOverrides);
+    if (!Spawn(InRegistry, InCommands, ScopedAsset, InOrigin, OutEntities, InOverrides))
+    {
+        if (OutError != nullptr && OutError->empty())
+        {
+            *OutError = "prefab spawn failed: components could not be queued";
+        }
+        return false;
+    }
+    return true;
 }
 }

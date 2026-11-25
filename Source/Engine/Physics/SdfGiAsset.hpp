@@ -132,16 +132,33 @@ public:
         {
             return ScopedFail("sdf gi asset: empty probe grid");
         }
-        if (ScopedHeader.ProbeCount != ScopedHeader.Width * ScopedHeader.Height ||
-            ScopedHeader.ProbeBytes != ScopedHeader.ProbeCount * sizeof(SdfGiBakedProbe))
+        const std::uint64_t ScopedProbeCount =
+            static_cast<std::uint64_t>(ScopedHeader.Width) * ScopedHeader.Height;
+        if (ScopedProbeCount > (1ull << 20u) || ScopedHeader.ProbeCount != ScopedProbeCount ||
+            static_cast<std::uint64_t>(ScopedHeader.ProbeBytes) !=
+                ScopedProbeCount * sizeof(SdfGiBakedProbe))
         {
             return ScopedFail("sdf gi asset: probe count mismatch");
+        }
+        if (!std::isfinite(ScopedHeader.OriginX) || !std::isfinite(ScopedHeader.OriginY) ||
+            !std::isfinite(ScopedHeader.CellX) || !std::isfinite(ScopedHeader.CellY) || ScopedHeader.CellX <= 0.0f ||
+            ScopedHeader.CellY <= 0.0f)
+        {
+            return ScopedFail("sdf gi asset: invalid probe grid");
         }
         if (InBytes.size() != sizeof(SdfGiAssetHeader) + ScopedHeader.ProbeBytes)
         {
             return ScopedFail("sdf gi asset: payload size mismatch");
         }
-        std::vector<SdfGiBakedProbe> ScopedProbes(ScopedHeader.ProbeCount);
+        std::vector<SdfGiBakedProbe> ScopedProbes;
+        try
+        {
+            ScopedProbes.resize(ScopedHeader.ProbeCount);
+        }
+        catch (...)
+        {
+            return ScopedFail("sdf gi asset: out of memory");
+        }
         std::memcpy(ScopedProbes.data(), InBytes.data() + sizeof(SdfGiAssetHeader), ScopedHeader.ProbeBytes);
         if (!MBaked.Restore(Vector2D{ScopedHeader.OriginX, ScopedHeader.OriginY},
                             Vector2D{ScopedHeader.CellX, ScopedHeader.CellY}, ScopedHeader.Width, ScopedHeader.Height,

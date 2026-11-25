@@ -197,6 +197,11 @@ public:
     {
         return MCompiledValid;
     }
+    // True when a scene document was parsed, even if compiling it failed.
+    [[nodiscard]] bool HasAuthoredDocument() const noexcept
+    {
+        return MHasAuthoredDocument;
+    }
     [[nodiscard]] bool CompileDirty() const noexcept
     {
         return MCompiledDirty;
@@ -345,6 +350,7 @@ private:
     bool MInitialized = false;
     bool MEditing = false;
     bool MCanvasDrag = false;
+    bool MHasAuthoredDocument = false;
     bool MCompiledValid = false;
     bool MCompiledDirty = true;
     bool MPieActive = false;

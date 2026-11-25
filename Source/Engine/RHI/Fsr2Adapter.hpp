@@ -86,6 +86,11 @@ enum class Fsr2QualityMode : std::uint8_t
 class Fsr2Adapter
 {
 public:
+    Fsr2Adapter() = default;
+    Fsr2Adapter(const Fsr2Adapter&) = delete;
+    Fsr2Adapter& operator=(const Fsr2Adapter&) = delete;
+    Fsr2Adapter(Fsr2Adapter&&) = delete;
+    Fsr2Adapter& operator=(Fsr2Adapter&&) = delete;
     [[nodiscard]] bool Initialize(void* InDevice, void* InPhysicalDevice, void* InDeviceProcAddr,
                                   std::uint32_t InMaxRenderWidth, std::uint32_t InMaxRenderHeight,
                                   std::uint32_t InMaxOutputWidth, std::uint32_t InMaxOutputHeight);

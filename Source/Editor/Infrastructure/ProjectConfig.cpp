@@ -363,8 +363,7 @@ bool ResolveProjectPaths(const std::filesystem::path& InRootOrProjectFile, Proje
 }
 
 bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_view InProjectName,
-                   ProjectPaths* OutPaths, ProjectConfig* OutConfig, std::string* InError,
-                   Assets::Scaffold::ProjectTemplate InTemplate)
+                   ProjectPaths* OutPaths, ProjectConfig* OutConfig, std::string* InError)
 {
     if (!ValidProjectName(InProjectName))
     {
@@ -421,7 +420,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     const std::filesystem::path ScopedDefaultScene = ScopedPaths.scenes / "main.toml";
     if (!std::filesystem::exists(ScopedDefaultScene, ScopedCode))
     {
-        const std::string ScopedEmptyScene = Assets::Scaffold::ProjectTemplateScene(InTemplate);
+        const std::string ScopedEmptyScene = Assets::Scaffold::DefaultProjectScene();
         if (!WriteFileAtomically(ScopedDefaultScene, ScopedEmptyScene, InError))
         {
             return false;
@@ -454,7 +453,7 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     if (!std::filesystem::exists(ScopedReadme, ScopedCode))
     {
         if (!WriteFileAtomically(ScopedReadme,
-                                 Assets::Scaffold::ProjectTemplateReadme(InTemplate, ScopedDisplayName), InError))
+                                 Assets::Scaffold::ProjectReadme(ScopedDisplayName), InError))
         {
             return false;
         }
@@ -463,7 +462,8 @@ bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_v
     if (!WriteFileAtomically(
             ScopedPaths.projectFile,
             Assets::Scaffold::ProjectToml(ScopedDisplayName, ScopedTargetName,
-                                          Assets::TextureFormatName(ScopedConfig.project.textureFormat)),
+                                          Assets::TextureFormatName(ScopedConfig.project.textureFormat),
+                                          ViewProfileKey(ScopedConfig.project.viewProfile)),
             InError))
     {
         return false;
@@ -588,7 +588,7 @@ bool ProjectConfigStore::PersistIfChanged(std::string* InError)
     {
         return false;
     }
-    if (!SaveEditorIni(InError))
+    if (MConfig.editor.saveEditorIniOnCommit && !SaveEditorIni(InError))
     {
         return false;
     }
@@ -728,6 +728,7 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
         ScopedPlugin.insert("path", std::string(ProjectString(ScopedProject.plugins[ScopedI].Path,
                                                              sizeof(ScopedProject.plugins[ScopedI].Path))));
         ScopedPlugin.insert("enabled", ScopedProject.plugins[ScopedI].Enabled);
+        ScopedPlugin.insert("copied", ScopedProject.plugins[ScopedI].Copied);
         ScopedPlugins.push_back(std::move(ScopedPlugin));
     }
     ScopedRoot.insert("plugins", std::move(ScopedPlugins));
@@ -740,6 +741,7 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     toml::table ScopedPhysics;
     ScopedPhysics.insert("backend", static_cast<std::int64_t>(ScopedProject.physicsBackend));
     ScopedPhysics.insert("body_budget", static_cast<std::int64_t>(ScopedProject.physicsBodyBudget));
+    ScopedPhysics.insert("profile", std::string(ViewProfileKey(ScopedProject.viewProfile)));
     ScopedRoot.insert("physics", std::move(ScopedPhysics));
 
     toml::table ScopedAudio;
@@ -758,6 +760,19 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedAudio.insert("aec_tail_ms", static_cast<double>(ScopedProject.voiceAecTailMs));
     ScopedAudio.insert("aec_step", static_cast<double>(ScopedProject.voiceAecStep));
     ScopedAudio.insert("agc_target_db", static_cast<double>(ScopedProject.voiceAgcTargetDb));
+    toml::array ScopedBusArray;
+    const std::uint8_t ScopedBusCount = std::min<std::uint8_t>(ScopedProject.audioBusCount, kMaxProjectAudioBuses);
+    for (std::uint8_t ScopedIndex = 0; ScopedIndex < ScopedBusCount; ++ScopedIndex)
+    {
+        const ProjectAudioBus& ScopedBus = ScopedProject.audioBuses[ScopedIndex];
+        toml::table ScopedBusTable;
+        ScopedBusTable.insert("id", std::string(ProjectString(ScopedBus.id, sizeof(ScopedBus.id))));
+        ScopedBusTable.insert("name", std::string(ProjectString(ScopedBus.name, sizeof(ScopedBus.name))));
+        ScopedBusTable.insert("parent", std::string(ProjectString(ScopedBus.parent, sizeof(ScopedBus.parent))));
+        ScopedBusTable.insert("default_db", static_cast<double>(ScopedBus.defaultDb));
+        ScopedBusArray.push_back(std::move(ScopedBusTable));
+    }
+    ScopedAudio.insert("buses", std::move(ScopedBusArray));
     ScopedRoot.insert("audio", std::move(ScopedAudio));
 
     toml::table ScopedRender;
@@ -979,6 +994,31 @@ std::string EncodeProjectToml(const ProjectConfig& InConfig)
     ScopedEditorTable.insert("bridge_focus_events", ScopedEditor.bridge.RaiseFocusEvents);
     ScopedEditorTable.insert("bridge_structure_events", ScopedEditor.bridge.RaiseStructureEvents);
     ScopedEditorTable.insert("bridge_state_events", ScopedEditor.bridge.RaiseStateEvents);
+    toml::table ScopedOps;
+    const ProjectOpsSettings& ScopedOpsSettings = InConfig.ops;
+    ScopedOps.insert("doctor_on_open", ScopedOpsSettings.doctorOnOpen);
+    ScopedOps.insert("doctor_strict", ScopedOpsSettings.doctorStrict);
+    ScopedOps.insert("doctor_check_licenses", ScopedOpsSettings.doctorCheckLicenses);
+    ScopedOps.insert("doctor_check_legal", ScopedOpsSettings.doctorCheckLegal);
+    ScopedOps.insert("doctor_check_fonts", ScopedOpsSettings.doctorCheckFonts);
+    ScopedOps.insert("incident_on_crash", ScopedOpsSettings.incidentOnCrash);
+    ScopedOps.insert("incident_include_settings", ScopedOpsSettings.incidentIncludeSettings);
+    ScopedOps.insert("incident_include_logs", ScopedOpsSettings.incidentIncludeLogs);
+    ScopedOps.insert("incident_include_replay", ScopedOpsSettings.incidentIncludeReplay);
+    ScopedOps.insert("incident_include_licenses", ScopedOpsSettings.incidentIncludeLicenses);
+    ScopedOps.insert("incident_archive", ScopedOpsSettings.incidentArchive);
+    ScopedOps.insert("incident_max_log_bytes", static_cast<std::int64_t>(ScopedOpsSettings.incidentMaxLogBytes));
+    ScopedOps.insert("incident_directory", std::string(ProjectString(
+                                               ScopedOpsSettings.incidentDirectory,
+                                               sizeof(ScopedOpsSettings.incidentDirectory))));
+    ScopedOps.insert("replay_auto_record", ScopedOpsSettings.replayAutoRecord);
+    ScopedOps.insert("replay_keyframe_interval", static_cast<std::int64_t>(ScopedOpsSettings.replayKeyframeInterval));
+    ScopedOps.insert("replay_max_frames", static_cast<std::int64_t>(ScopedOpsSettings.replayMaxFrames));
+    ScopedOps.insert("replay_verify_on_stop", ScopedOpsSettings.replayVerifyOnStop);
+    ScopedOps.insert("replay_directory", std::string(ProjectString(
+                                               ScopedOpsSettings.replayDirectory, sizeof(ScopedOpsSettings.replayDirectory))));
+    ScopedRoot.insert("ops", std::move(ScopedOps));
+
     ScopedRoot.insert("editor", std::move(ScopedEditorTable));
 
     std::ostringstream ScopedStream;
@@ -1003,6 +1043,18 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
     {
         SetError(InError, "project TOML error: " + std::string(ScopedParseError.description()));
         return false;
+    }
+
+    if (const toml::node* ScopedVersion = ScopedRoot.get("format_version");
+        ScopedVersion != nullptr && ScopedVersion->is_integer())
+    {
+        const std::int64_t ScopedFormat = ScopedVersion->value<std::int64_t>().value_or(0);
+        if (ScopedFormat > static_cast<std::int64_t>(kProjectFormatVersion))
+        {
+            SetError(InError, "project format_version " + std::to_string(ScopedFormat) +
+                                  " is newer than this editor supports");
+            return false;
+        }
     }
 
     ProjectConfig ScopedConfig;
@@ -1034,12 +1086,19 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
     ScopedConfig.project.gameplayTags = {};
     if (const toml::array* ScopedTags = ScopedRoot["gameplay_tags"].as_array(); ScopedTags != nullptr)
     {
+        std::uint32_t ScopedSlot = 0;
         for (const toml::node& ScopedNode : *ScopedTags)
         {
-            if (const auto ScopedPath = ScopedNode.value<std::string>(); ScopedPath.has_value())
+            const auto ScopedPath = ScopedNode.value<std::string>();
+            if (!ScopedPath.has_value() || ScopedPath->empty())
             {
-                (void)ScopedConfig.project.gameplayTags.Add(*ScopedPath);
+                ScopedConfig.project.gameplayTags.ReserveSlot();
             }
+            else if (!ScopedConfig.project.gameplayTags.RestoreSlot(ScopedSlot, *ScopedPath))
+            {
+                ScopedConfig.project.gameplayTags.ReserveSlot();
+            }
+            ++ScopedSlot;
         }
     }
 
@@ -1060,6 +1119,7 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             ProjectPluginEntry& ScopedEntry = ScopedConfig.project.plugins[ScopedConfig.project.pluginCount];
             CopyProjectString(ScopedEntry.Path, sizeof(ScopedEntry.Path), StringField(*ScopedPlugin, "path"));
             ScopedEntry.Enabled = BoolField(*ScopedPlugin, "enabled", true);
+            ScopedEntry.Copied = BoolField(*ScopedPlugin, "copied", false);
             if (ScopedEntry.Path[0] != '\0')
             {
                 ++ScopedConfig.project.pluginCount;
@@ -1080,6 +1140,10 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             std::clamp<std::int64_t>(IntField(*ScopedPhysics, "backend", 0), 0, 2));
         ScopedConfig.project.physicsBodyBudget = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(IntField(*ScopedPhysics, "body_budget", 0), 0, 65536));
+        if (const auto ScopedProfile = (*ScopedPhysics)["profile"].value<std::string>(); ScopedProfile.has_value())
+        {
+            (void)ParseViewProfile(*ScopedProfile, &ScopedConfig.project.viewProfile);
+        }
     }
     if (const toml::table* ScopedAudio = Section(ScopedRoot, "audio"); ScopedAudio != nullptr)
     {
@@ -1106,6 +1170,29 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
             static_cast<float>(std::clamp(FloatField(*ScopedAudio, "aec_step", 0.25), 0.01, 1.0));
         ScopedConfig.project.voiceAgcTargetDb =
             static_cast<float>(std::clamp(FloatField(*ScopedAudio, "agc_target_db", -18.0), -40.0, -3.0));
+        if (const toml::array* ScopedBuses = (*ScopedAudio)["buses"].as_array(); ScopedBuses != nullptr)
+        {
+            ScopedConfig.project.audioBusCount = 0;
+            for (const toml::node& ScopedNode : *ScopedBuses)
+            {
+                if (ScopedConfig.project.audioBusCount >= kMaxProjectAudioBuses)
+                {
+                    break;
+                }
+                const toml::table* ScopedTable = ScopedNode.as_table();
+                if (ScopedTable == nullptr)
+                {
+                    continue;
+                }
+                ProjectAudioBus& ScopedBus = ScopedConfig.project.audioBuses[ScopedConfig.project.audioBusCount];
+                CopyProjectString(ScopedBus.id, sizeof(ScopedBus.id), StringField(*ScopedTable, "id"));
+                CopyProjectString(ScopedBus.name, sizeof(ScopedBus.name), StringField(*ScopedTable, "name"));
+                CopyProjectString(ScopedBus.parent, sizeof(ScopedBus.parent), StringField(*ScopedTable, "parent"));
+                ScopedBus.defaultDb =
+                    static_cast<float>(std::clamp(FloatField(*ScopedTable, "default_db", 0.0), -60.0, 6.0));
+                ++ScopedConfig.project.audioBusCount;
+            }
+        }
     }
     if (const toml::table* ScopedRender = Section(ScopedRoot, "render"); ScopedRender != nullptr)
     {
@@ -1212,6 +1299,12 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
     {
         ScopedProfile.version = static_cast<std::uint16_t>(std::clamp<std::int64_t>(
             IntField(*ScopedAccessibility, "profile_version", kAccessibilityProfileVersion), 0, 0xFFFF));
+        const std::string ScopedActiveEffect = StringField(*ScopedAccessibility, "active_effect");
+        if (!ScopedActiveEffect.empty())
+        {
+            CopyProjectString(ScopedConfig.project.activeEffect, sizeof(ScopedConfig.project.activeEffect),
+                              ScopedActiveEffect);
+        }
         const bool ScopedBlind = BoolField(
             *ScopedAccessibility, "blind_mode",
             AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityBlindMode));
@@ -1313,6 +1406,52 @@ bool DecodeProjectToml(std::string_view InText, ProjectConfig* OutConfig, std::s
         ScopedProfile.bridge.RaiseStateEvents =
             BoolField(*ScopedAccessibility, "bridge_state_events", ScopedProfile.bridge.RaiseStateEvents);
     }
+    if (const toml::table* ScopedOps = Section(ScopedRoot, "ops"); ScopedOps != nullptr)
+    {
+        ScopedConfig.ops.doctorOnOpen = BoolField(*ScopedOps, "doctor_on_open", ScopedConfig.ops.doctorOnOpen);
+        ScopedConfig.ops.doctorStrict = BoolField(*ScopedOps, "doctor_strict", ScopedConfig.ops.doctorStrict);
+        ScopedConfig.ops.doctorCheckLicenses =
+            BoolField(*ScopedOps, "doctor_check_licenses", ScopedConfig.ops.doctorCheckLicenses);
+        ScopedConfig.ops.doctorCheckLegal =
+            BoolField(*ScopedOps, "doctor_check_legal", ScopedConfig.ops.doctorCheckLegal);
+        ScopedConfig.ops.doctorCheckFonts =
+            BoolField(*ScopedOps, "doctor_check_fonts", ScopedConfig.ops.doctorCheckFonts);
+        ScopedConfig.ops.incidentOnCrash =
+            BoolField(*ScopedOps, "incident_on_crash", ScopedConfig.ops.incidentOnCrash);
+        ScopedConfig.ops.incidentIncludeSettings =
+            BoolField(*ScopedOps, "incident_include_settings", ScopedConfig.ops.incidentIncludeSettings);
+        ScopedConfig.ops.incidentIncludeLogs =
+            BoolField(*ScopedOps, "incident_include_logs", ScopedConfig.ops.incidentIncludeLogs);
+        ScopedConfig.ops.incidentIncludeReplay =
+            BoolField(*ScopedOps, "incident_include_replay", ScopedConfig.ops.incidentIncludeReplay);
+        ScopedConfig.ops.incidentIncludeLicenses =
+            BoolField(*ScopedOps, "incident_include_licenses", ScopedConfig.ops.incidentIncludeLicenses);
+        ScopedConfig.ops.incidentArchive =
+            BoolField(*ScopedOps, "incident_archive", ScopedConfig.ops.incidentArchive);
+        ScopedConfig.ops.incidentMaxLogBytes = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedOps, "incident_max_log_bytes", ScopedConfig.ops.incidentMaxLogBytes), 0, 268435456));
+        const std::string ScopedIncidentDirectory = StringField(*ScopedOps, "incident_directory");
+        if (!ScopedIncidentDirectory.empty())
+        {
+            CopyProjectString(ScopedConfig.ops.incidentDirectory, sizeof(ScopedConfig.ops.incidentDirectory),
+                              ScopedIncidentDirectory);
+        }
+        ScopedConfig.ops.replayAutoRecord =
+            BoolField(*ScopedOps, "replay_auto_record", ScopedConfig.ops.replayAutoRecord);
+        ScopedConfig.ops.replayKeyframeInterval = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedOps, "replay_keyframe_interval", ScopedConfig.ops.replayKeyframeInterval), 1, 10000));
+        ScopedConfig.ops.replayMaxFrames = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            IntField(*ScopedOps, "replay_max_frames", ScopedConfig.ops.replayMaxFrames), 1, 10000000));
+        ScopedConfig.ops.replayVerifyOnStop =
+            BoolField(*ScopedOps, "replay_verify_on_stop", ScopedConfig.ops.replayVerifyOnStop);
+        const std::string ScopedReplayDirectory = StringField(*ScopedOps, "replay_directory");
+        if (!ScopedReplayDirectory.empty())
+        {
+            CopyProjectString(ScopedConfig.ops.replayDirectory, sizeof(ScopedConfig.ops.replayDirectory),
+                              ScopedReplayDirectory);
+        }
+    }
+
     if (const toml::table* ScopedEditor = Section(ScopedRoot, "editor"); ScopedEditor != nullptr)
     {
         ScopedConfig.editor.uiScale =

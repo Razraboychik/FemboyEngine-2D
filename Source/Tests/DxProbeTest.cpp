@@ -2,6 +2,7 @@
 #include "Engine/RHI/Dx/DxProbe.hpp"
 
 #include <cstdio>
+#include <cstring>
 
 int main()
 {
@@ -18,5 +19,23 @@ int main()
     }
     std::printf("dx_probe: adapters=%zu d3d12=%d d3d11=%d\n", ScopedAdapters.size(), ScopedD3D12, ScopedD3D11);
     // Headless CI and non-Windows builds legitimately have no DXGI adapter.
-    return 0;
+    if (ScopedAdapters.empty())
+    {
+        return 0;
+    }
+    int ScopedFailures = 0;
+    for (const Fby::Rhi::DxAdapterInfo& ScopedAdapter : ScopedAdapters)
+    {
+        if (std::memchr(ScopedAdapter.Name, '\0', sizeof(ScopedAdapter.Name)) == nullptr)
+        {
+            std::fprintf(stderr, "adapter name is not NUL-terminated\n");
+            ++ScopedFailures;
+        }
+    }
+    if (ScopedD3D11 == 0 && ScopedD3D12 == 0)
+    {
+        std::fprintf(stderr, "adapters were enumerated but none supports D3D11 or D3D12\n");
+        ++ScopedFailures;
+    }
+    return ScopedFailures == 0 ? 0 : 1;
 }

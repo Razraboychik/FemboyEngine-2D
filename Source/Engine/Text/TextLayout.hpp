@@ -588,7 +588,7 @@ struct TextInlineHit
             }
             else
             {
-                ScopedLineWidth += ScopedAdvance;
+                ScopedLineWidth += ScopedWidthAt(ScopedSeparator, ScopedCodepoint);
                 ScopedLineHeight = std::max(ScopedLineHeight, ScopedHeightAt(ScopedSeparator, ScopedCodepoint));
                 ++ScopedLineGlyphs;
             }

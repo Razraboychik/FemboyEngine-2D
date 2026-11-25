@@ -111,8 +111,12 @@ public:
         {
             return InMinimum;
         }
-        const auto ScopedSpan = static_cast<std::uint32_t>(static_cast<std::int64_t>(InMaximum) - InMinimum + 1);
-        return InMinimum + static_cast<std::int32_t>(Bounded(ScopedSpan));
+        const std::int64_t ScopedWideSpan = static_cast<std::int64_t>(InMaximum) - InMinimum + 1;
+        if (ScopedWideSpan > static_cast<std::int64_t>(0xFFFFFFFFu))
+        {
+            return static_cast<std::int32_t>(NextU32());
+        }
+        return InMinimum + static_cast<std::int32_t>(Bounded(static_cast<std::uint32_t>(ScopedWideSpan)));
     }
 
     [[nodiscard]] constexpr float RangeFloat(float InMinimum, float InMaximum) noexcept
@@ -144,7 +148,9 @@ public:
     // A child stream for a subsystem (particles, loot, noise).
     [[nodiscard]] constexpr Pcg32 Fork() noexcept
     {
-        const std::uint64_t ScopedStream = (static_cast<std::uint64_t>(NextU32()) << 32u) | NextU32();
+        const std::uint32_t ScopedHigh = NextU32();
+        const std::uint32_t ScopedLow = NextU32();
+        const std::uint64_t ScopedStream = (static_cast<std::uint64_t>(ScopedHigh) << 32u) | ScopedLow;
         Pcg32 ScopedChild;
         ScopedChild.MState = MState;
         ScopedChild.MInc = (ScopedStream << 1u) | 1u;

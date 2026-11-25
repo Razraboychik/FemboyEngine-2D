@@ -30,9 +30,9 @@ void CommandLog::Clear(std::uint64_t InTick) noexcept
     MSealed = false;
 }
 
-bool CommandLog::CanAppend(std::uint32_t InTotalBytes) const noexcept
+bool CommandLog::CanAppend(std::size_t InTotalBytes) const noexcept
 {
-    return MCommandCount < kMaxCommandLogCommands && MWriteOffset + InTotalBytes <= MStorage.size();
+    return MCommandCount < kMaxCommandLogCommands && InTotalBytes <= MStorage.size() - MWriteOffset;
 }
 
 bool CommandLog::BeginRecord(CommandType InType, Entity InEntity, std::uint32_t InPayloadBytes,
@@ -176,6 +176,7 @@ CommandLog::View CommandLog::View::Open(std::span<const std::byte> InBytes, std:
     View ScopedView;
     ScopedView.header = ScopedHeader;
     ScopedView.payload = ScopedPayload;
+    ScopedView.valid = true;
     return ScopedView;
 }
 
@@ -221,7 +222,7 @@ bool CommandLog::Replay(Registry& InRegistry, const SnapshotSchema& InSchema,
     }
     std::string_view ScopedError;
     const View ScopedView = View::Open(Bytes(), &ScopedError);
-    return ScopedView.header.version != 0 && ScopedCursor.commandIndex == ScopedView.header.commandCount &&
+    return ScopedView.valid && ScopedCursor.commandIndex == ScopedView.header.commandCount &&
            ScopedCursor.payloadOffset == ScopedView.payload.size();
 }
 
@@ -230,7 +231,7 @@ bool CommandLog::ApplyUntil(Registry& InRegistry, const SnapshotSchema& InSchema
 {
     std::string_view ScopedError;
     const View ScopedView = View::Open(Bytes(), &ScopedError);
-    if (ScopedView.header.version == 0)
+    if (!ScopedView.valid)
     {
         return false;
     }
@@ -276,9 +277,10 @@ bool CommandLog::ApplyUntil(Registry& InRegistry, const SnapshotSchema& InSchema
                 {
                     return false;
                 }
-                if (!InRegistry.valid(ScopedRecord.entity))
+                if (!InRegistry.valid(ScopedRecord.entity) &&
+                    InRegistry.create(ScopedRecord.entity) != ScopedRecord.entity)
                 {
-                    (void)InRegistry.create(ScopedRecord.entity);
+                    return false;
                 }
                 break;
             case CommandType::Despawn:
@@ -310,9 +312,10 @@ bool CommandLog::ApplyUntil(Registry& InRegistry, const SnapshotSchema& InSchema
                 {
                     return false;
                 }
-                if (!InRegistry.valid(ScopedRecord.entity))
+                if (!InRegistry.valid(ScopedRecord.entity) &&
+                    InRegistry.create(ScopedRecord.entity) != ScopedRecord.entity)
                 {
-                    (void)InRegistry.create(ScopedRecord.entity);
+                    return false;
                 }
                 if (!ScopedCodec->restore(InRegistry, ScopedRecord.entity,
                                           ScopedPayload.subspan(sizeof(ScopedTypeId) + sizeof(ScopedSize), ScopedSize)))

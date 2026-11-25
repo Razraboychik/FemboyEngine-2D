@@ -107,8 +107,8 @@ void AudioZoneSystem::Update(Ecs::Registry& InRegistry, AudioSystem* InAudio, fl
             continue;
         }
         const std::uint32_t ScopedMask =
-            ScopedZone != nullptr ? (ScopedZone->BusMask & kAudioZoneBusAll) : kAudioZoneBusAll;
-        const std::uint32_t ScopedSendMask = ScopedChanged ? (ScopedMask | ScopedContext.LastBusMask) : ScopedMask;
+            ScopedZone != nullptr ? (ScopedZone->BusMask & kAudioZoneBusAll) : 0u;
+        const std::uint32_t ScopedSendMask = ScopedMask;
         const bool ScopedNeedsSend = ScopedChanged ||
                                      std::fabs(ScopedContext.ReverbGain - ScopedContext.LastSentReverbGain) > 0.005f ||
                                      std::fabs(ScopedContext.LowPassHz - ScopedContext.LastSentLowPassHz) > 5.0f;
@@ -117,6 +117,22 @@ void AudioZoneSystem::Update(Ecs::Registry& InRegistry, AudioSystem* InAudio, fl
             continue;
         }
         bool ScopedAllQueued = true;
+        const std::uint32_t ScopedLeavingMask = ScopedContext.LastBusMask & ~ScopedMask;
+        for (std::uint32_t ScopedBus = 0; ScopedBus < static_cast<std::uint32_t>(AudioBus::Count); ++ScopedBus)
+        {
+            if ((ScopedLeavingMask & (1u << ScopedBus)) == 0)
+            {
+                continue;
+            }
+            if (InAudio->SetBusZoneParameters(static_cast<AudioBus>(ScopedBus), 1.0f, 20000.0f, ScopedFade))
+            {
+                ++MStats.busCommands;
+            }
+            else
+            {
+                ScopedAllQueued = false;
+            }
+        }
         for (std::uint32_t ScopedBus = 0; ScopedBus < static_cast<std::uint32_t>(AudioBus::Count); ++ScopedBus)
         {
             if ((ScopedSendMask & (1u << ScopedBus)) == 0)
@@ -152,6 +168,10 @@ AudioZoneSystem::ResolvedZone AudioZoneSystem::FindDominant(Ecs::Registry& InReg
     for (auto [ScopedEntity, ScopedZone] : ScopedView.each())
     {
         (void)ScopedEntity;
+        if (ScopedIndex >= kMaxZones)
+        {
+            break;
+        }
         const std::uint32_t ScopedCurrent = ScopedIndex++;
         if (!ScopedZone.Enabled() || !ScopedZone.Contains(InPoint))
         {

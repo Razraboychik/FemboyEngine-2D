@@ -41,12 +41,16 @@ namespace Fby
     ScopedPieces.reserve(static_cast<std::size_t>(ScopedColumns) * ScopedRows);
     for (std::uint32_t ScopedRow = 0; ScopedRow < ScopedRows; ++ScopedRow)
     {
-        const std::uint32_t ScopedY0 = ScopedRow * ScopedHeight / ScopedRows;
-        const std::uint32_t ScopedY1 = (ScopedRow + 1u) * ScopedHeight / ScopedRows;
+        const std::uint32_t ScopedY0 = static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(ScopedRow) * ScopedHeight / ScopedRows);
+        const std::uint32_t ScopedY1 = static_cast<std::uint32_t>(
+            (static_cast<std::uint64_t>(ScopedRow) + 1u) * ScopedHeight / ScopedRows);
         for (std::uint32_t ScopedColumn = 0; ScopedColumn < ScopedColumns; ++ScopedColumn)
         {
-            const std::uint32_t ScopedX0 = ScopedColumn * ScopedWidth / ScopedColumns;
-            const std::uint32_t ScopedX1 = (ScopedColumn + 1u) * ScopedWidth / ScopedColumns;
+            const std::uint32_t ScopedX0 = static_cast<std::uint32_t>(
+                static_cast<std::uint64_t>(ScopedColumn) * ScopedWidth / ScopedColumns);
+            const std::uint32_t ScopedX1 = static_cast<std::uint32_t>(
+                (static_cast<std::uint64_t>(ScopedColumn) + 1u) * ScopedWidth / ScopedColumns);
 
             SdfDestructibleDesc ScopedDesc;
             ScopedDesc.Origin = Vector2D{ScopedField.origin.X + static_cast<float>(ScopedX0) * ScopedField.cellSize.X,

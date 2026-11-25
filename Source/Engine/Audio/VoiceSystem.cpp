@@ -1,6 +1,8 @@
 // FemboyEngine2D - voice runtime implementation.
 #include "Engine/Audio/VoiceSystem.hpp"
 
+#include "Engine/Core/Log.hpp"
+
 #include <algorithm>
 
 namespace Fby
@@ -41,9 +43,25 @@ bool VoiceSystem::Start(DspGraph& InGraph, FloatRing* InReferenceRing, const Voi
     MChannel.SetCaptureRing(&MProcessedRing);
 
     MChain.Configure(MDspSettings, 48000);
-    MAec.Configure(InConfig.Aec, 48000);
-    MCaptureRack = std::make_unique<VoiceEffectRack>();
-    MParticipantRacks = std::make_unique<std::array<VoiceEffectRack, kVoiceMaxPeers>>();
+    auto ScopedAec = InConfig.Aec;
+    if (ScopedAec.Enabled && MReferenceRing == nullptr)
+    {
+        LogWarn("voice", "AEC requested without a playback reference ring; echo cancellation disabled");
+        ScopedAec.Enabled = false;
+    }
+    MAec.Configure(ScopedAec, 48000);
+    MCaptureRack.reset(new (std::nothrow) VoiceEffectRack());
+    MParticipantRacks.reset(new (std::nothrow) std::array<VoiceEffectRack, kVoiceMaxPeers>());
+    if (MCaptureRack == nullptr || MParticipantRacks == nullptr)
+    {
+        MCaptureRack.reset();
+        MParticipantRacks.reset();
+        MChannel.Stop();
+        (void)InGraph.DestroyBus(MVoiceBus);
+        MVoiceBus = kInvalidBus;
+        MStarted = false;
+        return false;
+    }
     MCaptureRack->Configure(InConfig.UplinkEffects, 48000);
     for (std::uint8_t ScopedPlayer = 0; ScopedPlayer < kVoiceMaxPeers; ++ScopedPlayer)
     {
@@ -51,7 +69,7 @@ bool VoiceSystem::Start(DspGraph& InGraph, FloatRing* InReferenceRing, const Voi
     }
     MChannel.SetDecodeSink(&VoiceSystem::DecodeSinkThunk, this);
     MBound.fill(false);
-    MVoices.fill(0);
+    MVoices.fill(kInvalidVoice);
     MStarted = true;
     return true;
 }
@@ -64,7 +82,7 @@ void VoiceSystem::Stop() noexcept
     {
         for (std::uint32_t ScopedVoice : MVoices)
         {
-            if (ScopedVoice != 0)
+            if (ScopedVoice != kInvalidVoice)
             {
                 (void)MGraph->StopVoice(ScopedVoice);
             }
@@ -80,7 +98,7 @@ void VoiceSystem::Stop() noexcept
     MCaptureRack.reset();
     MParticipantRacks.reset();
     MBound.fill(false);
-    MVoices.fill(0);
+    MVoices.fill(kInvalidVoice);
     MStarted = false;
 }
 
@@ -219,7 +237,7 @@ void VoiceSystem::ProcessCapture() noexcept
         ScopedReferenceFrames = std::min<std::uint32_t>(ScopedFrames, MReferenceRing->AvailableRead());
         (void)MReferenceRing->Read(MReferenceBuffer.data(), ScopedReferenceFrames);
     }
-    if (ScopedReferenceFrames == ScopedFrames && MConfig.Aec.Enabled)
+    if (ScopedReferenceFrames == ScopedFrames && MAec.Enabled())
     {
         MAec.Process(MWorkBuffer.data(), MReferenceBuffer.data(), ScopedFrames);
     }
@@ -245,13 +263,16 @@ void VoiceSystem::BindParticipants(VoiceSession& InSession) noexcept
             // silent voice slot occupied until Stop().
             if (MBound[ScopedPlayer])
             {
-                if (MVoices[ScopedPlayer] != 0)
+                if (MVoices[ScopedPlayer] != kInvalidVoice)
                 {
-                    (void)MGraph->StopVoice(MVoices[ScopedPlayer]);
-                    MVoices[ScopedPlayer] = 0;
+                    if (MGraph->StopVoice(MVoices[ScopedPlayer]) != DspResult::Ok)
+                    {
+                        continue;
+                    }
+                    MVoices[ScopedPlayer] = kInvalidVoice;
                 }
                 MBound[ScopedPlayer] = false;
-                InSession.SetParticipantVoice(ScopedPlayer, 0);
+                InSession.SetParticipantVoice(ScopedPlayer, kInvalidVoice);
             }
             continue;
         }
@@ -280,6 +301,7 @@ void VoiceSystem::Tick(float InDeltaSeconds, VoiceSession& InSession) noexcept
     AdvanceEffects(InDeltaSeconds);
     ProcessCapture();
     MChannel.Tick(InDeltaSeconds, &InSession);
+    InSession.Update(InDeltaSeconds);
     BindParticipants(InSession);
 }
 }

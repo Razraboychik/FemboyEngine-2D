@@ -10,13 +10,15 @@ namespace Fby::Net
 SecureStatus SecureEndpoint::Start(NetTransport* InTransport, const NetAddress& InRemote,
                                    const SecureChannelConfig& InConfig) noexcept
 {
-    if (InTransport == nullptr || !InTransport->Opened())
+    if (InTransport == nullptr || !InTransport->Opened() ||
+        (InConfig.Initiator && InRemote.Host == 0 && InRemote.Port == 0))
     {
         return SecureStatus::NotStarted;
     }
 
     MTransport = InTransport;
     MRemote = InRemote;
+    MInitiator = InConfig.Initiator;
     MStarted = true;
     MFirstError = SecureStatus::Ok;
     MLastStatus = MChannel.Start(InConfig);
@@ -45,6 +47,8 @@ void SecureEndpoint::Stop() noexcept
     MChannel.Reset();
     MLastStatus = SecureStatus::NotStarted;
     MFirstError = SecureStatus::Ok;
+    MSinkFn = nullptr;
+    MSinkUser = nullptr;
 }
 
 SecureStatus SecureEndpoint::SendHandshake() noexcept
@@ -114,10 +118,14 @@ void SecureEndpoint::OnMessage(void* InUser, const NetAddress& InFrom,
     {
         return;
     }
-    // A server starts with an empty address and binds the peer on the first
-    // inbound datagram; a client always knows its remote.
+    // A responder may learn its single peer from the first handshake datagram;
+    // an initiator always has a configured remote.
     if (ScopedEndpoint->MRemote.Host == 0 && ScopedEndpoint->MRemote.Port == 0)
     {
+        if (ScopedEndpoint->MInitiator)
+        {
+            return;
+        }
         ScopedEndpoint->MRemote = InFrom;
     }
     else if (!(InFrom == ScopedEndpoint->MRemote))
@@ -202,6 +210,10 @@ SecureStatus SecureEndpoint::HandleRawMessage(const NetAddress& InFrom,
     }
     if (MRemote.Host == 0 && MRemote.Port == 0)
     {
+        if (MInitiator)
+        {
+            return SecureStatus::NotStarted;
+        }
         MRemote = InFrom;
     }
     else if (!(InFrom == MRemote))

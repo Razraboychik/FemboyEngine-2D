@@ -84,7 +84,7 @@ struct TransportStats
 // One peer's ack/sequence state and retransmit queue.
 struct TransportPeer
 {
-    static constexpr std::uint32_t kMaxOutstanding = 48;
+    static constexpr std::uint32_t kMaxOutstanding = 32;
     static constexpr std::uint32_t kMaxReassemblyBytes = 16384;
     static constexpr std::uint32_t kMaxReliablePayload = 768;
 
@@ -111,6 +111,7 @@ struct TransportPeer
         std::array<std::byte, kMaxReliablePayload> Data{};
     };
     std::array<Outstanding, kMaxOutstanding> Outbox{};
+    static_assert(kMaxOutstanding <= 32, "ack bitmap covers only 32 slots");
 
     struct Reassembly
     {
@@ -120,6 +121,7 @@ struct TransportPeer
         std::uint8_t FragReceived = 0;
         std::uint16_t MsgBytes = 0;
         std::uint64_t Mask = 0;
+        float LastActivity = 0.0f;
         std::array<std::byte, kMaxReassemblyBytes> Data{};
     };
     Reassembly Fragment{};

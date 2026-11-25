@@ -1,9 +1,7 @@
 # Build trees. Everything CMake generates is disposable.
 /build/
-/build-*/
-/build_probe/
 /out/
-/cmake-build-*/
+/artifacts/
 
 # Compiler and linker scratch.
 *.obj
@@ -51,6 +49,8 @@ CMakeFiles/
 # themselves are user content, not engine source; the directory marker is tracked.
 /Projects/*
 !/Projects/.gitkeep
+!/Projects/Default/
+!/Projects/Default/project.femproj
 
 # Downloaded dependency trees. Setup extracts these into third_party; only the
 # pinned subset that is already tracked belongs to the repository.

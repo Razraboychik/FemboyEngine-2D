@@ -26,17 +26,15 @@ bool RebuildPhysicsBodies(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics, P
     for (auto [ScopedEntity, ScopedBody] : ScopedView.each())
     {
         const std::uint64_t ScopedOldBody = ScopedBody.Body;
-        ScopedBody.Body = 0;
-        if (auto* ScopedCollider = InRegistry.try_get<Collider2D>(ScopedEntity); ScopedCollider != nullptr)
-        {
-            ScopedCollider->Shape = 0;
-        }
         if (!InRemap.Add(ScopedEntity, ScopedOldBody, 0))
         {
             return false;
         }
     }
 
+    // Destroy the native bodies before rebuilding; clearing the packed handles
+    // alone would orphan them and EnsureBodies would create a second body.
+    (void)InPhysics.DestroyAllBodies(&InRegistry);
     InPhysics.EnsureBodies(InRegistry);
 
     for (const PhysicsBodyRemapEntry& ScopedEntry : InRemap.Entries())

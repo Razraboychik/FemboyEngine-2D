@@ -27,6 +27,7 @@ AccessibilityBridgeSettings MSettings{};
 bool MActive = false;
 NSView* MContentView = nil;
 NSMutableDictionary<NSNumber*, id>* MElements = nil;
+std::uint32_t MPublishedRootId = 0;
 id MRootElement = nil;
 
 // Declared before the Objective-C class because its methods answer AppKit
@@ -155,13 +156,14 @@ id ElementForId(std::uint32_t InId) noexcept;
     {
         return NSZeroRect;
     }
-    // The tree uses logical pixels with a top-left origin; AppKit expects
-    // bottom-left screen coordinates.
-    const NSRect ScopedBounds = [ScopedView bounds];
-    const NSRect ScopedRect =
-        NSMakeRect(ScopedNode.Bounds.X, ScopedBounds.size.height - ScopedNode.Bounds.W,
+    // Node bounds are backing pixels with a top-left origin; AppKit expects
+    // view points with a bottom-left origin.
+    const NSRect ScopedBackingBounds = [ScopedView convertRectToBacking:[ScopedView bounds]];
+    const NSRect ScopedBackingRect =
+        NSMakeRect(ScopedNode.Bounds.X, ScopedBackingBounds.size.height - ScopedNode.Bounds.W,
                    ScopedNode.Bounds.Z - ScopedNode.Bounds.X, ScopedNode.Bounds.W - ScopedNode.Bounds.Y);
-    const NSRect ScopedWindowRect = [ScopedView convertRect:ScopedRect toView:nil];
+    const NSRect ScopedViewRect = [ScopedView convertRectFromBacking:ScopedBackingRect];
+    const NSRect ScopedWindowRect = [ScopedView convertRect:ScopedViewRect toView:nil];
     return [Fby::MWindow convertRectToScreen:ScopedWindowRect];
 }
 
@@ -279,6 +281,17 @@ void PublishRootIfNeeded() noexcept
     const std::uint32_t ScopedRootId = FindRootId();
     if (ScopedRootId == 0)
     {
+        if (MPublishedRootId != 0)
+        {
+            MPublishedRootId = 0;
+            MRootElement = nil;
+            [MContentView setAccessibilityChildren:@[]];
+            NSAccessibilityPostNotification(MContentView, NSAccessibilityLayoutChangedNotification);
+        }
+        return;
+    }
+    if (ScopedRootId == MPublishedRootId && MRootElement != nil)
+    {
         return;
     }
     id ScopedRoot = ElementForId(ScopedRootId);
@@ -287,6 +300,7 @@ void PublishRootIfNeeded() noexcept
         return;
     }
     MRootElement = ScopedRoot;
+    MPublishedRootId = ScopedRootId;
     [MContentView setAccessibilityChildren:@[ ScopedRoot ]];
 }
 }
@@ -339,6 +353,7 @@ void PlatformAccessibilityBridgeStop() noexcept
     MRootElement = nil;
     MContentView = nil;
     MWindow = nil;
+    MPublishedRootId = 0;
     MTree = nullptr;
     MActive = false;
 }
@@ -388,6 +403,21 @@ void PlatformAccessibilityBridgeUpdate(Ui::AccessibilityTree& InTree) noexcept
             case Ui::AccessibilityEventKind::Invoke:
             default:
                 break;
+        }
+    }
+    if (MElements != nil)
+    {
+        NSMutableSet<NSNumber*>* ScopedLive = [NSMutableSet set];
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < InTree.Count(); ++ScopedIndex)
+        {
+            [ScopedLive addObject:@(InTree.At(ScopedIndex).Id)];
+        }
+        for (NSNumber* ScopedKey in [MElements allKeys])
+        {
+            if (![ScopedLive containsObject:ScopedKey])
+            {
+                [MElements removeObjectForKey:ScopedKey];
+            }
         }
     }
 }

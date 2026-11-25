@@ -145,6 +145,68 @@ AssetHandle AssetDatabase::RegisterMeta(const AssetMeta& InMeta, std::span<const
     return MHandles[ScopedSlot];
 }
 
+AssetHandle AssetDatabase::UpdateMeta(const AssetMeta& InMeta, std::span<const AssetDependency> InDependencies,
+                                      std::string* InError)
+{
+    if (!ValidMeta(InMeta))
+    {
+        SetError(InError, "cannot update invalid asset metadata");
+        return {};
+    }
+    const AssetGuid ScopedGuid = InMeta.guid != 0 ? InMeta.guid : ComputeAssetGuid(InMeta.sourcePath, InMeta.kind);
+    const AssetHandle ScopedExisting = FindHandleByGuid(ScopedGuid);
+    if (!ScopedExisting.IsValid())
+    {
+        SetError(InError, "asset GUID is not registered");
+        return {};
+    }
+    if (InDependencies.size() > kMaxAssetDependencies)
+    {
+        SetError(InError, "asset dependency list is too long");
+        return {};
+    }
+    AssetMeta& ScopedStored = MMetas[ScopedExisting.Index];
+    const std::uint32_t ScopedOldFirst = ScopedStored.dependencyFirst;
+    const std::uint32_t ScopedOldCount = ScopedStored.dependencyCount;
+    if (InDependencies.size() > ScopedOldCount &&
+        MDependencyCount + InDependencies.size() > kMaxAssetDependencyEntries)
+    {
+        SetError(InError, "asset dependency table is full");
+        return {};
+    }
+    ScopedStored = InMeta;
+    ScopedStored.guid = ScopedGuid;
+    if (!ScopedStored.id.IsValid())
+    {
+        ScopedStored.id = AssetId::FromPath(ScopedStored.sourcePath, ScopedStored.kind);
+    }
+    ScopedStored.valid = true;
+    if (InDependencies.size() <= ScopedOldCount)
+    {
+        ScopedStored.dependencyFirst = static_cast<std::uint16_t>(ScopedOldFirst);
+        ScopedStored.dependencyCount = static_cast<std::uint16_t>(InDependencies.size());
+        for (std::size_t ScopedI = 0; ScopedI < InDependencies.size(); ++ScopedI)
+        {
+            MDependencies[ScopedOldFirst + ScopedI] = InDependencies[ScopedI];
+        }
+        for (std::uint32_t ScopedI = static_cast<std::uint32_t>(InDependencies.size()); ScopedI < ScopedOldCount;
+             ++ScopedI)
+        {
+            MDependencies[ScopedOldFirst + ScopedI] = AssetDependency{};
+        }
+    }
+    else
+    {
+        ScopedStored.dependencyFirst = static_cast<std::uint16_t>(MDependencyCount);
+        ScopedStored.dependencyCount = static_cast<std::uint16_t>(InDependencies.size());
+        for (const AssetDependency& ScopedDependency : InDependencies)
+        {
+            MDependencies[MDependencyCount++] = ScopedDependency;
+        }
+    }
+    return ScopedExisting;
+}
+
 AssetHandle AssetDatabase::RegisterMetaFile(std::string_view InMetaText, std::string* InError)
 {
     AssetMeta ScopedMeta;

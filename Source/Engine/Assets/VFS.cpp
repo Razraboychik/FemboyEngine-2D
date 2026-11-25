@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -333,7 +334,8 @@ bool VirtualFileSystem::AddEntry(std::string InPath, VfsEntry InEntry, std::stri
     return true;
 }
 
-bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, std::string* InError)
+bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, std::string* InError,
+                                       std::uint32_t* OutMountId)
 {
     const std::scoped_lock ScopedLock(MMutex);
     namespace fs = std::filesystem;
@@ -350,6 +352,10 @@ bool VirtualFileSystem::MountDirectory(std::string_view InRoot, int InPriority, 
 
     auto ScopedMount = std::make_unique<MountRecord>();
     ScopedMount->id = MNextMountId++;
+    if (OutMountId != nullptr)
+    {
+        *OutMountId = ScopedMount->id;
+    }
     ScopedMount->priority = InPriority;
     ScopedMount->root = ScopedRootPath.string();
 
@@ -439,7 +445,8 @@ void VirtualFileSystem::RefreshDirectoryMounts()
     }
 }
 
-bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std::string* InError)
+bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std::string* InError,
+                                 std::uint32_t* OutMountId)
 {
     const std::scoped_lock ScopedLock(MMutex);
     const auto ScopedFail = [InError](std::string InMessage)
@@ -483,12 +490,18 @@ bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std
 
     auto ScopedMount = std::make_unique<MountRecord>();
     ScopedMount->id = MNextMountId++;
+    if (OutMountId != nullptr)
+    {
+        *OutMountId = ScopedMount->id;
+    }
     ScopedMount->priority = InPriority;
     ScopedMount->isPak = true;
     ScopedMount->pak = std::move(ScopedMapping);
 
     const std::uint32_t ScopedMountId = ScopedMount->id;
     std::size_t ScopedAdded = 0;
+    std::unordered_set<std::string> ScopedSeenPaths;
+    ScopedSeenPaths.reserve(ScopedHeader.entryCount);
 
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedHeader.entryCount; ++ScopedI)
     {
@@ -498,17 +511,34 @@ bool VirtualFileSystem::MountPak(std::string_view InPakPath, int InPriority, std
                         static_cast<std::size_t>(ScopedI) * sizeof(PakEntry),
                     sizeof(ScopedEntry));
 
-        const std::uint64_t ScopedPathPosition = ScopedHeader.stringTableOffset + ScopedEntry.pathOffset;
-        if (!IsRangeInside(ScopedPathPosition, ScopedEntry.pathSize, ScopedBytes.size()))
+        if (ScopedHeader.stringTableOffset > ScopedBytes.size() ||
+            ScopedEntry.pathOffset > ScopedBytes.size() - ScopedHeader.stringTableOffset ||
+            ScopedEntry.pathSize > ScopedBytes.size() - ScopedHeader.stringTableOffset - ScopedEntry.pathOffset ||
+            ScopedEntry.pathSize == 0 || ScopedEntry.pathSize > 4096)
         {
             continue;
         }
+        const std::uint64_t ScopedPathPosition =
+            ScopedHeader.stringTableOffset + static_cast<std::uint64_t>(ScopedEntry.pathOffset);
         if (!IsRangeInside(ScopedEntry.offset, ScopedEntry.size, ScopedBytes.size()))
         {
             continue;
         }
-        const std::string ScopedPath(reinterpret_cast<const char*>(ScopedBytes.data() + ScopedPathPosition),
-                                     ScopedEntry.pathSize);
+        const char* ScopedPathBytes = reinterpret_cast<const char*>(ScopedBytes.data() + ScopedPathPosition);
+        if (std::memchr(ScopedPathBytes, '\0', ScopedEntry.pathSize) != nullptr)
+        {
+            continue;
+        }
+        const std::string ScopedPath(ScopedPathBytes, ScopedEntry.pathSize);
+        if (Assets::NormalizePakPath(ScopedPath) != ScopedPath)
+        {
+            continue;
+        }
+        if (!ScopedSeenPaths.insert(ScopedPath).second)
+        {
+            LogWarn("vfs", "pak '{}' contains duplicate path '{}'; keeping the first", InPakPath, ScopedPath);
+            continue;
+        }
         const std::span<const std::byte> ScopedData(ScopedBytes.data() + ScopedEntry.offset,
                                                     static_cast<std::size_t>(ScopedEntry.size));
         AddEntry(Normalize(ScopedPath), VfsEntry{ScopedMountId, InPriority, ScopedData}, nullptr);
@@ -779,11 +809,6 @@ std::optional<VfsEntry> VirtualFileSystem::Materialize(std::string_view InPath) 
     {
         return std::nullopt;
     }
-    if (!ScopedIt->second.data.empty())
-    {
-        return ScopedIt->second;
-    }
-
     const MountRecord* ScopedOwner = nullptr;
     for (const std::unique_ptr<MountRecord>& ScopedMount : MMounts)
     {
@@ -791,6 +816,29 @@ std::optional<VfsEntry> VirtualFileSystem::Materialize(std::string_view InPath) 
         {
             ScopedOwner = ScopedMount.get();
             break;
+        }
+    }
+    if (!ScopedIt->second.data.empty())
+    {
+        // A directory shadow may carry a span into a mapping that an unmount or
+        // refresh has already released. Validate it against MLazyMappings before
+        // handing out a stale pointer; pak-backed spans stay owned by their mount.
+        if (ScopedOwner != nullptr && !ScopedOwner->isPak)
+        {
+            const auto ScopedLazy = MLazyMappings.find(ScopedKey);
+            if (ScopedLazy == MLazyMappings.end() || !ScopedLazy->second ||
+                ScopedLazy->second->Bytes().data() != ScopedIt->second.data.data())
+            {
+                ScopedIt->second.data = {};
+            }
+            else
+            {
+                return ScopedIt->second;
+            }
+        }
+        else
+        {
+            return ScopedIt->second;
         }
     }
     if (ScopedOwner == nullptr || ScopedOwner->isPak)
@@ -874,9 +922,14 @@ std::optional<PinnedFile> VirtualFileSystem::Pin(std::string_view InPath) const
     const std::scoped_lock ScopedLock(MMutex);
     // Materialize() indexes the path and, for a directory mount, opens the lazy
     const auto ScopedEntry = Find(InPath);
-    if (!ScopedEntry.has_value() || ScopedEntry->data.empty())
+    if (!ScopedEntry.has_value())
     {
         return std::nullopt;
+    }
+    if (ScopedEntry->data.empty())
+    {
+        // An empty file is a valid asset; there is no mapping to retain.
+        return PinnedFile{};
     }
 
     for (const std::unique_ptr<MountRecord>& ScopedMount : MMounts)

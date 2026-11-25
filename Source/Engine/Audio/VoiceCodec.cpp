@@ -1,6 +1,8 @@
 // FemboyEngine2D - Opus voice codec implementation.
 #include "Engine/Audio/VoiceCodec.hpp"
 
+#include <algorithm>
+
 #include <cstring>
 
 #if defined(FBY_HAS_OPUS)
@@ -30,14 +32,25 @@ bool VoiceEncoder::Initialize(const VoiceCodecConfig& InConfig) noexcept
         }
         return false;
     }
-    const opus_int32 ScopedBitrate = static_cast<opus_int32>(InConfig.Bitrate);
-    (void)opus_encoder_ctl(ScopedEncoder, OPUS_SET_BITRATE(ScopedBitrate));
-    (void)opus_encoder_ctl(ScopedEncoder, OPUS_SET_COMPLEXITY(InConfig.Complexity));
-    (void)opus_encoder_ctl(ScopedEncoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
-    (void)opus_encoder_ctl(ScopedEncoder, OPUS_SET_INBAND_FEC(InConfig.InbandFec ? 1 : 0));
-    (void)opus_encoder_ctl(ScopedEncoder,
-                          OPUS_SET_PACKET_LOSS_PERC(InConfig.PacketLossPercent >= 0 ? InConfig.PacketLossPercent : 0));
-    (void)opus_encoder_ctl(ScopedEncoder, OPUS_SET_DTX(InConfig.Dtx ? 1 : 0));
+    const opus_int32 ScopedBitrate = static_cast<opus_int32>(std::clamp(InConfig.Bitrate, 6000u, 510000u));
+    const int ScopedComplexity = std::clamp(InConfig.Complexity, 0, 10);
+    const int ScopedLoss = std::clamp(InConfig.PacketLossPercent, 0, 100);
+    const int ScopedResults[] = {
+        opus_encoder_ctl(ScopedEncoder, OPUS_SET_BITRATE(ScopedBitrate)),
+        opus_encoder_ctl(ScopedEncoder, OPUS_SET_COMPLEXITY(ScopedComplexity)),
+        opus_encoder_ctl(ScopedEncoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE)),
+        opus_encoder_ctl(ScopedEncoder, OPUS_SET_INBAND_FEC(InConfig.InbandFec ? 1 : 0)),
+        opus_encoder_ctl(ScopedEncoder, OPUS_SET_PACKET_LOSS_PERC(ScopedLoss)),
+        opus_encoder_ctl(ScopedEncoder, OPUS_SET_DTX(InConfig.Dtx ? 1 : 0)),
+    };
+    for (const int ScopedResult : ScopedResults)
+    {
+        if (ScopedResult != OPUS_OK)
+        {
+            opus_encoder_destroy(ScopedEncoder);
+            return false;
+        }
+    }
     MEncoder = ScopedEncoder;
     return true;
 #else
@@ -57,18 +70,30 @@ void VoiceEncoder::Shutdown() noexcept
     MEncoder = nullptr;
 }
 
-std::uint32_t VoiceEncoder::Encode(std::span<const float> InSamples,
-                                   std::span<std::uint8_t> OutPacket) noexcept
+std::uint32_t VoiceEncoder::Encode(std::span<const float> InSamples, std::span<std::uint8_t> OutPacket,
+                                   std::int32_t* OutError) noexcept
 {
+    if (OutError != nullptr)
+    {
+        *OutError = 0;
+    }
 #if defined(FBY_HAS_OPUS)
     if (MEncoder == nullptr || InSamples.size() != kVoiceFrameSamples || OutPacket.empty())
     {
+        if (OutError != nullptr)
+        {
+            *OutError = OPUS_BAD_ARG;
+        }
         return 0;
     }
     const opus_int32 ScopedBytes =
         opus_encode_float(static_cast<OpusEncoder*>(MEncoder), InSamples.data(),
                     static_cast<int>(kVoiceFrameSamples), OutPacket.data(),
                     static_cast<opus_int32>(OutPacket.size()));
+    if (ScopedBytes < 0 && OutError != nullptr)
+    {
+        *OutError = ScopedBytes;
+    }
     return ScopedBytes > 0 ? static_cast<std::uint32_t>(ScopedBytes) : 0;
 #else
     (void)InSamples;
@@ -114,17 +139,29 @@ void VoiceDecoder::Shutdown() noexcept
     MDecoder = nullptr;
 }
 
-std::uint32_t VoiceDecoder::Decode(std::span<const std::uint8_t> InPacket,
-                                   std::span<float> OutSamples) noexcept
+std::uint32_t VoiceDecoder::Decode(std::span<const std::uint8_t> InPacket, std::span<float> OutSamples,
+                                   std::int32_t* OutError) noexcept
 {
+    if (OutError != nullptr)
+    {
+        *OutError = 0;
+    }
 #if defined(FBY_HAS_OPUS)
     if (MDecoder == nullptr || OutSamples.size() < kVoiceFrameSamples || InPacket.empty())
     {
+        if (OutError != nullptr)
+        {
+            *OutError = OPUS_BAD_ARG;
+        }
         return 0;
     }
     const int ScopedFrames = opus_decode_float(static_cast<OpusDecoder*>(MDecoder), InPacket.data(),
                                          static_cast<opus_int32>(InPacket.size()), OutSamples.data(),
                                          static_cast<int>(kVoiceFrameSamples), 0);
+    if (ScopedFrames < 0 && OutError != nullptr)
+    {
+        *OutError = ScopedFrames;
+    }
     return ScopedFrames > 0 ? static_cast<std::uint32_t>(ScopedFrames) : 0;
 #else
     (void)InPacket;
@@ -133,17 +170,29 @@ std::uint32_t VoiceDecoder::Decode(std::span<const std::uint8_t> InPacket,
 #endif
 }
 
-std::uint32_t VoiceDecoder::DecodeFec(std::span<const std::uint8_t> InPacket,
-                                      std::span<float> OutSamples) noexcept
+std::uint32_t VoiceDecoder::DecodeFec(std::span<const std::uint8_t> InPacket, std::span<float> OutSamples,
+                                      std::int32_t* OutError) noexcept
 {
+    if (OutError != nullptr)
+    {
+        *OutError = 0;
+    }
 #if defined(FBY_HAS_OPUS)
     if (MDecoder == nullptr || OutSamples.size() < kVoiceFrameSamples || InPacket.empty())
     {
+        if (OutError != nullptr)
+        {
+            *OutError = OPUS_BAD_ARG;
+        }
         return 0;
     }
     const int ScopedFrames = opus_decode_float(static_cast<OpusDecoder*>(MDecoder), InPacket.data(),
                                                static_cast<opus_int32>(InPacket.size()), OutSamples.data(),
                                                static_cast<int>(kVoiceFrameSamples), 1);
+    if (ScopedFrames < 0 && OutError != nullptr)
+    {
+        *OutError = ScopedFrames;
+    }
     return ScopedFrames > 0 ? static_cast<std::uint32_t>(ScopedFrames) : 0;
 #else
     (void)InPacket;
@@ -152,15 +201,27 @@ std::uint32_t VoiceDecoder::DecodeFec(std::span<const std::uint8_t> InPacket,
 #endif
 }
 
-std::uint32_t VoiceDecoder::Conceal(std::span<float> OutSamples) noexcept
+std::uint32_t VoiceDecoder::Conceal(std::span<float> OutSamples, std::int32_t* OutError) noexcept
 {
+    if (OutError != nullptr)
+    {
+        *OutError = 0;
+    }
 #if defined(FBY_HAS_OPUS)
     if (MDecoder == nullptr || OutSamples.size() < kVoiceFrameSamples)
     {
+        if (OutError != nullptr)
+        {
+            *OutError = OPUS_BAD_ARG;
+        }
         return 0;
     }
     const int ScopedFrames = opus_decode_float(static_cast<OpusDecoder*>(MDecoder), nullptr, 0, OutSamples.data(),
                                          static_cast<int>(kVoiceFrameSamples), 0);
+    if (ScopedFrames < 0 && OutError != nullptr)
+    {
+        *OutError = ScopedFrames;
+    }
     return ScopedFrames > 0 ? static_cast<std::uint32_t>(ScopedFrames) : 0;
 #else
     (void)OutSamples;

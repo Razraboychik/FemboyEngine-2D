@@ -63,18 +63,20 @@ void VoiceDspSettings::Clamp() noexcept
     {
         Denoise = VoiceDenoiseTier::Spectral;
     }
-    GateThresholdDb = std::clamp(GateThresholdDb, -90.0f, 0.0f);
-    GateAttackMs = std::clamp(GateAttackMs, 0.1f, 100.0f);
-    GateReleaseMs = std::clamp(GateReleaseMs, 5.0f, 2000.0f);
-    GateHoldMs = std::clamp(GateHoldMs, 0.0f, 2000.0f);
-    DenoiseStrength = std::clamp(DenoiseStrength, 0.0f, 2.0f);
-    DenoiseFloorDb = std::clamp(DenoiseFloorDb, -60.0f, 0.0f);
-    AgcTargetDbfs = std::clamp(AgcTargetDbfs, -40.0f, -3.0f);
-    AgcMaxGainDb = std::clamp(AgcMaxGainDb, 0.0f, 48.0f);
-    AgcAttackMs = std::clamp(AgcAttackMs, 0.5f, 200.0f);
-    AgcReleaseMs = std::clamp(AgcReleaseMs, 10.0f, 2000.0f);
-    HighPassHz = std::clamp(HighPassHz, 20.0f, 400.0f);
-    LimiterCeilingDb = std::clamp(LimiterCeilingDb, -12.0f, 0.0f);
+    const auto ScopedClamp = [](float InValue, float InMinimum, float InMaximum)
+    { return std::isfinite(InValue) ? std::clamp(InValue, InMinimum, InMaximum) : InMinimum; };
+    GateThresholdDb = ScopedClamp(GateThresholdDb, -90.0f, 0.0f);
+    GateAttackMs = ScopedClamp(GateAttackMs, 0.1f, 100.0f);
+    GateReleaseMs = ScopedClamp(GateReleaseMs, 5.0f, 2000.0f);
+    GateHoldMs = ScopedClamp(GateHoldMs, 0.0f, 2000.0f);
+    DenoiseStrength = ScopedClamp(DenoiseStrength, 0.0f, 2.0f);
+    DenoiseFloorDb = ScopedClamp(DenoiseFloorDb, -60.0f, 0.0f);
+    AgcTargetDbfs = ScopedClamp(AgcTargetDbfs, -40.0f, -3.0f);
+    AgcMaxGainDb = ScopedClamp(AgcMaxGainDb, 0.0f, 48.0f);
+    AgcAttackMs = ScopedClamp(AgcAttackMs, 0.5f, 200.0f);
+    AgcReleaseMs = ScopedClamp(AgcReleaseMs, 10.0f, 2000.0f);
+    HighPassHz = ScopedClamp(HighPassHz, 20.0f, 400.0f);
+    LimiterCeilingDb = ScopedClamp(LimiterCeilingDb, -12.0f, 0.0f);
 }
 
 const char* VoiceDspSettings::Issue() const noexcept

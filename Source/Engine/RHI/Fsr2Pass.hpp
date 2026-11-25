@@ -10,6 +10,11 @@ namespace Fby::Rhi
 class Fsr2Pass
 {
 public:
+    Fsr2Pass() = default;
+    Fsr2Pass(const Fsr2Pass&) = delete;
+    Fsr2Pass& operator=(const Fsr2Pass&) = delete;
+    Fsr2Pass(Fsr2Pass&&) = delete;
+    Fsr2Pass& operator=(Fsr2Pass&&) = delete;
     [[nodiscard]] bool Ensure(RHI& InGpu, Extent2D InRenderExtent, Extent2D InOutputExtent);
     [[nodiscard]] bool Resolve(RHI& InGpu, RenderTargetHandle InCurrent, RenderTargetHandle InMotion,
                                RenderTargetHandle InOutput, bool InResetHistory, float InSharpness = 0.35f);
@@ -25,6 +30,7 @@ private:
     RenderTargetHandle MIntermediate{};
     Extent2D MRenderExtent{};
     Extent2D MOutputExtent{};
+    bool MFreshHistory = false;
 };
 
 }

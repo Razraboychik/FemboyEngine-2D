@@ -103,9 +103,18 @@ bool CommandStack::SetLimits(std::size_t InPayloadBytes, std::uint32_t InMaxComm
     MCursor = 0;
     MArenaUsed = 0;
     MTransactionStart = 0;
+    MTransactionOpen = false;
+    MPendingCount = 0;
+    MPendingSpawnCount = 0;
+    MPendingDestroyCount = 0;
     MStats = {};
     MStats.bytesCapacity = static_cast<std::uint32_t>(MPayloadCapacity);
     return true;
+}
+
+CommandStack::~CommandStack()
+{
+    Shutdown();
 }
 
 void CommandStack::Shutdown() noexcept
@@ -141,6 +150,7 @@ std::uint16_t CommandStack::RegisterComponentOps(const Scene::ComponentOps& InOp
     ScopedCodec.name = InOps.name;
     ScopedCodec.layoutHash = InOps.layoutHash;
     ScopedCodec.size = InOps.size;
+    ScopedCodec.empty = InOps.empty;
     ScopedCodec.get = InOps.get;
     ScopedCodec.getMutable = InOps.getMutable;
     ScopedCodec.has = InOps.has;
@@ -337,6 +347,7 @@ CommandStack::Result CommandStack::Record(Entity InEntity, std::uint16_t InCodec
             return Result::StackFull;
         }
         ScopedPending = &MPending[MPendingCount++];
+        *ScopedPending = PendingEdit{};
         ScopedPending->entity = InEntity;
         ScopedPending->codec = InCodec;
         ScopedPending->active = true;
@@ -522,7 +533,10 @@ std::size_t CommandStack::MeasureSpawn(Entity InEntity, bool* InValid) const noe
             continue;
         }
         ++ScopedComponentCount;
-        ScopedByteCount += ScopedCodec.size;
+        if (!ScopedCodec.empty)
+        {
+            ScopedByteCount += ScopedCodec.size;
+        }
     }
     const std::size_t ScopedTotal =
         sizeof(SpawnHeader) + static_cast<std::size_t>(ScopedComponentCount) * sizeof(SpawnComponent) + ScopedByteCount;
@@ -557,10 +571,11 @@ CommandStack::Result CommandStack::BuildSpawn(Entity InEntity, const Command& In
         {
             continue;
         }
+        const std::uint32_t ScopedStoredSize = ScopedCodec.empty ? 0u : ScopedCodec.size;
         ScopedEntries[ScopedIndex] =
-            SpawnComponent{static_cast<std::uint16_t>(ScopedI), 0, ScopedByteOffset, ScopedCodec.size};
+            SpawnComponent{static_cast<std::uint16_t>(ScopedI), 0, ScopedByteOffset, ScopedStoredSize};
         ++ScopedIndex;
-        ScopedByteOffset += ScopedCodec.size;
+        ScopedByteOffset += ScopedStoredSize;
     }
     ScopedHeader->componentCount = ScopedIndex;
     ScopedHeader->byteCount = ScopedByteOffset;
@@ -782,6 +797,12 @@ CommandStack::Result CommandStack::CommitTransaction() noexcept
     {
         CancelTransaction();
         return Result::Ok;
+    }
+    if (static_cast<std::size_t>(MCursor) + ScopedBuiltCount >
+            std::min<std::size_t>(static_cast<std::size_t>(MMaxCommands), MCommands.size()))
+    {
+        CancelTransaction();
+        return Result::StackFull;
     }
     // One committed transaction is one undo step: the first command records the group size.
     ScopedBuilt[0].groupSize = static_cast<std::uint16_t>(ScopedBuiltCount);

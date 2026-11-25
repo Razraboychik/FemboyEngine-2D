@@ -552,13 +552,15 @@ void NodeCanvasPanel::ProcessEvents()
     }
 
     MSelectedNode = 0xFFFFu;
-    if (ImNodes::NumSelectedNodes() > 0)
+    const int ScopedSelectedNodeCount = ImNodes::NumSelectedNodes();
+    if (ScopedSelectedNodeCount > 0)
     {
-        int ScopedSelected = 0;
-        ImNodes::GetSelectedNodes(&ScopedSelected);
-        if (ScopedSelected >= kNodeIdBase && ScopedSelected < kInputIdBase)
+        std::vector<int> ScopedSelected(static_cast<std::size_t>(ScopedSelectedNodeCount), 0);
+        ImNodes::GetSelectedNodes(ScopedSelected.data());
+        const int ScopedNodeId = ScopedSelected.front();
+        if (ScopedNodeId >= kNodeIdBase && ScopedNodeId < kInputIdBase)
         {
-            MSelectedNode = static_cast<std::uint16_t>(ScopedSelected - kNodeIdBase);
+            MSelectedNode = static_cast<std::uint16_t>(ScopedNodeId - kNodeIdBase);
         }
     }
 }

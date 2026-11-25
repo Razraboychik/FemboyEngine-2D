@@ -263,8 +263,8 @@ bool CopyImage(const VpxImage& InImage, const YuvFrameView& InTarget)
         return false;
     }
 
-    const unsigned int ScopedWidth = InImage.displayWidth != 0 ? InImage.displayWidth : InImage.width;
-    const unsigned int ScopedHeight = InImage.displayHeight != 0 ? InImage.displayHeight : InImage.height;
+    const unsigned int ScopedWidth = InImage.width;
+    const unsigned int ScopedHeight = InImage.height;
     if (ScopedWidth != InTarget.width || ScopedHeight != InTarget.height)
     {
         SetLastError("libvpx decoded a frame whose size does not match the track dimensions");
@@ -280,6 +280,13 @@ bool CopyImage(const VpxImage& InImage, const YuvFrameView& InTarget)
 
     const unsigned int ScopedChromaWidth = (ScopedWidth + 1) / 2;
     const unsigned int ScopedChromaHeight = (ScopedHeight + 1) / 2;
+    if (InImage.stride[0] < static_cast<int>(ScopedWidth) ||
+        InImage.stride[1] < static_cast<int>(ScopedChromaWidth) ||
+        InImage.stride[2] < static_cast<int>(ScopedChromaWidth))
+    {
+        SetLastError("libvpx returned a plane stride smaller than the coded frame");
+        return false;
+    }
     for (unsigned int ScopedRow = 0; ScopedRow < ScopedHeight; ++ScopedRow)
     {
         std::memcpy(InTarget.luma + static_cast<std::size_t>(ScopedRow) * InTarget.lumaStride,
@@ -332,7 +339,12 @@ bool DecodeFrame(void* InUser, void* InDecoder, std::span<const std::byte> InCom
     }
 
     ScopedHandle->imageIterator = nullptr;
-    const VpxImage* ScopedImage = ScopedApi.getFrame(ScopedHandle->context, &ScopedHandle->imageIterator);
+    const VpxImage* ScopedImage = nullptr;
+    const VpxImage* ScopedCandidate = nullptr;
+    while ((ScopedCandidate = ScopedApi.getFrame(ScopedHandle->context, &ScopedHandle->imageIterator)) != nullptr)
+    {
+        ScopedImage = ScopedCandidate;
+    }
     if (ScopedImage == nullptr)
     {
         SetLastError("libvpx decoded no frame (truncated VP9 payload?)");

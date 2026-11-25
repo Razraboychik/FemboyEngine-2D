@@ -84,6 +84,27 @@ int main()
 
     constexpr std::array<WidgetKind, 4> kExtendedKinds{WidgetKind::NineSlice, WidgetKind::ToggleSwitch,
                                                       WidgetKind::RadioButton, WidgetKind::TextBlock};
+    // Reparenting updates both child lists and rejects cycles.
+    WidgetCanvas ScopedReparent;
+    WidgetDesc ScopedParentADesc;
+    ScopedParentADesc.kind = WidgetKind::Panel;
+    const std::int32_t ScopedParentA = ScopedReparent.AddWidget(ScopedParentADesc);
+    WidgetDesc ScopedParentBDesc;
+    ScopedParentBDesc.kind = WidgetKind::Panel;
+    const std::int32_t ScopedParentB = ScopedReparent.AddWidget(ScopedParentBDesc);
+    WidgetDesc ScopedChildDesc;
+    ScopedChildDesc.kind = WidgetKind::Label;
+    ScopedChildDesc.parent = ScopedParentA;
+    const std::int32_t ScopedChild = ScopedReparent.AddWidget(ScopedChildDesc);
+    Check(ScopedReparent.ReparentWidget(ScopedChild, ScopedParentB), "widget reparents");
+    Check(ScopedReparent.parents[ScopedChild] == ScopedParentB && ScopedReparent.childCounts[ScopedParentA] == 0 &&
+              ScopedReparent.childCounts[ScopedParentB] == 1,
+          "reparent moves the child link");
+    Check(!ScopedReparent.ReparentWidget(ScopedParentB, ScopedChild), "reparent rejects a cycle");
+    Check(ScopedReparent.ReparentWidget(ScopedChild, kNoWidget), "widget moves back to root");
+    Check(ScopedReparent.parents[ScopedChild] == kNoWidget, "root parent is stored");
+    Check(!ScopedReparent.ReparentWidget(ScopedChild, ScopedChild), "self parent is rejected");
+
     for (const WidgetKind ScopedKind : kExtendedKinds)
     {
         WidgetCanvas ScopedKindCanvas;

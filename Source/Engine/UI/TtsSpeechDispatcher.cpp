@@ -110,7 +110,11 @@ bool SpeechDispatcherTts::Initialize() noexcept
     {
         return true;
     }
-    auto* ScopedApi = new SpdApi();
+    auto* ScopedApi = new (std::nothrow) SpdApi();
+    if (ScopedApi == nullptr)
+    {
+        return false;
+    }
     if (!LoadApi(*ScopedApi))
     {
         delete ScopedApi;

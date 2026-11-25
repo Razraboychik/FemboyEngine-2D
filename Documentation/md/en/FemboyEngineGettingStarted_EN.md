@@ -1,4 +1,4 @@
-# FemboyEngine 0.5.0 — getting started
+# FemboyEngine 0.6.0-alpha.1 — how to make a game
 
 This document lists what to install and which files must sit next to the engine to run the editor, the runtime and the development tools on Windows, Linux and macOS.
 
@@ -90,7 +90,7 @@ Without the script the steps are the same: install a compiler, CMake, Ninja, the
 3. Install CMake 3.31 and Ninja 1.12 (the Build Tools copy is fine).
 4. Install the Vulkan SDK 1.4 — it provides `vulkan-1.dll` and `VULKAN_SDK`.
 5. Install 7-Zip (optional).
-6. Download the archives the script would fetch and unpack them into the same `third_party/` directories: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3`. HarfBuzz and SheenBidi need no download: they are already in the repository.
+6. Download the archives the script would fetch and unpack them into the same `third_party/` directories: SDL3 `release-3.4.20`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.26`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3`. HarfBuzz and SheenBidi need no download: they are already in the repository.
 
 ### Linux
 
@@ -114,9 +114,9 @@ Xcode Command Line Tools are mandatory: they provide `clang++`, the Metal framew
 From the repository root:
 
 ```
-cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
-cmake --build build-dev
-ctest --test-dir build-dev --output-on-failure
+cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
+cmake --build build/dev
+ctest --test-dir build/dev --output-on-failure
 ```
 
 On Windows the same commands run inside a `vcvars64` environment; `SetupScripts/Windows/SetupWindows.ps1` prepares the dependencies and the toolchain. Main CMake options: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
@@ -125,11 +125,11 @@ The executables are grouped by purpose:
 
 | Directory | Contents |
 |---|---|
-| `build-dev/bin` | applications: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, platform plugins and `plugins/` |
-| `build-dev/bin/tools` | console tools: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
-| `build-dev/bin/tests` | test executables (`fby_*_test`) that `ctest` runs |
-| `build-dev/bin/lib` | static libraries |
-| `build-dev/bin/plugins` | native engine plugins |
+| `build/dev/bin` | applications: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, platform plugins and `plugins/` |
+| `build/dev/bin/tools` | console tools: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
+| `build/dev/bin/tests` | test executables (`fby_*_test`) that `ctest` runs |
+| `build/dev/bin/lib` | static libraries |
+| `build/dev/bin/plugins` | native engine plugins |
 
 The `*.pdb` files next to the executables are debug symbols written by the compiler. They are only used by a debugger and are not needed to run anything; a release package does not have to ship them.
 
@@ -196,7 +196,7 @@ clangd must use the same Clang that builds the project:
 ```json
 {
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/build-audit",
+    "--compile-commands-dir=${workspaceFolder}/build/audit",
     "--query-driver=C:/Users/<user>/AppData/Local/Programs/LLVM/bin/clang++.exe"
   ]
 }
@@ -213,9 +213,9 @@ Do not enable C/C++ IntelliSense and clangd at the same time: that produces two 
 | `dev-clang` | `clang++` | Debug, tests, `compile_commands.json` |
 | `release-clang` | `clang++` | RelWithDebInfo, tests |
 | `dev-clangcl` | `clang-cl` | Debug with the validated Windows toolchain |
-| `audit-clang` | `clang++` | existing `build-audit` for clangd |
+| `audit-clang` | `clang++` | existing `build/audit` for clangd |
 
-Different compilers must use **different build directories**. Do not reconfigure `build-audit` from clang++ to clang-cl: the CMakeCache belongs to the old toolchain.
+Different compilers must use **different build directories**. Do not reconfigure `build/audit` from clang++ to clang-cl: the CMakeCache belongs to the old toolchain.
 
 ### Debugging
 
@@ -226,7 +226,7 @@ For `cppdbg`, use gdb from MinGW/LLVM; CodeLLDB uses LLVM's lldb. Example:
   "name": "Editor (Debug)",
   "type": "cppdbg",
   "request": "launch",
-  "program": "${workspaceFolder}/build-dev/bin/fby_editor.exe",
+  "program": "${workspaceFolder}/build/dev/bin/fby_editor.exe",
   "cwd": "${workspaceFolder}",
   "MIMode": "gdb",
   "miDebuggerPath": "gdb.exe"
@@ -237,7 +237,7 @@ Use RenderDoc for GPU debugging: attach it to `fby_editor.exe` and capture a fra
 
 ## Compiler selection
 
-The 0.5.0 line supports **Clang 19.1+** (clang-cl on Windows, clang++ on Unix), **AppleClang 16+**, **GCC 14.1+** and **MSVC 19.40+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.40+ builds the same tree in its own Windows CI job.
+The 0.6.0 line supports **Clang 19.1+** (clang-cl on Windows, clang++ on Unix), **AppleClang 16+**, **GCC 14.1+** and **MSVC 19.40+**. clang-cl is the reference toolchain; the others are supported alternatives, not an obligation. CI runs clang-cl, clang, GCC and AppleClang with the full test suite; MSVC 19.40+ builds the same tree in its own Windows CI job.
 
 - **Windows, primary:** clang-cl. It is Clang with the MSVC ABI, the Windows SDK and the MSVC standard library, and it works with the Visual Studio debugger and PDBs.
 - **Windows, alternative:** MSVC (`cl.exe`). Choose it when the team standardizes on the Microsoft toolchain; CMake selects `/std:c++latest` and the MSVC warning set. RNNoise falls back to the spectral tier because its vendored C sources use variable-length arrays.
@@ -253,14 +253,14 @@ The editor opens the project from its **current working directory**: it looks fo
 
 ```
 cd %USERPROFILE%\FemboyEngine
-build-dev\bin\fby_editor.exe
+build/dev\bin\fby_editor.exe
 ```
 
 Linux and macOS:
 
 ```
 cd /path/to/project
-./build-dev/bin/fby_editor
+./build/dev/bin/fby_editor
 ```
 
 Everything the engine writes at runtime goes to `Saved/` in the working directory, so the project directory stays clean:
@@ -279,7 +279,7 @@ Environment variables: `FBY_STORAGE_DIR` moves the `Saved/` root (for example to
 
 | Path | Required | Purpose |
 |---|---|---|
-| `build-dev/bin/fby_editor` | yes | the editor itself |
+| `build/dev/bin/fby_editor` | yes | the editor itself |
 | `assets/` | yes | fonts, localization, scenes, atlases, project configs |
 | `assets/fonts/IBMPlexSans-Regular.ttf`, `...-Bold.ttf`, `...-Italic.ttf`, `...-BoldItalic.ttf`, `IBMPlexMono-Regular.ttf` | yes | the font family used by the editor and by scene text |
 | `assets/fonts/IBMPlex.family.toml` | yes | family manifest with the five style slots |
@@ -287,11 +287,11 @@ Environment variables: `FBY_STORAGE_DIR` moves the `Saved/` root (for example to
 | `assets/loc/ui.fbin` | yes | interface localization table |
 | `assets/scenes/*.toml` | yes | project scenes |
 | `project.femproj` | yes | project description: default scene, simulation, render, accessibility |
-| `build-dev/` | yes | the CMake build tree: executables and build results live there |
-| `build-dev/bin/fby_sandbox` | no | second process for networked Play-in-Editor |
+| `build/dev/` | yes | the CMake build tree: executables and build results live there |
+| `build/dev/bin/fby_sandbox` | no | second process for networked Play-in-Editor |
 | `Saved/` | created | logs, crash reports, caches and editor settings |
 | `Saved/Config/editor.ini` | created | panel layout and editor settings for this machine |
-| `build-dev/bin/plugins/` | no | native engine plugins |
+| `build/dev/bin/plugins/` | no | native engine plugins |
 | Vulkan Loader installed on the system | yes | window and GPU rendering on Windows and Linux |
 | `Projects/` | no | default location for new projects |
 
@@ -301,7 +301,7 @@ A project is a directory with a `project.femproj` file and `assets/`, `configs/`
 
 ## Development tools
 
-Besides the editor, `build-dev/bin` contains separate executables. All of them are console programs that read files and need no GUI.
+Besides the editor, `build/dev/bin` contains separate executables. All of them are console programs that read files and need no GUI.
 
 | Tool | Purpose | Files it needs |
 |---|---|---|
@@ -318,7 +318,7 @@ Besides the editor, `build-dev/bin` contains separate executables. All of them a
 | `fby_loc_tool` | validate and build localization tables | localization `.toml` |
 | `fby_shaderc` | compile shaders to SPIR-V | `.vert`/`.frag`; the build calls it automatically |
 
-The tools live in `build-dev/bin/tools`; the test executables in `build-dev/bin/tests`.
+The tools live in `build/dev/bin/tools`; the test executables in `build/dev/bin/tests`.
 
 Build and test through the CMake presets; dependency setup lives in `SetupScripts/<OS>/*`.
 
@@ -328,7 +328,7 @@ The working directory is the only thing that distinguishes "launching the engine
 
 ### Windows
 
-1. Right-click `build-dev\bin\fby_editor.exe` → Send to → Desktop (create shortcut).
+1. Right-click `build/dev\bin\fby_editor.exe` → Send to → Desktop (create shortcut).
 2. Open the shortcut properties: "Start in" = project root (for example `%USERPROFILE%\FemboyEngine`), "Target" = full path to `fby_editor.exe`.
 3. Rename it to "FemboyEngine" and drag it to the taskbar or the Start menu.
 4. For a specific project, create a second shortcut with the same target and "Start in" = the project folder. That is the project selection without a dialog.
@@ -380,3 +380,216 @@ On macOS, `xcodebuild -version` reports the Xcode and SDK versions.
 | No fonts in the editor | the TTFs or the family manifest are missing | restore `assets/fonts/` from the repository |
 | CMake reports a missing harfbuzz or SheenBidi | the `third_party/` directory was damaged or removed | restore `third_party/harfbuzz-download/` and `third_party/sheenbidi-download/` from the repository |
 | The Windows build fails on headers | the Windows SDK is missing | install Build Tools with the C++ workload |
+
+## From an empty project to a playable scene
+
+A new project contains one empty `assets/scenes/main.toml`, an empty profile and no forced
+actors. The editor does not decide the game for you.
+
+1. Open the dashboard and create a project. No genre template is applied.
+2. In **Project Settings → Physics** choose the default view profile: Default, Side View,
+   Top-Down, Isometric or Hex Isometric.
+3. Open `scenes/main.toml` and add only the entities the game needs. A minimal side-view start
+   is a camera, one sprite and one ground sprite.
+
+```toml
+version = 2
+name = "main"
+author = "you"
+profile = "side-view"
+
+[[entity]]
+id = 0
+name = "camera"
+
+[[entity.components]]
+type = "Camera2D"
+Center = [640.0, 360.0]
+ViewSize = [1280.0, 720.0]
+Zoom = 1.0
+Rotation = 0.0
+
+[[entity]]
+id = 1
+name = "player"
+
+[[entity.components]]
+type = "Transform2D"
+Position = [320.0, 240.0]
+Scale = [1.0, 1.0]
+Rotation = 0.0
+
+[[entity.components]]
+type = "Sprite2D"
+Size = [48.0, 48.0]
+UVMin = [0.0, 0.0]
+UVMax = [1.0, 1.0]
+Layer = 1
+Color = "#4FC3F7FF"
+Flags = 0
+```
+
+4. Assign the texture atlas through the inspector. `UVMin`/`UVMax` pick the cell.
+5. Add a `RigidBody2D` and `Collider2D` only if the entity should be simulated; a camera or a
+   static background does not need them.
+6. Press Play (PIE). The scene profile is applied; if it is `Default`, the project profile is
+   used.
+
+For a top-down scene set `profile = "top-down"` and leave gravity alone: the profile maps to
+zero gravity. For a hex scene use `profile = "hex"`; adjacency and occupancy stay in the grid
+and tilemap layers, while loose objects can still use physics.
+
+### Tilemaps and Tiled
+
+Create a `TilemapComponent` on an entity, then open **Window → Tilemap**. The panel edits the
+component directly and paints into the shared runtime data. **Import Tiled** reads a `.tmx`
+file with CSV layers:
+
+- orthogonal maps use the TopDown projection;
+- isometric maps use IsoRect;
+- hexagonal maps use IsoHex;
+- CSV and uncompressed base64 layers are supported; compressed layers are rejected with a message;
+- maps larger than 64×64 must be split or streamed;
+- object groups expose name/type/position/size and point objects for spawn markers.
+
+Auto-tiling is available through the tilemap API:
+
+```cpp
+Fby::Tilemap::AutoTileRule rule;
+rule.Tiles[0] = 1;   // isolated
+rule.Tiles[15] = 16; // surrounded
+Fby::Tilemap::AutoTileAll(map, rule);
+```
+
+### Aseprite animation
+
+Export the sprite sheet and JSON sidecar from Aseprite. In the Sprite Animation inspector set
+**Aseprite JSON** to that file and press **Import Aseprite**. The first frame tag becomes the
+clip; without tags every frame is imported. Frames must share one grid cell, and the sheet must
+be divisible by the cell size. The importer fills the start cell, frame count, duration and the
+`SpriteSheetComponent` grid. Non-grid exports stay available to tools but cannot use the
+fixed-cell animation path.
+
+### Scripting and debugging
+
+Open **Window → Script Debugger**. It compiles FemboyScript text to bytecode and provides:
+
+- breakpoints by source line;
+- step/resume;
+- Locals and Self fields;
+- watch/evaluate for `rN`, numeric literals and named locals;
+- per-breakpoint conditions such as `r3 >= 12.5`;
+- call stack;
+- graph-node highlight for LogicGraph programs;
+- Compile + Nativize for release.
+
+The debugger owns a separate runtime, so a paused session does not stop the game world. Use the
+same source and component registry the game uses; watch the Status line for compile errors.
+
+### Build & Pack
+
+Press **Build & Pack Game** in the dashboard or `Ctrl+B`. The release cooker:
+
+1. validates the project;
+2. cooks textures/audio/localization;
+3. builds the game target;
+4. writes archives under `archives/`;
+5. reports the produced path in the editor status.
+
+The desktop pipeline is available from the UI; it is not terminal-only. Android/iOS export is
+not part of this build yet.
+
+### Profiling a scene
+
+Use **Render Tuning**, **Scene Diagnostics**, **Network Diagnostics** and the LogBoy panels.
+They read the same components the game uses; no special debug build is required. For a
+performance regression, compare `FrameStats` and the per-system timings in the graph panel
+before changing art or physics.
+
+## UI designer
+
+Open **Window → UI Layout**. The panel edits a `WidgetLayoutAsset` directly:
+
+- add Panel/Label/Button/Image;
+- select on the preview canvas;
+- drag to move, drag the bottom-right handle to resize;
+- toggle the design grid and snapping;
+- edit anchors, offsets, text, tint, fill/text colours, opacity, focus policy, visibility/enabled,
+  clip/read-only flags, UVs, NineSlice insets and ProgressBar/Slider values;
+- reorder under a new parent with the parent combo or by dragging in the tree;
+- duplicate and delete;
+- undo/redo with `Ctrl+Z` / `Ctrl+Y`;
+- save to `assets/ui/*.toml` and load it back.
+
+The preview is a layout view, not a live PinkUI render: it draws the resolved widget rectangles
+and selection so geometry can be aligned before the game runs.
+
+## Command palette
+
+Press `Ctrl+P` and type to filter:
+
+- Save scene;
+- Build & Pack Game;
+- Content Browser;
+- Console;
+- Material Graph;
+- VisualScript;
+- Script Debugger;
+- Tilemap;
+- UI Layout;
+- Render Tuning.
+
+## Debugging a PIE session
+
+The editor passes its live `ScriptRuntime` to the Script Debugger. In PIE the debugger targets
+`pie.World()`; if nothing is selected it uses the first entity with `ScriptComponent`. Pausing the
+debugger pauses PIE and the graph; resuming removes only that debugger-created pause. A manual PIE
+pause is left untouched.
+
+## Live breakpoints and build target
+
+The Script Debugger binds to the selected entity's live `ScriptComponent` program while PIE is
+running: breakpoints, conditions, locals and the call stack now refer to the same bytecode the
+game executes. Coroutine programs use the same debug path and preserve their suspend state; AOT
+modules still use the normal execution path and are not paused by the VM debugger.
+
+Build & Pack exposes a `desktop` / `mobile` target. `mobile` passes `--target mobile` to
+`fby_fempak` and cooks ASTC assets; it is an asset-cook target, not an Android/iOS executable
+export or signing step.
+
+## Surface normals
+
+A lit sprite can carry `SurfaceNormal2D`:
+
+```toml
+[[entity.components]]
+type = "SurfaceNormal2D"
+Normal = [0.0, 1.0]
+Strength = 1.0
+```
+
+The 2D lighting solver dots the light direction with this normal and blends the light by
+`Strength`. This is per-sprite surface-normal lighting; texture normal maps use the per-pixel
+path below.
+
+
+## Texture normal maps
+
+Normal maps are ordinary textures with a linear import. Name them with `_n`, `_normal` or
+`.normal`; the importer sets `srgb = false` automatically. Keep the normal map in the same texture
+array as the sprite and add `NormalMap2D`:
+
+```toml
+[[entity.components]]
+type = "NormalMap2D"
+Layer = 1
+Strength = 1.0
+```
+
+`Layer` is the texture-array slice; layer 0 disables the path. The sprite shader reconstructs the
+normal from the RGB sample, applies `Strength`, and combines it with the scene lights per pixel.
+D3D11 uses up to 64 point lights, D3D12 and Metal use four, and Vulkan uses its cluster-light path
+with a fixed directional fallback when cluster lighting is off. The Inspector shows the selected
+normal layer as a preview.
+
+`SurfaceNormal2D` remains the cheap per-sprite orientation fallback.

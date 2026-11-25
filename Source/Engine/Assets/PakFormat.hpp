@@ -1,7 +1,10 @@
 // FemboyEngine2D - .fempak on-disk format, shared by the runtime.
 #pragma once
 
+#include <bit>
+#include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include <string>
 #include <string_view>
 
@@ -33,6 +36,20 @@ struct PakEntry
 
 static_assert(sizeof(PakHeader) == 40, ".fempak header is fixed at 40 bytes");
 static_assert(sizeof(PakEntry) == 24, ".fempak entry is fixed at 24 bytes");
+static_assert(offsetof(PakHeader, magic) == 0);
+static_assert(offsetof(PakHeader, version) == 8);
+static_assert(offsetof(PakHeader, entryCount) == 12);
+static_assert(offsetof(PakHeader, entryTableOffset) == 16);
+static_assert(offsetof(PakHeader, stringTableOffset) == 24);
+static_assert(offsetof(PakHeader, dataOffset) == 32);
+static_assert(offsetof(PakEntry, pathOffset) == 0);
+static_assert(offsetof(PakEntry, pathSize) == 4);
+static_assert(offsetof(PakEntry, offset) == 8);
+static_assert(offsetof(PakEntry, size) == 16);
+static_assert(std::is_trivially_copyable_v<PakHeader>);
+static_assert(std::is_trivially_copyable_v<PakEntry>);
+static_assert(std::endian::native == std::endian::little);
+static_assert(std::has_single_bit(kPakAlignment));
 
 // The canonical path used by the cooker, the VFS and every tool.
 [[nodiscard]] inline std::string NormalizePakPath(std::string_view InPath)
@@ -57,7 +74,7 @@ static_assert(sizeof(PakEntry) == 24, ".fempak entry is fixed at 24 bytes");
     {
         return {};
     }
-    if (ScopedNormalized.starts_with("//"))
+    if (ScopedNormalized.starts_with("//") || ScopedNormalized.starts_with('/'))
     {
         return {};
     }
@@ -65,10 +82,6 @@ static_assert(sizeof(PakEntry) == 24, ".fempak entry is fixed at 24 bytes");
     std::string ScopedResult;
     ScopedResult.reserve(ScopedNormalized.size());
     std::size_t ScopedRead = 0;
-    while (ScopedRead < ScopedNormalized.size() && ScopedNormalized[ScopedRead] == '/')
-    {
-        ++ScopedRead;
-    }
     while (ScopedRead < ScopedNormalized.size())
     {
         const std::size_t ScopedEnd = ScopedNormalized.find('/', ScopedRead);

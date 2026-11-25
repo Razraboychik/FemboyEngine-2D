@@ -142,11 +142,8 @@ private:
 
 // Mirror registration
 FBY_REFLECT_COMPONENT(Fby::Video::VideoStreamComponent, "VideoStreamComponent",
-                      FBY_FIELD(Fby::Video::VideoStreamComponent, Player, UInt32),
-                      FBY_FIELD(Fby::Video::VideoStreamComponent, Texture, UInt32),
+                      FBY_FIELD(Fby::Video::VideoStreamComponent, Media, UInt64),
                       FBY_FIELD(Fby::Video::VideoStreamComponent, Layer, UInt32),
-                      FBY_FIELD(Fby::Video::VideoStreamComponent, Flags, UInt32),
                       FBY_FIELD(Fby::Video::VideoStreamComponent, Loop, Bool),
                       FBY_FIELD(Fby::Video::VideoStreamComponent, Paused, Bool),
-                      FBY_FIELD(Fby::Video::VideoStreamComponent, Speed, Float),
-                      FBY_FIELD(Fby::Video::VideoStreamComponent, StreamId, UInt32))
+                      FBY_FIELD(Fby::Video::VideoStreamComponent, Speed, Float))

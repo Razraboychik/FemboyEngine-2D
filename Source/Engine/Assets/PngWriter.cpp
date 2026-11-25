@@ -173,6 +173,10 @@ bool WritePng(const std::filesystem::path& InPath, std::uint32_t InWidth, std::u
     if (!InPath.parent_path().empty())
     {
         std::filesystem::create_directories(InPath.parent_path(), ScopedCode);
+        if (ScopedCode)
+        {
+            return false;
+        }
     }
     std::ofstream ScopedOutput(InPath, std::ios::binary | std::ios::trunc);
     if (!ScopedOutput)
@@ -181,6 +185,12 @@ bool WritePng(const std::filesystem::path& InPath, std::uint32_t InWidth, std::u
     }
     ScopedOutput.write(reinterpret_cast<const char*>(ScopedPng.data()),
                        static_cast<std::streamsize>(ScopedPng.size()));
+    ScopedOutput.flush();
+    if (!ScopedOutput)
+    {
+        return false;
+    }
+    ScopedOutput.close();
     return static_cast<bool>(ScopedOutput);
 }
 

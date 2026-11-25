@@ -7,7 +7,7 @@ ledger) fails the run, so a release candidate cannot be assembled from a stale
 or partial build.
 
     python Source/Tools/Dev/ReleaseChecklist.py \
-        --artifacts build/bin --require fby_editor.exe --require tools/fby_fempak.exe \
+        --artifacts build/dev/bin --require fby_editor.exe --require tools/fby_fempak.exe \
         --forbid Documentation/FEATURE_NOTES.md \
         --out build/release-manifest.json
 """
@@ -43,7 +43,7 @@ def main() -> int:
     parser.add_argument("--out", default="release-manifest.json")
     args = parser.parse_args()
 
-    roots = [pathlib.Path(item) for item in args.artifacts] or [pathlib.Path("build/bin")]
+    roots = [pathlib.Path(item) for item in args.artifacts] or [pathlib.Path("build/dev/bin")]
     failures: list[str] = []
     entries: list[dict[str, object]] = []
 
@@ -51,13 +51,20 @@ def main() -> int:
         found = None
         for root in roots:
             candidate = root / required
-            if candidate.exists():
+            if candidate.is_file():
                 found = candidate
                 break
         if found is None:
             failures.append(f"missing artifact: {required}")
             continue
-        entries.append({"path": str(found), "bytes": found.stat().st_size, "sha256": digest(found)})
+        size = found.stat().st_size
+        if size <= 0:
+            failures.append(f"empty artifact: {found}")
+            continue
+        try:
+            entries.append({"path": str(found), "bytes": size, "sha256": digest(found)})
+        except OSError as error:
+            failures.append(f"unreadable artifact: {found}: {error}")
 
     for forbidden in args.forbid:
         candidate = ROOT / forbidden

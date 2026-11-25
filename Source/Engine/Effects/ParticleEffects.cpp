@@ -226,21 +226,23 @@ ParticleShapeAtlas ParticleShapeAtlas::Defaults() noexcept
 
 void ParticleEffectSettings::Clamp() noexcept
 {
+    const auto ScopedFiniteClamp = [](float InValue, float InMinimum, float InMaximum, float InFallback)
+    { return std::isfinite(InValue) ? std::clamp(InValue, InMinimum, InMaximum) : InFallback; };
     MaxParticles = std::clamp(MaxParticles, 1u, kParticleEffectMaxParticles);
-    SpreadRadians = std::clamp(SpreadRadians, 0.0f, kParticlePi);
-    SpeedMin = std::clamp(SpeedMin, 0.0f, 2000.0f);
-    SpeedMax = std::clamp(SpeedMax, SpeedMin, 2000.0f);
-    LifetimeMin = std::clamp(LifetimeMin, 0.01f, 30.0f);
-    LifetimeMax = std::clamp(LifetimeMax, LifetimeMin, 30.0f);
-    StartSize = std::clamp(StartSize, 0.0f, 256.0f);
-    EndSize = std::clamp(EndSize, 0.0f, 256.0f);
-    Drag = std::clamp(Drag, 0.0f, 20.0f);
-    Turbulence = std::clamp(Turbulence, 0.0f, 2000.0f);
-    Swirl = std::clamp(Swirl, -2000.0f, 2000.0f);
-    EmissionRate = std::clamp(EmissionRate, 0.0f, 4000.0f);
+    SpreadRadians = ScopedFiniteClamp(SpreadRadians, 0.0f, kParticlePi, 0.0f);
+    SpeedMin = ScopedFiniteClamp(SpeedMin, 0.0f, 2000.0f, 0.0f);
+    SpeedMax = ScopedFiniteClamp(SpeedMax, SpeedMin, 2000.0f, 2000.0f);
+    LifetimeMin = ScopedFiniteClamp(LifetimeMin, 0.01f, 30.0f, 0.01f);
+    LifetimeMax = ScopedFiniteClamp(LifetimeMax, LifetimeMin, 30.0f, 30.0f);
+    StartSize = ScopedFiniteClamp(StartSize, 0.0f, 256.0f, 0.0f);
+    EndSize = ScopedFiniteClamp(EndSize, 0.0f, 256.0f, 0.0f);
+    Drag = ScopedFiniteClamp(Drag, 0.0f, 20.0f, 0.0f);
+    Turbulence = ScopedFiniteClamp(Turbulence, 0.0f, 2000.0f, 0.0f);
+    Swirl = ScopedFiniteClamp(Swirl, -2000.0f, 2000.0f, 0.0f);
+    EmissionRate = ScopedFiniteClamp(EmissionRate, 0.0f, 4000.0f, 0.0f);
     BurstCount = std::min(BurstCount, 1024u);
-    BurstInterval = std::clamp(BurstInterval, 0.0f, 10.0f);
-    Duration = std::clamp(Duration, 0.0f, 60.0f);
+    BurstInterval = ScopedFiniteClamp(BurstInterval, 0.0f, 10.0f, 0.0f);
+    Duration = ScopedFiniteClamp(Duration, 0.0f, 60.0f, 0.0f);
 }
 
 std::span<const ParticleEffectPreset> ParticleEffectPresets() noexcept
@@ -411,6 +413,11 @@ void ParticleEffectSystem::Clear() noexcept
     ResetFreeList();
 }
 
+std::uint16_t ParticleEffectSystem::EmitterGeneration(std::uint32_t InEmitter) const noexcept
+{
+    return InEmitter < kParticleEffectMaxEmitters ? MEmitterGenerations[InEmitter] : 0u;
+}
+
 std::uint32_t ParticleEffectSystem::Spawn(const ParticleEffectSettings& InSettings, Vector2D InPosition,
                                           float InRotation) noexcept
 {
@@ -431,6 +438,7 @@ std::uint32_t ParticleEffectSystem::Spawn(const ParticleEffectSettings& InSettin
     }
 
     MEmitters[ScopedEmitter].Active = true;
+    ++MEmitterGenerations[ScopedEmitter];
     ++MActiveEmitters;
     InitializeEmitter(ScopedEmitter, ScopedSettings, InPosition, InRotation);
     return ScopedEmitter;
@@ -570,10 +578,19 @@ void ParticleEffectSystem::Update(float InDeltaSeconds) noexcept
         if (ScopedState.Settings.BurstInterval > 0.0f)
         {
             ScopedState.BurstTimer += ScopedDelta;
-            while (ScopedState.BurstTimer >= ScopedState.Settings.BurstInterval)
+            // A tiny authored interval must not spin for hundreds of thousands
+            // of iterations in one frame. Bound the catch-up work and fold the
+            // remaining time back into the timer.
+            std::uint32_t ScopedBurstGuard = 0;
+            while (ScopedState.BurstTimer >= ScopedState.Settings.BurstInterval && ScopedBurstGuard < 32)
             {
                 ScopedState.BurstTimer -= ScopedState.Settings.BurstInterval;
                 Emit(ScopedEmitter, ScopedState.Settings.BurstCount);
+                ++ScopedBurstGuard;
+            }
+            if (ScopedBurstGuard == 32)
+            {
+                ScopedState.BurstTimer = std::fmod(ScopedState.BurstTimer, ScopedState.Settings.BurstInterval);
             }
         }
     }

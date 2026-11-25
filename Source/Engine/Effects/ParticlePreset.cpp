@@ -3,7 +3,11 @@
 
 #include <toml.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
+#include <filesystem>
+#include <vector>
 #include <cstdio>
 #include <fstream>
 #include <optional>
@@ -29,6 +33,17 @@ namespace
     const auto ScopedNode = InTable[InKey];
     const std::optional<double> ScopedValue = ScopedNode.value<double>();
     return ScopedValue.has_value() ? *ScopedValue : InFallback;
+}
+
+[[nodiscard]] std::uint32_t IntegerField(const toml::table& InTable, std::string_view InKey,
+                                         std::uint32_t InFallback) noexcept
+{
+    const double ScopedValue = NumberField(InTable, InKey, static_cast<double>(InFallback));
+    if (!std::isfinite(ScopedValue) || ScopedValue < 0.0 || ScopedValue > 4294967295.0)
+    {
+        return InFallback;
+    }
+    return static_cast<std::uint32_t>(ScopedValue);
 }
 
 [[nodiscard]] bool BoolField(const toml::table& InTable, std::string_view InKey, bool InFallback) noexcept
@@ -144,6 +159,26 @@ namespace
 
 [[nodiscard]] bool ParsePreset(const toml::table& InTable, ParticlePresetDesc& OutPreset, std::string* OutError)
 {
+    static constexpr std::array<const char*, 26> kAllowedKeys = {
+        "id",           "name",          "category",       "shape",        "emission_shape", "max_particles",
+        "seed",         "direction",     "gravity",        "wind",         "emission_extents", "spread",
+        "drag",         "turbulence",    "swirl",          "rate",         "burst_count",     "burst_interval",
+        "duration",     "loop",          "additive",       "speed",        "lifetime",        "size",
+        "rotation",     "colors"};
+    for (const auto& [ScopedKey, ScopedValue] : InTable)
+    {
+        (void)ScopedValue;
+        const bool ScopedKnown = std::any_of(kAllowedKeys.begin(), kAllowedKeys.end(),
+                                             [&ScopedKey](const char* InKey) { return ScopedKey == InKey; });
+        if (!ScopedKnown)
+        {
+            if (OutError != nullptr)
+            {
+                *OutError = "particle preset has unknown field '" + std::string(ScopedKey.str()) + "'";
+            }
+            return false;
+        }
+    }
     const std::string ScopedId = StringField(InTable, "id");
     if (ScopedId.empty())
     {
@@ -153,10 +188,34 @@ namespace
         }
         return false;
     }
+    if (ScopedId.size() >= sizeof(OutPreset.Id))
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "particle preset id is too long: " + ScopedId;
+        }
+        return false;
+    }
     std::snprintf(OutPreset.Id, sizeof(OutPreset.Id), "%s", ScopedId.c_str());
     const std::string ScopedName = StringField(InTable, "name", ScopedId);
+    if (ScopedName.size() >= sizeof(OutPreset.DisplayName))
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "particle preset name is too long: " + ScopedName;
+        }
+        return false;
+    }
     std::snprintf(OutPreset.DisplayName, sizeof(OutPreset.DisplayName), "%s", ScopedName.c_str());
     const std::string ScopedCategory = StringField(InTable, "category", "Pack");
+    if (ScopedCategory.size() >= sizeof(OutPreset.Category))
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "particle preset category is too long: " + ScopedCategory;
+        }
+        return false;
+    }
     std::snprintf(OutPreset.Category, sizeof(OutPreset.Category), "%s", ScopedCategory.c_str());
 
     const std::optional<ParticleShape> ScopedShape = ShapeFromName(StringField(InTable, "shape", "Circle"));
@@ -182,8 +241,8 @@ namespace
     ParticleEffectSettings& ScopedSettings = OutPreset.Settings;
     ScopedSettings.Shape = *ScopedShape;
     ScopedSettings.EmissionShape = *ScopedEmissionShape;
-    ScopedSettings.MaxParticles = static_cast<std::uint32_t>(NumberField(InTable, "max_particles", 256.0));
-    ScopedSettings.Seed = static_cast<std::uint32_t>(NumberField(InTable, "seed", 0x9E3779B9u));
+    ScopedSettings.MaxParticles = IntegerField(InTable, "max_particles", 256u);
+    ScopedSettings.Seed = IntegerField(InTable, "seed", 0x9E3779B9u);
     (void)Vec2Field(InTable, "direction", ScopedSettings.Direction);
     (void)Vec2Field(InTable, "gravity", ScopedSettings.Gravity);
     (void)Vec2Field(InTable, "wind", ScopedSettings.Wind);
@@ -193,7 +252,7 @@ namespace
     ScopedSettings.Turbulence = static_cast<float>(NumberField(InTable, "turbulence", 0.0));
     ScopedSettings.Swirl = static_cast<float>(NumberField(InTable, "swirl", 0.0));
     ScopedSettings.EmissionRate = static_cast<float>(NumberField(InTable, "rate", 60.0));
-    ScopedSettings.BurstCount = static_cast<std::uint32_t>(NumberField(InTable, "burst_count", 0.0));
+    ScopedSettings.BurstCount = IntegerField(InTable, "burst_count", 0u);
     ScopedSettings.BurstInterval = static_cast<float>(NumberField(InTable, "burst_interval", 0.0));
     ScopedSettings.Duration = static_cast<float>(NumberField(InTable, "duration", 0.0));
     ScopedSettings.Loop = BoolField(InTable, "loop", true);
@@ -277,6 +336,21 @@ bool ParticlePresetRegistry::Add(const ParticlePresetDesc& InPreset, const void*
     return true;
 }
 
+bool ParticlePresetRegistry::Remove(std::string_view InId) noexcept
+{
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < MCount; ++ScopedIndex)
+    {
+        if (InId == MItems[ScopedIndex].Id)
+        {
+            MItems[ScopedIndex] = MItems[MCount - 1];
+            MOwners[ScopedIndex] = MOwners[MCount - 1];
+            --MCount;
+            return true;
+        }
+    }
+    return false;
+}
+
 void ParticlePresetRegistry::RemoveOwner(const void* InOwner) noexcept
 {
     if (InOwner == nullptr)
@@ -322,6 +396,8 @@ void ParticlePresetRegistry::RegisterBuiltIns()
         std::snprintf(ScopedDesc.Category, sizeof(ScopedDesc.Category), "%s", "BuiltIn");
         ScopedDesc.Settings = ScopedPreset.Settings;
         ScopedDesc.Flags = ParticlePresetBuiltIn;
+        // Built-ins are authoritative: a project preset with the same id is replaced.
+        (void)Remove(ScopedDesc.Id);
         (void)Add(ScopedDesc);
     }
 }
@@ -370,6 +446,7 @@ bool LoadParticlePresetToml(std::string_view InText, ParticlePresetRegistry& InR
         return false;
     }
 
+    const std::uint32_t ScopedOriginalCount = InRegistry.Count();
     for (const toml::node& ScopedNode : *ScopedPresets)
     {
         const toml::table* ScopedTable = ScopedNode.as_table();
@@ -379,15 +456,18 @@ bool LoadParticlePresetToml(std::string_view InText, ParticlePresetRegistry& InR
             {
                 *OutError = "particle preset entry is not a table";
             }
+            InRegistry.Truncate(ScopedOriginalCount);
             return false;
         }
         ParticlePresetDesc ScopedDesc{};
         if (!ParsePreset(*ScopedTable, ScopedDesc, OutError))
         {
+            InRegistry.Truncate(ScopedOriginalCount);
             return false;
         }
         if (!InRegistry.Add(ScopedDesc, InOwner, OutError))
         {
+            InRegistry.Truncate(ScopedOriginalCount);
             return false;
         }
     }
@@ -482,14 +562,72 @@ bool SaveParticlePresetToml(const ParticlePresetDesc& InPreset, std::string* Out
     return true;
 }
 
+bool SaveParticlePresetPackToml(std::span<const ParticlePresetDesc> InPresets, std::string* OutText,
+                                std::string* OutError)
+{
+    if (OutText == nullptr || InPresets.empty())
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "particle preset pack needs at least one preset";
+        }
+        return false;
+    }
+    std::string ScopedText;
+    for (const ParticlePresetDesc& ScopedPreset : InPresets)
+    {
+        std::string ScopedOne;
+        if (!SaveParticlePresetToml(ScopedPreset, &ScopedOne, OutError))
+        {
+            return false;
+        }
+        ScopedText += ScopedOne;
+        ScopedText += static_cast<char>(10);
+    }
+    *OutText = std::move(ScopedText);
+    return true;
+}
+
 bool SaveParticlePresetFile(std::string_view InPath, const ParticlePresetDesc& InPreset, std::string* OutError)
 {
+    std::vector<ParticlePresetDesc> ScopedPresets;
+    if (std::filesystem::exists(std::filesystem::path(std::string(InPath))))
+    {
+        ParticlePresetRegistry ScopedExisting;
+        std::string ScopedLoadError;
+        if (!LoadParticlePresetFile(InPath, ScopedExisting, nullptr, &ScopedLoadError))
+        {
+            if (OutError != nullptr)
+            {
+                *OutError = "cannot merge into existing particle preset pack: " + ScopedLoadError;
+            }
+            return false;
+        }
+        ScopedPresets.assign(ScopedExisting.Presets().begin(), ScopedExisting.Presets().end());
+    }
+    bool ScopedReplaced = false;
+    for (ParticlePresetDesc& ScopedPreset : ScopedPresets)
+    {
+        if (std::strcmp(ScopedPreset.Id, InPreset.Id) == 0)
+        {
+            ScopedPreset = InPreset;
+            ScopedReplaced = true;
+            break;
+        }
+    }
+    if (!ScopedReplaced)
+    {
+        ScopedPresets.push_back(InPreset);
+    }
     std::string ScopedText;
-    if (!SaveParticlePresetToml(InPreset, &ScopedText, OutError))
+    if (!SaveParticlePresetPackToml(ScopedPresets, &ScopedText, OutError))
     {
         return false;
     }
-    std::ofstream ScopedStream(std::string(InPath), std::ios::binary | std::ios::trunc);
+    const std::filesystem::path ScopedFinal{std::string(InPath)};
+    std::filesystem::path ScopedTemp = ScopedFinal;
+    ScopedTemp += ".tmp";
+    std::ofstream ScopedStream(ScopedTemp, std::ios::binary | std::ios::trunc);
     if (!ScopedStream)
     {
         if (OutError != nullptr)
@@ -499,11 +637,26 @@ bool SaveParticlePresetFile(std::string_view InPath, const ParticlePresetDesc& I
         return false;
     }
     ScopedStream.write(ScopedText.data(), static_cast<std::streamsize>(ScopedText.size()));
+    ScopedStream.flush();
+    ScopedStream.close();
     if (!ScopedStream)
     {
+        std::error_code ScopedRemoveError;
+        std::filesystem::remove(ScopedTemp, ScopedRemoveError);
         if (OutError != nullptr)
         {
             *OutError = "write failed for particle preset: " + std::string(InPath);
+        }
+        return false;
+    }
+    std::error_code ScopedRenameError;
+    std::filesystem::rename(ScopedTemp, ScopedFinal, ScopedRenameError);
+    if (ScopedRenameError)
+    {
+        std::filesystem::remove(ScopedTemp, ScopedRenameError);
+        if (OutError != nullptr)
+        {
+            *OutError = "cannot replace particle preset: " + std::string(InPath);
         }
         return false;
     }

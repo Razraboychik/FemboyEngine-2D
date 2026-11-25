@@ -5,6 +5,7 @@
 #include "Engine/Assets/ProjectScaffold.hpp"
 #include "Engine/Assets/TextureFormat.hpp"
 #include "Engine/Core/BuildProfile.hpp"
+#include "Engine/Core/ViewProfile.hpp"
 #include "Engine/Audio/AudioDevices.hpp"
 #include "Engine/Gameplay/GameplayTagDatabase.hpp"
 #include "Engine/Physics/CollisionFilter.hpp"
@@ -165,6 +166,8 @@ struct ProjectPluginEntry
 {
     char Path[192]{};
     bool Enabled = true;
+    // True only when this helper copied the binary into <root>/plugins.
+    bool Copied = false;
 
     [[nodiscard]] friend bool operator==(const ProjectPluginEntry&, const ProjectPluginEntry&) noexcept = default;
 };
@@ -178,6 +181,46 @@ struct MotionComfortSettings
     float vignetteScale = 1.0f;
 
     [[nodiscard]] friend bool operator==(const MotionComfortSettings&, const MotionComfortSettings&) noexcept = default;
+};
+
+inline constexpr std::uint32_t kMaxProjectAudioBuses = 12;
+
+struct ProjectAudioBus
+{
+    char id[32] = {};
+    char name[64] = {};
+    char parent[32] = {};
+    float defaultDb = 0.0f;
+
+    [[nodiscard]] friend bool operator==(const ProjectAudioBus&, const ProjectAudioBus&) noexcept = default;
+};
+
+struct ProjectOpsSettings
+{
+    // Project Doctor. doctorOnOpen runs a read-only check when a project opens;
+    // doctorStrict turns warnings into a failing report.
+    bool doctorOnOpen = true;
+    bool doctorStrict = false;
+    bool doctorCheckLicenses = true;
+    bool doctorCheckLegal = true;
+    bool doctorCheckFonts = false;
+    // Incident bundles are written as a directory, never silently uploaded.
+    bool incidentOnCrash = false;
+    bool incidentIncludeSettings = true;
+    bool incidentIncludeLogs = true;
+    bool incidentIncludeReplay = true;
+    bool incidentIncludeLicenses = true;
+    // Write a store-only ZIP next to the incident directory.
+    bool incidentArchive = true;
+    std::uint32_t incidentMaxLogBytes = 4u * 1024u * 1024u;
+    char incidentDirectory[128] = "Incidents";
+    // Deterministic replay policy. kReplayDefaultFrames is about ten minutes at
+    // 360 Hz; the recorder stops at the budget instead of growing without bound.
+    bool replayAutoRecord = false;
+    std::uint32_t replayKeyframeInterval = 60;
+    std::uint32_t replayMaxFrames = 216000;
+    bool replayVerifyOnStop = true;
+    char replayDirectory[128] = "Replays";
 };
 
 struct ProjectSettings
@@ -199,10 +242,15 @@ struct ProjectSettings
     // data-oriented backend for large, joint-free strategy worlds.
     std::uint8_t physicsBackend = 0;
     std::uint32_t physicsBodyBudget = 0;
+    ViewProfile viewProfile = ViewProfile::Default;
 
     float masterVolume = 1.0f;
     float sfxVolume = 1.0f;
     float musicVolume = 1.0f;
+    // Developer-authored mixer topology. An empty list keeps the three legacy
+    // volume fields as the fallback; a non-empty list is the authoritative set.
+    std::array<ProjectAudioBus, kMaxProjectAudioBuses> audioBuses{};
+    std::uint8_t audioBusCount = 0;
 
     // Empty means the system default. The voice panel resolves a missing id to
     // the default and writes the fallback back into the project.
@@ -287,6 +335,7 @@ struct ProjectSettings
 struct ProjectConfig
 {
     ProjectSettings project{};
+    ProjectOpsSettings ops{};
     EditorSettings editor{};
 };
 
@@ -341,9 +390,7 @@ struct ProjectPaths
 // Creates a clean, strictly typed project tree and a default project.femproj.
 [[nodiscard]] bool CreateProject(const std::filesystem::path& InParentDirectory, std::string_view InProjectName,
                                  ProjectPaths* OutPaths = nullptr, ProjectConfig* OutConfig = nullptr,
-                                 std::string* InError = nullptr,
-                                 Assets::Scaffold::ProjectTemplate InTemplate =
-                                     Assets::Scaffold::ProjectTemplate::Empty);
+                                 std::string* InError = nullptr);
 
 // Reads project.femproj. Missing optional sections fall back to defaults.
 [[nodiscard]] bool LoadProject(const std::filesystem::path& InRootOrProjectFile, ProjectPaths* OutPaths,

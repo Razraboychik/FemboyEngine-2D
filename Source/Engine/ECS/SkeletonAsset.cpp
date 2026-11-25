@@ -136,7 +136,7 @@ void SkeletonNameTablePopulateFromIndices(SkeletonNameTable& InTable, std::uint3
             continue;
         }
         char ScopedBuffer[kFesklMaxBoneNameLength + 1]{};
-        std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "bone_%u", ScopedBone);
+        (void)std::snprintf(ScopedBuffer, sizeof(ScopedBuffer), "bone_%u", ScopedBone);
         (void)SkeletonNameTableSet(InTable, ScopedBone, ScopedBuffer);
     }
     InTable.count = static_cast<std::uint16_t>(std::max<std::uint32_t>(InTable.count, ScopedCount));
@@ -510,16 +510,17 @@ bool EncodeSkeletonAsset(const SkeletonAssetSource& InSource, std::vector<std::b
     {
         ScopedHashes[ScopedBone] = BoneNameHash(SkeletonNameTableGet(ScopedNames, ScopedBone));
     }
-    ScopedWriteAt(ScopedLayout.hashes, ScopedHashes.data(), ScopedBoneCount * sizeof(std::uint64_t));
+    ScopedWriteAt(ScopedLayout.hashes, ScopedHashes.data(),
+                  static_cast<std::size_t>(ScopedBoneCount) * sizeof(std::uint64_t));
 
     if (ScopedVertexCount > 0)
     {
         ScopedWriteAt(ScopedLayout.skinPositions, ScopedSkin->BindPositions.data(),
-                      ScopedVertexCount * sizeof(Vector2D));
+                      static_cast<std::size_t>(ScopedVertexCount) * sizeof(Vector2D));
         ScopedWriteAt(ScopedLayout.skinIndices, ScopedSkin->BoneIndices.data(),
-                      ScopedVertexCount * kMaxBoneInfluences * sizeof(std::uint16_t));
+                      static_cast<std::size_t>(ScopedVertexCount) * kMaxBoneInfluences * sizeof(std::uint16_t));
         ScopedWriteAt(ScopedLayout.skinWeights, ScopedSkin->BoneWeights.data(),
-                      ScopedVertexCount * kMaxBoneInfluences * sizeof(float));
+                      static_cast<std::size_t>(ScopedVertexCount) * kMaxBoneInfluences * sizeof(float));
     }
     if (InSource.includeSprite)
     {
@@ -596,12 +597,12 @@ bool LoadSkeletonAsset(VirtualFileSystem& InVfs, std::string_view InPath, Skelet
                        SkinComponent& InSkin, SkeletonNameTable& InNames, FesklSprite& InSprite, std::uint64_t* OutHash,
                        std::string* InError)
 {
-    const auto ScopedBytes = InVfs.Read(InPath);
-    if (!ScopedBytes)
+    const auto ScopedPinned = InVfs.Pin(InPath);
+    if (!ScopedPinned)
     {
         return Fail(InError, "skeleton asset not found in the VFS: " + std::string(InPath));
     }
-    const auto ScopedDecoded = DecodeSkeletonAsset(*ScopedBytes);
+    const auto ScopedDecoded = DecodeSkeletonAsset(ScopedPinned->bytes);
     if (!ScopedDecoded)
     {
         return Fail(InError, "skeleton asset '" + std::string(InPath) + "': " + ScopedDecoded.error());

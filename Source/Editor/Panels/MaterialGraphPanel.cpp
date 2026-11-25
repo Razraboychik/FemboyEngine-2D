@@ -305,11 +305,20 @@ bool MaterialGraphPanel::RebuildWithoutNodes(Render::MaterialGraph& InGraph, std
         }
     }
 
+    const std::uint16_t ScopedOutput = InGraph.OutputNode();
+    if (ScopedOutput == Render::kInvalidMaterialNode)
+    {
+        if (InError != nullptr)
+        {
+            *InError = "material graph has no output node";
+        }
+        return false;
+    }
     Render::MaterialGraph ScopedRebuilt;
-    ScopedRebuilt.Node(ScopedRebuilt.OutputNode()).uiPosition = InGraph.Node(InGraph.OutputNode()).uiPosition;
+    ScopedRebuilt.Node(ScopedRebuilt.OutputNode()).uiPosition = InGraph.Node(ScopedOutput).uiPosition;
     std::array<std::uint16_t, Render::kMaxMaterialNodes> ScopedMap{};
     ScopedMap.fill(Render::kInvalidMaterialNode);
-    ScopedMap[InGraph.OutputNode()] = ScopedRebuilt.OutputNode();
+    ScopedMap[ScopedOutput] = ScopedRebuilt.OutputNode();
 
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < InGraph.NodeCount(); ++ScopedIndex)
     {
@@ -649,14 +658,22 @@ bool MaterialGraphPanel::LoadGraph(const char* InPath)
         return false;
     }
     Render::MaterialAssetError ScopedError = Render::MaterialAssetError::None;
-    if (!Render::DecodeMaterialGraph(ScopedBytes, &MGraph, &ScopedError))
+    Render::MaterialGraph ScopedDecoded;
+    if (!Render::DecodeMaterialGraph(ScopedBytes, &ScopedDecoded, &ScopedError))
     {
         SetError(MCompileError.data(), MCompileError.size(),
                  std::string("cannot load the .fgraph file: ") + Render::MaterialAssetErrorName(ScopedError));
         return false;
     }
-    // The graph object stays the CommandStack external buffer, so the load is a
-    // content replacement and the undo history continues to work.
+    std::string ScopedValidationError;
+    if (!ScopedDecoded.Validate(&ScopedValidationError))
+    {
+        SetError(MCompileError.data(), MCompileError.size(),
+                 std::string("invalid .fgraph file: ") + ScopedValidationError);
+        return false;
+    }
+    // Only replace the live external-buffer graph after decode+validation.
+    MGraph = ScopedDecoded;
     MLastAppliedHash = 0;
     return true;
 }

@@ -282,14 +282,15 @@ const std::byte* EditorFonts::StableFontBytes(VirtualFileSystem* InVfs, std::str
             return MStableSources[ScopedIndex].bytes.data();
         }
     }
-    const auto ScopedBytes = InVfs->Read(InPath);
-    if (!ScopedBytes || ScopedBytes->empty() || MStableCount >= MStableSources.size())
+    const auto ScopedPinned = InVfs->Pin(InPath);
+    if (!ScopedPinned || ScopedPinned->bytes.empty() || MStableCount >= MStableSources.size())
     {
         return nullptr;
     }
+    const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
     StableSource& ScopedSource = MStableSources[MStableCount];
     ScopedSource.path.assign(InPath);
-    ScopedSource.bytes.assign(ScopedBytes->begin(), ScopedBytes->end());
+    ScopedSource.bytes.assign(ScopedBytes.begin(), ScopedBytes.end());
     ScopedSource.sourceSize = ScopedSource.bytes.size();
     ScopedSource.sourceHash = HashFontBytes(
         std::span<const std::byte>(ScopedSource.bytes.data(), ScopedSource.bytes.size()));
@@ -472,11 +473,11 @@ bool EditorFonts::DetectFontChanges() noexcept
                 ScopedSource.hasOsStat = true;
             }
         }
-        const auto ScopedBytes = MVfs->Read(ScopedSource.path);
+        const auto ScopedPinned = MVfs->Pin(ScopedSource.path);
         const bool ScopedHashChanged =
-            ScopedBytes.has_value() && !ScopedBytes->empty() &&
-            (HashFontBytes(*ScopedBytes) != ScopedSource.sourceHash ||
-             ScopedBytes->size() != ScopedSource.sourceSize);
+            ScopedPinned.has_value() && !ScopedPinned->bytes.empty() &&
+            (HashFontBytes(ScopedPinned->bytes) != ScopedSource.sourceHash ||
+             ScopedPinned->bytes.size() != ScopedSource.sourceSize);
         if (!ScopedOsChanged && !ScopedHashChanged)
         {
             continue;
@@ -528,15 +529,15 @@ void EditorFonts::ProbeBakedAtlas(VirtualFileSystem* InVfs, std::string_view InP
     {
         return;
     }
-    const auto ScopedBytes = InVfs->Read(InPath);
-    if (!ScopedBytes || ScopedBytes->empty())
+    const auto ScopedPinned = InVfs->Pin(InPath);
+    if (!ScopedPinned || ScopedPinned->bytes.empty())
     {
         // The game UI may still use the vector path; absence is not an error.
         return;
     }
     MStatus.bakedAtlasPresent = true;
     Ui::FontAtlas ScopedAtlas;
-    if (!ScopedAtlas.Open(*ScopedBytes))
+    if (!ScopedAtlas.Open(ScopedPinned->bytes))
     {
         LogWarn("fonts", "'{}' is present but its FB YFNT header is invalid; the game UI will reject it", InPath);
         return;

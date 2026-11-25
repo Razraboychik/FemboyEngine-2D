@@ -133,10 +133,13 @@ bool NetIdentity::Valid() const noexcept
         return false;
     }
 
-    // The EdDSA secret carries the public half back to back; a mismatch means
-    // the record was assembled from parts of two different identities.
-    if (std::memcmp(Signing.Secret.data() + Crypto::kEddsaPublicBytes, Signing.Public.data(),
-                    Crypto::kEddsaPublicBytes) != 0)
+    // Recompute the EdDSA public key from the stored seed: the secret may carry
+    // an arbitrary public half, so trusting the embedded copy would accept a
+    // record assembled from parts of two different identities.
+    Crypto::EddsaKeyPair ScopedSigning{};
+    if (!Crypto::EddsaKeyPairFromSeed(
+            std::span<const std::byte>(Signing.Secret.data(), Crypto::kEddsaSeedBytes), &ScopedSigning) ||
+        ScopedSigning.Public != Signing.Public || ScopedSigning.Secret != Signing.Secret)
     {
         return false;
     }
@@ -251,6 +254,11 @@ bool DecodeIdentity(std::span<const std::byte> InBytes, NetIdentity* OutIdentity
 
 bool SaveIdentity(const NetIdentity& InIdentity, const std::filesystem::path& InPath, std::string* InError)
 {
+    if (!InIdentity.Valid())
+    {
+        SetError(InError, "identity: refusing to save an invalid record");
+        return false;
+    }
     std::array<std::byte, kIdentityFileBytes> ScopedRecord{};
     if (!EncodeIdentity(InIdentity, ScopedRecord))
     {
@@ -283,8 +291,10 @@ bool SaveIdentity(const NetIdentity& InIdentity, const std::filesystem::path& In
     Detail::StoreU32(ScopedHeader + 8, static_cast<std::uint32_t>(ScopedPayload.size()));
     std::memcpy(ScopedFile.data() + kIdentityStorageHeaderBytes, ScopedPayload.data(), ScopedPayload.size());
 
+    std::filesystem::path ScopedTemp = InPath;
+    ScopedTemp += ".tmp";
 #if defined(_WIN32)
-    std::FILE* ScopedOutput = std::fopen(InPath.string().c_str(), "wb");
+    std::FILE* ScopedOutput = ::_wfopen(ScopedTemp.c_str(), L"wb");
     if (ScopedOutput == nullptr)
     {
         SetError(InError, "identity: cannot open the target file for writing");
@@ -292,7 +302,7 @@ bool SaveIdentity(const NetIdentity& InIdentity, const std::filesystem::path& In
     }
 #else
     const int ScopedDescriptor =
-        ::open(InPath.string().c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+        ::open(ScopedTemp.string().c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (ScopedDescriptor < 0)
     {
         SetError(InError, "identity: cannot open the target file for writing");
@@ -302,7 +312,7 @@ bool SaveIdentity(const NetIdentity& InIdentity, const std::filesystem::path& In
     {
         (void)::close(ScopedDescriptor);
         std::error_code ScopedRemoveError;
-        std::filesystem::remove(InPath, ScopedRemoveError);
+        std::filesystem::remove(ScopedTemp, ScopedRemoveError);
         SetError(InError, "identity: cannot restrict the target file permissions");
         return false;
     }
@@ -318,9 +328,28 @@ bool SaveIdentity(const NetIdentity& InIdentity, const std::filesystem::path& In
     const bool ScopedClosed = std::fclose(ScopedOutput) == 0;
     if (ScopedWritten != ScopedFile.size() || !ScopedClosed)
     {
+        std::error_code ScopedRemoveError;
+        std::filesystem::remove(ScopedTemp, ScopedRemoveError);
         SetError(InError, "identity: the record was not written completely");
         return false;
     }
+#if defined(_WIN32)
+    if (::MoveFileExW(ScopedTemp.c_str(), InPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0)
+    {
+        std::error_code ScopedRemoveError;
+        std::filesystem::remove(ScopedTemp, ScopedRemoveError);
+        SetError(InError, "identity: cannot replace the identity file");
+        return false;
+    }
+#else
+    if (::rename(ScopedTemp.string().c_str(), InPath.string().c_str()) != 0)
+    {
+        std::error_code ScopedRemoveError;
+        std::filesystem::remove(ScopedTemp, ScopedRemoveError);
+        SetError(InError, "identity: cannot replace the identity file");
+        return false;
+    }
+#endif
 
     // Owner-only access. On Windows the record is DPAPI-protected and the file
     // inherits the profile ACL; the permission call is best effort there.
@@ -348,7 +377,11 @@ bool LoadIdentity(const std::filesystem::path& InPath, NetIdentity* OutIdentity,
         return false;
     }
 
+#if defined(_WIN32)
+    std::FILE* ScopedInput = ::_wfopen(InPath.c_str(), L"rb");
+#else
     std::FILE* ScopedInput = std::fopen(InPath.string().c_str(), "rb");
+#endif
     if (ScopedInput == nullptr)
     {
         SetError(InError, "identity: cannot open the record for reading");

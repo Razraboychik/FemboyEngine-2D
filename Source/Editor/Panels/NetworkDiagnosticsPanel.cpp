@@ -7,6 +7,7 @@
 #include "Engine/Network/NetProtocol.hpp"
 #include "Engine/Core/CryptoAead.hpp"
 
+#include <charconv>
 #include <cstdlib>
 #include <ctime>
 
@@ -16,6 +17,22 @@ namespace Fby::Editor
 {
 namespace
 {
+bool ParsePort(std::string_view InText, std::uint16_t* OutPort)
+{
+    if (OutPort == nullptr || InText.empty())
+    {
+        return false;
+    }
+    std::uint32_t ScopedPort = 0;
+    const auto ScopedResult = std::from_chars(InText.data(), InText.data() + InText.size(), ScopedPort);
+    if (ScopedResult.ec != std::errc{} || ScopedResult.ptr != InText.data() + InText.size() || ScopedPort > 65535u)
+    {
+        return false;
+    }
+    *OutPort = static_cast<std::uint16_t>(ScopedPort);
+    return true;
+}
+
 const char* RoleName(Fby::Net::NetRole InRole)
 {
     return Fby::Net::NetRoleName(InRole);
@@ -168,8 +185,9 @@ void NetworkDiagnosticsPanel::Draw(bool* InOpen)
             {
                 Fby::Net::NetAddress ScopedAddress;
                 std::array<std::byte, Fby::Crypto::kEddsaPublicBytes> ScopedKey{};
-                if (!Fby::Net::ParseAddress(MLobbyHost.data(), static_cast<std::uint16_t>(std::atoi(MLobbyPort.data())),
-                                            &ScopedAddress) ||
+                std::uint16_t ScopedPort = 0;
+                if (!ParsePort(std::string_view(MLobbyPort.data()), &ScopedPort) ||
+                    !Fby::Net::ParseAddress(MLobbyHost.data(), ScopedPort, &ScopedAddress) ||
                     !ParseKeyHex(MLobbyKey.data(), ScopedKey))
                 {
                     MLobbyStatus = "invalid host, port or 32-byte hex key";
@@ -196,19 +214,31 @@ void NetworkDiagnosticsPanel::Draw(bool* InOpen)
         ImGui::SameLine();
         if (ImGui::Button("Create room"))
         {
-            MLobby.CreateRoom(MLobbyRoomName.data());
+            if (!MLobby.CreateRoom(MLobbyRoomName.data()))
+            {
+                MLobbyStatus = std::string("create room failed: ") +
+                               std::string(Fby::Net::LobbyErrorName(MLobby.Error()));
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button("Start match"))
         {
-            MLobby.StartMatch();
+            if (!MLobby.StartMatch())
+            {
+                MLobbyStatus = std::string("start match failed: ") +
+                               std::string(Fby::Net::LobbyErrorName(MLobby.Error()));
+            }
         }
         ImGui::SetNextItemWidth(100.0f);
         (void)ImGui::InputInt("Room id", &MLobbyRoomId);
         ImGui::SameLine();
         if (ImGui::Button("Join room"))
         {
-            MLobby.JoinRoom(static_cast<std::uint32_t>(std::max(MLobbyRoomId, 0)));
+            if (!MLobby.JoinRoom(static_cast<std::uint32_t>(std::max(MLobbyRoomId, 0))))
+            {
+                MLobbyStatus = std::string("join room failed: ") +
+                               std::string(Fby::Net::LobbyErrorName(MLobby.Error()));
+            }
         }
         ImGui::Text("ready %s  room %u  player %u  started %s  error %s", MLobby.Ready() ? "yes" : "no",
                     MLobby.RoomId(), static_cast<unsigned>(MLobby.PlayerId()),

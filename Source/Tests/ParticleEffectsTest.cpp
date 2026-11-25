@@ -108,6 +108,15 @@ void TestRateAndBurst()
     ScopedBurstSystem.Update(0.1f);
     FBY_CHECK(ScopedBurstSystem.ActiveParticles() == 7);
 
+    Fby::ParticleEffectSettings ScopedTinyInterval = MakeLinearSettings();
+    ScopedTinyInterval.BurstCount = 1;
+    ScopedTinyInterval.BurstInterval = 0.000001f;
+    ScopedTinyInterval.MaxParticles = 64;
+    Fby::ParticleEffectSystem ScopedTinyIntervalSystem;
+    (void)ScopedTinyIntervalSystem.Spawn(ScopedTinyInterval, Fby::Vector2D{0.0f, 0.0f});
+    ScopedTinyIntervalSystem.Update(0.1f);
+    FBY_CHECK(ScopedTinyIntervalSystem.ActiveParticles() <= 64);
+
     Fby::ParticleEffectSettings ScopedInterval = MakeLinearSettings();
     ScopedInterval.BurstCount = 3;
     ScopedInterval.BurstInterval = 0.1f;

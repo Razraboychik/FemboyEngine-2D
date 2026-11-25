@@ -30,7 +30,7 @@ namespace Fby
 class AccessibilityOverlay
 {
 public:
-    static constexpr std::uint32_t kMaxOverlayItems = 128;
+    static constexpr std::uint32_t kMaxOverlayItems = 512;
     static constexpr std::uint32_t kMaxOverlayBatches = 8;
 
     // Rasterises the captions for this viewport. Returns false when the kernel

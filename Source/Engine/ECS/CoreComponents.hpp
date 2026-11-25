@@ -95,6 +95,37 @@ struct Camera2D
     float Rotation = 0.0f;
 };
 
+// Optional normal-map layer in the sprite texture array. Layer 0 disables the
+// path; the shader samples the layer and reconstructs the surface normal.
+struct NormalMap2D
+{
+    std::uint32_t Layer = 0;
+    float Strength = 1.0f;
+};
+
+// Per-sprite surface normal orientation for 2D lighting. This is not a texture
+// normal map; it lets flat sprites respond to light direction.
+struct SurfaceNormal2D
+{
+    Vector2D Normal{0.0f, 1.0f};
+    float Strength = 1.0f;
+};
+
+// Render-only parallax offset. Factor 1 keeps world space; factor 0 pins the
+// sprite to the camera. Physics and gameplay keep reading Transform2D.
+struct Parallax2D
+{
+    Vector2D Factor{1.0f, 1.0f};
+};
+
+// Optional per-camera pixel grid. The camera centre is snapped to 1/PPU while
+// the profile keeps the render target and zoom under game control.
+struct PixelPerfectCamera
+{
+    float PixelsPerUnit = 1.0f;
+    bool Enabled = true;
+};
+
 struct Lifetime
 {
     float SecondsRemaining = 0.0f;
@@ -163,6 +194,19 @@ FBY_REFLECT_COMPONENT(Fby::DrawOrder, "DrawOrder", FBY_FIELD(Fby::DrawOrder, Lay
 FBY_REFLECT_COMPONENT(Fby::Camera2D, "Camera2D", FBY_FIELD(Fby::Camera2D, Center, Vector2D),
                       FBY_FIELD(Fby::Camera2D, ViewSize, Vector2D), FBY_FIELD(Fby::Camera2D, Zoom, Float),
                       FBY_FIELD(Fby::Camera2D, Rotation, Float))
+
+FBY_REFLECT_COMPONENT(Fby::NormalMap2D, "NormalMap2D", FBY_FIELD(Fby::NormalMap2D, Layer, UInt32),
+                      FBY_FIELD(Fby::NormalMap2D, Strength, Float))
+
+FBY_REFLECT_COMPONENT(Fby::SurfaceNormal2D, "SurfaceNormal2D",
+                      FBY_FIELD(Fby::SurfaceNormal2D, Normal, Vector2D),
+                      FBY_FIELD(Fby::SurfaceNormal2D, Strength, Float))
+
+FBY_REFLECT_COMPONENT(Fby::Parallax2D, "Parallax2D", FBY_FIELD(Fby::Parallax2D, Factor, Vector2D))
+
+FBY_REFLECT_COMPONENT(Fby::PixelPerfectCamera, "PixelPerfectCamera",
+                      FBY_FIELD(Fby::PixelPerfectCamera, PixelsPerUnit, Float),
+                      FBY_FIELD(Fby::PixelPerfectCamera, Enabled, Bool))
 
 FBY_REFLECT_COMPONENT(Fby::Lifetime, "Lifetime", FBY_FIELD(Fby::Lifetime, SecondsRemaining, Float))
 

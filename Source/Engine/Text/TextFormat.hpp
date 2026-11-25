@@ -138,7 +138,12 @@ template <std::uint32_t Expansion>
                 {
                     return TextFormatStatus::InvalidTemplate;
                 }
-                ScopedIndex = ScopedIndex * 10 + static_cast<std::uint32_t>(ScopedValue - '0');
+                const std::uint32_t ScopedDigitValue = static_cast<std::uint32_t>(ScopedValue - '0');
+                if (ScopedIndex > (std::numeric_limits<std::uint32_t>::max() - ScopedDigitValue) / 10u)
+                {
+                    return TextFormatStatus::InvalidTemplate;
+                }
+                ScopedIndex = ScopedIndex * 10u + ScopedDigitValue;
             }
             if (ScopedIndex >= InArgs.size() || InArgs[ScopedIndex].Format == nullptr)
             {

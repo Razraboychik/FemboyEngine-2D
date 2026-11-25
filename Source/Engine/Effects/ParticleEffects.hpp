@@ -142,6 +142,7 @@ class ParticleEffectSystem
 public:
     ParticleEffectSystem() noexcept;
 
+    [[nodiscard]] std::uint16_t EmitterGeneration(std::uint32_t InEmitter) const noexcept;
     [[nodiscard]] std::uint32_t Spawn(const ParticleEffectSettings& InSettings, Vector2D InPosition,
                                       float InRotation = 0.0f) noexcept;
     [[nodiscard]] std::uint32_t SpawnPreset(std::string_view InPresetId, Vector2D InPosition,
@@ -211,6 +212,7 @@ private:
 
     std::array<ParticleState, kParticleEffectMaxParticles> MParticles{};
     std::array<EmitterState, kParticleEffectMaxEmitters> MEmitters{};
+    std::array<std::uint16_t, kParticleEffectMaxEmitters> MEmitterGenerations{};
     std::array<std::uint32_t, kParticleEffectMaxParticles> MFreeParticles{};
     std::array<std::uint32_t, kParticleEffectMaxEmitters> MParticleCounts{};
     std::uint32_t MFreeCount = 0;

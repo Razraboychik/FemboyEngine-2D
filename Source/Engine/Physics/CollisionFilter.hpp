@@ -11,6 +11,7 @@ namespace Fby
 
 inline constexpr std::uint32_t kCollisionLayerCount = 64;
 inline constexpr std::uint32_t kNamedCollisionLayers = 6;
+inline constexpr std::uint32_t kNoCollisionLayer = kCollisionLayerCount;
 
 enum class CollisionLayer : std::uint8_t
 {
@@ -112,7 +113,7 @@ struct CollisionFilterMatrix
                 return ScopedI;
             }
         }
-        return static_cast<std::uint32_t>(CollisionLayer::Default);
+        return kNoCollisionLayer;
     }
 
     static constexpr CollisionFilterMatrix Defaults() noexcept

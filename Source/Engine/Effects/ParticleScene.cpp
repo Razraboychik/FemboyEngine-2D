@@ -140,6 +140,13 @@ void ParticleSceneSystem::Update(Fcs::Registry& InRegistry, float InDeltaSeconds
         }
 
         Binding* ScopedBinding = FindBinding(ScopedEntity);
+        if (ScopedBinding != nullptr && ScopedBinding->Active &&
+            MParticles.EmitterGeneration(ScopedBinding->Emitter) != ScopedBinding->EmitterGeneration)
+        {
+            // The pool slot was retired and reused; never Stop the new owner's emitter.
+            *ScopedBinding = Binding{};
+            ScopedBinding = nullptr;
+        }
         const ParticleEffectSettings ScopedSettings = ScopedComponent.ToSettings();
         if (ScopedBinding == nullptr)
         {
@@ -157,6 +164,7 @@ void ParticleSceneSystem::Update(Fcs::Registry& InRegistry, float InDeltaSeconds
                 ScopedBinding->Active = false;
                 continue;
             }
+            ScopedBinding->EmitterGeneration = MParticles.EmitterGeneration(ScopedBinding->Emitter);
             ScopedBinding->RestartCounter = ScopedComponent.RestartCounter;
             ScopedBinding->Active = true;
             continue;
@@ -171,6 +179,7 @@ void ParticleSceneSystem::Update(Fcs::Registry& InRegistry, float InDeltaSeconds
                 ScopedBinding->Emitter =
                     MParticles.Spawn(ScopedSettings, ScopedTransform.Position, ScopedTransform.Rotation);
             }
+            ScopedBinding->EmitterGeneration = MParticles.EmitterGeneration(ScopedBinding->Emitter);
             ScopedBinding->RestartCounter = ScopedComponent.RestartCounter;
         }
         else

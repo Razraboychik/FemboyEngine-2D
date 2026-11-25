@@ -84,9 +84,9 @@ void Transform(std::array<float, kVoiceAecFftSize>& InRe, std::array<float, kVoi
 
 void VoiceAecSettings::Clamp() noexcept
 {
-    TailMs = std::clamp(TailMs, 8.0f, 160.0f);
-    MaxDelayMs = std::clamp(MaxDelayMs, 0.0f, 120.0f);
-    StepSize = std::clamp(StepSize, 0.01f, 1.0f);
+    TailMs = std::isfinite(TailMs) ? std::clamp(TailMs, 8.0f, 160.0f) : 8.0f;
+    MaxDelayMs = std::isfinite(MaxDelayMs) ? std::clamp(MaxDelayMs, 0.0f, 120.0f) : 0.0f;
+    StepSize = std::isfinite(StepSize) ? std::clamp(StepSize, 0.01f, 1.0f) : 0.5f;
 }
 
 const char* VoiceAecSettings::Issue() const noexcept

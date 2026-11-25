@@ -17,6 +17,7 @@
 #include "Engine/Physics/Physics.hpp"
 #include "Engine/Platform/SystemInfo.hpp"
 #include "Engine/UI/PinkUI.hpp"
+#include "Engine/Ops/Ops.hpp"
 
 #include <imgui.h>
 
@@ -25,6 +26,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <iterator>
 #include <span>
 #include <string>
@@ -40,9 +42,18 @@ void CopyProjectField(char* InDestination, std::size_t InCapacity, const char* I
     {
         return;
     }
-    const std::size_t ScopedLength = std::min<std::size_t>(std::strlen(InSource), InCapacity - 1);
+    if (InSource == nullptr)
+    {
+        InDestination[0] = 0;
+        return;
+    }
+    std::size_t ScopedLength = 0;
+    while (ScopedLength + 1 < InCapacity && InSource[ScopedLength] != 0)
+    {
+        ++ScopedLength;
+    }
     std::memcpy(InDestination, InSource, ScopedLength);
-    InDestination[ScopedLength] = '\0';
+    InDestination[ScopedLength] = 0;
 }
 
 void Persist(ProjectConfigStore& InStore)
@@ -175,7 +186,8 @@ bool EditSymbolColor(const char* InLabel, std::uint32_t* InColor)
     }
     const auto ScopedByte = [](float InValue)
     {
-        return static_cast<std::uint32_t>(std::lround(std::clamp(InValue, 0.0f, 1.0f) * 255.0f));
+        const float Scoped = std::isfinite(InValue) ? std::clamp(InValue, 0.0f, 1.0f) : 0.0f;
+        return static_cast<std::uint32_t>(std::lround(Scoped * 255.0f));
     };
     *InColor = (ScopedByte(ScopedRgb[0]) << 16u) | (ScopedByte(ScopedRgb[1]) << 8u) | ScopedByte(ScopedRgb[2]);
     return true;
@@ -228,10 +240,12 @@ IdePalette& Palette()
     const auto ScopedByte = [](float InValue)
     {
         const float ScopedSrgb = LinearToSrgb(InValue);
-        return static_cast<std::uint8_t>(std::lround(std::clamp(ScopedSrgb, 0.0f, 1.0f) * 255.0f));
+        const float ScopedClamped = std::isfinite(ScopedSrgb) ? std::clamp(ScopedSrgb, 0.0f, 1.0f) : 0.0f;
+        return static_cast<std::uint8_t>(std::lround(ScopedClamped * 255.0f));
     };
     return Color32::FromBytes(ScopedByte(InLinear.x), ScopedByte(InLinear.y), ScopedByte(InLinear.z),
-                              static_cast<std::uint8_t>(std::lround(std::clamp(InLinear.w, 0.0f, 1.0f) * 255.0f)));
+                              static_cast<std::uint8_t>(std::lround(
+                                  (std::isfinite(InLinear.w) ? std::clamp(InLinear.w, 0.0f, 1.0f) : 0.0f) * 255.0f)));
 }
 
 [[nodiscard]] ImVec4 ToLinear(Color32 InColor) noexcept
@@ -343,6 +357,117 @@ void ProjectSettingsPanel::Initialize(CommandStack& InCommands, ProjectConfigSto
     MCodec = InCodec;
     MAppliedValid = false;
     MDirty = false;
+}
+
+void ProjectSettingsPanel::InitializeAudioSettings(Ecs::SystemContext& InContext)
+{
+    if (MAudioSettingsReady || MStore == nullptr)
+    {
+        return;
+    }
+    MAudioSystem = InContext.audio;
+    const ProjectSettings& ScopedProject = MStore->Project();
+    const std::uint8_t ScopedBusCount =
+        std::min<std::uint8_t>(ScopedProject.audioBusCount, kMaxProjectAudioBuses);
+    if (ScopedBusCount > 0 && InContext.audio != nullptr)
+    {
+        std::array<Fby::Audio::AudioBusDefinition, kMaxProjectAudioBuses> ScopedDefinitions{};
+        for (std::uint8_t ScopedIndex = 0; ScopedIndex < ScopedBusCount; ++ScopedIndex)
+        {
+            const ProjectAudioBus& ScopedBus = ScopedProject.audioBuses[ScopedIndex];
+            ScopedDefinitions[ScopedIndex] = {std::string_view(ScopedBus.id), std::string_view(ScopedBus.name),
+                                              std::string_view(ScopedBus.parent), ScopedBus.defaultDb};
+        }
+        if (Fby::Audio::CreateAudioBuses(*InContext.audio,
+                                         std::span<const Fby::Audio::AudioBusDefinition>(ScopedDefinitions.data(),
+                                                                                         ScopedBusCount),
+                                         std::span<Fby::BusId>(MProjectBusIds.data(), ScopedBusCount)))
+        {
+            Fby::Audio::RegisterAudioBusSettings(
+                MAudioSettings,
+                std::span<const Fby::Audio::AudioBusDefinition>(ScopedDefinitions.data(), ScopedBusCount),
+                std::span<const Fby::BusId>(MProjectBusIds.data(), ScopedBusCount), InContext.audio);
+            (void)MAudioSettings.Freeze();
+            MAudioPanel.SetRegistry(&MAudioSettings, Fby::Settings::Scope::Project);
+            MAudioSettingsReady = true;
+            return;
+        }
+    }
+
+    auto ScopedAdd = [this](const char* InId, const char* InLabel, float ProjectSettings::*InMember)
+    {
+        MAudioSettings.Float(InId)
+            .Category("Mixer")
+            .Label(InLabel)
+            .Unit("linear")
+            .Default(Fby::Settings::Value::MakeFloat(1.0))
+            .Range(0.0, 2.0)
+            .Scope(Fby::Settings::Scope::Project)
+            .Apply(
+                [this, InMember](const Fby::Settings::Value& InValue)
+                {
+                    if (MStore != nullptr)
+                    {
+                        MStore->Project().*InMember = static_cast<float>(InValue.FloatValue);
+                    }
+                });
+    };
+    ScopedAdd("audio.master", "Master", &ProjectSettings::masterVolume);
+    ScopedAdd("audio.sfx", "SFX", &ProjectSettings::sfxVolume);
+    ScopedAdd("audio.music", "Music", &ProjectSettings::musicVolume);
+    (void)MAudioSettings.Freeze();
+    (void)MAudioSettings.SetProject("audio.master", Fby::Settings::Value::MakeFloat(ScopedProject.masterVolume));
+    (void)MAudioSettings.SetProject("audio.sfx", Fby::Settings::Value::MakeFloat(ScopedProject.sfxVolume));
+    (void)MAudioSettings.SetProject("audio.music", Fby::Settings::Value::MakeFloat(ScopedProject.musicVolume));
+    MAudioPanel.SetRegistry(&MAudioSettings, Fby::Settings::Scope::Project);
+    MAudioSettingsReady = true;
+}
+
+void ProjectSettingsPanel::SyncAccessibilitySettings()
+{
+    if (!MAccessibilityRegistryReady || MStore == nullptr)
+    {
+        return;
+    }
+    const AccessibilityProfile& ScopedProfile = MStore->Project().accessibility;
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.deaf", Fby::Settings::Value::MakeBool(
+                                  Fby::AccessibilityHasFlag(ScopedProfile.runtime.flags, Fby::AccessibilityDeafMode)));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.flash_guard", Fby::Settings::Value::MakeBool(Fby::AccessibilityHasFlag(
+                                         ScopedProfile.runtime.flags, Fby::AccessibilityFlashGuard)));
+    (void)MAccessibilityRegistry.SetProject("accessibility.subtitles",
+                                            Fby::Settings::Value::MakeBool(ScopedProfile.runtime.showSubtitles));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.flash_threshold", Fby::Settings::Value::MakeFloat(ScopedProfile.runtime.flashThreshold));
+    (void)MAccessibilityRegistry.SetProject("accessibility.flash_gain",
+                                            Fby::Settings::Value::MakeFloat(ScopedProfile.runtime.flashGain));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.minimum_contrast",
+        Fby::Settings::Value::MakeFloat(ScopedProfile.presentation.minimumContrastRatio));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.motion_scale", Fby::Settings::Value::MakeFloat(ScopedProfile.presentation.motionScale));
+    (void)MAccessibilityRegistry.SetProject(
+        "accessibility.oled_shift", Fby::Settings::Value::MakeBool(ScopedProfile.presentation.oledPixelShift));
+}
+
+void ProjectSettingsPanel::ResetGeneratedState() noexcept
+{
+    if (MAudioSystem != nullptr)
+    {
+        for (BusId ScopedBus : MProjectBusIds)
+        {
+            if (ScopedBus >= kFirstDynamicBus && ScopedBus < kMaxBuses)
+            {
+                (void)MAudioSystem->DestroyBus(ScopedBus);
+            }
+        }
+    }
+    MProjectBusIds.fill(kInvalidBus);
+    MAudioSettings = Settings::Registry();
+    MAudioSettingsReady = false;
+    MAudioSystem = nullptr;
+    MAudioPanel.SetRegistry(nullptr, Settings::Scope::Project);
 }
 
 ProjectSettings& ProjectSettingsPanel::Values() noexcept
@@ -472,13 +597,105 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         CopyProjectField(ScopedValues.defaultScene, sizeof(ScopedValues.defaultScene), ScopedScene);
     }
 
+    ProjectOpsSettings& ScopedOps = MStore->Config().ops;
+    ImGui::SeparatorText("Developer Operations");
+    ImGui::TextDisabled("Doctor, incident bundles and deterministic replay are local tools; nothing is uploaded.");
+    ImGui::Checkbox("Enable Project Doctor checks", &ScopedOps.doctorOnOpen);
+    ImGui::SameLine();
+    ImGui::Checkbox("Strict doctor", &ScopedOps.doctorStrict);
+    ImGui::Checkbox("Doctor: licenses", &ScopedOps.doctorCheckLicenses);
+    ImGui::SameLine();
+    ImGui::Checkbox("Doctor: legal", &ScopedOps.doctorCheckLegal);
+    ImGui::SameLine();
+    ImGui::Checkbox("Doctor: fonts", &ScopedOps.doctorCheckFonts);
+    ImGui::Checkbox("Create incident bundle on crash", &ScopedOps.incidentOnCrash);
+    ImGui::Checkbox("Incident: settings", &ScopedOps.incidentIncludeSettings);
+    ImGui::SameLine();
+    ImGui::Checkbox("Incident: logs", &ScopedOps.incidentIncludeLogs);
+    ImGui::SameLine();
+    ImGui::Checkbox("Incident: replay", &ScopedOps.incidentIncludeReplay);
+    ImGui::SameLine();
+    ImGui::Checkbox("Incident: licenses", &ScopedOps.incidentIncludeLicenses);
+    ImGui::SameLine();
+    ImGui::Checkbox("Incident: ZIP", &ScopedOps.incidentArchive);
+    ImGui::InputText("Incident directory", ScopedOps.incidentDirectory, sizeof(ScopedOps.incidentDirectory));
+    ImGui::InputScalar("Incident log limit (bytes)", ImGuiDataType_U32, &ScopedOps.incidentMaxLogBytes);
+    ImGui::Checkbox("Record deterministic replays", &ScopedOps.replayAutoRecord);
+    ImGui::InputScalar("Replay keyframe interval", ImGuiDataType_U32, &ScopedOps.replayKeyframeInterval);
+    ImGui::InputScalar("Replay frame budget", ImGuiDataType_U32, &ScopedOps.replayMaxFrames);
+    ImGui::Checkbox("Verify replay on stop", &ScopedOps.replayVerifyOnStop);
+    ImGui::InputText("Replay directory", ScopedOps.replayDirectory, sizeof(ScopedOps.replayDirectory));
+    if (ImGui::Button("Run Project Doctor") && InContext.assets != nullptr)
+    {
+        Fby::Assets::LicenseRegistry ScopedLicenses;
+        Fby::Legal::LegalService ScopedLegal;
+        std::string ScopedError;
+        (void)ScopedLicenses.LoadFromVfs(*InContext.assets, "Licenses", &ScopedError);
+        (void)ScopedLegal.LoadFromVfs(*InContext.assets, "Legal", &ScopedError);
+        Fby::Ops::DoctorOptions ScopedDoctorOptions;
+        ScopedDoctorOptions.CheckAssets = true;
+        ScopedDoctorOptions.CheckLicenses = ScopedOps.doctorCheckLicenses;
+        ScopedDoctorOptions.CheckLegal = ScopedOps.doctorCheckLegal;
+        ScopedDoctorOptions.CheckFonts = ScopedOps.doctorCheckFonts;
+        ScopedDoctorOptions.Strict = ScopedOps.doctorStrict;
+        const Fby::Ops::DoctorReport ScopedReport =
+            Fby::Ops::ProjectDoctor::Run(*InContext.assets, ScopedLicenses, &ScopedLegal, ScopedDoctorOptions);
+        MOpsStatus = std::format("Doctor: {} error(s), {} warning(s)", ScopedReport.Count(Fby::Ops::DoctorSeverity::Error),
+                                ScopedReport.Count(Fby::Ops::DoctorSeverity::Warning));
+        for (const Fby::Ops::DoctorIssue& ScopedIssue : ScopedReport.Issues)
+        {
+            if (ScopedIssue.Severity == Fby::Ops::DoctorSeverity::Error)
+            {
+                MOpsStatus += "\n" + ScopedIssue.Code + ": " + ScopedIssue.Message;
+            }
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Create Incident Bundle") && InContext.assets != nullptr)
+    {
+        Fby::Assets::LicenseRegistry ScopedLicenses;
+        Fby::Legal::LegalService ScopedLegal;
+        std::string ScopedError;
+        (void)ScopedLicenses.LoadFromVfs(*InContext.assets, "Licenses", &ScopedError);
+        (void)ScopedLegal.LoadFromVfs(*InContext.assets, "Legal", &ScopedError);
+        Fby::Ops::IncidentRequest ScopedRequest;
+        ScopedRequest.Directory = ScopedOps.incidentDirectory;
+        ScopedRequest.Reason = "editor";
+        ScopedRequest.BuildInfo = "editor incident bundle";
+        ScopedRequest.SettingsText = Fby::Editor::EncodeProjectToml(MStore->Config());
+        ScopedRequest.Licenses = &ScopedLicenses;
+        ScopedRequest.Legal = &ScopedLegal;
+        ScopedRequest.IncludeLicenses = ScopedOps.incidentIncludeLicenses;
+        if (ScopedOps.incidentArchive)
+        {
+            ScopedRequest.ArchivePath = std::string(ScopedOps.incidentDirectory) + ".zip";
+        }
+        ScopedRequest.MaxLogBytes = ScopedOps.incidentMaxLogBytes;
+        const Fby::Ops::IncidentResult ScopedResult = Fby::Ops::WriteIncidentBundle(ScopedRequest, &ScopedError);
+        MOpsStatus = ScopedResult.Ok ? "Incident bundle: " + ScopedResult.Directory
+                                     : "Incident bundle failed: " + ScopedError;
+    }
+    if (!MOpsStatus.empty())
+    {
+        ImGui::TextWrapped("%s", MOpsStatus.c_str());
+    }
+
     ImGui::SeparatorText("Gameplay Tags");
     ImGui::TextDisabled("One project database. Definitions are global; per-entity values live on the entity.");
-    ImGui::TextDisabled("Ids follow list order and the runtime registry is rebuilt for every Apply.");
+    ImGui::TextDisabled("Tag ids are stable slots; removing a tag leaves a tombstone and never renumbers later ids.");
     GameplayTagDatabase& ScopedTagDb = ScopedValues.gameplayTags;
-    if (MSelectedTag >= static_cast<int>(ScopedTagDb.Count))
+    if (MSelectedTag >= static_cast<int>(ScopedTagDb.Count) ||
+        (MSelectedTag >= 0 && ScopedTagDb.PathAt(static_cast<std::uint32_t>(MSelectedTag)).empty()))
     {
-        MSelectedTag = ScopedTagDb.Count == 0 ? -1 : static_cast<int>(ScopedTagDb.Count - 1);
+        MSelectedTag = -1;
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedTagDb.Count; ++ScopedI)
+        {
+            if (!ScopedTagDb.PathAt(ScopedI).empty())
+            {
+                MSelectedTag = static_cast<int>(ScopedI);
+                break;
+            }
+        }
     }
 
     ImGui::InputTextWithHint("##tag_search", "Filter tags", MTagSearch.data(), MTagSearch.size());
@@ -489,11 +706,15 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
 
     std::array<std::uint16_t, GameplayTagDatabase::kCapacity> ScopedOrder{};
+    std::uint32_t ScopedLiveCount = 0;
     for (std::uint32_t ScopedI = 0; ScopedI < ScopedTagDb.Count; ++ScopedI)
     {
-        ScopedOrder[ScopedI] = static_cast<std::uint16_t>(ScopedI);
+        if (!ScopedTagDb.PathAt(ScopedI).empty())
+        {
+            ScopedOrder[ScopedLiveCount++] = static_cast<std::uint16_t>(ScopedI);
+        }
     }
-    std::sort(ScopedOrder.begin(), ScopedOrder.begin() + ScopedTagDb.Count,
+    std::sort(ScopedOrder.begin(), ScopedOrder.begin() + ScopedLiveCount,
               [&ScopedTagDb](std::uint16_t InA, std::uint16_t InB)
               {
                   return ScopedTagDb.PathAt(InA) < ScopedTagDb.PathAt(InB);
@@ -501,7 +722,7 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 
     ImGui::BeginChild("##gameplay_tag_list", ImVec2(0.0f, 180.0f), true);
     const std::string_view ScopedFilter(MTagSearch.data());
-    for (std::uint32_t ScopedRank = 0; ScopedRank < ScopedTagDb.Count; ++ScopedRank)
+    for (std::uint32_t ScopedRank = 0; ScopedRank < ScopedLiveCount; ++ScopedRank)
     {
         const std::uint32_t ScopedIndex = ScopedOrder[ScopedRank];
         const std::string_view ScopedPath = ScopedTagDb.PathAt(ScopedIndex);
@@ -524,7 +745,8 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
     ImGui::EndChild();
 
-    if (MSelectedTag >= 0 && MSelectedTag < static_cast<int>(ScopedTagDb.Count))
+    if (MSelectedTag >= 0 && MSelectedTag < static_cast<int>(ScopedTagDb.Count) &&
+        !ScopedTagDb.PathAt(static_cast<std::uint32_t>(MSelectedTag)).empty())
     {
         const std::string_view ScopedSelectedPath = ScopedTagDb.PathAt(static_cast<std::uint32_t>(MSelectedTag));
         if (MSelectedTag != MLastSelectedTag)
@@ -614,6 +836,14 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
 
     ImGui::SeparatorText("Physics");
+    constexpr const char* kViewProfileNames[] = {"Default", "Side View", "Top-Down", "Isometric", "Hex Isometric"};
+    int ScopedViewProfile = static_cast<int>(ScopedValues.viewProfile);
+    if (ImGui::Combo("View profile", &ScopedViewProfile, kViewProfileNames, 5))
+    {
+        ScopedValues.viewProfile = static_cast<Fby::ViewProfile>(
+            std::clamp(ScopedViewProfile, 0, static_cast<int>(Fby::ViewProfile::Hex)));
+    }
+    ImGui::TextDisabled("Scenes may override the project profile.");
     constexpr const char* kPhysicsBackendNames[] = {"Auto", "Box2D", "DOD"};
     int ScopedPhysicsBackend = static_cast<int>(ScopedValues.physicsBackend);
     if (ImGui::Combo("Backend", &ScopedPhysicsBackend, kPhysicsBackendNames, 3))
@@ -628,35 +858,77 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::TextDisabled("Auto uses DOD when the budget is 4096 or more and the world has no joints.");
 
     ImGui::SeparatorText("Mixer");
-    ImGui::SliderFloat("Master", &ScopedValues.masterVolume, 0.0f, 2.0f, "%.2f");
-    ImGui::SliderFloat("SFX", &ScopedValues.sfxVolume, 0.0f, 2.0f, "%.2f");
-    ImGui::SliderFloat("Music", &ScopedValues.musicVolume, 0.0f, 2.0f, "%.2f");
+    InitializeAudioSettings(InContext);
+    if (MAudioSettingsReady)
+    {
+        const ProjectSettings& ScopedProjectValues = MStore->Project();
+        (void)MAudioSettings.SetProject("audio.master",
+                                        Fby::Settings::Value::MakeFloat(ScopedProjectValues.masterVolume));
+        (void)MAudioSettings.SetProject("audio.sfx",
+                                        Fby::Settings::Value::MakeFloat(ScopedProjectValues.sfxVolume));
+        (void)MAudioSettings.SetProject("audio.music",
+                                        Fby::Settings::Value::MakeFloat(ScopedProjectValues.musicVolume));
+    }
+    MAudioPanel.DrawInline();
 
     // One profile: the same values reach the game frame, the editor window and
     // the OLED policy, so a project and the person editing it cannot disagree.
     AccessibilityProfile& ScopedProfile = ScopedValues.accessibility;
     ImGui::SeparatorText("Accessibility");
+    if (!MOutputPolicySettingsReady)
+    {
+        Fby::Settings::RegisterOutputPolicySettings(MOutputPolicySettings);
+        (void)MOutputPolicySettings.Freeze();
+        MOutputPolicyPanel.SetRegistry(&MOutputPolicySettings, Fby::Settings::Scope::Project);
+        MOutputPolicySettingsReady = true;
+    }
+    if (!MAccessibilityRegistryReady)
+    {
+        Fby::Editor::RegisterAccessibilitySettings(MAccessibilityRegistry, MStore->Project().accessibility);
+        (void)MAccessibilityRegistry.Freeze();
+        MAccessibilityPanel.SetRegistry(&MAccessibilityRegistry, Fby::Settings::Scope::Project);
+        MAccessibilityRegistryReady = true;
+    }
+    SyncAccessibilitySettings();
+    if (ImGui::CollapsingHeader("Generated accessibility settings"))
+    {
+        MAccessibilityPanel.DrawInline();
+    }
+    if (ImGui::CollapsingHeader("Output policies (safe mode)"))
+    {
+        const auto& ScopedRuntimePolicy = Fby::Output::Policy::Instance();
+        const char* ScopedRenderPolicy = "full";
+        if (ScopedRuntimePolicy.Render() == Fby::Output::RenderPolicy::NoWorld)
+        {
+            ScopedRenderPolicy = "no_world";
+        }
+        else if (ScopedRuntimePolicy.Render() == Fby::Output::RenderPolicy::Disabled)
+        {
+            ScopedRenderPolicy = "disabled";
+        }
+        else if (ScopedRuntimePolicy.Render() == Fby::Output::RenderPolicy::Headless)
+        {
+            ScopedRenderPolicy = "headless";
+        }
+        const char* ScopedAudioPolicy = "full";
+        if (ScopedRuntimePolicy.Audio() == Fby::Output::AudioPolicy::CaptionsOnly)
+        {
+            ScopedAudioPolicy = "captions_only";
+        }
+        else if (ScopedRuntimePolicy.Audio() == Fby::Output::AudioPolicy::Disabled)
+        {
+            ScopedAudioPolicy = "disabled";
+        }
+        (void)MOutputPolicySettings.SetProject("render.policy",
+                                                Fby::Settings::Value::MakeEnum(ScopedRenderPolicy));
+        (void)MOutputPolicySettings.SetProject("audio.policy", Fby::Settings::Value::MakeEnum(ScopedAudioPolicy));
+        MOutputPolicyPanel.DrawInline();
+    }
     bool ScopedBlind = AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityBlindMode);
     if (ImGui::Checkbox("Blind mode (render skip + narrative log)", &ScopedBlind))
     {
         AccessibilitySetFlag(&ScopedProfile.runtime.flags, AccessibilityBlindMode, ScopedBlind);
     }
-    bool ScopedDeaf = AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityDeafMode);
-    if (ImGui::Checkbox("Deaf mode (Master mute + subtitles)", &ScopedDeaf))
-    {
-        AccessibilitySetFlag(&ScopedProfile.runtime.flags, AccessibilityDeafMode, ScopedDeaf);
-    }
-    ImGui::Checkbox("Show subtitles without muting", &ScopedProfile.runtime.showSubtitles);
-    bool ScopedFlash = AccessibilityHasFlag(ScopedProfile.runtime.flags, AccessibilityFlashGuard);
-    if (ImGui::Checkbox("FlashGuard", &ScopedFlash))
-    {
-        AccessibilitySetFlag(&ScopedProfile.runtime.flags, AccessibilityFlashGuard, ScopedFlash);
-    }
-    ImGui::BeginDisabled(!ScopedFlash);
-    ImGui::SliderFloat("Flash threshold", &ScopedProfile.runtime.flashThreshold, 0.02f, 0.45f, "%.3f");
-    ImGui::SliderFloat("Flash residual gain", &ScopedProfile.runtime.flashGain, 0.05f, 1.0f, "%.2f");
-    ImGui::EndDisabled();
-
     const char* ScopedGameVisionNames[] = {"None", "Protanopia", "Deuteranopia", "Tritanopia"};
     int ScopedGameVision =
         static_cast<int>(std::min<std::uint8_t>(static_cast<std::uint8_t>(ScopedProfile.runtime.colorVision), 3));
@@ -777,18 +1049,13 @@ void ProjectSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::TextDisabled("Project policy read by the camera and composite pass; no plugin required.");
 
     ImGui::SeparatorText("OLED safety");
-    ImGui::Checkbox("Minute OLED Pixel Shifter", &ScopedProfile.presentation.oledPixelShift);
-    ImGui::SameLine();
-    ImGui::TextDisabled("(integer 2 px orbit)");
     ImGui::BeginDisabled(!ScopedProfile.presentation.oledPixelShift);
     ImGui::SliderFloat("Shift interval", &ScopedProfile.presentation.oledIntervalSeconds, 15.0f, 300.0f, "%.0f s");
     ImGui::EndDisabled();
 
-    ImGui::SeparatorText("Motion, HUD and contrast");
-    ImGui::SliderFloat("Motion scale", &ScopedProfile.presentation.motionScale, 0.0f, 1.0f, "%.2f");
+    ImGui::SeparatorText("Motion, HUD");
     ImGui::SliderFloat("HUD fade after idle", &ScopedProfile.presentation.hudFadeAfterIdleSeconds, 0.0f, 120.0f,
                        "%.0f s");
-    ImGui::SliderFloat("Minimum contrast ratio", &ScopedProfile.presentation.minimumContrastRatio, 1.0f, 21.0f, "%.1f");
 
     ImGui::SeparatorText("Cooker");
     (void)DrawCookFormatCombo(&ScopedValues.textureFormat);
@@ -1145,11 +1412,25 @@ void ProjectSettingsPanel::Apply(Ecs::SystemContext& InContext)
         return;
     }
     const ProjectSettings& ScopedValues = Values();
+    InitializeAudioSettings(InContext);
+    bool ScopedDynamicBuses = false;
+    if (ScopedValues.audioBusCount > 0 && MAudioSettingsReady)
+    {
+        ScopedDynamicBuses =
+            MAudioSettings.Find("audio.bus." + std::string(ScopedValues.audioBuses[0].id)) != nullptr;
+    }
     if (InContext.audio != nullptr)
     {
-        InContext.audio->SetBusVolume(AudioBus::Master, ScopedValues.masterVolume);
-        InContext.audio->SetBusVolume(AudioBus::Sfx, ScopedValues.sfxVolume);
-        InContext.audio->SetBusVolume(AudioBus::Music, ScopedValues.musicVolume);
+        if (ScopedDynamicBuses)
+        {
+            (void)MAudioSettings.ApplyAll();
+        }
+        else
+        {
+            InContext.audio->SetBusVolume(AudioBus::Master, ScopedValues.masterVolume);
+            InContext.audio->SetBusVolume(AudioBus::Sfx, ScopedValues.sfxVolume);
+            InContext.audio->SetBusVolume(AudioBus::Music, ScopedValues.musicVolume);
+        }
         InContext.audio->SetMasterMuted(
             AccessibilityHasFlag(ScopedValues.accessibility.runtime.flags, AccessibilityDeafMode));
     }
@@ -1273,6 +1554,28 @@ void EditorSettingsPanel::CommitIfFinished(Ecs::SystemContext& InContext)
     }
 }
 
+void EditorSettingsPanel::SyncGeneratedEditorSettings()
+{
+    if (!MGeneratedReady || MStore == nullptr)
+    {
+        return;
+    }
+    const EditorSettings& ScopedValues = MStore->Editor();
+    (void)MGeneratedRegistry.SetProject("editor.ui_scale", Fby::Settings::Value::MakeFloat(ScopedValues.uiScale));
+    (void)MGeneratedRegistry.SetProject("editor.font_panel_body",
+                                        Fby::Settings::Value::MakeFloat(ScopedValues.fontPanelBody));
+    (void)MGeneratedRegistry.SetProject("editor.text_line_spacing",
+                                        Fby::Settings::Value::MakeFloat(ScopedValues.textLineSpacing));
+    (void)MGeneratedRegistry.SetProject("editor.log_max_files",
+                                        Fby::Settings::Value::MakeInt(ScopedValues.logMaxFiles));
+    (void)MGeneratedRegistry.SetProject("editor.undo_memory_mb",
+                                        Fby::Settings::Value::MakeInt(ScopedValues.undoMemoryMB));
+    (void)MGeneratedRegistry.SetProject("editor.frame_rate_limit",
+                                        Fby::Settings::Value::MakeInt(ScopedValues.frameRateLimit));
+    (void)MGeneratedRegistry.SetProject("editor.vsync", Fby::Settings::Value::MakeBool(ScopedValues.vsync));
+    (void)MGeneratedRegistry.SetProject("editor.theme", Fby::Settings::Value::MakeString(ScopedValues.theme));
+}
+
 void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 {
     if (MStore == nullptr)
@@ -1292,6 +1595,18 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         MCommands->CaptureComponent(Fby::kNullEntity, MCodec, ScopedBefore) == CommandStack::Result::Ok;
 
     ImGui::TextDisabled("Environment settings. Persisted to project.femproj and editor.ini.");
+    if (!MGeneratedReady)
+    {
+        Fby::Editor::RegisterEditorSettings(MGeneratedRegistry, ScopedValues);
+        (void)MGeneratedRegistry.Freeze();
+        MGeneratedPanel.SetRegistry(&MGeneratedRegistry, Fby::Settings::Scope::Project);
+        MGeneratedReady = true;
+    }
+    SyncGeneratedEditorSettings();
+    if (ImGui::CollapsingHeader("Generated editor settings"))
+    {
+        MGeneratedPanel.DrawInline();
+    }
     ImGui::Separator();
     if (MStore->Paths().IsValid())
     {
@@ -1349,8 +1664,6 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         }
     }
     ImGui::SeparatorText("Display");
-    ImGui::Checkbox("VSync", &ScopedValues.vsync);
-    ImGui::SliderFloat("UI scale", &ScopedValues.uiScale, 0.75f, 2.0f, "%.2f");
     ImGui::Checkbox("Show grid", &ScopedValues.showGrid);
     const char* ScopedWindowModeNames[] = {"Windowed", "Borderless fullscreen", "Exclusive fullscreen"};
     int ScopedWindowMode = static_cast<int>(std::min<std::uint8_t>(ScopedValues.windowMode, 2));
@@ -1480,29 +1793,17 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
 
     ImGui::SeparatorText("Typography (16 px readable floor)");
     ImGui::SliderFloat("Panel titles", &ScopedValues.fontPanelTitle, 16.0f, 36.0f, "%.0f px");
-    ImGui::SliderFloat("Panel text", &ScopedValues.fontPanelBody, 16.0f, 30.0f, "%.0f px");
     ImGui::SliderFloat("Tooltips", &ScopedValues.fontTooltip, 16.0f, 30.0f, "%.0f px");
     ImGui::SliderFloat("Script node titles", &ScopedValues.fontScriptNodeTitle, 16.0f, 32.0f, "%.0f px");
     ImGui::SliderFloat("Script input pins", &ScopedValues.fontScriptPinInput, 16.0f, 28.0f, "%.0f px");
     ImGui::SliderFloat("Script output pins", &ScopedValues.fontScriptPinOutput, 16.0f, 28.0f, "%.0f px");
     ImGui::SliderFloat("Scene text", &ScopedValues.fontSceneText, 16.0f, 40.0f, "%.0f px");
-    ImGui::SliderFloat("Line spacing", &ScopedValues.textLineSpacing, -4.0f, 24.0f, "%.0f px");
     ImGui::SliderFloat("Letter spacing", &ScopedValues.textLetterSpacing, -2.0f, 12.0f, "%.1f px");
     ImGui::SliderFloat("Word spacing", &ScopedValues.textWordSpacing, -4.0f, 24.0f, "%.1f px");
     ImGui::TextDisabled("Font sizes are logical px; line/letter/word spacing is added per line and glyph. The atlas "
                         "reloads on the next frame when a font size changes.");
 
     ImGui::SeparatorText("Logs");
-    int ScopedLogFiles = static_cast<int>(std::min<std::uint32_t>(ScopedValues.logMaxFiles, 512u));
-    if (ImGui::SliderInt("Files per category", &ScopedLogFiles, 1, 512))
-    {
-        ScopedValues.logMaxFiles = static_cast<std::uint32_t>(std::max(ScopedLogFiles, 1));
-    }
-    if (ImGui::IsItemHovered())
-    {
-        EditorTooltip("The newest files of each log category are kept. Older files are deleted when the sink opens "
-                      "or when this setting is applied.");
-    }
     int ScopedLogLines = static_cast<int>(std::min<std::uint32_t>(ScopedValues.logMaxLinesPerFile, 2000000u));
     if (ImGui::InputInt("Lines per file", &ScopedLogLines, 10000, 50000))
     {
@@ -1573,16 +1874,6 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         EditorTooltip("Descriptors kept for the Content Browser previews. Lowering the limit frees the old "
                       "descriptors on Apply; disabling the cache also stops new previews.");
     }
-    int ScopedUndoMemory = static_cast<int>(ScopedValues.undoMemoryMB);
-    if (ImGui::SliderInt("Undo memory (MB)", &ScopedUndoMemory, 1, 256))
-    {
-        ScopedValues.undoMemoryMB = static_cast<std::uint32_t>(std::clamp(ScopedUndoMemory, 1, 256));
-    }
-    if (ImGui::IsItemHovered())
-    {
-        EditorTooltip("Arena reserved for compressed undo deltas. Applying a smaller value reallocates it and "
-                      "clears the undo history.");
-    }
     int ScopedUndoCommands = static_cast<int>(ScopedValues.undoCommandLimit);
     if (ImGui::SliderInt("Undo commands", &ScopedUndoCommands, 16, 512))
     {
@@ -1613,16 +1904,6 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     }
     ImGui::SameLine();
     ImGui::TextDisabled("Drops the undo stack and all cached previews now.");
-    int ScopedFrameLimit = static_cast<int>(ScopedValues.frameRateLimit);
-    if (ImGui::SliderInt("Frame rate limit", &ScopedFrameLimit, 0, 240, ScopedFrameLimit == 0 ? "unlimited" : "%d FPS"))
-    {
-        ScopedValues.frameRateLimit = static_cast<std::uint16_t>(std::clamp(ScopedFrameLimit, 0, 240));
-    }
-    if (ImGui::IsItemHovered())
-    {
-        EditorTooltip("0 runs unthrottled. A limit sleeps the main loop and frees CPU/GPU time while the "
-                      "editor is idle; it does not change the authored frame rate.");
-    }
     ImGui::Checkbox("Throttle when unfocused", &ScopedValues.pauseWhenUnfocused);
     if (ImGui::IsItemHovered())
     {
@@ -1636,14 +1917,6 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::Checkbox("ImGui demo window", &ScopedValues.showDemoWindow);
 
     ImGui::SeparatorText("Editor theme and symbol colours");
-    const char* ScopedThemeIds[] = {"graphite", "very-dark", "midnight", "forest", "plum", "amber", "crimson"};
-    const char* ScopedThemeNames[] = {"Graphite", "Very dark (not black)", "Midnight RGB", "Forest RGB", "Plum RGB",
-                                      "Amber", "Crimson"};
-    int ScopedTheme = static_cast<int>(ParseEditorTheme(ScopedValues.theme));
-    if (ImGui::Combo("Panel theme", &ScopedTheme, ScopedThemeNames, 7))
-    {
-        CopyProjectField(ScopedValues.theme, sizeof(ScopedValues.theme), ScopedThemeIds[ScopedTheme]);
-    }
     EditSymbolColor("Text colour", &ScopedValues.textColor);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(160.0f);
@@ -1665,19 +1938,35 @@ void EditorSettingsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     {
         SeedSymbolColors(ScopedValues, CurrentEditorPalette());
     }
+    if (ImGui::Button("Accessible symbol preset (Okabe-Ito)"))
+    {
+        ScopedValues.customSymbolColors = true;
+        ScopedValues.symbolColors.AxisX = 0x0072B2;
+        ScopedValues.symbolColors.AxisY = 0xE69F00;
+        ScopedValues.symbolColors.Grid = 0x555555;
+        ScopedValues.symbolColors.Play = 0x009E73;
+        ScopedValues.symbolColors.Pause = 0xF0E442;
+        ScopedValues.symbolColors.Step = 0xCC79A7;
+        ScopedValues.symbolColors.Stop = 0xD55E00;
+        ScopedValues.symbolColors.Rotate = 0x56B4E9;
+        ScopedValues.symbolColors.Multiplayer = 0xFFFFFF;
+        ScopedValues.symbolColors.Plot = {0x0072B2, 0xE69F00, 0x009E73, 0xCC79A7};
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Deuteranopia/protanopia-safe luminance and hue");
     ImGui::BeginDisabled(!ScopedValues.customSymbolColors);
     EditSymbolColor("Axis X", &ScopedValues.symbolColors.AxisX);
     ImGui::SameLine();
     EditSymbolColor("Axis Y", &ScopedValues.symbolColors.AxisY);
     ImGui::SameLine();
     EditSymbolColor("Grid", &ScopedValues.symbolColors.Grid);
-    EditSymbolColor("Play", &ScopedValues.symbolColors.Play);
+    EditSymbolColor("Play triangle", &ScopedValues.symbolColors.Play);
     ImGui::SameLine();
-    EditSymbolColor("Pause", &ScopedValues.symbolColors.Pause);
+    EditSymbolColor("Pause bars", &ScopedValues.symbolColors.Pause);
     ImGui::SameLine();
     EditSymbolColor("Step", &ScopedValues.symbolColors.Step);
     ImGui::SameLine();
-    EditSymbolColor("Stop", &ScopedValues.symbolColors.Stop);
+    EditSymbolColor("Stop square", &ScopedValues.symbolColors.Stop);
     EditSymbolColor("Rotate", &ScopedValues.symbolColors.Rotate);
     ImGui::SameLine();
     EditSymbolColor("Multiplayer", &ScopedValues.symbolColors.Multiplayer);

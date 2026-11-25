@@ -151,10 +151,10 @@ struct SystemContext : CoreServices,
     }
 
     [[nodiscard]] CoreSystemView CoreView() noexcept;
-    [[nodiscard]] ConstCoreSystemView ConstCoreView() noexcept;
+    [[nodiscard]] ConstCoreSystemView ConstCoreView() const noexcept;
     [[nodiscard]] PhysicsSystemView PhysicsView() noexcept;
     [[nodiscard]] RenderSystemView RenderView() noexcept;
-    [[nodiscard]] ConstRenderSystemView ConstRenderView() noexcept;
+    [[nodiscard]] ConstRenderSystemView ConstRenderView() const noexcept;
     [[nodiscard]] GameplaySystemView GameplayView() noexcept;
     [[nodiscard]] AudioSystemView AudioView() noexcept;
     [[nodiscard]] UiSystemView UiView() noexcept;
@@ -189,11 +189,17 @@ template <CoreSystemFunction InFunction> [[nodiscard]] SystemFunction BindCoreSy
 // Read-only core view: the registry is const, so every component view yields
 // const references. A system that only inspects the world takes this view and
 // cannot create, destroy or write through the ECS.
+struct ConstCoreServices
+{
+    const CommandBuffer* commands = nullptr;
+    const FrameArena* frameArena = nullptr;
+};
+
 struct ConstCoreSystemView
 {
     const Registry& registry;
     JobSystem& jobs;
-    const CoreServices& core;
+    ConstCoreServices core;
     float dt = 0.0f;
     std::uint64_t frameIndex = 0;
     float interpolationAlpha = 1.0f;
@@ -373,9 +379,9 @@ inline CoreSystemView SystemContext::CoreView() noexcept
     return {registry, jobs, *this, dt, frameIndex, interpolationAlpha};
 }
 
-inline ConstCoreSystemView SystemContext::ConstCoreView() noexcept
+inline ConstCoreSystemView SystemContext::ConstCoreView() const noexcept
 {
-    return {registry, jobs, *this, dt, frameIndex, interpolationAlpha};
+    return {registry, jobs, ConstCoreServices{commands, frameArena}, dt, frameIndex, interpolationAlpha};
 }
 
 inline PhysicsSystemView SystemContext::PhysicsView() noexcept
@@ -388,7 +394,7 @@ inline RenderSystemView SystemContext::RenderView() noexcept
     return {registry, jobs, *this, *this, dt, interpolationAlpha};
 }
 
-inline ConstRenderSystemView SystemContext::ConstRenderView() noexcept
+inline ConstRenderSystemView SystemContext::ConstRenderView() const noexcept
 {
     return {registry, jobs, *this, *this, dt, interpolationAlpha};
 }

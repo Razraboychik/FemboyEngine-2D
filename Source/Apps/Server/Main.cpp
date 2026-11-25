@@ -7,6 +7,7 @@
 #include "Engine/Network/Session.hpp"
 #include "Engine/Network/Transport.hpp"
 
+#include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -16,6 +17,23 @@
 
 namespace
 {
+[[nodiscard]] bool ParseUnsigned(const char* InText, std::uint32_t InMaximum, std::uint32_t* OutValue)
+{
+    if (InText == nullptr || OutValue == nullptr)
+    {
+        return false;
+    }
+    const char* ScopedEnd = InText + std::strlen(InText);
+    std::uint32_t ScopedValue = 0;
+    const auto ScopedResult = std::from_chars(InText, ScopedEnd, ScopedValue);
+    if (ScopedResult.ec != std::errc{} || ScopedResult.ptr != ScopedEnd || ScopedValue > InMaximum)
+    {
+        return false;
+    }
+    *OutValue = ScopedValue;
+    return true;
+}
+
 struct Options
 {
     std::uint16_t Port = 27015;
@@ -52,15 +70,26 @@ void PrintUsage()
         const char* ScopedValue = InArgs[++ScopedIndex];
         if (std::strcmp(ScopedArg, "--port") == 0)
         {
-            OutOptions->Port = static_cast<std::uint16_t>(std::atoi(ScopedValue));
+            std::uint32_t ScopedPort = 0;
+            if (!ParseUnsigned(ScopedValue, 65535u, &ScopedPort))
+            {
+                return false;
+            }
+            OutOptions->Port = static_cast<std::uint16_t>(ScopedPort);
         }
         else if (std::strcmp(ScopedArg, "--tick-rate") == 0)
         {
-            OutOptions->TickRate = static_cast<std::uint32_t>(std::atoi(ScopedValue));
+            if (!ParseUnsigned(ScopedValue, 1000000u, &OutOptions->TickRate))
+            {
+                return false;
+            }
         }
         else if (std::strcmp(ScopedArg, "--frames") == 0)
         {
-            OutOptions->Frames = static_cast<std::uint32_t>(std::atoi(ScopedValue));
+            if (!ParseUnsigned(ScopedValue, 0xFFFFFFFFu, &OutOptions->Frames))
+            {
+                return false;
+            }
         }
         else if (std::strcmp(ScopedArg, "--name") == 0)
         {

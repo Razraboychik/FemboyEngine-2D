@@ -14,6 +14,11 @@
 
 namespace Fby
 {
+namespace Ecs
+{
+class SnapshotSchema;
+}
+
 
 inline constexpr std::uint32_t kMaxStateTreeDepth = 4;
 inline constexpr std::uint32_t kMaxStateTreeNodes = 64;
@@ -208,10 +213,12 @@ struct StateTreeComponent
     // Timing / diagnostics
     float StateTime = 0.0f;
     std::uint32_t Ticks = 0;
+    std::uint32_t LifetimeTicks = 0;
     std::uint32_t TransitionsFired = 0;
     std::uint32_t TreeId = 0;
     std::uint32_t CurrentLeaf = kStateTreeNone;
     std::uint32_t ActiveDepth = 0;
+    std::uint32_t InitializedTreeId = 0;
     bool Initialized = false;
     bool Active = true;
 };
@@ -219,6 +226,9 @@ struct StateTreeComponent
 static_assert(std::is_trivially_copyable_v<StateTreeComponent>);
 static_assert(std::is_standard_layout_v<StateTreeComponent>);
 static_assert(sizeof(StateTreeComponent::ActiveStates) == kMaxStateTreeDepth * sizeof(std::uint16_t));
+
+// Registers a blob codec so the active path, floats and timers survive snapshots.
+[[nodiscard]] bool RegisterStateTreeSnapshotCodec(Ecs::SnapshotSchema& InSchema);
 
 // Raises one or more external trigger bits (gameplay event, perception system).
 constexpr void StateTreeRaiseTrigger(StateTreeComponent& InState, std::uint64_t InMask) noexcept
@@ -279,11 +289,15 @@ void RegisterStateTreeSystem(Ecs::SystemGraph& InGraph, StateTreeSystem& InSyste
 
 // Mirror registration
 FBY_REFLECT_COMPONENT(Fby::StateTreeComponent, "StateTreeComponent",
+                      FBY_FIELD(Fby::StateTreeComponent, ActiveStates, UInt16Array),
+                      FBY_FIELD(Fby::StateTreeComponent, Floats, FloatArray),
                       FBY_FIELD(Fby::StateTreeComponent, TreeId, UInt32),
                       FBY_FIELD(Fby::StateTreeComponent, CurrentLeaf, UInt32),
                       FBY_FIELD(Fby::StateTreeComponent, ActiveDepth, UInt32),
+                      FBY_FIELD(Fby::StateTreeComponent, InitializedTreeId, UInt32),
                       FBY_FIELD(Fby::StateTreeComponent, StateTime, Float),
                       FBY_FIELD(Fby::StateTreeComponent, Ticks, UInt32),
+                      FBY_FIELD(Fby::StateTreeComponent, LifetimeTicks, UInt32),
                       FBY_FIELD(Fby::StateTreeComponent, TransitionsFired, UInt32),
                       FBY_FIELD(Fby::StateTreeComponent, Triggers, UInt64),
                       FBY_FIELD(Fby::StateTreeComponent, Target, Entity),

@@ -127,7 +127,7 @@ bool WinRtTts::Initialize() noexcept
     }
     try
     {
-        auto* ScopedImpl = new WinRtTtsImpl();
+        auto* ScopedImpl = new (std::nothrow) WinRtTtsImpl();
         ScopedImpl->Synthesizer = winrt::Windows::Media::SpeechSynthesis::SpeechSynthesizer();
         ScopedImpl->Player = winrt::Windows::Media::Playback::MediaPlayer();
         ScopedImpl->Player.AutoPlay(false);

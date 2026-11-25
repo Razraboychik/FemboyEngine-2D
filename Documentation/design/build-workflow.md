@@ -14,7 +14,7 @@ Disable VS Code's built-in IntelliSense: the project uses clangd and
 {
   "C_Cpp.intelliSenseEngine": "disabled",
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/build-audit"
+    "--compile-commands-dir=${workspaceFolder}/build/audit"
   ]
 }
 ```
@@ -32,7 +32,7 @@ Available presets:
 - `dev-clang` — Debug, clang++, tests;
 - `release-clang` — RelWithDebInfo;
 - `dev-clangcl` — clang-cl;
-- `audit-clang` — the existing `build-audit` tree;
+- `audit-clang` — the existing `build/audit` tree;
 - `msvc-dev` — Debug, MSVC `cl.exe`, for a Developer Prompt;
 - `windows-release` — clang-cl, Vulkan, editor and tests;
 - `linux-release` — clang++, Vulkan, editor and tests;
@@ -119,7 +119,7 @@ all three systems. See
 
 ## Choosing a compiler
 
-The 0.5.0 line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
+The 0.6.0 line supports Clang, AppleClang, GCC and MSVC. clang-cl is the
 reference Windows toolchain and the release gate; CI also runs clang, GCC,
 AppleClang and MSVC. Every compiler is a supported alternative, never an
 obligation. The minimum versions are the oldest supported generations, not an
@@ -187,14 +187,14 @@ never the reference gate. From a Developer Prompt, `cmake --preset msvc-dev`
 uses the same configuration:
 
 ```bat
-cmake -S . -B build-msvc -G Ninja ^
+cmake -S . -B build/msvc -G Ninja ^
       -DCMAKE_C_COMPILER=cl ^
       -DCMAKE_CXX_COMPILER=cl ^
       -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
       -DFBY_BUILD_TESTS=ON ^
       -DFBY_WITH_RNNOISE=OFF
-cmake --build build-msvc --parallel 8
-ctest --test-dir build-msvc --output-on-failure
+cmake --build build/msvc --parallel 8
+ctest --test-dir build/msvc --output-on-failure
 ```
 
 RNNoise stays disabled on MSVC because its vendored C sources use variable-length
@@ -248,7 +248,7 @@ cmake --build build-clang --parallel 8
 
 ## clangd
 
-`.clangd` points at `build-audit`. If another directory is used, change
+`.clangd` points at `build/audit`. If another directory is used, change
 `CompilationDatabase` or pass `--compile-commands-dir`.
 
 Windows system headers may require:

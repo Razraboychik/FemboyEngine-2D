@@ -22,20 +22,24 @@ void ScriptHeap::Reset() noexcept
 
 const ScriptHeap::Object* ScriptHeap::Find(std::uint32_t InHandle, ObjectKind InKind) const noexcept
 {
-    if (InHandle >= MObjectCount || MObjects[InHandle].Kind != InKind)
+    const std::uint32_t ScopedIndex = InHandle & kHandleIndexMask;
+    if (ScopedIndex >= MObjectCount || (InHandle >> kHandleIndexBits) != MGenerations[ScopedIndex] ||
+        MObjects[ScopedIndex].Kind != InKind)
     {
         return nullptr;
     }
-    return &MObjects[InHandle];
+    return &MObjects[ScopedIndex];
 }
 
 ScriptHeap::Object* ScriptHeap::FindMutable(std::uint32_t InHandle, ObjectKind InKind) noexcept
 {
-    if (InHandle >= MObjectCount || MObjects[InHandle].Kind != InKind)
+    const std::uint32_t ScopedIndex = InHandle & kHandleIndexMask;
+    if (ScopedIndex >= MObjectCount || (InHandle >> kHandleIndexBits) != MGenerations[ScopedIndex] ||
+        MObjects[ScopedIndex].Kind != InKind)
     {
         return nullptr;
     }
-    return &MObjects[InHandle];
+    return &MObjects[ScopedIndex];
 }
 
 std::uint32_t ScriptHeap::InternString(std::string_view InText) noexcept
@@ -43,6 +47,16 @@ std::uint32_t ScriptHeap::InternString(std::string_view InText) noexcept
     if (InText.size() > kMaxStringBytes - MStringUsed || MObjectCount >= kMaxObjects)
     {
         return kInvalidHandle;
+    }
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < MObjectCount; ++ScopedIndex)
+    {
+        const Object& ScopedExisting = MObjects[ScopedIndex];
+        if (ScopedExisting.Kind == ObjectKind::String && ScopedExisting.Length == InText.size() &&
+            (InText.empty() ||
+             std::memcmp(MStringBytes.data() + ScopedExisting.First, InText.data(), InText.size()) == 0))
+        {
+            return EncodeHandle(ScopedIndex, MGenerations[ScopedIndex]);
+        }
     }
     Object ScopedObject;
     ScopedObject.Kind = ObjectKind::String;
@@ -54,8 +68,11 @@ std::uint32_t ScriptHeap::InternString(std::string_view InText) noexcept
         std::memcpy(MStringBytes.data() + MStringUsed, InText.data(), InText.size());
     }
     MStringUsed += static_cast<std::uint32_t>(InText.size());
-    MObjects[MObjectCount] = ScopedObject;
-    return MObjectCount++;
+    const std::uint32_t ScopedNewIndex = MObjectCount;
+    ++MGenerations[ScopedNewIndex];
+    MObjects[ScopedNewIndex] = ScopedObject;
+    ++MObjectCount;
+    return EncodeHandle(ScopedNewIndex, MGenerations[ScopedNewIndex]);
 }
 
 bool ScriptHeap::StringView(std::uint32_t InHandle, std::string_view* OutText) const noexcept
@@ -124,8 +141,11 @@ std::uint32_t ScriptHeap::NewArray() noexcept
         MElements[MElementUsed + ScopedI] = {};
     }
     MElementUsed += kInitialArrayCapacity;
-    MObjects[MObjectCount] = ScopedObject;
-    return MObjectCount++;
+    const std::uint32_t ScopedNewIndex = MObjectCount;
+    ++MGenerations[ScopedNewIndex];
+    MObjects[ScopedNewIndex] = ScopedObject;
+    ++MObjectCount;
+    return EncodeHandle(ScopedNewIndex, MGenerations[ScopedNewIndex]);
 }
 
 bool ScriptHeap::GrowArray(Object& InObject) noexcept
@@ -222,8 +242,11 @@ std::uint32_t ScriptHeap::NewMap() noexcept
         MMapEntries[MMapEntryUsed + ScopedI] = {};
     }
     MMapEntryUsed += kInitialMapCapacity;
-    MObjects[MObjectCount] = ScopedObject;
-    return MObjectCount++;
+    const std::uint32_t ScopedNewIndex = MObjectCount;
+    ++MGenerations[ScopedNewIndex];
+    MObjects[ScopedNewIndex] = ScopedObject;
+    ++MObjectCount;
+    return EncodeHandle(ScopedNewIndex, MGenerations[ScopedNewIndex]);
 }
 
 bool ScriptHeap::GrowMap(Object& InObject) noexcept

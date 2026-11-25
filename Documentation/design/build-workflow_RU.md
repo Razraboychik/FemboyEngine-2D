@@ -14,7 +14,7 @@
 {
   "C_Cpp.intelliSenseEngine": "disabled",
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/build-audit"
+    "--compile-commands-dir=${workspaceFolder}/build/audit"
   ]
 }
 ```
@@ -32,7 +32,7 @@ ctest --preset dev-clang
 - `dev-clang` — Debug, clang++, tests;
 - `release-clang` — RelWithDebInfo;
 - `dev-clangcl` — clang-cl;
-- `audit-clang` — существующий `build-audit`;
+- `audit-clang` — существующий `build/audit`;
 - `msvc-dev` — Debug, MSVC `cl.exe`, из Developer Prompt;
 - `windows-release` — clang-cl, Vulkan, редактор и тесты;
 - `linux-release` — clang++, Vulkan, редактор и тесты;
@@ -128,7 +128,7 @@ GPU без изменения проекта.
 
 ## Выбор компилятора
 
-0.5.0 поддерживает Clang, AppleClang, GCC и MSVC. clang-cl — эталонный
+0.6.0-alpha.1 поддерживает Clang, AppleClang, GCC и MSVC. clang-cl — эталонный
 Windows-тулчейн и release gate; CI также прогоняет clang, GCC, AppleClang и
 MSVC. Любой компилятор — поддерживаемая альтернатива, но никогда не обязанность.
 Минимальные версии — самый старый поддерживаемый выпуск, а не верхняя граница;
@@ -197,14 +197,14 @@ SSE2/NEON-редукция со скалярным хвостом.
 использует ту же конфигурацию:
 
 ```bat
-cmake -S . -B build-msvc -G Ninja ^
+cmake -S . -B build/msvc -G Ninja ^
       -DCMAKE_C_COMPILER=cl ^
       -DCMAKE_CXX_COMPILER=cl ^
       -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
       -DFBY_BUILD_TESTS=ON ^
       -DFBY_WITH_RNNOISE=OFF
-cmake --build build-msvc --parallel 8
-ctest --test-dir build-msvc --output-on-failure
+cmake --build build/msvc --parallel 8
+ctest --test-dir build/msvc --output-on-failure
 ```
 
 RNNoise отключён для MSVC: его C-исходники используют variable-length arrays,
@@ -259,7 +259,7 @@ cmake --build build-clang --parallel 8
 
 ## clangd
 
-`.clangd` указывает на `build-audit`. Если используется другой каталог, поменять
+`.clangd` указывает на `build/audit`. Если используется другой каталог, поменять
 `CompilationDatabase` или передать `--compile-commands-dir`.
 
 Для системных заголовков Windows может понадобиться:

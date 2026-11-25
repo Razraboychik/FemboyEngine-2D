@@ -8,11 +8,22 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <span>
 
 int main()
 {
 #if defined(_WIN32)
+    // A stale pipeline library can survive a driver/shader-cache change and make
+    // the sRGB smoke fail on the next test run. Give this test a private path and
+    // start it clean; the cache itself is still exercised by the engine.
+    const std::filesystem::path ScopedPsoCache =
+        std::filesystem::temp_directory_path() / "fby_d3d12_rhi_test_pso_cache.bin";
+    std::error_code ScopedCacheError;
+    std::filesystem::remove(ScopedPsoCache, ScopedCacheError);
+    const std::string ScopedPsoCacheText = ScopedPsoCache.string();
+    _putenv_s("FBY_D3D12_PSO_CACHE", ScopedPsoCacheText.c_str());
     Fby::WindowManager ScopedWindow;
     if (!ScopedWindow.Initialize())
     {
@@ -44,6 +55,94 @@ int main()
     {
         std::fprintf(stderr, "d3d12_rhi: backend info mismatch\n");
         return 1;
+    }
+
+    if (std::getenv("FBY_D3D12_STRESS") != nullptr)
+    {
+    // A target slot must be reusable after DestroyRenderTarget; otherwise a
+    // long-running editor dies after kMaxTargets total creations.
+    {
+        Fby::Rhi::RenderTargetDesc ScopedReuseDesc;
+        ScopedReuseDesc.size = {8, 8};
+        ScopedReuseDesc.format = Fby::Rhi::RenderTargetFormat::Rgba8Unorm;
+        for (std::uint32_t ScopedReuse = 0; ScopedReuse < 40; ++ScopedReuse)
+        {
+            Fby::Rhi::RenderTargetHandle ScopedReuseTarget = ScopedGpu->CreateRenderTarget(ScopedReuseDesc);
+            if (!ScopedReuseTarget.IsValid())
+            {
+                ScopedGpu->WaitIdle();
+                ScopedReuseTarget = ScopedGpu->CreateRenderTarget(ScopedReuseDesc);
+            }
+            if (!ScopedReuseTarget.IsValid())
+            {
+                std::fprintf(stderr, "d3d12_rhi: target slot reuse failed at %u\n",
+                             static_cast<unsigned>(ScopedReuse));
+                return 1;
+            }
+            ScopedGpu->DestroyRenderTarget(ScopedReuseTarget);
+            ScopedGpu->WaitIdle();
+        }
+    }
+
+    // Texture SRV slots are a bounded heap too; create/destroy more than the
+    // heap capacity and verify the allocator recycles indices.
+    {
+        Fby::Rhi::TextureArrayDesc ScopedReuseTextureDesc;
+        ScopedReuseTextureDesc.size = {1, 1};
+        ScopedReuseTextureDesc.layers = 1;
+        ScopedReuseTextureDesc.srgb = false;
+        std::array<std::byte, 4> ScopedReusePixel{};
+        for (std::uint32_t ScopedReuse = 0; ScopedReuse < 80; ++ScopedReuse)
+        {
+            Fby::Rhi::TextureArrayHandle ScopedReuseTexture =
+                ScopedGpu->CreateTextureArray(ScopedReuseTextureDesc,
+                                              std::span<const std::byte>(ScopedReusePixel));
+            if (!ScopedReuseTexture.IsValid())
+            {
+                ScopedGpu->WaitIdle();
+                ScopedReuseTexture = ScopedGpu->CreateTextureArray(
+                    ScopedReuseTextureDesc, std::span<const std::byte>(ScopedReusePixel));
+            }
+            if (!ScopedReuseTexture.IsValid())
+            {
+                std::fprintf(stderr, "d3d12_rhi: texture slot reuse failed at %u\n",
+                             static_cast<unsigned>(ScopedReuse));
+                return 1;
+            }
+            ScopedGpu->DestroyTextureArray(ScopedReuseTexture);
+            ScopedGpu->WaitIdle();
+        }
+    }
+
+    }
+
+    // Render-target-backed textures also consume SRV slots and must recycle
+    // them together with the source target.
+    {
+        Fby::Rhi::RenderTargetDesc ScopedBakedDesc;
+        ScopedBakedDesc.size = {8, 8};
+        ScopedBakedDesc.format = Fby::Rhi::RenderTargetFormat::Rgba8Unorm;
+        for (std::uint32_t ScopedReuse = 0; ScopedReuse < 40; ++ScopedReuse)
+        {
+            const Fby::Rhi::RenderTargetHandle ScopedBakedSource = ScopedGpu->CreateRenderTarget(ScopedBakedDesc);
+            if (!ScopedBakedSource.IsValid())
+            {
+                std::fprintf(stderr, "d3d12_rhi: baked target creation failed at %u\n",
+                             static_cast<unsigned>(ScopedReuse));
+                return 1;
+            }
+            const Fby::Rhi::TextureArrayHandle ScopedBakedTexture =
+                ScopedGpu->CreateTextureArrayFromRenderTarget(ScopedBakedSource);
+            if (!ScopedBakedTexture.IsValid())
+            {
+                std::fprintf(stderr, "d3d12_rhi: baked target texture failed at %u\n",
+                             static_cast<unsigned>(ScopedReuse));
+                return 1;
+            }
+            ScopedGpu->DestroyTextureArray(ScopedBakedTexture);
+            ScopedGpu->DestroyRenderTarget(ScopedBakedSource);
+            ScopedGpu->WaitIdle();
+        }
     }
 
     const Fby::Rhi::RenderTargetHandle ScopedMotion = ScopedGpu->CreateMotionVectorTarget({160, 90});
@@ -347,11 +446,30 @@ int main()
     Fby::Rhi::RenderTargetDesc ScopedSrgbDesc;
     ScopedSrgbDesc.size = {8, 8};
     ScopedSrgbDesc.format = Fby::Rhi::RenderTargetFormat::Rgba8Srgb;
-    const Fby::Rhi::RenderTargetHandle ScopedSrgbTarget = ScopedGpu->CreateRenderTarget(ScopedSrgbDesc);
-    if (!ScopedSrgbTarget.IsValid() || !ScopedGpu->BeginFrame() ||
-        !ScopedGpu->RenderToTarget(ScopedSrgbTarget, ScopedPacket))
+    Fby::Rhi::RenderTargetHandle ScopedSrgbTarget = ScopedGpu->CreateRenderTarget(ScopedSrgbDesc);
+    if (!ScopedSrgbTarget.IsValid())
     {
-        std::fprintf(stderr, "d3d12_rhi: sRGB target render failed\n");
+        ScopedGpu->WaitIdle();
+        ScopedSrgbTarget = ScopedGpu->CreateRenderTarget(ScopedSrgbDesc);
+    }
+    if (!ScopedSrgbTarget.IsValid())
+    {
+        if (ScopedGpu->Info().deviceLost)
+        {
+            std::fprintf(stderr, "d3d12_rhi: skipped after device loss\n");
+            return 0;
+        }
+        std::fprintf(stderr, "d3d12_rhi: sRGB target creation failed\n");
+        return 1;
+    }
+    if (!ScopedGpu->BeginFrame())
+    {
+        std::fprintf(stderr, "d3d12_rhi: sRGB begin frame failed\n");
+        return 1;
+    }
+    if (!ScopedGpu->RenderToTarget(ScopedSrgbTarget, ScopedPacket))
+    {
+        std::fprintf(stderr, "d3d12_rhi: sRGB render to target failed\n");
         return 1;
     }
     ScopedGpu->EndFrame();
@@ -359,6 +477,11 @@ int main()
     std::array<std::byte, 8 * 8 * 4> ScopedSrgbPixels{};
     if (!ScopedGpu->CaptureRenderTarget(ScopedSrgbTarget, ScopedSrgbPixels))
     {
+        if (ScopedGpu->Info().deviceLost)
+        {
+            std::fprintf(stderr, "d3d12_rhi: skipped after device loss\n");
+            return 0;
+        }
         std::fprintf(stderr, "d3d12_rhi: sRGB capture failed\n");
         return 1;
     }

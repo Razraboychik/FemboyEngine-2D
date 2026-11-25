@@ -181,21 +181,18 @@ inline constexpr std::array<BoneColumn, 3> kBoneColumns = MakeBoneColumns();
         }
         if (ScopedHasChildren)
         {
+            for (std::uint16_t ScopedChild = 0; ScopedChild < InSkeleton.BoneCount; ++ScopedChild)
+            {
+                if (InSkeleton.ParentIndices[ScopedChild] == static_cast<std::int16_t>(InBone))
+                {
+                    ScopedEdited |= DrawBoneNode(InRegistry, InEntity, InSkeleton, InState, ScopedChild);
+                }
+            }
             ImGui::TreePop();
         }
     }
     ImGui::PopID();
 
-    if (ScopedHasChildren)
-    {
-        for (std::uint16_t ScopedChild = 0; ScopedChild < InSkeleton.BoneCount; ++ScopedChild)
-        {
-            if (InSkeleton.ParentIndices[ScopedChild] == static_cast<std::int16_t>(InBone))
-            {
-                ScopedEdited |= DrawBoneNode(InRegistry, InEntity, InSkeleton, InState, ScopedChild);
-            }
-        }
-    }
     return ScopedEdited;
 }
 
@@ -216,9 +213,9 @@ void RefreshStateForEntity(Ecs::Registry& InRegistry, Assets::AssetDatabase* InA
     InState.path.clear();
     if (const auto* ScopedRef = InRegistry.try_get<SkeletonAssetRef>(InEntity); ScopedRef != nullptr)
     {
-        if (ScopedRef->Asset.IsValid() && InAssetDb != nullptr)
+        if (ScopedRef->Asset != 0 && InAssetDb != nullptr)
         {
-            InState.path.assign(InAssetDb->SourcePath(ScopedRef->Asset));
+            InState.path.assign(InAssetDb->SourcePath(InAssetDb->FindHandleByGuid(ScopedRef->Asset)));
         }
         InState.contentHash = ScopedRef->ContentHash;
     }
@@ -300,7 +297,10 @@ void DrawSkeletonAssetInspector(Ecs::SystemContext& InContext, Entity InEntity, 
             }
             auto& ScopedRef = InContext.registry.get_or_emplace<SkeletonAssetRef>(InEntity);
             const AssetId ScopedSkeletonId = InContext.assetDb->RegisterPath(InState.path, AssetKind::Skeleton);
-            ScopedRef.Asset = InContext.assetDb->EnsureMeta(ScopedSkeletonId, AssetKind::Skeleton, InState.path);
+            const Assets::AssetHandle ScopedHandle =
+                InContext.assetDb->EnsureMeta(ScopedSkeletonId, AssetKind::Skeleton, InState.path);
+            const Assets::AssetMeta* ScopedMeta = InContext.assetDb->Meta(ScopedHandle);
+            ScopedRef.Asset = ScopedMeta != nullptr ? ScopedMeta->guid : 0;
             ScopedRef.ContentHash = static_cast<std::uint32_t>(ScopedHash);
             SetStatus(InState, "loaded '" + InState.path + "'");
         }
@@ -341,7 +341,10 @@ void DrawSkeletonAssetInspector(Ecs::SystemContext& InContext, Entity InEntity, 
             InState.contentHash = ScopedHash;
             auto& ScopedRef = InContext.registry.get_or_emplace<SkeletonAssetRef>(InEntity);
             const AssetId ScopedSkeletonId = InContext.assetDb->RegisterPath(InState.path, AssetKind::Skeleton);
-            ScopedRef.Asset = InContext.assetDb->EnsureMeta(ScopedSkeletonId, AssetKind::Skeleton, InState.path);
+            const Assets::AssetHandle ScopedHandle =
+                InContext.assetDb->EnsureMeta(ScopedSkeletonId, AssetKind::Skeleton, InState.path);
+            const Assets::AssetMeta* ScopedMeta = InContext.assetDb->Meta(ScopedHandle);
+            ScopedRef.Asset = ScopedMeta != nullptr ? ScopedMeta->guid : 0;
             ScopedRef.ContentHash = static_cast<std::uint32_t>(ScopedHash);
             SetStatus(InState, "saved '" + InState.path + "'");
         }

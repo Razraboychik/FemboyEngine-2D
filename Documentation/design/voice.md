@@ -1,6 +1,6 @@
 # Voice: capture, DSP, AEC and networking
 
-Status: 0.5.0 tree. This is the per-subsystem voice document; the forward work
+Status: 0.6.0 tree. This is the per-subsystem voice document; the forward work
 lives in the project issue tracker, and the security status of the underlying
 transport lives in [security.md](security.md).
 

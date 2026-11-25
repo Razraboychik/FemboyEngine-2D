@@ -381,6 +381,7 @@ void SceneDiagnosticsPanel::DrawThreadPlot()
 
 void SceneDiagnosticsPanel::DrawMemoryPlot()
 {
+    ImGui::TextDisabled("Editor budgets: PIE 256 MiB | undo 16 MiB | thumbnails 512");
     if (MHistoryCount == 0)
     {
         return;

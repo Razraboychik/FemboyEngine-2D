@@ -129,7 +129,15 @@ private:
     [[nodiscard]] bool GrowMap(Object& InObject) noexcept;
 
     std::array<Object, kMaxObjects> MObjects{};
+    std::array<std::uint32_t, kMaxObjects> MGenerations{};
     std::uint32_t MObjectCount = 0;
+    static constexpr std::uint32_t kHandleIndexBits = 12;
+    static constexpr std::uint32_t kHandleIndexMask = (1u << kHandleIndexBits) - 1u;
+    [[nodiscard]] static constexpr std::uint32_t EncodeHandle(std::uint32_t InIndex,
+                                                              std::uint32_t InGeneration) noexcept
+    {
+        return (InGeneration << kHandleIndexBits) | InIndex;
+    }
     std::array<char, kMaxStringBytes> MStringBytes{};
     std::uint32_t MStringUsed = 0;
     std::array<ScriptValue, kMaxElements> MElements{};

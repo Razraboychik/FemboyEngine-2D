@@ -44,6 +44,12 @@ bool FontAtlas::Open(std::span<const std::byte> InBytes) noexcept
     {
         return false;
     }
+    if (ScopedHeader.glyphTableOffset % alignof(GlyphRecord) != 0)
+    {
+        // Open() exposes the table as a typed span; an unaligned offset would
+        // make every GlyphRecord access undefined behaviour.
+        return false;
+    }
     if (ScopedHeader.pixelOffset < ScopedHeader.glyphTableOffset + ScopedGlyphBytes)
     {
         return false;
@@ -100,19 +106,19 @@ const GlyphRecord* FontAtlas::Glyph(std::uint32_t InCodepoint) const noexcept
 
 bool FontAtlasSet::LoadFromVfs(VirtualFileSystem& InVfs, std::string_view InPath)
 {
-    const auto ScopedBytes = InVfs.Read(InPath);
-    if (!ScopedBytes)
+    const auto ScopedPinned = InVfs.Pin(InPath);
+    if (!ScopedPinned)
     {
         return false;
     }
-    return Add(*ScopedBytes);
+    return Add(ScopedPinned->bytes);
 }
 
 bool FontAtlasSet::LoadTtfFromVfs(VirtualFileSystem& InVfs, std::string_view InPath,
                                   const FontBuildOptions& InOptions, std::string* InError)
 {
-    const auto ScopedTtf = InVfs.Read(InPath);
-    if (!ScopedTtf)
+    const auto ScopedPinned = InVfs.Pin(InPath);
+    if (!ScopedPinned)
     {
         if (InError != nullptr)
         {
@@ -121,7 +127,7 @@ bool FontAtlasSet::LoadTtfFromVfs(VirtualFileSystem& InVfs, std::string_view InP
         return false;
     }
     std::vector<std::byte> ScopedCooked;
-    if (!BuildFontAtlasFromTtf(*ScopedTtf, InOptions, &ScopedCooked, InError))
+    if (!BuildFontAtlasFromTtf(ScopedPinned->bytes, InOptions, &ScopedCooked, InError))
     {
         return false;
     }
@@ -131,8 +137,8 @@ bool FontAtlasSet::LoadTtfFromVfs(VirtualFileSystem& InVfs, std::string_view InP
 bool FontAtlasSet::LoadPagedTtfFromVfs(VirtualFileSystem& InVfs, std::string_view InPath,
                                        const FontBuildOptions& InOptions, std::string* InError)
 {
-    const auto ScopedTtf = InVfs.Read(InPath);
-    if (!ScopedTtf)
+    const auto ScopedPinned = InVfs.Pin(InPath);
+    if (!ScopedPinned)
     {
         if (InError != nullptr)
         {
@@ -152,7 +158,7 @@ bool FontAtlasSet::LoadPagedTtfFromVfs(VirtualFileSystem& InVfs, std::string_vie
     ScopedFont = RetainedFont{};
     ScopedFont.fontId = InOptions.fontId;
     ScopedFont.style = InOptions.style;
-    ScopedFont.bytes.assign(ScopedTtf->begin(), ScopedTtf->end());
+    ScopedFont.bytes.assign(ScopedPinned->bytes.begin(), ScopedPinned->bytes.end());
     ScopedFont.pixelSize = InOptions.pixelSize;
     ScopedFont.atlasSize = InOptions.atlasSize;
     ScopedFont.oversample = InOptions.oversample;
@@ -165,8 +171,15 @@ bool FontAtlasSet::LoadPagedTtfFromVfs(VirtualFileSystem& InVfs, std::string_vie
     const std::uint32_t ScopedCells = std::max((ScopedEdge * ScopedEdge) / std::max(ScopedCell * ScopedCell, 1u), 1u);
     ScopedFont.pageGlyphs = std::clamp((ScopedCells * 3u) / 4u, 64u, kGlyphsPerPage);
     (void)BuildFontCoverageFromTtf(ScopedFont.bytes, &ScopedFont.coverage);
+    if (BuildPage(ScopedFont, 0) == nullptr)
+    {
+        // Do not consume a retained-font slot when the required page fails to
+        // build; a retry would otherwise hit the capacity error below.
+        ScopedFont = RetainedFont{};
+        return false;
+    }
     ++MRetainedCount;
-    return BuildPage(ScopedFont, 0) != nullptr;
+    return true;
 }
 
 const FontAtlas* FontAtlasSet::FindPage(std::uint32_t InFontId, FontStyle InStyle,
@@ -237,6 +250,7 @@ const FontAtlas* FontAtlasSet::BuildPage(const RetainedFont& InFont, std::uint32
         }
         return nullptr;
     }
+    const bool ScopedHadFreeSlot = MCount < MAtlases.size();
     const std::uint32_t ScopedSlot = AcquireSlot();
     if (ScopedSlot == 0xFFFFFFFFu)
     {
@@ -244,6 +258,14 @@ const FontAtlas* FontAtlasSet::BuildPage(const RetainedFont& InFont, std::uint32
     }
     if (!MAtlases[ScopedSlot].OpenOwned(ScopedCooked))
     {
+        // OpenOwned rejects a malformed cooked atlas. A freshly appended slot
+        // must not stay consumed; an evicted slot stays reusable by AcquireSlot.
+        MAtlases[ScopedSlot] = FontAtlas{};
+        MPageIndex[ScopedSlot] = 0;
+        if (ScopedHadFreeSlot)
+        {
+            --MCount;
+        }
         return nullptr;
     }
     MPageIndex[ScopedSlot] = InPageIndex;
@@ -390,8 +412,8 @@ bool FontAtlasSet::LoadFamilyFromVfs(VirtualFileSystem& InVfs, std::span<const F
 bool FontAtlasSet::LoadFamilyManifestFromVfs(VirtualFileSystem& InVfs, std::string_view InPath,
                                              const FontBuildOptions& InDefaults, std::string* InError)
 {
-    const auto ScopedManifestBytes = InVfs.Read(InPath);
-    if (!ScopedManifestBytes)
+    const auto ScopedPinned = InVfs.Pin(InPath);
+    if (!ScopedPinned)
     {
         if (InError != nullptr)
         {
@@ -409,7 +431,8 @@ bool FontAtlasSet::LoadFamilyManifestFromVfs(VirtualFileSystem& InVfs, std::stri
         ScopedManifest.options.atlasSize = 1024;
     }
     if (!ParseFontFamilyManifest(
-            std::string_view(reinterpret_cast<const char*>(ScopedManifestBytes->data()), ScopedManifestBytes->size()),
+            std::string_view(reinterpret_cast<const char*>(ScopedPinned->bytes.data()),
+                             ScopedPinned->bytes.size()),
             &ScopedManifest, InError))
     {
         return false;

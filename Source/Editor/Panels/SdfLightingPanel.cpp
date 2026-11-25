@@ -16,12 +16,20 @@ namespace Fby::Editor
 void SdfLightingPanel::AddSun(Fcs::Registry& InRegistry)
 {
     const Entity ScopedEntity = InRegistry.create();
+    if (!InRegistry.valid(ScopedEntity))
+    {
+        return;
+    }
     InRegistry.emplace<SdfSunComponent>(ScopedEntity, SdfSunComponent{});
 }
 
 void SdfLightingPanel::AddOccluder(Fcs::Registry& InRegistry, Vector2D InSpawnPosition, bool InBox)
 {
     const Entity ScopedEntity = InRegistry.create();
+    if (!InRegistry.valid(ScopedEntity))
+    {
+        return;
+    }
     Transform2D ScopedTransform;
     ScopedTransform.Position = InSpawnPosition;
     InRegistry.emplace<Transform2D>(ScopedEntity, ScopedTransform);
@@ -101,6 +109,7 @@ void SdfLightingPanel::Draw(Fcs::Registry& InRegistry, Vector2D InSpawnPosition,
     {
         AddOccluder(InRegistry, InSpawnPosition, false);
     }
+    Entity ScopedPendingDelete = kNullEntity;
     auto ScopedOccluderView = InRegistry.view<Transform2D, Light2DOccluderComponent>();
     for (auto [ScopedEntity, ScopedTransform, ScopedOccluder] : ScopedOccluderView.each())
     {
@@ -136,13 +145,17 @@ void SdfLightingPanel::Draw(Fcs::Registry& InRegistry, Vector2D InSpawnPosition,
             }
             if (ImGui::Button("Delete"))
             {
-                InRegistry.destroy(ScopedEntity);
+                ScopedPendingDelete = ScopedEntity;
                 MSelectedOccluder = 0xFFFFFFFFu;
                 ImGui::PopID();
                 break;
             }
         }
         ImGui::PopID();
+    }
+    if (ScopedPendingDelete != kNullEntity)
+    {
+        InRegistry.destroy(ScopedPendingDelete);
     }
     ImGui::End();
 }

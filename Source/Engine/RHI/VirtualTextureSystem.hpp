@@ -259,7 +259,7 @@ private:
 
     [[nodiscard]] static std::uint64_t PackTileKey(std::int64_t InTileX, std::int64_t InTileY) noexcept;
     [[nodiscard]] bool ReadChunk(std::int64_t InTileX, std::int64_t InTileY,
-                                 std::span<const std::byte>* OutBytes) const noexcept;
+                                 std::span<const std::byte>* OutBytes) const;
     [[nodiscard]] bool CommitTile(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer,
                                   std::span<const std::byte> InBytes, std::uint32_t* OutSlot) noexcept;
     void WorkerMain() noexcept;

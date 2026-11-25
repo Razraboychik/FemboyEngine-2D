@@ -1,6 +1,8 @@
 // FemboyEngine2D - audio device enumeration and capture monitor implementation.
 #include "Engine/Audio/AudioDevices.hpp"
 
+#include <algorithm>
+
 #include "miniaudio.h"
 
 #include <cmath>
@@ -12,6 +14,12 @@ namespace Fby
 {
 namespace
 {
+template <std::size_t N> [[nodiscard]] std::size_t DeviceIdLength(const char (&InId)[N]) noexcept
+{
+    const char* ScopedEnd = std::find(InId, InId + N, '\0');
+    return static_cast<std::size_t>(ScopedEnd - InId);
+}
+
 static_assert(sizeof(ma_device_id) <= kAudioRawIdBytes, "raw device id storage is too small");
 
 [[nodiscard]] std::uint64_t Fnv1a(const std::uint8_t* InBytes, std::size_t InCount) noexcept
@@ -28,7 +36,7 @@ static_assert(sizeof(ma_device_id) <= kAudioRawIdBytes, "raw device id storage i
 void FormatId(const ma_device_id& InId, char* OutId) noexcept
 {
     const std::uint64_t ScopedHash = Fnv1a(reinterpret_cast<const std::uint8_t*>(&InId), sizeof(InId));
-    std::snprintf(OutId, kAudioDeviceIdChars, "%016llx", static_cast<unsigned long long>(ScopedHash));
+    (void)std::snprintf(OutId, kAudioDeviceIdChars, "%016llx", static_cast<unsigned long long>(ScopedHash));
 }
 
 void CopyName(const char* InName, char* OutName) noexcept
@@ -38,20 +46,21 @@ void CopyName(const char* InName, char* OutName) noexcept
     {
         return;
     }
-    std::snprintf(OutName, kAudioDeviceNameChars, "%s", InName);
+    (void)std::snprintf(OutName, kAudioDeviceNameChars, "%s", InName);
 }
 
 }
 
 std::int32_t ResolveAudioDeviceIndex(const AudioDeviceList& InList, const char* InPreferredId) noexcept
 {
-    if (InList.Count == 0)
+    const std::uint32_t ScopedCount = std::min(InList.Count, kMaxAudioDevices);
+    if (ScopedCount == 0)
     {
         return -1;
     }
     if (InPreferredId != nullptr && InPreferredId[0] != '\0')
     {
-        for (std::uint32_t ScopedIndex = 0; ScopedIndex < InList.Count; ++ScopedIndex)
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)
         {
             if (std::strcmp(InList.Devices[ScopedIndex].Id, InPreferredId) == 0)
             {
@@ -59,7 +68,7 @@ std::int32_t ResolveAudioDeviceIndex(const AudioDeviceList& InList, const char* 
             }
         }
     }
-    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InList.Count; ++ScopedIndex)
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)
     {
         if (InList.Devices[ScopedIndex].Default)
         {
@@ -76,11 +85,13 @@ std::int32_t ResolveAudioDeviceIndexByRaw(const AudioDeviceList& InList,
     {
         return -1;
     }
-    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InList.Count; ++ScopedIndex)
+    const std::uint32_t ScopedCount = std::min(InList.Count, kMaxAudioDevices);
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedCount; ++ScopedIndex)
     {
         const AudioDeviceInfo& ScopedInfo = InList.Devices[ScopedIndex];
-        if (ScopedInfo.RawIdSize == InRawId.size() && ScopedInfo.RawIdSize > 0 &&
-            std::memcmp(ScopedInfo.RawId, InRawId.data(), InRawId.size()) == 0)
+        const std::size_t ScopedRawSize = std::min<std::size_t>(ScopedInfo.RawIdSize, kAudioRawIdBytes);
+        if (ScopedRawSize == InRawId.size() && ScopedRawSize > 0 &&
+            std::memcmp(ScopedInfo.RawId, InRawId.data(), ScopedRawSize) == 0)
         {
             return static_cast<std::int32_t>(ScopedIndex);
         }
@@ -95,7 +106,7 @@ std::uint32_t AudioDeviceIdCollisions(const AudioDeviceList& InList, const char*
         return 0;
     }
     std::uint32_t ScopedCount = 0;
-    for (std::uint32_t ScopedIndex = 0; ScopedIndex < InList.Count; ++ScopedIndex)
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < std::min(InList.Count, kMaxAudioDevices); ++ScopedIndex)
     {
         ScopedCount += std::strcmp(InList.Devices[ScopedIndex].Id, InId) == 0 ? 1u : 0u;
     }
@@ -207,12 +218,14 @@ bool AudioDeviceEnumerator::Refresh() noexcept
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedInputs.Count; ++ScopedIndex)
     {
         ScopedHash = Fnv1a(reinterpret_cast<const std::uint8_t*>(ScopedInputs.Devices[ScopedIndex].Id),
-                           std::strlen(ScopedInputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
+                           DeviceIdLength(ScopedInputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
+        ScopedHash ^= ScopedInputs.Devices[ScopedIndex].Default ? 0x9E3779B9ull : 0ull;
     }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedOutputs.Count; ++ScopedIndex)
     {
         ScopedHash = Fnv1a(reinterpret_cast<const std::uint8_t*>(ScopedOutputs.Devices[ScopedIndex].Id),
-                           std::strlen(ScopedOutputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
+                           DeviceIdLength(ScopedOutputs.Devices[ScopedIndex].Id)) ^ ScopedHash;
+        ScopedHash ^= ScopedOutputs.Devices[ScopedIndex].Default ? 0x85EBCA6Bull : 0ull;
     }
     ScopedHash ^= static_cast<std::uint64_t>(ScopedInputs.Count) * 131ull;
     ScopedHash ^= static_cast<std::uint64_t>(ScopedOutputs.Count) * 137ull;

@@ -5,6 +5,7 @@
 #include "Engine/Audio/VoiceSystem.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -24,8 +25,14 @@ namespace
     {
         return false;
     }
-    const std::size_t ScopedLength = std::strlen(InText);
-    return ScopedLength < InCapacity;
+    for (std::size_t ScopedIndex = 0; ScopedIndex < InCapacity; ++ScopedIndex)
+    {
+        if (InText[ScopedIndex] == '\0')
+        {
+            return ScopedIndex != 0;
+        }
+    }
+    return false;
 }
 
 [[nodiscard]] bool IsValidId(const char* InId) noexcept
@@ -279,8 +286,12 @@ bool VoicePresetRegistry::Add(const VoicePresetDesc& InPreset, const void* InOwn
     {
         return ScopedFail("voice preset profile was rejected after clamping");
     }
-    ScopedDesc.MinIntensity = std::clamp(ScopedDesc.MinIntensity, 0.0f, 1.0f);
-    ScopedDesc.MaxIntensity = std::clamp(ScopedDesc.MaxIntensity, ScopedDesc.MinIntensity, 1.0f);
+    ScopedDesc.MinIntensity = std::isfinite(ScopedDesc.MinIntensity)
+                                   ? std::clamp(ScopedDesc.MinIntensity, 0.0f, 1.0f)
+                                   : 0.0f;
+    ScopedDesc.MaxIntensity = std::isfinite(ScopedDesc.MaxIntensity)
+                                   ? std::clamp(ScopedDesc.MaxIntensity, ScopedDesc.MinIntensity, 1.0f)
+                                   : 1.0f;
 
     MEntries[MCount].Desc = ScopedDesc;
     MEntries[MCount].Owner = InOwner;

@@ -33,19 +33,21 @@ template <typename T> [[nodiscard]] T ValueField(const toml::table& InTable, std
 
 UserSettings ClampUserSettings(UserSettings InSettings) noexcept
 {
+    const auto ScopedFiniteClamp = [](float InValue, float InMinimum, float InMaximum)
+    { return std::isfinite(InValue) ? std::clamp(InValue, InMinimum, InMaximum) : InMinimum; };
     InSettings.windowWidth = std::clamp(InSettings.windowWidth, 320u, 16384u);
     InSettings.windowHeight = std::clamp(InSettings.windowHeight, 240u, 8640u);
     InSettings.windowMode = static_cast<std::uint8_t>(std::min<std::uint8_t>(InSettings.windowMode, 2u));
     InSettings.qualityPreset = static_cast<std::uint8_t>(std::min<std::uint8_t>(InSettings.qualityPreset, 2u));
-    InSettings.renderScale = std::clamp(InSettings.renderScale, 0.25f, 1.0f);
+    InSettings.renderScale = ScopedFiniteClamp(InSettings.renderScale, 0.25f, 1.0f);
     InSettings.upscaleMode = static_cast<UpscaleMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.upscaleMode), std::uint8_t{0}, std::uint8_t{4}));
     InSettings.temporalUpscale = static_cast<TemporalUpscaleMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.temporalUpscale), std::uint8_t{0}, std::uint8_t{3}));
-    InSettings.fsr1Sharpness = std::clamp(InSettings.fsr1Sharpness, 0.0f, 1.0f);
+    InSettings.fsr1Sharpness = ScopedFiniteClamp(InSettings.fsr1Sharpness, 0.0f, 1.0f);
     InSettings.fsr2Quality = static_cast<Rhi::Fsr2QualityMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.fsr2Quality), std::uint8_t{0}, std::uint8_t{3}));
-    InSettings.hudRenderScale = std::clamp(InSettings.hudRenderScale, 0.25f, 1.0f);
+    InSettings.hudRenderScale = ScopedFiniteClamp(InSettings.hudRenderScale, 0.25f, 1.0f);
     InSettings.hudUpscale = static_cast<UpscaleMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.hudUpscale), std::uint8_t{0}, std::uint8_t{1}));
     InSettings.hudTarget = static_cast<HudTargetMode>(
@@ -61,8 +63,16 @@ UserSettings ClampUserSettings(UserSettings InSettings) noexcept
     InSettings.dlssQuality = static_cast<Rhi::DlssQualityMode>(
         std::clamp(static_cast<std::uint8_t>(InSettings.dlssQuality), std::uint8_t{0}, std::uint8_t{3}));
     InSettings.voicePresetId[63] = '\0';
-    InSettings.voicePresetIntensity = std::clamp(InSettings.voicePresetIntensity, 0.0f, 1.0f);
-    InSettings.voiceReactiveSfxGain = std::clamp(InSettings.voiceReactiveSfxGain, 0.0f, 1.0f);
+    InSettings.voicePresetIntensity = ScopedFiniteClamp(InSettings.voicePresetIntensity, 0.0f, 1.0f);
+    InSettings.voiceReactiveSfxGain = ScopedFiniteClamp(InSettings.voiceReactiveSfxGain, 0.0f, 1.0f);
+    InSettings.audioBusCount = static_cast<std::uint8_t>(
+        std::min<std::uint8_t>(InSettings.audioBusCount, static_cast<std::uint8_t>(InSettings.audioBuses.size())));
+    for (std::uint8_t ScopedIndex = 0; ScopedIndex < InSettings.audioBusCount; ++ScopedIndex)
+    {
+        UserAudioBus& ScopedBus = InSettings.audioBuses[ScopedIndex];
+        ScopedBus.id[sizeof(ScopedBus.id) - 1u] = '\0';
+        ScopedBus.volumeDb = ScopedFiniteClamp(ScopedBus.volumeDb, -60.0f, 6.0f);
+    }
     return InSettings;
 }
 
@@ -139,6 +149,32 @@ bool LoadUserSettings(std::string_view InPath, UserSettings* OutSettings, std::s
             ScopedSettings.voiceReactiveSfxGain = static_cast<float>(
                 ValueField<double>(*ScopedVoice, "reactive_sfx_gain", ScopedSettings.voiceReactiveSfxGain));
         }
+        if (const toml::table* ScopedAudio = ScopedTable["audio"].as_table())
+        {
+            if (const toml::array* ScopedBuses = (*ScopedAudio)["buses"].as_array(); ScopedBuses != nullptr)
+            {
+                ScopedSettings.audioBusCount = 0;
+                for (const toml::node& ScopedNode : *ScopedBuses)
+                {
+                    if (ScopedSettings.audioBusCount >= ScopedSettings.audioBuses.size())
+                    {
+                        break;
+                    }
+                    const toml::table* ScopedTable = ScopedNode.as_table();
+                    if (ScopedTable == nullptr)
+                    {
+                        continue;
+                    }
+                    UserAudioBus& ScopedBus = ScopedSettings.audioBuses[ScopedSettings.audioBusCount];
+                    const std::string ScopedId =
+                        ValueField<std::string>(*ScopedTable, "id", std::string(ScopedBus.id));
+                    std::snprintf(ScopedBus.id, sizeof(ScopedBus.id), "%s", ScopedId.c_str());
+                    ScopedBus.volumeDb = static_cast<float>(
+                        ValueField<double>(*ScopedTable, "volume_db", ScopedBus.volumeDb));
+                    ++ScopedSettings.audioBusCount;
+                }
+            }
+        }
         *OutSettings = ClampUserSettings(ScopedSettings);
         return true;
     }
@@ -193,10 +229,22 @@ bool SaveUserSettings(std::string_view InPath, const UserSettings& InSettings, s
         ScopedVoice.insert("moderation_mumble", ScopedSettings.voiceModerationMumble);
         ScopedVoice.insert("reactive_sfx", ScopedSettings.voiceReactiveSfx);
         ScopedVoice.insert("reactive_sfx_gain", static_cast<double>(ScopedSettings.voiceReactiveSfxGain));
+        toml::table ScopedAudio;
+        toml::array ScopedAudioBuses;
+        for (std::uint8_t ScopedIndex = 0; ScopedIndex < ScopedSettings.audioBusCount; ++ScopedIndex)
+        {
+            const UserAudioBus& ScopedBus = ScopedSettings.audioBuses[ScopedIndex];
+            toml::table ScopedBusTable;
+            ScopedBusTable.insert("id", std::string(ScopedBus.id));
+            ScopedBusTable.insert("volume_db", static_cast<double>(ScopedBus.volumeDb));
+            ScopedAudioBuses.push_back(std::move(ScopedBusTable));
+        }
+        ScopedAudio.insert("buses", std::move(ScopedAudioBuses));
         toml::table ScopedRoot;
         ScopedRoot.insert("graphics", std::move(ScopedGraphics));
         ScopedRoot.insert("hud", std::move(ScopedHud));
         ScopedRoot.insert("voice", std::move(ScopedVoice));
+        ScopedRoot.insert("audio", std::move(ScopedAudio));
         std::ofstream ScopedFile(ScopedPath, std::ios::trunc);
         if (!ScopedFile)
         {

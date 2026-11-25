@@ -3,6 +3,7 @@
 
 #include "Engine/Core/FlatMap.hpp"
 #include "Engine/ECS/SystemGraph.hpp"
+#include "Engine/ECS/FCS/Registry.hpp"
 #include "Engine/Audio/VoicePreset.hpp"
 #include "Engine/Core/PluginAPI.h"
 #include "Engine/Core/Mirror.hpp"
@@ -10,11 +11,14 @@
 #include "Engine/UI/AccessibilityEffects.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
+
+struct FbyModApi;
 
 namespace Fby::Plugin
 {
@@ -28,10 +32,23 @@ static_assert(static_cast<int>(Ecs::Phase::Count) == FBY_PHASE_COUNT, "plugin ph
 
 struct ComponentType
 {
+    using HasFn = bool (*)(const void* InRegistry, Fby::Entity InEntity);
+    using ReadFn = bool (*)(const void* InRegistry, Fby::Entity InEntity, void* OutData, std::size_t InCapacity,
+                            std::size_t* OutSize);
+    using WriteFn = bool (*)(void* InRegistry, Fby::Entity InEntity, const void* InData, std::size_t InSize);
+    using RemoveFn = bool (*)(void* InRegistry, Fby::Entity InEntity);
+
     std::string name;
     std::uint32_t size = 0;
     std::uint32_t alignment = 1;
     std::uint64_t layoutHash = 0;
+    // Runtime id for the mod data ABI. It is stable for this host process and
+    // is never a C++ typeid or an address.
+    std::uint32_t id = 0;
+    HasFn has = nullptr;
+    ReadFn read = nullptr;
+    WriteFn write = nullptr;
+    RemoveFn remove = nullptr;
 };
 
 // Lists the plugin shared libraries in a directory, sorted by path. Discovery is
@@ -47,9 +64,75 @@ public:
     {
         // Keep the key separate from the moved value: evaluating
         const std::string ScopedKey = InName;
-        ComponentType ScopedType{InName, static_cast<std::uint32_t>(sizeof(Component)),
-                                 static_cast<std::uint32_t>(alignof(Component)), Reflect::LayoutHash<Component>()};
+        const auto ScopedExisting = MTypes.find(ScopedKey);
+        const std::uint32_t ScopedId = ScopedExisting == MTypes.end()
+                                           ? static_cast<std::uint32_t>(MTypes.size() + 1u)
+                                           : ScopedExisting->second.id;
+        ComponentType ScopedType{InName,
+                                 static_cast<std::uint32_t>(sizeof(Component)),
+                                 static_cast<std::uint32_t>(alignof(Component)),
+                                 Reflect::LayoutHash<Component>(),
+                                 ScopedId,
+                                 &Has<Component>,
+                                 &Read<Component>,
+                                 &Write<Component>,
+                                 &Remove<Component>};
         MTypes.insert_or_assign(ScopedKey, std::move(ScopedType));
+    }
+
+    template <typename Component> static bool Has(const void* InRegistry, Fby::Entity InEntity)
+    {
+        const auto* ScopedRegistry = static_cast<const Fby::Fcs::Registry*>(InRegistry);
+        return ScopedRegistry != nullptr && ScopedRegistry->all_of<Component>(InEntity);
+    }
+
+    template <typename Component>
+    static bool Read(const void* InRegistry, Fby::Entity InEntity, void* OutData, std::size_t InCapacity,
+                     std::size_t* OutSize)
+    {
+        const auto* ScopedRegistry = static_cast<const Fby::Fcs::Registry*>(InRegistry);
+        const Component* ScopedValue = ScopedRegistry != nullptr ? ScopedRegistry->try_get<Component>(InEntity) : nullptr;
+        if (ScopedValue == nullptr || OutData == nullptr || OutSize == nullptr)
+        {
+            return false;
+        }
+        *OutSize = sizeof(Component);
+        if (InCapacity < sizeof(Component))
+        {
+            return false;
+        }
+        std::memcpy(OutData, ScopedValue, sizeof(Component));
+        return true;
+    }
+
+    template <typename Component>
+    static bool Write(void* InRegistry, Fby::Entity InEntity, const void* InData, std::size_t InSize)
+    {
+        auto* ScopedRegistry = static_cast<Fby::Fcs::Registry*>(InRegistry);
+        if (ScopedRegistry == nullptr || InData == nullptr || InSize != sizeof(Component) ||
+            !ScopedRegistry->valid(InEntity))
+        {
+            return false;
+        }
+        Component* ScopedValue = ScopedRegistry->try_get<Component>(InEntity);
+        if (ScopedValue == nullptr)
+        {
+            ScopedValue = &ScopedRegistry->emplace<Component>(InEntity);
+        }
+        std::memcpy(ScopedValue, InData, sizeof(Component));
+        return true;
+    }
+
+    template <typename Component> static bool Remove(void* InRegistry, Fby::Entity InEntity)
+    {
+        auto* ScopedRegistry = static_cast<Fby::Fcs::Registry*>(InRegistry);
+        if (ScopedRegistry == nullptr || !ScopedRegistry->valid(InEntity) ||
+            !ScopedRegistry->all_of<Component>(InEntity))
+        {
+            return false;
+        }
+        ScopedRegistry->remove<Component>(InEntity);
+        return true;
     }
 
     [[nodiscard]] const ComponentType* Find(std::string_view InName) const;
@@ -104,6 +187,12 @@ public:
     void BindSystemGraph(Ecs::SystemGraph& InGraph) noexcept
     {
         MSystemGraph = &InGraph;
+    }
+    // Optional safe mod data ABI exposed to plugins as FbyHostApi::mod_api.
+    void BindModApi(const FbyModApi* InApi) noexcept
+    {
+        MModApi = InApi;
+        MApi.mod_api = InApi;
     }
     [[nodiscard]] Ecs::SystemGraph* BoundGraph() const noexcept
     {
@@ -166,10 +255,10 @@ public:
     // Unloads the plugin that came from `path` (its systems leave the graph, its
     // unload entry runs and the library closes) and loads it again. Other plugins
     // are untouched. When `path` is not loaded this behaves like Load().
-    bool Reload(const std::string& InPath, std::string* InError);
+    bool Reload(std::string InPath, std::string* InError);
 
     // Unloads one plugin. Missing paths return false with an error.
-    bool Unload(const std::string& InPath, std::string* InError);
+    bool Unload(std::string InPath, std::string* InError);
 
     // Calls fby_plugin_unload on every plugin and closes the libraries.
     void UnloadAll();
@@ -215,6 +304,7 @@ private:
     ComponentRegistry& MComponents;
     void* MEcsRegistry = nullptr;
     FbyHostApi MApi{};
+    const FbyModApi* MModApi = nullptr;
     FbyAccessibilityApi MAccessibilityApi{};
     FbyVoiceApi MVoiceApi{};
     VoicePresetRegistry* MVoicePresets = nullptr;

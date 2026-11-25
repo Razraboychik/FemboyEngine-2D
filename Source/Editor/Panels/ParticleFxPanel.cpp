@@ -188,7 +188,10 @@ void ParticleFxPanel::Draw(bool* InOpen)
 
     ImGui::SeparatorText("Data-pack presets");
     ImGui::SetNextItemWidth(320.0f);
-    (void)ImGui::InputText("Pack path", MPresetPath.data(), MPresetPath.size());
+    (void)ImGui::InputText("Load pack path", MPresetPath.data(), MPresetPath.size());
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(320.0f);
+    (void)ImGui::InputText("Save pack path", MSavePath.data(), MSavePath.size());
     ImGui::SameLine();
     if (ImGui::Button("Load pack"))
     {
@@ -210,19 +213,30 @@ void ParticleFxPanel::Draw(bool* InOpen)
     (void)ImGui::InputText("Display name", MSaveName.data(), MSaveName.size());
     if (ImGui::Button("Save preset"))
     {
-        ParticlePresetDesc ScopedDesc;
-        std::snprintf(ScopedDesc.Id, sizeof(ScopedDesc.Id), "%s", MSaveId.data());
-        std::snprintf(ScopedDesc.DisplayName, sizeof(ScopedDesc.DisplayName), "%s", MSaveName.data());
-        std::snprintf(ScopedDesc.Category, sizeof(ScopedDesc.Category), "%s", "Authoring");
-        ScopedDesc.Settings = MSettings;
-        std::string ScopedError;
-        if (SaveParticlePresetFile(MPresetPath.data(), ScopedDesc, &ScopedError))
+        if (MSaveId[0] == 0 || MSaveName[0] == 0)
         {
-            MStatus = std::string("saved ") + MPresetPath.data();
+            MStatus = "preset id and display name must not be empty";
         }
         else
         {
-            MStatus = "save failed: " + ScopedError;
+            ParticlePresetDesc ScopedDesc;
+            std::snprintf(ScopedDesc.Id, sizeof(ScopedDesc.Id), "%s", MSaveId.data());
+            std::snprintf(ScopedDesc.DisplayName, sizeof(ScopedDesc.DisplayName), "%s", MSaveName.data());
+            std::snprintf(ScopedDesc.Category, sizeof(ScopedDesc.Category), "%s", "Authoring");
+            ScopedDesc.Settings = MSettings;
+            if (MSavePath[0] == 0 || std::strcmp(MSavePath.data(), MPresetPath.data()) == 0)
+            {
+                MStatus = "choose a distinct save pack path; overwriting the loaded pack truncates it";
+            }
+            else if (std::string ScopedError;
+                     SaveParticlePresetFile(MSavePath.data(), ScopedDesc, &ScopedError))
+            {
+                MStatus = std::string("saved ") + MSavePath.data();
+            }
+            else
+            {
+                MStatus = "save failed: " + ScopedError;
+            }
         }
     }
     ImGui::SameLine();

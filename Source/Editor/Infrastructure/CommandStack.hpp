@@ -15,7 +15,7 @@
 namespace Fby::Editor
 {
 
-inline constexpr std::uint32_t kMaxCommandCodecs = 64;
+inline constexpr std::uint32_t kMaxCommandCodecs = 128;
 inline constexpr std::uint32_t kMaxUndoCommands = 512;
 // ProjectSettings carries the full gameplay tag database and accessibility,
 // render and build policies. Keep the external-buffer cap above that image so
@@ -89,8 +89,8 @@ public:
 
     struct Config
     {
-        // 4 MiB of compressed undo deltas
-        std::size_t payloadBytes = 4u << 20;
+        // 16 MiB of compressed undo deltas; the editor allocates this once.
+        std::size_t payloadBytes = 16u << 20;
         std::uint32_t maxCommands = kMaxUndoCommands;
     };
 
@@ -109,7 +109,7 @@ public:
     using ApplyObserver = void (*)(void* InUser, Entity InEntity, std::uint16_t InCodec) noexcept;
 
     CommandStack() = default;
-    ~CommandStack() = default;
+    ~CommandStack();
 
     CommandStack(const CommandStack&) = delete;
     CommandStack& operator=(const CommandStack&) = delete;
@@ -236,6 +236,7 @@ private:
         std::string_view name{};
         std::uint64_t layoutHash = 0;
         std::uint32_t size = 0;
+        bool empty = false;
         const void* (*get)(const Scene::Registry&, Entity) = nullptr;
         void* (*getMutable)(Scene::Registry&, Entity) = nullptr;
         bool (*has)(const Scene::Registry&, Entity) = nullptr;

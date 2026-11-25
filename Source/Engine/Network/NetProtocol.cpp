@@ -91,6 +91,13 @@ std::size_t EncodeInputPacket(const InputPacket& InPacket, std::span<std::byte> 
     {
         return 0;
     }
+    for (std::uint32_t ScopedI = 0; ScopedI < InPacket.Count; ++ScopedI)
+    {
+        if (InPacket.Frames[ScopedI].tick == kInvalidNetTick)
+        {
+            return 0;
+        }
+    }
     const std::size_t ScopedBytes = kInputPacketHeaderBytes + InPacket.Count * kFrameStride;
     if (OutBuffer.size() < ScopedBytes)
     {
@@ -165,6 +172,20 @@ void InputChannel::Bind(NetTransport* InTransport, const NetAddress& InRemote, N
     MTransport = InTransport;
     MRemote = InRemote;
     MLocalPlayer = InLocalPlayer;
+}
+
+bool InputChannel::BindPeer(NetTransport* InTransport, const NetAddress& InRemote, NetPlayerId InLocalPlayer,
+                            NetPlayerId InRemotePlayer) noexcept
+{
+    if (InTransport == nullptr || InRemote.Port == 0 || !InLocalPlayer.IsValid() || !InRemotePlayer.IsValid() ||
+        InLocalPlayer.value == InRemotePlayer.value)
+    {
+        return false;
+    }
+    Bind(InTransport, InRemote, InLocalPlayer);
+    MRemotePlayer = InRemotePlayer;
+    MHasRemotePlayer = true;
+    return true;
 }
 
 void InputChannel::Unbind() noexcept
@@ -276,7 +297,6 @@ std::uint32_t InputChannel::Receive(NetRollbackSession& InSession) noexcept
 
 void InputChannel::OnPacket(void* InUser, const NetAddress& InFrom, std::span<const std::byte> InMessage) noexcept
 {
-    (void)InFrom;
     auto* ScopedSink = static_cast<ReceiveSink*>(InUser);
     if (ScopedSink == nullptr || ScopedSink->channel == nullptr || ScopedSink->session == nullptr)
     {
@@ -285,6 +305,16 @@ void InputChannel::OnPacket(void* InUser, const NetAddress& InFrom, std::span<co
     InputChannel& ScopedChannel = *ScopedSink->channel;
     InputPacket ScopedPacket;
     if (!DecodeInputPacket(InMessage, &ScopedPacket))
+    {
+        ++ScopedChannel.MStats.Rejected;
+        return;
+    }
+    if (ScopedChannel.MRemote.Port != 0 && InFrom != ScopedChannel.MRemote)
+    {
+        ++ScopedChannel.MStats.Rejected;
+        return;
+    }
+    if (ScopedChannel.MHasRemotePlayer && ScopedPacket.Player.value != ScopedChannel.MRemotePlayer.value)
     {
         ++ScopedChannel.MStats.Rejected;
         return;

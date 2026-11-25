@@ -3,8 +3,10 @@
 // The LUT is a 2D strip of N x N*N texels in layer 0 of the bound texture array.
 cbuffer ColorGradingBlock : register(b0)
 {
-    float4 params0; // lut size, intensity, saturation, contrast
-    float4 params1; // brightness, lut id low, lut id high, flags
+    // LUT size, intensity, saturation and contrast.
+    float4 params0;
+    // Brightness, low LUT id, high LUT id and flags.
+    float4 params1;
 };
 
 Texture2D SceneColor : register(t0);

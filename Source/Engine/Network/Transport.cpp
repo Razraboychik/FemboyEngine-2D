@@ -314,7 +314,7 @@ bool ParseAddress(std::string_view InText, std::uint16_t InDefaultPort, NetAddre
     if (ScopedColon != std::string::npos && ScopedHost.find(':') == ScopedColon)
     {
         const std::string ScopedPortText = ScopedHost.substr(ScopedColon + 1);
-        ScopedHost = ScopedHost.substr(0, ScopedColon);
+        ScopedHost.resize(ScopedColon);
         unsigned long ScopedParsed = 0;
         for (const char ScopedCharacter : ScopedPortText)
         {
@@ -449,6 +449,10 @@ TransportPeer* NetTransport::FindOrCreatePeer(const NetAddress& InAddress) noexc
     for (std::uint32_t ScopedI = 0; ScopedI < kMaxPeers; ++ScopedI)
     {
         TransportPeer& ScopedPeer = MPeers[ScopedI];
+        if (ScopedPeer.Fragment.Active && MNow - ScopedPeer.Fragment.LastActivity > 2.0f)
+        {
+            ScopedPeer.Fragment = TransportPeer::Reassembly{};
+        }
         const bool ScopedHasOutstanding =
             ScopedPeer.Fragment.Active ||
             std::any_of(ScopedPeer.Outbox.begin(), ScopedPeer.Outbox.end(),
@@ -542,7 +546,7 @@ bool NetTransport::SendDatagram(TransportPeer& InPeer, std::uint16_t InSeq, std:
     WriteU16(ScopedBuffer.data() + 4, InPeer.RxLatest);
     WriteU32(ScopedBuffer.data() + 6, InPeer.RxBits);
     ScopedBuffer[10] = static_cast<std::byte>(InChannel);
-    ScopedBuffer[11] = static_cast<std::byte>(InFragCount > 1 ? 1 : 0);
+    ScopedBuffer[11] = static_cast<std::byte>((InFragCount > 1 ? 1u : 0u) | (InPeer.RxStarted ? 2u : 0u));
     ScopedBuffer[12] = static_cast<std::byte>(InFragIndex);
     ScopedBuffer[13] = static_cast<std::byte>(InFragCount);
     WriteU16(ScopedBuffer.data() + 14, InMsgId);
@@ -786,6 +790,7 @@ void NetTransport::HandleDatagram(const NetAddress& InFrom, std::span<const std:
     const std::uint16_t ScopedSeq = ReadU16(InDatagram.data() + 2);
     const std::uint16_t ScopedAck = ReadU16(InDatagram.data() + 4);
     const std::uint32_t ScopedAckBits = ReadU32(InDatagram.data() + 6);
+    const std::uint8_t ScopedFlags = static_cast<std::uint8_t>(InDatagram[11]);
     const std::uint8_t ScopedChannel = static_cast<std::uint8_t>(InDatagram[10]);
     const std::uint8_t ScopedFragIndex = static_cast<std::uint8_t>(InDatagram[12]);
     const std::uint8_t ScopedFragCount = static_cast<std::uint8_t>(InDatagram[13]);
@@ -830,7 +835,10 @@ void NetTransport::HandleDatagram(const NetAddress& InFrom, std::span<const std:
         }
     }
 
-    Acknowledge(*ScopedPeer, ScopedAck, ScopedAckBits);
+    if ((ScopedFlags & 0x02u) != 0)
+    {
+        Acknowledge(*ScopedPeer, ScopedAck, ScopedAckBits);
+    }
 
     bool ScopedNew = false;
     UpdateReceiveState(*ScopedPeer, ScopedSeq, &ScopedNew);
@@ -861,6 +869,7 @@ void NetTransport::HandleDatagram(const NetAddress& InFrom, std::span<const std:
         ++MStats.ReassemblyFailures;
         return;
     }
+    ScopedFragment.LastActivity = MNow;
     const std::size_t ScopedOffset = static_cast<std::size_t>(ScopedFragIndex) * kMaxPayload;
     if (ScopedOffset + ScopedPayloadBytes > TransportPeer::kMaxReassemblyBytes)
     {
@@ -934,6 +943,10 @@ void NetTransport::Tick(float InDeltaSeconds) noexcept
         if (!ScopedPeer.Active)
         {
             continue;
+        }
+        if (ScopedPeer.Fragment.Active && MNow - ScopedPeer.Fragment.LastActivity > 2.0f)
+        {
+            ScopedPeer.Fragment = TransportPeer::Reassembly{};
         }
         for (TransportPeer::Outstanding& ScopedSlot : ScopedPeer.Outbox)
         {

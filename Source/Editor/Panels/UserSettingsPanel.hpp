@@ -79,7 +79,7 @@ public:
             InSettings.upscalePolicy == UpscalePolicy::Auto)
         {
             int ScopedDlssQuality = static_cast<int>(InSettings.dlssQuality);
-            const char* ScopedDlssQualities[4] = {"Ultra Performance", "Performance", "Balanced", "Quality"};
+            const char* ScopedDlssQualities[4] = {"Performance", "Balanced", "Quality", "Ultra Performance"};
             if (ImGui::Combo("DLSS quality", &ScopedDlssQuality, ScopedDlssQualities, 4))
             {
                 InSettings.dlssQuality = static_cast<Rhi::DlssQualityMode>(ScopedDlssQuality);

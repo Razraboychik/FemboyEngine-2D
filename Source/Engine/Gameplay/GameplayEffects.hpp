@@ -1,6 +1,7 @@
 // FemboyEngine2D - data-driven gameplay effects: duration, periodic and stacks.
 #pragma once
 
+#include "Engine/Data/StructValue.hpp"
 #include "Engine/ECS/Schedule.hpp"
 #include "Engine/Gameplay/GameplayAttributes.hpp"
 #include "Engine/Gameplay/GameplayTags.hpp"
@@ -57,6 +58,9 @@ struct GameplayEffectDef
     // Tags granted to the target while the effect is active.
     std::array<GameplayTag, kMaxEffectGrantedTags> GrantedTags{};
     std::uint32_t GrantedTagCount = 0;
+    // Optional project/plugin authoring data for cues and custom effect logic.
+    // The effect system never interprets it, so it does not duplicate GAS.
+    Data::StructPayload Params;
 };
 
 static_assert(std::is_trivially_copyable_v<GameplayEffectDef>);
@@ -127,7 +131,8 @@ public:
     [[nodiscard]] bool Remove(Registry& InRegistry, Entity InTarget, std::uint32_t InDefId) noexcept;
     void RemoveAll(Registry& InRegistry, Entity InTarget) noexcept;
 
-    // Advances timers, periodic applications and expiry. Allocation-free.
+    // Advances timers, periodic applications and expiry. Uses scratch vectors;
+    // allocation failure skips this update instead of terminating.
     void Update(Registry& InRegistry, float InDt) noexcept;
 
     // Recomputes Tags and Current attributes from Base and the active effects.

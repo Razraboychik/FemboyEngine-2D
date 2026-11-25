@@ -140,7 +140,7 @@ vec3 SampleGi(vec2 InWorld, out float OutOcclusion)
     return radiance;
 }
 
-vec3 ClusterLighting(vec2 InScreen, vec2 InViewport)
+vec3 ClusterLighting(vec2 InScreen, vec2 InViewport, vec3 InNormal, bool InHasNormal)
 {
     const vec2 viewport = InViewport;
     const vec2 pixel = InScreen * viewport;
@@ -169,7 +169,9 @@ vec3 ClusterLighting(vec2 InScreen, vec2 InViewport)
             const float cosine = dot(direction, toPixel / distance);
             cone = smoothstep(light.directionAndCone.z, light.directionAndCone.w, cosine);
         }
-        result += light.colorAndIntensity.rgb * (light.colorAndIntensity.a * attenuation * cone);
+        const float ndl = InHasNormal ? max(dot(InNormal.xy, normalize(toPixel + vec2(0.0001))), 0.0) : 1.0;
+        const float shaped = InHasNormal ? (0.25 + 0.75 * ndl) : 1.0;
+        result += light.colorAndIntensity.rgb * (light.colorAndIntensity.a * attenuation * cone * shaped);
     }
     return result;
 }
@@ -452,13 +454,28 @@ void main()
         }
         ao = ambientOcclusion(vWorld);
     }
+    const uint normalLayer = (vFlags >> 16u) & 0xFFu;
+    const float normalStrength = float((vFlags >> 11u) & 0x1Fu) / 31.0;
+    bool hasNormal = normalLayer >= 1u && normalStrength > 0.0;
+    vec3 normal = vec3(0.0, 0.0, 1.0);
+    if (hasNormal)
+    {
+        normal = texture(uAtlas, vec3(vUv, float(normalLayer))).xyz * 2.0 - 1.0;
+        normal.xy *= normalStrength;
+        normal = normalize(vec3(normal.xy, max(normal.z, 0.05)));
+    }
     if (camera.frame.w > 0.5)
     {
-        color.rgb *= (0.15 + ClusterLighting(vScreen, camera.viewportAndZoom.xy)) * shadow * ao;
+        color.rgb *= (0.15 + ClusterLighting(vScreen, camera.viewportAndZoom.xy, normal, hasNormal)) * shadow * ao;
     }
     else if (sdf.flags.y > 0.5)
     {
         color.rgb *= shadow * ao;
+    }
+    if (hasNormal && camera.frame.w <= 0.5)
+    {
+        const vec3 lightDirection = normalize(vec3(-0.4, -0.6, 0.7));
+        color.rgb *= 0.35 + 0.65 * max(dot(normal, lightDirection), 0.0);
     }
     if (giVolume.extent.w > 0.0)
     {

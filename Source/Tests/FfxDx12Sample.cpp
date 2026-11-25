@@ -85,7 +85,7 @@ int RunVariant(int InVariant)
     }
     if ((InVariant & 2) != 0)
     {
-        ScopedVersion.header.pNext = ScopedTail;
+        ScopedHudless.header.pNext = ScopedTail;
         ScopedTail = &ScopedHudless.header;
     }
     ScopedBackend.header.pNext = ScopedTail;

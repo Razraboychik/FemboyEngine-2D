@@ -33,9 +33,18 @@ namespace
 std::atomic<bool> GInstalled{false};
 std::atomic<bool> GInHandler{false};
 std::atomic<unsigned int> GReportSequence{1};
+CrashIncidentHook GCrashIncidentHook = nullptr;
 std::terminate_handler GPreviousTerminate = nullptr;
 char GApplicationName[64] = "femboy";
 char GSessionDirectory[1024] = {};
+
+void InvokeCrashIncidentHook(const char* InReason) noexcept
+{
+    if (GCrashIncidentHook != nullptr && GSessionDirectory[0] != '\0')
+    {
+        GCrashIncidentHook(GSessionDirectory, InReason);
+    }
+}
 
 [[nodiscard]] std::uint64_t ProcessId() noexcept
 {
@@ -71,13 +80,20 @@ void CreateSessionDirectory() noexcept
 {
     char ScopedStamp[32] = {};
     FormatTimestamp(ScopedStamp, sizeof(ScopedStamp), true);
-    const std::string ScopedDirectory =
-        (CrashRoot() / (std::string(ScopedStamp) + "-" + std::to_string(ProcessId()))).string();
-    if (!EnsureDirectory(ScopedDirectory))
+    try
     {
-        return;
+        const std::string ScopedDirectory =
+            (CrashRoot() / (std::string(ScopedStamp) + "-" + std::to_string(ProcessId()))).string();
+        if (!EnsureDirectory(ScopedDirectory))
+        {
+            return;
+        }
+        std::snprintf(GSessionDirectory, sizeof(GSessionDirectory), "%s", ScopedDirectory.c_str());
     }
-    std::snprintf(GSessionDirectory, sizeof(GSessionDirectory), "%s", ScopedDirectory.c_str());
+    catch (...)
+    {
+        GSessionDirectory[0] = '\0';
+    }
 }
 
 void AppendText(char* InBuffer, std::size_t InCapacity, std::size_t& InOffset, std::string_view InText) noexcept
@@ -134,12 +150,12 @@ void BuildReport(char* OutBuffer, std::size_t InCapacity, std::string_view InRea
     }
 }
 
-void WriteReportFile(std::string_view InReason, std::string_view InDetails,
+bool WriteReportFile(std::string_view InReason, std::string_view InDetails,
                       unsigned int InSequence = 0) noexcept
 {
     if (GSessionDirectory[0] == '\0')
     {
-        return;
+        return false;
     }
     char ScopedPath[1200] = {};
     std::snprintf(ScopedPath, sizeof(ScopedPath), "%s/report.txt", GSessionDirectory);
@@ -151,17 +167,22 @@ void WriteReportFile(std::string_view InReason, std::string_view InDetails,
                                         FILE_ATTRIBUTE_NORMAL, nullptr);
     if (ScopedHandle == INVALID_HANDLE_VALUE)
     {
-        return;
+        return false;
     }
     DWORD ScopedWritten = 0;
-    ::WriteFile(ScopedHandle, ScopedReport, static_cast<DWORD>(ScopedLength), &ScopedWritten, nullptr);
+    const BOOL ScopedOk =
+        ::WriteFile(ScopedHandle, ScopedReport, static_cast<DWORD>(ScopedLength), &ScopedWritten, nullptr);
     ::FlushFileBuffers(ScopedHandle);
     ::CloseHandle(ScopedHandle);
+    if (ScopedOk == FALSE || ScopedWritten != ScopedLength)
+    {
+        return false;
+    }
 #else
     const int ScopedHandle = ::open(ScopedPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (ScopedHandle < 0)
     {
-        return;
+        return false;
     }
     std::size_t ScopedOffset = 0;
     while (ScopedOffset < ScopedLength)
@@ -175,7 +196,12 @@ void WriteReportFile(std::string_view InReason, std::string_view InDetails,
     }
     ::fsync(ScopedHandle);
     ::close(ScopedHandle);
+    if (ScopedOffset != ScopedLength)
+    {
+        return false;
+    }
 #endif
+    return true;
 }
 
 void HandleTerminate() noexcept
@@ -183,6 +209,7 @@ void HandleTerminate() noexcept
     if (!GInHandler.exchange(true))
     {
         WriteReportFile("std::terminate", "an exception escaped or a noexcept boundary was violated");
+        InvokeCrashIncidentHook("std::terminate");
     }
     std::abort();
 }
@@ -238,6 +265,7 @@ LONG WINAPI UnhandledException(EXCEPTION_POINTERS* InExceptionInfo) noexcept
     // The filter must not run twice for the same fault.
     (void)GInHandler.exchange(true);
     WriteReportFile("unhandled exception", ScopedDetails);
+    InvokeCrashIncidentHook("unhandled exception");
     WriteMiniDump(InExceptionInfo);
     ::TerminateProcess(::GetCurrentProcess(), 3);
     return EXCEPTION_EXECUTE_HANDLER;
@@ -299,6 +327,11 @@ void InstallCrashHandler(std::string_view InApplicationName) noexcept
     GInstalled.store(true, std::memory_order_release);
 }
 
+void SetCrashIncidentHook(CrashIncidentHook InHook) noexcept
+{
+    GCrashIncidentHook = InHook;
+}
+
 void UninstallCrashHandler() noexcept
 {
     if (!GInstalled.load(std::memory_order_relaxed))
@@ -336,8 +369,14 @@ bool WriteCrashReport(std::string_view InApplicationName, std::string_view InRea
         return false;
     }
     const unsigned int ScopedSequence = GReportSequence.fetch_add(1, std::memory_order_relaxed);
-    WriteReportFile(InReason, InDetails, ScopedSequence);
-    return true;
+    const bool ScopedWritten = WriteReportFile(InReason, InDetails, ScopedSequence);
+    if (ScopedWritten && GCrashIncidentHook != nullptr)
+    {
+        char ScopedReason[192] = {};
+        std::snprintf(ScopedReason, sizeof(ScopedReason), "%.*s", static_cast<int>(InReason.size()), InReason.data());
+        GCrashIncidentHook(GSessionDirectory, ScopedReason);
+    }
+    return ScopedWritten;
 }
 
 std::string_view LastCrashDirectory() noexcept

@@ -3,6 +3,7 @@
 #include "Engine/RHI/RHI.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 
 int main()
 {
@@ -15,10 +16,14 @@ int main()
     ScopedWindowDesc.title = "FemboyEngine - auto backend";
     ScopedWindowDesc.width = 320;
     ScopedWindowDesc.height = 240;
+    ScopedWindowDesc.mode = Fby::WindowMode::Windowed;
     if (!ScopedWindow.Create(ScopedWindowDesc))
     {
         return 1;
     }
+#if defined(_WIN32)
+    _putenv_s("FBY_RHI_BACKEND", "auto");
+#endif
     Fby::Rhi::DeviceDesc ScopedDesc;
     ScopedDesc.nativeWindow = ScopedWindow.NativeWindow();
     ScopedDesc.size = {320, 240};

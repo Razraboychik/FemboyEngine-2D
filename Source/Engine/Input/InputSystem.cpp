@@ -322,14 +322,16 @@ Vector2D InputSystem::ApplyModifiers(const InputMappingDesc& InMapping, Vector2D
         {
             case InputModifierKind::Deadzone:
             {
+                const float ScopedDeadzone = std::clamp(ScopedA, 0.0f, 1.0f);
                 const float ScopedLength = std::sqrt(InValue.X * InValue.X + InValue.Y * InValue.Y);
-                if (ScopedLength <= ScopedA)
+                if (ScopedLength <= ScopedDeadzone || ScopedDeadzone >= 1.0f)
                 {
                     InValue = Vector2D{};
                 }
-                else if (ScopedA < 1.0f)
+                else
                 {
-                    const float ScopedScale = (ScopedLength - ScopedA) / (1.0f - ScopedA) / ScopedLength;
+                    const float ScopedScale =
+                        (ScopedLength - ScopedDeadzone) / (1.0f - ScopedDeadzone) / ScopedLength;
                     InValue = InValue * ScopedScale;
                 }
                 break;
@@ -354,9 +356,12 @@ Vector2D InputSystem::ApplyModifiers(const InputMappingDesc& InMapping, Vector2D
                 break;
             }
             case InputModifierKind::Clamp:
-                InValue.X = std::clamp(InValue.X, -ScopedA, ScopedA);
-                InValue.Y = std::clamp(InValue.Y, -ScopedA, ScopedA);
+            {
+                const float ScopedLimit = std::max(ScopedA, 0.0f);
+                InValue.X = std::clamp(InValue.X, -ScopedLimit, ScopedLimit);
+                InValue.Y = std::clamp(InValue.Y, -ScopedLimit, ScopedLimit);
                 break;
+            }
             case InputModifierKind::Curve:
                 InValue.X = std::copysign(Sim::Pow(std::abs(InValue.X), std::max(ScopedA, 0.01f)), InValue.X);
                 InValue.Y = std::copysign(Sim::Pow(std::abs(InValue.Y), std::max(ScopedA, 0.01f)), InValue.Y);

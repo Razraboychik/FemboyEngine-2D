@@ -79,6 +79,8 @@ struct ReleaseCookConfig
     char packPath[kReleasePathBytes] = {};
     char archivePath[kReleasePathBytes] = {};
     char packerPath[kReleasePathBytes] = {};
+    // fby_fempak cook target: desktop (BC7) or mobile (ASTC).
+    char target[16] = "desktop";
     char engineSourcePath[kReleasePathBytes] = {};
 #if defined(_WIN32)
     char compiler[kReleaseNameBytes] = "clang-cl";

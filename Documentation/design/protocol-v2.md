@@ -90,7 +90,7 @@ The record-layer test is `record_layer_v2`. Official Noise vectors and the
 
 ## 4. Versioning and deprecation
 
-- v2 is the default since 0.5.0. A peer that still needs the frozen transcript
+- v2 is the default since 0.6.0-alpha.1. A peer that still needs the frozen transcript
   sets `SecureChannelConfig::ProtocolV2 = false`; there is no automatic
   negotiation that can fall back from v2 to v1.
 - A v1 channel rejects a v2 message with `BadVersion` (and vice versa).

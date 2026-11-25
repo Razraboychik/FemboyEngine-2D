@@ -5,10 +5,10 @@
 **Data-oriented 2D-движок для игр, написанный с нуля на C++23.**
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](../LICENSE)
-[![C++23](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)]()
 [![CMake 3.22+](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
+[![Status: 0.6.0-alpha.1](https://img.shields.io/badge/status-0.6.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D — компактный, детерминированный движок для 2D-игр: собственный
@@ -21,8 +21,8 @@ opt-in параллельным выполнением, физика Box2D v3, r
 тривиально копируемые данные; системы — свободные функции; кадр — плоский массив
 `RenderItem`, отправляемый одним RHI-пакетом.
 
-**Статус: 0.5.0.** FemboyEngine2D находится в публичной линии
-0.5. Runtime включает отладчик FemboyScript (spans, breakpoints, stepping,
+**Статус: 0.6.0-alpha.1.** FemboyEngine2D находится в публичной линии
+0.6 alpha. Runtime включает отладчик FemboyScript (spans, breakpoints, stepping,
 locals и self-поля), изометрические и тайловые карты с редактором, скелетный
 IK, retargeting и сжатие клипов (`.fanim`), навигацию по сетке, 2D-освещение,
 UDP-транспорт с надёжностью и MTU-фрагментацией, живой пространственный звук,
@@ -101,6 +101,8 @@ FemboyEngine2D построен вокруг трёх идей: **ECS** отве
 | Эффекты | CPU-пул частиц фиксированной ёмкости, 16 редактируемых пресетов, 12 слотов форм с белыми масками, детерминированные гравитация/ветер/drag/турбулентность/swirl | Один span `RenderItem` на кадр, без аллокаций, атлас масок и палитра принадлежат игре |
 | RHI | Постоянные кольца кадров, 48-байтный `RenderItem`, 64-битные ключи, движковый `Rhi::FrameComposer`, Vulkan indirect MDI, один compute dispatch для LBS, Metal и null backends, контракты апскейлинга класса FSR/DLSS и генерации кадров | Один плоский пакет на кадр, явное время жизни кадра, без аллокаций на элемент, bindless-ключи |
 | ECS | FCS chunked registry, тривиально копируемые компоненты, четырёхфазный schedule, `SystemGraph` с opt-in параллельными волнами и объявленным доступом к сервисам/компонентам, Snapshot v5 | Archetype/chunk-хранилище, системы берут span’ы, а не владеют объектами, снапшоты — явные копии; v4 отвергается |
+| Данные | Ограниченные authoring-payload `StructValue`: стабильные type id, schema hash, TOML по полям, snapshot-кодек, опциональный `StructPayloadComponent` | Inline-значения до 64 байт, до 4 значений, только trivially copyable; типизированные ECS-компоненты остаются hot-path, а GameplayTags/Effects/Skills — владельцами правил |
+| Моды | Строгий `mod.toml`, резолвер зависимостей/циклов, проверка SHA-256/EdDSA, транзакционные VFS-mount с приоритетами, жизненный цикл native-плагинов, безопасная data ABI `FbyModApi`, детерминированный `ModSetHash` | Моды data-first; без игровых интерфейсов, ограниченные манифесты, атомарный mount и обратный unload, native-код только при явном доверии |
 | Ввод | Фиксированный `InputSystem`: действия/контексты/модификаторы/триггеры, состояние по пользователям, тики и timestamps событий, hotplug и dead zone для SDL3-геймпадов; без руля | Без heap в input-пути; ограниченные таблицы событий и маппингов; детерминированная выборка на тик |
 | Геймплей | База игровых тегов в Project Settings, иерархические `GameplayTags`, реестр атрибутов, data-driven instant/duration/periodic эффекты со стаками, навыки со стоимостью/кастом/кулдауном | Таблицы данных и фиксированные layout’ы компонентов; эффекты идут через command buffer, а не через скрытый граф объектов |
 | ИИ | `StateTree` → command buffer → `AIController` → восприятие, навигация и навыки; `ActionId` как данные для игровых ECS-систем, цели по тегам, grid и convex navmesh, пути raw/LOS/Chaikin/Catmull-Rom, детерминированная рандомизация маршрутов | Ограниченные state tree, бюджет repath на кадр, без фоновых аллокаций из AI-тика |
@@ -242,8 +244,8 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 ./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
 ```
 
-Версии закреплены: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang
-`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, libunibreak `6.1` и LZMA SDK
+Версии закреплены: SDL3 `release-3.4.20`, Vulkan-Headers `v1.4.366`, glslang
+`15.3.0`, miniaudio `0.11.26`, Box2D `v3.2.0`, libunibreak `6.1` и LZMA SDK
 `25.01`. Vendor SDK
 апскейлеров опциональны и не входят в архив; см.
 [Генерацию кадров](../Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).
@@ -299,13 +301,13 @@ build/package-гейт. Физическое поведение Metal GPU на m
 Основные исполняемые файлы:
 
 ```text
-build/bin/fby_sandbox
-build/bin/fby_editor
-build/bin/fby_server
-build/bin/fby_lobby
-build/bin/tools/fby_fempak
-build/bin/tools/fby_scene_tool
-build/bin/tools/fby_aotc
+build/dev/bin/fby_sandbox
+build/dev/bin/fby_editor
+build/dev/bin/fby_server
+build/dev/bin/fby_lobby
+build/dev/bin/tools/fby_fempak
+build/dev/bin/tools/fby_scene_tool
+build/dev/bin/tools/fby_aotc
 ```
 
 Опциональные vendor-апскейлеры включаются явно: SDK DLSS и FidelityFX не
@@ -316,7 +318,7 @@ build/bin/tools/fby_aotc
 [Генерацию кадров](../Documentation/md/ru/FemboyEngineFrameGeneration_RU.md).
 
 Приложения ищут `assets` в `FBY_ASSET_DIR`, `cwd/assets` или родительских
-каталогах исполняемого файла, поэтому запуск из `build/bin` в IDE работает без
+каталогах исполняемого файла, поэтому запуск из `build/dev/bin` в IDE работает без
 копирования файлов. `Saved/` (логи, конфиг, кеш) по-прежнему следует за рабочей
 директорией; `FBY_STORAGE_DIR` переносит его.
 
@@ -386,6 +388,7 @@ python Source/Tools/Dev/CheckVersion.py
 для заголовков (нетронутые 16 px в старых проектах мигрируются один раз);
 размеры по категориям и масштаб UI находятся в Project Settings > Editor
 Settings.
+
 
 **Создание сцены.** Редактор поставляется без окна консоли; лог находится в
 `Saved/Logs/editor`. Хранятся 20 последних файлов на категорию и 50 000
@@ -475,7 +478,6 @@ file>` (нажать Open на панели после `FBY_EDITOR_SMOKE_DASHBOA
 - [Колёса транспорта](../Documentation/design/vehicle-wheels.md)
 - [Система ввода](../Documentation/design/input-system.md)
 - [Дизайн физических бэкендов](../Documentation/design/physics-backends.md)
-- [Аудит CodeQL](../Documentation/design/codeql-audit.md)
 - [Время, таймеры и даты](../Documentation/design/time.md)
 - [Руководство по доступности](../Documentation/design/accessibility-guide_RU.md)
 - [Контракт доступности](../Documentation/design/accessibility.md)

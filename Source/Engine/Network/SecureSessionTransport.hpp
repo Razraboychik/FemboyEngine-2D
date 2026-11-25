@@ -55,6 +55,8 @@ public:
 
     // Drains the transport and feeds decrypted payloads into the session.
     void Poll(NetSession* InSession = nullptr) noexcept;
+    // Frees a peer slot. Established sessions call this when the session closes.
+    [[nodiscard]] bool Disconnect(const NetAddress& InAddress) noexcept;
 
     using VoiceSinkFn = void (*)(void* InUser, const NetAddress& InFrom,
                                  std::span<const std::byte> InPayload) noexcept;
@@ -96,6 +98,7 @@ protected:
         // the handshake prologue, so the transcript commits to those bytes.
         std::array<std::byte, Crypto::kSha256Bytes> TicketHash{};
         bool HasTicketHash = false;
+        float LastSeenSeconds = 0.0f;
     };
 
     static bool SendThunk(void* InUser, std::uint8_t InToPlayer, const NetAddress& InTo,
@@ -125,6 +128,7 @@ protected:
         float Tokens = 0.0f;
         float LastRefillSeconds = 0.0f;
         bool BucketStarted = false;
+        float LastSeenSeconds = 0.0f;
     };
     std::array<RateEntry, kSecureSessionMaxPeers> MRate{};
     std::uint32_t MHandshakeBurst = 32;

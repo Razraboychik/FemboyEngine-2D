@@ -9,11 +9,19 @@ namespace Fby::Video
 {
 namespace
 {
-void SetError(std::string* OutError, const char* InMessage)
+void SetError(std::string* OutError, const char* InMessage) noexcept
 {
-    if (OutError != nullptr)
+    if (OutError == nullptr)
+    {
+        return;
+    }
+    try
     {
         *OutError = InMessage;
+    }
+    catch (...)
+    {
+        OutError->clear();
     }
 }
 }

@@ -47,7 +47,7 @@ struct NetEntityId
 
     [[nodiscard]] constexpr bool IsValid() const noexcept
     {
-        return value != kInvalidNetEntityId;
+        return value != kInvalidNetEntityId && value != 0xFFFFFFFEu;
     }
     [[nodiscard]] constexpr explicit operator bool() const noexcept
     {

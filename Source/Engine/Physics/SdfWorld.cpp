@@ -39,7 +39,12 @@ namespace
 
 bool SdfWorld::Configure(const SdfWorldDesc& InDesc) noexcept
 {
-    if (InDesc.Width < 2 || InDesc.Height < 2 || InDesc.CellSize.X <= 0.0f || InDesc.CellSize.Y <= 0.0f)
+    try
+    {
+    if (InDesc.Width < 2 || InDesc.Height < 2 || !std::isfinite(InDesc.CellSize.X) ||
+        !std::isfinite(InDesc.CellSize.Y) || InDesc.CellSize.X <= 0.0f || InDesc.CellSize.Y <= 0.0f ||
+        !std::isfinite(InDesc.Origin.X) || !std::isfinite(InDesc.Origin.Y) ||
+        !std::isfinite(InDesc.OutsideDistance))
     {
         return false;
     }
@@ -62,6 +67,11 @@ bool SdfWorld::Configure(const SdfWorldDesc& InDesc) noexcept
     MBricks = SdfBrickMap{};
     MFieldVersion = 0;
     return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
 }
 
 void SdfWorld::ClearSources() noexcept
@@ -77,7 +87,14 @@ bool SdfWorld::AddBox(Vector2D InCenter, Vector2D InHalfExtents) noexcept
     {
         return false;
     }
-    MBoxes.push_back(SdfWorldBox{InCenter, InHalfExtents});
+    try
+    {
+        MBoxes.push_back(SdfWorldBox{InCenter, InHalfExtents});
+    }
+    catch (...)
+    {
+        return false;
+    }
     const float ScopedMargin = MDesc.NarrowBand + std::max(MDesc.CellSize.X, MDesc.CellSize.Y);
     const Vector2D ScopedExtent{InHalfExtents.X + ScopedMargin, InHalfExtents.Y + ScopedMargin};
     MarkDirtyRect(InCenter - ScopedExtent, InCenter + ScopedExtent);
@@ -90,7 +107,14 @@ bool SdfWorld::AddCircle(Vector2D InCenter, float InRadius) noexcept
     {
         return false;
     }
-    MCircles.push_back(SdfWorldCircle{InCenter, InRadius});
+    try
+    {
+        MCircles.push_back(SdfWorldCircle{InCenter, InRadius});
+    }
+    catch (...)
+    {
+        return false;
+    }
     const float ScopedMargin = InRadius + MDesc.NarrowBand + std::max(MDesc.CellSize.X, MDesc.CellSize.Y);
     MarkDirtyRect(Vector2D{InCenter.X - ScopedMargin, InCenter.Y - ScopedMargin},
                   Vector2D{InCenter.X + ScopedMargin, InCenter.Y + ScopedMargin});
@@ -229,6 +253,11 @@ void SdfWorld::MarkDirtyRect(Vector2D InMin, Vector2D InMax) noexcept
     }
     const std::uint32_t ScopedBricksX = (MDesc.Width + SdfBrickSize - 1u) / SdfBrickSize;
     const std::uint32_t ScopedBricksY = (MDesc.Height + SdfBrickSize - 1u) / SdfBrickSize;
+    if (!std::isfinite(InMin.X) || !std::isfinite(InMin.Y) || !std::isfinite(InMax.X) || !std::isfinite(InMax.Y) ||
+        !(MDesc.CellSize.X > 0.0f) || !(MDesc.CellSize.Y > 0.0f))
+    {
+        return;
+    }
     if (InMax.X <= InMin.X || InMax.Y <= InMin.Y)
     {
         return;
@@ -236,12 +265,22 @@ void SdfWorld::MarkDirtyRect(Vector2D InMin, Vector2D InMax) noexcept
     const auto ScopedCellX = [this](float InWorldX)
     {
         const float ScopedCell = (InWorldX - MDesc.Origin.X) / MDesc.CellSize.X;
-        return static_cast<std::int32_t>(std::floor(ScopedCell));
+        if (!std::isfinite(ScopedCell))
+        {
+            return std::int32_t{0};
+        }
+        return static_cast<std::int32_t>(
+            std::clamp(ScopedCell, -1.0f, static_cast<float>(MDesc.Width)));
     };
     const auto ScopedCellY = [this](float InWorldY)
     {
         const float ScopedCell = (InWorldY - MDesc.Origin.Y) / MDesc.CellSize.Y;
-        return static_cast<std::int32_t>(std::floor(ScopedCell));
+        if (!std::isfinite(ScopedCell))
+        {
+            return std::int32_t{0};
+        }
+        return static_cast<std::int32_t>(
+            std::clamp(ScopedCell, -1.0f, static_cast<float>(MDesc.Height)));
     };
     std::int32_t ScopedMinX = ScopedCellX(InMin.X);
     std::int32_t ScopedMinY = ScopedCellY(InMin.Y);

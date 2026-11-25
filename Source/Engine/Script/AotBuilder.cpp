@@ -2,6 +2,7 @@
 #include "Engine/Script/AotBuilder.hpp"
 
 #include "Engine/Script/AotGraphCompiler.hpp"
+#include "Engine/Core/ProcessLaunch.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -21,24 +22,6 @@ namespace Fby::Script
 {
 namespace
 {
-
-[[nodiscard]] std::string Quote(const std::string& InValue)
-{
-    std::string ScopedQuoted = "\"";
-    for (const char ScopedCharacter : InValue)
-    {
-        if (ScopedCharacter == '"')
-        {
-            ScopedQuoted += "\\\"";
-        }
-        else
-        {
-            ScopedQuoted += ScopedCharacter;
-        }
-    }
-    ScopedQuoted += '"';
-    return ScopedQuoted;
-}
 
 [[nodiscard]] bool IsMsvcDriver(const std::string& InCompiler)
 {
@@ -62,7 +45,15 @@ namespace
     std::string ScopedText(ScopedWanted, '\0');
     ScopedStream.seekg(static_cast<std::streamoff>(ScopedSize - static_cast<std::streamsize>(ScopedWanted)),
                        std::ios::beg);
+    if (!ScopedStream)
+    {
+        return {};
+    }
     ScopedStream.read(ScopedText.data(), static_cast<std::streamsize>(ScopedWanted));
+    if (!ScopedStream)
+    {
+        return {};
+    }
     return ScopedText;
 }
 
@@ -77,153 +68,91 @@ namespace
 #endif
 }
 
-#if defined(_WIN32)
-[[nodiscard]] std::wstring Wide(const std::string& InText)
+[[nodiscard]] int RunProcess(std::span<const std::string> InArguments, const std::filesystem::path& InLogPath)
 {
-    const int ScopedLength =
-        MultiByteToWideChar(CP_UTF8, 0, InText.c_str(), static_cast<int>(InText.size()), nullptr, 0);
-    if (ScopedLength <= 0)
-    {
-        return {};
-    }
-    std::wstring ScopedWide(static_cast<std::size_t>(ScopedLength), L'\0');
-    (void)MultiByteToWideChar(CP_UTF8, 0, InText.c_str(), static_cast<int>(InText.size()), ScopedWide.data(),
-                              ScopedLength);
-    return ScopedWide;
-}
-#endif
-
-// Launches the compiler without a shell on Windows. std::system() goes through
-#if defined(_WIN32)
-[[nodiscard]] std::wstring ReadEnvironment(const wchar_t* InName)
-{
-    const DWORD ScopedSize = GetEnvironmentVariableW(InName, nullptr, 0);
-    if (ScopedSize == 0)
-    {
-        return {};
-    }
-    std::wstring ScopedValue(static_cast<std::size_t>(ScopedSize), L'\0');
-    const DWORD ScopedCopied = GetEnvironmentVariableW(InName, ScopedValue.data(), ScopedSize);
-    ScopedValue.resize(static_cast<std::size_t>(ScopedCopied));
-    return ScopedValue;
-}
-#endif
-
-[[nodiscard]] int RunProcess(const std::string& InCommand, const std::filesystem::path& InLogPath)
-{
-#if defined(_WIN32)
-    std::wstring ScopedWideCommand = Wide(InCommand);
-    if (ScopedWideCommand.empty())
+    if (InArguments.empty())
     {
         return -1;
     }
-
-    // A process started from a POSIX shell on Windows can inherit TMP=/tmp.
-    static std::mutex ScopedEnvironmentMutex;
-    const std::filesystem::path ScopedTempDirectory = InLogPath.parent_path() / ".tmp";
-    std::error_code ScopedDirectoryError;
-    std::filesystem::create_directories(ScopedTempDirectory, ScopedDirectoryError);
-    const std::wstring ScopedTemp = (ScopedDirectoryError ? InLogPath.parent_path() : ScopedTempDirectory).wstring();
-
-    std::lock_guard ScopedLock(ScopedEnvironmentMutex);
-    const std::wstring ScopedPreviousTmp = ReadEnvironment(L"TMP");
-    const std::wstring ScopedPreviousTemp = ReadEnvironment(L"TEMP");
-    const bool ScopedHadTmp = !ScopedPreviousTmp.empty();
-    const bool ScopedHadTemp = !ScopedPreviousTemp.empty();
-    (void)SetEnvironmentVariableW(L"TMP", ScopedTemp.c_str());
-    (void)SetEnvironmentVariableW(L"TEMP", ScopedTemp.c_str());
-
-    SECURITY_ATTRIBUTES ScopedAttributes{};
-    ScopedAttributes.nLength = sizeof(ScopedAttributes);
-    ScopedAttributes.bInheritHandle = TRUE;
-    const HANDLE ScopedLog = CreateFileW(InLogPath.wstring().c_str(), GENERIC_WRITE, FILE_SHARE_READ, &ScopedAttributes,
-                                         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    STARTUPINFOW ScopedStartup{};
-    ScopedStartup.cb = sizeof(ScopedStartup);
-    if (ScopedLog != INVALID_HANDLE_VALUE)
-    {
-        ScopedStartup.dwFlags |= STARTF_USESTDHANDLES;
-        ScopedStartup.hStdOutput = ScopedLog;
-        ScopedStartup.hStdError = ScopedLog;
-        ScopedStartup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    }
-    PROCESS_INFORMATION ScopedProcess{};
-    const BOOL ScopedCreated =
-        CreateProcessW(nullptr, ScopedWideCommand.data(), nullptr, nullptr, ScopedLog != INVALID_HANDLE_VALUE,
-                       CREATE_NO_WINDOW, nullptr, nullptr, &ScopedStartup, &ScopedProcess);
-    if (ScopedLog != INVALID_HANDLE_VALUE)
-    {
-        CloseHandle(ScopedLog);
-    }
-    (void)SetEnvironmentVariableW(L"TMP", ScopedHadTmp ? ScopedPreviousTmp.c_str() : nullptr);
-    (void)SetEnvironmentVariableW(L"TEMP", ScopedHadTemp ? ScopedPreviousTemp.c_str() : nullptr);
-    if (!ScopedCreated)
-    {
-        return -1;
-    }
-    WaitForSingleObject(ScopedProcess.hProcess, INFINITE);
-    DWORD ScopedExitCode = 1;
-    (void)GetExitCodeProcess(ScopedProcess.hProcess, &ScopedExitCode);
-    CloseHandle(ScopedProcess.hThread);
-    CloseHandle(ScopedProcess.hProcess);
-    return static_cast<int>(ScopedExitCode);
-#else
-    const std::string ScopedRedirected = InCommand + " > " + Quote(InLogPath.string()) + " 2>&1";
-    return std::system(ScopedRedirected.c_str());
-#endif
+    const Fby::Process::RunResult ScopedResult =
+        Fby::Process::Run(InArguments.front(), InArguments, InLogPath.string());
+    return ScopedResult.launched ? ScopedResult.exitCode : -1;
 }
 
-[[nodiscard]] std::string BuildCommand(const AotBuildOptions& InOptions, const std::filesystem::path& InSource,
-                                       const std::filesystem::path& InLibrary)
+void AppendExtraFlags(std::vector<std::string>& InArguments, std::string_view InFlags)
 {
-    const std::string ScopedCompiler = InOptions.compiler;
-    std::string ScopedCommand = Quote(ScopedCompiler);
-    if (IsMsvcDriver(ScopedCompiler))
+    std::string ScopedToken;
+    for (const char ScopedCharacter : InFlags)
     {
-        ScopedCommand += " /nologo /std:c++latest /O2 /LD /EHsc /I";
-        ScopedCommand += Quote(InOptions.includeDirectory.string());
-        ScopedCommand += ' ';
+        if (ScopedCharacter == ' ' || ScopedCharacter == '\t' || ScopedCharacter == '\r' ||
+            ScopedCharacter == '\n')
+        {
+            if (!ScopedToken.empty())
+            {
+                InArguments.push_back(std::move(ScopedToken));
+                ScopedToken.clear();
+            }
+            continue;
+        }
+        ScopedToken.push_back(ScopedCharacter);
+    }
+    if (!ScopedToken.empty())
+    {
+        InArguments.push_back(std::move(ScopedToken));
+    }
+}
+
+[[nodiscard]] std::vector<std::string> BuildArguments(const AotBuildOptions& InOptions,
+                                                      const std::filesystem::path& InSource,
+                                                      const std::filesystem::path& InLibrary)
+{
+    std::vector<std::string> ScopedArguments;
+    ScopedArguments.emplace_back(InOptions.compiler);
+    if (IsMsvcDriver(InOptions.compiler))
+    {
+        ScopedArguments.push_back("/nologo");
+        ScopedArguments.push_back("/std:c++latest");
+        ScopedArguments.push_back("/O2");
+        ScopedArguments.push_back("/LD");
+        ScopedArguments.push_back("/EHsc");
+        ScopedArguments.push_back("/I");
+        ScopedArguments.emplace_back(InOptions.includeDirectory.string());
         if (!InOptions.forceIncludeHeader.empty())
         {
-            ScopedCommand += "/FI";
-            ScopedCommand += Quote(InOptions.forceIncludeHeader.string());
-            ScopedCommand += ' ';
+            ScopedArguments.push_back("/FI");
+            ScopedArguments.emplace_back(InOptions.forceIncludeHeader.string());
         }
-        ScopedCommand += Quote(InSource.string());
-        ScopedCommand += " /Fe:";
-        ScopedCommand += Quote(InLibrary.string());
-        ScopedCommand += " /Fo:";
-        ScopedCommand += Quote((InLibrary.string() + ".obj"));
+        ScopedArguments.emplace_back(InSource.string());
+        ScopedArguments.emplace_back(std::string("/Fe:") + InLibrary.string());
+        ScopedArguments.emplace_back(std::string("/Fo:") + InLibrary.string() + ".obj");
     }
     else
     {
 #if defined(__APPLE__)
-        ScopedCommand += " -std=c++26 -O3 -dynamiclib";
+        ScopedArguments.push_back("-std=c++26");
+        ScopedArguments.push_back("-O3");
+        ScopedArguments.push_back("-dynamiclib");
 #else
-        ScopedCommand += " -std=c++26 -O3 -shared";
+        ScopedArguments.push_back("-std=c++26");
+        ScopedArguments.push_back("-O3");
+        ScopedArguments.push_back("-shared");
 #endif
 #if !defined(_WIN32)
-        ScopedCommand += " -fPIC";
+        ScopedArguments.push_back("-fPIC");
 #endif
-        ScopedCommand += " -I";
-        ScopedCommand += Quote(InOptions.includeDirectory.string());
-        ScopedCommand += ' ';
+        ScopedArguments.push_back("-I");
+        ScopedArguments.emplace_back(InOptions.includeDirectory.string());
         if (!InOptions.forceIncludeHeader.empty())
         {
-            ScopedCommand += "-include ";
-            ScopedCommand += Quote(InOptions.forceIncludeHeader.string());
-            ScopedCommand += ' ';
+            ScopedArguments.push_back("-include");
+            ScopedArguments.emplace_back(InOptions.forceIncludeHeader.string());
         }
-        ScopedCommand += Quote(InSource.string());
-        ScopedCommand += " -o ";
-        ScopedCommand += Quote(InLibrary.string());
+        ScopedArguments.emplace_back(InSource.string());
+        ScopedArguments.push_back("-o");
+        ScopedArguments.emplace_back(InLibrary.string());
     }
-    if (!InOptions.extraFlags.empty())
-    {
-        ScopedCommand += ' ';
-        ScopedCommand += InOptions.extraFlags;
-    }
-    return ScopedCommand;
+    AppendExtraFlags(ScopedArguments, InOptions.extraFlags);
+    return ScopedArguments;
 }
 }
 
@@ -360,6 +289,7 @@ void AotBuilder::FinishBuild(std::stop_token InStop, AotBuildResult& ScopedResul
             return;
         }
         ScopedStream.write(ScopedSource.data(), static_cast<std::streamsize>(ScopedSource.size()));
+        ScopedStream.close();
         if (!ScopedStream)
         {
             ScopedResult.state = AotBuildState::Failed;
@@ -377,8 +307,9 @@ void AotBuilder::FinishBuild(std::stop_token InStop, AotBuildResult& ScopedResul
         return;
     }
 
-    const std::string ScopedCommand = BuildCommand(InOptions, ScopedResult.sourcePath, ScopedResult.libraryPath);
-    const int ScopedStatus = RunProcess(ScopedCommand, ScopedResult.logPath);
+    const std::vector<std::string> ScopedArguments =
+        BuildArguments(InOptions, ScopedResult.sourcePath, ScopedResult.libraryPath);
+    const int ScopedStatus = RunProcess(ScopedArguments, ScopedResult.logPath);
     if (InStop.stop_requested())
     {
         ScopedResult.state = AotBuildState::Idle;
@@ -400,7 +331,8 @@ void AotBuilder::FinishBuild(std::stop_token InStop, AotBuildResult& ScopedResul
         Publish(ScopedResult);
         return;
     }
-    if (!std::filesystem::exists(ScopedResult.libraryPath))
+    std::error_code ScopedLibraryError;
+    if (!std::filesystem::is_regular_file(ScopedResult.libraryPath, ScopedLibraryError))
     {
         ScopedResult.state = AotBuildState::Failed;
         ScopedResult.error = "compiler reported success but produced no library: " + ScopedResult.libraryPath.string();

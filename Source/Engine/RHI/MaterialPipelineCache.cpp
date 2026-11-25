@@ -143,14 +143,20 @@ Rhi::ShaderPipelineHandle MaterialPipelineCache::Acquire(Rhi::RHI& InRhi,
     std::snprintf(ScopedDebugName, sizeof(ScopedDebugName), "material %016llx",
                   static_cast<unsigned long long>(InMaterial.graphHash));
 
+    const bool ScopedSprite = MaterialContractIsSprite(InMaterial.contract);
+    if (ScopedSprite && (!InMaterial.vertexSpirv.empty() || !InMaterial.vertexDxil.empty()))
+    {
+        ++MStats.failures;
+        SetError("sprite material must not ship a vertex stage");
+        return {};
+    }
     Rhi::ShaderPipelineDesc ScopedDesc;
     ScopedDesc.vertexSpirv = InMaterial.vertexSpirv;
     ScopedDesc.fragmentSpirv = InMaterial.fragmentSpirv;
     ScopedDesc.vertexDxil = InMaterial.vertexDxil;
     ScopedDesc.fragmentDxil = InMaterial.fragmentDxil;
     ScopedDesc.debugName = ScopedDebugName;
-    ScopedDesc.domain = MaterialContractIsSprite(InMaterial.contract) ? Rhi::ShaderPipelineDomain::Sprite
-                                                                      : Rhi::ShaderPipelineDomain::Mesh;
+    ScopedDesc.domain = ScopedSprite ? Rhi::ShaderPipelineDomain::Sprite : Rhi::ShaderPipelineDomain::Mesh;
 
     const Rhi::ShaderPipelineHandle ScopedPipeline = InRhi.CreateShaderPipeline(ScopedDesc);
     if (!ScopedPipeline.IsValid())
@@ -204,7 +210,7 @@ void MaterialPipelineCache::ReleaseAll(Rhi::RHI& InRhi) noexcept
         }
         InRhi.DestroyShaderPipeline(ScopedEntry.pipeline);
         ++MStats.destroyed;
-        MStats.released += ScopedEntry.referenceCount > 0 ? 1u : 0u;
+        MStats.released += ScopedEntry.referenceCount;
         ScopedEntry = Entry{};
     }
 }

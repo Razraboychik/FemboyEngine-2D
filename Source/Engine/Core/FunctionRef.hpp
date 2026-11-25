@@ -5,6 +5,7 @@
 // trampoline and never allocates, which is what the engine's callbacks need.
 #pragma once
 
+#include <type_traits>
 #include <utility>
 
 namespace Fby
@@ -16,6 +17,10 @@ template <typename Return, typename... Args>
 class FunctionRef<Return(Args...)>
 {
 public:
+    template <typename Callable>
+        requires std::is_rvalue_reference_v<Callable&&>
+    FunctionRef(Callable&&) = delete;
+
     template <typename Callable>
     FunctionRef(const Callable& InCallable) noexcept
         : MUser(&InCallable),

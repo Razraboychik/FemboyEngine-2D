@@ -10,7 +10,26 @@
 namespace Fby::Assets
 {
 
-// TOML layout:
+// TOML layout: `default = "<locale>"` plus one table per locale. Failure is
+// reported by the optional error pointer; the checked forms below make it part
+// of the return value.
+struct LocalizationCompileResult
+{
+    bool Ok = false;
+    std::vector<std::byte> Bytes;
+    std::string Error;
+};
+
+struct LocalizationDecompileResult
+{
+    bool Ok = false;
+    std::string Text;
+    std::string Error;
+};
+
+[[nodiscard]] LocalizationCompileResult CompileLocalizationChecked(std::string_view InTomlContent);
+[[nodiscard]] LocalizationDecompileResult DecompileLocalizationChecked(std::span<const std::byte> InBinary);
+
 [[nodiscard]] std::vector<std::byte> CompileLocalization(std::string_view InTomlContent,
                                                          std::string* InError = nullptr);
 

@@ -157,8 +157,18 @@ public:
             MOps[ScopedExisting->second] = ScopedOps;
             return;
         }
-        MIndex.insert_or_assign(ScopedKey, MOps.size());
+        // Publish the storage first; if the index allocation fails, roll the
+        // ops element back so MIndex can never point past MOps.
         MOps.push_back(ScopedOps);
+        try
+        {
+            MIndex.insert_or_assign(ScopedKey, MOps.size() - 1u);
+        }
+        catch (...)
+        {
+            MOps.pop_back();
+            throw;
+        }
     }
 
     // Attaches the optional fixed-array TOML codec to an already registered

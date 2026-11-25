@@ -100,7 +100,7 @@ std::uint32_t FloatRing::AvailableWrite() const noexcept
 
 std::uint32_t FloatRing::Write(const float* InFrames, std::uint32_t InFrameCount) noexcept
 {
-    if (MBuffer == nullptr || InFrames == nullptr || InFrameCount == 0)
+    if (MBuffer == nullptr || InFrames == nullptr || InFrameCount == 0 || MCapacityFrames == 0)
     {
         return 0;
     }
@@ -126,7 +126,7 @@ std::uint32_t FloatRing::Write(const float* InFrames, std::uint32_t InFrameCount
 
 std::uint32_t FloatRing::Read(float* OutFrames, std::uint32_t InFrameCount) noexcept
 {
-    if (MBuffer == nullptr || OutFrames == nullptr || InFrameCount == 0)
+    if (MBuffer == nullptr || OutFrames == nullptr || InFrameCount == 0 || MCapacityFrames == 0)
     {
         return 0;
     }
@@ -162,7 +162,7 @@ VoiceCapture::~VoiceCapture()
 }
 
 bool VoiceCapture::Start(const AudioDeviceEnumerator& InDevices, const char* InDeviceId, FloatRing* InRing,
-                         std::uint32_t InSampleRate, std::string* InError) noexcept
+                         std::uint32_t InSampleRate, std::string* InError)
 {
     Stop();
     if (!InDevices.Ready() || InDevices.Context() == nullptr || InRing == nullptr)
@@ -171,6 +171,15 @@ bool VoiceCapture::Start(const AudioDeviceEnumerator& InDevices, const char* InD
         if (InError != nullptr)
         {
             *InError = "capture: backend or ring is not ready";
+        }
+        return false;
+    }
+    if (InRing->Channels() != 1)
+    {
+        MStatus = AudioDeviceStatus::Unavailable;
+        if (InError != nullptr)
+        {
+            *InError = "capture: the ring must be mono";
         }
         return false;
     }
@@ -228,8 +237,15 @@ bool VoiceCapture::Start(const AudioDeviceEnumerator& InDevices, const char* InD
         delete ScopedDevice;
         return false;
     }
+    // Publish everything the callback reads before the backend can run it.
+    MRing = InRing;
+    MSampleRate = InSampleRate;
+    MStatus = AudioDeviceStatus::Ok;
+    MPeak.store(0.0f, std::memory_order_relaxed);
+    MRms.store(0.0f, std::memory_order_relaxed);
     if (ma_device_start(ScopedDevice) != MA_SUCCESS)
     {
+        MRing = nullptr;
         MStatus = AudioDeviceStatus::Unavailable;
         if (InError != nullptr)
         {
@@ -241,11 +257,6 @@ bool VoiceCapture::Start(const AudioDeviceEnumerator& InDevices, const char* InD
     }
 
     MDevice = ScopedDevice;
-    MRing = InRing;
-    MSampleRate = InSampleRate;
-    MStatus = AudioDeviceStatus::Ok;
-    MPeak.store(0.0f, std::memory_order_relaxed);
-    MRms.store(0.0f, std::memory_order_relaxed);
     return true;
 }
 
@@ -287,12 +298,12 @@ AudioCaptureMonitor::~AudioCaptureMonitor()
 }
 
 bool AudioCaptureMonitor::Start(const AudioDeviceEnumerator& InDevices, const char* InDeviceId,
-                                std::uint32_t InSampleRate, std::string* InError) noexcept
+                                std::uint32_t InSampleRate, std::string* InError)
 {
     Stop();
     if (!MState)
     {
-        MState = std::make_unique<State>();
+        MState = std::unique_ptr<State>(new (std::nothrow) State());
     }
     if (!MState)
     {

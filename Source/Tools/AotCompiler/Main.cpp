@@ -1,5 +1,6 @@
 // FemboyEngine2D - fby_aotc: cook-time FemboyScript AOT compiler driver.
 #include "Engine/Core/BuildProfile.hpp"
+#include "Engine/Core/ProcessLaunch.hpp"
 #include "Engine/Script/AotTranspiler.hpp"
 #include "Engine/Script/Bytecode.hpp"
 
@@ -27,7 +28,12 @@ namespace
     }
     Out->resize(static_cast<std::size_t>(ScopedSize));
     ScopedStream.seekg(0, std::ios::beg);
-    return static_cast<bool>(ScopedStream.read(reinterpret_cast<char*>(Out->data()), ScopedSize));
+    if (!ScopedStream)
+    {
+        return false;
+    }
+    ScopedStream.read(reinterpret_cast<char*>(Out->data()), ScopedSize);
+    return static_cast<bool>(ScopedStream);
 }
 
 [[nodiscard]] bool WriteText(const char* InPath, const std::string& InText)
@@ -38,6 +44,7 @@ namespace
         return false;
     }
     ScopedStream.write(InText.data(), static_cast<std::streamsize>(InText.size()));
+    ScopedStream.close();
     return static_cast<bool>(ScopedStream);
 }
 
@@ -176,55 +183,63 @@ int main(int argc, char** argv)
                     Build::OptimizationName(ScopedOptimization).data(),
                     static_cast<int>(Build::Recommend(ScopedOptimization, true).headline.size()),
                     Build::Recommend(ScopedOptimization, true).headline.data());
-        std::string ScopedCommand = "\"";
-        ScopedCommand += ScopedCompiler;
-        ScopedCommand += "\"";
+        std::vector<std::string> ScopedArguments;
+        ScopedArguments.emplace_back(ScopedCompiler);
         if (std::strstr(ScopedCompiler, "clang-cl") != nullptr || std::strstr(ScopedCompiler, "cl.exe") != nullptr)
         {
-            ScopedCommand += " /nologo /std:c++latest ";
-            ScopedCommand += std::string(Build::OptimizationFlagMsvc(ScopedOptimization));
+            ScopedArguments.push_back("/nologo");
+            ScopedArguments.push_back("/std:c++latest");
+            ScopedArguments.emplace_back(Build::OptimizationFlagMsvc(ScopedOptimization));
             if (ScopedLto)
             {
-                ScopedCommand += " /GL";
+                ScopedArguments.push_back("/GL");
             }
             if (ScopedNative)
             {
-                ScopedCommand += " /arch:AVX2";
+                ScopedArguments.push_back("/arch:AVX2");
             }
-            ScopedCommand += " /LD /EHsc /I\"";
-            ScopedCommand += ScopedIncludeDir;
-            ScopedCommand += "\" \"";
-            ScopedCommand += ScopedSourcePath;
-            ScopedCommand += "\" /Fe:\"";
-            ScopedCommand += ScopedCompiledOutput;
-            ScopedCommand += "\" /Fo:\"";
-            ScopedCommand += std::string(ScopedCompiledOutput) + ".obj\"";
+            ScopedArguments.push_back("/LD");
+            ScopedArguments.push_back("/EHsc");
+            ScopedArguments.push_back("/I");
+            ScopedArguments.emplace_back(ScopedIncludeDir);
+            ScopedArguments.emplace_back(ScopedSourcePath);
+            ScopedArguments.emplace_back(std::string("/Fe:") + ScopedCompiledOutput);
+            ScopedArguments.emplace_back(std::string("/Fo:") + ScopedCompiledOutput + ".obj");
         }
         else
         {
-            ScopedCommand += " -std=c++23 ";
-            ScopedCommand += std::string(Build::OptimizationFlag(ScopedOptimization));
+            ScopedArguments.push_back("-std=c++23");
+            ScopedArguments.emplace_back(Build::OptimizationFlag(ScopedOptimization));
             if (ScopedLto)
             {
-                ScopedCommand += " -flto";
+                ScopedArguments.push_back("-flto");
             }
             if (ScopedNative)
             {
-                ScopedCommand += " -march=native";
+                ScopedArguments.push_back("-march=native");
             }
-            ScopedCommand += " -shared -fPIC -I\"";
-            ScopedCommand += ScopedIncludeDir;
-            ScopedCommand += "\" \"";
-            ScopedCommand += ScopedSourcePath;
-            ScopedCommand += "\" -o \"";
-            ScopedCommand += ScopedCompiledOutput;
-            ScopedCommand += "\"";
+            ScopedArguments.push_back("-shared");
+            ScopedArguments.push_back("-fPIC");
+            ScopedArguments.push_back("-I");
+            ScopedArguments.emplace_back(ScopedIncludeDir);
+            ScopedArguments.emplace_back(ScopedSourcePath);
+            ScopedArguments.push_back("-o");
+            ScopedArguments.emplace_back(ScopedCompiledOutput);
         }
-        std::printf("fby_aotc: compiling: %s\n", ScopedCommand.c_str());
-        const int ScopedResult = std::system(ScopedCommand.c_str());
-        if (ScopedResult != 0)
+        std::string ScopedDisplay;
+        for (const std::string& ScopedArgument : ScopedArguments)
         {
-            std::fprintf(stderr, "fby_aotc: native compile failed (%d)\n", ScopedResult);
+            if (!ScopedDisplay.empty())
+            {
+                ScopedDisplay.push_back(' ');
+            }
+            ScopedDisplay += ScopedArgument;
+        }
+        std::printf("fby_aotc: compiling: %s\n", ScopedDisplay.c_str());
+        const Fby::Process::RunResult ScopedRun = Fby::Process::Run(ScopedCompiler, ScopedArguments);
+        if (!ScopedRun.launched || ScopedRun.exitCode != 0)
+        {
+            std::fprintf(stderr, "fby_aotc: native compile failed (%d)\n", ScopedRun.exitCode);
             return 1;
         }
         std::printf("fby_aotc: native plugin -> %s\n", ScopedCompiledOutput);

@@ -7,6 +7,7 @@
 #include <stb_image.h>
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cctype>
 #include <cmath>
@@ -14,6 +15,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -668,7 +670,7 @@ void GatherBlock(const std::uint8_t* InImage, std::uint32_t InWidth, std::uint32
 }
 
 // ASTC seam
-AstcEncoder GAstcEncoder = nullptr;
+std::atomic<AstcEncoder> GAstcEncoder{nullptr};
 }
 
 // Public codec building blocks
@@ -829,7 +831,7 @@ bool DecodeAstcConstantBlock(std::span<const std::byte, 16> InBlock, std::uint8_
 bool BuildMipChain(const std::uint8_t* InRgba8, std::uint32_t InWidth, std::uint32_t InHeight,
                    std::uint32_t InMipLevels, bool InSrgb, std::vector<std::uint8_t>& OutRgba8)
 {
-    if (InRgba8 == nullptr || InWidth == 0 || InHeight == 0 || InMipLevels == 0)
+    if (InRgba8 == nullptr || InWidth == 0 || InHeight == 0 || InMipLevels == 0 || InMipLevels > 32)
     {
         return false;
     }
@@ -883,7 +885,7 @@ bool BuildMipChain(const std::uint8_t* InRgba8, std::uint32_t InWidth, std::uint
 
 void SetAstcEncoder(AstcEncoder InEncoder) noexcept
 {
-    GAstcEncoder = InEncoder;
+    GAstcEncoder.store(InEncoder, std::memory_order_release);
 }
 
 // Block compression
@@ -912,7 +914,8 @@ void CompressBc7(const std::uint8_t* InRgba8, std::uint32_t InWidth, std::uint32
 void CompressAstc(const std::uint8_t* InRgba8, std::uint32_t InWidth, std::uint32_t InHeight,
                   const TextureCookOptions& InOptions, std::vector<std::byte>& Out)
 {
-    if (GAstcEncoder != nullptr && GAstcEncoder(InRgba8, InWidth, InHeight, InOptions, Out))
+    const AstcEncoder ScopedEncoder = GAstcEncoder.load(std::memory_order_acquire);
+    if (ScopedEncoder != nullptr && ScopedEncoder(InRgba8, InWidth, InHeight, InOptions, Out))
     {
         // A linked high-quality encoder produced the blocks
         return;
@@ -1030,37 +1033,68 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
     }
 
     stbi_set_flip_vertically_on_load(0);
+    if (InSource.empty() || InSource.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    {
+        SetError(InError, "image source is empty or exceeds the decoder's input limit");
+        return false;
+    }
     int ScopedWidth = 0;
     int ScopedHeight = 0;
     int ScopedChannels = 0;
-    stbi_uc* ScopedPixels =
+    stbi_uc* ScopedRawPixels =
         stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(InSource.data()), static_cast<int>(InSource.size()),
                               &ScopedWidth, &ScopedHeight, &ScopedChannels, 4);
-    if (ScopedPixels == nullptr)
+    if (ScopedRawPixels == nullptr)
     {
         const char* ScopedReason = stbi_failure_reason();
         SetError(InError,
                  std::string("image decode failed: ") + (ScopedReason != nullptr ? ScopedReason : "unknown error"));
         return false;
     }
+    const std::unique_ptr<stbi_uc, void (*)(stbi_uc*)> ScopedPixelsOwner(
+        ScopedRawPixels, [](stbi_uc* InPixels) { stbi_image_free(InPixels); });
+    stbi_uc* const ScopedPixels = ScopedPixelsOwner.get();
     if (ScopedWidth <= 0 || ScopedHeight <= 0 || ScopedWidth > 16384 || ScopedHeight > 16384)
     {
-        stbi_image_free(ScopedPixels);
         SetError(InError, "texture dimensions are out of range (1..16384)");
         return false;
+    }
+
+    const stbi_uc* ScopedActivePixels = ScopedPixels;
+    std::vector<std::uint8_t> ScopedResized;
+    if (InOptions.maxSize > 0 &&
+        (static_cast<std::uint32_t>(ScopedWidth) > InOptions.maxSize ||
+         static_cast<std::uint32_t>(ScopedHeight) > InOptions.maxSize))
+    {
+        const std::uint32_t ScopedSourceWidth = static_cast<std::uint32_t>(ScopedWidth);
+        const std::uint32_t ScopedSourceHeight = static_cast<std::uint32_t>(ScopedHeight);
+        const std::uint32_t ScopedScale = std::max(
+            (ScopedSourceWidth + InOptions.maxSize - 1u) / InOptions.maxSize,
+            (ScopedSourceHeight + InOptions.maxSize - 1u) / InOptions.maxSize);
+        ScopedWidth = static_cast<int>(std::max(1u, ScopedSourceWidth / ScopedScale));
+        ScopedHeight = static_cast<int>(std::max(1u, ScopedSourceHeight / ScopedScale));
+        ScopedResized.resize(static_cast<std::size_t>(ScopedWidth) * ScopedHeight * 4u);
+        DownsampleBox(ScopedPixels, ScopedSourceWidth, ScopedSourceHeight, ScopedResized.data(),
+                      static_cast<std::uint32_t>(ScopedWidth), static_cast<std::uint32_t>(ScopedHeight),
+                      InOptions.srgb);
+        ScopedActivePixels = ScopedResized.data();
     }
 
     bool ScopedHasTransparent = false;
     bool ScopedHasTranslucent = false;
     for (int ScopedPixel = 0; ScopedPixel < ScopedWidth * ScopedHeight; ++ScopedPixel)
     {
-        const std::uint8_t ScopedAlpha = ScopedPixels[ScopedPixel * 4 + 3];
+        const std::uint8_t ScopedAlpha = ScopedActivePixels[ScopedPixel * 4 + 3];
         ScopedHasTransparent |= ScopedAlpha == 0u;
         ScopedHasTranslucent |= ScopedAlpha > 0u && ScopedAlpha < 255u;
     }
     const bool ScopedHasAlpha = ScopedChannels == 4 || ScopedChannels == 2;
     Assets::TextureFormat ScopedFormat = Assets::TextureFormat::Bc7Srgb;
-    if (InOptions.target == CookTarget::Desktop)
+    if (InOptions.target == CookTarget::Rgba8)
+    {
+        ScopedFormat = Assets::TextureFormat::Rgba8;
+    }
+    else if (InOptions.target == CookTarget::Desktop)
     {
         ScopedFormat = InOptions.srgb ? Assets::TextureFormat::Bc7Srgb : Assets::TextureFormat::Bc7Unorm;
     }
@@ -1080,10 +1114,10 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
     ScopedMipLevels = std::max(ScopedMipLevels, 1u);
 
     std::vector<std::uint8_t> ScopedChain;
+    const bool ScopedSrgbMips = InOptions.target == CookTarget::Rgba8 ? false : InOptions.srgb;
     const bool ScopedBuilt =
-        BuildMipChain(ScopedPixels, static_cast<std::uint32_t>(ScopedWidth), static_cast<std::uint32_t>(ScopedHeight),
-                      ScopedMipLevels, InOptions.srgb, ScopedChain);
-    stbi_image_free(ScopedPixels);
+        BuildMipChain(ScopedActivePixels, static_cast<std::uint32_t>(ScopedWidth), static_cast<std::uint32_t>(ScopedHeight),
+                      ScopedMipLevels, ScopedSrgbMips, ScopedChain);
     if (!ScopedBuilt)
     {
         SetError(InError, "mip generation failed");
@@ -1098,7 +1132,14 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
         const std::uint32_t ScopedLevelHeight =
             Assets::MipExtent(static_cast<std::uint32_t>(ScopedHeight), ScopedLevel);
         std::vector<std::byte> ScopedCompressed;
-        if (InOptions.target == CookTarget::Desktop)
+        if (InOptions.target == CookTarget::Rgba8)
+        {
+            const std::size_t ScopedBytes =
+                static_cast<std::size_t>(ScopedLevelWidth) * ScopedLevelHeight * 4u;
+            ScopedCompressed.resize(ScopedBytes);
+            std::memcpy(ScopedCompressed.data(), ScopedChain.data() + ScopedOffset, ScopedBytes);
+        }
+        else if (InOptions.target == CookTarget::Desktop)
         {
             CompressBc7(ScopedChain.data() + ScopedOffset, ScopedLevelWidth, ScopedLevelHeight, ScopedCompressed);
         }
@@ -1112,7 +1153,7 @@ bool CookTextureBytes(std::span<const std::byte> InSource, std::string_view InSo
     }
 
     std::uint32_t ScopedFlags = 0;
-    if (Assets::IsSrgb(ScopedFormat))
+    if (InOptions.target == CookTarget::Rgba8 ? InOptions.srgb : Assets::IsSrgb(ScopedFormat))
     {
         ScopedFlags |= Assets::kTextureFlagSrgb;
     }

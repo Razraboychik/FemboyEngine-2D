@@ -1,5 +1,6 @@
 // FemboyEngine2D - editor application.
 #include "Engine/Core/CrashHandler.hpp"
+#include "Engine/Ops/Ops.hpp"
 #include "Engine/Core/AssetPaths.hpp"
 #include "Engine/Core/StoragePaths.hpp"
 #include "Engine/Core/Time.hpp"
@@ -98,6 +99,7 @@
 #include "Engine/ECS/Scene.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <thread>
 #include <array>
@@ -484,9 +486,10 @@ void ProjectileStepSystem(Fby::Ecs::SystemContext& InContext, void* InUser)
                     std::array<Fby::SdfDebrisPiece, 24> ScopedPieces{};
                     Fby::SdfDebrisSettings ScopedSettings;
                     ScopedSettings.MaxPieces = static_cast<std::uint32_t>(ScopedPieces.size());
-                    ScopedSettings.Seed = static_cast<std::uint64_t>(ScopedHit.point.X * 131.0f) ^
-                                          static_cast<std::uint64_t>(ScopedHit.point.Y * 17.0f) ^
-                                          ScopedRuntime->destructible->Ops().size();
+                    ScopedSettings.Seed =
+                        (static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(ScopedHit.point.X)) << 32) ^
+                        static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(ScopedHit.point.Y)) ^
+                        ScopedRuntime->destructible->Ops().size();
                     const std::uint32_t ScopedDebrisCount = Fby::SpawnDebris(
                         *ScopedRuntime->destructible, ScopedCarve, ScopedSettings, ScopedPieces);
                     for (std::uint32_t ScopedIndex = 0; ScopedIndex < ScopedDebrisCount; ++ScopedIndex)
@@ -935,6 +938,23 @@ void SpawnFallbackWorld(Fby::Ecs::Registry& InRegistry)
 }
 }
 
+
+
+std::string GSessionLockPath;
+
+void ClearSessionLockAtExit()
+{
+    if (!GSessionLockPath.empty())
+    {
+        Fby::Ops::ClearSessionActive(GSessionLockPath);
+    }
+}
+
+void WriteCrashIncidentBundle(const char* InDirectory, const char* InReason) noexcept
+{
+    Fby::Ops::WriteCrashMarker(InDirectory, InReason);
+}
+
 int main(int argc, char** argv)
 {
     Fby::SetLogLevel(Fby::LogLevel::Info);
@@ -991,7 +1011,7 @@ int main(int argc, char** argv)
     ScopedDeviceDesc.size = {ScopedWindow.Size().width, ScopedWindow.Size().height};
     ScopedDeviceDesc.vsync = std::getenv("FBY_EDITOR_NOVSYNC") == nullptr;
     ScopedDeviceDesc.enableValidation = std::getenv("FBY_VULKAN_VALIDATION") != nullptr;
-    ScopedDeviceDesc.maxItemsPerFrame = 1u << 16;
+    ScopedDeviceDesc.maxItemsPerFrame = 1u << 17;
 
     std::unique_ptr<Fby::Rhi::RHI> ScopedGpu = Fby::Rhi::RHI::Create(ScopedDeviceDesc);
     if (!ScopedGpu)
@@ -1481,6 +1501,15 @@ int main(int argc, char** argv)
     Fby::Core::Profiler ScopedProfiler;
     Fby::Editor::EditorDesc ScopedEditorDesc;
     Fby::Core::InstallCrashHandler("fby_editor");
+    GSessionLockPath = (Fby::Core::CrashRoot() / "editor-session.lock").string();
+    {
+        std::string ScopedSessionError;
+        (void)Fby::Ops::CollectUncleanShutdown(GSessionLockPath,
+                                               (Fby::Core::CrashRoot() / "unclean-shutdown" / "incident").string(),
+                                               "editor", "", &ScopedSessionError);
+        (void)Fby::Ops::MarkSessionActive(GSessionLockPath, "editor", &ScopedSessionError);
+        std::atexit(&ClearSessionLockAtExit);
+    }
     Fby::SetLogCategory("editor");
     (void)Fby::Core::EnsureDirectory(Fby::Core::ConfigDirectory());
     ScopedEditorDesc.iniPath = Fby::Core::ConfigDirectory() / "editor.ini";
@@ -1493,6 +1522,7 @@ int main(int argc, char** argv)
     ScopedEditorDesc.defaultTextureFormat = Fby::Assets::TextureFormat::Bc7Srgb;
     ScopedEditorDesc.watchAssets = true;
     ScopedEditorDesc.showProjectDashboard = true;
+    ScopedEditorDesc.scriptRuntime = &ScopedScripts;
     // Play Multiplayer launches the sandbox from the editor's own directory, so
     // a second copy always matches this build; a missing binary falls back to
     // the local client world.
@@ -1508,6 +1538,18 @@ int main(int argc, char** argv)
     {
         Fby::LogError("editor_app", "editor initialization failed");
         return 3;
+    }
+    if (ScopedEditor.Config().Config().ops.incidentOnCrash)
+    {
+        Fby::Core::SetCrashIncidentHook(&WriteCrashIncidentBundle);
+        std::string ScopedPendingError;
+        const std::uint32_t ScopedCollected = Fby::Ops::CollectPendingCrashIncidents(
+            Fby::Core::CrashRoot().string(), "editor", Fby::Editor::EncodeProjectToml(ScopedEditor.Config().Config()),
+            &ScopedPendingError);
+        if (ScopedCollected > 0)
+        {
+            Fby::LogInfo("editor", "collected {} pending crash incident bundle(s)", ScopedCollected);
+        }
     }
 
     const Fby::Entity ScopedSkeletalAnimationEntity = SpawnSkeletonDemo(ScopedRegistry);
@@ -2049,11 +2091,25 @@ int main(int argc, char** argv)
     Fby::Rhi::SdfCharacterRenderCache ScopedPieSdfCharacters;
     ScopedExtract.SetJobSystem(&ScopedJobs);
     ScopedPieExtract.SetJobSystem(&ScopedJobs);
-    ScopedExtract.SetInstanceDeltasEnabled(ScopedGpu->Info().framesInFlight == 1);
-    ScopedPieExtract.SetInstanceDeltasEnabled(ScopedGpu->Info().framesInFlight == 1);
+    // The multi-frame path is opt-in: the composer still emits full slices and
+    // the backend falls back to a full upload if a range or slot is invalid.
+    const bool ScopedAllowInstanceDeltas =
+        ScopedGpu->Info().framesInFlight == 1 || std::getenv("FBY_RHI_INSTANCE_DELTAS") != nullptr;
+    ScopedExtract.SetInstanceDeltasEnabled(ScopedAllowInstanceDeltas);
+    ScopedPieExtract.SetInstanceDeltasEnabled(ScopedAllowInstanceDeltas);
+    if (std::getenv("FBY_EDITOR_CAMERA_REUSE_ALL") != nullptr)
+    {
+        ScopedExtract.SetCameraReuseAllSprites(true);
+        ScopedPieExtract.SetCameraReuseAllSprites(true);
+        Fby::LogInfo("editor_app", "camera reuse-all enabled; off-screen sprites stay in the packet");
+    }
+    if (ScopedAllowInstanceDeltas && ScopedGpu->Info().framesInFlight > 1)
+    {
+        Fby::LogInfo("editor_app", "multi-frame instance deltas enabled by FBY_RHI_INSTANCE_DELTAS");
+    }
     // The viewport composes into fixed storage and does not need the diagnostic
     // render-ECS mirror, so both composers skip the per-sprite pack.
-    const std::uint32_t ScopedComposerItems = std::min<std::uint32_t>(ScopedGpu->Info().maxItemsPerFrame, 1u << 16);
+    const std::uint32_t ScopedComposerItems = std::min<std::uint32_t>(ScopedGpu->Info().maxItemsPerFrame, 1u << 17);
     ScopedExtract.Reserve(ScopedComposerItems);
     ScopedPieExtract.Reserve(ScopedComposerItems);
     ScopedExtract.SetRenderEcsMirror(false);
@@ -2183,8 +2239,15 @@ int main(int argc, char** argv)
         }
     }
 
-    while (!ScopedEditor.ShouldQuit() && ScopedWindow.PumpEvents())
+    while (!ScopedEditor.ShouldQuit())
     {
+        // PumpEvents() returns false once the close request is latched, which
+        // used to skip the whole body and bypass the save prompt. Keep looping
+        // through the editor's quit flow; only a missing window is fatal here.
+        if (!ScopedWindow.PumpEvents() && !ScopedWindow.ShouldClose())
+        {
+            break;
+        }
         const auto ScopedFrameStart = std::chrono::steady_clock::now();
         (void)ScopedPieWindowHost.PumpEvents();
         // The window close button goes through the editor so an unsaved scene
@@ -2416,6 +2479,9 @@ int main(int argc, char** argv)
                     ScopedVtSystem->RequestTiles(
                         std::span<const Fby::Rhi::VirtualTextureTileId>(ScopedRequests.data(), ScopedRequestCount));
                 }
+                // Async requests are only queued by RequestTiles; commit the
+                // ready pages before reading the table updates this frame.
+                ScopedVtSystem->PollLoads();
 
                 bool ScopedTableChanged = false;
                 for (const Fby::Rhi::VirtualTextureTableUpdate& ScopedUpdate : ScopedVtSystem->PendingTableUpdates())

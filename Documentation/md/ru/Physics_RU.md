@@ -436,7 +436,7 @@ const Fby::SdfImpactResult Result =
 Тесты:
 
 ```bash
-ctest --test-dir build-dev -R "sdf_(physics|damage|destructible|fracture|debris)" --output-on-failure
+ctest --test-dir build/dev -R "sdf_(physics|damage|destructible|fracture|debris)" --output-on-failure
 ```
 
 - `sdf_physics`: выборка SDF, контакты, манифолды и новые поля удара до

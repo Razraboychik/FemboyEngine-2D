@@ -51,8 +51,10 @@ struct GogState
     GogFlatApi api{};
     FbyPlatformCallbacks callbacks{};
     std::uint64_t userId = 0;
+    bool authReported = false;
     bool initialized = false;
     bool resolved = false;
+    bool available = false;
 };
 
 GogState GState{};
@@ -157,22 +159,25 @@ template <typename T> [[nodiscard]] bool ResolveFlat(void* InLibrary, const char
 {
     if (GState.resolved)
     {
-        return GState.library != nullptr;
+        return GState.available;
     }
     GState.library = OpenGalaxyLibrary();
     if (GState.library == nullptr)
     {
         LogGog(1, "Galaxy shim not found (galaxy64.dll / libgalaxy64.so / libgalaxy64.dylib)");
         GState.resolved = true;
+        GState.available = false;
         return false;
     }
     if (!ResolveAll(GState.library))
     {
         LogGog(2, "Galaxy shim is present but the flat fby_gog_* ABI is incomplete");
         GState.resolved = true;
+        GState.available = false;
         return false;
     }
     GState.resolved = true;
+    GState.available = true;
     return true;
 }
 
@@ -226,17 +231,14 @@ FbyPlatformResult FBY_PLATFORM_CALL GogInitialize(const FbyPlatformInitDesc* InD
     }
     const FbyPlatformResult ScopedResult =
         FromGogResult(GState.api.initialize(InDesc->clientId, InDesc->clientSecret));
-    if (ScopedResult != FbyPlatformResult_Ok)
+    if (ScopedResult != FbyPlatformResult_Ok && ScopedResult != FbyPlatformResult_Pending)
     {
         LogGog(2, "fby_gog_initialize failed");
         return ScopedResult;
     }
     GState.initialized = true;
     GState.userId = GState.api.signedInUser != nullptr ? GState.api.signedInUser() : 0;
-    if (GState.callbacks.onAuth != nullptr)
-    {
-        GState.callbacks.onAuth(GState.callbacks.user, GState.userId, GState.userId != 0 ? 1 : 0);
-    }
+    GState.authReported = false;
     LogGog(0, "GOG Galaxy shim initialised");
     return FbyPlatformResult_Ok;
 }
@@ -249,13 +251,31 @@ void FBY_PLATFORM_CALL GogShutdown()
     }
     GState.initialized = false;
     GState.userId = 0;
+    GState.authReported = false;
 }
 
 void FBY_PLATFORM_CALL GogPump()
 {
-    if (Ready() && GState.api.processData != nullptr)
+    if (!Ready())
+    {
+        return;
+    }
+    if (GState.api.processData != nullptr)
     {
         GState.api.processData();
+    }
+    if (GState.api.signedInUser != nullptr)
+    {
+        const std::uint64_t ScopedUserId = GState.api.signedInUser();
+        if (ScopedUserId != 0 && (!GState.authReported || ScopedUserId != GState.userId))
+        {
+            GState.userId = ScopedUserId;
+            GState.authReported = true;
+            if (GState.callbacks.onAuth != nullptr)
+            {
+                GState.callbacks.onAuth(GState.callbacks.user, GState.userId, 1);
+            }
+        }
     }
 }
 

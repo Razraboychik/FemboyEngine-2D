@@ -5,10 +5,73 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <charconv>
 #include <cstring>
+#include <string>
+#include <string_view>
 
 namespace Fby::Assets
 {
+namespace
+{
+[[nodiscard]] std::size_t SplitFields(std::string_view InLine, std::span<std::string_view> OutFields) noexcept
+{
+    std::size_t ScopedCount = 0;
+    std::size_t ScopedIndex = 0;
+    while (ScopedIndex < InLine.size() && ScopedCount < OutFields.size())
+    {
+        while (ScopedIndex < InLine.size() && (InLine[ScopedIndex] == ' ' || InLine[ScopedIndex] == '	'))
+        {
+            ++ScopedIndex;
+        }
+        const std::size_t ScopedStart = ScopedIndex;
+        while (ScopedIndex < InLine.size() && InLine[ScopedIndex] != ' ' && InLine[ScopedIndex] != '	')
+        {
+            ++ScopedIndex;
+        }
+        if (ScopedStart != ScopedIndex)
+        {
+            OutFields[ScopedCount++] = InLine.substr(ScopedStart, ScopedIndex - ScopedStart);
+        }
+    }
+    return ScopedCount;
+}
+
+[[nodiscard]] bool ParseU32(std::string_view InText, std::uint32_t* OutValue) noexcept
+{
+    if (InText.empty())
+    {
+        return false;
+    }
+    std::uint32_t ScopedValue = 0;
+    const auto ScopedResult = std::from_chars(InText.data(), InText.data() + InText.size(), ScopedValue);
+    if (ScopedResult.ec != std::errc{} || ScopedResult.ptr != InText.data() + InText.size())
+    {
+        return false;
+    }
+    *OutValue = ScopedValue;
+    return true;
+}
+
+[[nodiscard]] bool ParseFloat(std::string_view InText, float* OutValue) noexcept
+{
+    if (InText.empty() || OutValue == nullptr)
+    {
+        return false;
+    }
+    const std::string ScopedText(InText);
+    char* ScopedEnd = nullptr;
+    const float ScopedValue = std::strtof(ScopedText.c_str(), &ScopedEnd);
+    if (ScopedEnd != ScopedText.c_str() + ScopedText.size())
+    {
+        return false;
+    }
+    *OutValue = ScopedValue;
+    return true;
+}
+}
+
 
 AtlasPackError PackSpriteAtlas(std::span<const AtlasSpriteSource> InSources, std::uint32_t InPageWidth,
                                std::uint32_t InPageHeight, SpriteAtlas* OutAtlas) noexcept
@@ -140,24 +203,27 @@ bool LoadSpriteAtlasAsset(std::string_view InText, SpriteAtlasAsset* OutAsset, s
             ScopedHeader = true;
             continue;
         }
-        const std::string ScopedText(ScopedLine);
         if (ScopedLine.starts_with("page "))
         {
             if (ScopedPage)
             {
                 return ScopedFail("atlas: duplicate page line");
             }
-            unsigned int ScopedWidth = 0;
-            unsigned int ScopedHeight = 0;
-            char ScopedPath[kAtlasPagePathBytes]{};
-            if (std::sscanf(ScopedText.c_str(), "page %u %u %259s", &ScopedWidth, &ScopedHeight, ScopedPath) != 3 ||
+            std::array<std::string_view, 4> ScopedFields{};
+            const std::size_t ScopedFieldCount = SplitFields(ScopedLine, ScopedFields);
+            std::uint32_t ScopedWidth = 0;
+            std::uint32_t ScopedHeight = 0;
+            if (ScopedFieldCount != 4 || ScopedFields[0] != "page" ||
+                !ParseU32(ScopedFields[1], &ScopedWidth) || !ParseU32(ScopedFields[2], &ScopedHeight) ||
+                ScopedFields[3].empty() || ScopedFields[3].size() >= kAtlasPagePathBytes ||
                 ScopedWidth == 0 || ScopedHeight == 0 || ScopedWidth > 16384 || ScopedHeight > 16384)
             {
                 return ScopedFail("atlas: invalid page line");
             }
             OutAsset->Atlas.PageWidth = ScopedWidth;
             OutAsset->Atlas.PageHeight = ScopedHeight;
-            std::memcpy(OutAsset->PagePath.data(), ScopedPath, std::min<std::size_t>(std::strlen(ScopedPath), kAtlasPagePathBytes - 1));
+            std::memcpy(OutAsset->PagePath.data(), ScopedFields[3].data(), ScopedFields[3].size());
+            OutAsset->PagePath[ScopedFields[3].size()] = '\0';
             ScopedPage = true;
             continue;
         }
@@ -171,17 +237,21 @@ bool LoadSpriteAtlasAsset(std::string_view InText, SpriteAtlasAsset* OutAsset, s
             {
                 return ScopedFail("atlas: too many sprites");
             }
-            unsigned int ScopedId = 0;
-            unsigned int ScopedX = 0;
-            unsigned int ScopedY = 0;
-            unsigned int ScopedWidth = 0;
-            unsigned int ScopedHeight = 0;
+            std::array<std::string_view, 8> ScopedFields{};
+            const std::size_t ScopedFieldCount = SplitFields(ScopedLine, ScopedFields);
+            std::uint32_t ScopedId = 0;
+            std::uint32_t ScopedX = 0;
+            std::uint32_t ScopedY = 0;
+            std::uint32_t ScopedWidth = 0;
+            std::uint32_t ScopedHeight = 0;
             float ScopedPivotX = 0.5f;
             float ScopedPivotY = 0.5f;
-            if (std::sscanf(ScopedText.c_str(), "sprite %u %u %u %u %u %f %f", &ScopedId, &ScopedX, &ScopedY,
-                            &ScopedWidth, &ScopedHeight, &ScopedPivotX, &ScopedPivotY) != 7 ||
-                ScopedId == 0 || ScopedWidth == 0 || ScopedHeight == 0 ||
-                !std::isfinite(ScopedPivotX) || !std::isfinite(ScopedPivotY))
+            if (ScopedFieldCount != 8 || ScopedFields[0] != "sprite" ||
+                !ParseU32(ScopedFields[1], &ScopedId) || !ParseU32(ScopedFields[2], &ScopedX) ||
+                !ParseU32(ScopedFields[3], &ScopedY) || !ParseU32(ScopedFields[4], &ScopedWidth) ||
+                !ParseU32(ScopedFields[5], &ScopedHeight) || !ParseFloat(ScopedFields[6], &ScopedPivotX) ||
+                !ParseFloat(ScopedFields[7], &ScopedPivotY) || ScopedId == 0 || ScopedWidth == 0 ||
+                ScopedHeight == 0 || !std::isfinite(ScopedPivotX) || !std::isfinite(ScopedPivotY))
             {
                 return ScopedFail("atlas: invalid sprite line");
             }

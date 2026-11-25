@@ -80,7 +80,8 @@ public:
     VirtualFileSystem& operator=(const VirtualFileSystem&) = delete;
 
     // A directory mount maps files lazily on first access and keeps the mapping
-    bool MountDirectory(std::string_view InRoot, int InPriority, std::string* InError = nullptr);
+    bool MountDirectory(std::string_view InRoot, int InPriority, std::string* InError = nullptr,
+                        std::uint32_t* OutMountId = nullptr);
 
     // Re-walks every directory mount and refreshes its index. The editor calls
     // this after creating, renaming, duplicating or deleting files on disk, which
@@ -88,7 +89,8 @@ public:
     void RefreshDirectoryMounts();
 
     // A .fempak is mapped whole at mount time; every entry becomes a span into it.
-    bool MountPak(std::string_view InPakPath, int InPriority, std::string* InError = nullptr);
+    bool MountPak(std::string_view InPakPath, int InPriority, std::string* InError = nullptr,
+                  std::uint32_t* OutMountId = nullptr);
 
     void Unmount(std::uint32_t InMount);
 

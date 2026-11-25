@@ -300,7 +300,7 @@ public:
             {
                 MOut += "    if (ctx.coroutine == nullptr) { ctx.Fault(20u, " + std::to_string(InFunction.codeOffset) +
                         "u); return false; }\n";
-                MOut += "    if (ctx.callDepth >= 16u) { ctx.Fault(21u, " + std::to_string(InFunction.codeOffset) +
+                MOut += "    if (ctx.callDepth + 1u >= 16u) { ctx.Fault(21u, " + std::to_string(InFunction.codeOffset) +
                         "u); return false; }\n";
                 MOut += "    const std::uint32_t fby_frame = ctx.callDepth;\n";
                 MOut += "    if (ctx.coroutine->Frames[fby_frame].Active != 0) {\n";

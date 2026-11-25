@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace Fby::Text
 {
@@ -17,6 +18,24 @@ namespace Fby::Text
 class MappedTextAsset
 {
 public:
+    MappedTextAsset() = default;
+    MappedTextAsset(const MappedTextAsset&) = delete;
+    MappedTextAsset& operator=(const MappedTextAsset&) = delete;
+    MappedTextAsset(MappedTextAsset&& InOther) noexcept
+        : MFile(std::move(InOther.MFile)), MView(InOther.MView)
+    {
+        InOther.MView = {};
+    }
+    MappedTextAsset& operator=(MappedTextAsset&& InOther) noexcept
+    {
+        if (this != &InOther)
+        {
+            MFile = std::move(InOther.MFile);
+            MView = InOther.MView;
+            InOther.MView = {};
+        }
+        return *this;
+    }
     [[nodiscard]] bool Open(const VirtualFileSystem& InVfs, std::string_view InPath,
                             std::string* InError = nullptr) noexcept
     {

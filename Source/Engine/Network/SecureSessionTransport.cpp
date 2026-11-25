@@ -42,7 +42,7 @@ bool SecureSessionTransport::StartClient(NetTransport& InTransport, const NetAdd
         ScopedAuth[4] = std::byte{1};
         ScopedAuth[5] = std::byte{0};
         std::memcpy(ScopedAuth.data() + kSecureAuthHeaderBytes, MAuth.SignedTicket.data(), kTicketBytes);
-        (void)MTransport->Send(InServer, ScopedAuth, TransportChannel::Unreliable);
+        (void)MTransport->Send(InServer, ScopedAuth, TransportChannel::Reliable);
     }
     return ScopedPeer->Endpoint.Start(MTransport, InServer, MConfig) == SecureStatus::Ok;
 }
@@ -153,6 +153,10 @@ void SecureSessionTransport::Dispatch(const NetAddress& InFrom,
         }
     }
     Peer* ScopedPeer = FindPeer(InFrom);
+    if (ScopedPeer != nullptr)
+    {
+        ScopedPeer->LastSeenSeconds = MTimeSeconds;
+    }
     if (ScopedPeer == nullptr)
     {
         if (!MServer)
@@ -176,6 +180,11 @@ void SecureSessionTransport::Dispatch(const NetAddress& InFrom,
         ScopedPeer->Used = true;
         ScopedPeer->Owner = this;
         ScopedPeer->Address = InFrom;
+        ScopedPeer->LastSeenSeconds = MTimeSeconds;
+        ScopedPeer->Authorized = false;
+        ScopedPeer->Started = false;
+        ScopedPeer->HasTicketHash = false;
+        ScopedPeer->TicketHash = {};
         ScopedPeer->Endpoint.SetSink(&PayloadThunk, ScopedPeer);
         if (ScopedAuthPacket)
         {
@@ -260,17 +269,20 @@ bool SecureSessionTransport::StartPeerEndpoint(Peer& InPeer, const NetAddress& I
         return false;
     }
     SecureChannelConfig ScopedConfig = MConfig;
+    ScopedConfig.AddressTag =
+        (static_cast<std::uint64_t>(InAddress.Host) << 16u) | static_cast<std::uint64_t>(InAddress.Port);
     if (InPeer.HasTicketHash)
     {
         ScopedConfig.PrologueBytes = InPeer.TicketHash.size();
         std::memcpy(ScopedConfig.Prologue.data(), InPeer.TicketHash.data(), InPeer.TicketHash.size());
     }
-    InPeer.Started = true;
     if (InPeer.Endpoint.Start(MTransport, InAddress, ScopedConfig) != SecureStatus::Ok)
     {
         InPeer.Used = false;
+        InPeer.Started = false;
         return false;
     }
+    InPeer.Started = true;
     return true;
 }
 
@@ -298,6 +310,34 @@ void SecureSessionTransport::SetHandshakeRateLimit(std::uint32_t InBurst, std::u
 void SecureSessionTransport::Tick(float InDeltaSeconds) noexcept
 {
     MTimeSeconds += std::clamp(InDeltaSeconds, 0.0f, 10.0f);
+    for (Peer& ScopedPeer : MPeers)
+    {
+        if (ScopedPeer.Used && !ScopedPeer.Authorized && MTimeSeconds - ScopedPeer.LastSeenSeconds > 10.0f)
+        {
+            ScopedPeer.Endpoint.Stop();
+            ScopedPeer = Peer{};
+        }
+    }
+    for (RateEntry& ScopedRate : MRate)
+    {
+        if (ScopedRate.Used && MTimeSeconds - ScopedRate.LastSeenSeconds > 60.0f &&
+            FindPeer(ScopedRate.Address) == nullptr)
+        {
+            ScopedRate = RateEntry{};
+        }
+    }
+}
+
+bool SecureSessionTransport::Disconnect(const NetAddress& InAddress) noexcept
+{
+    Peer* ScopedPeer = FindPeer(InAddress);
+    if (ScopedPeer == nullptr)
+    {
+        return false;
+    }
+    ScopedPeer->Endpoint.Stop();
+    *ScopedPeer = Peer{};
+    return true;
 }
 
 bool SecureSessionTransport::AllowHandshake(const NetAddress& InAddress) noexcept
@@ -324,6 +364,7 @@ bool SecureSessionTransport::AllowHandshake(const NetAddress& InAddress) noexcep
                 ScopedRate = RateEntry{};
                 ScopedRate.Used = true;
                 ScopedRate.Address = InAddress;
+                ScopedRate.LastSeenSeconds = MTimeSeconds;
                 ScopedEntry = &ScopedRate;
                 break;
             }
@@ -353,6 +394,7 @@ bool SecureSessionTransport::AllowHandshake(const NetAddress& InAddress) noexcep
         return false;
     }
     ScopedEntry->Tokens -= 1.0f;
+    ScopedEntry->LastSeenSeconds = MTimeSeconds;
     return true;
 }
 

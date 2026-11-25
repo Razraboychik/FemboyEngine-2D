@@ -145,6 +145,15 @@ bool InferAssetKindFromPath(std::string_view InSourcePath, AssetKind* OutKind) n
     return false;
 }
 
+bool IsNormalMapPath(std::string_view InSourcePath) noexcept
+{
+    const std::string ScopedLower = Lower(InSourcePath);
+    const std::size_t ScopedStem = ScopedLower.find_last_of('.');
+    const std::string_view ScopedName =
+        ScopedStem == std::string::npos ? std::string_view(ScopedLower) : std::string_view(ScopedLower).substr(0, ScopedStem);
+    return ScopedName.ends_with("_n") || ScopedName.ends_with("_normal") || ScopedName.ends_with(".normal");
+}
+
 std::string CookedPathForSource(std::string_view InSourcePath, AssetKind InKind)
 {
     const std::string ScopedNormalized = Assets::NormalizePakPath(InSourcePath);
@@ -218,7 +227,7 @@ bool BuildDefaultAssetMeta(std::string_view InSourcePath, AssetKind InKind, Asse
     ScopedMeta.import.textureFormat = static_cast<std::uint32_t>(InTextureFormat);
     // The cooker reads these defaults. max_size is clamped by the texture
     ScopedMeta.import.maxSize = 2048;
-    ScopedMeta.import.srgb = true;
+    ScopedMeta.import.srgb = !IsNormalMapPath(ScopedNormalized);
     ScopedMeta.import.generateMips = true;
     if (InKind == AssetKind::Font)
     {
@@ -312,7 +321,13 @@ Assets::AssetHandle ImportSourceFile(Assets::AssetDatabase& InDatabase, const st
     {
         return {};
     }
-    ScopedMeta.sourceHash = HashSourceFile(InAssetsRoot / std::filesystem::path(ScopedNormalized));
+    const std::filesystem::path ScopedPhysical = InAssetsRoot / std::filesystem::path(ScopedNormalized);
+    ScopedMeta.sourceHash = HashSourceFile(ScopedPhysical);
+    if (ScopedMeta.sourceHash == 0)
+    {
+        SetError(InError, "cannot read source asset '" + ScopedNormalized + "'");
+        return {};
+    }
 
     if (!WriteMetaBesideSource(InAssetsRoot, ScopedNormalized, ScopedMeta, InError))
     {

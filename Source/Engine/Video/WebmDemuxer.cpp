@@ -1460,6 +1460,12 @@ bool WebmDemuxer::ReadAudioClusterChild(const Element& InElement, std::string* I
                                         bool& OutHavePacket)
 {
     OutHavePacket = false;
+    if (InElement.unknownSize || InElement.dataStart > MBytes.size() ||
+        InElement.size > MBytes.size() - InElement.dataStart)
+    {
+        SetError(InError, "audio cluster child has an unknown or out-of-range size");
+        return false;
+    }
     switch (InElement.id)
     {
         case kClusterTimestampId:

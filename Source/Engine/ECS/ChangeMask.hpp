@@ -87,8 +87,8 @@ FORCEINLINE void Mark(ComponentChangeMask& InMask, ChangeMask InBits, std::uint3
 {
     std::atomic_ref<ChangeMask> ScopedBits(InMask.Bits);
     ScopedBits.fetch_or(InBits, std::memory_order_release);
-    // LastFrame is diagnostic only. A plain store is enough.
-    InMask.LastFrame = InFrame;
+    // Mark is callable from parallel systems; keep the diagnostic stamp atomic too.
+    std::atomic_ref<std::uint32_t>(InMask.LastFrame).store(InFrame, std::memory_order_relaxed);
 }
 
 FORCEINLINE void Mark(ComponentChangeMask& InMask, ChangeMaskBit InBit, std::uint32_t InFrame = 0) noexcept

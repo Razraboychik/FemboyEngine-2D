@@ -114,6 +114,14 @@ class MemoryEndpoint
 {
 public:
     MemoryEndpoint() = default;
+    ~MemoryEndpoint()
+    {
+        Close();
+    }
+    MemoryEndpoint(const MemoryEndpoint&) = delete;
+    MemoryEndpoint& operator=(const MemoryEndpoint&) = delete;
+    MemoryEndpoint(MemoryEndpoint&&) = delete;
+    MemoryEndpoint& operator=(MemoryEndpoint&&) = delete;
 
     [[nodiscard]] bool Open(MemoryNetwork* InNetwork, std::uint16_t InPort) noexcept;
     void Close() noexcept;

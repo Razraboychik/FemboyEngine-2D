@@ -15,7 +15,7 @@ namespace Fby::Net
 struct NetSessionConfig;
 
 inline constexpr std::uint32_t kLobbyMagic = 0x424F4C46u;
-inline constexpr std::uint16_t kLobbyVersion = 1;
+inline constexpr std::uint16_t kLobbyVersion = 2;
 inline constexpr std::uint32_t kLobbyMaxRooms = 8;
 inline constexpr std::uint32_t kLobbyMaxPlayers = 8;
 inline constexpr std::size_t kLobbyNameBytes = 32;
@@ -24,6 +24,7 @@ inline constexpr std::uint8_t kLobbyNoPlayer = 0xFF;
 
 enum class LobbyMessageType : std::uint8_t
 {
+    None = 0,
     Create = 1,
     CreateAck = 2,
     Join = 3,
@@ -117,11 +118,22 @@ protected:
     void HandleStart(const NetAddress& InFrom, std::span<const std::byte> InMessage) noexcept;
     void HandleLeave(const NetAddress& InFrom, std::span<const std::byte> InMessage) noexcept;
 
-    void SendAck(const NetAddress& InTo, std::uint32_t InRoomId, std::uint8_t InPlayerId,
-                 bool InStarted) noexcept;
+    [[nodiscard]] bool SendAck(const NetAddress& InTo, std::uint32_t InRoomId, std::uint8_t InPlayerId,
+                               bool InStarted, LobbyMessageType InType, const char* InPlayerName,
+                               std::uint64_t InNonce) noexcept;
     void SendError(const NetAddress& InTo, LobbyError InError) noexcept;
     [[nodiscard]] std::uint32_t FindRoom(std::uint32_t InRoomId) const noexcept;
     [[nodiscard]] std::uint8_t JoinMember(std::uint32_t InRoomIndex, const NetAddress& InAddress) noexcept;
+    [[nodiscard]] bool AllowFrom(const NetAddress& InAddress) noexcept;
+
+    struct RateEntry
+    {
+        NetAddress Address{};
+        std::uint64_t LastSeconds = 0;
+        std::uint32_t Count = 0;
+    };
+    std::array<RateEntry, 32> MRate{};
+    std::uint32_t MRateNext = 0;
 
     struct Member
     {
@@ -136,6 +148,7 @@ protected:
         std::uint8_t MaxPlayers = kLobbyMaxPlayers;
         bool Started = false;
         char Name[kLobbyNameBytes]{};
+        std::uint64_t LastActivity = 0;
         std::array<Member, kLobbyMaxPlayers> Members{};
     };
 
@@ -169,6 +182,8 @@ public:
     [[nodiscard]] bool CreateRoom(const char* InName) noexcept;
     [[nodiscard]] bool JoinRoom(std::uint32_t InRoomId) noexcept;
     [[nodiscard]] bool StartMatch() noexcept;
+    // Leaves the current room (best effort) and clears the client state.
+    [[nodiscard]] bool LeaveRoom() noexcept;
 
     void Tick(std::uint64_t InNowUnixSeconds) noexcept;
 

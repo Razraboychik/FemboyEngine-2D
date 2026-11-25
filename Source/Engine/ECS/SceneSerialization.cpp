@@ -47,6 +47,10 @@ namespace
             return InField.size == sizeof(BigNum::Decimal128);
         case Reflect::FieldKind::Vector2DArray:
             return InField.size > 0 && InField.size % sizeof(Vector2D) == 0;
+        case Reflect::FieldKind::UInt16Array:
+            return InField.size > 0 && InField.size % sizeof(std::uint16_t) == 0;
+        case Reflect::FieldKind::FloatArray:
+            return InField.size > 0 && InField.size % sizeof(float) == 0;
     }
     return false;
 }
@@ -106,21 +110,22 @@ namespace
                            " has a SkeletonAssetRef but SceneLoadOptions::assetDb is null";
                 return false;
             }
-            const std::string_view ScopedPath = InAssetDb->SourcePath(ScopedRef.Asset);
+            const std::string_view ScopedPath = InAssetDb->SourcePath(InAssetDb->FindHandleByGuid(ScopedRef.Asset));
             if (ScopedPath.empty())
             {
                 *InError =
                     "entity " + std::to_string(ScopedEntityIndex) + " references an unregistered skeleton AssetId";
                 return false;
             }
-            const auto ScopedBytes = InVfs->Read(ScopedPath);
-            if (!ScopedBytes)
+            const auto ScopedPinned = InVfs->Pin(ScopedPath);
+            if (!ScopedPinned)
             {
                 *InError = "entity " + std::to_string(ScopedEntityIndex) + " references missing skeleton asset '" +
                            std::string(ScopedPath) + "'";
                 return false;
             }
-            const auto ScopedView = Skeleton::DecodeSkeletonAsset(*ScopedBytes);
+            const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
+            const auto ScopedView = Skeleton::DecodeSkeletonAsset(ScopedBytes);
             if (!ScopedView)
             {
                 *InError = "entity " + std::to_string(ScopedEntityIndex) + " has an invalid skeleton asset '" +
@@ -134,6 +139,56 @@ namespace
                         "skeleton asset '{}' is newer than the scene reference (hash {:08x} vs {:08x}); "
                         "loading the asset anyway",
                         ScopedPath, ScopedRef.ContentHash, static_cast<std::uint32_t>(ScopedView->header->contentHash));
+            }
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool ValidatePrefabAssets(const SceneData& InScene, VirtualFileSystem* InVfs,
+                                       Assets::AssetDatabase* InAssetDb, std::string* InError)
+{
+    if (InAssetDb == nullptr)
+    {
+        return true;
+    }
+    for (std::size_t ScopedEntityIndex = 0; ScopedEntityIndex < InScene.entities.size(); ++ScopedEntityIndex)
+    {
+        for (const SceneComponent& ScopedComponent : InScene.entities[ScopedEntityIndex].components)
+        {
+            if (ScopedComponent.type == nullptr || ScopedComponent.type->name != "PrefabInstanceComponent")
+            {
+                continue;
+            }
+            if (ScopedComponent.data.size() != sizeof(PrefabInstanceComponent))
+            {
+                *InError = "PrefabInstanceComponent on entity " + std::to_string(ScopedEntityIndex) +
+                           " has the wrong size";
+                return false;
+            }
+            PrefabInstanceComponent ScopedLink{};
+            std::memcpy(&ScopedLink, ScopedComponent.data.data(), sizeof(ScopedLink));
+            Assets::AssetHandle ScopedHandle = ScopedLink.Prefab;
+            if (ScopedLink.PrefabGuid != Assets::kInvalidAssetGuid)
+            {
+                ScopedHandle = InAssetDb->FindHandleByGuid(ScopedLink.PrefabGuid);
+            }
+            if (!ScopedHandle.IsValid())
+            {
+                *InError = "entity " + std::to_string(ScopedEntityIndex) + " references an unregistered prefab";
+                return false;
+            }
+            const std::string_view ScopedPath = InAssetDb->SourcePath(ScopedHandle);
+            if (ScopedPath.empty())
+            {
+                *InError = "entity " + std::to_string(ScopedEntityIndex) + " prefab has no source path";
+                return false;
+            }
+            if (InVfs != nullptr && !InVfs->Pin(ScopedPath))
+            {
+                *InError = "entity " + std::to_string(ScopedEntityIndex) + " references missing prefab asset '" +
+                           std::string(ScopedPath) + "'";
+                return false;
             }
         }
     }
@@ -154,14 +209,15 @@ namespace
         {
             continue;
         }
-        const std::string_view ScopedPath = InAssetDb->SourcePath(ScopedRef->Asset);
-        const auto ScopedBytes = InVfs->Read(ScopedPath);
-        if (!ScopedBytes)
+        const std::string_view ScopedPath = InAssetDb->SourcePath(InAssetDb->FindHandleByGuid(ScopedRef->Asset));
+        const auto ScopedPinned = InVfs->Pin(ScopedPath);
+        if (!ScopedPinned)
         {
             *InError = "skeleton asset disappeared while applying the scene: " + std::string(ScopedPath);
             return false;
         }
-        const auto ScopedView = Skeleton::DecodeSkeletonAsset(*ScopedBytes);
+        const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
+        const auto ScopedView = Skeleton::DecodeSkeletonAsset(ScopedBytes);
         if (!ScopedView)
         {
             *InError = "invalid skeleton asset '" + std::string(ScopedPath) + "': " + ScopedView.error();
@@ -236,6 +292,10 @@ SceneData CaptureScene(const Registry& InRegistry, const ComponentRegistry& InCo
     }
     std::sort(ScopedEntities.begin(), ScopedEntities.end(),
               [](Entity InLeft, Entity InRight) { return Fby::ToIntegral(InLeft) < Fby::ToIntegral(InRight); });
+    // Prefab children are transient and are not serialized; drop them before
+    // numbering so entity-typed fields use the same list that is stored.
+    std::erase_if(ScopedEntities, [&InRegistry](Entity InEntity)
+                  { return InRegistry.try_get<PrefabInstanceMemberComponent>(InEntity) != nullptr; });
 
     std::unordered_map<Entity, std::uint32_t> ScopedIndices;
     ScopedIndices.reserve(ScopedEntities.size());
@@ -299,6 +359,15 @@ SceneData CaptureScene(const Registry& InRegistry, const ComponentRegistry& InCo
 SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComponents, const SceneData& InScene,
                            SceneLoadOptions InOptions)
 {
+    // A replacing load is applied to a scratch registry and swapped in only after
+    // every stage succeeds; the live world is untouched on failure.
+    Registry ScopedStaged;
+    if (!InOptions.clearExisting)
+    {
+        ScopedStaged.CloneFrom(InRegistry);
+    }
+    Registry& ScopedWorld = ScopedStaged;
+
     // Validate before mutating anything. A prefab that fails halfway through
     for (std::size_t ScopedEntityIndex = 0; ScopedEntityIndex < InScene.entities.size(); ++ScopedEntityIndex)
     {
@@ -339,17 +408,22 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
     {
         return std::unexpected(std::move(ScopedSkeletonError));
     }
+    std::string ScopedPrefabError;
+    if (!ValidatePrefabAssets(InScene, InOptions.assets, InOptions.assetDb, &ScopedPrefabError))
+    {
+        return std::unexpected(std::move(ScopedPrefabError));
+    }
 
     if (InOptions.clearExisting)
     {
-        DestroyAllEntities(InRegistry);
+        DestroyAllEntities(ScopedWorld);
     }
 
     EntityRemap ScopedRemap;
     ScopedRemap.entities.reserve(InScene.entities.size());
     for (std::size_t ScopedI = 0; ScopedI < InScene.entities.size(); ++ScopedI)
     {
-        ScopedRemap.entities.push_back(InRegistry.create());
+        ScopedRemap.entities.push_back(ScopedWorld.create());
     }
     if (InOptions.buildReverse)
     {
@@ -371,13 +445,13 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
                 // Pre-validated, unreachable
                 continue;
             }
-            ScopedOps->emplaceBytes(InRegistry, ScopedEntity, ScopedComponent.data.data());
+            ScopedOps->emplaceBytes(ScopedWorld, ScopedEntity, ScopedComponent.data.data());
 
             if (ScopedOps->empty)
             {
                 continue;
             }
-            void* ScopedTarget = ScopedOps->getMutable(InRegistry, ScopedEntity);
+            void* ScopedTarget = ScopedOps->getMutable(ScopedWorld, ScopedEntity);
             if (ScopedTarget == nullptr)
             {
                 return std::unexpected("failed to create component '" + std::string(ScopedOps->name) + "'");
@@ -399,7 +473,7 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
     }
 
     std::string ScopedSkeletonInstanceError;
-    if (!InstantiateSkeletonRefs(InRegistry, ScopedRemap, InOptions.assets, InOptions.assetDb,
+    if (!InstantiateSkeletonRefs(ScopedWorld, ScopedRemap, InOptions.assets, InOptions.assetDb,
                                  &ScopedSkeletonInstanceError))
     {
         return std::unexpected(std::move(ScopedSkeletonInstanceError));
@@ -412,40 +486,50 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
         Ecs::CommandBuffer ScopedCommands;
         ScopedCommands.Initialize(&ScopedArena);
         std::vector<Entity> ScopedInstanceEntities;
-        auto ScopedInstances = InRegistry.view<PrefabInstanceComponent>();
+        auto ScopedInstances = ScopedWorld.view<PrefabInstanceComponent>();
         for (const Entity ScopedInstance : ScopedInstances)
         {
             ScopedInstanceEntities.push_back(ScopedInstance);
         }
         for (const Entity ScopedInstance : ScopedInstanceEntities)
         {
-            const PrefabInstanceComponent& ScopedLink = InRegistry.get<PrefabInstanceComponent>(ScopedInstance);
+            PrefabInstanceComponent ScopedLink = ScopedWorld.get<PrefabInstanceComponent>(ScopedInstance);
+            if (ScopedLink.PrefabGuid != Assets::kInvalidAssetGuid && InOptions.assetDb != nullptr)
+            {
+                if (const Assets::AssetHandle ScopedResolved = InOptions.assetDb->FindHandleByGuid(ScopedLink.PrefabGuid);
+                    ScopedResolved.IsValid())
+                {
+                    ScopedLink.Prefab = ScopedResolved;
+                    ScopedWorld.get<PrefabInstanceComponent>(ScopedInstance).Prefab = ScopedResolved;
+                }
+            }
             if (!ScopedLink.Prefab.IsValid())
             {
                 continue;
             }
             const std::string_view ScopedSourcePath = InOptions.assetDb->SourcePath(ScopedLink.Prefab);
-            const auto ScopedBytes = InOptions.assets->Read(ScopedSourcePath);
-            if (!ScopedBytes)
+            const auto ScopedPinned = InOptions.assets->Pin(ScopedSourcePath);
+            if (!ScopedPinned)
             {
                 return std::unexpected("prefab instance points at missing asset '" + std::string(ScopedSourcePath) +
                                        "'");
             }
+            const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
             PrefabAsset ScopedAsset;
             std::string ScopedAssetError;
             bool ScopedLoaded = false;
             if (ScopedSourcePath.ends_with(".toml"))
             {
                 ScopedLoaded = PrefabSystem::LoadToml(
-                    std::string_view(reinterpret_cast<const char*>(ScopedBytes->data()), ScopedBytes->size()),
+                    std::string_view(reinterpret_cast<const char*>(ScopedBytes.data()), ScopedBytes.size()),
                     ScopedAsset, &ScopedAssetError);
             }
             else
             {
-                ScopedLoaded = PrefabSystem::LoadFlatBuffers(*ScopedBytes, ScopedAsset, &ScopedAssetError);
+                ScopedLoaded = PrefabSystem::LoadFlatBuffers(ScopedBytes, ScopedAsset, &ScopedAssetError);
                 if (!ScopedLoaded)
                 {
-                    ScopedLoaded = PrefabSystem::LoadBinary(*ScopedBytes, ScopedAsset, &ScopedAssetError);
+                    ScopedLoaded = PrefabSystem::LoadBinary(ScopedBytes, ScopedAsset, &ScopedAssetError);
                 }
             }
             if (!ScopedLoaded)
@@ -453,18 +537,19 @@ SceneLoadResult ApplyScene(Registry& InRegistry, const ComponentRegistry& InComp
                 return std::unexpected("prefab instance asset '" + std::string(ScopedSourcePath) +
                                        "' is invalid: " + ScopedAssetError);
             }
-            PrefabInstance::ClearChildren(InRegistry, ScopedInstance);
+            PrefabInstance::ClearChildren(ScopedWorld, ScopedInstance);
             std::array<Entity, kPrefabMaxEntities> ScopedChildren{};
-            if (!PrefabInstance::Expand(InRegistry, ScopedCommands, ScopedInstance, ScopedAsset, ScopedChildren))
+            if (!PrefabInstance::Expand(ScopedWorld, ScopedCommands, ScopedInstance, ScopedAsset, ScopedChildren))
             {
                 return std::unexpected("prefab instance expansion failed for '" + std::string(ScopedSourcePath) +
                                        "'");
             }
-            ScopedCommands.Play(InRegistry);
+            ScopedCommands.Play(ScopedWorld);
             ScopedArena.Reset();
         }
     }
 
+    InRegistry.Swap(ScopedWorld);
     LogInfo("scene", "applied '{}': {} entities{}", InScene.meta.name, ScopedRemap.entities.size(),
             InOptions.clearExisting ? " (world replaced)" : " (appended)");
     return ScopedRemap;
@@ -476,12 +561,16 @@ std::string SaveSceneToml(const Registry& InRegistry, const ComponentRegistry& I
 }
 
 SceneLoadResult LoadSceneToml(Registry& InRegistry, const ComponentRegistry& InComponents, std::string_view InToml,
-                              SceneLoadOptions InOptions)
+                              SceneLoadOptions InOptions, SceneMeta* OutMeta)
 {
     std::expected<SceneData, std::string> ScopedDecoded = DecodeSceneToml(InToml, InComponents);
     if (!ScopedDecoded)
     {
         return std::unexpected(std::move(ScopedDecoded.error()));
+    }
+    if (OutMeta != nullptr)
+    {
+        *OutMeta = ScopedDecoded->meta;
     }
     return ApplyScene(InRegistry, InComponents, *ScopedDecoded, InOptions);
 }
@@ -493,12 +582,16 @@ std::vector<std::byte> SaveSceneBinary(const Registry& InRegistry, const Compone
 }
 
 SceneLoadResult LoadSceneBinary(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                std::span<const std::byte> InBinary, SceneLoadOptions InOptions)
+                                std::span<const std::byte> InBinary, SceneLoadOptions InOptions, SceneMeta* OutMeta)
 {
     std::expected<SceneData, std::string> ScopedDecoded = DecodeSceneBinary(InBinary, InComponents);
     if (!ScopedDecoded)
     {
         return std::unexpected(std::move(ScopedDecoded.error()));
+    }
+    if (OutMeta != nullptr)
+    {
+        *OutMeta = ScopedDecoded->meta;
     }
     return ApplyScene(InRegistry, InComponents, *ScopedDecoded, InOptions);
 }
@@ -542,7 +635,7 @@ bool SaveSceneFileBinary(const std::filesystem::path& InPath, const Registry& In
 }
 
 SceneLoadResult LoadSceneFileToml(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                  const std::filesystem::path& InPath, SceneLoadOptions InOptions)
+                                  const std::filesystem::path& InPath, SceneLoadOptions InOptions, SceneMeta* OutMeta)
 {
     std::string ScopedText;
     std::string ScopedError;
@@ -550,11 +643,11 @@ SceneLoadResult LoadSceneFileToml(Registry& InRegistry, const ComponentRegistry&
     {
         return std::unexpected(std::move(ScopedError));
     }
-    return LoadSceneToml(InRegistry, InComponents, ScopedText, InOptions);
+    return LoadSceneToml(InRegistry, InComponents, ScopedText, InOptions, OutMeta);
 }
 
 SceneLoadResult LoadSceneFileBinary(Registry& InRegistry, const ComponentRegistry& InComponents,
-                                    const std::filesystem::path& InPath, SceneLoadOptions InOptions)
+                                    const std::filesystem::path& InPath, SceneLoadOptions InOptions, SceneMeta* OutMeta)
 {
     std::string ScopedBytes;
     std::string ScopedError;
@@ -564,6 +657,6 @@ SceneLoadResult LoadSceneFileBinary(Registry& InRegistry, const ComponentRegistr
     }
     const auto* ScopedData = reinterpret_cast<const std::byte*>(ScopedBytes.data());
     return LoadSceneBinary(InRegistry, InComponents, std::span<const std::byte>(ScopedData, ScopedBytes.size()),
-                           InOptions);
+                           InOptions, OutMeta);
 }
 }

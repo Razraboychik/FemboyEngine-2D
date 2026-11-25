@@ -112,7 +112,16 @@ std::vector<std::byte> CompileLocalization(std::string_view InTomlContent, std::
                 SetError(InError, "id " + std::to_string(ScopedId) + " in '" + ScopedName + "' is not a string");
                 return {};
             }
-            ScopedLocales[ScopedName].emplace_back(ScopedId, ScopedTextNode.as_string()->get());
+            std::vector<std::pair<std::uint32_t, std::string>>& ScopedEntries = ScopedLocales[ScopedName];
+            const auto ScopedDuplicate =
+                std::find_if(ScopedEntries.begin(), ScopedEntries.end(),
+                             [ScopedId](const auto& InEntry) { return InEntry.first == ScopedId; });
+            if (ScopedDuplicate != ScopedEntries.end())
+            {
+                SetError(InError, "duplicate string id " + std::to_string(ScopedId) + " in '" + ScopedName + "'");
+                return {};
+            }
+            ScopedEntries.emplace_back(ScopedId, ScopedTextNode.as_string()->get());
         }
     }
 
@@ -193,10 +202,10 @@ std::string DecompileLocalization(std::span<const std::byte> InBinary, std::stri
         {
             continue;
         }
-        ScopedOut += "\n[";
-        ScopedOut +=
-            ScopedLocale->code() != nullptr ? std::string(ScopedLocale->code()->string_view()) : std::string("??");
-        ScopedOut += "]\n";
+        ScopedOut += "\n[\"";
+        ScopedOut += EscapeToml(ScopedLocale->code() != nullptr ? ScopedLocale->code()->string_view()
+                                                                : std::string_view("??"));
+        ScopedOut += "\"]\n";
         if (ScopedLocale->entries() == nullptr)
         {
             continue;
@@ -215,5 +224,25 @@ std::string DecompileLocalization(std::span<const std::byte> InBinary, std::stri
         }
     }
     return ScopedOut;
+}
+
+LocalizationCompileResult CompileLocalizationChecked(std::string_view InTomlContent)
+{
+    LocalizationCompileResult ScopedResult;
+    ScopedResult.Bytes = CompileLocalization(InTomlContent, &ScopedResult.Error);
+    ScopedResult.Ok = !ScopedResult.Bytes.empty();
+    if (ScopedResult.Ok)
+    {
+        ScopedResult.Error.clear();
+    }
+    return ScopedResult;
+}
+
+LocalizationDecompileResult DecompileLocalizationChecked(std::span<const std::byte> InBinary)
+{
+    LocalizationDecompileResult ScopedResult;
+    ScopedResult.Text = DecompileLocalization(InBinary, &ScopedResult.Error);
+    ScopedResult.Ok = ScopedResult.Error.empty();
+    return ScopedResult;
 }
 }

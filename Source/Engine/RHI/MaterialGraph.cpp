@@ -306,12 +306,15 @@ bool MaterialNodeInputsCompatible(MaterialNodeKind InKind, std::span<const Mater
         case MaterialNodeKind::Clamp:
         {
             const MaterialValueType ScopedValue = ScopedInput(0);
-            for (std::uint32_t ScopedSlot = 1; ScopedSlot < 3; ++ScopedSlot)
+            const bool ScopedMinScalar = ScopedScalar(ScopedInput(1));
+            const bool ScopedMaxScalar = ScopedScalar(ScopedInput(2));
+            if (ScopedMinScalar != ScopedMaxScalar)
             {
-                if (!ScopedScalar(ScopedInput(ScopedSlot)) && ScopedInput(ScopedSlot) != ScopedValue)
-                {
-                    return false;
-                }
+                return false;
+            }
+            if (!ScopedMinScalar && (ScopedInput(1) != ScopedValue || ScopedInput(2) != ScopedValue))
+            {
+                return false;
             }
             return true;
         }
@@ -645,6 +648,12 @@ bool MaterialGraph::Connect(std::uint16_t InNode, std::uint8_t InSlot, std::uint
         return false;
     }
     const MaterialNode& ScopedTarget = MNodes[InNode];
+    if (ScopedTarget.inputCount > kMaxMaterialInputs ||
+        ScopedTarget.inputCount != MaterialNodeInputCount(ScopedTarget.kind))
+    {
+        SetError(InError, "material graph: target node has an invalid input layout");
+        return false;
+    }
     if (InSlot >= ScopedTarget.inputCount)
     {
         SetError(InError, "material graph: " + InputLabel(ScopedTarget, InSlot) + " is out of range on " +

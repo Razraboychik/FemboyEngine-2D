@@ -2,7 +2,7 @@
 
 include(FetchContent)
 
-set(FBY_SDL_VERSION "release-3.4.18" CACHE STRING "SDL3 git tag to fetch")
+set(FBY_SDL_VERSION "release-3.4.20" CACHE STRING "SDL3 git tag to fetch")
 set(FBY_VULKAN_HEADERS_VERSION "v1.4.366" CACHE STRING "Vulkan-Headers git tag to fetch")
 
 # Local dependency overrides
@@ -155,6 +155,9 @@ if (EXISTS "${FBY_IMGUI_DIR}/imgui.cpp" AND EXISTS "${FBY_IMGUIZMO_DIR}/src/ImGu
             "${FBY_IMPLOT_DIR}"
             "${FBY_IMNODES_DIR}")
     target_compile_definitions(fby_imgui PUBLIC IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
+    if(FBY_BUILD_UI_TESTS)
+        target_compile_definitions(fby_imgui PUBLIC IMGUI_ENABLE_TEST_ENGINE)
+    endif()
     target_link_libraries(fby_imgui PUBLIC ${FBY_SDL_TARGET})
     if (TARGET Vulkan::Headers)
         target_link_libraries(fby_imgui PUBLIC Vulkan::Headers)

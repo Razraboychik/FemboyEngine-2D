@@ -5,7 +5,7 @@
 # the actual checkout (`Source/Tools/Dev/CheckDependencyLock.py`). Update both
 # the tag and this file in the same commit when a dependency is upgraded.
 
-set(FBY_LOCK_SDL3_COMMIT "829a65d769d935c4852f8159e964312c0957260a")
+set(FBY_LOCK_SDL3_COMMIT "f00dc919ca35b9756316e86c4777392de442f9b2")
 set(FBY_LOCK_VULKAN_HEADERS_COMMIT "73814d006638aa00bd553215b054f0f02e457e22")
 set(FBY_LOCK_GLSLANG_COMMIT "e1b562a8bed273a02f30b59b66a5d499793cede5")
 

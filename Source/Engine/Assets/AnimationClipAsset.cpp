@@ -49,7 +49,7 @@ bool SaveClip(const CompressedClip& InClip, std::vector<std::byte>* OutBytes, st
         SetError(InError, "SaveClip: clip tables exceed the format capacity");
         return false;
     }
-    if (InClip.Duration <= 0.0f)
+    if (!std::isfinite(InClip.Duration) || InClip.Duration <= 0.0f)
     {
         SetError(InError, "SaveClip: clip duration must be positive");
         return false;
@@ -62,9 +62,10 @@ bool SaveClip(const CompressedClip& InClip, std::vector<std::byte>* OutBytes, st
             SetError(InError, "SaveClip: track key range is out of bounds");
             return false;
         }
-        if (Scoped.Kind >= TrackKind::Count)
+        if (Scoped.Kind >= TrackKind::Count || !std::isfinite(Scoped.ScaleX) || Scoped.ScaleX <= 0.0f ||
+            !std::isfinite(Scoped.ScaleY) || Scoped.ScaleY <= 0.0f)
         {
-            SetError(InError, "SaveClip: track kind is invalid");
+            SetError(InError, "SaveClip: track kind or scale is invalid");
             return false;
         }
     }
@@ -135,7 +136,8 @@ bool LoadClip(std::span<const std::byte> InBytes, CompressedClip* OutClip, std::
         return false;
     }
     if (ScopedHeader.trackCount > kMaxTimelineTracks || ScopedHeader.keyCount > kMaxCompressedKeys ||
-        ScopedHeader.duration <= 0.0f)
+        !std::isfinite(ScopedHeader.duration) || ScopedHeader.duration <= 0.0f ||
+        !std::isfinite(ScopedHeader.fps) || ScopedHeader.fps <= 0.0f)
     {
         SetError(InError, "LoadClip: header counts are out of range");
         return false;
@@ -178,7 +180,8 @@ bool LoadClip(std::span<const std::byte> InBytes, CompressedClip* OutClip, std::
     {
         const CompressedTrack& Scoped = ScopedClip.Tracks[ScopedTrack];
         if (static_cast<std::uint32_t>(Scoped.FirstKey) + Scoped.KeyCount > ScopedHeader.keyCount ||
-            Scoped.Kind >= TrackKind::Count || Scoped.ScaleX <= 0.0f || Scoped.ScaleY <= 0.0f)
+            Scoped.Kind >= TrackKind::Count || !std::isfinite(Scoped.ScaleX) || Scoped.ScaleX <= 0.0f ||
+            !std::isfinite(Scoped.ScaleY) || Scoped.ScaleY <= 0.0f)
         {
             SetError(InError, "LoadClip: track table is inconsistent");
             return false;

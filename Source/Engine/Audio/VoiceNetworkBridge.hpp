@@ -19,6 +19,11 @@ class VoiceNetworkBridge
 {
 public:
     VoiceNetworkBridge() = default;
+    ~VoiceNetworkBridge();
+    VoiceNetworkBridge(const VoiceNetworkBridge&) = delete;
+    VoiceNetworkBridge& operator=(const VoiceNetworkBridge&) = delete;
+    VoiceNetworkBridge(VoiceNetworkBridge&&) = delete;
+    VoiceNetworkBridge& operator=(VoiceNetworkBridge&&) = delete;
 
     [[nodiscard]] bool Start(VoiceSystem& InVoice, Net::SecureSessionTransport& InTransport,
                              Net::NetSession& InSession, VoiceSession& InVoiceSession,

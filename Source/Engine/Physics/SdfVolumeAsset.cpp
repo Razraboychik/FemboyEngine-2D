@@ -62,6 +62,11 @@ bool SdfVolumeAsset::Build(const SdfField& InField, float InNarrowBand) noexcept
         return false;
     }
     MDesc = MBricks.Desc();
+    if (!std::isfinite(MDesc.CellSize.X) || !std::isfinite(MDesc.CellSize.Y) || MDesc.CellSize.X <= 0.0f ||
+        MDesc.CellSize.Y <= 0.0f)
+    {
+        return false;
+    }
     MContentHash = ComputeContentHash(MDesc, MBricks.BrickView(), MBricks.PayloadView());
     return true;
 }
@@ -136,6 +141,14 @@ bool SdfVolumeAsset::Load(std::span<const std::byte> InBytes, std::string* InErr
         SetError(InError, "sdf volume: header size mismatch");
         return false;
     }
+    if (!std::isfinite(ScopedHeader.OriginX) || !std::isfinite(ScopedHeader.OriginY) ||
+        !std::isfinite(ScopedHeader.CellSizeX) || !std::isfinite(ScopedHeader.CellSizeY) ||
+        !std::isfinite(ScopedHeader.OutsideDistance) || !std::isfinite(ScopedHeader.NarrowBand) ||
+        ScopedHeader.CellSizeX <= 0.0f || ScopedHeader.CellSizeY <= 0.0f)
+    {
+        SetError(InError, "sdf volume: invalid field transform");
+        return false;
+    }
     if (ScopedHeader.SourceWidth < 2 || ScopedHeader.SourceHeight < 2)
     {
         SetError(InError, "sdf volume: grid too small");
@@ -174,9 +187,24 @@ bool SdfVolumeAsset::Load(std::span<const std::byte> InBytes, std::string* InErr
     }
 
     const std::size_t ScopedBrickCount = static_cast<std::size_t>(ScopedBricksX) * ScopedBricksY;
+    if (ScopedBrickCount > (1ull << 20u))
+    {
+        SetError(InError, "sdf volume: brick grid too large");
+        return false;
+    }
     const std::size_t ScopedPayloadCount = static_cast<std::size_t>(ScopedHeader.PayloadBytes) / sizeof(float);
-    std::vector<SdfBrickHeader> ScopedBricks(ScopedBrickCount);
-    std::vector<float> ScopedPayload(ScopedPayloadCount);
+    std::vector<SdfBrickHeader> ScopedBricks;
+    std::vector<float> ScopedPayload;
+    try
+    {
+        ScopedBricks.resize(ScopedBrickCount);
+        ScopedPayload.resize(ScopedPayloadCount);
+    }
+    catch (...)
+    {
+        SetError(InError, "sdf volume: out of memory");
+        return false;
+    }
     if (ScopedHeader.BrickBytes > 0)
     {
         std::memcpy(ScopedBricks.data(), InBytes.data() + sizeof(SdfVolumeHeader),

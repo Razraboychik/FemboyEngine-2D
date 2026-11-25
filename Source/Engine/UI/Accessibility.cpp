@@ -629,6 +629,16 @@ AccessibilityKernel::StateTrack* AccessibilityKernel::FindTrack(Entity InEntity)
 
 void AccessibilityKernel::TrackGameplayTags(Ecs::Registry& InRegistry) noexcept
 {
+    for (std::uint32_t ScopedIndex = 0; ScopedIndex < MTrackCount;)
+    {
+        const Entity ScopedEntity = MTracks[ScopedIndex].entity;
+        if (!InRegistry.valid(ScopedEntity) || InRegistry.try_get<GameplayTagsComponent>(ScopedEntity) == nullptr)
+        {
+            MTracks[ScopedIndex] = MTracks[--MTrackCount];
+            continue;
+        }
+        ++ScopedIndex;
+    }
     auto ScopedView = InRegistry.view<GameplayTagsComponent, Transform2D>();
     for (auto [ScopedEntity, ScopedTags, ScopedTransform] : ScopedView.each())
     {
@@ -696,6 +706,7 @@ void AccessibilityKernel::EmitContacts(const Ecs::AccessibilitySystemView& InVie
 
 void AccessibilityKernel::Update(const Ecs::AccessibilitySystemView& InView) noexcept
 {
+    MActions.Advance(InView.dt);
     AdvanceCaptionClock(InView.dt);
     PollVoiceCaptions();
     if (BlindMode())
@@ -791,6 +802,10 @@ void AccessibilityKernel::PublishCueSound(std::uint32_t InCueId, const SoundTrig
     }
     const SoundCueDef* ScopedCue = MSoundCues->Find(InCueId);
     if (ScopedCue == nullptr)
+    {
+        return;
+    }
+    if (!SubtitlesVisible() && !BlindMode())
     {
         return;
     }

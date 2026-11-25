@@ -174,7 +174,7 @@ public:
             return {};
         }
         const std::uint32_t ScopedMips = std::max(desc.mipLevels, 1u);
-        const MTLPixelFormat ScopedFormat = ToMetalFormat(desc.format, desc.srgb);
+        const MTLPixelFormat ScopedFormat = ToMetalFormat(desc.format, desc.EffectiveSrgb());
         const std::uint64_t ScopedExpected = Fby::Assets::TextureByteSize(
             desc.format, desc.size.width, desc.size.height, desc.layers, ScopedMips);
         if (pixels.size() < ScopedExpected)
@@ -335,6 +335,8 @@ private:
     id<MTLComputePipelineState> MSkinPipeline = nil;
     id<MTLRenderPipelineState> MMeshPipeline = nil;
     id<MTLRenderPipelineState> MSpritePipeline = nil;
+    id<MTLRenderPipelineState> MSpriteBasePipeline = nil;
+    id<MTLRenderPipelineState> MSpriteNormalPipeline = nil;
     id<MTLRenderPipelineState> MUpscalePipeline = nil;
     id<MTLRenderPipelineState> MTemporalPipeline = nil;
     id<MTLRenderPipelineState> MHudPipeline = nil;
@@ -429,9 +431,8 @@ bool MetalRHI::Initialize(const DeviceDesc& desc)
     MLayer.framebufferOnly = YES;
     MLayer.displaySyncEnabled = desc.vsync ? YES : NO;
     MLayer.maximumDrawableCount = static_cast<NSUInteger>(std::max(2u, MFramesInFlight));
-    const float density = SDL_GetWindowPixelDensity(static_cast<SDL_Window*>(desc.nativeWindow));
     MLayer.drawableSize =
-        CGSizeMake(static_cast<CGFloat>(desc.size.width) * density, static_cast<CGFloat>(desc.size.height) * density);
+        CGSizeMake(static_cast<CGFloat>(desc.size.width), static_cast<CGFloat>(desc.size.height));
 
     MTLTextureDescriptor* depthDescriptor =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
@@ -536,8 +537,11 @@ bool MetalRHI::CreateLibraryAndPipelines()
     id<MTLFunction> meshVertex = [MLibrary newFunctionWithName:@"mesh_vertex"];
     id<MTLFunction> meshFragment = [MLibrary newFunctionWithName:@"mesh_fragment"];
     id<MTLFunction> spriteVertex = [MLibrary newFunctionWithName:@"sprite_vertex"];
+    id<MTLFunction> spriteBaseFragment = [MLibrary newFunctionWithName:@"sprite_base_fragment"];
+    id<MTLFunction> spriteNormalFragment = [MLibrary newFunctionWithName:@"sprite_normal_fragment"];
     id<MTLFunction> spriteFragment = [MLibrary newFunctionWithName:@"sprite_fragment"];
-    if (skinFunction == nil || meshVertex == nil || meshFragment == nil || spriteVertex == nil || spriteFragment == nil)
+    if (skinFunction == nil || meshVertex == nil || meshFragment == nil || spriteVertex == nil ||
+        spriteBaseFragment == nil || spriteNormalFragment == nil || spriteFragment == nil)
     {
         LogError("metal", "MSL library is missing one of the mesh/sprite entry points");
         return false;
@@ -573,7 +577,10 @@ bool MetalRHI::CreateLibraryAndPipelines()
 
     MMeshPipeline = makeRenderPipeline(meshVertex, meshFragment);
     MSpritePipeline = makeRenderPipeline(spriteVertex, spriteFragment);
-    if (MMeshPipeline == nil || MSpritePipeline == nil)
+    MSpriteBasePipeline = makeRenderPipeline(spriteVertex, spriteBaseFragment);
+    MSpriteNormalPipeline = makeRenderPipeline(spriteVertex, spriteNormalFragment);
+    if (MMeshPipeline == nil || MSpritePipeline == nil || MSpriteBasePipeline == nil ||
+        MSpriteNormalPipeline == nil)
     {
         return false;
     }
@@ -908,6 +915,30 @@ void MetalRHI::RecordPacket(id<MTLCommandBuffer> commandBuffer, id<MTLTexture> c
         CameraData camera = packet.camera;
         [encoder setRenderPipelineState:MSpritePipeline];
         [encoder setVertexBytes:&camera length:sizeof(camera) atIndex:1];
+        std::array<float, 32> ScopedLights{};
+        const std::size_t ScopedLightCount = packet.lights.size() < 4u ? packet.lights.size() : 4u;
+        for (std::size_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+        {
+            const GpuLight& ScopedLight = packet.lights[ScopedI];
+            ScopedLights[ScopedI * 4u + 0u] = ScopedLight.PositionAndRadius.X;
+            ScopedLights[ScopedI * 4u + 1u] = ScopedLight.PositionAndRadius.Y;
+            ScopedLights[ScopedI * 4u + 2u] = ScopedLight.PositionAndRadius.Z;
+            ScopedLights[16u + ScopedI * 4u + 0u] = ScopedLight.ColorAndIntensity.X;
+            ScopedLights[16u + ScopedI * 4u + 1u] = ScopedLight.ColorAndIntensity.Y;
+            ScopedLights[16u + ScopedI * 4u + 2u] = ScopedLight.ColorAndIntensity.Z;
+            ScopedLights[16u + ScopedI * 4u + 3u] = ScopedLight.ColorAndIntensity.W;
+        }
+        [encoder setFragmentBytes:ScopedLights.data() length:sizeof(ScopedLights) atIndex:2];
+        const auto ScopedSpritePipeline = [&](const RenderItem& InItem) -> id<MTLRenderPipelineState>
+        {
+            if ((InItem.flags & ((1u << 6) | (1u << 7) | (1u << 8))) != 0u)
+            {
+                return MSpritePipeline;
+            }
+            const bool ScopedNormal =
+                ((InItem.flags >> 16u) & 0xFFu) >= 1u && ((InItem.flags >> 11u) & 0x1Fu) != 0u;
+            return ScopedNormal ? MSpriteNormalPipeline : MSpriteBasePipeline;
+        };
 
         // Per-batch texture-array binding, mirroring VulkanRHI::DrawPacket.
         //
@@ -930,6 +961,7 @@ void MetalRHI::RecordPacket(id<MTLCommandBuffer> commandBuffer, id<MTLTexture> c
 
         if (packet.batches.empty())
         {
+            [encoder setRenderPipelineState:ScopedSpritePipeline(packet.items.front())];
             [encoder setVertexBuffer:frame.instances offset:0 atIndex:0];
             ScopedBindArray(packet.textureArray);
             ++MStats.textureBinds;
@@ -971,6 +1003,7 @@ void MetalRHI::RecordPacket(id<MTLCommandBuffer> commandBuffer, id<MTLTexture> c
                 }
                 const std::uint32_t ScopedArray =
                     ScopedBatch.textureArray != 0 ? ScopedBatch.textureArray : packet.textureArray;
+                [encoder setRenderPipelineState:ScopedSpritePipeline(packet.items[ScopedBatch.firstItem])];
                 [encoder setVertexBuffer:frame.instances
                                   offset:static_cast<NSUInteger>(ScopedBatch.firstItem) * ScopedItemStride
                                  atIndex:0];
@@ -1166,9 +1199,7 @@ void MetalRHI::Resize(Extent2D size)
     {
         return;
     }
-    const float density = SDL_GetWindowPixelDensity(static_cast<SDL_Window*>(MDesc.nativeWindow));
-    MLayer.drawableSize =
-        CGSizeMake(static_cast<CGFloat>(size.width) * density, static_cast<CGFloat>(size.height) * density);
+    MLayer.drawableSize = CGSizeMake(static_cast<CGFloat>(size.width), static_cast<CGFloat>(size.height));
     if (MDevice != nil && MDepthTexture != nil)
     {
         // The swapchain depth must follow the drawable size.
@@ -1460,11 +1491,14 @@ bool MetalRHI::RenderMotionVectors(RenderTargetHandle InTarget, std::uint32_t In
     {
         return false;
     }
-    struct MotionVertex
+    struct alignas(8) MotionVertex
     {
         float Position[3];
+        float Pad = 0.0f;
         float Delta[2];
     };
+    static_assert(sizeof(MotionVertex) == 24, "MotionVertex must match packed_float3 + float2");
+    static_assert(offsetof(MotionVertex, Delta) == 16, "MotionVertex delta must start at byte 16");
     const Extent2D extent = MRenderTargets[InTarget.id]->extent;
     const float viewportX = InViewport.X > 0.0f ? InViewport.X : static_cast<float>(extent.width);
     const float viewportY = InViewport.Y > 0.0f ? InViewport.Y : static_cast<float>(extent.height);
@@ -1742,6 +1776,10 @@ void MetalRHI::Shutdown()
     MFreeStaticMeshIds.clear();
     MRenderTargets.clear();
     MFreeRenderTargetIds.clear();
+    MFreeTextureArrayIds.clear();
+    MTransientCapacity = 0;
+    MFrameIndex = 0;
+    MFrameSlot = 0;
     MSkinPipeline = nil;
     MMeshPipeline = nil;
     MSpritePipeline = nil;

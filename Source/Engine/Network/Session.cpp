@@ -693,6 +693,10 @@ void NetSession::HandleMessage(const NetAddress& InFrom, std::span<const std::by
     {
         return;
     }
+    if (IsClientRole())
+    {
+        MLastServerMessageMs = NowMs();
+    }
     if (IsAuthority())
     {
         const std::uint32_t ScopedSlot = FindSlotIndexByAddress(InFrom);
@@ -1424,6 +1428,7 @@ void NetSession::Advance(float InDeltaSeconds) noexcept
         {
             if (ScopedNow >= MLastHelloMs + MConfig.RejoinIntervalMs)
             {
+                MStatus = NetSessionStatus::Connecting;
                 SendHello();
             }
             ProcessEventTimers();

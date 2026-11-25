@@ -1,0 +1,4 @@
+[project]
+name = "broken"
+[audio]
+buses = [1, 2, 3]

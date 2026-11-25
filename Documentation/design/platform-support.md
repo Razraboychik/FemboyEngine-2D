@@ -20,7 +20,7 @@ natively on that OS. The project contract is in
 
 The presets configure `FBY_BUILD_EDITOR=ON`, `FBY_BUILD_TESTS=ON` and
 `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. The generated build trees are
-`build-windows-release`, `build-linux-release` and `build-macos-release`.
+`build/windows-release`, `build/linux-release` and `build/macos-release`.
 
 ```bash
 cmake --preset windows-release && cmake --build --preset windows-release
@@ -109,7 +109,7 @@ macOS runtime behavior.
 Before considering a slimmer vendor checkout, generate the read-only report:
 
 ```bash
-python Source/Tools/Dev/ReportVendorUsage.py --build build-dev   --output build/vendor-usage.md --json-output build/vendor-usage.json
+python Source/Tools/Dev/ReportVendorUsage.py --build build/dev   --output build/vendor-usage.md --json-output build/vendor-usage.json
 ```
 
 It classifies `third_party/` as compiled source, transitively included header,

@@ -148,6 +148,24 @@ static_assert(std::is_trivially_copyable_v<GridDesc>);
 
 namespace Detail
 {
+[[nodiscard]] inline std::int32_t CellCoordinate(float InValue) noexcept
+{
+    // World coordinates are floats and callers can supply NaN/inf or huge
+    // values; float-to-int conversion outside int32 is undefined.
+    if (!std::isfinite(InValue))
+    {
+        return 0;
+    }
+    const float ScopedRounded = std::round(InValue);
+    constexpr float kCellMin = -2147483648.0f;
+    constexpr float kCellMax = 2147483648.0f;
+    if (!(ScopedRounded > kCellMin && ScopedRounded < kCellMax))
+    {
+        return 0;
+    }
+    return static_cast<std::int32_t>(ScopedRounded);
+}
+
 [[nodiscard]] inline Cell RoundAxial(float InQ, float InR) noexcept
 {
     const float ScopedS = -InQ - InR;
@@ -165,7 +183,7 @@ namespace Detail
     {
         ScopedR = -ScopedQ - ScopedSum;
     }
-    return Cell{static_cast<std::int32_t>(ScopedQ), static_cast<std::int32_t>(ScopedR)};
+    return Cell{Detail::CellCoordinate(ScopedQ), Detail::CellCoordinate(ScopedR)};
 }
 }
 
@@ -182,8 +200,7 @@ namespace Detail
         {
             const float ScopedCellWidth = InGrid.CellSize.X != 0.0f ? InGrid.CellSize.X : 1.0f;
             const float ScopedCellHeight = InGrid.CellSize.Y != 0.0f ? InGrid.CellSize.Y : 1.0f;
-            return Cell{static_cast<std::int32_t>(std::lround(ScopedDx / ScopedCellWidth)),
-                        static_cast<std::int32_t>(std::lround(ScopedDy / ScopedCellHeight))};
+            return Cell{Detail::CellCoordinate(ScopedDx / ScopedCellWidth), Detail::CellCoordinate(ScopedDy / ScopedCellHeight)};
         }
         case ProjectionMode::IsoRect:
         {
@@ -193,8 +210,7 @@ namespace Detail
             const float ScopedB = ScopedDy / ScopedHalfHeight;
             const float ScopedCellX = (ScopedA + ScopedB) * 0.5f;
             const float ScopedCellY = (ScopedB - ScopedA) * 0.5f;
-            return Cell{static_cast<std::int32_t>(std::lround(ScopedCellX)),
-                        static_cast<std::int32_t>(std::lround(ScopedCellY))};
+            return Cell{Detail::CellCoordinate(ScopedCellX), Detail::CellCoordinate(ScopedCellY)};
         }
         case ProjectionMode::IsoHex:
         {

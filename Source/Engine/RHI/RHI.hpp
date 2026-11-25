@@ -216,6 +216,8 @@ struct DeviceInfo
     std::uint8_t gpuVendor = 0;
     // 0 Windows, 1 Linux, 2 macOS, 3 other.
     std::uint8_t platform = 3;
+    // Set when the backend observes DXGI_ERROR_DEVICE_REMOVED / VK_ERROR_DEVICE_LOST.
+    bool deviceLost = false;
 };
 
 struct TextureArrayDesc
@@ -226,6 +228,13 @@ struct TextureArrayDesc
     bool srgb = true;
     // Cooked texel format. The cooker writes BC7 or ASTC for compatible GPUs;
     Assets::TextureFormat format = Assets::TextureFormat::Rgba8;
+
+    // `srgb` is only authoritative for uncompressed Rgba8; BC7/ASTC encode
+    // gamma in the format itself. Backends must use this instead of srgb.
+    [[nodiscard]] constexpr bool EffectiveSrgb() const noexcept
+    {
+        return format == Assets::TextureFormat::Rgba8 ? srgb : Assets::IsSrgb(format);
+    }
 };
 
 // A GPU pipeline compiled from runtime-generated SPIR-V (MaterialGraph).

@@ -1,6 +1,8 @@
 // FemboyEngine2D - tilemap/isometric editor panel implementation.
 #include "Editor/Panels/TilemapEditorPanel.hpp"
 
+#include "Engine/Assets/TiledImporter.hpp"
+
 #include "Editor/Infrastructure/EditorTypography.hpp"
 
 #include <imgui.h>
@@ -202,7 +204,8 @@ void TilemapEditorPanel::DrawHeader()
     {
         const auto ScopedByte = [](float InValue)
         {
-            return static_cast<std::uint32_t>(std::lround(std::clamp(InValue, 0.0f, 1.0f) * 255.0f));
+            const float Scoped = std::isfinite(InValue) ? std::clamp(InValue, 0.0f, 1.0f) : 0.0f;
+            return static_cast<std::uint32_t>(std::lround(Scoped * 255.0f));
         };
         MMap.Tint = ScopedByte(ScopedTint[0]) | (ScopedByte(ScopedTint[1]) << 8) | (ScopedByte(ScopedTint[2]) << 16) |
                     (ScopedByte(ScopedTint[3]) << 24);
@@ -335,6 +338,37 @@ void TilemapEditorPanel::DrawCanvas()
     ImGui::EndChild();
 }
 
+bool TilemapEditorPanel::ImportTiled(std::string_view InXml, std::string* InError)
+{
+    Assets::TiledMap ScopedMap;
+    if (!Assets::ParseTiledMap(InXml, &ScopedMap, InError))
+    {
+        return false;
+    }
+    std::uint32_t ScopedLayer = 0;
+    while (ScopedLayer < ScopedMap.Layers.size() && !ScopedMap.Layers[ScopedLayer].Visible)
+    {
+        ++ScopedLayer;
+    }
+    if (ScopedLayer >= ScopedMap.Layers.size())
+    {
+        if (InError != nullptr)
+        {
+            *InError = "Tiled map has no visible tile layer";
+        }
+        return false;
+    }
+    TilemapComponent ScopedTilemap;
+    if (!Assets::TiledMapToTilemap(ScopedMap, ScopedLayer, &ScopedTilemap, InError))
+    {
+        return false;
+    }
+    MMap = ScopedTilemap;
+    MInitialized = true;
+    MStatus = "imported Tiled layer " + ScopedMap.Layers[ScopedLayer].Name;
+    return true;
+}
+
 void TilemapEditorPanel::DrawToolbar(Ecs::Registry& InRegistry, Entity InSelected)
 {
     if (ImGui::Button("Save"))
@@ -385,47 +419,35 @@ void TilemapEditorPanel::DrawToolbar(Ecs::Registry& InRegistry, Entity InSelecte
         }
     }
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(220.0f);
-    (void)ImGui::InputText("path", MPath.data(), MPath.size());
-    ImGui::SameLine();
-    ImGui::BeginDisabled(InSelected == Fby::kNullEntity);
-    if (ImGui::Button("Bake to selection"))
+    if (ImGui::Button("Import Tiled"))
     {
-        // The runtime grid is rebuilt from the authored reference on load, so the
-        // scene stores the `.tilemap` path (a small POD), not 16 KiB of tiles.
-        std::string ScopedText;
-        if (!SaveToText(&ScopedText))
+        const std::filesystem::path ScopedPath(MPath.data());
+        std::error_code ScopedSizeError;
+        const std::uintmax_t ScopedBytes = std::filesystem::file_size(ScopedPath, ScopedSizeError);
+        std::ifstream ScopedFile(ScopedPath, std::ios::binary);
+        if (ScopedSizeError || ScopedBytes > 4u * 1024u * 1024u || !ScopedFile)
         {
-            MStatus = "bake: cannot serialize";
+            MStatus = "import: file is missing, unreadable or larger than 4 MiB";
         }
         else
         {
-            const std::filesystem::path ScopedPath(MPath.data());
-            std::error_code ScopedError;
-            if (!ScopedPath.parent_path().empty())
+            std::ostringstream ScopedStream;
+            ScopedStream << ScopedFile.rdbuf();
+            std::string ScopedError;
+            if (!ImportTiled(ScopedStream.str(), &ScopedError))
             {
-                std::filesystem::create_directories(ScopedPath.parent_path(), ScopedError);
-            }
-            std::ofstream ScopedFile(ScopedPath, std::ios::binary | std::ios::trunc);
-            if (!ScopedFile)
-            {
-                MStatus = "bake: cannot open " + ScopedPath.string();
+                MStatus = "import: " + ScopedError;
             }
             else
             {
-                ScopedFile << ScopedText;
-                ScopedFile.close();
-                TilemapAssetRefComponent ScopedRef;
-                const std::size_t ScopedLength =
-                    std::min(std::strlen(MPath.data()), static_cast<std::size_t>(kTilemapRefPathBytes - 1));
-                std::memcpy(ScopedRef.Path, MPath.data(), ScopedLength);
-                ScopedRef.SortLayer = MMap.SortLayer;
-                InRegistry.emplace_or_replace<TilemapAssetRefComponent>(InSelected, ScopedRef);
-                InRegistry.emplace_or_replace<TilemapComponent>(InSelected, MMap);
-                MStatus = "baked reference " + ScopedPath.string();
+                MStatus = "imported " + ScopedPath.string();
             }
         }
     }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(220.0f);
+    (void)ImGui::InputText("path", MPath.data(), MPath.size());
+    ImGui::SameLine();
     ImGui::SameLine();
     if (ImGui::Button("Load from selection"))
     {
@@ -440,7 +462,6 @@ void TilemapEditorPanel::DrawToolbar(Ecs::Registry& InRegistry, Entity InSelecte
             MStatus = "the selected entity has no TilemapComponent";
         }
     }
-    ImGui::EndDisabled();
     ImGui::SameLine();
     if (ImGui::Button("Clear"))
     {

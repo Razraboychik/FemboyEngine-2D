@@ -2,6 +2,8 @@
 #include "Engine/Core/Time.hpp"
 #include "Editor/Infrastructure/PlayInEditor.hpp"
 
+#include "Engine/Physics/PhysicsProfile.hpp"
+
 #include "Engine/Audio/Audio.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/Core/StoragePaths.hpp"
@@ -194,7 +196,7 @@ PlayInEditor::Services PlayInEditor::CaptureServices(const Ecs::SystemContext& I
 
 PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs::SnapshotSchema& InSchema,
                                          const Ecs::SystemContext& InServices, std::uint64_t InTick,
-                                         const DeterministicRng* InRng) noexcept
+                                         const DeterministicRng* InRng, ViewProfile InProfile) noexcept
 {
     if (!MInitialized)
     {
@@ -212,7 +214,8 @@ PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs
 
     // Isolate the physics world before the clone is materialized.
     const PhysicsDesc ScopedPhysicsDesc =
-        InServices.physics != nullptr ? InServices.physics->Description() : PhysicsDesc{};
+        ApplyPhysicsProfile(InServices.physics != nullptr ? InServices.physics->Description() : PhysicsDesc{},
+                            InProfile);
     if (!MPiePhysics.Initialize(ScopedPhysicsDesc))
     {
         return Result::PhysicsFailed;
@@ -261,9 +264,10 @@ PlayInEditor::Result PlayInEditor::Start(Ecs::Registry& InEditorWorld, const Ecs
 PlayInEditor::Result PlayInEditor::StartMultiplayer(Ecs::Registry& InEditorWorld, const Ecs::SnapshotSchema& InSchema,
                                                     const Ecs::SystemContext& InServices, std::uint32_t InClientCount,
                                                     std::uint64_t InTick, const DeterministicRng* InRng,
-                                                    const ExternalClientDesc* InExternal) noexcept
+                                                    const ExternalClientDesc* InExternal,
+                                                    ViewProfile InProfile) noexcept
 {
-    const Result ScopedStart = Start(InEditorWorld, InSchema, InServices, InTick, InRng);
+    const Result ScopedStart = Start(InEditorWorld, InSchema, InServices, InTick, InRng, InProfile);
     if (ScopedStart != Result::Ok)
     {
         return ScopedStart;

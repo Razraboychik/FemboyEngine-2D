@@ -342,7 +342,7 @@ bool SapiTts::Speak(std::string_view InUtf8, TtsPriority InPriority) noexcept
         return false;
     }
     ScopedWide[static_cast<std::size_t>(ScopedCount)] = L'\0';
-    DWORD ScopedFlags = SPF_ASYNC;
+    DWORD ScopedFlags = SPF_ASYNC | SPF_IS_NOT_XML;
     if (InPriority == TtsPriority::Interrupt)
     {
         ScopedFlags |= SPF_PURGEBEFORESPEAK;

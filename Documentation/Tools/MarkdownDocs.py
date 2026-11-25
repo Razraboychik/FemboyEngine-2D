@@ -184,6 +184,8 @@ def render_one(markdown_path: pathlib.Path, docx_path: pathlib.Path, pdf_path: p
                djvu_path: pathlib.Path, SkipPdf: bool = False) -> int:
     print(f"docx {docx_path.relative_to(ROOT)}")
     build_docx(markdown_path, docx_path)
+    if SkipPdf:
+        return 0
     if build_pdf(docx_path, pdf_path, SkipPdf) != 0:
         return 1
     print(f"pdf  {pdf_path.relative_to(ROOT)}")

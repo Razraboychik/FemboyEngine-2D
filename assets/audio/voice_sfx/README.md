@@ -6,7 +6,7 @@ The six WAV files in this directory are generated deterministically by
 
 ```bash
 cmake --build build --target fby_voice_sfx_gen
-build/bin/tools/fby_voice_sfx_gen assets/audio/voice_sfx
+build/dev/bin/tools/fby_voice_sfx_gen assets/audio/voice_sfx
 ```
 
 They contain no third-party samples. The files are original output of the

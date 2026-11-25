@@ -130,7 +130,8 @@ float CollectRayHit(b2ShapeId InShape, b2Pos InPoint, b2Vec2 InNormal, float InF
 {
     auto* ScopedCollector = static_cast<RayCastCollector*>(InContext);
     const Entity ScopedEntity = EntityFromShape(InShape);
-    if (ScopedEntity == Fby::kNullEntity || ScopedEntity == ScopedCollector->ignore)
+    if (ScopedEntity == Fby::kNullEntity || ScopedEntity == ScopedCollector->ignore ||
+        b2Shape_IsSensor(InShape))
     {
         return -1.0f;
     }
@@ -487,10 +488,6 @@ std::uint32_t PhysicsSystem::DestroyAllBodies(Ecs::Registry* InRegistry) noexcep
 
 void PhysicsSystem::BindToRegistry(Ecs::Registry& InRegistry) noexcept
 {
-    if (MBackendKind == PhysicsBackendKind::Dod)
-    {
-        return;
-    }
     Scene::SetNativeCleanupHook(
         InRegistry,
         [](void* InUser, Ecs::Registry& InWorld) noexcept
@@ -956,6 +953,10 @@ void PhysicsSystem::ApplyShapeFilter(Collider2D& InCollider) noexcept
         return;
     }
     const std::uint32_t ScopedLayer = CollisionFilterMatrix::LayerFromCategory(InCollider.CategoryBits);
+    if (ScopedLayer == kNoCollisionLayer)
+    {
+        return;
+    }
     InCollider.CategoryBits = MFilter.CategoryBits(ScopedLayer);
     InCollider.MaskBits = MFilter.MaskBits(ScopedLayer);
     const b2ShapeId ScopedShapeId = b2LoadShapeId(InCollider.Shape);

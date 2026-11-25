@@ -46,6 +46,10 @@ int main()
     Check(ScopedPages.LoadPagedTtfFromVfs(ScopedVfs, "fonts/tests/NotoSansSC-Regular.ttf", ScopedOptions,
                                           &ScopedError),
           "paged face opens with page 0");
+    if (ScopedPages.At(0) == nullptr)
+    {
+        return 1;
+    }
     Check(ScopedPages.PageCount(4) == 1 && ScopedPages.PageLoads() == 1, "paged face starts with one page");
     const std::uint32_t ScopedPageBytes = 512u * 512u;
     Check(ScopedPages.AtlasPixelBytes() == ScopedPageBytes,
@@ -68,6 +72,10 @@ int main()
     const Ui::FontAtlas* ScopedSecondPage =
         ScopedPages.EnsurePageForGlyph(4, Ui::FontStyle::Regular, ScopedSecondPageGlyph);
     Check(ScopedSecondPage != nullptr, "the page of a missing glyph is built on demand");
+    if (ScopedSecondPage == nullptr)
+    {
+        return 1;
+    }
     Check(ScopedPages.PageLoads() == 2 && ScopedPages.PageCount(4) == 2, "the on-demand page is counted");
     Check(ScopedPages.LayerForAtlas(ScopedPages.At(0)) != ScopedPages.LayerForAtlas(ScopedSecondPage),
           "pages sit on separate texture-array layers");

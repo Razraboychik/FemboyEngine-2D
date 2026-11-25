@@ -33,7 +33,8 @@ public:
             if (!MUsed[ScopedSlot])
             {
                 MUsed[ScopedSlot] = true;
-                return Id{ScopedSlot};
+                ++MGeneration[ScopedSlot];
+                return Id{Encode(ScopedSlot, MGeneration[ScopedSlot])};
             }
         }
         // All slots live: caller must destroy an object first
@@ -42,19 +43,39 @@ public:
 
     void Release(Id InId) noexcept
     {
-        if (InId.id < kCapacity)
+        const std::uint32_t ScopedSlot = SlotOf(InId.id);
+        const std::uint32_t ScopedGeneration = GenerationOf(InId.id);
+        if (ScopedSlot < kCapacity && MUsed[ScopedSlot] && MGeneration[ScopedSlot] == ScopedGeneration)
         {
-            MUsed[InId.id] = false;
+            MUsed[ScopedSlot] = false;
+            ++MGeneration[ScopedSlot];
         }
     }
     [[nodiscard]] bool IsLive(Id InId) const noexcept
     {
-        return InId.id < kCapacity && MUsed[InId.id];
+        const std::uint32_t ScopedSlot = SlotOf(InId.id);
+        return ScopedSlot < kCapacity && MUsed[ScopedSlot] &&
+               MGeneration[ScopedSlot] == GenerationOf(InId.id);
     }
 
 private:
     static constexpr std::uint32_t kCapacity = 64;
+    static constexpr std::uint32_t kSlotBits = 6;
+    static constexpr std::uint32_t kSlotMask = kCapacity - 1;
+    static constexpr std::uint32_t SlotOf(std::uint32_t InId) noexcept
+    {
+        return InId & kSlotMask;
+    }
+    static constexpr std::uint32_t GenerationOf(std::uint32_t InId) noexcept
+    {
+        return InId >> kSlotBits;
+    }
+    static constexpr std::uint32_t Encode(std::uint32_t InSlot, std::uint32_t InGeneration) noexcept
+    {
+        return ((InGeneration & 0x03FFFFFFu) << kSlotBits) | InSlot;
+    }
     std::array<bool, kCapacity> MUsed{};
+    std::array<std::uint32_t, kCapacity> MGeneration{};
     std::uint32_t MNext = 0;
 };
 }

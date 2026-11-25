@@ -8,6 +8,7 @@
 #include "Engine/Network/Transport.hpp"
 
 #include <array>
+#include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -17,6 +18,23 @@
 
 namespace
 {
+[[nodiscard]] bool ParseUnsigned(const char* InText, std::uint64_t InMaximum, std::uint64_t* OutValue)
+{
+    if (InText == nullptr || OutValue == nullptr)
+    {
+        return false;
+    }
+    const char* ScopedEnd = InText + std::strlen(InText);
+    std::uint64_t ScopedValue = 0;
+    const auto ScopedResult = std::from_chars(InText, ScopedEnd, ScopedValue);
+    if (ScopedResult.ec != std::errc{} || ScopedResult.ptr != ScopedEnd || ScopedValue > InMaximum)
+    {
+        return false;
+    }
+    *OutValue = ScopedValue;
+    return true;
+}
+
 struct Options
 {
     std::uint16_t Port = 27016;
@@ -44,14 +62,31 @@ void PrintUsage()
     {
         return false;
     }
+    const auto ScopedNibble = [](char InChar) -> int
+    {
+        if (InChar >= '0' && InChar <= '9')
+        {
+            return InChar - '0';
+        }
+        if (InChar >= 'a' && InChar <= 'f')
+        {
+            return InChar - 'a' + 10;
+        }
+        if (InChar >= 'A' && InChar <= 'F')
+        {
+            return InChar - 'A' + 10;
+        }
+        return -1;
+    };
     for (std::size_t ScopedIndex = 0; ScopedIndex < 32; ++ScopedIndex)
     {
-        unsigned ScopedValue = 0;
-        if (std::sscanf(InText + ScopedIndex * 2, "%2x", &ScopedValue) != 1)
+        const int ScopedHigh = ScopedNibble(InText[ScopedIndex * 2]);
+        const int ScopedLow = ScopedNibble(InText[ScopedIndex * 2 + 1]);
+        if (ScopedHigh < 0 || ScopedLow < 0)
         {
             return false;
         }
-        (*OutKey)[ScopedIndex] = static_cast<std::byte>(ScopedValue & 0xFFu);
+        (*OutKey)[ScopedIndex] = static_cast<std::byte>((ScopedHigh << 4) | ScopedLow);
     }
     return true;
 }
@@ -73,15 +108,28 @@ void PrintUsage()
         const char* ScopedValue = InArgs[++ScopedIndex];
         if (std::strcmp(ScopedArg, "--port") == 0)
         {
-            OutOptions->Port = static_cast<std::uint16_t>(std::atoi(ScopedValue));
+            std::uint64_t ScopedPort = 0;
+            if (!ParseUnsigned(ScopedValue, 65535u, &ScopedPort))
+            {
+                return false;
+            }
+            OutOptions->Port = static_cast<std::uint16_t>(ScopedPort);
         }
         else if (std::strcmp(ScopedArg, "--lifetime") == 0)
         {
-            OutOptions->TicketLifetime = static_cast<std::uint64_t>(std::strtoull(ScopedValue, nullptr, 10));
+            if (!ParseUnsigned(ScopedValue, 0xFFFFFFFFFFFFFFFFull, &OutOptions->TicketLifetime))
+            {
+                return false;
+            }
         }
         else if (std::strcmp(ScopedArg, "--frames") == 0)
         {
-            OutOptions->Frames = static_cast<std::uint32_t>(std::atoi(ScopedValue));
+            std::uint64_t ScopedFrames = 0;
+            if (!ParseUnsigned(ScopedValue, 0xFFFFFFFFu, &ScopedFrames))
+            {
+                return false;
+            }
+            OutOptions->Frames = static_cast<std::uint32_t>(ScopedFrames);
         }
         else if (std::strcmp(ScopedArg, "--identity") == 0)
         {

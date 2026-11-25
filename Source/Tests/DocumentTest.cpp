@@ -37,9 +37,15 @@ void TestTextDocument()
         const char ScopedBody[] = "\xEF\xBB\xBFTitle\r\nFirst line\r\nSecond line\r\nThird line";
         ScopedFile.write(ScopedBody, static_cast<std::streamsize>(sizeof(ScopedBody) - 1));
     }
+    {
+        std::ofstream ScopedEmpty(ScopedRoot / "empty.txt", std::ios::binary | std::ios::trunc);
+    }
     Fby::VirtualFileSystem ScopedVfs;
     std::string ScopedVfsError;
     FBY_CHECK(ScopedVfs.MountDirectory(ScopedRoot.string(), 0, &ScopedVfsError));
+    const auto ScopedEmptyPin = ScopedVfs.Pin("empty.txt");
+    FBY_CHECK(ScopedEmptyPin.has_value());
+    FBY_CHECK(ScopedEmptyPin.has_value() && ScopedEmptyPin->bytes.empty());
 
     Fby::Documents::DocumentSystem ScopedDocuments;
     ScopedDocuments.SetVfs(&ScopedVfs);

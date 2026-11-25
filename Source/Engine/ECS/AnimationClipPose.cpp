@@ -37,7 +37,8 @@ namespace
 void AccumulateAtTime(const CompressedClip& InClip, const AnimationClipBinding& InBinding,
                       const SkeletonComponent& InSkeleton, float InTime, float InWeight, AnimationPose& InPose) noexcept
 {
-    if (!InBinding.IsValid || !(InWeight > 0.0f) || !std::isfinite(InWeight) || !(InClip.Duration > 0.0f))
+    if (!InBinding.IsValid || InBinding.ClipTrackCount != InClip.TrackCount || !(InWeight > 0.0f) ||
+        !std::isfinite(InWeight) || !(InClip.Duration > 0.0f) || !InSkeleton.RestPoseCaptured)
     {
         return;
     }
@@ -80,7 +81,7 @@ void AccumulateAtTime(const CompressedClip& InClip, const AnimationClipBinding& 
             continue;
         }
         const CompressedTrack& ScopedCompressed = InClip.Tracks[ScopedTrack];
-        if (ScopedCompressed.Kind == TrackKind::SpriteClip)
+        if (ScopedCompressed.Kind == TrackKind::SpriteClip || ScopedCompressed.KeyCount == 0)
         {
             continue;
         }
@@ -117,8 +118,11 @@ bool BakeAnimationClipBinding(const CompressedClip& InClip, const SkeletonCompon
         return false;
     }
     *OutBinding = AnimationClipBinding{};
-    const std::uint16_t ScopedTracks =
-        static_cast<std::uint16_t>(std::min<std::uint32_t>(InClip.TrackCount, kMaxTimelineTracks));
+    if (InClip.TrackCount > kMaxTimelineTracks)
+    {
+        return false;
+    }
+    const std::uint16_t ScopedTracks = static_cast<std::uint16_t>(InClip.TrackCount);
     for (std::uint16_t ScopedTrack = 0; ScopedTrack < ScopedTracks; ++ScopedTrack)
     {
         const CompressedTrack& ScopedCompressed = InClip.Tracks[ScopedTrack];
@@ -147,6 +151,7 @@ bool BakeAnimationClipBinding(const CompressedClip& InClip, const SkeletonCompon
         OutBinding->TrackBones[ScopedTrack] = static_cast<std::uint16_t>(ScopedBone);
     }
     OutBinding->TrackCount = ScopedTracks;
+    OutBinding->ClipTrackCount = InClip.TrackCount;
     OutBinding->IsValid = true;
     return true;
 }
@@ -175,7 +180,7 @@ void AccumulateAnimationClipAtTime(const CompressedClip& InClip, const Animation
 
 void ResolveAnimationPose(const AnimationPose& InPose, SkeletonComponent& InSkeleton) noexcept
 {
-    if (!(InPose.Weight > kPoseWeightEpsilon))
+    if (!(InPose.Weight > 0.0f))
     {
         return;
     }

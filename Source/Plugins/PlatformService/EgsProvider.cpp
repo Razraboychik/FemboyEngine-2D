@@ -111,11 +111,9 @@ FbyPlatformResult FBY_PLATFORM_CALL EgsInitialize(const FbyPlatformInitDesc* InD
     {
         return FbyPlatformResult_NotAvailable;
     }
-#if defined(FBY_HAS_EOS_SDK)
-    GState.platform = EOS_Platform_Create(static_cast<const EOS_Platform_Options*>(InDesc->providerOptions));
-#else
+    // Always go through the resolved symbol: FBY_HAS_EOS_SDK provides the
+    // headers/types but does not link an EOSSDK import library.
     GState.platform = GState.create(InDesc->providerOptions);
-#endif
     if (GState.platform == nullptr)
     {
         InvokeLog("EOS_Platform_Create returned null");

@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <string>
 
 namespace Fby
 {
@@ -86,10 +87,10 @@ bool DataTable::GetFloat(std::size_t InRow, std::string_view InColumn, float* Ou
     {
         return false;
     }
+    const std::string ScopedNumber(ScopedText);
     char* ScopedEnd = nullptr;
-    const std::string ScopedNullTerminated(ScopedText);
-    const float ScopedValue = std::strtof(ScopedNullTerminated.c_str(), &ScopedEnd);
-    if (ScopedEnd == ScopedNullTerminated.c_str() || *ScopedEnd != '\0' || !std::isfinite(ScopedValue))
+    const float ScopedValue = std::strtof(ScopedNumber.c_str(), &ScopedEnd);
+    if (ScopedEnd != ScopedNumber.c_str() + ScopedNumber.size() || !std::isfinite(ScopedValue))
     {
         return false;
     }

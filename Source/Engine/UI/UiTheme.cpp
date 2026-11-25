@@ -39,7 +39,7 @@ constexpr const char* kSlotKeys[kUiPaletteSlots] = {
     std::memcpy(ScopedBuffer, InText.data(), InText.size());
     char* ScopedEnd = nullptr;
     const unsigned long ScopedValue = std::strtoul(ScopedBuffer, &ScopedEnd, 16);
-    if (ScopedEnd == ScopedBuffer)
+    if (ScopedEnd == ScopedBuffer || *ScopedEnd != '\0')
     {
         return InFallback;
     }

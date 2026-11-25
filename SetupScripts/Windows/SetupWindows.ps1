@@ -10,6 +10,7 @@
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -Component Archiver
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -Component Upscalers
 #   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -WithVendorSdks -AcceptVendorLicenses
+#   powershell -ExecutionPolicy Bypass -File SetupScripts\Windows\SetupWindows.ps1 -WithAndroidNdk
 #
 # Versions are the ones the CI slate validates:
 #   LLVM             latest stable release (clang-cl and clang++; any 19.1+ is
@@ -29,6 +30,7 @@ param(
     [switch]$Force,
     [switch]$WithVendorSdks,
     [switch]$AcceptVendorLicenses,
+    [switch]$WithAndroidNdk,
     [ValidateSet("All", "Cpp", "Archiver", "Upscalers")]
     [string]$Component = "All"
 )
@@ -51,6 +53,7 @@ $Versions = [ordered]@{
     Monocypher  = "4.0.3"
     Rnnoise     = "0.1.1"
     LzmaSdk     = "25.01"
+    AndroidNdk  = "r27c"
 }
 
 $Lock = [System.Collections.Generic.List[string]]::new()
@@ -296,6 +299,39 @@ function Expand-Tar([string]$Archive, [string]$Destination, [bool]$Strip) {
     }
 }
 
+function Ensure-AndroidNdk {
+    $Existing = $env:ANDROID_NDK_HOME
+    if (-not [string]::IsNullOrWhiteSpace($Existing) -and
+        (Test-Path (Join-Path $Existing "source.properties"))) {
+        Write-Host "  ANDROID_NDK_HOME=$Existing"
+        return $Existing
+    }
+    $Destination = Join-Path $ThirdParty "android-ndk"
+    if (Test-Path (Join-Path $Destination "source.properties")) {
+        $env:ANDROID_NDK_HOME = $Destination
+        Write-Host "  ANDROID_NDK_HOME=$Destination"
+        return $Destination
+    }
+    $Version = if ($env:FBY_ANDROID_NDK_VERSION) { $env:FBY_ANDROID_NDK_VERSION } else { $Versions.AndroidNdk }
+    $Archive = Get-Archive "https://dl.google.com/android/repository/android-ndk-$Version-windows.zip" "android-ndk-$Version.zip"
+    $Temp = Join-Path $Downloads "android-ndk-extract"
+    if (Test-Path $Temp) { Remove-Item -Recurse -Force $Temp }
+    New-Item -ItemType Directory -Force -Path $Temp | Out-Null
+    Write-Host "  extracting Android NDK $Version"
+    Expand-Archive -Path $Archive -DestinationPath $Temp -Force
+    $Extracted = Get-ChildItem -Path $Temp -Directory | Select-Object -First 1
+    if ($null -eq $Extracted) { throw "Android NDK archive has no root directory" }
+    if (Test-Path $Destination) { Remove-Item -Recurse -Force $Destination }
+    Move-Item -Path $Extracted.FullName -Destination $Destination
+    if (-not (Test-Path (Join-Path $Destination "source.properties"))) {
+        throw "Android NDK extraction did not produce source.properties"
+    }
+    $env:ANDROID_NDK_HOME = $Destination
+    $Lock.Add("android_ndk = $Version")
+    Write-Host "  ANDROID_NDK_HOME=$Destination"
+    return $Destination
+}
+
 Write-Step "Toolchain"
 $HasCMake = Ensure-Tool "cmake" "Kitware.CMake"
 $HasNinja = Ensure-Tool "ninja" "Ninja-build.Ninja"
@@ -313,6 +349,10 @@ $HasMsvc = Ensure-Msvc
 $HasGcc = Ensure-Tool "g++" "BrechtSanders.WinLibs.POSIX.UCRT"
 if (-not ($HasCMake -and $HasNinja -and $HasGit)) {
     throw "cmake, ninja and git are required"
+}
+if ($WithAndroidNdk) {
+    Write-Step "Android NDK"
+    (Ensure-AndroidNdk) | Out-Null
 }
 if ($HasClang) {
     $ClangVersion = (& clang-cl --version 2>$null | Select-Object -First 1)
@@ -358,7 +398,9 @@ if ($null -eq $env:VULKAN_SDK -and -not $SkipSystem) {
     $SdkRoot = Join-Path $env:ProgramFiles "VulkanSDK"
     if (Test-Path $SdkRoot) {
         $LatestSdk = Get-ChildItem -Path $SdkRoot -Directory |
-            Sort-Object { [version]($_.Name) } -Descending | Select-Object -First 1
+            Sort-Object {
+                try { [version]($_.Name) } catch { [version]"0.0" }
+            } -Descending | Select-Object -First 1
         if ($null -ne $LatestSdk) {
             $env:VULKAN_SDK = $LatestSdk.FullName
         }
@@ -472,3 +514,4 @@ Write-Host "  g++         : MinGW-w64 portability toolchain (GCC 14.1+)"
 Write-Host "  configure   : cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON"
 Write-Host "  build       : cmake --build build"
 Write-Host "  test        : ctest --test-dir build --output-on-failure"
+if ($WithAndroidNdk) { Write-Host "  android ndk : $env:ANDROID_NDK_HOME" }

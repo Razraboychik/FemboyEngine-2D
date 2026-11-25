@@ -138,6 +138,16 @@ public:
         MHasLastSorted = false;
     }
 
+    // Keeps every sprite in the packet so a camera-only change never needs a
+    // scene re-extract. The GPU clips off-screen quads; use only where the
+    // overdraw is cheaper than the CPU extract (editor small scenes/tests).
+    void SetCameraReuseAllSprites(bool InEnabled) noexcept
+    {
+        MCameraReuseAllSprites = InEnabled;
+        MCameraCacheValid = false;
+        MHasLastFrame = false;
+    }
+
     // Reserves the compose buffers once so a growing scene does not allocate on
     // the first heavy frame. `InMaxItems` is the frame contract's item cap.
     void Reserve(std::uint32_t InMaxItems);
@@ -170,12 +180,16 @@ public:
     // offscreen viewport paths share one description.
     void SetSdfLighting(const Rhi::SdfLightingFrame& InFrame) noexcept
     {
+        MSdfLighting = InFrame;
         MPacket.sdf = InFrame;
     }
 
     void SetVirtualTexture(Rhi::VirtualTextureHandle InHandle, const Vector4D& InWorldParams,
                            const Vector4D& InLayout) noexcept
     {
+        MVirtualTexture = InHandle;
+        MVirtualTextureParams = InWorldParams;
+        MVirtualTextureLayout = InLayout;
         MPacket.virtualTexture = InHandle;
         MPacket.virtualTextureParams = InWorldParams;
         MPacket.virtualTextureLayout = InLayout;
@@ -183,6 +197,7 @@ public:
 
     void SetVirtualTextureDebugMode(std::uint32_t InMode) noexcept
     {
+        MVirtualTextureDebugMode = InMode;
         MPacket.virtualTextureDebugMode = InMode;
     }
 
@@ -355,6 +370,11 @@ private:
     bool MRenderEcsMirror = true;
     Rhi::KeySorter MSorter;
     Rhi::FramePacket MPacket{};
+    Rhi::SdfLightingFrame MSdfLighting{};
+    Rhi::VirtualTextureHandle MVirtualTexture{};
+    Vector4D MVirtualTextureParams{};
+    Vector4D MVirtualTextureLayout{};
+    std::uint32_t MVirtualTextureDebugMode = 0;
     Rhi::ViewportPresenter MViewportPresenter{};
     FrameComposerStats MStats{};
     const SdfField* MSdfField = nullptr;
@@ -367,6 +387,14 @@ private:
     std::uint64_t MLastSceneRevision = 0;
     std::uint64_t MLastModificationRevision = 0;
     std::uint32_t MLastTextureArray = 0xFFFFFFFFu;
+    bool MLastCullComplete = true;
+    bool MCameraReuseAllSprites = false;
+    bool MCameraCacheValid = false;
+    std::vector<Rhi::RenderItem> MCameraCacheItems;
+    std::vector<Rhi::RenderKey> MCameraCacheKeys;
+    std::vector<Rhi::RenderItem> MCameraFilteredItems;
+    std::vector<Rhi::RenderKey> MCameraFilteredKeys;
+    std::vector<Rhi::DrawBatch> MCameraFilteredBatches;
     Rhi::ViewportMode MLastViewportMode{};
     bool MHasLastCamera = false;
     // History generation. Bumping it invalidates every MotionHistory2D record

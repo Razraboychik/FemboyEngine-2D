@@ -305,7 +305,8 @@ void AppendExtents(DBusMessageIter* InIter, const Ui::AccessibilityNodeView& InN
     {
         if (ScopedNode.Id != 0 && ScopedNode.ParentIndex != Ui::kNoAccessibilityNode)
         {
-            AppendReference(&ScopedIter, MTree->At(ScopedNode.ParentIndex).Id);
+            const std::uint32_t ScopedParentId = MTree->At(ScopedNode.ParentIndex).Id;
+            AppendReference(&ScopedIter, ScopedParentId == RootNodeId() ? 0u : ScopedParentId);
         }
         else
         {
@@ -315,7 +316,7 @@ void AppendExtents(DBusMessageIter* InIter, const Ui::AccessibilityNodeView& InN
     }
     if (std::strcmp(ScopedMember, "GetApplication") == 0)
     {
-        AppendReference(&ScopedIter, RootNodeId());
+        AppendReference(&ScopedIter, 0);
         return ScopedReply;
     }
     if (std::strcmp(ScopedMember, "GetAttributes") == 0)
@@ -629,6 +630,10 @@ void RegisterTree() noexcept
     {
         return;
     }
+    if (MRegisteredCount + MTree->Count() > MRegisteredIds.size())
+    {
+        UnregisterAll();
+    }
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < MTree->Count(); ++ScopedIndex)
     {
         const Ui::AccessibilityNodeView ScopedNode = MTree->At(ScopedIndex);
@@ -758,6 +763,8 @@ bool PlatformAccessibilityBridgeStart(void* InNativeWindow, const AccessibilityB
     }
     MWindow = static_cast<SDL_Window*>(InNativeWindow);
     MSettings = InSettings;
+    MApplicationId = -1;
+    MRegisteredCount = 0;
     MActive = true;
     if (!dbus_connection_register_object_path(MBus, kRootPath, &MNodeVTable,
                                               reinterpret_cast<void*>(static_cast<std::uintptr_t>(0))))
@@ -781,6 +788,8 @@ void PlatformAccessibilityBridgeStop() noexcept
     }
     MTree = nullptr;
     MWindow = nullptr;
+    MApplicationId = -1;
+    MRegisteredCount = 0;
     MActive = false;
 }
 

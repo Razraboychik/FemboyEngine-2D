@@ -73,9 +73,11 @@ int main()
     FBY_CHECK(!ScopedPlan.RunsServer && ScopedPlan.HasLocalClient);
 
     FBY_CHECK(Fby::Net::IsAuthorityRole(Fby::Net::NetRole::Authority));
-    FBY_CHECK(Fby::Net::IsLocalClientRole(Fby::Net::NetRole::Client));
-    FBY_CHECK(Fby::Net::IsLocalClientRole(Fby::Net::NetRole::Authority));
-    FBY_CHECK(!Fby::Net::IsLocalClientRole(Fby::Net::NetRole::Peer));
+    Fby::Net::NetTopologyPlan ScopedPredicatePlan;
+    ScopedPredicatePlan.HasLocalClient = true;
+    FBY_CHECK(Fby::Net::HasLocalClient(ScopedPredicatePlan));
+    ScopedPredicatePlan.HasLocalClient = false;
+    FBY_CHECK(!Fby::Net::HasLocalClient(ScopedPredicatePlan));
 
     if (GFailures == 0)
     {

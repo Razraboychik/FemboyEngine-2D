@@ -145,10 +145,19 @@ void ContentBrowserPanel::Refresh()
         return;
     }
 
-    for (const std::filesystem::directory_entry& ScopedItem : std::filesystem::recursive_directory_iterator(
-             MConfig.assetsRoot, std::filesystem::directory_options::skip_permission_denied, ScopedCode))
+    std::error_code ScopedIteratorError;
+    for (auto ScopedIt = std::filesystem::recursive_directory_iterator(
+             MConfig.assetsRoot, std::filesystem::directory_options::skip_permission_denied, ScopedIteratorError);
+         ScopedIt != std::filesystem::recursive_directory_iterator(); ScopedIt.increment(ScopedIteratorError))
     {
-        if (ScopedCode || !ScopedItem.is_regular_file(ScopedCode))
+        if (ScopedIteratorError)
+        {
+            ScopedIteratorError.clear();
+            continue;
+        }
+        const std::filesystem::directory_entry& ScopedItem = *ScopedIt;
+        std::error_code ScopedEntryError;
+        if (!ScopedItem.is_regular_file(ScopedEntryError) || ScopedEntryError)
         {
             continue;
         }
@@ -163,9 +172,10 @@ void ContentBrowserPanel::Refresh()
         AddEntry(ScopedRelative, FileNameOf(ScopedRelative), ScopedParent, false);
         if (const std::int16_t ScopedAdded = FindEntry(ScopedRelative); ScopedAdded >= 0)
         {
-            const auto ScopedFileSize = ScopedItem.file_size(ScopedCode);
+            const auto ScopedFileSize = ScopedItem.file_size(ScopedEntryError);
             MEntries[static_cast<std::uint32_t>(ScopedAdded)].size =
-                ScopedCode ? 0u : static_cast<std::uint32_t>(std::min<std::uintmax_t>(ScopedFileSize, 0xFFFFFFFFu));
+                ScopedEntryError ? 0u
+                                 : static_cast<std::uint32_t>(std::min<std::uintmax_t>(ScopedFileSize, 0xFFFFFFFFu));
         }
         if (MEntryCount >= kMaxEntries)
         {

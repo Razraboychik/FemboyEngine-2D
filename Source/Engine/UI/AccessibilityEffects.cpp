@@ -128,6 +128,8 @@ bool AccessibilityEffectRegistry::SetActive(std::string_view InId, std::string* 
 
 void AccessibilityEffectRegistry::RemoveOwner(const void* InOwner) noexcept
 {
+    const std::string ScopedActiveId =
+        MActive < MCount ? std::string(MEffects[MActive].Id) : std::string{};
     std::size_t ScopedWrite = 0;
     for (std::size_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
     {
@@ -143,13 +145,24 @@ void AccessibilityEffectRegistry::RemoveOwner(const void* InOwner) noexcept
         ++ScopedWrite;
     }
     MCount = ScopedWrite;
-    MActive = MCount == 0 ? 0 : std::min(MActive, MCount - 1);
+    MActive = kNoAccessibilityEffect;
+    if (!ScopedActiveId.empty())
+    {
+        for (std::size_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
+        {
+            if (ScopedActiveId == MEffects[ScopedI].Id)
+            {
+                MActive = ScopedI;
+                break;
+            }
+        }
+    }
 }
 
 void AccessibilityEffectRegistry::Clear() noexcept
 {
     MCount = 0;
-    MActive = 0;
+    MActive = kNoAccessibilityEffect;
 }
 
 const AccessibilityEffectProfile* AccessibilityEffectRegistry::Find(std::string_view InId) const noexcept
@@ -166,7 +179,7 @@ const AccessibilityEffectProfile* AccessibilityEffectRegistry::Find(std::string_
 
 const AccessibilityEffectProfile* AccessibilityEffectRegistry::Active() const noexcept
 {
-    return MCount == 0 ? nullptr : &MEffects[MActive];
+    return MActive < MCount ? &MEffects[MActive] : nullptr;
 }
 
 std::span<const AccessibilityEffectProfile> AccessibilityEffectRegistry::Effects() const noexcept

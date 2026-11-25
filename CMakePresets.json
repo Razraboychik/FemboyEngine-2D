@@ -11,7 +11,7 @@
       "displayName": "Debug Clang (GNU-like)",
       "description": "Ninja debug build with tests and compile_commands.json.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-dev",
+      "binaryDir": "${sourceDir}/build/dev",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
@@ -25,7 +25,7 @@
       "displayName": "RelWithDebInfo Clang (GNU-like)",
       "description": "Ninja release build with symbols and tests.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-release",
+      "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
@@ -39,7 +39,7 @@
       "displayName": "Debug clang-cl",
       "description": "Ninja debug build using the validated clang-cl toolchain.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-clangcl",
+      "binaryDir": "${sourceDir}/build/clangcl",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang-cl",
         "CMAKE_CXX_COMPILER": "clang-cl",
@@ -51,9 +51,9 @@
     {
       "name": "audit-clang",
       "displayName": "Existing audit build",
-      "description": "Reuses the existing build-audit directory for clangd.",
+      "description": "Reuses the existing build/audit directory for clangd.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-audit",
+      "binaryDir": "${sourceDir}/build/audit",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
@@ -67,7 +67,7 @@
       "displayName": "CI clang-cl gate",
       "description": "The authoritative Windows gate: RelWithDebInfo with tests.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-ci",
+      "binaryDir": "${sourceDir}/build/ci",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang-cl",
         "CMAKE_CXX_COMPILER": "clang-cl",
@@ -81,7 +81,7 @@
       "displayName": "Debug MSVC",
       "description": "Ninja debug build with the Microsoft toolchain; run it from a Developer Prompt.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-msvc",
+      "binaryDir": "${sourceDir}/build/msvc",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "cl",
         "CMAKE_CXX_COMPILER": "cl",
@@ -95,7 +95,7 @@
       "name": "linux-dev",
       "displayName": "Debug Clang (Linux)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-linux-dev",
+      "binaryDir": "${sourceDir}/build/linux-dev",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
@@ -110,7 +110,7 @@
       "name": "linux-release",
       "displayName": "RelWithDebInfo Clang (Linux)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-linux-release",
+      "binaryDir": "${sourceDir}/build/linux-release",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
@@ -125,7 +125,7 @@
       "name": "macos-dev",
       "displayName": "Debug Clang (macOS)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-macos-dev",
+      "binaryDir": "${sourceDir}/build/macos-dev",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
@@ -141,7 +141,7 @@
       "name": "macos-release",
       "displayName": "RelWithDebInfo Clang (macOS)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-macos-release",
+      "binaryDir": "${sourceDir}/build/macos-release",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
@@ -157,7 +157,7 @@
       "name": "windows-release",
       "displayName": "RelWithDebInfo clang-cl (Windows)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-windows-release",
+      "binaryDir": "${sourceDir}/build/windows-release",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang-cl",
         "CMAKE_CXX_COMPILER": "clang-cl",
@@ -173,7 +173,7 @@
       "displayName": "RelWithDebInfo Clang + FidelityFX",
       "description": "Optional vendor release with AMD FidelityFX FSR2/FSR3 backends.",
       "inherits": "release-clang",
-      "binaryDir": "${sourceDir}/build-release-vendor",
+      "binaryDir": "${sourceDir}/build/release-vendor",
       "cacheVariables": {
         "FBY_WITH_FIDELITYFX": "ON",
         "FBY_REQUIRE_VENDOR_SDKS": "ON"

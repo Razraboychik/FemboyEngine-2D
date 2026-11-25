@@ -68,6 +68,10 @@ template <typename OutRange> std::uint32_t CollectPcsForLine(const CompiledProgr
         {
             continue;
         }
+        if (ScopedCount >= OutPcs.size())
+        {
+            break;
+        }
         OutPcs[ScopedCount++] = ScopedSpan.Pc;
     }
     return ScopedCount;
@@ -128,6 +132,8 @@ struct DebugField
     std::uint8_t Size = 0;
     std::uint32_t Offset = 0;
     std::uint32_t ComponentIndex = 0;
+    // Index into CompiledProgram::fields, not a position in DescribeFields output.
+    std::uint32_t FieldIndex = 0;
 };
 
 // Resolves the program's field bindings against the scene schema. Writes at
@@ -148,14 +154,17 @@ inline std::uint32_t DescribeFields(const CompiledProgram& InProgram, const Scen
                 break;
             }
         }
-        for (std::uint16_t ScopedField = 0; ScopedField < ScopedBinding.fieldCount; ++ScopedField)
+        for (std::uint32_t ScopedIndex = 0; ScopedIndex < InProgram.header.fieldCount; ++ScopedIndex)
         {
-            const std::uint32_t ScopedIndex = static_cast<std::uint32_t>(ScopedBinding.firstField) + ScopedField;
-            if (ScopedIndex >= InProgram.header.fieldCount || ScopedCount >= OutFields.size())
+            const FieldBinding& ScopedFieldBinding = InProgram.fields[ScopedIndex];
+            if (ScopedFieldBinding.component != ScopedComponent)
+            {
+                continue;
+            }
+            if (ScopedCount >= OutFields.size())
             {
                 return ScopedCount;
             }
-            const FieldBinding& ScopedFieldBinding = InProgram.fields[ScopedIndex];
             DebugField ScopedOut;
             ScopedOut.Component = ScopedOps != nullptr ? ScopedOps->name : std::string_view{"<component>"};
             ScopedOut.Field = std::string_view{"<field>"};
@@ -163,6 +172,7 @@ inline std::uint32_t DescribeFields(const CompiledProgram& InProgram, const Scen
             ScopedOut.Size = ScopedFieldBinding.size;
             ScopedOut.Offset = ScopedFieldBinding.offset;
             ScopedOut.ComponentIndex = ScopedComponent;
+            ScopedOut.FieldIndex = ScopedIndex;
             if (ScopedOps != nullptr)
             {
                 for (const Reflect::FieldDesc& ScopedDesc : ScopedOps->fields)
@@ -196,6 +206,29 @@ inline std::uint32_t DescribeFields(const CompiledProgram& InProgram, const Scen
     }
     const ResolvedComponent& ScopedComponent = InProgram.components[ScopedField.component];
     if (!ScopedComponent.valid || ScopedComponent.get == nullptr)
+    {
+        return false;
+    }
+    if (ScopedComponent.binding == nullptr)
+    {
+        return false;
+    }
+    std::uint32_t ScopedWidth = 0;
+    switch (static_cast<Reflect::FieldKind>(ScopedField.kind))
+    {
+        case Reflect::FieldKind::Float:
+        case Reflect::FieldKind::Int32:
+        case Reflect::FieldKind::UInt32:
+            ScopedWidth = 4;
+            break;
+        case Reflect::FieldKind::Bool:
+            ScopedWidth = 1;
+            break;
+        default:
+            return false;
+    }
+    if (ScopedField.size != ScopedWidth || ScopedField.offset > ScopedComponent.binding->size ||
+        ScopedWidth > ScopedComponent.binding->size - ScopedField.offset)
     {
         return false;
     }

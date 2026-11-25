@@ -42,7 +42,8 @@ FBY_PLUGIN_ENTRY const FbyPluginInfo* fby_plugin_info()
 
 FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
 {
-    if (InHost == nullptr || InHost->abi_version != FBY_PLUGIN_ABI_VERSION || InHost->struct_size < sizeof(FbyHostApi))
+    if (InHost == nullptr || InHost->struct_size < sizeof(FbyHostApi) ||
+        InHost->abi_version != FBY_PLUGIN_ABI_VERSION)
     {
         return 1;
     }
@@ -56,9 +57,21 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
         MakeNvg("Nvg.Gen3.Noise", "NVG generation 3 - noise", 3, 0.94f, 0.8f, 3),
         MakeNvg("Nvg.Gen4.Clean", "NVG generation 4 - clean", 0, 1.0f, 1.0f, 4),
     };
+    std::uint32_t ScopedRejected = 0;
     for (const FbyEffectDesc& ScopedEffect : ScopedEffects)
     {
-        (void)InHost->accessibility->register_effect(InHost->user, &ScopedEffect);
+        if (InHost->accessibility->register_effect(InHost->user, &ScopedEffect) == 0)
+        {
+            ++ScopedRejected;
+            if (InHost->log != nullptr)
+            {
+                InHost->log(InHost->user, FBY_LOG_WARN, "NVG", "effect registration was rejected");
+            }
+        }
+    }
+    if (ScopedRejected == ScopedEffects.size() && InHost->log != nullptr)
+    {
+        InHost->log(InHost->user, FBY_LOG_ERROR, "NVG", "no NVG effect profile could be registered");
     }
     return 0;
 }

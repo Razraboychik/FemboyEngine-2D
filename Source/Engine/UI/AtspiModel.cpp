@@ -81,7 +81,7 @@ std::uint32_t AtspiRoleId(Ui::AccessibilityRole InRole) noexcept
         case Ui::AccessibilityRole::Group:
             return 39;
         case Ui::AccessibilityRole::Button:
-            return 132;
+            return 43;
         case Ui::AccessibilityRole::CheckBox:
             return 7;
         case Ui::AccessibilityRole::RadioButton:

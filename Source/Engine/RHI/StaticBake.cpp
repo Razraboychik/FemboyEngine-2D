@@ -9,7 +9,7 @@ namespace Fby::Rhi
 
 std::uint8_t ZoomBucketFor(float InZoom) noexcept
 {
-    const float ScopedZoom = std::max(InZoom, 0.0001f);
+    const float ScopedZoom = std::isfinite(InZoom) ? std::max(InZoom, 0.0001f) : 0.0001f;
     const int ScopedBucket = static_cast<int>(std::floor(std::log2(ScopedZoom))) + 4;
     return static_cast<std::uint8_t>(std::clamp(ScopedBucket, 0, 15));
 }

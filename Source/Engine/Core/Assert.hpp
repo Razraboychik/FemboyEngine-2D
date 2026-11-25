@@ -28,11 +28,11 @@ namespace Fby
         }                                                                                                              \
     } while (false)
 #else
-#define FBY_ASSERT(expression) ((void)0)
-#define FBY_ASSERT_MSG(expression, message) ((void)0)
+#define FBY_ASSERT(expression) ((void)sizeof(expression))
+#define FBY_ASSERT_MSG(expression, message) ((void)sizeof(expression), (void)sizeof(message))
 #endif
 
-// Always evaluates and always throws on failure, debug or not: used by the checked cast.
+// Always evaluates and aborts on failure, debug or not: used by the checked cast.
 #define FBY_VERIFY(expression)                                                                                         \
     do                                                                                                                 \
     {                                                                                                                  \

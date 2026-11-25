@@ -106,22 +106,32 @@ bool FrameExporter::BeginCommon(Rhi::RHI& InGpu, std::string_view InPath, const 
         return false;
     }
     const std::uint64_t ScopedTotalBytes64 = SequenceFileBytes(InDesc);
-    if (ScopedTotalBytes64 > std::numeric_limits<std::size_t>::max())
+    constexpr std::uint64_t kMaxSequenceBytes = 8ull << 30u;
+    if (ScopedTotalBytes64 > std::numeric_limits<std::size_t>::max() ||
+        ScopedTotalBytes64 > kMaxSequenceBytes)
     {
         SetError(InError, "frame export image is too large for this platform");
         return false;
     }
 
+    // One allocation for the whole sequence: header, every frame, footer.
+    try
+    {
+        MImage.assign(static_cast<std::size_t>(ScopedTotalBytes64), std::byte{0});
+    }
+    catch (...)
+    {
+        SetError(InError, "frame export image could not be allocated");
+        return false;
+    }
     const Rhi::RenderTargetDesc ScopedTargetDesc{InDesc.size, InDesc.srgb};
     const Rhi::RenderTargetHandle ScopedTarget = InGpu.CreateRenderTarget(ScopedTargetDesc);
     if (!ScopedTarget.IsValid())
     {
+        MImage.clear();
         SetError(InError, "RHI refused the offscreen render target (backend has no offscreen support)");
         return false;
     }
-
-    // One allocation for the whole sequence: header, every frame, footer.
-    MImage.assign(static_cast<std::size_t>(ScopedTotalBytes64), std::byte{0});
 
     MDesc = InDesc;
     MPlanned = ScopedPlanned;
@@ -261,7 +271,6 @@ bool FrameExporter::End(std::string* InError)
     MActive = false;
     MGpu = nullptr;
     MImage.clear();
-    MImage.shrink_to_fit();
     return true;
 }
 

@@ -23,6 +23,7 @@ WindowHost::Handle WindowHost::Create(const WindowDesc& InWindow, const Rhi::Dev
     WindowRecord ScopedRecord;
     ScopedRecord.Window = std::move(ScopedWindow);
     ScopedRecord.Gpu = std::move(ScopedGpu);
+    ScopedRecord.Size = ScopedDevice.size;
     MWindows.push_back(std::move(ScopedRecord));
     return Handle{static_cast<std::uint32_t>(MWindows.size() - 1)};
 }
@@ -34,7 +35,11 @@ void WindowHost::Destroy(Handle InHandle)
         return;
     }
     WindowRecord& ScopedRecord = MWindows[InHandle.Index];
-    ScopedRecord.Gpu.reset();
+    if (ScopedRecord.Gpu)
+    {
+        ScopedRecord.Gpu->Shutdown();
+        ScopedRecord.Gpu.reset();
+    }
     if (ScopedRecord.Window)
     {
         ScopedRecord.Window->Destroy();
@@ -74,8 +79,24 @@ bool WindowHost::PumpEvents()
     bool ScopedOpen = false;
     for (WindowRecord& ScopedRecord : MWindows)
     {
-        if (ScopedRecord.Window && ScopedRecord.Window->PumpEvents() && !ScopedRecord.Window->ShouldClose())
+        if (!ScopedRecord.Window)
         {
+            continue;
+        }
+        if (ScopedRecord.Window->PumpEvents() && !ScopedRecord.Window->ShouldClose())
+        {
+            if (ScopedRecord.Gpu)
+            {
+                const auto ScopedSize = ScopedRecord.Window->Size();
+                const Rhi::Extent2D ScopedExtent{ScopedSize.width, ScopedSize.height};
+                if (ScopedExtent.width > 0 && ScopedExtent.height > 0 &&
+                    (ScopedExtent.width != ScopedRecord.Size.width ||
+                     ScopedExtent.height != ScopedRecord.Size.height))
+                {
+                    ScopedRecord.Gpu->Resize(ScopedExtent);
+                    ScopedRecord.Size = ScopedExtent;
+                }
+            }
             ScopedOpen = true;
         }
     }

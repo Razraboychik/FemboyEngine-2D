@@ -34,6 +34,7 @@ struct LightSample
     float red = 1.0f;
     float green = 1.0f;
     float blue = 1.0f;
+    bool castShadow = true;
 };
 
 [[nodiscard]] float UnpackChannel(std::uint32_t InRgba, std::uint32_t InShift) noexcept
@@ -45,7 +46,7 @@ struct LightSample
 {
     const auto ScopedByte = [](float InValue)
     {
-        const float ScopedClamped = std::clamp(InValue, 0.0f, 1.0f);
+        const float ScopedClamped = std::isfinite(InValue) ? std::clamp(InValue, 0.0f, 1.0f) : 0.0f;
         return static_cast<std::uint32_t>(std::lround(ScopedClamped * 255.0f));
     };
     return ScopedByte(InRed) | (ScopedByte(InGreen) << 8) | (ScopedByte(InBlue) << 16) | (InAlpha & 0xFF000000u);
@@ -248,6 +249,7 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
         ScopedSample.red = UnpackChannel(ScopedLight.Color.rgba, 0);
         ScopedSample.green = UnpackChannel(ScopedLight.Color.rgba, 8);
         ScopedSample.blue = UnpackChannel(ScopedLight.Color.rgba, 16);
+        ScopedSample.castShadow = (ScopedLight.Flags & kLight2DFlagCastNoShadow) == 0;
     }
     MLightCount = ScopedLightCount;
     std::array<LightGridInput, kMaxLightSamples> ScopedGridInputs{};
@@ -287,6 +289,18 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
     for (auto [ScopedEntity, ScopedTransform, ScopedSprite, ScopedTarget] : ScopedSpriteView.each())
     {
         ScopedField.Receiver = ScopedEntity;
+        const auto* ScopedSurface = InRegistry.try_get<SurfaceNormal2D>(ScopedEntity);
+        Vector2D ScopedSurfaceNormal{0.0f, 1.0f};
+        float ScopedSurfaceStrength = 0.0f;
+        if (ScopedSurface != nullptr && ScopedSurface->Strength > 0.0f)
+        {
+            const float ScopedNormalLength = std::sqrt(ScopedSurface->Normal.LengthSquared());
+            if (ScopedNormalLength > 0.0f)
+            {
+                ScopedSurfaceNormal = ScopedSurface->Normal / ScopedNormalLength;
+                ScopedSurfaceStrength = std::clamp(ScopedSurface->Strength, 0.0f, 1.0f);
+            }
+        }
         const float ScopedEmissive = std::clamp(ScopedTarget.Emissive, 0.0f, 1.0f);
         float ScopedRed = ScopedAmbientRed;
         float ScopedGreen = ScopedAmbientGreen;
@@ -306,7 +320,18 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
             }
             const float ScopedFalloff = 1.0f - ScopedDistance / ScopedSample.radius;
             float ScopedAttenuation = ScopedFalloff * ScopedFalloff * ScopedSample.intensity;
-            if (ScopedHasField && InSettings.SdfShadows)
+            if (ScopedSurfaceStrength > 0.0f)
+            {
+                const Vector2D ScopedLightDirection = ScopedSample.position - ScopedTransform.Position;
+                const float ScopedLightLength = std::sqrt(ScopedLightDirection.LengthSquared());
+                const float ScopedFacing =
+                    ScopedLightLength > 0.0f
+                        ? std::max(0.0f, ScopedSurfaceNormal.X * ScopedLightDirection.X / ScopedLightLength +
+                                             ScopedSurfaceNormal.Y * ScopedLightDirection.Y / ScopedLightLength)
+                        : 1.0f;
+                ScopedAttenuation *= (1.0f - ScopedSurfaceStrength) + ScopedSurfaceStrength * ScopedFacing;
+            }
+            if (ScopedHasField && InSettings.SdfShadows && ScopedSample.castShadow)
             {
                 const float ScopedShadow =
                     SdfShadowFactor(ScopedField, ScopedTransform.Position, ScopedSample.position,
@@ -350,13 +375,14 @@ std::uint32_t LightingSystem::Run(Ecs::Registry& InRegistry, const LightingSetti
             ScopedGreen += (1.0f - ScopedGreen) * ScopedEmissive;
             ScopedBlue += (1.0f - ScopedBlue) * ScopedEmissive;
         }
-        if (ScopedLit < kMaxLitSprites)
+        if (ScopedLit >= kMaxLitSprites)
         {
-            ScopedResults[ScopedLit].entity = ScopedEntity;
-            // The result is a light tint: alpha stays opaque so the extract keeps
-            // the authored sprite alpha instead of multiplying it twice.
-            ScopedResults[ScopedLit].color = Color32{PackRgb(ScopedRed, ScopedGreen, ScopedBlue, 0xFF000000u)};
+            continue;
         }
+        ScopedResults[ScopedLit].entity = ScopedEntity;
+        // The result is a light tint: alpha stays opaque so the extract keeps
+        // the authored sprite alpha instead of multiplying it twice.
+        ScopedResults[ScopedLit].color = Color32{PackRgb(ScopedRed, ScopedGreen, ScopedBlue, 0xFF000000u)};
         ++ScopedLit;
     }
 

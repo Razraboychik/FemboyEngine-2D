@@ -35,7 +35,7 @@ struct NetDiagnosticsSnapshot
     ScopedSnapshot.ConfirmedTick = InSession.ConfirmedTick();
     ScopedSnapshot.RttMs = InSession.RttMs();
     ScopedSnapshot.ClockOffsetMs = InSession.ClockOffsetMs();
-    ScopedSnapshot.Remote = InRemote;
+    ScopedSnapshot.Remote = InRemote.Port != 0 ? InRemote : InSession.Remote();
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < kSessionMaxPlayers; ++ScopedIndex)
     {
         ScopedSnapshot.Slots[ScopedIndex] = InSession.Slot(ScopedIndex);

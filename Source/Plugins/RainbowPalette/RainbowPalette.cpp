@@ -30,8 +30,8 @@ FbyPaletteExtensionDesc MakePalette()
                 const std::uint32_t ScopedValue = (ScopedBase >> InShift) & 0xFFu;
                 return std::min<std::uint32_t>(255u, (ScopedValue * ScopedScale) / 220u);
             };
-            const std::uint32_t ScopedColor = 0xFF000000u | (ScopedChannel(16) << 16u) |
-                                              (ScopedChannel(8) << 8u) | ScopedChannel(0);
+            const std::uint32_t ScopedColor = 0xFF000000u | (ScopedChannel(0) << 16u) |
+                                              (ScopedChannel(8) << 8u) | ScopedChannel(16);
             ScopedPalette.colors[ScopedHue * 8 + ScopedStep] = ScopedColor;
         }
     }

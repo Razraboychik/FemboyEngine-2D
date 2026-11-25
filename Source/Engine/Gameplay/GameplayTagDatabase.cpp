@@ -64,9 +64,14 @@ void GameplayTagDatabase::Clear() noexcept
 
 int GameplayTagDatabase::Find(std::string_view InPath) const noexcept
 {
+    const std::string_view ScopedPath = Trim(InPath);
+    if (ScopedPath.empty())
+    {
+        return -1;
+    }
     for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
-        if (PathAt(ScopedI) == InPath)
+        if (PathAt(ScopedI) == ScopedPath)
         {
             return static_cast<int>(ScopedI);
         }
@@ -135,6 +140,27 @@ int GameplayTagDatabase::Add(std::string_view InPath) noexcept
     {
         return ScopedExisting;
     }
+    std::uint32_t ScopedMissing = 0;
+    std::string_view ScopedAncestor = ScopedPath;
+    while (true)
+    {
+        const std::size_t ScopedDot = ScopedAncestor.rfind('.');
+        if (ScopedDot == std::string_view::npos)
+        {
+            break;
+        }
+        ScopedAncestor = ScopedAncestor.substr(0, ScopedDot);
+        if (Find(ScopedAncestor) >= 0)
+        {
+            break;
+        }
+        ++ScopedMissing;
+        if (Count + ScopedMissing + 1u > kCapacity)
+        {
+            SetError("tag database is full");
+            return -1;
+        }
+    }
     if (!EnsureParents(ScopedPath))
     {
         return -1;
@@ -150,34 +176,67 @@ bool GameplayTagDatabase::RemoveAt(std::uint32_t InIndex) noexcept
         SetError("tag index is out of range");
         return false;
     }
-    std::array<char, kPathCapacity> ScopedPath{};
-    std::memcpy(ScopedPath.data(), Paths[InIndex].data(), kPathCapacity - 1);
-    const std::string_view ScopedPrefix(ScopedPath.data());
-    bool ScopedRemoved = false;
-    std::uint32_t ScopedWrite = 0;
+    const std::string_view ScopedOriginal = PathAt(InIndex);
+    if (ScopedOriginal.empty())
+    {
+        SetError("tag path is empty");
+        return false;
+    }
+    // The view aliases Paths[InIndex]; clearing that slot below would dangle it.
+    std::array<char, kPathCapacity> ScopedPathStorage{};
+    std::memcpy(ScopedPathStorage.data(), ScopedOriginal.data(), ScopedOriginal.size());
+    const std::string_view ScopedPath(ScopedPathStorage.data(), ScopedOriginal.size());
+    bool ScopedFound = false;
     for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
         const std::string_view ScopedCurrent = PathAt(ScopedI);
-        if (ScopedCurrent == ScopedPrefix || HasPrefix(ScopedCurrent, ScopedPrefix))
+        if (ScopedCurrent == ScopedPath || HasPrefix(ScopedCurrent, ScopedPath))
         {
-            ScopedRemoved = true;
-            continue;
+            ScopedFound = true;
         }
-        if (ScopedWrite != ScopedI)
-        {
-            Paths[ScopedWrite] = Paths[ScopedI];
-        }
-        ++ScopedWrite;
     }
-    if (!ScopedRemoved)
+    if (!ScopedFound)
     {
         return false;
     }
-    for (std::uint32_t ScopedI = ScopedWrite; ScopedI < Count; ++ScopedI)
+    for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
-        Paths[ScopedI] = {};
+        const std::string_view ScopedCurrent = PathAt(ScopedI);
+        if (ScopedCurrent == ScopedPath || HasPrefix(ScopedCurrent, ScopedPath))
+        {
+            Paths[ScopedI] = {};
+        }
     }
-    Count = ScopedWrite;
+    ++Revision;
+    return true;
+}
+
+void GameplayTagDatabase::ReserveSlot() noexcept
+{
+    if (Count < kCapacity)
+    {
+        Paths[Count] = {};
+        ++Count;
+        ++Revision;
+    }
+}
+
+bool GameplayTagDatabase::RestoreSlot(std::uint32_t InIndex, std::string_view InPath) noexcept
+{
+    ClearError();
+    if (InIndex >= kCapacity || !IsValidGameplayTagPath(InPath) || InPath.size() >= kPathCapacity)
+    {
+        SetError("tag slot or path is invalid");
+        return false;
+    }
+    if (Find(InPath) >= 0)
+    {
+        SetError("duplicate tag path");
+        return false;
+    }
+    Paths[InIndex] = {};
+    std::memcpy(Paths[InIndex].data(), InPath.data(), InPath.size());
+    Count = std::max(Count, InIndex + 1u);
     ++Revision;
     return true;
 }
@@ -208,18 +267,27 @@ bool GameplayTagDatabase::Rename(std::uint32_t InIndex, std::string_view InNewPa
         SetError("another tag already uses that path");
         return false;
     }
+    if (HasPrefix(ScopedNewPath, ScopedOldPath))
+    {
+        SetError("a tag cannot be renamed beneath itself");
+        return false;
+    }
+    const std::uint32_t ScopedOriginalCount = Count;
+    const std::uint32_t ScopedOriginalRevision = Revision;
     if (!EnsureParents(ScopedNewPath))
     {
         return false;
     }
     if (Find(ScopedNewPath) >= 0)
     {
+        Count = ScopedOriginalCount;
+        Revision = ScopedOriginalRevision;
         SetError("another tag already uses that path");
         return false;
     }
 
     std::array<bool, kCapacity> ScopedInSubtree{};
-    for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedOriginalCount; ++ScopedI)
     {
         const std::string_view ScopedCurrent = PathAt(ScopedI);
         if (ScopedCurrent == ScopedOldPath || HasPrefix(ScopedCurrent, ScopedOldPath))
@@ -228,7 +296,7 @@ bool GameplayTagDatabase::Rename(std::uint32_t InIndex, std::string_view InNewPa
         }
     }
     // Validate every target before mutating, so a rejected rename is atomic.
-    for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
+    for (std::uint32_t ScopedI = 0; ScopedI < ScopedOriginalCount; ++ScopedI)
     {
         if (!ScopedInSubtree[ScopedI])
         {
@@ -238,6 +306,8 @@ bool GameplayTagDatabase::Rename(std::uint32_t InIndex, std::string_view InNewPa
         const std::string_view ScopedSuffix = ScopedCurrent.substr(ScopedOldPath.size());
         if (ScopedNewPath.size() + ScopedSuffix.size() >= kMaxGameplayTagPath)
         {
+            Count = ScopedOriginalCount;
+            Revision = ScopedOriginalRevision;
             SetError("renamed descendant would exceed the path capacity");
             return false;
         }
@@ -249,6 +319,8 @@ bool GameplayTagDatabase::Rename(std::uint32_t InIndex, std::string_view InNewPa
         {
             if (!ScopedInSubtree[ScopedOther] && PathAt(ScopedOther) == ScopedTargetView)
             {
+                Count = ScopedOriginalCount;
+                Revision = ScopedOriginalRevision;
                 SetError("renamed descendant would collide with another tag");
                 return false;
             }
@@ -277,7 +349,11 @@ void GameplayTagDatabase::ApplyToRegistry(GameplayTagRegistry& InRegistry) const
     InRegistry.Clear();
     for (std::uint32_t ScopedI = 0; ScopedI < Count; ++ScopedI)
     {
-        (void)InRegistry.Register(PathAt(ScopedI));
+        const std::string_view ScopedPath = PathAt(ScopedI);
+        if (!ScopedPath.empty())
+        {
+            (void)InRegistry.Register(ScopedPath);
+        }
     }
 }
 

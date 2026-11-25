@@ -1,6 +1,8 @@
 // FemboyEngine2D - camera stack implementation.
 #include "Engine/RHI/CameraStack.hpp"
 
+#include "Engine/RHI/PixelPerfect.hpp"
+
 #include "Engine/Core/Pcg32.hpp"
 #include "Engine/Core/SimMath.hpp"
 #include "Engine/Core/WindowManager.hpp"
@@ -168,10 +170,7 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
             {
                 ScopedBase.ViewSize = ScopedAuthored->ViewSize;
                 ScopedBase.Zoom = ScopedAuthored->Zoom;
-                if ((ScopedSlot.desc.flags & CameraStackWriteBack) == 0)
-                {
-                    ScopedBase.Rotation = ScopedAuthored->Rotation;
-                }
+                ScopedBase.Rotation = ScopedAuthored->Rotation;
             }
         }
 
@@ -234,6 +233,10 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
             }
         }
 
+        if ((ScopedSlot.desc.flags & CameraStackShake) == 0 && InView.dt > 0.0f)
+        {
+            ScopedSlot.trauma = std::max(0.0f, ScopedSlot.trauma - ScopedSlot.desc.shakeDecay * InView.dt);
+        }
         if ((ScopedSlot.desc.flags & CameraStackShake) != 0 && InView.dt > 0.0f)
         {
             ScopedSlot.trauma = std::max(0.0f, ScopedSlot.trauma - ScopedSlot.desc.shakeDecay * InView.dt);
@@ -249,7 +252,7 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
                 ScopedResolved.Center.Y += ValueNoise(ScopedSlot.phaseY, ScopedSlot.desc.seed ^ 0x9E3779B9u) *
                                            ScopedAmplitude * 0.78f;
                 ScopedResolved.Rotation +=
-                    ValueNoise(ScopedSlot.phaseRoll, ScopedSlot.desc.seed ^ 0x85EBCA6Bu) * 0.012f * ScopedIntensity;
+                    ValueNoise(ScopedSlot.phaseRoll, ScopedSlot.desc.seed ^ 0x85EBCA6Bu) * ScopedAmplitude * 0.02f;
             }
         }
 
@@ -285,6 +288,15 @@ void CameraStackSystem::Update(Ecs::RenderSystemView& InView) noexcept
         }
 
         ScopedSlot.baseCamera = ScopedBase;
+        if (ScopedSlot.desc.cameraEntity != Fby::kNullEntity &&
+            InView.registry.valid(ScopedSlot.desc.cameraEntity))
+        {
+            if (const auto* ScopedPixel = InView.registry.try_get<PixelPerfectCamera>(ScopedSlot.desc.cameraEntity);
+                ScopedPixel != nullptr && ScopedPixel->Enabled)
+            {
+                SnapCameraToPixelGrid(ScopedResolved, ScopedPixel->PixelsPerUnit);
+            }
+        }
         ScopedSlot.camera = ScopedResolved;
     }
 }

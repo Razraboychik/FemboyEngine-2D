@@ -29,7 +29,15 @@ bool OitPass::Render(RHI& InGpu, const FramePacket& InPacket, Extent2D InExtent)
         MExtent = InExtent;
     }
 
-    return InGpu.RenderToTarget(MAccumulation, InPacket) && InGpu.RenderToTarget(MRevealage, InPacket);
+    FramePacket ScopedAccumulationPacket = InPacket;
+    ScopedAccumulationPacket.clear = Color32{0x00000000u};
+    if (!InGpu.RenderToTarget(MAccumulation, ScopedAccumulationPacket))
+    {
+        return false;
+    }
+    FramePacket ScopedRevealPacket = InPacket;
+    ScopedRevealPacket.clear = Color32::White();
+    return InGpu.RenderToTarget(MRevealage, ScopedRevealPacket);
 }
 
 void OitPass::Release(RHI& InGpu) noexcept

@@ -16,7 +16,7 @@ constexpr std::size_t kHeaderBytes = 8;
 constexpr std::size_t kCreateBytes = kHeaderBytes + kLobbyNameBytes + 1 + 1 + 8;
 constexpr std::size_t kJoinBytes = kHeaderBytes + 4 + kLobbyNameBytes + 8;
 constexpr std::size_t kRoomIdBytes = kHeaderBytes + 4;
-constexpr std::size_t kAckBytes = kHeaderBytes + 4 + 1 + 1 + 1 + 1 + 4 + 2 + 2 + kTicketBytes;
+constexpr std::size_t kAckBytes = kHeaderBytes + 4 + 1 + 1 + 1 + 1 + 4 + 2 + 2 + kTicketBytes + 8;
 constexpr std::size_t kStartAckBytes = kHeaderBytes + 4 + 1 + 3;
 constexpr std::size_t kErrorBytes = kHeaderBytes + 1 + 3;
 
@@ -85,8 +85,14 @@ bool LobbyServer::Start(const NetLink& InLink, const Crypto::EddsaKeyPair& InIss
                         const LobbyServerConfig& InConfig) noexcept
 {
     Stop();
-    if (!InLink.Valid() || InConfig.GameServer.Port == 0 || InConfig.MaxPlayersPerRoom == 0 ||
-        InConfig.MaxPlayersPerRoom > kLobbyMaxPlayers)
+    bool ScopedZeroKey = true;
+    for (const std::byte ScopedByte : InConfig.GameServerPublicKey)
+    {
+        ScopedZeroKey = ScopedZeroKey && ScopedByte == std::byte{0};
+    }
+    if (!InLink.Valid() || InConfig.GameServer.Host == 0 || InConfig.GameServer.Port == 0 ||
+        InConfig.MaxPlayersPerRoom == 0 || InConfig.MaxPlayersPerRoom > kLobbyMaxPlayers || ScopedZeroKey ||
+        InConfig.GameName[0] == '\0')
     {
         return false;
     }
@@ -115,6 +121,16 @@ void LobbyServer::Tick(std::uint64_t InNowUnixSeconds) noexcept
         return;
     }
     MNow = InNowUnixSeconds;
+    const std::uint64_t ScopedTimeout =
+        std::max<std::uint64_t>(MConfig.TicketLifetimeSeconds * 2u, 30u);
+    for (Room& ScopedRoom : MRooms)
+    {
+        if (ScopedRoom.Used && !ScopedRoom.Started && MNow > ScopedRoom.LastActivity &&
+            MNow - ScopedRoom.LastActivity > ScopedTimeout)
+        {
+            ScopedRoom = Room{};
+        }
+    }
     (void)MLink.Poll(&LobbyServer::OnMessageThunk, this);
 }
 
@@ -130,6 +146,10 @@ void LobbyServer::OnMessageThunk(void* InUser, const NetAddress& InFrom,
 
 void LobbyServer::HandleMessage(const NetAddress& InFrom, std::span<const std::byte> InMessage) noexcept
 {
+    if (!AllowFrom(InFrom))
+    {
+        return;
+    }
     LobbyMessageType ScopedType{};
     if (!ReadHeader(InMessage, &ScopedType))
     {
@@ -226,10 +246,14 @@ void LobbyServer::HandleCreate(const NetAddress& InFrom, std::span<const std::by
     ScopedRoom = Room{};
     ScopedRoom.Used = true;
     ScopedRoom.Id = MNextRoomId++;
-    ScopedRoom.MaxPlayers = ScopedMaxPlayers == 0 ? 1 : (ScopedMaxPlayers > kLobbyMaxPlayers ? kLobbyMaxPlayers
-                                                                                              : ScopedMaxPlayers);
+    const std::uint32_t ScopedRequested = ScopedMaxPlayers == 0 ? 1u : ScopedMaxPlayers;
+    const std::uint32_t ScopedConfiguredCap =
+        std::min<std::uint32_t>(MConfig.MaxPlayersPerRoom, kLobbyMaxPlayers);
+    ScopedRoom.MaxPlayers = static_cast<std::uint8_t>(
+        std::min(ScopedRequested, ScopedConfiguredCap == 0 ? 1u : ScopedConfiguredCap));
     std::memcpy(ScopedRoom.Name, ScopedIn, kLobbyNameBytes);
     ScopedRoom.Name[kLobbyNameBytes - 1] = '\0';
+    ScopedRoom.LastActivity = MNow;
 
     const std::uint8_t ScopedPlayerId = JoinMember(ScopedIndex, InFrom);
     if (ScopedPlayerId == kLobbyNoPlayer)
@@ -238,7 +262,11 @@ void LobbyServer::HandleCreate(const NetAddress& InFrom, std::span<const std::by
         SendError(InFrom, LobbyError::RoomFull);
         return;
     }
-    SendAck(InFrom, ScopedRoom.Id, ScopedPlayerId, false);
+    if (!SendAck(InFrom, ScopedRoom.Id, ScopedPlayerId, false, LobbyMessageType::CreateAck, nullptr,
+                Detail::LoadU64(ScopedIn + kLobbyNameBytes + 2)))
+    {
+        MRooms[ScopedIndex] = Room{};
+    }
 }
 
 void LobbyServer::HandleJoin(const NetAddress& InFrom, std::span<const std::byte> InMessage) noexcept
@@ -268,7 +296,18 @@ void LobbyServer::HandleJoin(const NetAddress& InFrom, std::span<const std::byte
         SendError(InFrom, LobbyError::RoomFull);
         return;
     }
-    SendAck(InFrom, ScopedRoom.Id, ScopedPlayerId, false);
+    ScopedRoom.LastActivity = MNow;
+    if (!SendAck(InFrom, ScopedRoom.Id, ScopedPlayerId, false, LobbyMessageType::JoinAck,
+                reinterpret_cast<const char*>(ScopedIn + 4), Detail::LoadU64(ScopedIn + 4 + kLobbyNameBytes)))
+    {
+        for (Member& ScopedMember : ScopedRoom.Members)
+        {
+            if (ScopedMember.Used && ScopedMember.Address == InFrom)
+            {
+                ScopedMember = Member{};
+            }
+        }
+    }
 }
 
 void LobbyServer::HandleStart(const NetAddress& InFrom, std::span<const std::byte> InMessage) noexcept
@@ -292,6 +331,7 @@ void LobbyServer::HandleStart(const NetAddress& InFrom, std::span<const std::byt
         return;
     }
     ScopedRoom.Started = true;
+    ScopedRoom.LastActivity = MNow;
 
     std::array<std::byte, kLobbyMessageBytes> ScopedAck{};
     if (!WriteHeader(ScopedAck, LobbyMessageType::StartAck))
@@ -345,8 +385,9 @@ void LobbyServer::HandleLeave(const NetAddress& InFrom, std::span<const std::byt
     }
 }
 
-void LobbyServer::SendAck(const NetAddress& InTo, std::uint32_t InRoomId, std::uint8_t InPlayerId,
-                          bool InStarted) noexcept
+bool LobbyServer::SendAck(const NetAddress& InTo, std::uint32_t InRoomId, std::uint8_t InPlayerId,
+                          bool InStarted, LobbyMessageType InType, const char* InPlayerName,
+                          std::uint64_t InNonce) noexcept
 {
     NetTicket ScopedTicket{};
     ScopedTicket.MatchId = InRoomId;
@@ -360,19 +401,20 @@ void LobbyServer::SendAck(const NetAddress& InTo, std::uint32_t InRoomId, std::u
     ScopedTicket.Flags = kTicketFlagDedicated;
     std::memcpy(ScopedTicket.ServerPublicKey.data(), MConfig.GameServerPublicKey.data(),
                 MConfig.GameServerPublicKey.size());
-    std::memcpy(ScopedTicket.PlayerName, MConfig.GameName, kTicketNameBytes - 1);
+    const char* ScopedName = InPlayerName != nullptr && InPlayerName[0] != '\0' ? InPlayerName : MConfig.GameName;
+    (void)std::snprintf(ScopedTicket.PlayerName, kTicketNameBytes, "%s", ScopedName);
 
     std::array<std::byte, kTicketBytes> ScopedSigned{};
     if (!SignTicket(ScopedTicket, MIssuer, ScopedSigned))
     {
         SendError(InTo, LobbyError::TicketFailed);
-        return;
+        return false;
     }
 
     std::array<std::byte, kLobbyMessageBytes> ScopedAck{};
-    if (!WriteHeader(ScopedAck, LobbyMessageType::CreateAck))
+    if (!WriteHeader(ScopedAck, InType))
     {
-        return;
+        return false;
     }
     std::uint8_t* ScopedOut = BytesOf(std::span<std::byte>(ScopedAck)) + kHeaderBytes;
     Detail::StoreU32(ScopedOut, InRoomId);
@@ -384,7 +426,8 @@ void LobbyServer::SendAck(const NetAddress& InTo, std::uint32_t InRoomId, std::u
     Detail::StoreU16(ScopedOut + 12, MConfig.GameServer.Port);
     Detail::StoreU16(ScopedOut + 14, 0);
     std::memcpy(ScopedOut + 16, ScopedSigned.data(), ScopedSigned.size());
-    (void)MLink.Send(InTo, std::span<const std::byte>(ScopedAck.data(), kAckBytes));
+    Detail::StoreU64(ScopedOut + 16 + kTicketBytes, InNonce);
+    return MLink.Send(InTo, std::span<const std::byte>(ScopedAck.data(), kAckBytes));
 }
 
 void LobbyServer::SendError(const NetAddress& InTo, LobbyError InError) noexcept
@@ -396,6 +439,33 @@ void LobbyServer::SendError(const NetAddress& InTo, LobbyError InError) noexcept
     }
     BytesOf(std::span<std::byte>(ScopedError))[kHeaderBytes] = static_cast<std::uint8_t>(InError);
     (void)MLink.Send(InTo, std::span<const std::byte>(ScopedError.data(), kErrorBytes));
+}
+
+bool LobbyServer::AllowFrom(const NetAddress& InAddress) noexcept
+{
+    for (RateEntry& ScopedEntry : MRate)
+    {
+        if (ScopedEntry.Address == InAddress && ScopedEntry.LastSeconds != 0)
+        {
+            if (ScopedEntry.LastSeconds == MNow && ScopedEntry.Count >= 8)
+            {
+                return false;
+            }
+            if (ScopedEntry.LastSeconds != MNow)
+            {
+                ScopedEntry.Count = 0;
+            }
+            ScopedEntry.LastSeconds = MNow;
+            ++ScopedEntry.Count;
+            return true;
+        }
+    }
+    RateEntry& ScopedSlot = MRate[MRateNext % MRate.size()];
+    MRateNext = (MRateNext + 1u) % static_cast<std::uint32_t>(MRate.size());
+    ScopedSlot.Address = InAddress;
+    ScopedSlot.LastSeconds = MNow;
+    ScopedSlot.Count = 1;
+    return true;
 }
 
 std::uint32_t LobbyServer::RoomCount() const noexcept
@@ -449,7 +519,8 @@ bool NetLobbyClient::Start(const NetLink& InLink, const NetAddress& InLobby,
 
 bool NetLobbyClient::ApplyToSessionConfig(NetSessionConfig* OutConfig) const noexcept
 {
-    if (OutConfig == nullptr || !MStarted || MServer.Port == 0)
+    if (OutConfig == nullptr || !MReady || !MStarted || MServer.Port == 0 ||
+        (MTicket.ExpiresAt != 0 && MTicket.ExpiresAt <= MNow))
     {
         return false;
     }
@@ -465,6 +536,10 @@ bool NetLobbyClient::ApplyToSessionConfig(NetSessionConfig* OutConfig) const noe
 
 void NetLobbyClient::Stop() noexcept
 {
+    if (MRoomId != 0)
+    {
+        (void)SendRequest(LobbyMessageType::Leave, MRoomId, nullptr);
+    }
     MLink = NetLink{};
     MLobby = NetAddress{};
     MConfig = NetLobbyClientConfig{};
@@ -526,6 +601,13 @@ bool NetLobbyClient::CreateRoom(const char* InName) noexcept
 {
     MError = LobbyError::None;
     MReady = false;
+    MStarted = false;
+    MTicket = NetTicket{};
+    MSignedTicket = {};
+    MServer = NetAddress{};
+    MRoomId = 0;
+    MPlayerId = kLobbyNoPlayer;
+
     return SendRequest(LobbyMessageType::Create, 0, InName);
 }
 
@@ -533,7 +615,31 @@ bool NetLobbyClient::JoinRoom(std::uint32_t InRoomId) noexcept
 {
     MError = LobbyError::None;
     MReady = false;
+    MStarted = false;
+    MTicket = NetTicket{};
+    MSignedTicket = {};
+    MServer = NetAddress{};
+    MRoomId = 0;
+    MPlayerId = kLobbyNoPlayer;
+
     return SendRequest(LobbyMessageType::Join, InRoomId, MConfig.PlayerName);
+}
+
+bool NetLobbyClient::LeaveRoom() noexcept
+{
+    if (!MLink.Valid() || MRoomId == 0)
+    {
+        return false;
+    }
+    const bool ScopedSent = SendRequest(LobbyMessageType::Leave, MRoomId, nullptr);
+    MRoomId = 0;
+    MPlayerId = kLobbyNoPlayer;
+    MTicket = NetTicket{};
+    MSignedTicket = {};
+    MServer = NetAddress{};
+    MReady = false;
+    MStarted = false;
+    return ScopedSent;
 }
 
 bool NetLobbyClient::StartMatch() noexcept
@@ -624,7 +730,9 @@ void NetLobbyClient::HandleMessage(const NetAddress& InFrom, std::span<const std
         MReady = false;
         return;
     }
-    if (ScopedTicket.PlayerId != ScopedPlayerId)
+    const std::uint64_t ScopedAckNonce = Detail::LoadU64(ScopedIn + 16 + kTicketBytes);
+    if (ScopedAckNonce != MNonce || ScopedTicket.PlayerId != ScopedPlayerId || ScopedTicket.MatchId != ScopedRoomId ||
+        ScopedTicket.Host != ScopedServer.Host || ScopedTicket.Port != ScopedServer.Port)
     {
         MError = LobbyError::TicketFailed;
         MReady = false;

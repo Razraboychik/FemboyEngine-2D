@@ -510,7 +510,7 @@ SECTIONS: list[dict] = [
                 "headers": [B("API", "API"), B("Contract", "Контракт")],
                 "rows": [
                     [
-                        B("GetOrAdd<T>(registry, entity)", "GetOrAdd<T>(registry, entity)"),
+                        B("Emplace<T>(entity, args...)", "Emplace<T>(entity, args...)"),
                         B("Adds the component when missing and returns a stable reference.",
                           "Добавляет компонент при отсутствии и возвращает стабильную ссылку."),
                     ],
@@ -643,7 +643,7 @@ SECTIONS: list[dict] = [
                 "type": "code",
                 "lang": "bash",
                 "text": "# Author the graph once, cook it in the build step\n"
-                        "build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat\n",
+                        "build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat\n",
             },
             {
                 "type": "code",
@@ -1313,9 +1313,9 @@ SECTIONS: list[dict] = [
                       ".ftex texture array layer.",
                       "2. Импортируйте спрайт в assets/textures. Наблюдатель импортирует файл, пишет .femeta и "
                       "готовит слой текстурного массива .ftex."),
-                    B("3. Create assets/scenes/main.toml with one SpriteRenderer, one Transform2D and one "
+                    B("3. Create assets/scenes/main.toml with one Sprite2D, one Transform2D and one "
                       "RigidBody2D + Collider2D.",
-                      "3. Создайте assets/scenes/main.toml с одним SpriteRenderer, одним Transform2D и одним "
+                      "3. Создайте assets/scenes/main.toml с одним Sprite2D, одним Transform2D и одним "
                       "RigidBody2D + Collider2D."),
                     B("4. Register the systems: input in PreUpdate, physics in FixedUpdate, movement in Update, "
                       "PinkUI in Render.",
@@ -1613,7 +1613,7 @@ def add_code(document, text: str) -> None:
         shade(paragraph, CODE_BG)
         run = paragraph.add_run(line if line else " ")
         run.font.name = "Consolas"
-        run.font.Size = Pt(8.5)
+        run.font.size = Pt(8.5)
         run.font.color.rgb = RGBColor(0x24, 0x24, 0x2C)
     document.add_paragraph()
 
@@ -1637,25 +1637,25 @@ def build_docx(path: pathlib.Path, lang: str) -> None:
 
     style = document.styles["Normal"]
     style.font.name = "Arial"
-    style.font.Size = Pt(10.5)
+    style.font.size = Pt(10.5)
     style.paragraph_format.space_after = Pt(6)
 
     title = document.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_run = title.add_run(TITLES[lang])
     title_run.bold = True
-    title_run.font.Size = Pt(26)
+    title_run.font.size = Pt(26)
     title_run.font.color.rgb = ACCENT
 
     subtitle = document.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
     subtitle_run = subtitle.add_run(SUBTITLES[lang])
-    subtitle_run.font.Size = Pt(12)
+    subtitle_run.font.size = Pt(12)
     subtitle_run.font.color.rgb = MUTED
 
     meta = document.add_paragraph()
     meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    meta.add_run(f"Version {DOC_VERSION} ({DOC_STATUS}) - {TODAY} - {LANGUAGES[lang]}").font.Size = Pt(9)
+    meta.add_run(f"Version {DOC_VERSION} ({DOC_STATUS}) - {TODAY} - {LANGUAGES[lang]}").font.size = Pt(9)
 
     document.add_paragraph()
     document.add_heading(t(B("Contents", "Содержание"), lang), level=1)
@@ -1772,7 +1772,7 @@ def build_docx(path: pathlib.Path, lang: str) -> None:
     footer = document.sections[0].footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
     footer_run = footer.add_run(f"{TITLES[lang]} - {LANGUAGES[lang]}")
-    footer_run.font.Size = Pt(8)
+    footer_run.font.size = Pt(8)
     footer_run.font.color.rgb = MUTED
 
     document.core_properties.title = TITLES[lang]

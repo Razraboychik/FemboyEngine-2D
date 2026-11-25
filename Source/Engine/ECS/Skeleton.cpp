@@ -46,6 +46,7 @@ void SkeletonReset(SkeletonComponent& InSkeleton) noexcept
 {
     InSkeleton = SkeletonComponent{};
     InSkeleton.LocalScales.fill(1.0f);
+    InSkeleton.RestScales.fill(1.0f);
     InSkeleton.ParentIndices.fill(-1);
 }
 
@@ -65,6 +66,10 @@ std::int16_t SkeletonAddBone(SkeletonComponent& InSkeleton, std::string_view InN
     InSkeleton.LocalPositions[ScopedIndex] = InLocalPosition;
     InSkeleton.LocalRotations[ScopedIndex] = InLocalRotation;
     InSkeleton.LocalScales[ScopedIndex] = InLocalScale;
+    InSkeleton.RestPositions[ScopedIndex] = InLocalPosition;
+    InSkeleton.RestRotations[ScopedIndex] = InLocalRotation;
+    InSkeleton.RestScales[ScopedIndex] = InLocalScale;
+    InSkeleton.RestPoseCaptured = false;
     InSkeleton.ParentIndices[ScopedIndex] = InParent;
     InSkeleton.BoneNameHashes[ScopedIndex] = BoneNameHash(InName);
     InSkeleton.InverseBindMatrices[ScopedIndex] = Mat3Identity();

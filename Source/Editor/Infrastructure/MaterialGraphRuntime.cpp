@@ -131,6 +131,9 @@ bool MaterialGraphRuntime::Update(Rhi::RHI& InRhi, Render::MaterialGraph& InGrap
     }
     if (!ScopedSlot.dirty && ScopedSlot.lastGoodHash == ScopedHash)
     {
+        ScopedSlot.lastAttemptHash = ScopedHash;
+        ScopedSlot.failed = false;
+        ScopedSlot.error[0] = '\0';
         ++MStats.cacheHits;
         return true;
     }
@@ -202,11 +205,6 @@ bool MaterialGraphRuntime::Update(Rhi::RHI& InRhi, Render::MaterialGraph& InGrap
         return false;
     }
 
-    // The engine cache owns the pipeline from here on. Releasing first keeps the
-    // reference count honest when the graph changed its contract (a different
-    // closure needs a different pipeline) while the resident entry survives.
-    ReleaseSlotPipeline(ScopedSlot);
-
     if (!InRhi.SupportsRuntimeShaderPipelines())
     {
         // A backend without runtime shader compilation (Null/headless) keeps the
@@ -224,7 +222,7 @@ bool MaterialGraphRuntime::Update(Rhi::RHI& InRhi, Render::MaterialGraph& InGrap
 
     Render::CookedMaterialView ScopedMaterial;
     ScopedMaterial.graphHash = ScopedHash;
-    ScopedMaterial.contract = Render::MaterialContractFromProgram(ScopedProgram);
+    ScopedMaterial.contract = Render::MaterialContractFromProgram(ScopedProgram, MDomain);
     ScopedMaterial.vertexSpirv = SpirvBytes(MVertexSpirv);
     ScopedMaterial.fragmentSpirv = SpirvBytes(MFragmentSpirv);
 
@@ -241,8 +239,16 @@ bool MaterialGraphRuntime::Update(Rhi::RHI& InRhi, Render::MaterialGraph& InGrap
         return false;
     }
 
+    // Acquire first, then drop the previous reference. If Acquire fails, the
+    // last-good pipeline stays live and the next update can retry.
+    const Rhi::ShaderPipelineHandle ScopedPreviousPipeline = ScopedSlot.pipeline;
+    const bool ScopedHeldPrevious = ScopedSlot.holdsPipeline;
     ScopedSlot.pipeline = ScopedPipeline;
     ScopedSlot.holdsPipeline = true;
+    if (ScopedHeldPrevious)
+    {
+        MPipelineCache.Release(ScopedPreviousPipeline);
+    }
     ScopedSlot.lastGoodHash = ScopedHash;
     ScopedSlot.failed = false;
     ScopedSlot.error[0] = '\0';

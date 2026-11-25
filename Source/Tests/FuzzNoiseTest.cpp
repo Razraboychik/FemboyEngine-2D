@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <span>
 #include <vector>
@@ -13,6 +14,17 @@ using namespace Fby::Net;
 
 namespace
 {
+std::uint32_t FuzzCount(std::uint32_t InBase)
+{
+    const char* ScopedEnv = std::getenv("FBY_FUZZ_ITERATIONS");
+    if (ScopedEnv == nullptr)
+    {
+        return InBase;
+    }
+    const unsigned long long ScopedRequested = std::strtoull(ScopedEnv, nullptr, 10);
+    return ScopedRequested == 0ull ? InBase : static_cast<std::uint32_t>(ScopedRequested);
+}
+
 int GFailures = 0;
 
 void Check(bool InCondition, const char* InMessage)
@@ -100,7 +112,7 @@ void TestHandshakeMutations(const SecureChannelConfig& InInitiatorConfig,
     Check(ScopedInitiator.Start(InInitiatorConfig) == SecureStatus::Ok, "initiator starts");
     Check(ScopedInitiator.WriteHandshake(ScopedMessage, &ScopedBytes) == SecureStatus::Ok, "message 1 writes");
 
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 300; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(300); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedMutated(ScopedMessage.data(), ScopedMessage.data() + ScopedBytes);
         Mutate(ScopedMutated);
@@ -125,7 +137,7 @@ void TestRecordMutations(const SecureChannelConfig& InInitiatorConfig, const Sec
     const std::vector<std::byte> ScopedValid(ScopedRecord.data(), ScopedRecord.data() + ScopedRecordBytes);
 
     std::array<std::byte, 256> ScopedOutput{};
-    for (std::uint32_t ScopedIteration = 0; ScopedIteration < 2000; ++ScopedIteration)
+    for (std::uint32_t ScopedIteration = 0; ScopedIteration < FuzzCount(2000); ++ScopedIteration)
     {
         std::vector<std::byte> ScopedMutated = ScopedValid;
         if ((ScopedIteration % 5u) == 4u)

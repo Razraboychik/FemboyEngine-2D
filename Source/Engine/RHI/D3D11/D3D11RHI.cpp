@@ -36,6 +36,14 @@ class D3D11RHI final : public RHI
 public:
     bool Initialize(const DeviceDesc& InDesc) override
     {
+        constexpr std::uint32_t kMaxBackendItems = 1u << 16;
+        const std::uint32_t ScopedRequestedItems = std::max(1u, InDesc.maxItemsPerFrame);
+        const std::uint32_t ScopedItems = std::min(ScopedRequestedItems, kMaxBackendItems);
+        MVertexCapacity = ScopedItems * 6u;
+        if (ScopedItems < ScopedRequestedItems)
+        {
+            LogWarn("d3d11", "sprite item capacity clamped from {} to {}", ScopedRequestedItems, ScopedItems);
+        }
         auto* ScopedWindow = static_cast<SDL_Window*>(InDesc.nativeWindow);
         if (ScopedWindow == nullptr)
         {
@@ -153,7 +161,7 @@ public:
         MInfo.backend = Backend::D3D11;
         MInfo.apiVersion = static_cast<std::uint32_t>(ScopedLevel);
         MInfo.framesInFlight = 1;
-        MInfo.maxItemsPerFrame = InDesc.maxItemsPerFrame;
+        MInfo.maxItemsPerFrame = ScopedItems;
         MInfo.maxTextureLayers = InDesc.maxTextureLayers;
         MInfo.maxMeshVerticesPerFrame = InDesc.maxMeshVerticesPerFrame;
         MInfo.maxBoneMatricesPerFrame = InDesc.maxBoneMatricesPerFrame;
@@ -379,9 +387,15 @@ public:
         MBackBuffer.Reset();
         MDepthView.Reset();
         MDepthTexture.Reset();
-        if (FAILED(MSwapchain->ResizeBuffers(2, InSize.width, InSize.height, DXGI_FORMAT_R8G8B8A8_UNORM, 0)))
+        const HRESULT ScopedResize = MSwapchain->ResizeBuffers(2, InSize.width, InSize.height,
+                                                                 DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+        if (FAILED(ScopedResize))
         {
-            LogError("d3d11", "ResizeBuffers failed");
+            if (ScopedResize == DXGI_ERROR_DEVICE_REMOVED || ScopedResize == DXGI_ERROR_DEVICE_RESET)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d11", "ResizeBuffers failed (0x{:08X})", static_cast<unsigned>(ScopedResize));
             return;
         }
         if (FAILED(MSwapchain->GetBuffer(0, IID_PPV_ARGS(&MBackBuffer))) ||
@@ -500,7 +514,17 @@ public:
         }
         // The back buffer must not stay bound as an RTV while Present reads it.
         MContext->OMSetRenderTargets(0, nullptr, nullptr);
-        MSwapchain->Present(MDesc.vsync ? 1u : 0u, 0);
+        const HRESULT ScopedPresent = MSwapchain->Present(MDesc.vsync ? 1u : 0u, 0);
+        if (ScopedPresent == DXGI_ERROR_DEVICE_REMOVED || ScopedPresent == DXGI_ERROR_DEVICE_RESET)
+        {
+            MInfo.deviceLost = true;
+            LogError("d3d11", "Present failed with device loss (0x{:08X})",
+                     static_cast<unsigned>(ScopedPresent));
+        }
+        else if (FAILED(ScopedPresent))
+        {
+            LogWarn("d3d11", "Present failed (0x{:08X})", static_cast<unsigned>(ScopedPresent));
+        }
     }
 
     void Submit(const FramePacket& InPacket) override
@@ -553,6 +577,21 @@ public:
 
         if (!InPacket.items.empty())
         {
+            std::array<GpuLight, 64> ScopedLights{};
+            const std::size_t ScopedLightCount = InPacket.lights.size() < ScopedLights.size() - 1u
+                                                     ? InPacket.lights.size()
+                                                     : ScopedLights.size() - 1u;
+            for (std::size_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+            {
+                ScopedLights[ScopedI] = InPacket.lights[ScopedI];
+            }
+            ScopedLights.back().PositionAndRadius.W = static_cast<float>(ScopedLightCount);
+            D3D11_MAPPED_SUBRESOURCE ScopedLightMapped{};
+            if (SUCCEEDED(MContext->Map(MSpriteLightBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ScopedLightMapped)))
+            {
+                std::memcpy(ScopedLightMapped.pData, ScopedLights.data(), sizeof(ScopedLights));
+                MContext->Unmap(MSpriteLightBuffer.Get(), 0);
+            }
             const std::size_t ScopedSpriteVertices = InPacket.items.size() * 6u;
             if (ScopedSpriteVertices > MVertexCapacity)
             {
@@ -610,6 +649,9 @@ public:
                     ScopedVertex.Color[2] = ScopedB;
                     ScopedVertex.Color[3] = ScopedA;
                     ScopedVertex.Layer = static_cast<float>(ScopedItem.layer);
+                    ScopedVertex.NormalMeta =
+                        EncodeNormalVertexMeta(NormalMapLayer(ScopedItem.flags), NormalMapStrength(ScopedItem.flags));
+                    ScopedVertex.Flags = ScopedItem.flags;
                 }
             }
             MContext->Unmap(MVertexBuffer.Get(), 0);
@@ -618,8 +660,16 @@ public:
             MContext->IASetVertexBuffers(0, 1, MVertexBuffer.GetAddressOf(), &ScopedStride, &ScopedOffset);
             if (InPacket.batches.empty())
             {
-                ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(InPacket.textureArray)};
-                MContext->PSSetShaderResources(0, 1, ScopedViews);
+                ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(InPacket.textureArray),
+                                                           MSpriteLightSrv.Get()};
+                MContext->PSSetShaderResources(0, 2, ScopedViews);
+                const Rhi::RenderItem& ScopedFirst = InPacket.items.front();
+                const bool ScopedSdf =
+                    (ScopedFirst.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                          Rhi::kRenderFlagSdfGlow)) != 0u;
+                const bool ScopedNormal = ScopedSdf || (NormalMapLayer(ScopedFirst.flags) >= 1u &&
+                                                        NormalMapStrength(ScopedFirst.flags) > 0.0f);
+                MContext->PSSetShader(ScopedNormal ? MPixelShader.Get() : MBasePixelShader.Get(), nullptr, 0);
                 MContext->Draw(static_cast<UINT>(ScopedCount), 0);
                 ++MStats.drawCalls;
             }
@@ -634,8 +684,25 @@ public:
                     }
                     const std::uint32_t ScopedTexture =
                         ScopedBatch.textureArray != 0 ? ScopedBatch.textureArray : InPacket.textureArray;
-                    ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(ScopedTexture)};
-                    MContext->PSSetShaderResources(0, 1, ScopedViews);
+                    ID3D11ShaderResourceView* ScopedViews[] = {TextureViewFor(ScopedTexture),
+                                                               MSpriteLightSrv.Get()};
+                    MContext->PSSetShaderResources(0, 2, ScopedViews);
+                    ID3D11PixelShader* ScopedBatchShader = MBasePixelShader.Get();
+                    if (Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline))
+                    {
+                        const Rhi::SpriteVariant ScopedVariant = Rhi::DecodeSpriteVariant(ScopedBatch.pipeline);
+                        if (ScopedVariant == Rhi::SpriteVariant::SdfText ||
+                            ScopedVariant == Rhi::SpriteVariant::SdfOutline ||
+                            ScopedVariant == Rhi::SpriteVariant::SdfGlow)
+                        {
+                            ScopedBatchShader = MSdfPixelShader.Get();
+                        }
+                        else if (ScopedVariant != Rhi::SpriteVariant::Base)
+                        {
+                            ScopedBatchShader = MPixelShader.Get();
+                        }
+                    }
+                    MContext->PSSetShader(ScopedBatchShader, nullptr, 0);
                     MContext->Draw(static_cast<UINT>(ScopedBatch.itemCount) * 6u,
                                    static_cast<UINT>(ScopedBatch.firstItem) * 6u);
                     ++MStats.drawCalls;
@@ -724,10 +791,14 @@ public:
                         {ScopedClipX, ScopedClipY, 0.5f},
                         {ScopedVertex.uv.X, ScopedVertex.uv.Y},
                         {ScopedR, ScopedG, ScopedB, ScopedA},
-                        static_cast<float>(ScopedItem.layer)};
+                        static_cast<float>(ScopedItem.layer),
+                        0.0f,
+                        0u};
                 }
-                ID3D11ShaderResourceView* ScopedMeshViews[] = {TextureViewFor(ScopedItem.textureArray)};
-                MContext->PSSetShaderResources(0, 1, ScopedMeshViews);
+                ID3D11ShaderResourceView* ScopedMeshViews[] = {TextureViewFor(ScopedItem.textureArray),
+                                                               MSpriteLightSrv.Get()};
+                MContext->PSSetShaderResources(0, 2, ScopedMeshViews);
+                MContext->PSSetShader(MBasePixelShader.Get(), nullptr, 0);
                 const UINT ScopedStride = sizeof(SmokeVertex);
                 const UINT ScopedOffset = 0;
                 MContext->IASetVertexBuffers(0, 1, MVertexBuffer.GetAddressOf(), &ScopedStride, &ScopedOffset);
@@ -1628,6 +1699,8 @@ private:
         float Uv[2];
         float Color[4];
         float Layer;
+        float NormalMeta = 0.0f;
+        std::uint32_t Flags = 0;
     };
 
     struct MotionVertex
@@ -2072,6 +2145,10 @@ float4 PSMain(VSOutput input) : SV_Target
         SIZE_T ScopedVSSize = Shaders::Dx::D3D11SpriteVsSm5.size();
         const void* ScopedPSData = Shaders::Dx::D3D11SpritePsSm5.data();
         SIZE_T ScopedPSSize = Shaders::Dx::D3D11SpritePsSm5.size();
+        const void* ScopedBasePSData = Shaders::Dx::D3D11SpriteBasePsSm5.data();
+        SIZE_T ScopedBasePSSize = Shaders::Dx::D3D11SpriteBasePsSm5.size();
+        const void* ScopedSdfPSData = Shaders::Dx::D3D11SpriteSdfPsSm5.data();
+        SIZE_T ScopedSdfPSSize = Shaders::Dx::D3D11SpriteSdfPsSm5.size();
         if (ScopedLegacyShaderModel)
         {
             if (FAILED(D3DCompile(ScopedShader, sizeof(ScopedShader), "sprite11.hlsl", nullptr, nullptr, "VSMain",
@@ -2091,9 +2168,13 @@ float4 PSMain(VSOutput input) : SV_Target
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 3, DXGI_FORMAT_R32_UINT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0},
         };
         if (FAILED(MDevice->CreateVertexShader(ScopedVSData, ScopedVSSize, nullptr, &MVertexShader)) ||
             FAILED(MDevice->CreatePixelShader(ScopedPSData, ScopedPSSize, nullptr, &MPixelShader)) ||
+            FAILED(MDevice->CreatePixelShader(ScopedBasePSData, ScopedBasePSSize, nullptr, &MBasePixelShader)) ||
+            FAILED(MDevice->CreatePixelShader(ScopedSdfPSData, ScopedSdfPSSize, nullptr, &MSdfPixelShader)) ||
             FAILED(MDevice->CreateInputLayout(ScopedLayout, static_cast<UINT>(std::size(ScopedLayout)),
                                               ScopedVSData, ScopedVSSize, &MInputLayout)))
         {
@@ -2173,6 +2254,18 @@ float4 PSMain(VSOutput input) : SV_Target
         ScopedBuffer.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         ScopedBuffer.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         if (FAILED(MDevice->CreateBuffer(&ScopedBuffer, nullptr, &MVertexBuffer)))
+        {
+            return false;
+        }
+        D3D11_BUFFER_DESC ScopedLightBuffer{};
+        ScopedLightBuffer.ByteWidth = static_cast<UINT>(sizeof(GpuLight) * 64u);
+        ScopedLightBuffer.Usage = D3D11_USAGE_DYNAMIC;
+        ScopedLightBuffer.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        ScopedLightBuffer.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        ScopedLightBuffer.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        ScopedLightBuffer.StructureByteStride = sizeof(GpuLight);
+        if (FAILED(MDevice->CreateBuffer(&ScopedLightBuffer, nullptr, &MSpriteLightBuffer)) ||
+            FAILED(MDevice->CreateShaderResourceView(MSpriteLightBuffer.Get(), nullptr, &MSpriteLightSrv)))
         {
             return false;
         }
@@ -2413,6 +2506,8 @@ float4 PSMain(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     ComPtr<ID3D11RenderTargetView> MRtv;
     ComPtr<ID3D11VertexShader> MVertexShader;
     ComPtr<ID3D11PixelShader> MPixelShader;
+    ComPtr<ID3D11PixelShader> MBasePixelShader;
+    ComPtr<ID3D11PixelShader> MSdfPixelShader;
     ComPtr<ID3D11InputLayout> MInputLayout;
     ComPtr<ID3D11BlendState> MBlendState;
     ComPtr<ID3D11BlendState> MAdditiveBlendState;
@@ -2424,6 +2519,8 @@ float4 PSMain(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     ComPtr<ID3D11DepthStencilView> MDepthView;
     ComPtr<ID3D11DepthStencilState> MDepthState;
     ComPtr<ID3D11Buffer> MVertexBuffer;
+    ComPtr<ID3D11Buffer> MSpriteLightBuffer;
+    ComPtr<ID3D11ShaderResourceView> MSpriteLightSrv;
     ComPtr<ID3D11VertexShader> MMotionVertexShader;
     ComPtr<ID3D11PixelShader> MMotionPixelShader;
     ComPtr<ID3D11InputLayout> MMotionInputLayout;

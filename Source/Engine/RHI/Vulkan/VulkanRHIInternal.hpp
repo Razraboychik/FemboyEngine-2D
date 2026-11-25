@@ -4,6 +4,7 @@
 #if defined(FBY_HAS_VULKAN_HEADERS)
 
 #include "Engine/RHI/Vulkan/VulkanRHI.hpp"
+#include "Engine/RHI/Vulkan/VulkanCapacity.hpp"
 
 #include "Engine/Core/Assert.hpp"
 #include "Engine/Core/Log.hpp"
@@ -33,9 +34,6 @@
 namespace Fby::Rhi::Impl
 {
 constexpr std::uint32_t kMaxFramesInFlight = 4;
-// Several viewports (editor, PIE, UI) share one recorded frame. Every recorded
-// effect pass takes its own view slot, so a descriptor set is never rewritten
-// while draws that already reference it are still pending.
 constexpr std::uint32_t kMaxViewsPerFrame = 4;
 constexpr std::uint32_t kQuadIndexCount = 6;
 constexpr std::uint32_t kAtlasSize = 128;
@@ -699,13 +697,15 @@ private:
 
     bool CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline, bool InDepthTest = false,
                                bool InBlendless = false,
-                               Fby::Rhi::RenderBlendMode InBlend = Fby::Rhi::RenderBlendMode::Opaque);
+                               Fby::Rhi::RenderBlendMode InBlend = Fby::Rhi::RenderBlendMode::Opaque,
+                               bool InBaseFragment = false, bool InSdfFragment = false);
     [[nodiscard]] RenderTarget* FindRenderTarget(std::uint32_t InId) noexcept;
     void DestroyRenderTargetResources(RenderTarget& InTarget) noexcept;
     void RecordDepthPrepass(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket, bool InAccessibility);
 
-    void DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
-                    bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot, bool InDepthOnly = false);
+    void DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, VkPipeline InBasePipeline,
+                    VkPipeline InSdfPipeline, const FramePacket& InPacket, bool InOffscreen, bool InSrgb,
+                    std::uint32_t InSdfSlot, bool InDepthOnly = false);
     void PreUploadInstances(VkCommandBuffer InCommandBuffer, const FramePacket& InPacket);
     // GI probe upload must run outside a render pass: it records a host-write
     // memory barrier, which is illegal inside vkCmdBeginRenderPass.
@@ -784,6 +784,8 @@ private:
     VkDescriptorSet MDescriptorSet = VK_NULL_HANDLE;
     VkPipelineLayout MPipelineLayout = VK_NULL_HANDLE;
     VkPipeline MPipeline = VK_NULL_HANDLE;
+    VkPipeline MBasePipeline = VK_NULL_HANDLE;
+    VkPipeline MSdfPipeline = VK_NULL_HANDLE;
     VkPipeline MPipelineOpaque = VK_NULL_HANDLE;
     VkDescriptorSetLayout MOitResolveSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool MOitResolvePool = VK_NULL_HANDLE;

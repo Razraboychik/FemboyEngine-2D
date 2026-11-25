@@ -20,6 +20,9 @@ bool BuildPieClientSdfFrame(Ecs::Registry& InWorld, const SdfField* InField, con
     ScopedFrame.camera = Vector4D{InCenter.X, InCenter.Y, InZoom, 0.0f};
     ScopedFrame.viewport = Vector4D{static_cast<float>(InViewport.width), static_cast<float>(InViewport.height),
                                     0.0f, 0.0f};
+    // The authoring viewport owns SDF view slot 0; PIE uses the second mask
+    // layer/history so its reprojection does not sample the editor view.
+    ScopedFrame.viewId = 1;
     ScopedFrame.temporal = true;
     ScopedFrame.previousCamera = InPreviousCamera != nullptr ? *InPreviousCamera : Vector4D{};
     if (InPreviousCamera != nullptr)

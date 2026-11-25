@@ -130,7 +130,7 @@ extern "C"
         uint32_t struct_size;
         const char* id;
         const char* display_name;
-        uint32_t kind; /* 0 = NVG, 1 = thermal */
+        uint32_t kind; /* 0 = NVG, 1 = thermal, 2 = alcohol; other values are rejected */
         float intensity;
         float blur;
         float sharpness;
@@ -149,7 +149,7 @@ extern "C"
     {
         uint32_t struct_size;
         uint32_t abi_version;
-        /* Returns 0 on success. The host copies the descriptor. */
+        /* Returns 1 on success, 0 on failure. The host copies the descriptor. */
         int (*register_theme)(void* user, const FbyThemeDesc* theme);
         int (*set_theme)(void* user, const char* id);
         int (*register_palette_extension)(void* user, const FbyPaletteExtensionDesc* extension);
@@ -181,16 +181,26 @@ extern "C"
          * not allocate unless its allocator came from this table. */
         int (*add_system)(void* InUser, const char* InName, int InPhase, int InOrder,
                           void (*InTick)(void* InUser, float InDt));
-        /* Optional in ABI 2; nullptr when the host has no runtime theme registry. */
+        /* Optional in ABI 6; nullptr when the host has no runtime theme/palette/effect registry. */
         const FbyAccessibilityApi* accessibility;
         /* Optional append-only service. nullptr when the host has no voice
          * preset registry; detect it with FbyHostHasVoice(). */
         const FbyVoiceApi* voice;
+        /* Optional safe data ABI (FbyModApi). Opaque here so this C header does
+         * not depend on ModAPI.h; probe it with FbyHostHasModApi(). */
+        const void* mod_api;
     } FbyHostApi;
 
     /* Layout-safe capability probe: old hosts are shorter, so checking the
      * structure size is valid even when the plugin was built against a newer
      * header. */
+    static inline int FbyHostHasModApi(const FbyHostApi* InHost)
+    {
+        return InHost != NULL &&
+               InHost->struct_size >= (uint32_t)(offsetof(FbyHostApi, mod_api) + sizeof(InHost->mod_api)) &&
+               InHost->mod_api != NULL;
+    }
+
     static inline int FbyHostHasVoice(const FbyHostApi* InHost)
     {
         return InHost != NULL &&
@@ -212,6 +222,8 @@ extern "C"
 
 /* Entry points every plugin shared library must export. */
 #define FBY_PLUGIN_ENTRY extern "C" FBY_PLUGIN_EXPORT
+#else
+#define FBY_PLUGIN_ENTRY FBY_PLUGIN_EXPORT
 #endif
 
 #endif /* FBY_PLUGIN_API_H */

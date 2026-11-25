@@ -51,11 +51,22 @@ void FemboyAotScriptSystem(Ecs::SystemContext& InContext, const Script::AotHost&
                 OutSuspended = true;
                 return;
             }
+            if (ScopedState == nullptr)
+            {
+                LogWarn("script", "AOT coroutine table exhausted for {:016x}", ScopedHash);
+                return;
+            }
             std::string ScopedError;
             ScopedContext.aotCoroutine = ScopedState;
             const bool ScopedOk = InHost.Run(ScopedHash, InEvent, ScopedEntity, ScopedContext, &ScopedError);
             ScopedContext.aotCoroutine = nullptr;
-            OutSuspended = ScopedState != nullptr && ScopedState->Active != 0;
+            if (!ScopedOk && ScopedState->Active != 0)
+            {
+                // A fault must not keep a suspended coroutine alive; otherwise
+                // the same fault is re-entered every frame.
+                ScopedState->Active = 0;
+            }
+            OutSuspended = ScopedState->Active != 0;
             if (!ScopedOk)
             {
                 LogWarn("script", "AOT {} failed for {:016x}: {}", InEvent == Script::ScriptEvent::Start ? "start" : "update",

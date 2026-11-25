@@ -104,9 +104,11 @@ public:
     [[nodiscard]] bool Open(VirtualFileSystem& InVfs, std::string_view InManifestPath,
                             const FontBuildOptions& InDefaults, std::string* InError = nullptr)
     {
-        MVfs = &InVfs;
-        const auto ScopedBytes = InVfs.Read(InManifestPath);
-        if (!ScopedBytes)
+        MVfs = nullptr;
+        MManifest = {};
+        MLoaded.fill(false);
+        const auto ScopedPinned = InVfs.Pin(InManifestPath);
+        if (!ScopedPinned)
         {
             if (InError != nullptr)
             {
@@ -116,13 +118,21 @@ public:
         }
         MManifest.options = InDefaults;
         if (!ParseFontFamilyManifest(
-                std::string_view(reinterpret_cast<const char*>(ScopedBytes->data()), ScopedBytes->size()),
+                std::string_view(reinterpret_cast<const char*>(ScopedPinned->bytes.data()),
+                                 ScopedPinned->bytes.size()),
                 &MManifest, InError))
         {
+            MManifest = {};
             return false;
         }
-        MLoaded.fill(false);
-        return EnsureStyle(FontStyle::Regular, InError) || MManifest.regular.empty();
+        MVfs = &InVfs;
+        if (EnsureStyle(FontStyle::Regular, InError) || MManifest.regular.empty())
+        {
+            return true;
+        }
+        MVfs = nullptr;
+        MManifest = {};
+        return false;
     }
 
     [[nodiscard]] bool EnsureStyle(FontStyle InStyle, std::string* InError = nullptr)

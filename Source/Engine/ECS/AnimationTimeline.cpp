@@ -345,7 +345,7 @@ void AnimationTimeline::ApplySpriteClip(SpriteAnimationComponent& InSpriteAnimat
     InSpriteAnimation.FrameCount = ScopedCount;
     const float ScopedFrameDuration = InSpriteAnimation.FrameDuration > 0.0f ? InSpriteAnimation.FrameDuration : 0.1f;
     const auto ScopedFrame = static_cast<std::uint32_t>(std::max(0.0f, InTime) / ScopedFrameDuration);
-    InSpriteAnimation.CurrentFrame = ScopedStart + ScopedFrame % ScopedCount;
+    InSpriteAnimation.CurrentFrame = ScopedFrame % ScopedCount;
     InSpriteAnimation.ElapsedTime = std::fmod(std::max(0.0f, InTime), ScopedFrameDuration);
 }
 
@@ -356,11 +356,7 @@ void AnimationTimeline::DispatchEvents(float InPreviousTime, float InTime, bool 
     {
         const TimelineEvent& ScopedEvent = events[ScopedI];
         bool ScopedFire = false;
-        if (!InLooped)
-        {
-            ScopedFire = ScopedEvent.time > InPreviousTime && ScopedEvent.time <= InTime;
-        }
-        else if (InTime >= InPreviousTime)
+        if (!InLooped || InTime >= InPreviousTime)
         {
             ScopedFire = ScopedEvent.time > InPreviousTime && ScopedEvent.time <= InTime;
         }

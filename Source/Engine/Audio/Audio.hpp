@@ -137,6 +137,13 @@ public:
 
     void SetBusVolume(AudioBus InBus, float InVolume);
     [[nodiscard]] float BusVolume(AudioBus InBus) const noexcept;
+    // Dynamic bus entry point used by developer-authored settings. The value is
+    // stored in dB and converted to gain at the DSP boundary.
+    [[nodiscard]] bool SetBusVolumeDb(BusId InBus, float InDecibels) noexcept;
+    // Creates a dynamic bus under an existing parent. Used by project-authored
+    // audio definitions; the built-in buses keep their fixed ids.
+    [[nodiscard]] bool CreateBus(BusId InParent, float InGain, BusId* OutBus) noexcept;
+    [[nodiscard]] bool DestroyBus(BusId InBus) noexcept;
     // Pauses one built-in bus without losing its authored volume. Pause is
     // combined with the component mute bit, so a later unmute does not clear a
     // deliberate pause.
@@ -154,6 +161,12 @@ public:
     // Root safety switches. Muting Master is the DeafMode contract: the whole
     void SetMasterMuted(bool InMuted) noexcept;
     [[nodiscard]] bool MasterMuted() const noexcept;
+
+    // Disables the whole audio calculation path, not just the output gain.
+    // Sound events, captions and gameplay code keep running; the device callback
+    // receives silence until processing is enabled again.
+    void SetProcessingEnabled(bool InEnabled) noexcept;
+    [[nodiscard]] bool ProcessingEnabled() const noexcept;
 
     // Last stage after DspGraph. Configure once after Initialize(); the limiter
     void ConfigureLimiter(const LimiterDesc& InDesc = {}) noexcept;
@@ -234,6 +247,8 @@ private:
         std::uint32_t stamp = 0;
     };
 
+    [[nodiscard]] std::uint32_t EncodeVoice(std::uint16_t InSlot) noexcept;
+    [[nodiscard]] std::uint16_t DecodeVoice(std::uint32_t InHandle) const noexcept;
     [[nodiscard]] const AudioClip* FindClip(AssetId InId) const noexcept;
     [[nodiscard]] const CookedClipRecord* FindCookedClip(AssetId InId) const noexcept;
     [[nodiscard]] const OwnedPcmRecord* FindOwnedPcm(AssetId InId) const noexcept;
@@ -252,9 +267,15 @@ private:
 
     DspGraph MMixer{};
     AudioLimiter MLimiter{};
+    std::atomic<bool> MProcessingEnabled{true};
     FloatRing* MReferenceRing = nullptr;
 
+    std::array<std::uint16_t, kMaxAudioVoices> MVoiceGenerations{};
     AudioClip MClips[kMaxAudioClips]{};
+    // Registered float clips own their samples here; a replaced clip's storage
+    // is retired until Shutdown so a live voice cannot read freed memory.
+    std::array<std::shared_ptr<const std::vector<float>>, kMaxAudioClips> MClipSamples{};
+    std::vector<std::shared_ptr<const std::vector<float>>> MRetiredClipSamples;
     std::uint32_t MClipCount = 0;
 
     CookedClipRecord MCookedClips[kMaxAudioClips]{};

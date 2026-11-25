@@ -1,6 +1,8 @@
 // FemboyEngine2D - AudioSystem implementation.
 #include "Engine/Audio/Audio.hpp"
 
+#include <cmath>
+
 #include "Engine/Audio/AudioStream.hpp"
 #include "Engine/Audio/OggOpus.hpp"
 
@@ -119,23 +121,17 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         return false;
     }
 
-    if (MDevice != nullptr)
+    void* const ScopedOldDevice = MDevice;
+    void* const ScopedOldContext = MContext;
+    const bool ScopedHadDevice = MDevice != nullptr;
+    const auto ScopedFailed = [this, ScopedHadDevice]()
     {
-        auto* ScopedOld = static_cast<ma_device*>(MDevice);
-        ma_device_uninit(ScopedOld);
-        delete ScopedOld;
-        MDevice = nullptr;
-    }
-    if (MContext != nullptr)
-    {
-        auto* ScopedOldContext = static_cast<ma_context*>(MContext);
-        ma_context_uninit(ScopedOldContext);
-        delete ScopedOldContext;
-        MContext = nullptr;
-    }
-    const auto ScopedFailed = [this]()
-    {
-        MInitialized = false;
+        // Keep the previous device/context alive on failure; switching output
+        // must not leave the whole mixer uninitialized.
+        if (!ScopedHadDevice)
+        {
+            MInitialized = false;
+        }
         return false;
     };
 
@@ -198,13 +194,37 @@ bool AudioSystem::ReopenOutput(const AudioDeviceEnumerator& InDevices, AudioDevi
         delete ScopedDevice;
         return ScopedFailed();
     }
+    // Stop the old callback before starting the new one: both devices point at
+    // this AudioSystem and would otherwise run Mix concurrently.
+    bool ScopedOldStopped = false;
+    if (ScopedOldDevice != nullptr)
+    {
+        ma_device_stop(static_cast<ma_device*>(ScopedOldDevice));
+        ScopedOldStopped = true;
+    }
     if (ma_device_start(ScopedDevice) != MA_SUCCESS)
     {
         ma_device_uninit(ScopedDevice);
         ma_context_uninit(ScopedContext);
         delete ScopedContext;
         delete ScopedDevice;
-        return ScopedFailed();
+        if (ScopedOldStopped && ma_device_start(static_cast<ma_device*>(ScopedOldDevice)) != MA_SUCCESS)
+        {
+            MInitialized = false;
+        }
+        return false;
+    }
+    if (ScopedOldDevice != nullptr)
+    {
+        auto* ScopedDeviceToStop = static_cast<ma_device*>(ScopedOldDevice);
+        ma_device_uninit(ScopedDeviceToStop);
+        delete ScopedDeviceToStop;
+    }
+    if (ScopedOldContext != nullptr)
+    {
+        auto* ScopedContextToFree = static_cast<ma_context*>(ScopedOldContext);
+        ma_context_uninit(ScopedContextToFree);
+        delete ScopedContextToFree;
     }
     MContext = ScopedContext;
     MDevice = ScopedDevice;
@@ -230,6 +250,9 @@ void AudioSystem::Shutdown()
     }
     MMixer.Shutdown();
     ResetRuntimeState();
+    MClipSamples = {};
+    MRetiredClipSamples.clear();
+    MClipCount = 0;
     MGameSfxBus = kSfxBus;
     MGameplayBusActive = false;
     MInitialized = false;
@@ -315,8 +338,24 @@ bool AudioSystem::RegisterClip(AssetId InId, std::span<const float> InInterleave
         }
         ScopedClip = &MClips[MClipCount++];
     }
+    std::shared_ptr<const std::vector<float>> ScopedStorage;
+    try
+    {
+        ScopedStorage = std::make_shared<const std::vector<float>>(InInterleavedSamples.begin(),
+                                                                   InInterleavedSamples.end());
+    }
+    catch (...)
+    {
+        return false;
+    }
+    const std::size_t ScopedIndex = static_cast<std::size_t>(ScopedClip - MClips);
+    if (MClipSamples[ScopedIndex] != nullptr)
+    {
+        MRetiredClipSamples.push_back(std::move(MClipSamples[ScopedIndex]));
+    }
+    MClipSamples[ScopedIndex] = ScopedStorage;
     ScopedClip->id = InId;
-    ScopedClip->samples = InInterleavedSamples.data();
+    ScopedClip->samples = ScopedStorage->data();
     ScopedClip->frameCount = static_cast<std::uint32_t>(InInterleavedSamples.size() / InChannels);
     ScopedClip->channels = InChannels;
     ScopedClip->sampleRate = InSampleRate;
@@ -444,6 +483,34 @@ float AudioSystem::BusVolume(AudioBus InBus) const noexcept
     return MMixer.BusGain(BusIdFor(InBus));
 }
 
+bool AudioSystem::CreateBus(BusId InParent, float InGain, BusId* OutBus) noexcept
+{
+    if (InParent >= kMaxBuses || OutBus == nullptr)
+    {
+        return false;
+    }
+    return MMixer.CreateBus(InParent, InGain, OutBus) == DspResult::Ok;
+}
+
+bool AudioSystem::DestroyBus(BusId InBus) noexcept
+{
+    if (InBus < kFirstDynamicBus || InBus >= kMaxBuses)
+    {
+        return false;
+    }
+    return MMixer.DestroyBus(InBus) == DspResult::Ok;
+}
+
+bool AudioSystem::SetBusVolumeDb(BusId InBus, float InDecibels) noexcept
+{
+    if (InBus >= kMaxBuses)
+    {
+        return false;
+    }
+    const float ScopedGain = std::pow(10.0f, InDecibels / 20.0f);
+    return MMixer.SetBusGain(InBus, std::clamp(ScopedGain, 0.0f, 8.0f)) == DspResult::Ok;
+}
+
 void AudioSystem::SetBusPaused(AudioBus InBus, bool InPaused) noexcept
 {
     const BusId ScopedBus = BusIdFor(InBus);
@@ -490,6 +557,16 @@ bool AudioSystem::SetBusZoneParameters(AudioBus InBus, float InReverbGain, float
     return MMixer.SetBusFilter(BusIdFor(InBus), ScopedParams) == DspResult::Ok;
 }
 
+void AudioSystem::SetProcessingEnabled(bool InEnabled) noexcept
+{
+    MProcessingEnabled.store(InEnabled, std::memory_order_release);
+}
+
+bool AudioSystem::ProcessingEnabled() const noexcept
+{
+    return MProcessingEnabled.load(std::memory_order_acquire);
+}
+
 void AudioSystem::SetMasterMuted(bool InMuted) noexcept
 {
     (void)MMixer.SetBusMuted(kMasterBus, InMuted);
@@ -503,6 +580,31 @@ bool AudioSystem::MasterMuted() const noexcept
 void AudioSystem::ConfigureLimiter(const LimiterDesc& InDesc) noexcept
 {
     MLimiter.Configure(MSampleRate == 0 ? 48000 : MSampleRate, InDesc);
+}
+
+std::uint32_t AudioSystem::EncodeVoice(std::uint16_t InSlot) noexcept
+{
+    if (InSlot >= kMaxAudioVoices)
+    {
+        return kInvalidAudioVoice;
+    }
+    const std::uint16_t ScopedGeneration = ++MVoiceGenerations[InSlot];
+    return (static_cast<std::uint32_t>(ScopedGeneration) << 16) | InSlot;
+}
+
+std::uint16_t AudioSystem::DecodeVoice(std::uint32_t InHandle) const noexcept
+{
+    if (InHandle == kInvalidAudioVoice)
+    {
+        return static_cast<std::uint16_t>(kInvalidAudioVoice);
+    }
+    const std::uint16_t ScopedSlot = static_cast<std::uint16_t>(InHandle & 0xFFFFu);
+    const std::uint16_t ScopedGeneration = static_cast<std::uint16_t>(InHandle >> 16);
+    if (ScopedSlot >= kMaxAudioVoices || MVoiceGenerations[ScopedSlot] != ScopedGeneration)
+    {
+        return static_cast<std::uint16_t>(kInvalidAudioVoice);
+    }
+    return ScopedSlot;
 }
 
 std::uint32_t AudioSystem::StartClip(AssetId InId, BusId InBus, float InVolume, float InPitch, bool InLoop) noexcept
@@ -555,7 +657,7 @@ std::uint32_t AudioSystem::StartClip(AssetId InId, BusId InBus, float InVolume, 
     {
         return kInvalidAudioVoice;
     }
-    return ScopedVoice;
+    return EncodeVoice(static_cast<std::uint16_t>(ScopedVoice));
 }
 
 std::uint32_t AudioSystem::Play(AssetId InId, AudioBus InBus, float InVolume, float InPitch, bool InLoop)
@@ -566,9 +668,10 @@ std::uint32_t AudioSystem::Play(AssetId InId, AudioBus InBus, float InVolume, fl
 
 void AudioSystem::Stop(std::uint32_t InVoice)
 {
-    if (InVoice < kMaxAudioVoices)
+    const std::uint16_t ScopedSlot = DecodeVoice(InVoice);
+    if (ScopedSlot != kInvalidAudioVoice)
     {
-        (void)MMixer.StopVoice(InVoice);
+        (void)MMixer.StopVoice(ScopedSlot);
     }
 }
 
@@ -579,15 +682,25 @@ void AudioSystem::StopAll()
 
 bool AudioSystem::SetVoiceSpatial(std::uint32_t InVoice, float InVolume, float InPan) noexcept
 {
-    if (InVoice == kInvalidAudioVoice || InVoice >= kMaxAudioVoices)
+    const std::uint16_t ScopedSlot = DecodeVoice(InVoice);
+    if (ScopedSlot == kInvalidAudioVoice)
     {
         return false;
     }
-    return MMixer.SetVoiceSpatial(InVoice, InVolume, InPan) == DspResult::Ok;
+    return MMixer.SetVoiceSpatial(ScopedSlot, InVolume, InPan) == DspResult::Ok;
 }
 
 void AudioSystem::Mix(float* Output, std::uint32_t InFrameCount) noexcept
 {
+    if (!ProcessingEnabled())
+    {
+        if (Output != nullptr)
+        {
+            std::fill_n(Output, static_cast<std::size_t>(InFrameCount) * 2u, 0.0f);
+        }
+        return;
+    }
+
     // The one audio-thread entry point: run the mixer, then the stereo limiter.
     MMixer.Process(Output, InFrameCount);
     MLimiter.Process(Output, InFrameCount, 2);
@@ -761,8 +874,14 @@ void AudioSystem::SyncBusComponents(Ecs::Registry& InRegistry)
             ScopedCommand.Type = AudioCommandType::SetGain;
             ScopedCommand.Bus = ScopedBus.BusID;
             ScopedCommand.Gain = ScopedVolume;
-            (void)MMixer.PushCommand(ScopedCommand);
-            ScopedRuntime.volume = ScopedVolume;
+            if (MMixer.PushCommand(ScopedCommand))
+            {
+                ScopedRuntime.volume = ScopedVolume;
+            }
+            else
+            {
+                ScopedRuntime.applied = false;
+            }
         }
         if (!ScopedRuntime.applied || ScopedRuntime.parent != ScopedBus.ParentBus)
         {
@@ -776,7 +895,10 @@ void AudioSystem::SyncBusComponents(Ecs::Registry& InRegistry)
         MComponentMuted[ScopedBus.BusID] = ScopedComponentMuted;
         (void)MMixer.SetBusMuted(ScopedBus.BusID, ScopedComponentMuted || MPauseMuted[ScopedBus.BusID]);
         ScopedRuntime.flags = ScopedBus.Flags;
-        ScopedRuntime.applied = true;
+        if (ScopedRuntime.volume == ScopedVolume)
+        {
+            ScopedRuntime.applied = true;
+        }
     }
     // A bus component that disappeared must release its DSP bus; otherwise the
     // fixed bus table fills with dead buses and new components go silent.

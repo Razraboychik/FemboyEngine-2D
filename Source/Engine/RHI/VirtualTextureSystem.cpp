@@ -11,11 +11,15 @@
 #include <cstring>
 #include <limits>
 #include <system_error>
+#include <vector>
 
 namespace Fby::Rhi
 {
 namespace
 {
+// ReadChunk returns a view used immediately by the caller; keep the view valid
+// even if another thread reloads/unmounts the VFS mapping between Read and use.
+thread_local std::vector<std::byte> GChunkReadScratch;
 struct ChunkHeader
 {
     char magic[8] = {};
@@ -115,7 +119,11 @@ bool VirtualTextureSystem::Initialize(const VirtualTextureDesc& InDesc, VirtualF
     }
     MSlotsPerLayer = MTilesPerAxis * MTilesPerAxis;
 
-    const std::size_t ScopedRootBytes = std::strlen(InChunkRoot);
+    std::size_t ScopedRootBytes = 0;
+    while (ScopedRootBytes < kVirtualTextureMaxChunkRootBytes && InChunkRoot[ScopedRootBytes] != '\0')
+    {
+        ++ScopedRootBytes;
+    }
     if (ScopedRootBytes >= kVirtualTextureMaxChunkRootBytes)
     {
         return ScopedFail("virtual texture: chunk root is longer than 191 bytes");
@@ -350,7 +358,7 @@ bool VirtualTextureSystem::BuildChunkPath(std::int64_t InTileX, std::int64_t InT
 }
 
 bool VirtualTextureSystem::ReadChunk(std::int64_t InTileX, std::int64_t InTileY,
-                                     std::span<const std::byte>* OutBytes) const noexcept
+                                     std::span<const std::byte>* OutBytes) const
 {
     if (MVfs == nullptr || OutBytes == nullptr)
     {
@@ -362,24 +370,33 @@ bool VirtualTextureSystem::ReadChunk(std::int64_t InTileX, std::int64_t InTileY,
     {
         return false;
     }
-    const auto ScopedBytes = MVfs->Read(std::string_view(ScopedPath, ScopedPathLength));
-    if (!ScopedBytes || ScopedBytes->size() < sizeof(ChunkHeader))
+    const auto ScopedPinned = MVfs->Pin(std::string_view(ScopedPath, ScopedPathLength));
+    if (!ScopedPinned || ScopedPinned->bytes.size() < sizeof(ChunkHeader))
     {
         return false;
     }
+    const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
     ChunkHeader ScopedHeader{};
-    std::memcpy(&ScopedHeader, ScopedBytes->data(), sizeof(ScopedHeader));
+    std::memcpy(&ScopedHeader, ScopedBytes.data(), sizeof(ScopedHeader));
     const std::uint32_t ScopedChunkPixels = MDesc.chunkTiles * MDesc.tileSize;
     const std::uint64_t ScopedExpected = static_cast<std::uint64_t>(sizeof(ChunkHeader)) +
                                          static_cast<std::uint64_t>(ScopedChunkPixels) * ScopedChunkPixels * 4ull;
     if (std::memcmp(ScopedHeader.magic, kVirtualTextureChunkMagic, sizeof(ScopedHeader.magic)) != 0 ||
         ScopedHeader.version != 1 || ScopedHeader.tileSize != MDesc.tileSize ||
         ScopedHeader.chunkTiles != MDesc.chunkTiles || ScopedHeader.format != 0 ||
-        ScopedBytes->size() != ScopedExpected)
+        ScopedBytes.size() != ScopedExpected)
     {
         return false;
     }
-    *OutBytes = *ScopedBytes;
+    try
+    {
+        GChunkReadScratch.assign(ScopedBytes.begin(), ScopedBytes.end());
+    }
+    catch (...)
+    {
+        return false;
+    }
+    *OutBytes = GChunkReadScratch;
     return true;
 }
 
@@ -488,6 +505,8 @@ std::uint64_t VirtualTextureSystem::PackTileKey(std::int64_t InTileX, std::int64
 
 void VirtualTextureSystem::WorkerMain() noexcept
 {
+    try
+    {
     for (;;)
     {
         LoadRequest ScopedRequest{};
@@ -520,6 +539,11 @@ void VirtualTextureSystem::WorkerMain() noexcept
         }
         MWake.notify_all();
     }
+    }
+    catch (...)
+    {
+        std::fputs("vt: worker stopped after an allocation failure\n", stderr);
+    }
 }
 
 void VirtualTextureSystem::EnqueueLoad(std::int64_t InTileX, std::int64_t InTileY, std::uint32_t InLayer) noexcept
@@ -535,8 +559,16 @@ void VirtualTextureSystem::EnqueueLoad(std::int64_t InTileX, std::int64_t InTile
         ++MStats.spills;
         return;
     }
-    MPending.insert(ScopedKey);
-    MRequests.push_back(LoadRequest{InTileX, InTileY, InLayer});
+    try
+    {
+        MPending.insert(ScopedKey);
+        MRequests.push_back(LoadRequest{InTileX, InTileY, InLayer});
+    }
+    catch (...)
+    {
+        MPending.erase(ScopedKey);
+        return;
+    }
     MWake.notify_one();
 }
 

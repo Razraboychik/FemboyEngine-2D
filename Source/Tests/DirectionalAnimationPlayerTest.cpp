@@ -29,7 +29,8 @@ void Check(bool InCondition, const char* InMessage)
 
 void CheckClose(float InActual, float InExpected, float InTolerance, const char* InMessage)
 {
-    if (std::fabs(InActual - InExpected) > InTolerance)
+    if (!std::isfinite(InActual) || !std::isfinite(InExpected) ||
+        std::fabs(InActual - InExpected) > InTolerance)
     {
         std::printf("FAIL: %s (expected %f, got %f)\n", InMessage, static_cast<double>(InExpected),
                     static_cast<double>(InActual));

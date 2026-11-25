@@ -42,8 +42,18 @@ public:
                            std::string* OutError = nullptr);
     void RemoveOwner(const void* InOwner) noexcept;
     void Clear() noexcept;
+    // Rolls back presets added by a failed multi-entry load.
+    void Truncate(std::uint32_t InCount) noexcept
+    {
+        if (InCount < MCount)
+        {
+            MCount = InCount;
+        }
+    }
     void RegisterBuiltIns();
 
+    // Removes one preset by id; returns false when it is absent.
+    [[nodiscard]] bool Remove(std::string_view InId) noexcept;
     [[nodiscard]] const ParticlePresetDesc* Find(std::string_view InId) const noexcept;
     [[nodiscard]] const ParticlePresetDesc* At(std::uint32_t InIndex) const noexcept;
     [[nodiscard]] std::uint32_t Count() const noexcept
@@ -71,6 +81,9 @@ private:
 // current particle effect; the loader accepts exactly this shape.
 [[nodiscard]] bool SaveParticlePresetToml(const ParticlePresetDesc& InPreset, std::string* OutText,
                                           std::string* OutError = nullptr);
+// Writes a complete pack; used when saving one preset into an existing file.
+[[nodiscard]] bool SaveParticlePresetPackToml(std::span<const ParticlePresetDesc> InPresets, std::string* OutText,
+                                              std::string* OutError = nullptr);
 [[nodiscard]] bool SaveParticlePresetFile(std::string_view InPath, const ParticlePresetDesc& InPreset,
                                           std::string* OutError = nullptr);
 }

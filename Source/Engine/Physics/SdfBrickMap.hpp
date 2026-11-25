@@ -155,14 +155,23 @@ public:
         }
         const float ScopedX = (InWorld.X - MOrigin.X) / MCellSize.X;
         const float ScopedY = (InWorld.Y - MOrigin.Y) / MCellSize.Y;
-        if (ScopedX < 0.0f || ScopedY < 0.0f || ScopedX >= static_cast<float>(MSourceWidth) ||
-            ScopedY >= static_cast<float>(MSourceHeight))
+        if (!(ScopedX >= 0.0f && ScopedY >= 0.0f && ScopedX < static_cast<float>(MSourceWidth) &&
+              ScopedY < static_cast<float>(MSourceHeight)))
         {
             return MOutsideDistance;
         }
         const std::uint32_t ScopedBrickX = static_cast<std::uint32_t>(ScopedX) / SdfBrickSize;
         const std::uint32_t ScopedBrickY = static_cast<std::uint32_t>(ScopedY) / SdfBrickSize;
+        if (ScopedBrickX >= MBricksX || ScopedBrickY >= MBricksY)
+        {
+            return MOutsideDistance;
+        }
         const SdfBrickHeader& ScopedHeader = BrickAt(ScopedBrickX, ScopedBrickY);
+        if (ScopedHeader.State != SdfBrickState::Empty && ScopedHeader.State != SdfBrickState::Full &&
+            ScopedHeader.State != SdfBrickState::Narrow)
+        {
+            return MOutsideDistance;
+        }
         if (ScopedHeader.State == SdfBrickState::Empty)
         {
             return ScopedHeader.MinDistance;
@@ -288,7 +297,11 @@ public:
     {
         const std::size_t ScopedExpected = static_cast<std::size_t>(InDesc.BricksX) * InDesc.BricksY;
         if (InDesc.BricksX == 0 || InDesc.BricksY == 0 || InDesc.SourceWidth == 0 || InDesc.SourceHeight == 0 ||
-            InDesc.CellSize.X <= 0.0f || InDesc.CellSize.Y <= 0.0f || ScopedExpected != InBricks.size())
+            !std::isfinite(InDesc.CellSize.X) || !std::isfinite(InDesc.CellSize.Y) ||
+            !std::isfinite(InDesc.Origin.X) || !std::isfinite(InDesc.Origin.Y) || InDesc.CellSize.X <= 0.0f ||
+            InDesc.CellSize.Y <= 0.0f || ScopedExpected != InBricks.size() ||
+            InDesc.BricksX != (InDesc.SourceWidth + SdfBrickSize - 1u) / SdfBrickSize ||
+            InDesc.BricksY != (InDesc.SourceHeight + SdfBrickSize - 1u) / SdfBrickSize)
         {
             return false;
         }
@@ -306,6 +319,10 @@ public:
                 {
                     return false;
                 }
+            }
+            else if (ScopedHeader.State != SdfBrickState::Empty && ScopedHeader.State != SdfBrickState::Full)
+            {
+                return false;
             }
         }
         MOrigin = InDesc.Origin;

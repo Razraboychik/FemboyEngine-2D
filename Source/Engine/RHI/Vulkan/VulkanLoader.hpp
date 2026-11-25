@@ -123,6 +123,17 @@ namespace Fby::Rhi::Vk
 struct Api
 {
     PFN_vkGetInstanceProcAddr GetInstanceProcAddr = nullptr;
+    // One Api covers exactly one instance/device pair. Loading a second pair is
+    // rejected instead of silently overwriting the dispatch table.
+    VkInstance BoundInstance = VK_NULL_HANDLE;
+    VkDevice BoundDevice = VK_NULL_HANDLE;
+
+    // Allows a new instance/device pair after the previous one was destroyed.
+    void ReleaseBinding() noexcept
+    {
+        BoundInstance = VK_NULL_HANDLE;
+        BoundDevice = VK_NULL_HANDLE;
+    }
 
 #define FBY_VK_DECLARE(name) PFN_##name name = nullptr;
     FBY_VK_GLOBAL_FUNCTIONS(FBY_VK_DECLARE)

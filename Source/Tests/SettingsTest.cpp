@@ -76,6 +76,7 @@ int main()
     ScopedUser.oitEnabled = true;
 
     Fby::Rhi::FrameGenerationPolicy ScopedPolicy;
+    ScopedPolicy.ProjectAllowed = false;
     FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 60.0f, false) ==
               Fby::Rhi::FrameGenerationStatus::Disabled);
     ScopedPolicy.ProjectAllowed = true;
@@ -87,7 +88,7 @@ int main()
               Fby::Rhi::FrameGenerationStatus::ResetHistory);
     FBY_CHECK(Fby::Rhi::EvaluateFrameGeneration(ScopedPolicy, 60.0f, false) == Fby::Rhi::FrameGenerationStatus::Ready);
 
-    const std::filesystem::path ScopedDlssDir = "build-audit/fby_dlss_test";
+    const std::filesystem::path ScopedDlssDir = "build/audit/fby_dlss_test";
     std::error_code ScopedDlssCreateError;
     std::filesystem::create_directories(ScopedDlssDir, ScopedDlssCreateError);
     const std::string ScopedDlssFile = (ScopedDlssDir / "nvngx_dlss.dll").string();
@@ -115,7 +116,7 @@ int main()
     ScopedMacInfo.gpuVendor = 4;
     FBY_CHECK(!Fby::Rhi::CapabilitiesFromDevice(ScopedMacInfo).MetalFx);
     FBY_CHECK(Fby::Rhi::BackendAvailable(ScopedDeviceCaps, Fby::Rhi::UpscalerBackend::Dlss));
-    const std::filesystem::path ScopedFfxDir = "build-audit/fby_ffx_test";
+    const std::filesystem::path ScopedFfxDir = "build/audit/fby_ffx_test";
     std::error_code ScopedFfxCreateError;
     std::filesystem::create_directories(ScopedFfxDir, ScopedFfxCreateError);
     const std::string ScopedFfxFile = (ScopedFfxDir / "amd_fidelityfx_upscaler_vk.dll").string();
@@ -128,6 +129,8 @@ int main()
     FBY_CHECK(ScopedFfx.Upscaling);
     FBY_CHECK(!ScopedFfx.FrameGeneration);
     Fby::Rhi::DeviceInfo ScopedFfxInfo;
+    // The FidelityFX artifact is a Vulkan runtime in this tree.
+    ScopedFfxInfo.backend = Fby::Rhi::Backend::Vulkan;
     ScopedFfxInfo.upscalers.motionVectors = true;
     FBY_CHECK(Fby::Rhi::CapabilitiesFromDevice(ScopedFfxInfo, {}, ScopedFfx).Fsr2Vendor);
     Fby::Rhi::FidelityFxRuntimeAvailability ScopedFfxFg;
@@ -176,7 +179,7 @@ int main()
     FBY_CHECK(Fby::Rhi::DlssRenderScale(Fby::Rhi::DlssQualityMode::Quality) > 0.5f);
     FBY_CHECK(Fby::Rhi::DlssRenderScale(Fby::Rhi::DlssQualityMode::UltraPerformance) < 0.5f);
 
-    const Fby::Rhi::DlssRuntimeProbe ScopedDlssProbe = Fby::Rhi::ProbeDlssRuntime("build-audit/fby_dlss_test");
+    const Fby::Rhi::DlssRuntimeProbe ScopedDlssProbe = Fby::Rhi::ProbeDlssRuntime("build/audit/fby_dlss_test");
     FBY_CHECK(ScopedDlssProbe.Present);
     FBY_CHECK(!ScopedDlssProbe.Loadable);
     std::error_code ScopedDlssCleanup;
@@ -338,12 +341,21 @@ int main()
     FBY_CHECK(ScopedClamped.renderScale <= 1.0f);
     FBY_CHECK(ScopedClamped.hudRenderScale <= 1.0f);
 
-    const std::filesystem::path ScopedPath = "build-audit/settings_test.toml";
+    const std::filesystem::path ScopedPath = "build/audit/settings_test.toml";
     std::string ScopedError;
     FBY_CHECK(SaveUserSettings(ScopedPath.string(), ScopedClamped, &ScopedError));
     UserSettings ScopedLoaded;
     FBY_CHECK(LoadUserSettings(ScopedPath.string(), &ScopedLoaded, &ScopedError));
     FBY_CHECK(ScopedLoaded == ScopedClamped);
+    ScopedLoaded.audioBusCount = 1;
+    std::snprintf(ScopedLoaded.audioBuses[0].id, sizeof(ScopedLoaded.audioBuses[0].id), "%s", "voice");
+    ScopedLoaded.audioBuses[0].volumeDb = -12.0f;
+    FBY_CHECK(SaveUserSettings(ScopedPath.string(), ScopedLoaded, &ScopedError));
+    UserSettings ScopedAudioLoaded;
+    FBY_CHECK(LoadUserSettings(ScopedPath.string(), &ScopedAudioLoaded, &ScopedError));
+    FBY_CHECK(ScopedAudioLoaded.audioBusCount == 1);
+    FBY_CHECK(std::string(ScopedAudioLoaded.audioBuses[0].id) == "voice");
+    FBY_CHECK(ScopedAudioLoaded.audioBuses[0].volumeDb == -12.0f);
     std::error_code ScopedRemoveError;
     std::filesystem::remove(ScopedPath, ScopedRemoveError);
 

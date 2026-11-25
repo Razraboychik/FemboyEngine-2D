@@ -84,6 +84,10 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<BoneAttachment2D>(false);
     InRegistry.Register<DrawOrder>();
     InRegistry.Register<Camera2D>();
+    InRegistry.Register<PixelPerfectCamera>();
+    InRegistry.Register<Parallax2D>();
+    InRegistry.Register<SurfaceNormal2D>();
+    InRegistry.Register<NormalMap2D>();
     InRegistry.Register<Lifetime>();
     InRegistry.Register<Light2DComponent>();
     InRegistry.Register<Light2DTargetComponent>();
@@ -137,6 +141,7 @@ void RegisterBuiltInComponents(ComponentRegistry& InRegistry)
     InRegistry.Register<Collider2D>(false);
     // Gameplay runtime state is simulation data, not scene authoring data: it
     // travels in snapshots and is registered for the inspector but not TOML.
+    InRegistry.Register<Projectile2D>(false);
     InRegistry.Register<GameplayTagsComponent>(false);
     InRegistry.Register<GameplayAttributesComponent>(false);
     InRegistry.Register<GameplayEffectsComponent>(false);

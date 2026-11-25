@@ -5,6 +5,7 @@
 #include "stb_truetype.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -182,7 +183,16 @@ void AppendRangeNamed(std::vector<std::uint32_t>& OutCodepoints, std::string_vie
             {
                 return false;
             }
-            OutOptions.sizePixels = std::clamp(std::stof(ScopedValue), 6.0f, 256.0f);
+            float ScopedSize = 0.0f;
+            const auto ScopedSizeResult =
+                std::from_chars(ScopedValue.data(), ScopedValue.data() + ScopedValue.size(), ScopedSize);
+            if (ScopedSizeResult.ec != std::errc{} ||
+                ScopedSizeResult.ptr != ScopedValue.data() + ScopedValue.size() || !std::isfinite(ScopedSize))
+            {
+                std::fprintf(stderr, "fby_fontc: --size must be a finite number\n");
+                return false;
+            }
+            OutOptions.sizePixels = std::clamp(ScopedSize, 6.0f, 256.0f);
         }
         else if (ScopedArgument == "--font-id")
         {
@@ -191,7 +201,16 @@ void AppendRangeNamed(std::vector<std::uint32_t>& OutCodepoints, std::string_vie
             {
                 return false;
             }
-            OutOptions.fontId = static_cast<std::uint32_t>(std::stoul(ScopedValue));
+            std::uint32_t ScopedFontId = 0;
+            const auto ScopedFontResult =
+                std::from_chars(ScopedValue.data(), ScopedValue.data() + ScopedValue.size(), ScopedFontId);
+            if (ScopedFontResult.ec != std::errc{} ||
+                ScopedFontResult.ptr != ScopedValue.data() + ScopedValue.size())
+            {
+                std::fprintf(stderr, "fby_fontc: --font-id must be an unsigned integer\n");
+                return false;
+            }
+            OutOptions.fontId = ScopedFontId;
         }
         else if (ScopedArgument == "--style")
         {
@@ -249,8 +268,12 @@ void AppendRangeNamed(std::vector<std::uint32_t>& OutCodepoints, std::string_vie
             {
                 return false;
             }
-            const int ScopedOversample = std::atoi(ScopedValue.c_str());
-            if (ScopedOversample < 1 || ScopedOversample > 4)
+            std::uint32_t ScopedOversample = 0;
+            const auto ScopedOversampleResult =
+                std::from_chars(ScopedValue.data(), ScopedValue.data() + ScopedValue.size(), ScopedOversample);
+            if (ScopedOversampleResult.ec != std::errc{} ||
+                ScopedOversampleResult.ptr != ScopedValue.data() + ScopedValue.size() ||
+                ScopedOversample < 1 || ScopedOversample > 4)
             {
                 std::fprintf(stderr, "fby_fontc: --oversample must be 1..4\n");
                 return false;

@@ -40,6 +40,13 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(FBY_OUTPUT_DIR "${CMAKE_BINARY_DIR}/bin")
 set(FBY_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+# Plain-text license notices travel with every build; no code embedding needed.
+add_custom_target(fby_licenses ALL
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/Licenses" "${FBY_OUTPUT_DIR}/Licenses"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/Legal" "${FBY_OUTPUT_DIR}/Legal"
+    COMMENT "Copying asset licenses and project legal documents")
 # Absolute engine repository root. Nested generated projects set CMAKE_SOURCE_DIR
 set(FBY_ENGINE_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" CACHE INTERNAL "FemboyEngine2D repository root")
 

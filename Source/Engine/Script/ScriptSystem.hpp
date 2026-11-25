@@ -43,7 +43,28 @@ public:
     // Releases a cooked program slot so the editor can hot-reload a script
     [[nodiscard]] bool UnloadProgram(std::uint32_t InHandle) noexcept;
 
+    // Optional debugger session. When set, the script system evaluates game
+    // scripts through RunDebug and stops the frame on a pause.
+    void SetDebugState(Script::VmDebugState* InDebug) noexcept
+    {
+        MDebugState = InDebug;
+    }
+    [[nodiscard]] Script::VmDebugState* DebugState() noexcept
+    {
+        return MDebugState;
+    }
+    [[nodiscard]] const Script::VmDebugState* DebugState() const noexcept
+    {
+        return MDebugState;
+    }
+
+    // Transactional hot reload: loads the replacement first, then releases the
+    // old slot. On failure the old handle and program stay live.
+    [[nodiscard]] bool ReloadProgram(std::uint32_t* InHandle, std::span<const std::byte> InCooked,
+                                     std::string* InError = nullptr);
+
     [[nodiscard]] const Script::BoundProgram* Program(std::uint32_t InHandle) const noexcept;
+    [[nodiscard]] std::span<const std::byte> ProgramBytes(std::uint32_t InHandle) const noexcept;
     // Stable hash of the cooked bytes for a loaded program (0 for a bad handle).
     // It is the key a cooked build uses to find the program's AOT module.
     [[nodiscard]] std::uint64_t ProgramHash(std::uint32_t InHandle) const noexcept;
@@ -172,6 +193,7 @@ public:
 private:
     struct Slot
     {
+        std::vector<std::byte> owned{};
         std::span<const std::byte> storage{};
         Script::BoundProgram bound{};
         // Stable identity of the cooked bytes: the AOT manifest is keyed by the
@@ -191,6 +213,7 @@ private:
     std::uint32_t MProgramCount = 0;
     std::uint64_t MAotRunCount = 0;
     std::uint64_t MUnnativizedSkipCount = 0;
+    Script::VmDebugState* MDebugState = nullptr;
     std::array<bool, kScriptMaxPrograms> MFaultReported{};
     struct ActiveScript
     {

@@ -62,7 +62,8 @@ void DocumentsPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     if (MDocuments.GetInfo(MHandle, &ScopedInfo))
     {
         ImGui::Separator();
-        ImGui::Text("%.*s", static_cast<int>(std::strlen(ScopedInfo.Title.data())), ScopedInfo.Title.data());
+        const auto ScopedTitleEnd = std::find(ScopedInfo.Title.begin(), ScopedInfo.Title.end(), '\0');
+        ImGui::Text("%.*s", static_cast<int>(ScopedTitleEnd - ScopedInfo.Title.begin()), ScopedInfo.Title.data());
         ImGui::TextDisabled("%u page(s), %u line(s), %llu byte(s)", ScopedInfo.PageCount, ScopedInfo.LineCount,
                             static_cast<unsigned long long>(ScopedInfo.ByteSize));
     }
@@ -117,6 +118,7 @@ void DocumentsPanel::OpenDocument(Ecs::SystemContext& InContext)
                   std::to_string(static_cast<unsigned>(ScopedError)) + ").";
         return;
     }
+    CloseDocument();
     MHandle = ScopedHandle;
     MPage = 0;
     MPageCount = MDocuments.PageCount(MHandle);

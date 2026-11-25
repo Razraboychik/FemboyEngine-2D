@@ -20,13 +20,9 @@ void SwitchLightToDynamic(Ecs::Registry& InRegistry, Entity InEntity, bool InFro
     {
         (void)WakeLightSource(*ScopedUnified, InFromContact);
     }
-    auto* ScopedLegacy = InRegistry.try_get<Light2DComponent>(InEntity);
-    if (ScopedLegacy != nullptr)
-    {
-        // The legacy component has no static cache, so waking only has to keep
-        // the enabled flag intact; nothing else changes.
-        ScopedLegacy->Flags |= kLight2DFlagEnabled;
-    }
+    // The legacy component has no static classification to clear. Do not
+    // touch its Enabled flag: waking an authored-disabled light must not turn
+    // it back on.
 }
 }
 
@@ -56,6 +52,17 @@ void WakeSleepingStatic(Ecs::Registry& InRegistry, Entity InEntity, std::uint32_
     ScopedStatic->LastWakeReason = InReason;
     ++ScopedStatic->WakeCount;
 
+    if (auto* ScopedPolicy = InRegistry.try_get<CollisionPolicyComponent>(InEntity))
+    {
+        if (ScopedPolicy->GetMode() == CollisionMode::SimpleStatic)
+        {
+            ScopedPolicy->SetMode(CollisionMode::SimpleDynamic);
+        }
+        else if (ScopedPolicy->GetMode() == CollisionMode::ComplexStatic)
+        {
+            ScopedPolicy->SetMode(CollisionMode::ComplexDynamic);
+        }
+    }
     auto* ScopedBody = InRegistry.try_get<RigidBody2D>(InEntity);
     if (ScopedBody != nullptr)
     {

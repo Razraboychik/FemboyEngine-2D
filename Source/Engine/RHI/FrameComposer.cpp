@@ -1,5 +1,6 @@
 // FemboyEngine2D - frame packet composition implementation.
 #include "Engine/RHI/FrameComposer.hpp"
+#include "Engine/Core/OutputPolicy.hpp"
 #include "Engine/Physics/SdfGi.hpp"
 
 #include "Engine/ECS/Components.hpp"
@@ -52,6 +53,22 @@ namespace
 [[nodiscard]] std::uint32_t PipelineForBucket(std::span<const std::uint32_t> InPipelines,
                                               std::uint32_t InBucket) noexcept
 {
+    if (InBucket == kSdfTextMaterialBucket)
+    {
+        return SpriteVariantPipeline(SpriteVariant::SdfText);
+    }
+    if (InBucket == kSdfOutlineMaterialBucket)
+    {
+        return SpriteVariantPipeline(SpriteVariant::SdfOutline);
+    }
+    if (InBucket == kSdfGlowMaterialBucket)
+    {
+        return SpriteVariantPipeline(SpriteVariant::SdfGlow);
+    }
+    if (InBucket == kNormalMaterialBucket)
+    {
+        return SpriteVariantPipeline(SpriteVariant::Normal);
+    }
     if (InBucket == 0u || InBucket >= InPipelines.size())
     {
         return 0u;
@@ -77,22 +94,86 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     }
     assert(MBuildThread == ScopedBuildThread && "FrameComposer must be built from one thread");
 #endif
+    if (!Output::Policy::Instance().RenderWorldEnabled())
+    {
+        MCount = 0;
+        MBatches.clear();
+        MLastCullComplete = true;
+        return;
+    }
+
     if (MSceneId == 0)
     {
         MSceneId = NextSceneId();
     }
     MStats = FrameComposerStats{};
+    const bool ScopedPreviousCullComplete = MLastCullComplete;
     const bool ScopedFastCamera = MHasLastCamera && MLastCamera.center.X == InCamera.center.X &&
                                   MLastCamera.center.Y == InCamera.center.Y &&
                                   MLastCamera.viewport.X == InCamera.viewport.X &&
                                   MLastCamera.viewport.Y == InCamera.viewport.Y && MLastCamera.zoom == InCamera.zoom;
     const bool ScopedFastMode = MViewportPresenter.Mode() == MLastViewportMode;
     const Ecs::Registry& ScopedRegistry = InRegistry;
-    const bool ScopedFastScene = MHasLastFrame && ScopedRegistry.Data().Revision() == MLastSceneRevision &&
-                                 ScopedRegistry.Data().ModificationRevision() == MLastModificationRevision &&
-                                 InTextureArray == MLastTextureArray && ScopedFastCamera && ScopedFastMode &&
-                                 InExtraMeshItems.empty() && InTileQuads.empty() && InSdfCharacterMeshes.empty() &&
-                                 !MTemporalEnabled && MSdfField == nullptr && MSdfGiVolume == nullptr;
+    const float ScopedZoom = std::max(InCamera.zoom, 0.0001f);
+    const Vector2D ScopedViewHalf{InCamera.viewport.X * 0.5f / ScopedZoom,
+                                  InCamera.viewport.Y * 0.5f / ScopedZoom};
+    const Vector2D ScopedViewMin = InCamera.center - ScopedViewHalf;
+    const Vector2D ScopedViewMax = InCamera.center + ScopedViewHalf;
+    const bool ScopedSceneUnchanged = MHasLastFrame &&
+                                      ScopedRegistry.Data().Revision() == MLastSceneRevision &&
+                                      ScopedRegistry.Data().ModificationRevision() == MLastModificationRevision &&
+                                      InTextureArray == MLastTextureArray && ScopedFastMode &&
+                                      InExtraMeshItems.empty() && InTileQuads.empty() &&
+                                      InSdfCharacterMeshes.empty() && !MTemporalEnabled && MSdfField == nullptr &&
+                                      MSdfGiVolume == nullptr;
+    // World-space items do not depend on the camera. A camera-only change can
+    // reuse them when the previous cull kept every sprite; if anything was
+    // culled, newly visible sprites may be missing and the full pass runs.
+    const bool ScopedCameraReusable = ScopedFastCamera || ScopedPreviousCullComplete;
+    if (MCameraReuseAllSprites && ScopedSceneUnchanged && !ScopedFastCamera && MCameraCacheValid &&
+        MMaterialPipelines.empty() && MOitMode == 0u && !MTemporalEnabled)
+    {
+        MCameraFilteredItems.clear();
+        MCameraFilteredKeys.clear();
+        for (std::size_t ScopedI = 0; ScopedI < MCameraCacheItems.size(); ++ScopedI)
+        {
+            const Rhi::RenderItem& ScopedItem = MCameraCacheItems[ScopedI];
+            const float ScopedRadius =
+                0.5f * std::sqrt(ScopedItem.size.X * ScopedItem.size.X + ScopedItem.size.Y * ScopedItem.size.Y);
+            if (ScopedItem.position.X + ScopedRadius < ScopedViewMin.X ||
+                ScopedItem.position.X - ScopedRadius > ScopedViewMax.X ||
+                ScopedItem.position.Y + ScopedRadius < ScopedViewMin.Y ||
+                ScopedItem.position.Y - ScopedRadius > ScopedViewMax.Y)
+            {
+                continue;
+            }
+            MCameraFilteredItems.push_back(ScopedItem);
+            MCameraFilteredKeys.push_back(MCameraCacheKeys[ScopedI]);
+        }
+        MCameraFilteredBatches.clear();
+        if (!MCameraFilteredItems.empty())
+        {
+            MCameraFilteredBatches.push_back(
+                Rhi::DrawBatch{0, static_cast<std::uint32_t>(MCameraFilteredItems.size()), 0, 0});
+        }
+        MPacket = Rhi::FramePacket{};
+        MPacket.camera = InCamera;
+        MPacket.clear = InClear;
+        MPacket.textureArray = InTextureArray;
+        MPacket.items = std::span<const Rhi::RenderItem>(MCameraFilteredItems.data(), MCameraFilteredItems.size());
+        MPacket.keys = std::span<const Rhi::RenderKey>(MCameraFilteredKeys.data(), MCameraFilteredKeys.size());
+        MPacket.batches = std::span<const Rhi::DrawBatch>(MCameraFilteredBatches.data(),
+                                                          MCameraFilteredBatches.size());
+        MPacket.sceneId = MSceneId;
+        MPacket.sceneStatic = false;
+        MLastCamera = InCamera;
+        MLastSceneRevision = ScopedRegistry.Data().Revision();
+        MLastModificationRevision = ScopedRegistry.Data().ModificationRevision();
+        MLastTextureArray = InTextureArray;
+        MHasLastCamera = true;
+        return;
+    }
+    const bool ScopedFastScene = ScopedSceneUnchanged && ScopedCameraReusable;
     if (ScopedFastScene)
     {
         // Nothing the extract reads changed and the camera is identical. Reuse
@@ -105,6 +186,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         MPacket.postFxEnabled = InPostFx.flags != Rhi::PostFxNone;
         MPacket.sceneId = MSceneId;
         MPacket.sceneStatic = true;
+        if (MInstanceDeltasEnabled)
+        {
+            MPacket.instanceRanges = {};
+            MPacket.instanceRangesAreDeltas = true;
+        }
         return;
     }
     MViewportPresenter.SetSdfField(MSdfField);
@@ -125,14 +211,12 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         MViewportPresenter.Prepare(ScopedRegistry);
     }
     const bool ScopedUnlit = Rhi::ViewportModeNeedsUnlit(MViewportPresenter.Mode());
-    const float ScopedZoom = std::max(InCamera.zoom, 0.0001f);
-    const Vector2D ScopedViewHalf{InCamera.viewport.X * 0.5f / ScopedZoom, InCamera.viewport.Y * 0.5f / ScopedZoom};
-    const Vector2D ScopedViewMin = InCamera.center - ScopedViewHalf;
-    const Vector2D ScopedViewMax = InCamera.center + ScopedViewHalf;
     const bool ScopedViewCoversWorld = MHasWorldBounds && ScopedViewMin.X <= MWorldMin.X &&
                                        ScopedViewMin.Y <= MWorldMin.Y && ScopedViewMax.X >= MWorldMax.X &&
                                        ScopedViewMax.Y >= MWorldMax.Y;
-    const bool ScopedCull = !ScopedViewCoversWorld && InCamera.viewport.X > 0.0f && InCamera.viewport.Y > 0.0f;
+    const bool ScopedCull =
+        !MCameraReuseAllSprites && !ScopedViewCoversWorld && InCamera.viewport.X > 0.0f &&
+        InCamera.viewport.Y > 0.0f;
     auto ScopedView = ScopedRegistry.view<Transform2D, Sprite2D, DrawOrder>();
     auto ScopedSkinView = ScopedRegistry.view<SkeletonComponent, SkinComponent, SkinnedSprite>();
     // Most scenes have none of these optional filters. Checking the archetype
@@ -141,6 +225,34 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     const bool ScopedHasHidden = !ScopedRegistry.view<Hidden>().empty();
     const bool ScopedHasLightResult = !ScopedRegistry.view<Light2DResultComponent>().empty();
     const bool ScopedHasOverlay = !ScopedRegistry.view<SpriteOverlay2D>().empty();
+    const bool ScopedHasParallax = !ScopedRegistry.view<Parallax2D>().empty();
+    const bool ScopedHasNormalMap = !ScopedRegistry.view<NormalMap2D>().empty();
+    const auto ScopedNormalFlags = [&ScopedRegistry, ScopedHasNormalMap](Entity InEntity)
+    {
+        if (!ScopedHasNormalMap)
+        {
+            return 0u;
+        }
+        if (const auto* ScopedNormal = ScopedRegistry.try_get<NormalMap2D>(InEntity))
+        {
+            return Rhi::EncodeNormalMap(ScopedNormal->Layer, ScopedNormal->Strength);
+        }
+        return 0u;
+    };
+    const auto ScopedSpritePosition = [&ScopedRegistry, &InCamera, ScopedHasParallax](Entity InEntity,
+                                                                                       const Transform2D& InTransform)
+    {
+        Vector2D ScopedPosition = InTransform.Position;
+        if (ScopedHasParallax)
+        {
+            if (const auto* ScopedParallax = ScopedRegistry.try_get<Parallax2D>(InEntity))
+            {
+                ScopedPosition += InCamera.center *
+                                  Vector2D{1.0f - ScopedParallax->Factor.X, 1.0f - ScopedParallax->Factor.Y};
+            }
+        }
+        return ScopedPosition;
+    };
     // Every sprite may emit a crossfade overlay, so the item arrays reserve two
     // slots per entity before the tile quads.
     const std::size_t ScopedSpriteCount = ScopedView.size_hint();
@@ -326,12 +438,25 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                             static_cast<std::uint32_t>(Rhi::RenderFlags::Premultiplied);
                         const bool ScopedOpaque =
                             ScopedSprite->Color.A() == 255u && (ScopedSprite->Flags & ScopedBlendBits) == 0u;
+                        const std::uint32_t ScopedNormalBits = ScopedNormalFlags(ScopedEntity);
+                        const std::uint32_t ScopedSdfBits =
+                            ScopedSprite->Flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                                   Rhi::kRenderFlagSdfGlow);
                         const std::uint32_t ScopedBucket =
-                            MMaterialPipelines.empty()
-                                ? 0u
-                                : std::min(ScopedOrder->MaterialBucket, Rhi::kMaxMaterialBuckets - 1u);
+                            (ScopedSdfBits & Rhi::kRenderFlagSdfText) != 0u
+                                ? Rhi::kSdfTextMaterialBucket
+                                : ((ScopedSdfBits & Rhi::kRenderFlagSdfOutline) != 0u
+                                       ? Rhi::kSdfOutlineMaterialBucket
+                                       : ((ScopedSdfBits & Rhi::kRenderFlagSdfGlow) != 0u
+                                              ? Rhi::kSdfGlowMaterialBucket
+                                              : (ScopedNormalBits != 0u
+                                                     ? Rhi::kNormalMaterialBucket
+                                                     : (MMaterialPipelines.empty()
+                                                            ? 0u
+                                                            : std::min(ScopedOrder->MaterialBucket,
+                                                                       Rhi::kMaxUserMaterialBucket)))));
                         MItems[ScopedWrite] =
-                            Rhi::RenderItem{ScopedTransform->Position,
+                            Rhi::RenderItem{ScopedSpritePosition(ScopedEntity, *ScopedTransform),
                                             ScopedSprite->Size * ScopedTransform->Scale,
                                             ScopedSprite->UVMin,
                                             ScopedSprite->UVMax,
@@ -339,6 +464,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                                             ScopedColor,
                                             ScopedTransform->Rotation,
                                             Rhi::EncodeDepth(ScopedSprite->Flags, ScopedOrder->Depth, ScopedOpaque)};
+                        MItems[ScopedWrite].flags |= ScopedNormalBits;
                         MKeys[ScopedWrite] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
                                                                         ScopedOrder->Layer, ScopedOrder->Depth);
                         if (MTemporalEnabled)
@@ -401,7 +527,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                             ++ScopedWrite;
                             const float ScopedOverlayDepth = ScopedOrder->Depth + ScopedOverlay->DepthBias;
                             MItems[ScopedWrite] =
-                                Rhi::RenderItem{ScopedTransform->Position,
+                                Rhi::RenderItem{ScopedSpritePosition(ScopedEntity, *ScopedTransform),
                                                 ScopedSprite->Size * ScopedTransform->Scale,
                                                 ScopedOverlay->UVMin,
                                                 ScopedOverlay->UVMax,
@@ -409,6 +535,7 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                                                 ScopedOverlayPacked,
                                                 ScopedTransform->Rotation,
                                                 Rhi::EncodeDepth(ScopedOverlay->Flags, ScopedOverlayDepth, false)};
+                            MItems[ScopedWrite].flags |= ScopedNormalFlags(ScopedEntity);
                             MKeys[ScopedWrite] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
                                                                             ScopedOrder->Layer, ScopedOverlayDepth);
                         }
@@ -472,11 +599,13 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             {
                 ++MStats.OitItems;
             }
+            const std::uint32_t ScopedNormalBits = ScopedNormalFlags(ScopedEntity);
             MItems[ScopedIndex] = Rhi::RenderItem{
-                ScopedTransform.Position, ScopedSprite.Size * ScopedTransform.Scale,
+                ScopedSpritePosition(ScopedEntity, ScopedTransform), ScopedSprite.Size * ScopedTransform.Scale,
                 ScopedSprite.UVMin,       ScopedSprite.UVMax,
                 ScopedSprite.Layer,       ScopedColor,
                 ScopedTransform.Rotation, Rhi::EncodeDepth(ScopedSprite.Flags, ScopedOrder.Depth, ScopedOpaque)};
+            MItems[ScopedIndex].flags |= ScopedNormalBits;
             if (MTemporalEnabled)
             {
                 const std::size_t ScopedHistoryIndex =
@@ -512,7 +641,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                 }
             }
             const std::uint32_t ScopedBucket =
-                MMaterialPipelines.empty() ? 0u : std::min(ScopedOrder.MaterialBucket, Rhi::kMaxMaterialBuckets - 1u);
+                ScopedNormalBits != 0u
+                    ? Rhi::kNormalMaterialBucket
+                    : (MMaterialPipelines.empty()
+                           ? 0u
+                           : std::min(ScopedOrder.MaterialBucket, Rhi::kMaxUserMaterialBucket));
             MKeys[ScopedIndex] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket), ScopedOrder.Layer,
                                                             ScopedOrder.Depth);
             ++ScopedIndex;
@@ -546,10 +679,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
                     }
                     const float ScopedOverlayDepth = ScopedOrder.Depth + ScopedOverlay->DepthBias;
                     MItems[ScopedIndex] = Rhi::RenderItem{
-                        ScopedTransform.Position, ScopedSprite.Size * ScopedTransform.Scale,
+                        ScopedSpritePosition(ScopedEntity, ScopedTransform), ScopedSprite.Size * ScopedTransform.Scale,
                         ScopedOverlay->UVMin,     ScopedOverlay->UVMax,
                         ScopedOverlay->Layer,     ScopedOverlayPacked,
                         ScopedTransform.Rotation, Rhi::EncodeDepth(ScopedOverlay->Flags, ScopedOverlayDepth, false)};
+                    MItems[ScopedIndex].flags |= ScopedNormalFlags(ScopedEntity);
                     MKeys[ScopedIndex] = Rhi::MakeMaterialRenderKey(static_cast<std::uint8_t>(ScopedBucket),
                                                                     ScopedOrder.Layer, ScopedOverlayDepth);
                     ++ScopedIndex;
@@ -636,13 +770,20 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             ScopedTotalVertices += ScopedMesh.Positions.size();
             ScopedTotalIndices += ScopedMesh.Indices.size();
         }
+        // The combined mesh uses uint16 indices; refusing to wrap keeps every
+        // character's index span inside its own vertex range.
+        if (ScopedTotalVertices <= 65535u && ScopedTotalIndices <= 65535u)
+        {
         MSdfCharacterVertices.reserve(ScopedTotalVertices);
         MSdfCharacterIndices.reserve(ScopedTotalIndices);
         std::vector<std::uint32_t> ScopedOffsets;
+        std::vector<std::uint32_t> ScopedIndexOffsets;
         ScopedOffsets.reserve(InSdfCharacterMeshes.size());
+        ScopedIndexOffsets.reserve(InSdfCharacterMeshes.size());
         for (const SdfCharacterMeshData& ScopedMesh : InSdfCharacterMeshes)
         {
             ScopedOffsets.push_back(static_cast<std::uint32_t>(MSdfCharacterVertices.size()));
+            ScopedIndexOffsets.push_back(static_cast<std::uint32_t>(MSdfCharacterIndices.size()));
             const std::uint16_t ScopedBase = static_cast<std::uint16_t>(MSdfCharacterVertices.size());
             for (const Vector2D ScopedPosition : ScopedMesh.Positions)
             {
@@ -667,12 +808,13 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
             ScopedItem.vertices = std::span<const Rhi::MeshVertex>(
                 MSdfCharacterVertices.data() + ScopedOffsets[ScopedMeshIndex2], ScopedMesh.Positions.size());
             ScopedItem.indices = std::span<const std::uint16_t>(
-                MSdfCharacterIndices.data() + ScopedOffsets[ScopedMeshIndex2], ScopedMesh.Indices.size());
+                MSdfCharacterIndices.data() + ScopedIndexOffsets[ScopedMeshIndex2], ScopedMesh.Indices.size());
             ScopedItem.textureArray = InTextureArray;
             ScopedItem.color = Color32::White();
             ScopedItem.model = Mat4::Identity();
             ScopedItem.flags = Rhi::MeshItemUnskinned;
             MMeshItems[ScopedMeshIndex++] = ScopedItem;
+        }
         }
     }
     // Tilemap quads: one item per visible tile, already keyed by the isometric
@@ -750,8 +892,13 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         }
         MLastItems.resize(MCount);
         MLastKeys.resize(MCount);
-        std::memcpy(MLastItems.data(), MItems.data(), static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderItem));
-        std::memcpy(MLastKeys.data(), MKeys.data(), static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderKey));
+        if (MCount > 0)
+        {
+            std::memcpy(MLastItems.data(), MItems.data(),
+                        static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderItem));
+            std::memcpy(MLastKeys.data(), MKeys.data(),
+                        static_cast<std::size_t>(MCount) * sizeof(Rhi::RenderKey));
+        }
     }
 
     MStats.GatherMilliseconds =
@@ -959,6 +1106,11 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
     }
 
     MPacket = Rhi::FramePacket{};
+    MPacket.sdf = MSdfLighting;
+    MPacket.virtualTexture = MVirtualTexture;
+    MPacket.virtualTextureParams = MVirtualTextureParams;
+    MPacket.virtualTextureLayout = MVirtualTextureLayout;
+    MPacket.virtualTextureDebugMode = MVirtualTextureDebugMode;
     MPacket.opaqueFrontToBack = MOpaqueFrontToBack;
     if (MInstanceDeltasEnabled)
     {
@@ -1140,6 +1292,17 @@ void FrameComposer::BuildFramePacket(Ecs::Registry& InRegistry, const Rhi::Camer
         MPacket.gpuCulledBatchCount = 0;
         MPacket.gpuOpaqueMain = false;
     }
+    if (MCameraReuseAllSprites && MMaterialPipelines.empty() && MOitMode == 0u)
+    {
+        MCameraCacheItems.assign(MPacket.items.begin(), MPacket.items.end());
+        MCameraCacheKeys.assign(MPacket.keys.begin(), MPacket.keys.end());
+        MCameraCacheValid = true;
+    }
+    else
+    {
+        MCameraCacheValid = false;
+    }
+    MLastCullComplete = MStats.CulledSprites == 0;
     MHasLastCamera = true;
     MLastCamera = InCamera;
     MLastSceneRevision = ScopedRegistry.Data().Revision();
@@ -1159,6 +1322,10 @@ void FrameComposer::Reserve(std::uint32_t InMaxItems)
     MSorted.reserve(ScopedItems);
     MSortedKeys.reserve(ScopedItems);
     MLastItems.reserve(ScopedItems);
+    MCameraCacheItems.reserve(ScopedItems);
+    MCameraCacheKeys.reserve(ScopedItems);
+    MCameraFilteredItems.reserve(ScopedItems);
+    MCameraFilteredKeys.reserve(ScopedItems);
     MLastKeys.reserve(ScopedItems);
     MOitItems.reserve(ScopedItems);
     MOitKeys.reserve(ScopedItems);

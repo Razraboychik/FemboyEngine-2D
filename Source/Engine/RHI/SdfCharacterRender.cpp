@@ -37,11 +37,16 @@ void SdfCharacterRenderCache::Build(Ecs::Registry& InRegistry, std::uint32_t InR
         }
         const float ScopedWidth = ScopedMax.X - ScopedMin.X;
         const float ScopedHeight = ScopedMax.Y - ScopedMin.Y;
-        if (ScopedWidth <= 0.0f || ScopedHeight <= 0.0f)
+        if (!std::isfinite(ScopedWidth) || !std::isfinite(ScopedHeight) || ScopedWidth <= 0.0f ||
+            ScopedHeight <= 0.0f)
         {
             continue;
         }
         const float ScopedAspect = ScopedWidth / ScopedHeight;
+        if (!std::isfinite(ScopedAspect) || ScopedAspect <= 0.0f)
+        {
+            continue;
+        }
         std::uint32_t ScopedWidthSamples = InResolution;
         std::uint32_t ScopedHeightSamples = InResolution;
         if (ScopedAspect > 1.0f)

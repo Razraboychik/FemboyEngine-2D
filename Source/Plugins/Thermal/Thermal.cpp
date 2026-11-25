@@ -84,9 +84,21 @@ FBY_PLUGIN_ENTRY int fby_plugin_load(FbyHostApi* InHost)
         MakeThermal("Thermal.BlackHot", "Thermal - black hot", 1.2f, 1.2f, ScopedBlackHot),
         MakeThermal("Thermal.Gen1", "Thermal - generation 1", 4.0f, 0.4f, ScopedGen1),
     };
+    std::uint32_t ScopedRejected = 0;
     for (const FbyEffectDesc& ScopedEffect : ScopedEffects)
     {
-        (void)InHost->accessibility->register_effect(InHost->user, &ScopedEffect);
+        if (InHost->accessibility->register_effect(InHost->user, &ScopedEffect) == 0)
+        {
+            ++ScopedRejected;
+            if (InHost->log != nullptr)
+            {
+                InHost->log(InHost->user, FBY_LOG_WARN, "thermal", "effect registration was rejected");
+            }
+        }
+    }
+    if (ScopedRejected == ScopedEffects.size() && InHost->log != nullptr)
+    {
+        InHost->log(InHost->user, FBY_LOG_ERROR, "thermal", "no thermal effect profile could be registered");
     }
     return 0;
 }

@@ -35,13 +35,29 @@ class SdfSmokeField
 public:
     [[nodiscard]] bool Configure(const SdfSmokeDesc& InDesc) noexcept
     {
-        if (InDesc.Width == 0 || InDesc.Height == 0 || InDesc.CellSize.X <= 0.0f || InDesc.CellSize.Y <= 0.0f)
+        if (InDesc.Width == 0 || InDesc.Height == 0 || !std::isfinite(InDesc.CellSize.X) ||
+            !std::isfinite(InDesc.CellSize.Y) || !std::isfinite(InDesc.Origin.X) ||
+            !std::isfinite(InDesc.Origin.Y) || InDesc.CellSize.X <= 0.0f || InDesc.CellSize.Y <= 0.0f)
         {
             return false;
         }
+        constexpr std::uint64_t kMaxCells = 1ull << 22u;
+        if (static_cast<std::uint64_t>(InDesc.Width) * InDesc.Height > kMaxCells)
+        {
+            return false;
+        }
+        try
+        {
+            MDensity.assign(static_cast<std::size_t>(InDesc.Width) * InDesc.Height, 0.0f);
+            MScratch.assign(MDensity.size(), 0.0f);
+        }
+        catch (...)
+        {
+            MDensity.clear();
+            MScratch.clear();
+            return false;
+        }
         MDesc = InDesc;
-        MDensity.assign(static_cast<std::size_t>(InDesc.Width) * InDesc.Height, 0.0f);
-        MScratch.assign(MDensity.size(), 0.0f);
         return true;
     }
 
@@ -52,18 +68,27 @@ public:
 
     [[nodiscard]] bool AddDensityWorld(Vector2D InCenter, float InRadius, float InAmount) noexcept
     {
-        if (MDensity.empty() || InRadius <= 0.0f || InAmount == 0.0f)
+        if (MDensity.empty() || !std::isfinite(InCenter.X) || !std::isfinite(InCenter.Y) ||
+            !std::isfinite(InRadius) || !std::isfinite(InAmount) || InRadius <= 0.0f || InAmount == 0.0f)
         {
             return false;
         }
-        const std::int32_t ScopedMinX = static_cast<std::int32_t>(
-            std::floor((InCenter.X - InRadius - MDesc.Origin.X) / MDesc.CellSize.X));
-        const std::int32_t ScopedMaxX = static_cast<std::int32_t>(
-            std::ceil((InCenter.X + InRadius - MDesc.Origin.X) / MDesc.CellSize.X));
-        const std::int32_t ScopedMinY = static_cast<std::int32_t>(
-            std::floor((InCenter.Y - InRadius - MDesc.Origin.Y) / MDesc.CellSize.Y));
-        const std::int32_t ScopedMaxY = static_cast<std::int32_t>(
-            std::ceil((InCenter.Y + InRadius - MDesc.Origin.Y) / MDesc.CellSize.Y));
+        const auto ScopedCell = [](double InValue, std::uint32_t InLimit)
+        {
+            if (!std::isfinite(InValue))
+            {
+                return 0.0;
+            }
+            return std::clamp(InValue, 0.0, static_cast<double>(InLimit));
+        };
+        const std::int32_t ScopedMinX = static_cast<std::int32_t>(ScopedCell(
+            std::floor((InCenter.X - InRadius - MDesc.Origin.X) / MDesc.CellSize.X), MDesc.Width - 1u));
+        const std::int32_t ScopedMaxX = static_cast<std::int32_t>(ScopedCell(
+            std::ceil((InCenter.X + InRadius - MDesc.Origin.X) / MDesc.CellSize.X), MDesc.Width - 1u));
+        const std::int32_t ScopedMinY = static_cast<std::int32_t>(ScopedCell(
+            std::floor((InCenter.Y - InRadius - MDesc.Origin.Y) / MDesc.CellSize.Y), MDesc.Height - 1u));
+        const std::int32_t ScopedMaxY = static_cast<std::int32_t>(ScopedCell(
+            std::ceil((InCenter.Y + InRadius - MDesc.Origin.Y) / MDesc.CellSize.Y), MDesc.Height - 1u));
         for (std::int32_t ScopedY = std::max(ScopedMinY, 0); ScopedY <= ScopedMaxY &&
                                                                  ScopedY < static_cast<std::int32_t>(MDesc.Height);
              ++ScopedY)
@@ -102,8 +127,8 @@ public:
         }
         const float ScopedX = (InWorld.X - MDesc.Origin.X) / MDesc.CellSize.X - 0.5f;
         const float ScopedY = (InWorld.Y - MDesc.Origin.Y) / MDesc.CellSize.Y - 0.5f;
-        if (ScopedX < 0.0f || ScopedY < 0.0f || ScopedX >= static_cast<float>(MDesc.Width) - 1.0f ||
-            ScopedY >= static_cast<float>(MDesc.Height) - 1.0f)
+        if (!(ScopedX >= 0.0f && ScopedY >= 0.0f && ScopedX < static_cast<float>(MDesc.Width) - 1.0f &&
+              ScopedY < static_cast<float>(MDesc.Height) - 1.0f))
         {
             return 0.0f;
         }
@@ -124,13 +149,13 @@ public:
 
     void Step(float InDt) noexcept
     {
-        if (MDensity.empty() || InDt <= 0.0f)
+        if (MDensity.empty() || !(InDt > 0.0f) || !std::isfinite(InDt))
         {
             return;
         }
         const float ScopedCellX = MDesc.CellSize.X;
         const float ScopedCellY = MDesc.CellSize.Y;
-        const float ScopedRetain = std::clamp(MDesc.Dissipation, 0.0f, 1.0f);
+        const float ScopedRetain = std::pow(std::clamp(MDesc.Dissipation, 0.0f, 1.0f), InDt);
         // Semi-Lagrangian backtrace, deterministic and allocation free.
         for (std::uint32_t ScopedY = 0; ScopedY < MDesc.Height; ++ScopedY)
         {
@@ -181,7 +206,7 @@ public:
             for (std::uint32_t ScopedX = 0; ScopedX < InBake.Width(); ++ScopedX)
             {
                 SdfGiBakedProbe* ScopedProbe = InBake.ProbeMutable(ScopedX, ScopedY);
-                if (ScopedProbe == nullptr || ScopedProbe->SunVisibility <= 0.0f)
+                if (ScopedProbe == nullptr)
                 {
                     continue;
                 }

@@ -10,9 +10,16 @@ namespace
 {
 constexpr float kTwoPi = 6.28318530717958647692f;
 
+[[nodiscard]] float SafeClamp(float InValue, float InMinimum, float InMaximum) noexcept
+{
+    // Settings arrive from TOML/user data; a NaN would poison every downstream
+    // filter coefficient instead of being clamped into range.
+    return std::isfinite(InValue) ? std::clamp(InValue, InMinimum, InMaximum) : InMinimum;
+}
+
 [[nodiscard]] float Clamp01(float InValue) noexcept
 {
-    return std::clamp(InValue, 0.0f, 1.0f);
+    return SafeClamp(InValue, 0.0f, 1.0f);
 }
 
 [[nodiscard]] float DbToLinear(float InDb) noexcept
@@ -68,7 +75,7 @@ constexpr float kTwoPi = 6.28318530717958647692f;
 
 void VoiceMuteSettings::Clamp() noexcept
 {
-    FadeSeconds = std::clamp(FadeSeconds, 0.0f, 2.0f);
+    FadeSeconds = SafeClamp(FadeSeconds, 0.0f, 2.0f);
 }
 
 const char* VoiceMuteSettings::Issue() const noexcept
@@ -80,17 +87,17 @@ const char* VoiceMuteSettings::Issue() const noexcept
 
 void VoiceMuffleSettings::Clamp() noexcept
 {
-    LowCutHz = std::clamp(LowCutHz, 20.0f, 1000.0f);
-    HighCutHz = std::clamp(HighCutHz, 100.0f, 12000.0f);
+    LowCutHz = SafeClamp(LowCutHz, 20.0f, 1000.0f);
+    HighCutHz = SafeClamp(HighCutHz, 100.0f, 12000.0f);
     if (LowCutHz >= HighCutHz)
     {
         LowCutHz = HighCutHz * 0.5f;
     }
-    Resonance = std::clamp(Resonance, 0.1f, 8.0f);
-    DriveDb = std::clamp(DriveDb, 0.0f, 36.0f);
-    WobbleHz = std::clamp(WobbleHz, 0.1f, 12.0f);
-    WobbleDepth = std::clamp(WobbleDepth, 0.0f, 1.0f);
-    BreathLevel = std::clamp(BreathLevel, 0.0f, 1.0f);
+    Resonance = SafeClamp(Resonance, 0.1f, 8.0f);
+    DriveDb = SafeClamp(DriveDb, 0.0f, 36.0f);
+    WobbleHz = SafeClamp(WobbleHz, 0.1f, 12.0f);
+    WobbleDepth = SafeClamp(WobbleDepth, 0.0f, 1.0f);
+    BreathLevel = SafeClamp(BreathLevel, 0.0f, 1.0f);
 }
 
 const char* VoiceMuffleSettings::Issue() const noexcept
@@ -102,15 +109,15 @@ const char* VoiceMuffleSettings::Issue() const noexcept
 
 void VoiceUnderwaterSettings::Clamp() noexcept
 {
-    LowCutHz = std::clamp(LowCutHz, 20.0f, 1000.0f);
-    HighCutHz = std::clamp(HighCutHz, 100.0f, 8000.0f);
+    LowCutHz = SafeClamp(LowCutHz, 20.0f, 1000.0f);
+    HighCutHz = SafeClamp(HighCutHz, 100.0f, 8000.0f);
     if (LowCutHz >= HighCutHz)
     {
         LowCutHz = HighCutHz * 0.5f;
     }
-    Resonance = std::clamp(Resonance, 0.1f, 8.0f);
-    WowHz = std::clamp(WowHz, 0.05f, 8.0f);
-    WowDepth = std::clamp(WowDepth, 0.0f, 1.0f);
+    Resonance = SafeClamp(Resonance, 0.1f, 8.0f);
+    WowHz = SafeClamp(WowHz, 0.05f, 8.0f);
+    WowDepth = SafeClamp(WowDepth, 0.0f, 1.0f);
 }
 
 const char* VoiceUnderwaterSettings::Issue() const noexcept
@@ -122,16 +129,16 @@ const char* VoiceUnderwaterSettings::Issue() const noexcept
 
 void VoiceRadioSettings::Clamp() noexcept
 {
-    LowCutHz = std::clamp(LowCutHz, 50.0f, 3000.0f);
-    HighCutHz = std::clamp(HighCutHz, 500.0f, 12000.0f);
+    LowCutHz = SafeClamp(LowCutHz, 50.0f, 3000.0f);
+    HighCutHz = SafeClamp(HighCutHz, 500.0f, 12000.0f);
     if (LowCutHz >= HighCutHz)
     {
         LowCutHz = HighCutHz * 0.5f;
     }
-    StaticLevel = std::clamp(StaticLevel, 0.0f, 1.0f);
-    CrackleRate = std::clamp(CrackleRate, 0.0f, 40.0f);
-    Squelch = std::clamp(Squelch, 0.0f, 1.0f);
-    DriveDb = std::clamp(DriveDb, 0.0f, 36.0f);
+    StaticLevel = SafeClamp(StaticLevel, 0.0f, 1.0f);
+    CrackleRate = SafeClamp(CrackleRate, 0.0f, 40.0f);
+    Squelch = SafeClamp(Squelch, 0.0f, 1.0f);
+    DriveDb = SafeClamp(DriveDb, 0.0f, 36.0f);
 }
 
 const char* VoiceRadioSettings::Issue() const noexcept
@@ -143,8 +150,8 @@ const char* VoiceRadioSettings::Issue() const noexcept
 
 void VoicePitchSettings::Clamp() noexcept
 {
-    Semitones = std::clamp(Semitones, -24.0f, 24.0f);
-    WindowMs = std::clamp(WindowMs, 8.0f, 21.0f);
+    Semitones = SafeClamp(Semitones, -24.0f, 24.0f);
+    WindowMs = SafeClamp(WindowMs, 8.0f, 21.0f);
 }
 
 const char* VoicePitchSettings::Issue() const noexcept
@@ -156,8 +163,8 @@ const char* VoicePitchSettings::Issue() const noexcept
 
 void VoiceFormantSettings::Clamp() noexcept
 {
-    Semitones = std::clamp(Semitones, -24.0f, 24.0f);
-    StrengthDb = std::clamp(StrengthDb, 0.0f, 24.0f);
+    Semitones = SafeClamp(Semitones, -24.0f, 24.0f);
+    StrengthDb = SafeClamp(StrengthDb, 0.0f, 24.0f);
 }
 
 const char* VoiceFormantSettings::Issue() const noexcept
@@ -169,14 +176,14 @@ const char* VoiceFormantSettings::Issue() const noexcept
 
 void VoiceDistortionSettings::Clamp() noexcept
 {
-    DriveDb = std::clamp(DriveDb, 0.0f, 48.0f);
-    LowCutHz = std::clamp(LowCutHz, 20.0f, 2000.0f);
-    HighCutHz = std::clamp(HighCutHz, 500.0f, 16000.0f);
+    DriveDb = SafeClamp(DriveDb, 0.0f, 48.0f);
+    LowCutHz = SafeClamp(LowCutHz, 20.0f, 2000.0f);
+    HighCutHz = SafeClamp(HighCutHz, 500.0f, 16000.0f);
     if (LowCutHz >= HighCutHz)
     {
         LowCutHz = HighCutHz * 0.5f;
     }
-    BitDepth = std::clamp(BitDepth, 2.0f, 16.0f);
+    BitDepth = SafeClamp(BitDepth, 2.0f, 16.0f);
 }
 
 const char* VoiceDistortionSettings::Issue() const noexcept
@@ -188,8 +195,8 @@ const char* VoiceDistortionSettings::Issue() const noexcept
 
 void VoiceRingModulationSettings::Clamp() noexcept
 {
-    FrequencyHz = std::clamp(FrequencyHz, 1.0f, 500.0f);
-    Depth = std::clamp(Depth, 0.0f, 1.0f);
+    FrequencyHz = SafeClamp(FrequencyHz, 1.0f, 500.0f);
+    Depth = SafeClamp(Depth, 0.0f, 1.0f);
 }
 
 const char* VoiceRingModulationSettings::Issue() const noexcept
@@ -201,9 +208,9 @@ const char* VoiceRingModulationSettings::Issue() const noexcept
 
 void VoiceWhisperSettings::Clamp() noexcept
 {
-    NoiseLevel = std::clamp(NoiseLevel, 0.0f, 1.0f);
-    LowCutHz = std::clamp(LowCutHz, 100.0f, 6000.0f);
-    HighCutHz = std::clamp(HighCutHz, 1000.0f, 16000.0f);
+    NoiseLevel = SafeClamp(NoiseLevel, 0.0f, 1.0f);
+    LowCutHz = SafeClamp(LowCutHz, 100.0f, 6000.0f);
+    HighCutHz = SafeClamp(HighCutHz, 1000.0f, 16000.0f);
     if (LowCutHz >= HighCutHz)
     {
         LowCutHz = HighCutHz * 0.5f;
@@ -284,20 +291,20 @@ const char* VoiceEffectChainSettings::Issue() const noexcept
 
 void VoiceConditionSettings::Clamp() noexcept
 {
-    UnderwaterFadeSeconds = std::clamp(UnderwaterFadeSeconds, 0.0f, 2.0f);
-    UnderwaterLowCutHz = std::clamp(UnderwaterLowCutHz, 20.0f, 1000.0f);
-    UnderwaterHighCutHz = std::clamp(UnderwaterHighCutHz, 100.0f, 8000.0f);
+    UnderwaterFadeSeconds = SafeClamp(UnderwaterFadeSeconds, 0.0f, 2.0f);
+    UnderwaterLowCutHz = SafeClamp(UnderwaterLowCutHz, 20.0f, 1000.0f);
+    UnderwaterHighCutHz = SafeClamp(UnderwaterHighCutHz, 100.0f, 8000.0f);
     if (UnderwaterLowCutHz >= UnderwaterHighCutHz)
     {
         UnderwaterLowCutHz = UnderwaterHighCutHz * 0.5f;
     }
-    UnderwaterResonance = std::clamp(UnderwaterResonance, 0.1f, 8.0f);
-    UnderwaterWowHz = std::clamp(UnderwaterWowHz, 0.05f, 8.0f);
-    UnderwaterWowDepth = std::clamp(UnderwaterWowDepth, 0.0f, 1.0f);
-    InterferenceFadeSeconds = std::clamp(InterferenceFadeSeconds, 0.0f, 2.0f);
-    InterferenceStaticLevel = std::clamp(InterferenceStaticLevel, 0.0f, 1.0f);
-    InterferenceCrackleRate = std::clamp(InterferenceCrackleRate, 0.0f, 60.0f);
-    InterferenceMuteThreshold = std::clamp(InterferenceMuteThreshold, 0.0f, 1.0f);
+    UnderwaterResonance = SafeClamp(UnderwaterResonance, 0.1f, 8.0f);
+    UnderwaterWowHz = SafeClamp(UnderwaterWowHz, 0.05f, 8.0f);
+    UnderwaterWowDepth = SafeClamp(UnderwaterWowDepth, 0.0f, 1.0f);
+    InterferenceFadeSeconds = SafeClamp(InterferenceFadeSeconds, 0.0f, 2.0f);
+    InterferenceStaticLevel = SafeClamp(InterferenceStaticLevel, 0.0f, 1.0f);
+    InterferenceCrackleRate = SafeClamp(InterferenceCrackleRate, 0.0f, 60.0f);
+    InterferenceMuteThreshold = SafeClamp(InterferenceMuteThreshold, 0.0f, 1.0f);
 }
 
 const char* VoiceConditionSettings::Issue() const noexcept
@@ -502,8 +509,8 @@ void VoiceEffectChain::PrepareSlot(std::uint32_t InIndex) noexcept
     };
     auto ScopedSetLowPass = [ScopedSampleRate, ScopedNyquist](BiquadState& InFilter, float InHz, float InQ) noexcept
     {
-        const float ScopedHz = std::clamp(InHz, 20.0f, ScopedNyquist);
-        const float ScopedQ = std::clamp(InQ, 0.1f, 8.0f);
+        const float ScopedHz = SafeClamp(InHz, 20.0f, ScopedNyquist);
+        const float ScopedQ = SafeClamp(InQ, 0.1f, 8.0f);
         const float ScopedW0 = kTwoPi * ScopedHz / ScopedSampleRate;
         const float ScopedCos = std::cos(ScopedW0);
         const float ScopedAlpha = std::sin(ScopedW0) / (2.0f * ScopedQ);
@@ -516,8 +523,8 @@ void VoiceEffectChain::PrepareSlot(std::uint32_t InIndex) noexcept
     };
     auto ScopedSetHighPass = [ScopedSampleRate, ScopedNyquist](BiquadState& InFilter, float InHz, float InQ) noexcept
     {
-        const float ScopedHz = std::clamp(InHz, 20.0f, ScopedNyquist);
-        const float ScopedQ = std::clamp(InQ, 0.1f, 8.0f);
+        const float ScopedHz = SafeClamp(InHz, 20.0f, ScopedNyquist);
+        const float ScopedQ = SafeClamp(InQ, 0.1f, 8.0f);
         const float ScopedW0 = kTwoPi * ScopedHz / ScopedSampleRate;
         const float ScopedCos = std::cos(ScopedW0);
         const float ScopedAlpha = std::sin(ScopedW0) / (2.0f * ScopedQ);
@@ -531,8 +538,8 @@ void VoiceEffectChain::PrepareSlot(std::uint32_t InIndex) noexcept
     auto ScopedSetPeaking =
         [ScopedSampleRate, ScopedNyquist](BiquadState& InFilter, float InHz, float InQ, float InGainDb) noexcept
     {
-        const float ScopedHz = std::clamp(InHz, 20.0f, ScopedNyquist);
-        const float ScopedQ = std::clamp(InQ, 0.1f, 12.0f);
+        const float ScopedHz = SafeClamp(InHz, 20.0f, ScopedNyquist);
+        const float ScopedQ = SafeClamp(InQ, 0.1f, 12.0f);
         const float ScopedW0 = kTwoPi * ScopedHz / ScopedSampleRate;
         const float ScopedCos = std::cos(ScopedW0);
         const float ScopedAlpha = std::sin(ScopedW0) / (2.0f * ScopedQ);
@@ -557,7 +564,7 @@ void VoiceEffectChain::PrepareSlot(std::uint32_t InIndex) noexcept
                                         ? 1.0f
                                         : SmoothingCoefficient(ScopedSlot.Mute.FadeSeconds * 1000.0f, MSampleRate);
     ScopedRuntime.PitchRatio = std::exp2(ScopedSlot.Pitch.Semitones / 12.0f);
-    ScopedRuntime.PitchWindow = std::clamp(ScopedSlot.Pitch.WindowMs * 0.001f * ScopedSampleRate, 64.0f,
+    ScopedRuntime.PitchWindow = SafeClamp(ScopedSlot.Pitch.WindowMs * 0.001f * ScopedSampleRate, 64.0f,
                                            static_cast<float>(kVoiceEffectDelaySamples) * 0.5f - 2.0f);
     ScopedRuntime.WowDelaySamples = 0.012f * ScopedSampleRate;
     ScopedRuntime.WowDepthSamples = ScopedSlot.Underwater.WowDepth * 0.008f * ScopedSampleRate;
@@ -618,7 +625,7 @@ void VoiceEffectChain::PrepareSlot(std::uint32_t InIndex) noexcept
 float VoiceEffectChain::ReadDelay(const SlotRuntime& InRuntime, float InDelaySamples) const noexcept
 {
     const float ScopedCapacity = static_cast<float>(kVoiceEffectDelaySamples);
-    const float ScopedDelay = std::clamp(InDelaySamples, 1.0f, ScopedCapacity - 2.0f);
+    const float ScopedDelay = SafeClamp(InDelaySamples, 1.0f, ScopedCapacity - 2.0f);
     float ScopedRead = static_cast<float>(InRuntime.WriteIndex) - ScopedDelay;
     while (ScopedRead < 0.0f)
     {
@@ -807,7 +814,7 @@ void VoiceEffectChain::ProcessSlot(std::uint32_t InIndex, float* InSamples, std:
                 const float ScopedNoise = NextNoise(ScopedRuntime.Rng);
                 ScopedRuntime.StaticLowPass += (ScopedNoise - ScopedRuntime.StaticLowPass) * 0.18f;
                 const float ScopedNoiseGain =
-                    ScopedSlot.Whisper.NoiseLevel * std::clamp(0.25f + ScopedRuntime.LastEnvelope * 5.0f, 0.0f, 1.0f);
+                    ScopedSlot.Whisper.NoiseLevel * SafeClamp(0.25f + ScopedRuntime.LastEnvelope * 5.0f, 0.0f, 1.0f);
                 ScopedWet = ScopedSample * (1.0f - ScopedNoiseGain) + ScopedRuntime.StaticLowPass * ScopedNoiseGain;
                 break;
             }
@@ -819,7 +826,7 @@ void VoiceEffectChain::ProcessSlot(std::uint32_t InIndex, float* InSamples, std:
         ScopedRuntime.MixCurrent += (ScopedRuntime.MixTarget - ScopedRuntime.MixCurrent) * ScopedRuntime.MixCoefficient;
         const float ScopedMix = EffectiveMix(ScopedRuntime);
         const float ScopedOutput = ScopedDry + (ScopedWet - ScopedDry) * ScopedMix;
-        InSamples[ScopedFrame] = std::clamp(ScopedOutput, -4.0f, 4.0f);
+        InSamples[ScopedFrame] = SafeClamp(ScopedOutput, -4.0f, 4.0f);
         ScopedRuntime.WriteIndex = (ScopedRuntime.WriteIndex + 1u) % kVoiceEffectDelaySamples;
     }
 }
@@ -852,7 +859,7 @@ void VoiceEffectRack::SetConditionState(const VoiceConditionState& InState) noex
 
 void VoiceEffectRack::Advance(float InDeltaSeconds) noexcept
 {
-    const float ScopedDelta = std::clamp(InDeltaSeconds, 0.0f, 0.25f);
+    const float ScopedDelta = SafeClamp(InDeltaSeconds, 0.0f, 0.25f);
     const VoiceConditionSettings& ScopedSettings = MProfile.Conditions;
     MCondition.Submerged = MState.Submerged;
     MCondition.Oxygen01 = MState.Oxygen01;
@@ -1025,7 +1032,7 @@ void VoiceEffectRack::Process(float* InSamples, std::uint32_t InFrameCount) noex
     for (std::uint32_t ScopedFrame = 0; ScopedFrame < InFrameCount; ++ScopedFrame)
     {
         MOutputGain += (MCondition.OutputGain - MOutputGain) * MOutputGainCoefficient;
-        InSamples[ScopedFrame] = std::clamp(InSamples[ScopedFrame] * MOutputGain, -4.0f, 4.0f);
+        InSamples[ScopedFrame] = SafeClamp(InSamples[ScopedFrame] * MOutputGain, -4.0f, 4.0f);
     }
 }
 }

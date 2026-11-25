@@ -15,7 +15,7 @@ namespace Fby::Script
 
 inline constexpr std::uint32_t kMaxLogicNodes = 128;
 inline constexpr std::uint32_t kMaxLogicLinks = 256;
-inline constexpr std::uint32_t kMaxLogicInputs = 4;
+inline constexpr std::uint32_t kMaxLogicInputs = 6;
 inline constexpr std::uint32_t kMaxLogicFields = 64;
 
 // Comparison selector for the Condition node. It is stored in LogicNode::param

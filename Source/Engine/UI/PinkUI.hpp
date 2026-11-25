@@ -86,7 +86,7 @@ struct WidgetHandle
 
 [[nodiscard]] constexpr bool IsHandleSet(WidgetHandle InHandle) noexcept
 {
-    return InHandle.Widget != kNoWidget && InHandle.Generation != 0;
+    return InHandle.Widget >= 0 && InHandle.Widget < kMaxWidgets && InHandle.Generation != 0;
 }
 
 // Sorting range for per-widget z-order. The render key stores
@@ -500,6 +500,7 @@ struct ScrollView
     Vector2D contentBaseMax{};
     float offset = 0.0f;
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InPanel, WidgetHandle InContent,
               WidgetHandle InScrollbar = {});
@@ -524,6 +525,7 @@ struct TabBar
     std::uint32_t tabCount = 0;
     Color32 activeTint = Color32::White();
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InSwitcher);
     bool AddTab(WidgetCanvas& InCanvas, WidgetHandle InButton);
@@ -546,6 +548,7 @@ struct Dropdown
     Color32 activeTint = Color32::White();
     bool open = false;
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InTrigger, WidgetHandle InPopup);
     bool AddItem(WidgetCanvas& InCanvas, WidgetHandle InItem);
@@ -571,6 +574,7 @@ struct ListView
     float rowHeight = 24.0f;
     float offset = 0.0f;
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InViewport, WidgetHandle InContent,
               std::uint32_t InRowCapacity);
@@ -602,6 +606,7 @@ struct TooltipPlacer
     Vector2D offset{12.0f, 8.0f};
     Vector2D tooltipSize{};
     bool bound = false;
+    std::uint32_t generation = 0;
 
     void Bind(WidgetCanvas& InCanvas, WidgetHandle InTooltip, WidgetHandle InTarget);
     void Place(WidgetCanvas& InCanvas);
@@ -771,7 +776,8 @@ struct WidgetCanvas
     [[nodiscard]] Rect RectOf(WidgetHandle InHandle) const noexcept
     {
         EnsureLayout();
-        if (InHandle.Widget < 0 || static_cast<std::uint32_t>(InHandle.Widget) >= widgetCount)
+        if (InHandle.Widget < 0 || static_cast<std::uint32_t>(InHandle.Widget) >= widgetCount ||
+            InHandle.Generation != Generation)
         {
             return {};
         }
@@ -860,6 +866,9 @@ struct WidgetCanvas
 
     // Insertion
     [[nodiscard]] std::int32_t AddWidget(const WidgetDesc& InDesc) noexcept;
+    // Moves a widget under a new parent (kNoWidget = root). Rejects cycles and a
+    // full parent child list.
+    [[nodiscard]] bool ReparentWidget(std::int32_t InWidget, std::int32_t InParent) noexcept;
 
     // Replaces the text range of a label.
     [[nodiscard]] bool SetText(std::int32_t InWidget, std::string_view InText) noexcept;
@@ -915,7 +924,7 @@ struct WidgetCanvas
     {
         if (ValidWidget(InWidget))
         {
-            progresses[InWidget] = InValue < 0.0f ? 0.0f : (InValue > 1.0f ? 1.0f : InValue);
+            progresses[InWidget] = (InValue > 0.0f) ? (InValue < 1.0f ? InValue : 1.0f) : 0.0f;
         }
     }
     void SetBorderWidth(std::int32_t InWidget, float InValue) noexcept
@@ -936,7 +945,7 @@ struct WidgetCanvas
     {
         if (ValidWidget(InWidget))
         {
-            ratios[InWidget] = InValue < 0.0f ? 0.0f : (InValue > 1.0f ? 1.0f : InValue);
+            ratios[InWidget] = (InValue > 0.0f) ? (InValue < 1.0f ? InValue : 1.0f) : 0.0f;
         }
     }
     void SetChecked(std::int32_t InWidget, bool InChecked) noexcept;

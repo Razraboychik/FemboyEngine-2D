@@ -14,6 +14,7 @@
 #include <bitset>
 #include <cassert>
 #include <cstddef>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -321,7 +322,9 @@ public:
         }
         else
         {
-            if (MRecords.size() >= (std::size_t{1} << kEntityIndexBits))
+            // Reserve the all-ones packed pattern (kNullEntity) by never
+            // allocating the highest index.
+            if (MRecords.size() >= ((std::size_t{1} << kEntityIndexBits) - 1u))
             {
                 return kNullEntity;
             }
@@ -329,7 +332,11 @@ public:
             MRecords.push_back(EntityRecord{});
         }
         EntityRecord& ScopedRecord = MRecords[ScopedIndex];
-        ScopedRecord.Generation += 1u;
+        ScopedRecord.Generation = (ScopedRecord.Generation + 1u) & kEntityGenerationMask;
+        if (ScopedRecord.Generation == 0)
+        {
+            ScopedRecord.Generation = 1;
+        }
         const std::uint32_t ScopedEmptyArchetype = GetOrCreateArchetype(Signature{});
         const auto [ScopedChunk, ScopedRow] = AllocateRow(ScopedEmptyArchetype);
         ScopedRecord.Archetype = ScopedEmptyArchetype;
@@ -347,7 +354,8 @@ public:
     {
         ++MRevision;
         assert(MIterationDepth == 0 && "FCS: structural change during iteration; queue it through CommandBuffer");
-        if (!InEntity.IsValid() || InEntity.Index >= (std::uint32_t{1} << kEntityIndexBits))
+        if (!InEntity.IsValid() || InEntity.Index >= kEntityIndexMask ||
+            InEntity.Generation > kEntityGenerationMask)
         {
             return kNullEntity;
         }
@@ -492,7 +500,7 @@ public:
         Signature ScopedMask;
         (ScopedMask.set(Detail::ComponentIdOf<Components>()), ...);
         (Detail::AccessValidation::Write(Detail::ComponentIdOf<Components>()), ...);
-        ++MModificationRevision;
+        MModificationRevision.fetch_add(1, std::memory_order_relaxed);
         for (Archetype& ScopedArchetype : MArchetypes)
         {
             if ((ScopedArchetype.Type & ScopedMask) != ScopedMask)
@@ -564,12 +572,12 @@ public:
     // caches that mirror component values (not just the entity set) compare it.
     [[nodiscard]] std::uint64_t ModificationRevision() const noexcept
     {
-        return MModificationRevision;
+        return MModificationRevision.load(std::memory_order_relaxed);
     }
 
     void MarkRevision() noexcept
     {
-        ++MModificationRevision;
+        MModificationRevision.fetch_add(1, std::memory_order_relaxed);
     }
 
     [[nodiscard]] std::uint32_t& IterationDepthRef() noexcept
@@ -899,13 +907,88 @@ private:
         return reinterpret_cast<Component*>(ScopedBase);
     }
 
+    friend class Registry;
+
+    // Exchanges two complete worlds so a staged load can become the live one.
+    void Swap(World& InOther) noexcept
+    {
+        MRecords.swap(InOther.MRecords);
+        MFreeIndices.swap(InOther.MFreeIndices);
+        MArchetypes.swap(InOther.MArchetypes);
+        const std::size_t ScopedLiveCount = MLiveCount;
+        MLiveCount = InOther.MLiveCount;
+        InOther.MLiveCount = ScopedLiveCount;
+        const std::uint32_t ScopedIterationDepth = MIterationDepth;
+        MIterationDepth = InOther.MIterationDepth;
+        InOther.MIterationDepth = ScopedIterationDepth;
+        const std::uint64_t ScopedRevision = MRevision;
+        MRevision = InOther.MRevision;
+        InOther.MRevision = ScopedRevision;
+        const std::uint64_t ScopedModification =
+            MModificationRevision.exchange(InOther.MModificationRevision.load(std::memory_order_relaxed),
+                                           std::memory_order_relaxed);
+        InOther.MModificationRevision.store(ScopedModification, std::memory_order_relaxed);
+    }
+
+    // Deep copy used by staging: entity ids, free list and component bytes are
+    // preserved so an appended scene keeps the live world's identity space.
+    void CloneFrom(const World& InOther)
+    {
+        MRecords = InOther.MRecords;
+        MFreeIndices = InOther.MFreeIndices;
+        MLiveCount = InOther.MLiveCount;
+        MRevision = InOther.MRevision;
+        MIterationDepth = 0;
+        MModificationRevision.store(InOther.MModificationRevision.load(std::memory_order_relaxed),
+                                    std::memory_order_relaxed);
+        MArchetypes.clear();
+        MArchetypes.reserve(InOther.MArchetypes.size());
+        for (const Archetype& ScopedSource : InOther.MArchetypes)
+        {
+            Archetype ScopedTarget;
+            ScopedTarget.Type = ScopedSource.Type;
+            ScopedTarget.RowBytes = ScopedSource.RowBytes;
+            ScopedTarget.StorageBytes = ScopedSource.StorageBytes;
+            ScopedTarget.Capacity = ScopedSource.Capacity;
+            ScopedTarget.Offsets = ScopedSource.Offsets;
+            ScopedTarget.Sizes = ScopedSource.Sizes;
+            ScopedTarget.Chunks.reserve(ScopedSource.Chunks.size());
+            for (const Chunk& ScopedSourceChunk : ScopedSource.Chunks)
+            {
+                Chunk ScopedTargetChunk;
+                ScopedTargetChunk.Storage.Allocate(ScopedSourceChunk.Storage.Size());
+                for (std::uint32_t ScopedRow = 0; ScopedRow < ScopedSourceChunk.Count; ++ScopedRow)
+                {
+                    for (std::uint32_t ScopedId = 0; ScopedId < kMaxComponents; ++ScopedId)
+                    {
+                        const std::uint32_t ScopedSize = ScopedSource.Sizes[ScopedId];
+                        if (ScopedSize == 0)
+                        {
+                            continue;
+                        }
+                        const std::size_t ScopedOffset = ScopedSource.Offsets[ScopedId] +
+                                                        static_cast<std::size_t>(ScopedRow) * ScopedSize;
+                        std::memcpy(ScopedTargetChunk.Storage.Data() + ScopedOffset,
+                                    ScopedSourceChunk.Storage.Data() + ScopedOffset, ScopedSize);
+                    }
+                }
+                ScopedTargetChunk.Entities.assign(ScopedSourceChunk.Entities.size(), Entity{});
+                std::copy_n(ScopedSourceChunk.Entities.begin(), ScopedSourceChunk.Count,
+                            ScopedTargetChunk.Entities.begin());
+                ScopedTargetChunk.Count = ScopedSourceChunk.Count;
+                ScopedTarget.Chunks.push_back(std::move(ScopedTargetChunk));
+            }
+            MArchetypes.push_back(std::move(ScopedTarget));
+        }
+    }
+
     std::vector<EntityRecord> MRecords;
     std::vector<std::uint32_t> MFreeIndices;
     std::vector<Archetype> MArchetypes;
     std::size_t MLiveCount = 0;
     std::uint32_t MIterationDepth = 0;
     std::uint64_t MRevision = 0;
-    std::uint64_t MModificationRevision = 0;
+    std::atomic<std::uint64_t> MModificationRevision{0};
 };
 
 }

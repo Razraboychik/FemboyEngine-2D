@@ -5,10 +5,10 @@
 **A data-oriented 2D game engine written from scratch in C++23.**
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
-[![C++23](https://img.shields.io/badge/C%2B%2B-26-blue.svg)]()
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)]()
 [![CMake 3.22+](https://img.shields.io/badge/CMake-3.22%2B-064F8C.svg)]()
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![Status: 0.5.0](https://img.shields.io/badge/status-0.5.0-blue.svg)]()
+[![Status: 0.6.0-alpha.1](https://img.shields.io/badge/status-0.6.0--alpha.1-blue.svg)]()
 [![Website](https://img.shields.io/badge/website-FemboyEngine2D-blue.svg)](https://razraboychik.github.io/FemboyEngine-2D/)
 
 FemboyEngine2D is a compact, deterministic, data-oriented engine for 2D games:
@@ -22,7 +22,7 @@ path, no JSON in the shipped runtime and no hidden object graph. Components are
 trivially copyable data; systems are free functions; the frame is a flat
 `RenderItem` array submitted through one RHI packet.
 
-**Status: 0.5.0.** FemboyEngine2D is in the public 0.5 release line. Its
+**Status: 0.6.0-alpha.1.** FemboyEngine2D is in the public 0.6 alpha line. Its
 runtime includes the FemboyScript debugger (source spans, breakpoints, stepping,
 locals and self fields), isometric and tile-based maps with a map editor,
 skeletal IK, retargeting and clip compression (`.fanim`), grid navigation, 2D
@@ -57,7 +57,7 @@ A new project is deliberately empty. `CreateProject()` writes only:
 `Plan/` and `Disdocs/` are authoring-only: they sit outside `assets/`, so
 nothing from them enters `.fempak`, `.femarc` or a player build.
 
-There are no player, enemy, camera or gameplay components in the template. The
+There are no player, enemy, camera or gameplay components in the generated project. The
 generated `GameMain.cpp` contains exactly the system boundary every project
 needs:
 
@@ -84,7 +84,7 @@ ScopedGraph.Add(Fby::Ecs::Phase::FixedUpdate, "my_system", &MySystem, &MyState);
 ```
 
 No `std::function`, no capturing lambda and no per-frame heap allocation is
-required. The template is defined once in
+required. The scaffold is defined once in
 [`Source/Engine/Assets/ProjectScaffold.hpp`](Source/Engine/Assets/ProjectScaffold.hpp)
 and is used by the editor dashboard and `CreateProject()`.
 
@@ -103,8 +103,10 @@ memory model.
 | Effects | Fixed-capacity CPU particle pool, 16 editable presets, 12 white-mask shape slots, deterministic gravity/wind/drag/turbulence/swirl | One span of `RenderItem`s per frame, no allocation, the caller owns the mask atlas and palette |
 | RHI | Persistent frame rings, 48-byte `RenderItem`, 64-bit keys, engine-side `Rhi::FrameComposer`, Vulkan indirect MDI, one compute dispatch for LBS, Metal and null backends, FSR/DLSS-class upscaling and frame generation contracts | One flat packet per frame, explicit frame lifetime, no per-item allocations, bindless-style keys |
 | ECS | FCS chunked registry, trivially copyable components, four-phase schedule, `SystemGraph` with opt-in parallel waves and declared service/component access, Snapshot v5 | Archetype/chunk storage, systems borrow spans instead of owning objects, snapshots are explicit copies; v4 snapshots are rejected |
+| Data | Bounded `StructValue` authoring payloads: stable type ids, schema hashes, field TOML, snapshot codec, optional `StructPayloadComponent` | Inline 64-byte values, 4 values per payload, trivially copyable only; typed ECS components remain the hot path and GameplayTags/Effects/Skills stay the rule owners |
+| Modding | Strict `mod.toml`, dependency/cycle resolver, SHA-256/EdDSA package verification, transactional VFS mounts with priority overrides, native plugin lifecycle, safe `FbyModApi` data ABI, deterministic `ModSetHash` | Data-first mods; no gameplay interfaces, bounded manifests, packages mount atomically and unload in reverse order, native code stays disabled unless trusted |
 | Input | Fixed-capacity `InputSystem` actions/contexts/modifiers/triggers, per-user action state, event ticks/timestamps, SDL3 gamepad hotplug and dead zones; no wheel input | No heap in the input path; bounded events and mapping tables; deterministic per-tick sampling |
-| Gameplay | Project tag database edited in Project Settings, hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown | Data tables and fixed component layouts; effects run through command buffers, not hidden object graphs |
+| Gameplay | Project tag database edited in Project Settings with stable id slots and tombstone removal, hierarchical `GameplayTags`, attribute registry, data-driven instant/duration/periodic effects with stacks, skills with cost/cast/cooldown | Data tables and fixed component layouts; effects run through command buffers, not hidden object graphs |
 | AI | `StateTree` to command buffer to `AIController` to perception, navigation and skills; `ActionId` is data for game-owned ECS systems, tag-driven targets, grid and convex navmesh, raw/LOS/Chaikin/Catmull-Rom paths, deterministic route randomization | Bounded state trees, per-frame repath budget, no background allocation from the AI tick |
 | Physics | Box2D v3 for joints, CCD and general bodies; data-oriented AABB solver for large joint-free worlds; per-level gravity, fields, joints, cloth, shallow water and configurable hitscan/swept/dynamic projectiles | DOD stores bodies in SoA columns and a uniform grid, with per-body time and gravity scale and begin/end touch events; joint/CCD paths route to Box2D; no solver allocation per body |
 | Network | `NetRollbackSession`, 256-tick snapshot ring, input prediction, late-input replay, stable `NetEntityId`, relevance filtering, UDP `NetTransport` with acks, retransmit and MTU fragmentation, versioned `InputPacket`s | Ring-allocated history, bounded queued inputs, explicit rollback copies and no hidden per-packet heap churn |
@@ -240,8 +242,8 @@ SetupScripts/Windows/Setup.bat -WithVendorSdks -AcceptVendorLicenses
 ./SetupScripts/macOS/Setup.command --with-vendor-sdks --accept-vendor-licenses
 ```
 
-Versions are fixed at SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang
-`15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, libunibreak `6.1` and LZMA SDK
+Versions are fixed at SDL3 `release-3.4.20`, Vulkan-Headers `v1.4.366`, glslang
+`15.3.0`, miniaudio `0.11.26`, Box2D `v3.2.0`, libunibreak `6.1` and LZMA SDK
 `25.01`. Vendor
 upscaler SDKs are optional and are not part of the archive; see
 [Frame Generation](Documentation/md/en/FemboyEngineFrameGeneration_EN.md).
@@ -278,6 +280,14 @@ cmake --build --preset windows-release
 ctest --preset windows-release --output-on-failure
 ```
 
+Or use the developer wrapper, which keeps the same layout:
+
+```bat
+Toolsby.ps1 build dev
+Toolsby.ps1 test dev
+Toolsby.ps1 run dev
+```
+
 Linux and macOS use the matching presets; they select Vulkan and Metal
 respectively and build the editor, tools and tests:
 
@@ -297,13 +307,13 @@ The per-platform status, seams and cook flow are tracked in
 Main executables:
 
 ```text
-build/bin/fby_sandbox
-build/bin/fby_editor
-build/bin/fby_server
-build/bin/fby_lobby
-build/bin/tools/fby_fempak
-build/bin/tools/fby_scene_tool
-build/bin/tools/fby_aotc
+build/dev/bin/fby_sandbox
+build/dev/bin/fby_editor
+build/dev/bin/fby_server
+build/dev/bin/fby_lobby
+build/dev/bin/tools/fby_fempak
+build/dev/bin/tools/fby_scene_tool
+build/dev/bin/tools/fby_aotc
 ```
 
 Optional vendor upscalers are opt-in: DLSS and FidelityFX SDKs are not committed.
@@ -313,12 +323,12 @@ custom frame generation do not require either SDK. See
 [Frame Generation](Documentation/md/en/FemboyEngineFrameGeneration_EN.md).
 
 Applications look for `assets` in `FBY_ASSET_DIR`, `cwd/assets` or the
-executable's own directory and up to three parents, so a run from `build/bin`
+executable's own directory and up to four parents, so a run from `build/dev/bin`
 works without copying files. `Saved/` (logs, config, cache) follows the working
 directory; `FBY_STORAGE_DIR` moves it.
 
 The apps resolve `assets` from `FBY_ASSET_DIR`, `cwd/assets`, or the executable's
-parent directories, so an IDE launch from `build/bin` works without copying
+parent directories, so an IDE launch from `build/dev/bin` works without copying
 files. `Saved/` (logs, config, cache) still follows the working directory;
 `FBY_STORAGE_DIR` moves it.
 
@@ -474,7 +484,6 @@ is [the Russian README](READMEs/README_RU.md).
 - [Vehicle wheels](Documentation/design/vehicle-wheels.md)
 - [Input system](Documentation/design/input-system.md)
 - [Physics backends design](Documentation/design/physics-backends.md)
-- [CodeQL audit](Documentation/design/codeql-audit.md)
 - [Time, timers and dates](Documentation/design/time.md)
 - [Accessibility guide](Documentation/design/accessibility-guide.md)
 - [Accessibility contract](Documentation/design/accessibility.md)

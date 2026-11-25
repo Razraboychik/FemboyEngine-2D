@@ -3,6 +3,8 @@
 
 #include "Engine/Core/Profiler.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdio>
 #include <span>
 #include <string>
@@ -37,7 +39,18 @@ namespace Fby::Core
             ScopedResult += "\\t";
             break;
         default:
-            ScopedResult += ScopedCharacter;
+            if (static_cast<unsigned char>(ScopedCharacter) < 0x20 ||
+                static_cast<unsigned char>(ScopedCharacter) == 0x7F)
+            {
+                char ScopedEscape[8] = {};
+                std::snprintf(ScopedEscape, sizeof(ScopedEscape), "\\u%04x",
+                              static_cast<unsigned>(static_cast<unsigned char>(ScopedCharacter)));
+                ScopedResult += ScopedEscape;
+            }
+            else
+            {
+                ScopedResult += ScopedCharacter;
+            }
             break;
         }
     }
@@ -73,7 +86,9 @@ namespace Fby::Core
                                                 InThreadId);
         if (ScopedWritten > 0)
         {
-            ScopedJson.append(ScopedBuffer, static_cast<std::size_t>(ScopedWritten));
+            const std::size_t ScopedLength =
+                std::min<std::size_t>(static_cast<std::size_t>(ScopedWritten), sizeof(ScopedBuffer) - 1u);
+            ScopedJson.append(ScopedBuffer, ScopedLength);
             ScopedFirst = false;
         }
     }

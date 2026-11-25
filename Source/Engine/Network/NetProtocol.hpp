@@ -31,6 +31,15 @@ struct InputPacket
 };
 
 static_assert(sizeof(NetInputFrame) == 24);
+static_assert(offsetof(NetInputFrame, tick) == 0);
+static_assert(offsetof(NetInputFrame, moveX) == 8);
+static_assert(offsetof(NetInputFrame, moveY) == 10);
+static_assert(offsetof(NetInputFrame, aimX) == 12);
+static_assert(offsetof(NetInputFrame, aimY) == 14);
+static_assert(offsetof(NetInputFrame, buttons) == 16);
+static_assert(offsetof(NetInputFrame, sequence) == 20);
+static_assert(offsetof(NetInputFrame, player) == 22);
+static_assert(offsetof(NetInputFrame, reserved) == 23);
 
 // Writes the packet into `OutBuffer`. Returns the byte count, or 0 when the
 // buffer is too small or the packet is invalid.
@@ -59,6 +68,9 @@ public:
     InputChannel() = default;
 
     void Bind(NetTransport* InTransport, const NetAddress& InRemote, NetPlayerId InLocalPlayer) noexcept;
+    // Binds a peer and pins the only remote player id this channel may accept.
+    [[nodiscard]] bool BindPeer(NetTransport* InTransport, const NetAddress& InRemote,
+                                NetPlayerId InLocalPlayer, NetPlayerId InRemotePlayer) noexcept;
     void Unbind() noexcept;
     [[nodiscard]] bool Bound() const noexcept
     {
@@ -90,6 +102,8 @@ private:
     NetTransport* MTransport = nullptr;
     NetAddress MRemote{};
     NetPlayerId MLocalPlayer{};
+    NetPlayerId MRemotePlayer{};
+    bool MHasRemotePlayer = false;
     std::uint32_t MPacketSequence = 0;
     std::uint16_t MFrameSequence = 0;
     InputChannelStats MStats{};

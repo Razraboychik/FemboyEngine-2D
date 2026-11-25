@@ -104,9 +104,26 @@ void BooksPanel::Load()
         MStatus = "Cannot open the book file.";
         return;
     }
-    const std::vector<char> ScopedRaw((std::istreambuf_iterator<char>(ScopedFile)), std::istreambuf_iterator<char>());
-    MBytes.resize(ScopedRaw.size());
-    std::memcpy(MBytes.data(), ScopedRaw.data(), ScopedRaw.size());
+    ScopedFile.seekg(0, std::ios::end);
+    const std::streamoff ScopedSize = ScopedFile.tellg();
+    constexpr std::streamoff kMaxBookBytes = 64 << 20;
+    if (ScopedSize < 0 || ScopedSize > kMaxBookBytes)
+    {
+        MStatus = "The book file is too large or unreadable.";
+        return;
+    }
+    ScopedFile.seekg(0, std::ios::beg);
+    MBytes.resize(static_cast<std::size_t>(ScopedSize));
+    if (!MBytes.empty())
+    {
+        ScopedFile.read(reinterpret_cast<char*>(MBytes.data()), ScopedSize);
+        if (!ScopedFile)
+        {
+            MBytes.clear();
+            MStatus = "Reading the book file failed.";
+            return;
+        }
+    }
     if (MBytes.empty())
     {
         MStatus = "The book file is empty.";

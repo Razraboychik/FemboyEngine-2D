@@ -48,8 +48,8 @@ bool DirectionalAnimationPlayer::SetClipFromBytes(std::uint32_t InClipId, std::s
 bool DirectionalAnimationPlayer::LoadClip(VirtualFileSystem& InVfs, std::uint32_t InClipId, std::string_view InPath,
                                           std::string* OutError)
 {
-    const auto ScopedBytes = InVfs.Read(InPath);
-    if (!ScopedBytes)
+    const auto ScopedPinned = InVfs.Pin(InPath);
+    if (!ScopedPinned)
     {
         if (OutError != nullptr)
         {
@@ -57,7 +57,7 @@ bool DirectionalAnimationPlayer::LoadClip(VirtualFileSystem& InVfs, std::uint32_
         }
         return false;
     }
-    return SetClipFromBytes(InClipId, *ScopedBytes, OutError);
+    return SetClipFromBytes(InClipId, ScopedPinned->bytes, OutError);
 }
 
 bool DirectionalAnimationPlayer::SetBlendTable(const DirectionalBlendTable& InTable) noexcept

@@ -111,7 +111,9 @@ struct HierarchyScratch
 
 bool UpdateHierarchy(Registry& InRegistry) noexcept
 {
-    HierarchyScratch& ScopedScratch = InRegistry.ctx().emplace<HierarchyScratch>();
+    try
+    {
+        HierarchyScratch& ScopedScratch = InRegistry.ctx().emplace<HierarchyScratch>();
     ScopedScratch.Entries.clear();
     bool ScopedOk = true;
     // Collect first: adding Transform2D moves the entity to another archetype,
@@ -137,7 +139,12 @@ bool UpdateHierarchy(Registry& InRegistry) noexcept
         }
         *ScopedTarget = *ScopedWorld;
     }
-    return ScopedOk;
+        return ScopedOk;
+    }
+    catch (...)
+    {
+        return false;
+    }
 }
 
 bool SetParent(Registry& InRegistry, Entity InChild, Entity InParent) noexcept
@@ -154,6 +161,10 @@ bool SetParent(Registry& InRegistry, Entity InChild, Entity InParent) noexcept
         {
             return false;
         }
+        if (!InRegistry.valid(ScopedCursor))
+        {
+            return false;
+        }
         const Parent2D* ScopedParent = InRegistry.try_get<Parent2D>(ScopedCursor);
         ScopedCursor = ScopedParent != nullptr ? ScopedParent->Parent : Fby::kNullEntity;
     }
@@ -163,15 +174,10 @@ bool SetParent(Registry& InRegistry, Entity InChild, Entity InParent) noexcept
                                         : Transform2D{};
     if (InParent == Fby::kNullEntity)
     {
-        LocalTransform2D* ScopedLocal = InRegistry.try_get<LocalTransform2D>(InChild);
-        if (ScopedLocal == nullptr)
-        {
-            ScopedLocal = &InRegistry.emplace<LocalTransform2D>(InChild);
-        }
-        *ScopedLocal = LocalTransform2D{ScopedWorld.Position, ScopedWorld.Scale, ScopedWorld.Rotation};
+        // Detach without creating a LocalTransform2D: an entity authored as a
+        // plain Transform2D must not become hierarchy-driven just by detaching.
         (void)InRegistry.remove<Parent2D>(InChild);
-        (void)UpdateHierarchy(InRegistry);
-        return true;
+        return UpdateHierarchy(InRegistry);
     }
     const Transform2D ScopedParentWorld = InRegistry.try_get<Transform2D>(InParent) != nullptr
                                               ? InRegistry.get<Transform2D>(InParent)
@@ -198,7 +204,6 @@ bool SetParent(Registry& InRegistry, Entity InChild, Entity InParent) noexcept
         ScopedParent = &InRegistry.emplace<Parent2D>(InChild);
     }
     ScopedParent->Parent = InParent;
-    (void)UpdateHierarchy(InRegistry);
-    return true;
+    return UpdateHierarchy(InRegistry);
 }
 }

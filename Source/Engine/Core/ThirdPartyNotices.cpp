@@ -7,7 +7,7 @@ namespace Fby::Notices
 namespace
 {
 constexpr NoticeEntry kEntries[] = {
-    {R"FBYNOTICE(SDL3)FBYNOTICE", R"FBYNOTICE(release-3.4.18)FBYNOTICE", R"FBYNOTICE(Zlib)FBYNOTICE", R"FBYNOTICE(Window, input, platform layer and Vulkan surface)FBYNOTICE", R"FBYNOTICE(Copyright (c) 1997-2025 Sam Lantinga)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: Zlib. See https://github.com/libsdl-org/SDL.)FBYNOTICE"},
+    {R"FBYNOTICE(SDL3)FBYNOTICE", R"FBYNOTICE(release-3.4.20)FBYNOTICE", R"FBYNOTICE(Zlib)FBYNOTICE", R"FBYNOTICE(Window, input, platform layer and Vulkan surface)FBYNOTICE", R"FBYNOTICE(Copyright (c) 1997-2025 Sam Lantinga)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: Zlib. See https://github.com/libsdl-org/SDL.)FBYNOTICE"},
     {R"FBYNOTICE(Box2D)FBYNOTICE", R"FBYNOTICE(v3.0.0)FBYNOTICE", R"FBYNOTICE(MIT)FBYNOTICE", R"FBYNOTICE(2D rigid-body physics)FBYNOTICE", R"FBYNOTICE(Copyright (c) 2022 Erin Catto)FBYNOTICE", R"FBYNOTICE(MIT License
 
 Copyright (c) 2022 Erin Catto
@@ -248,7 +248,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.)FBYNOTICE"},
-    {R"FBYNOTICE(miniaudio)FBYNOTICE", R"FBYNOTICE(0.11.23)FBYNOTICE", R"FBYNOTICE(MIT-0 OR Unlicense)FBYNOTICE", R"FBYNOTICE(Audio device and mixer backend)FBYNOTICE", R"FBYNOTICE(Copyright (c) David Reid)FBYNOTICE", R"FBYNOTICE(This software is available as a choice of the following licenses. Choose
+    {R"FBYNOTICE(miniaudio)FBYNOTICE", R"FBYNOTICE(0.11.26)FBYNOTICE", R"FBYNOTICE(MIT-0 OR Unlicense)FBYNOTICE", R"FBYNOTICE(Audio device and mixer backend)FBYNOTICE", R"FBYNOTICE(Copyright (c) David Reid)FBYNOTICE", R"FBYNOTICE(This software is available as a choice of the following licenses. Choose
 whichever you prefer.
 
 ===============================================================================
@@ -340,7 +340,7 @@ https://datatracker.ietf.org/ipr/1914/
 Broadcom Corporation:
 https://datatracker.ietf.org/ipr/1526/)FBYNOTICE"},
     {R"FBYNOTICE(Vulkan-Headers)FBYNOTICE", R"FBYNOTICE(v1.4.366)FBYNOTICE", R"FBYNOTICE(Apache-2.0)FBYNOTICE", R"FBYNOTICE(Vulkan API declarations)FBYNOTICE", R"FBYNOTICE(Copyright (c) 2015-2025 The Khronos Group Inc.)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: Apache-2.0. See https://github.com/KhronosGroup/Vulkan-Headers.)FBYNOTICE"},
-    {R"FBYNOTICE(glslang)FBYNOTICE", R"FBYNOTICE(15.3.0)FBYNOTICE", R"FBYNOTICE(BSD-3-Clause OR Apache-2.0)FBYNOTICE", R"FBYNOTICE(Runtime GLSL to SPIR-V compilation)FBYNOTICE", R"FBYNOTICE(Copyright (c) The Khronos Group Inc.)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: BSD-3-Clause OR Apache-2.0. See https://github.com/KhronosGroup/glslang.)FBYNOTICE"},
+    {R"FBYNOTICE(glslang)FBYNOTICE", R"FBYNOTICE(16.6.0)FBYNOTICE", R"FBYNOTICE(BSD-3-Clause OR Apache-2.0)FBYNOTICE", R"FBYNOTICE(Runtime GLSL to SPIR-V compilation)FBYNOTICE", R"FBYNOTICE(Copyright (c) The Khronos Group Inc.)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: BSD-3-Clause OR Apache-2.0. See https://github.com/KhronosGroup/glslang.)FBYNOTICE"},
     {R"FBYNOTICE(stb)FBYNOTICE", R"FBYNOTICE(vendored)FBYNOTICE", R"FBYNOTICE(MIT OR Unlicense)FBYNOTICE", R"FBYNOTICE(Image and font decoding)FBYNOTICE", R"FBYNOTICE(Copyright (c) Sean Barrett and contributors)FBYNOTICE", R"FBYNOTICE(The upstream license text is not vendored in this checkout. SPDX: MIT OR Unlicense. See https://github.com/nothings/stb.)FBYNOTICE"},
     {R"FBYNOTICE(Dear ImGui)FBYNOTICE", R"FBYNOTICE(1.93.1)FBYNOTICE", R"FBYNOTICE(MIT)FBYNOTICE", R"FBYNOTICE(Editor user interface)FBYNOTICE", R"FBYNOTICE(Copyright (c) 2014-2026 Omar Cornut)FBYNOTICE", R"FBYNOTICE(The MIT License (MIT)
 
@@ -1087,6 +1087,28 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.)FBYNOTICE"},
+    {R"FBYNOTICE(miniz)FBYNOTICE", R"FBYNOTICE(3.1.2)FBYNOTICE", R"FBYNOTICE(Unlicense)FBYNOTICE", R"FBYNOTICE(Raw DEFLATE compression for incident ZIP archives)FBYNOTICE", R"FBYNOTICE(Copyright 2013-2014 RAD Game Tools and Valve Software; Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC)FBYNOTICE", R"FBYNOTICE(Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+
+All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.)FBYNOTICE"},
 };
 
 constexpr char kAllText[] = R"FBYNOTICE(# Third-party notices
@@ -1102,14 +1124,14 @@ Do not edit it by hand; change the manifest and regenerate.
 
 | Component | Version | License (SPDX) | Purpose |
 |---|---|---|---|
-| SDL3 | release-3.4.18 | Zlib | Window, input, platform layer and Vulkan surface |
+| SDL3 | release-3.4.20 | Zlib | Window, input, platform layer and Vulkan surface |
 | Box2D | v3.0.0 | MIT | 2D rigid-body physics |
 | toml++ | 3.4.0 | MIT | Project descriptor and scene TOML parser |
 | FlatBuffers | 25.12.19 | Apache-2.0 | Localization and scene binary schemas |
-| miniaudio | 0.11.23 | MIT-0 OR Unlicense | Audio device and mixer backend |
+| miniaudio | 0.11.26 | MIT-0 OR Unlicense | Audio device and mixer backend |
 | Opus | vendored | BSD-3-Clause | Ogg Opus decoding and voice encoding |
 | Vulkan-Headers | v1.4.366 | Apache-2.0 | Vulkan API declarations |
-| glslang | 15.3.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
+| glslang | 16.6.0 | BSD-3-Clause OR Apache-2.0 | Runtime GLSL to SPIR-V compilation |
 | stb | vendored | MIT OR Unlicense | Image and font decoding |
 | Dear ImGui | 1.93.1 | MIT | Editor user interface |
 | ImGuizmo | vendored | MIT | Editor transform gizmo |
@@ -1123,10 +1145,11 @@ Do not edit it by hand; change the manifest and regenerate.
 | SheenBidi | 3.0.0 | Apache-2.0 | Unicode Bidirectional Algorithm (UAX #9) runs |
 | IBM Plex Sans / IBM Plex Mono | IBM Plex 6.4.0 | OFL-1.1 | Default text family: regular, bold, italic, bold italic and mono slots |
 | Noto Sans Arabic/Devanagari/Thai/SC test fonts | Google Fonts | OFL-1.1 | Complex-script shaping and full-glyph SDF tests |
+| miniz | 3.1.2 | Unlicense | Raw DEFLATE compression for incident ZIP archives |
 
 ## License texts
 
-### SDL3 release-3.4.18
+### SDL3 release-3.4.20
 
 - SPDX: `Zlib`
 - Copyright: Copyright (c) 1997-2025 Sam Lantinga
@@ -1175,10 +1198,10 @@ SOFTWARE.
 ```text
 MIT License
 
-Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>
+Copyright (c) Mark Gillard <ma)FBYNOTICE"
+        R"FBYNOTICE(rk.gillard@outlook.com.au>
 
-Permission is hereby granted, free of charge, to any p)FBYNOTICE"
-        R"FBYNOTICE(erson obtaining a copy of this software and associated
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
 rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
 permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -1252,9 +1275,9 @@ Apache License
       submitted to Licensor for inclusion in the Work by the copyright owner
       or by an individual or Legal Entity authorized to submit on behalf of
       the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including)FBYNOTICE"
-        R"FBYNOTICE( but not limited to
+      means any form of electronic, verbal, or )FBYNOTICE"
+        R"FBYNOTICE(written communication sent
+      to the Licensor or its representatives, including but not limited to
       communication on electronic mailing lists, source code control systems,
       and issue tracking systems that are managed by, or on behalf of, the
       Licensor for the purpose of discussing and improving the Work, but
@@ -1320,10 +1343,10 @@ Apache License
           notices within Derivative Works that You distribute, alongside
           or as an addendum to the NOTICE text from the Work, provided
           that such additional attribution notices cannot be construed
-          as modifying the License.
+          as)FBYNOTICE"
+        R"FBYNOTICE( modifying the License.
 
-      You may add Your own copyright statement to Your mo)FBYNOTICE"
-        R"FBYNOTICE(difications and
+      You may add Your own copyright statement to Your modifications and
       may provide additional or different license terms and conditions
       for use, reproduction, or distribution of Your modifications, or
       for any such Derivative Works as a whole, provided Your use,
@@ -1391,9 +1414,9 @@ Apache License
 
    Copyright [yyyy] [name of copyright owner]
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except )FBYNOTICE"
-        R"FBYNOTICE(in compliance with the License.
+   Licensed under the)FBYNOTICE"
+        R"FBYNOTICE( Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
 
        http://www.apache.org/licenses/LICENSE-2.0
@@ -1405,7 +1428,7 @@ Apache License
    limitations under the License.
 ```
 
-### miniaudio 0.11.23
+### miniaudio 0.11.26
 
 - SPDX: `MIT-0 OR Unlicense`
 - Copyright: Copyright (c) David Reid
@@ -1477,11 +1500,11 @@ Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
 are met:
 
-- Redistributions of source code must retain the above copyright
+- Redistributions of source code must retain the above copyr)FBYNOTICE"
+        R"FBYNOTICE(ight
 notice, this list of conditions and the following disclaimer.
 
-- Redistributi)FBYNOTICE"
-        R"FBYNOTICE(ons in binary form must reproduce the above copyright
+- Redistributions in binary form must reproduce the above copyright
 notice, this list of conditions and the following disclaimer in the
 documentation and/or other materials provided with the distribution.
 
@@ -1525,7 +1548,7 @@ https://datatracker.ietf.org/ipr/1526/
 The upstream license text is not vendored in this checkout. SPDX: Apache-2.0. See https://github.com/KhronosGroup/Vulkan-Headers.
 ```
 
-### glslang 15.3.0
+### glslang 16.6.0
 
 - SPDX: `BSD-3-Clause OR Apache-2.0`
 - Copyright: Copyright (c) The Khronos Group Inc.
@@ -1587,9 +1610,9 @@ The MIT License (MIT)
 Copyright (c) 2016 Cedric Guillemet
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the)FBYNOTICE"
-        R"FBYNOTICE( rights
+of this software and associated documentation files (the "Softwar)FBYNOTICE"
+        R"FBYNOTICE(e"), to deal
+in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
@@ -1689,11 +1712,11 @@ Copyright (c) 2005-2017, Xiph.Org Foundation
 Copyright (c) 2003-2004, Mark Borgerding
 
 Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
+modification, are permitted provided tha)FBYNOTICE"
+        R"FBYNOTICE(t the following conditions
 are met:
 
-- Redistributions of source code must retain )FBYNOTICE"
-        R"FBYNOTICE(the above copyright
+- Redistributions of source code must retain the above copyright
 notice, this list of conditions and the following disclaimer.
 
 - Redistributions in binary form must reproduce the above copyright
@@ -1781,9 +1804,9 @@ Licence 2 (CC-0)
 
 ### Statement of Purpose
 
-The laws of most jurisdictions throughout the world automatically confer
-exclusive Copyright and Related Rights (define)FBYNOTICE"
-        R"FBYNOTICE(d below) upon the creator
+The laws of most jurisdictions throug)FBYNOTICE"
+        R"FBYNOTICE(hout the world automatically confer
+exclusive Copyright and Related Rights (defined below) upon the creator
 and subsequent owner(s) (each and all, an "owner") of an original work
 of authorship and/or a database (each, a "Work").
 
@@ -1850,9 +1873,9 @@ rights.
 
 3. **Public License Fallback.** Should any part of the Waiver for any
    reason be judged legally invalid or ineffective under applicable law,
-   then the Waiver shall be preserved to the maximum extent permitted
-   taking into account Affirm)FBYNOTICE"
-        R"FBYNOTICE(er's express Statement of Purpose. In
+   then the Waive)FBYNOTICE"
+        R"FBYNOTICE(r shall be preserved to the maximum extent permitted
+   taking into account Affirmer's express Statement of Purpose. In
    addition, to the extent the Waiver is so judged Affirmer hereby
    grants to each affected person a royalty-free, non transferable, non
    sublicensable, non exclusive, irrevocable and unconditional license
@@ -1929,13 +1952,13 @@ freely, subject to the following restrictions:
    be misrepresented as being the original software.
 3. This notice may not be removed or altered from any source
    distribution.
-```
+```)FBYNOTICE"
+        R"FBYNOTICE(
 
 ### HarfBuzz 15.1.0
 
 - SPDX: `MIT`
-- Copyright: Copyright (c) 2010-2023 Google, )FBYNOTICE"
-        R"FBYNOTICE(Inc. and HarfBuzz contributors
+- Copyright: Copyright (c) 2010-2023 Google, Inc. and HarfBuzz contributors
 - Upstream: https://github.com/harfbuzz/harfbuzz
 
 ```text
@@ -2026,9 +2049,9 @@ Apache License
 
       "Work" shall mean the work of authorship, whether in Source or
       Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appen)FBYNOTICE"
-        R"FBYNOTICE(dix below).
+      copyright notice that)FBYNOTICE"
+        R"FBYNOTICE( is included in or attached to the work
+      (an example is provided in the Appendix below).
 
       "Derivative Works" shall mean any work, whether in Source or Object
       form, that is based on (or derived from) the Work and for which the
@@ -2094,11 +2117,11 @@ Apache License
           that You distribute, all copyright, patent, trademark, and
           attribution notices from the Source form of the Work,
           excluding those notices that do not pertain to any part of
-          the Derivative Works; and
+          the Derivative Works; an)FBYNOTICE"
+        R"FBYNOTICE(d
 
       (d) If the Work includes a "NOTICE" text file as part of its
-          di)FBYNOTICE"
-        R"FBYNOTICE(stribution, then any Derivative Works that You distribute must
+          distribution, then any Derivative Works that You distribute must
           include a readable copy of the attribution notices contained
           within such NOTICE file, excluding those notices that do not
           pertain to any part of the Derivative Works, in at least one
@@ -2160,9 +2183,9 @@ Apache License
       the Work or Derivative Works thereof, You may choose to offer,
       and charge a fee for, acceptance of support, warranty, indemnity,
       or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Y)FBYNOTICE"
-        R"FBYNOTICE(our sole responsibility, not on behalf
+      License. However,)FBYNOTICE"
+        R"FBYNOTICE( in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
       of any other Contributor, and only if You agree to indemnify,
       defend, and hold each Contributor harmless for any liability
       incurred by, or claims asserted against, such Contributor by reason
@@ -2251,10 +2274,10 @@ writer or other person who contributed to the Font Software.
 
 PERMISSION & CONDITIONS
 Permission is hereby granted, free of charge, to any person obtaining
-a copy of the Font Software, to use, study, copy, merge, embed, modify,
+a copy of the Font Software, to use, study, copy, merge, embed, modify)FBYNOTICE"
+        R"FBYNOTICE(,
 redistribute, and sell modified and unmodified copies of the Font
-Software, subj)FBYNOTICE"
-        R"FBYNOTICE(ect to the following conditions:
+Software, subject to the following conditions:
 
 1) Neither the Font Software nor any of its individual components,
 in Original or Modified Versions, may be sold by itself.
@@ -2341,11 +2364,11 @@ include source files, build scripts and documentation.
 "Reserved Font Name" refers to any names specified as such after the
 copyright statement(s).
 
-"Original Version" refers to the collection of Font Software components as
+"Original Version" refers to the collection of Font Software )FBYNOTICE"
+        R"FBYNOTICE(components as
 distributed by the Copyright Holder(s).
 
-"Modified Version" refers t)FBYNOTICE"
-        R"FBYNOTICE(o any derivative made by adding to, deleting,
+"Modified Version" refers to any derivative made by adding to, deleting,
 or substituting -- in part or in whole -- any of the components of the
 Original Version, by changing formats or by porting the Font Software to a
 new environment.
@@ -2400,6 +2423,38 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### miniz 3.1.2
+
+- SPDX: `Unlicense`
+- Copyright: Copyright 2013-2014 RAD Game Tools and Valve Software; Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+- Upstream: https://github.com/richgel999/miniz
+
+```text
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+
+All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN A)FBYNOTICE"
+        R"FBYNOTICE(N ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## Engine license

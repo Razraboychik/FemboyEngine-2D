@@ -3,7 +3,7 @@
 // Source: rweather/noise-c, tests/vector/noise-c-basic.txt, the
 // Noise_XX_25519_ChaChaPoly_SHA256 entry that carries a handshake_hash.
 // Retrieved 2026-10-31 at commit cfe25410979a87391bb9ac8d4d4bef64e9f268c6;
-// file SHA-256 0bd782283f414b711fbc37b8b5fbdde7816ce5328f1037d43742cf35dd84de49.
+// file SHA-256 e826749cf90efda26be85410381f4b1f75552c61c7c0dcad7f9ffb4d639e4e45.
 // The expected bytes below are copied verbatim. Never regenerate them from
 // this engine: the noise-differential job rebuilds noise-c and does the diff.
 #pragma once

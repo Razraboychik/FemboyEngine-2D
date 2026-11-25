@@ -75,6 +75,10 @@ bool Api::LoadGlobal()
 
 bool Api::LoadInstance(VkInstance instance)
 {
+    if (instance == VK_NULL_HANDLE || (BoundInstance != VK_NULL_HANDLE && BoundInstance != instance))
+    {
+        return false;
+    }
 #define FBY_VK_LOAD_INSTANCE(name)                                                                                     \
     name = reinterpret_cast<PFN_##name>(GetInstanceProcAddr(instance, #name));                                         \
     if (name == nullptr)                                                                                               \
@@ -83,11 +87,17 @@ bool Api::LoadInstance(VkInstance instance)
     }
     FBY_VK_INSTANCE_FUNCTIONS(FBY_VK_LOAD_INSTANCE)
 #undef FBY_VK_LOAD_INSTANCE
+    BoundInstance = instance;
     return true;
 }
 
 bool Api::LoadDevice(VkDevice device)
 {
+    if (device == VK_NULL_HANDLE || BoundInstance == VK_NULL_HANDLE ||
+        (BoundDevice != VK_NULL_HANDLE && BoundDevice != device))
+    {
+        return false;
+    }
 #define FBY_VK_LOAD_DEVICE(name)                                                                                       \
     name = reinterpret_cast<PFN_##name>(vkGetDeviceProcAddr(device, #name));                                           \
     if (name == nullptr)                                                                                               \
@@ -96,6 +106,7 @@ bool Api::LoadDevice(VkDevice device)
     }
     FBY_VK_DEVICE_FUNCTIONS(FBY_VK_LOAD_DEVICE)
 #undef FBY_VK_LOAD_DEVICE
+    BoundDevice = device;
     return true;
 }
 

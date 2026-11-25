@@ -18,10 +18,12 @@ enum class FrameGenerationStatus : std::uint8_t
 
 struct FrameGenerationPolicy
 {
-    bool ProjectAllowed = false;
-    bool BackendCompiled = false;
-    bool DeviceSupported = false;
-    bool HudSeparated = false;
+    // Permissive defaults: a host that never builds a policy still gets frame
+    // generation when the backend/device support it. Opt out explicitly.
+    bool ProjectAllowed = true;
+    bool BackendCompiled = true;
+    bool DeviceSupported = true;
+    bool HudSeparated = true;
     float MinimumFps = 40.0f;
 };
 
@@ -41,7 +43,7 @@ struct FrameGenerationPolicy
     {
         return FrameGenerationStatus::HudNotSeparated;
     }
-    if (InFps < InPolicy.MinimumFps)
+    if (!(InFps >= InPolicy.MinimumFps))
     {
         return FrameGenerationStatus::LowFps;
     }

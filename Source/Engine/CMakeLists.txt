@@ -5,7 +5,13 @@ get_filename_component(FBY_ENGINE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." 
 
 set(FBY_ENGINE_SOURCES
     Assets/AnimationClipAsset.cpp
+    Assets/AsepriteImporter.cpp
     Assets/AssetDatabase.cpp
+    Data/StructValue.cpp
+    Modding/ModManifest.cpp
+    Modding/ModHost.cpp
+    Modding/ModApiHost.cpp
+    Data/StructValueToml.cpp
     Assets/ProjectBundle.cpp
     Assets/AssetMeta.cpp
     Assets/AudioClipFormat.cpp
@@ -16,8 +22,12 @@ set(FBY_ENGINE_SOURCES
     Assets/LocalizationCompiler.cpp
     Assets/PngWriter.cpp
     Assets/TextureArray.cpp
+    Assets/TiledImporter.cpp
     Assets/SpriteAtlas.cpp
     Assets/VFS.cpp
+    Legal/LegalService.cpp
+    Ops/Ops.cpp
+    Assets/LicenseRegistry.cpp
     Documents/Document.cpp
     Effects/ParticleEffects.cpp
     Effects/ParticleScene.cpp
@@ -28,6 +38,7 @@ set(FBY_ENGINE_SOURCES
     Audio/AudioZones.cpp
     Audio/DspGraph.cpp
     Audio/MiniAudioImpl.c
+    Audio/AudioCook.cpp
     Audio/OggOpus.cpp
     Audio/VoiceAec.cpp
     Audio/VoiceChannel.cpp
@@ -55,6 +66,9 @@ set(FBY_ENGINE_SOURCES
     Core/PluginHost.cpp
     Core/Pause.cpp
     Core/SecureRng.cpp
+    Core/SettingsSerialization.cpp
+    Core/OutputPolicySettings.cpp
+    Audio/AudioSettings.cpp
     Core/ThirdPartyNotices.cpp
     Core/ThreadAffinity.cpp
     Core/WindowManager.cpp
@@ -123,6 +137,7 @@ set(FBY_ENGINE_SOURCES
     Physics/VehicleWheels.cpp
     Physics/Fluid.cpp
     Physics/Physics.cpp
+    Physics/PhysicsProfile.cpp
     Physics/ProjectileSystem.cpp
     Physics/PhysicsJoints.cpp
     Physics/PhysicsJointsScene.cpp
@@ -146,6 +161,7 @@ set(FBY_ENGINE_SOURCES
     RHI/MaterialGraph.cpp
     RHI/MaterialPipelineCache.cpp
     RHI/RHI.cpp
+    RHI/PixelPerfect.cpp
     RHI/RenderGraph.cpp
     RHI/RenderPasses.cpp
     RHI/OitPass.cpp
@@ -180,12 +196,14 @@ set(FBY_ENGINE_SOURCES
     Script/EcsBridge.cpp
     Script/GraphCompiler.cpp
     Script/ScriptHeap.cpp
+    Script/ScriptFileReloader.cpp
     Script/TextScript.cpp
     Text/BookAsset.cpp
     Text/BookCook.cpp
     Text/BookSession.cpp
     Text/TextBidi.cpp
     Text/TextShapeCache.cpp
+    Text/BaseFonts.cpp
     Text/TextShaper.cpp
     Text/UnicodeBreak.cpp
     UI/ActionNarration.cpp
@@ -322,6 +340,8 @@ endfunction()
 
 fby_compile_shader(quad_vert quad.vert)
 fby_compile_shader(quad_frag quad.frag)
+fby_compile_shader(quad_base_frag quad_base.frag)
+fby_compile_shader(quad_sdf_frag quad_sdf.frag)
 fby_compile_shader(depth_only depth_only.frag)
 fby_compile_shader(sprite_cull sprite_cull.comp)
 fby_compile_shader(sprite_cull_finalize sprite_cull_finalize.comp)
@@ -370,9 +390,9 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND}
             "-DOUTPUT=${FBY_SHADER_BLOBS}"
             "-DNAMESPACE=Fby::Rhi::Shaders"
-            "-DSPEC=sprite_cull=${sprite_cull_SPV}|sprite_cull_finalize=${sprite_cull_finalize_SPV}|hiz_tile=${hiz_tile_SPV}|hiz_mip=${hiz_mip_SPV}|depth_only=${depth_only_SPV}|cluster_count=${cluster_count_SPV}|cluster_prefix=${cluster_prefix_SPV}|cluster_fill=${cluster_fill_SPV}|accessibility_flash=${accessibility_flash_SPV}|accessibility_composite=${accessibility_composite_SPV}|quad_vert=${quad_vert_SPV}|quad_frag=${quad_frag_SPV}|mesh_skinning=${mesh_skinning_SPV}|mesh_vert=${mesh_vert_SPV}|mesh_frag=${mesh_frag_SPV}|fullscreen_vert=${fullscreen_vert_SPV}|postfx_bloom_prefilter=${postfx_bloom_prefilter_SPV}|postfx_bloom_blur=${postfx_bloom_blur_SPV}|postfx_composite=${postfx_composite_SPV}|sdf_shadow=${sdf_shadow_SPV}|pink_sdf_vert=${pink_sdf_vert_SPV}|pink_sdf_frag=${pink_sdf_frag_SPV}|weather_rain=${weather_rain_SPV}|weather_rain_splash=${weather_rain_splash_SPV}|weather_rain_vert=${weather_rain_vert_SPV}|weather_rain_frag=${weather_rain_frag_SPV}|weather_splash_vert=${weather_splash_vert_SPV}|weather_splash_frag=${weather_splash_frag_SPV}|weather_clouds=${weather_clouds_SPV}|weather_cloud_shadow=${weather_cloud_shadow_SPV}|weather_fog=${weather_fog_SPV}|weather_fire=${weather_fire_SPV}|weather_composite=${weather_composite_SPV}|plant_wind_vert=${plant_wind_vert_SPV}|plant_wind_frag=${plant_wind_frag_SPV}|color_grading=${color_grading_SPV}|oit_resolve=${oit_resolve_SPV}|fsr1_upscale=${fsr1_upscale_SPV}|fsr1_rcas=${fsr1_rcas_SPV}|hud_composite=${hud_composite_SPV}|temporal_resolve=${temporal_resolve_SPV}|motion=${motion_SPV}|motion_frag=${motion_frag_SPV}"
+            "-DSPEC=sprite_cull=${sprite_cull_SPV}|sprite_cull_finalize=${sprite_cull_finalize_SPV}|hiz_tile=${hiz_tile_SPV}|hiz_mip=${hiz_mip_SPV}|depth_only=${depth_only_SPV}|cluster_count=${cluster_count_SPV}|cluster_prefix=${cluster_prefix_SPV}|cluster_fill=${cluster_fill_SPV}|accessibility_flash=${accessibility_flash_SPV}|accessibility_composite=${accessibility_composite_SPV}|quad_vert=${quad_vert_SPV}|quad_frag=${quad_frag_SPV}|quad_base_frag=${quad_base_frag_SPV}|quad_sdf_frag=${quad_sdf_frag_SPV}|mesh_skinning=${mesh_skinning_SPV}|mesh_vert=${mesh_vert_SPV}|mesh_frag=${mesh_frag_SPV}|fullscreen_vert=${fullscreen_vert_SPV}|postfx_bloom_prefilter=${postfx_bloom_prefilter_SPV}|postfx_bloom_blur=${postfx_bloom_blur_SPV}|postfx_composite=${postfx_composite_SPV}|sdf_shadow=${sdf_shadow_SPV}|pink_sdf_vert=${pink_sdf_vert_SPV}|pink_sdf_frag=${pink_sdf_frag_SPV}|weather_rain=${weather_rain_SPV}|weather_rain_splash=${weather_rain_splash_SPV}|weather_rain_vert=${weather_rain_vert_SPV}|weather_rain_frag=${weather_rain_frag_SPV}|weather_splash_vert=${weather_splash_vert_SPV}|weather_splash_frag=${weather_splash_frag_SPV}|weather_clouds=${weather_clouds_SPV}|weather_cloud_shadow=${weather_cloud_shadow_SPV}|weather_fog=${weather_fog_SPV}|weather_fire=${weather_fire_SPV}|weather_composite=${weather_composite_SPV}|plant_wind_vert=${plant_wind_vert_SPV}|plant_wind_frag=${plant_wind_frag_SPV}|color_grading=${color_grading_SPV}|oit_resolve=${oit_resolve_SPV}|fsr1_upscale=${fsr1_upscale_SPV}|fsr1_rcas=${fsr1_rcas_SPV}|hud_composite=${hud_composite_SPV}|temporal_resolve=${temporal_resolve_SPV}|motion=${motion_SPV}|motion_frag=${motion_frag_SPV}"
             -P "${FBY_ENGINE_REPO_ROOT}/cmake/EmbedShaders.cmake"
-    DEPENDS "${sprite_cull_SPV}" "${sprite_cull_finalize_SPV}" "${hiz_tile_SPV}" "${hiz_mip_SPV}" "${depth_only_SPV}" "${cluster_count_SPV}" "${cluster_prefix_SPV}" "${cluster_fill_SPV}" "${accessibility_flash_SPV}" "${accessibility_composite_SPV}" "${quad_vert_SPV}" "${quad_frag_SPV}" "${mesh_skinning_SPV}" "${mesh_vert_SPV}" "${mesh_frag_SPV}"
+    DEPENDS "${sprite_cull_SPV}" "${sprite_cull_finalize_SPV}" "${hiz_tile_SPV}" "${hiz_mip_SPV}" "${depth_only_SPV}" "${cluster_count_SPV}" "${cluster_prefix_SPV}" "${cluster_fill_SPV}" "${accessibility_flash_SPV}" "${accessibility_composite_SPV}" "${quad_vert_SPV}" "${quad_frag_SPV}" "${quad_base_frag_SPV}" "${quad_sdf_frag_SPV}" "${mesh_skinning_SPV}" "${mesh_vert_SPV}" "${mesh_frag_SPV}"
             "${fullscreen_vert_SPV}" "${oit_resolve_SPV}" "${fsr1_upscale_SPV}" "${fsr1_rcas_SPV}" "${hud_composite_SPV}" "${temporal_resolve_SPV}" "${motion_SPV}" "${motion_frag_SPV}" "${postfx_bloom_prefilter_SPV}" "${postfx_bloom_blur_SPV}"
             "${postfx_composite_SPV}" "${sdf_shadow_SPV}" "${pink_sdf_vert_SPV}"
             "${pink_sdf_frag_SPV}" "${weather_rain_SPV}" "${weather_rain_splash_SPV}" "${weather_rain_vert_SPV}"
@@ -511,6 +531,17 @@ target_include_directories(fby_engine
     PRIVATE
         "${FBY_ENGINE_REPO_ROOT}/third_party/stb")
 
+add_library(fby_miniz STATIC
+    "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz.c"
+    "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz_tdef.c"
+    "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz_tinfl.c"
+    "${FBY_ENGINE_REPO_ROOT}/third_party/miniz/miniz_zip.c")
+target_include_directories(fby_miniz PUBLIC "${FBY_ENGINE_REPO_ROOT}/third_party/miniz")
+set_target_properties(fby_miniz PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(FBY_WITH_ASAN OR FBY_WITH_UBSAN)
+    fby_asan_apply(fby_miniz)
+endif()
+
 target_link_libraries(fby_engine
     PUBLIC
         fby::compiler_flags
@@ -523,6 +554,7 @@ target_link_libraries(fby_engine
         fby::box2d
         fby::flatbuffers
         fby::unibreak
+        fby_miniz
         FemboyEngine2D::AssetCook)
 
 if(FBY_WITH_HARFBUZZ AND TARGET harfbuzz)
@@ -627,7 +659,8 @@ if(WIN32)
 endif()
 elseif (APPLE)
     target_link_libraries(fby_engine PRIVATE
-        "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework Foundation")
+        "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework Foundation"
+        "-framework AVFoundation" "-framework AudioToolbox" "-framework CoreAudio")
     target_compile_definitions(fby_engine PRIVATE FBY_HAS_METAL=1)
 else()
     target_link_libraries(fby_engine PRIVATE dl pthread m)

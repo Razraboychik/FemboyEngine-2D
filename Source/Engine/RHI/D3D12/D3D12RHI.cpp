@@ -70,7 +70,15 @@ class D3D12RHI final : public RHI
 public:
     bool Initialize(const DeviceDesc& InDesc) override
     {
-        (void)InDesc;
+        MSdfDisabled = std::getenv("FBY_D3D12_DISABLE_SDF") != nullptr;
+        constexpr std::uint32_t kMaxBackendItems = 1u << 16;
+        const std::uint32_t ScopedRequestedItems = std::max(1u, InDesc.maxItemsPerFrame);
+        const std::uint32_t ScopedItems = std::min(ScopedRequestedItems, kMaxBackendItems);
+        MVertexCapacity = ScopedItems * 6u;
+        if (ScopedItems < ScopedRequestedItems)
+        {
+            LogWarn("d3d12", "sprite item capacity clamped from {} to {}", ScopedRequestedItems, ScopedItems);
+        }
         if (!CreateFactoryAndDevice())
         {
             return false;
@@ -157,9 +165,15 @@ public:
         {
             ScopedBuffer.Reset();
         }
-        if (FAILED(MSwapchain->ResizeBuffers(2, InSize.width, InSize.height, DXGI_FORMAT_B8G8R8A8_UNORM, 0)))
+        const HRESULT ScopedResize = MSwapchain->ResizeBuffers(2, InSize.width, InSize.height,
+                                                                 DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+        if (FAILED(ScopedResize))
         {
-            LogWarn("d3d12", "swapchain resize failed");
+            if (ScopedResize == DXGI_ERROR_DEVICE_REMOVED || ScopedResize == DXGI_ERROR_DEVICE_RESET)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogWarn("d3d12", "swapchain resize failed (0x{:08X})", static_cast<unsigned>(ScopedResize));
             return;
         }
         D3D12_CPU_DESCRIPTOR_HANDLE ScopedRtv = MRtvHeap->GetCPUDescriptorHandleForHeapStart();
@@ -316,19 +330,27 @@ public:
             const float ScopedG = static_cast<float>((ScopedItem.color >> 8) & 0xFFu) / 255.0f;
             const float ScopedB = static_cast<float>((ScopedItem.color >> 16) & 0xFFu) / 255.0f;
             const float ScopedA = static_cast<float>((ScopedItem.color >> 24) & 0xFFu) / 255.0f;
+            const float ScopedNormalMeta =
+                EncodeNormalVertexMeta(NormalMapLayer(ScopedItem.flags), NormalMapStrength(ScopedItem.flags));
             const SmokeVertex ScopedCorners[6] = {
                 {{ScopedX - ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX + ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX + ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX - ScopedHalfX, ScopedY - ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMax.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX + ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMax.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
                 {{ScopedX - ScopedHalfX, ScopedY + ScopedHalfY, 0.5f}, {ScopedItem.uvMin.X, ScopedItem.uvMin.Y},
-                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer)},
+                 {ScopedR, ScopedG, ScopedB, ScopedA}, static_cast<float>(ScopedItem.layer), ScopedNormalMeta,
+                 ScopedItem.flags},
             };
             std::memcpy(ScopedVertices + ScopedCount, ScopedCorners, sizeof(ScopedCorners));
             ScopedCount += 6;
@@ -340,6 +362,19 @@ public:
                                                  sizeof(SmokeVertex)};
         MCommandList->IASetVertexBuffers(0, 1, &ScopedVbv);
         MCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        std::array<float, 32> ScopedLightConstants{};
+        const std::size_t ScopedLightCount = InPacket.lights.size() < 4u ? InPacket.lights.size() : 4u;
+        for (std::size_t ScopedI = 0; ScopedI < ScopedLightCount; ++ScopedI)
+        {
+            const GpuLight& ScopedLight = InPacket.lights[ScopedI];
+            ScopedLightConstants[ScopedI * 4u + 0u] = ScopedLight.PositionAndRadius.X;
+            ScopedLightConstants[ScopedI * 4u + 1u] = ScopedLight.PositionAndRadius.Y;
+            ScopedLightConstants[ScopedI * 4u + 2u] = ScopedLight.PositionAndRadius.Z;
+            ScopedLightConstants[16u + ScopedI * 4u + 0u] = ScopedLight.ColorAndIntensity.X;
+            ScopedLightConstants[16u + ScopedI * 4u + 1u] = ScopedLight.ColorAndIntensity.Y;
+            ScopedLightConstants[16u + ScopedI * 4u + 2u] = ScopedLight.ColorAndIntensity.Z;
+            ScopedLightConstants[16u + ScopedI * 4u + 3u] = ScopedLight.ColorAndIntensity.W;
+        }
         const auto ScopedDraw = [this](std::uint32_t InFirstVertex, std::uint32_t InVertexCount,
                                        std::uint32_t InTexture)
         {
@@ -355,6 +390,16 @@ public:
         };
         if (InPacket.batches.empty())
         {
+            MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
+            const Rhi::RenderItem& ScopedOnly = InPacket.items.front();
+            const bool ScopedOnlySdf =
+                (ScopedOnly.flags & (Rhi::kRenderFlagSdfText | Rhi::kRenderFlagSdfOutline |
+                                     Rhi::kRenderFlagSdfGlow)) != 0u;
+            const bool ScopedOnlyNormal =
+                ScopedOnlySdf || (NormalMapLayer(ScopedOnly.flags) >= 1u &&
+                                  NormalMapStrength(ScopedOnly.flags) > 0.0f);
+            MCommandList->SetPipelineState(ScopedOnlyNormal ? MPipeline.Get() : MBasePipeline.Get());
+            MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
             ScopedDraw(0, static_cast<std::uint32_t>(ScopedCount), InPacket.textureArray);
         }
         else
@@ -378,13 +423,20 @@ public:
                 }
                 else
                 {
-                    MCommandList->SetGraphicsRootSignature(MRootSignature.Get());
-                    MCommandList->SetPipelineState(MPipeline.Get());
+                    MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
+                    ID3D12PipelineState* ScopedBatchState = MBasePipeline.Get();
+                    if (Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline) &&
+                        Rhi::DecodeSpriteVariant(ScopedBatch.pipeline) != Rhi::SpriteVariant::Base)
+                    {
+                        ScopedBatchState = MPipeline.Get();
+                    }
+                    MCommandList->SetPipelineState(ScopedBatchState);
+                    MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
                 }
                 ScopedDraw(ScopedBatch.firstItem * 6, ScopedBatch.itemCount * 6, ScopedTexture);
             }
             MCommandList->SetPipelineState(MPipeline.Get());
-            MCommandList->SetGraphicsRootSignature(MRootSignature.Get());
+            MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
         }
         MVertexBuffer->Unmap(0, nullptr);
         if (!InPacket.meshItems.empty())
@@ -462,7 +514,9 @@ public:
                         {ScopedWorldX, ScopedWorldY, 0.5f},
                         {ScopedVertex.uv.X, ScopedVertex.uv.Y},
                         {ScopedR, ScopedG, ScopedB, ScopedA},
-                        static_cast<float>(ScopedItem.layer)};
+                        static_cast<float>(ScopedItem.layer),
+                        0.0f,
+                        0};
                 }
                 const auto ScopedMeshSrv = MTextureSrvIndex.find(ScopedItem.textureArray);
                 if (ScopedMeshSrv == MTextureSrvIndex.end())
@@ -492,15 +546,16 @@ public:
                 }
                 else
                 {
-                    MCommandList->SetGraphicsRootSignature(MRootSignature.Get());
-                    MCommandList->SetPipelineState(MPipeline.Get());
+                    MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
+                    MCommandList->SetPipelineState(MBasePipeline.Get());
+                    MCommandList->SetGraphicsRoot32BitConstants(1, 32, ScopedLightConstants.data(), 0);
                 }
                 MCommandList->DrawInstanced(static_cast<UINT>(ScopedMeshCount - ScopedStart), 1,
                                             static_cast<UINT>(ScopedStart), 0);
             }
             MVertexBuffer->Unmap(0, nullptr);
             MCommandList->SetPipelineState(MPipeline.Get());
-            MCommandList->SetGraphicsRootSignature(MRootSignature.Get());
+            MCommandList->SetGraphicsRootSignature(MSpriteLightRootSignature.Get());
         }
     }
 
@@ -555,7 +610,17 @@ public:
         MCommandList->Close();
         ID3D12CommandList* ScopedLists[] = {MCommandList.Get()};
         MQueue->ExecuteCommandLists(1, ScopedLists);
-        MSwapchain->Present(MVsync ? 1u : 0u, 0);
+        const HRESULT ScopedPresent = MSwapchain->Present(MVsync ? 1u : 0u, 0);
+        if (ScopedPresent == DXGI_ERROR_DEVICE_REMOVED || ScopedPresent == DXGI_ERROR_DEVICE_RESET)
+        {
+            MInfo.deviceLost = true;
+            LogError("d3d12", "Present failed with device loss (0x{:08X})",
+                     static_cast<unsigned>(ScopedPresent));
+        }
+        else if (FAILED(ScopedPresent))
+        {
+            LogWarn("d3d12", "Present failed (0x{:08X})", static_cast<unsigned>(ScopedPresent));
+        }
         ++MFenceValue;
         MQueue->Signal(MFence.Get(), MFenceValue);
         MStats.frameIndex = MFenceValue;
@@ -586,15 +651,38 @@ public:
         MMeshes.erase(InHandle.id);
     }
 
+    [[nodiscard]] std::uint32_t AcquireSrvSlot() noexcept
+    {
+        if (!MFreeSrvIndices.empty())
+        {
+            const std::uint32_t ScopedIndex = MFreeSrvIndices.back();
+            MFreeSrvIndices.pop_back();
+            return ScopedIndex;
+        }
+        if (MSrvNext >= kMaxTextures)
+        {
+            return kInvalidSrvSlot;
+        }
+        return MSrvNext++;
+    }
+
+    void ReleaseSrvSlot(std::uint32_t InIndex) noexcept
+    {
+        if (InIndex < kMaxTextures)
+        {
+            MFreeSrvIndices.push_back(InIndex);
+        }
+    }
+
     TextureArrayHandle CreateTextureArray(const TextureArrayDesc& InDesc,
                                           std::span<const std::byte> InPixels) override
     {
         if (MDevice == nullptr || MQueue == nullptr || InDesc.size.width == 0 || InDesc.size.height == 0 ||
-            InDesc.layers == 0 || InDesc.mipLevels == 0 || MSrvNext >= kMaxTextures)
+            InDesc.layers == 0 || InDesc.mipLevels == 0 || (MFreeSrvIndices.empty() && MSrvNext >= kMaxTextures))
         {
             return {};
         }
-        const DXGI_FORMAT ScopedFormat = TextureFormatToDxgi(InDesc.format, InDesc.srgb);
+        const DXGI_FORMAT ScopedFormat = TextureFormatToDxgi(InDesc.format, InDesc.EffectiveSrgb());
         if (ScopedFormat == DXGI_FORMAT_UNKNOWN)
         {
             LogError("d3d12", "CreateTextureArray: {} is not supported on Direct3D",
@@ -730,13 +818,18 @@ public:
         ScopedSrv.Texture2DArray.MipLevels = InDesc.mipLevels;
         ScopedSrv.Texture2DArray.FirstArraySlice = 0;
         ScopedSrv.Texture2DArray.ArraySize = InDesc.layers;
+        const std::uint32_t ScopedSrvIndex = AcquireSrvSlot();
+        if (ScopedSrvIndex == kInvalidSrvSlot)
+        {
+            LogError("d3d12", "CreateRenderTarget: all {} SRV slots are in use", kMaxTextures);
+            return {};
+        }
         D3D12_CPU_DESCRIPTOR_HANDLE ScopedSrvHandle = MTextureHeap->GetCPUDescriptorHandleForHeapStart();
-        ScopedSrvHandle.ptr += MSrvNext * MSrvSize;
+        ScopedSrvHandle.ptr += ScopedSrvIndex * MSrvSize;
         MDevice->CreateShaderResourceView(ScopedTexture.Get(), &ScopedSrv, ScopedSrvHandle);
         const std::uint32_t ScopedId = MNextTextureId++;
         MTextures.emplace(ScopedId, ScopedTexture);
-        MTextureSrvIndex[ScopedId] = MSrvNext;
-        ++MSrvNext;
+        MTextureSrvIndex[ScopedId] = ScopedSrvIndex;
         TextureArrayHandle ScopedTextureHandle;
         ScopedTextureHandle.id = ScopedId;
         return ScopedTextureHandle;
@@ -744,7 +837,11 @@ public:
 
     void DestroyTextureArray(TextureArrayHandle InHandle) override
     {
-        MTextureSrvIndex.erase(InHandle.id);
+        if (const auto ScopedIndex = MTextureSrvIndex.find(InHandle.id); ScopedIndex != MTextureSrvIndex.end())
+        {
+            ReleaseSrvSlot(ScopedIndex->second);
+            MTextureSrvIndex.erase(ScopedIndex);
+        }
         MTextures.erase(InHandle.id);
     }
     bool UpdateTextureArrayLayer(TextureArrayHandle InHandle, std::uint32_t InLayer, std::uint32_t InMipLevel,
@@ -808,10 +905,17 @@ public:
         WaitIdle();
         ComPtr<ID3D12CommandAllocator> ScopedAllocator;
         ComPtr<ID3D12GraphicsCommandList> ScopedCommands;
-        if (FAILED(MDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&ScopedAllocator))) ||
-            FAILED(MDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, ScopedAllocator.Get(), nullptr,
-                                              IID_PPV_ARGS(&ScopedCommands))))
+        const HRESULT ScopedAllocatorResult =
+            MDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&ScopedAllocator));
+        const HRESULT ScopedListResult =
+            SUCCEEDED(ScopedAllocatorResult)
+                ? MDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, ScopedAllocator.Get(), nullptr,
+                                             IID_PPV_ARGS(&ScopedCommands))
+                : ScopedAllocatorResult;
+        if (FAILED(ScopedAllocatorResult) || FAILED(ScopedListResult))
         {
+            LogWarn("d3d12", "CaptureRenderTarget: command objects failed (allocator 0x{:08X}, list 0x{:08X})",
+                    static_cast<unsigned>(ScopedAllocatorResult), static_cast<unsigned>(ScopedListResult));
             return false;
         }
         D3D12_RESOURCE_BARRIER ScopedBarrier{};
@@ -844,7 +948,8 @@ public:
     TextureArrayHandle CreateTextureArrayFromRenderTarget(RenderTargetHandle InHandle) override
     {
         const auto ScopedTarget = MTargets.find(InHandle.id);
-        if (MDevice == nullptr || MQueue == nullptr || ScopedTarget == MTargets.end() || MSrvNext >= kMaxTextures)
+        if (MDevice == nullptr || MQueue == nullptr || ScopedTarget == MTargets.end() ||
+            (MFreeSrvIndices.empty() && MSrvNext >= kMaxTextures))
         {
             return {};
         }
@@ -896,13 +1001,17 @@ public:
         ScopedSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         ScopedSrv.Texture2DArray.MipLevels = 1;
         ScopedSrv.Texture2DArray.ArraySize = 1;
+        const std::uint32_t ScopedSrvIndex = AcquireSrvSlot();
+        if (ScopedSrvIndex == kInvalidSrvSlot)
+        {
+            return {};
+        }
         D3D12_CPU_DESCRIPTOR_HANDLE ScopedSrvHandle = MTextureHeap->GetCPUDescriptorHandleForHeapStart();
-        ScopedSrvHandle.ptr += MSrvNext * MSrvSize;
+        ScopedSrvHandle.ptr += ScopedSrvIndex * MSrvSize;
         MDevice->CreateShaderResourceView(ScopedTexture.Get(), &ScopedSrv, ScopedSrvHandle);
         const std::uint32_t ScopedId = MNextTextureId++;
         MTextures.emplace(ScopedId, ScopedTexture);
-        MTextureSrvIndex[ScopedId] = MSrvNext;
-        ++MSrvNext;
+        MTextureSrvIndex[ScopedId] = ScopedSrvIndex;
         TextureArrayHandle ScopedHandle;
         ScopedHandle.id = ScopedId;
         return ScopedHandle;
@@ -913,6 +1022,8 @@ public:
     {
         if (InDesc.size.width == 0 || InDesc.size.height == 0 || MRtvNext >= kMaxTargets)
         {
+            LogError("d3d12", "CreateRenderTarget: invalid size {}x{} or all {} target slots in use ({})",
+                     InDesc.size.width, InDesc.size.height, kMaxTargets, MRtvNext);
             return {};
         }
         D3D12_RESOURCE_DESC ScopedDesc{};
@@ -929,43 +1040,39 @@ public:
         D3D12_HEAP_PROPERTIES ScopedHeap{};
         ScopedHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
         ComPtr<ID3D12Resource> ScopedResource;
-        if (FAILED(MDevice->CreateCommittedResource(&ScopedHeap, D3D12_HEAP_FLAG_NONE, &ScopedDesc,
-                                                    D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
-                                                    IID_PPV_ARGS(&ScopedResource))))
+        const HRESULT ScopedColorResult =
+            MDevice->CreateCommittedResource(&ScopedHeap, D3D12_HEAP_FLAG_NONE, &ScopedDesc,
+                                             D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
+                                             IID_PPV_ARGS(&ScopedResource));
+        if (FAILED(ScopedColorResult))
         {
+            if (ScopedColorResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d12", "CreateRenderTarget: color resource failed (0x{:08X})",
+                     static_cast<unsigned>(ScopedColorResult));
             return {};
         }
         D3D12_DESCRIPTOR_HEAP_DESC ScopedTargetHeapDesc{};
         ScopedTargetHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         ScopedTargetHeapDesc.NumDescriptors = 1;
         ComPtr<ID3D12DescriptorHeap> ScopedTargetHeap;
-        if (FAILED(MDevice->CreateDescriptorHeap(&ScopedTargetHeapDesc, IID_PPV_ARGS(&ScopedTargetHeap))))
+        const HRESULT ScopedRtvHeapResult =
+            MDevice->CreateDescriptorHeap(&ScopedTargetHeapDesc, IID_PPV_ARGS(&ScopedTargetHeap));
+        if (FAILED(ScopedRtvHeapResult))
         {
+            if (ScopedRtvHeapResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d12", "CreateRenderTarget: RTV heap failed (0x{:08X})",
+                     static_cast<unsigned>(ScopedRtvHeapResult));
             return {};
         }
         MDevice->CreateRenderTargetView(ScopedResource.Get(), nullptr,
                                         ScopedTargetHeap->GetCPUDescriptorHandleForHeapStart());
         const std::uint32_t ScopedId = MNextTargetId++;
-        D3D12_DESCRIPTOR_HEAP_DESC ScopedSrvHeapDesc{};
-        ScopedSrvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        ScopedSrvHeapDesc.NumDescriptors = 1;
-        ScopedSrvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ComPtr<ID3D12DescriptorHeap> ScopedTargetSrvHeap;
-        if (FAILED(MDevice->CreateDescriptorHeap(&ScopedSrvHeapDesc, IID_PPV_ARGS(&ScopedTargetSrvHeap))))
-        {
-            return {};
-        }
-        D3D12_SHADER_RESOURCE_VIEW_DESC ScopedSrvDesc{};
-        ScopedSrvDesc.Format = ScopedDesc.Format;
-        ScopedSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        ScopedSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        ScopedSrvDesc.Texture2D.MostDetailedMip = 0;
-        ScopedSrvDesc.Texture2D.MipLevels = 1;
-        MDevice->CreateShaderResourceView(ScopedResource.Get(), &ScopedSrvDesc,
-                                          ScopedTargetSrvHeap->GetCPUDescriptorHandleForHeapStart());
-        MTargets.emplace(ScopedId, ScopedResource);
-        MTargetHeaps.emplace(ScopedId, ScopedTargetHeap);
-        MTargetSrvHeaps.emplace(ScopedId, ScopedTargetSrvHeap);
         D3D12_HEAP_PROPERTIES ScopedDepthHeap{};
         ScopedDepthHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
         D3D12_RESOURCE_DESC ScopedDepthDesc{};
@@ -981,22 +1088,55 @@ public:
         ScopedDepthClear.Format = DXGI_FORMAT_D32_FLOAT;
         ScopedDepthClear.DepthStencil.Depth = 1.0f;
         ComPtr<ID3D12Resource> ScopedDepthResource;
-        if (FAILED(MDevice->CreateCommittedResource(&ScopedDepthHeap, D3D12_HEAP_FLAG_NONE, &ScopedDepthDesc,
-                                                    D3D12_RESOURCE_STATE_DEPTH_WRITE, &ScopedDepthClear,
-                                                    IID_PPV_ARGS(&ScopedDepthResource))))
+        const HRESULT ScopedDepthResult =
+            MDevice->CreateCommittedResource(&ScopedDepthHeap, D3D12_HEAP_FLAG_NONE, &ScopedDepthDesc,
+                                             D3D12_RESOURCE_STATE_DEPTH_WRITE, &ScopedDepthClear,
+                                             IID_PPV_ARGS(&ScopedDepthResource));
+        if (FAILED(ScopedDepthResult))
         {
+            if (ScopedDepthResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d12", "CreateRenderTarget: depth resource failed (0x{:08X})",
+                     static_cast<unsigned>(ScopedDepthResult));
             return {};
         }
         D3D12_DESCRIPTOR_HEAP_DESC ScopedDepthHeapDesc{};
         ScopedDepthHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
         ScopedDepthHeapDesc.NumDescriptors = 1;
         ComPtr<ID3D12DescriptorHeap> ScopedDepthViewHeap;
-        if (FAILED(MDevice->CreateDescriptorHeap(&ScopedDepthHeapDesc, IID_PPV_ARGS(&ScopedDepthViewHeap))))
+        const HRESULT ScopedDsvHeapResult =
+            MDevice->CreateDescriptorHeap(&ScopedDepthHeapDesc, IID_PPV_ARGS(&ScopedDepthViewHeap));
+        if (FAILED(ScopedDsvHeapResult))
         {
+            if (ScopedDsvHeapResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogError("d3d12", "CreateRenderTarget: DSV heap failed (0x{:08X})",
+                     static_cast<unsigned>(ScopedDsvHeapResult));
             return {};
         }
         MDevice->CreateDepthStencilView(ScopedDepthResource.Get(), nullptr,
                                         ScopedDepthViewHeap->GetCPUDescriptorHandleForHeapStart());
+        const std::uint32_t ScopedSrvIndex = AcquireSrvSlot();
+        if (ScopedSrvIndex == kInvalidSrvSlot)
+        {
+            return {};
+        }
+        D3D12_SHADER_RESOURCE_VIEW_DESC ScopedSrvDesc{};
+        ScopedSrvDesc.Format = ScopedDesc.Format;
+        ScopedSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        ScopedSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        ScopedSrvDesc.Texture2D.MostDetailedMip = 0;
+        ScopedSrvDesc.Texture2D.MipLevels = 1;
+        D3D12_CPU_DESCRIPTOR_HANDLE ScopedSrvHandle = MTextureHeap->GetCPUDescriptorHandleForHeapStart();
+        ScopedSrvHandle.ptr += ScopedSrvIndex * MSrvSize;
+        MDevice->CreateShaderResourceView(ScopedResource.Get(), &ScopedSrvDesc, ScopedSrvHandle);
+        MTargets.emplace(ScopedId, ScopedResource);
+        MTargetHeaps.emplace(ScopedId, ScopedTargetHeap);
+        MTargetSrvIndex.emplace(ScopedId, ScopedSrvIndex);
         MTargetDepthResources.emplace(ScopedId, ScopedDepthResource);
         MTargetDepthHeaps.emplace(ScopedId, ScopedDepthViewHeap);
         MTargetSizes[ScopedId] = InDesc.size;
@@ -1009,14 +1149,24 @@ public:
 
     void DestroyRenderTarget(RenderTargetHandle InHandle) override
     {
+        const bool ScopedExisted = MTargets.erase(InHandle.id) != 0;
+        if (const auto ScopedSrv = MTargetSrvIndex.find(InHandle.id); ScopedSrv != MTargetSrvIndex.end())
+        {
+            ReleaseSrvSlot(ScopedSrv->second);
+            MTargetSrvIndex.erase(ScopedSrv);
+        }
         MAccessibilityResources.erase(InHandle.id);
         MTargetHeaps.erase(InHandle.id);
-        MTargetSrvHeaps.erase(InHandle.id);
         MTargetDepthResources.erase(InHandle.id);
         MTargetDepthHeaps.erase(InHandle.id);
-        MTargets.erase(InHandle.id);
         MTargetSizes.erase(InHandle.id);
         MTargetBlend.erase(InHandle.id);
+        // MRtvNext is the live-target count used against kMaxTargets, not a
+        // monotonic id. Destroying a target must release its slot.
+        if (ScopedExisted && MRtvNext > 0)
+        {
+            --MRtvNext;
+        }
     }
 
     bool UploadMotionVectors(std::span<const MotionVectorItem> InItems) override
@@ -1612,6 +1762,7 @@ public:
         const auto ScopedTarget = MTargets.find(InHandle.id);
         if (ScopedTarget == MTargets.end() || InRgba8.empty())
         {
+            LogWarn("d3d12", "CaptureRenderTarget: target {} missing or destination empty", InHandle.id);
             return false;
         }
         D3D12_RESOURCE_DESC ScopedTargetDesc = ScopedTarget->second->GetDesc();
@@ -1620,6 +1771,8 @@ public:
             ScopedTargetDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB &&
             ScopedTargetDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
         {
+            LogWarn("d3d12", "CaptureRenderTarget: target {} has unsupported format {}", InHandle.id,
+                    static_cast<unsigned>(ScopedTargetDesc.Format));
             return false;
         }
         const std::uint32_t ScopedWidth = static_cast<std::uint32_t>(ScopedTargetDesc.Width);
@@ -1627,6 +1780,8 @@ public:
         const std::size_t ScopedBytes = static_cast<std::size_t>(ScopedWidth) * ScopedHeight * 4u;
         if (InRgba8.size() < ScopedBytes)
         {
+            LogWarn("d3d12", "CaptureRenderTarget: destination {} is smaller than {} bytes", InRgba8.size(),
+                    ScopedBytes);
             return false;
         }
         const UINT ScopedRowPitch = (ScopedWidth * 4u + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) &
@@ -1642,10 +1797,17 @@ public:
         ScopedBufferDesc.SampleDesc.Count = 1;
         ScopedBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         ComPtr<ID3D12Resource> ScopedReadback;
-        if (FAILED(MDevice->CreateCommittedResource(&ScopedReadbackHeap, D3D12_HEAP_FLAG_NONE, &ScopedBufferDesc,
-                                                    D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                    IID_PPV_ARGS(&ScopedReadback))))
+        const HRESULT ScopedReadbackResult =
+            MDevice->CreateCommittedResource(&ScopedReadbackHeap, D3D12_HEAP_FLAG_NONE, &ScopedBufferDesc,
+                                             D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&ScopedReadback));
+        if (FAILED(ScopedReadbackResult))
         {
+            if (ScopedReadbackResult == DXGI_ERROR_DEVICE_REMOVED)
+            {
+                MInfo.deviceLost = true;
+            }
+            LogWarn("d3d12", "CaptureRenderTarget: readback buffer creation failed (0x{:08X})",
+                    static_cast<unsigned>(ScopedReadbackResult));
             return false;
         }
         ComPtr<ID3D12CommandAllocator> ScopedAllocator;
@@ -1684,8 +1846,11 @@ public:
         MQueue->ExecuteCommandLists(1, ScopedLists);
         WaitIdle();
         void* ScopedMapped = nullptr;
-        if (FAILED(ScopedReadback->Map(0, nullptr, &ScopedMapped)))
+        const HRESULT ScopedMapResult = ScopedReadback->Map(0, nullptr, &ScopedMapped);
+        if (FAILED(ScopedMapResult))
         {
+            LogWarn("d3d12", "CaptureRenderTarget: readback map failed (0x{:08X})",
+                    static_cast<unsigned>(ScopedMapResult));
             return false;
         }
         const bool ScopedSwap = ScopedTargetDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -1900,6 +2065,8 @@ public:
 
     void EnsurePipelineLibrary() noexcept
     {
+        try
+        {
         if (MPipelineLibraryLoaded)
         {
             return;
@@ -1934,10 +2101,17 @@ public:
         {
             LogInfo("d3d12", "PSO cache created: {}", ScopedPath.string());
         }
+        }
+        catch (...)
+        {
+            return;
+        }
     }
 
     void SavePipelineLibrary() noexcept
     {
+        try
+        {
         if (MPipelineLibrary == nullptr)
         {
             return;
@@ -1958,6 +2132,11 @@ public:
         {
             ScopedStream.write(reinterpret_cast<const char*>(ScopedBlob.data()),
                                static_cast<std::streamsize>(ScopedSize));
+        }
+        }
+        catch (...)
+        {
+            return;
         }
     }
 
@@ -1990,6 +2169,8 @@ public:
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 3, DXGI_FORMAT_R32_UINT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         };
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedPso{};
         ScopedPso.pRootSignature = MMaterialRootSignature.Get();
@@ -2091,6 +2272,8 @@ private:
         float Uv[2];
         float Color[4];
         float Layer;
+        float NormalMeta = 0.0f;
+        std::uint32_t Flags = 0;
     };
 
     struct MotionVertex
@@ -3549,6 +3732,24 @@ float4 PSMain(VSOutput input) : SV_Target
         {
             return false;
         }
+        D3D12_ROOT_PARAMETER ScopedLightConstants{};
+        ScopedLightConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        ScopedLightConstants.Constants.ShaderRegister = 1;
+        ScopedLightConstants.Constants.Num32BitValues = 32;
+        ScopedLightConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        D3D12_ROOT_PARAMETER ScopedSpriteParams[2] = {ScopedRootParameter, ScopedLightConstants};
+        D3D12_ROOT_SIGNATURE_DESC ScopedSpriteDesc = ScopedRootDesc;
+        ScopedSpriteDesc.NumParameters = 2;
+        ScopedSpriteDesc.pParameters = ScopedSpriteParams;
+        ComPtr<ID3DBlob> ScopedSpriteBlob;
+        if (FAILED(D3D12SerializeRootSignature(&ScopedSpriteDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+                                               &ScopedSpriteBlob, &ScopedErrors)) ||
+            FAILED(MDevice->CreateRootSignature(0, ScopedSpriteBlob->GetBufferPointer(),
+                                                ScopedSpriteBlob->GetBufferSize(),
+                                                IID_PPV_ARGS(&MSpriteLightRootSignature))))
+        {
+            return false;
+        }
         D3D12_ROOT_PARAMETER ScopedMaterialParams[2]{};
         ScopedMaterialParams[0] = ScopedRootParameter;
         ScopedMaterialParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -3572,9 +3773,11 @@ float4 PSMain(VSOutput input) : SV_Target
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 3, DXGI_FORMAT_R32_UINT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         };
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedPso{};
-        ScopedPso.pRootSignature = MRootSignature.Get();
+        ScopedPso.pRootSignature = MSpriteLightRootSignature.Get();
         ScopedPso.VS = ScopedVS;
         ScopedPso.PS = ScopedPS;
         ScopedPso.InputLayout = {ScopedLayout, static_cast<UINT>(std::size(ScopedLayout))};
@@ -3600,6 +3803,13 @@ float4 PSMain(VSOutput input) : SV_Target
         ScopedPso.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
         if (FAILED(MDevice->CreateGraphicsPipelineState(&ScopedPso, IID_PPV_ARGS(&MPipeline))))
         {
+            return false;
+        }
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedBasePso = ScopedPso;
+        ScopedBasePso.PS = {Shaders::Dx::D3D12SpriteBasePsSm5.data(), Shaders::Dx::D3D12SpriteBasePsSm5.size()};
+        if (FAILED(MDevice->CreateGraphicsPipelineState(&ScopedBasePso, IID_PPV_ARGS(&MBasePipeline))))
+        {
+            std::fprintf(stderr, "d3d12: base PSO failed\n");
             return false;
         }
         D3D12_GRAPHICS_PIPELINE_STATE_DESC ScopedAdditivePso = ScopedPso;
@@ -3851,7 +4061,10 @@ float4 PSMain(VSOutput input) : SV_Target
     ComPtr<ID3D12GraphicsCommandList> MCommandList;
     ComPtr<ID3D12Fence> MFence;
     ComPtr<ID3D12RootSignature> MRootSignature;
+    ComPtr<ID3D12RootSignature> MSpriteLightRootSignature;
     ComPtr<ID3D12PipelineState> MPipeline;
+    ComPtr<ID3D12PipelineState> MBasePipeline;
+    ComPtr<ID3D12PipelineState> MSdfPipeline;
     ComPtr<ID3D12RootSignature> MMaterialRootSignature;
     Extent2D MExtent{320, 240};
     bool MVsync = true;
@@ -3912,6 +4125,7 @@ float4 PSMain(VSOutput input) : SV_Target
     bool MBloomReady = false;
     ComPtr<ID3D12PipelineLibrary> MPipelineLibrary;
     bool MPipelineLibraryLoaded = false;
+    bool MSdfDisabled = false;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12PipelineState>> MMaterialPipelines;
     std::unordered_map<std::uint32_t, ShaderPipelineDomain> MMaterialPipelineDomains;
     std::uint32_t MNextMaterialPipeline = 1;
@@ -3934,7 +4148,7 @@ float4 PSMain(VSOutput input) : SV_Target
     ComPtr<ID3D12DescriptorHeap> MTargetHeap;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12Resource>> MTargets;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12DescriptorHeap>> MTargetHeaps;
-    std::unordered_map<std::uint32_t, ComPtr<ID3D12DescriptorHeap>> MTargetSrvHeaps;
+    std::unordered_map<std::uint32_t, std::uint32_t> MTargetSrvIndex;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12Resource>> MTargetDepthResources;
     std::unordered_map<std::uint32_t, ComPtr<ID3D12DescriptorHeap>> MTargetDepthHeaps;
     std::unordered_map<std::uint32_t, Fby::Rhi::Extent2D> MTargetSizes;
@@ -3959,6 +4173,8 @@ float4 PSMain(VSOutput input) : SV_Target
     std::unordered_map<std::uint32_t, std::uint32_t> MTextureSrvIndex;
     std::uint32_t MSrvSize = 0;
     std::uint32_t MSrvNext = 0;
+    std::vector<std::uint32_t> MFreeSrvIndices;
+    static constexpr std::uint32_t kInvalidSrvSlot = 0xFFFFFFFFu;
     std::uint32_t MNextTextureId = 1;
     bool MDebugLayer = false;
     ComPtr<ID3D12InfoQueue> MInfoQueue;

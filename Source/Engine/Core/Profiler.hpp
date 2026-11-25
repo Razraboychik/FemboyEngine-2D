@@ -9,6 +9,8 @@
 #include <limits>
 #include <vector>
 
+#include "Engine/Core/Assert.hpp"
+
 namespace Fby::Core
 {
 
@@ -52,6 +54,10 @@ public:
         MScratch.reserve(MCapacity);
         std::fill(MHeader.begin(), MHeader.end(), 0u);
     }
+    Profiler(const Profiler&) = delete;
+    Profiler& operator=(const Profiler&) = delete;
+    Profiler(Profiler&&) = delete;
+    Profiler& operator=(Profiler&&) = delete;
 
     void Reset() noexcept
     {
@@ -98,8 +104,18 @@ public:
     }
 
     // Samples in chronological order: index 0 is the oldest still retained.
+    [[nodiscard]] std::uint64_t LifetimeSampleCount(std::uint32_t InCategory) const noexcept
+    {
+        return InCategory < kProfileMaxCategories ? MHeader[InCategory] : 0;
+    }
+
     [[nodiscard]] ProfileSample SampleAt(std::uint32_t InIndex) const noexcept
     {
+        if (InIndex >= MCount)
+        {
+            FBY_ASSERT(InIndex < MCount);
+            return {};
+        }
         const std::uint32_t ScopedStart = MCount == MCapacity ? MWrite : 0;
         return MSamples[(ScopedStart + InIndex) % MCapacity];
     }

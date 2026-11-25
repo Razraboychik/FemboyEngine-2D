@@ -1,8 +1,9 @@
 // FemboyEngine2D - CSV table parsing/lookup test.
 #include "Engine/Core/DataTable.hpp"
 
+#include <cstdint>
 #include <cstdio>
-#include <string>
+#include <string_view>
 
 int main()
 {
@@ -17,7 +18,8 @@ int main()
         return 1;
     }
     if (ScopedTable.RowCount() != 2 || ScopedTable.ColumnCount() != 5 ||
-        ScopedTable.Cell(0, "name") != "slime" || ScopedTable.Cell(1, "note") != "say \"hi\"")
+        ScopedTable.Cell(0, "name") != "slime" || ScopedTable.Cell(0, "note") != "slow, green" ||
+        ScopedTable.Cell(1, "note") != "say \"hi\"")
     {
         std::fprintf(stderr, "table content mismatch\n");
         return 1;
@@ -27,7 +29,8 @@ int main()
     bool ScopedEnabled = false;
     if (!ScopedTable.GetInt(0, "hp", &ScopedHp) || ScopedHp != 10 ||
         !ScopedTable.GetFloat(1, "rate", &ScopedRate) || ScopedRate < 1.24f || ScopedRate > 1.26f ||
-        !ScopedTable.GetBool(0, "enabled", &ScopedEnabled) || !ScopedEnabled)
+        !ScopedTable.GetBool(0, "enabled", &ScopedEnabled) || !ScopedEnabled ||
+        !ScopedTable.GetBool(1, "enabled", &ScopedEnabled) || ScopedEnabled)
     {
         std::fprintf(stderr, "table typed lookup failed\n");
         return 1;

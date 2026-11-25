@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <unordered_set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -746,6 +747,7 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
     FempakWriter ScopedWriter;
     std::size_t ScopedCooked = 0;
     std::uint32_t ScopedIndex = 0;
+    std::unordered_set<std::string> ScopedDestinations;
     std::uint64_t ScopedRawTotal = 0;
     for (const CookFile& ScopedFile : ScopedPlan.files)
     {
@@ -799,7 +801,18 @@ void ArchiveProgressThunk(void* InUser, const Fby::Assets::ArchiveProgress& InPr
                          ScopedFile.source.string().c_str());
             return false;
         }
-        ScopedWriter.Add(ScopedFile.destination, std::move(ScopedBytes));
+        if (!ScopedDestinations.insert(ScopedFile.destination).second)
+        {
+            std::fprintf(stderr, "fempak: duplicate cooked destination '%s' from two sources\n",
+                         ScopedFile.destination.c_str());
+            return false;
+        }
+        if (!ScopedWriter.Add(ScopedFile.destination, std::move(ScopedBytes)))
+        {
+            ScopedError = "cooked destination escapes the pak root: " + ScopedFile.destination;
+            std::fprintf(stderr, "fempak: %s\n", ScopedError.c_str());
+            return false;
+        }
         ++ScopedIndex;
         ScopedProgress.Update(Fby::Assets::CookProgressStage::Cooking, ScopedIndex, ScopedTotal,
                               ScopedFile.source.generic_string(), ScopedRawTotal, 0, 0, "cooked");
@@ -1170,10 +1183,20 @@ struct ListedEntry
     {
         ScopedOptions.codec = Fby::Assets::ArchiveCodec::Lzma;
     }
-    else
+    else if (ScopedCodecName == "fby")
+    {
+        ScopedOptions.codec = Fby::Assets::ArchiveCodec::FbyLz;
+    }
+    else if (ScopedCodecName.empty() || ScopedCodecName == "auto")
     {
         ScopedOptions.codec = Fby::Assets::LzmaSdkAvailable() ? Fby::Assets::ArchiveCodec::Lzma
                                                               : Fby::Assets::ArchiveCodec::FbyLz;
+    }
+    else
+    {
+        std::fprintf(stderr, "fempak: --codec must be auto, store, lzma or fby (got '%s')\n",
+                     ScopedCodecName.c_str());
+        return 2;
     }
     if (ScopedCipherName == "none")
     {

@@ -61,6 +61,8 @@ void TestParseAndPrint()
     Check(Decimal128::FromString("bad", &ScopedValue) == Status::InvalidArgument, "invalid decimal rejects");
     Check(Decimal128::FromString("1.2.3", &ScopedValue) == Status::InvalidArgument, "double point rejects");
     Check(Decimal128::FromString("1e", &ScopedValue) == Status::InvalidArgument, "empty exponent rejects");
+    Check(Decimal128::FromString("1.0e-9223372036854775807", &ScopedValue) == Status::Overflow,
+          "exponent subtraction overflow rejects");
 }
 
 void TestArithmetic()

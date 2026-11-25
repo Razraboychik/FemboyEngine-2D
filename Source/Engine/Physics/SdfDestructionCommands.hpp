@@ -17,9 +17,17 @@ namespace Fby
 [[nodiscard]] inline bool PushCarveCommand(Ecs::CommandLog& InLog, Entity InEntity, const SdfCarveOp& InOp,
                                            std::uint64_t InTick)
 {
+    SdfCarveOp ScopedCanonical;
+    std::memset(&ScopedCanonical, 0, sizeof(ScopedCanonical));
+    ScopedCanonical.Shape = InOp.Shape;
+    ScopedCanonical.Center = InOp.Center;
+    ScopedCanonical.HalfExtents = InOp.HalfExtents;
+    ScopedCanonical.Radius = InOp.Radius;
+    ScopedCanonical.Angle = InOp.Angle;
     return InLog.PushWorldCommand(
         Ecs::CommandType::Carve, InEntity,
-        std::span<const std::byte>(reinterpret_cast<const std::byte*>(&InOp), sizeof(SdfCarveOp)), InTick);
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(&ScopedCanonical), sizeof(SdfCarveOp)),
+        InTick);
 }
 
 [[nodiscard]] inline bool DecodeCarveCommand(std::span<const std::byte> InPayload, SdfCarveOp* OutOp) noexcept

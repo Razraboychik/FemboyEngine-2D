@@ -4,6 +4,7 @@
 #include "Engine/Navigation/CrowdPool.hpp"
 #include "Engine/RHI/RenderItem.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <span>

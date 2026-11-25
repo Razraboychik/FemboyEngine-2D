@@ -431,7 +431,7 @@ structural graph. Tier 4 should not be promised by a general-purpose 2D engine.
 Tests:
 
 ```bash
-ctest --test-dir build-dev -R "sdf_(physics|damage|destructible|fracture|debris)" --output-on-failure
+ctest --test-dir build/dev -R "sdf_(physics|damage|destructible|fracture|debris)" --output-on-failure
 ```
 
 - `sdf_physics`: SDF sampling, contacts, manifolds and the new pre-correction

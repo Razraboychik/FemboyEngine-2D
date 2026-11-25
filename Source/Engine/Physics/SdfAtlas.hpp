@@ -17,7 +17,7 @@ namespace Fby
 // and full bricks need no tile and are resolved from the table alone.
 struct SdfAtlasImage
 {
-    static constexpr std::uint32_t kMaxTiles = 4096;
+    static constexpr std::uint32_t kMaxTiles = 256;
 
     std::uint32_t Width = 0;
     std::uint32_t Height = 0;
@@ -38,7 +38,7 @@ struct SdfAtlasImage
     const std::span<const SdfBrickHeader> ScopedBricks = InMap.BrickView();
     const std::span<const float> ScopedPayload = InMap.PayloadView();
     const std::uint32_t ScopedNarrow = static_cast<std::uint32_t>(InMap.NarrowBrickCount());
-    if (ScopedNarrow > SdfAtlasImage::kMaxTiles)
+    if (ScopedNarrow > SdfAtlasImage::kMaxTiles || ScopedBricks.size() > SdfAtlasImage::kMaxTiles)
     {
         return false;
     }
@@ -48,7 +48,7 @@ struct SdfAtlasImage
                                             : static_cast<std::uint32_t>(
                                                   std::ceil(std::sqrt(static_cast<double>(ScopedNarrow))));
     const std::uint32_t ScopedRows = ScopedColumns;
-    if (ScopedColumns > 64)
+    if (ScopedColumns > 16)
     {
         return false;
     }
@@ -56,8 +56,17 @@ struct SdfAtlasImage
     OutImage->Rows = ScopedRows;
     OutImage->Width = ScopedColumns * SdfBrickSize;
     OutImage->Height = ScopedRows * SdfBrickSize;
-    OutImage->Texels.assign(static_cast<std::size_t>(OutImage->Width) * OutImage->Height, 0.0f);
-    OutImage->Table.assign(ScopedBricks.size(), SdfBrickGpu{});
+    try
+    {
+        OutImage->Texels.assign(static_cast<std::size_t>(OutImage->Width) * OutImage->Height, 0.0f);
+        OutImage->Table.assign(ScopedBricks.size(), SdfBrickGpu{});
+    }
+    catch (...)
+    {
+        OutImage->Texels.clear();
+        OutImage->Table.clear();
+        return false;
+    }
 
     std::uint32_t ScopedTile = 0;
     for (std::size_t ScopedIndex = 0; ScopedIndex < ScopedBricks.size(); ++ScopedIndex)

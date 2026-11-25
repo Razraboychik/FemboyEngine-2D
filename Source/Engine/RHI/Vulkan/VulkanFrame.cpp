@@ -366,6 +366,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArrayFromRenderTarget(RenderTargetHan
     if (ScopedApi.vkCreateSampler(MDevice, &ScopedSamplerInfo, nullptr, &ScopedArray->sampler) != VK_SUCCESS)
     {
         MTextureArrays[ScopedId].reset();
+        MFreeTextureArrayIds.push_back(ScopedId);
         return {};
     }
 
@@ -378,6 +379,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArrayFromRenderTarget(RenderTargetHan
     {
         DestroyTextureArrayResources(*ScopedArray);
         MTextureArrays[ScopedId].reset();
+        MFreeTextureArrayIds.push_back(ScopedId);
         return {};
     }
 
@@ -433,7 +435,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
         return {};
     }
 
-    const VkFormat ScopedFormat = ToVkFormat(InDesc.format, InDesc.srgb);
+    const VkFormat ScopedFormat = ToVkFormat(InDesc.format, InDesc.EffectiveSrgb());
     if (ScopedFormat == VK_FORMAT_UNDEFINED)
     {
         LogError("vulkan", "CreateTextureArray: unknown cooked texture format");
@@ -488,7 +490,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
     ScopedArray->width = InDesc.size.width;
     ScopedArray->height = InDesc.size.height;
     ScopedArray->format = InDesc.format;
-    ScopedArray->srgb = InDesc.srgb;
+    ScopedArray->srgb = InDesc.EffectiveSrgb();
 
     const auto ScopedCleanup = [&]()
     {
@@ -512,6 +514,11 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
         {
             ScopedApi.vkFreeMemory(MDevice, ScopedArray->memory, nullptr);
         }
+        if (ScopedId < MTextureArrays.size())
+        {
+            MTextureArrays[ScopedId].reset();
+        }
+        MFreeTextureArrayIds.push_back(ScopedId);
     };
 
     VkImageCreateInfo ScopedImageInfo{};
@@ -673,7 +680,7 @@ TextureArrayHandle VulkanRHI::CreateTextureArray(const TextureArrayDesc& InDesc,
 
     MTextureArrays[ScopedId] = std::move(ScopedArray);
     LogInfo("vulkan", "texture array #{}: {}x{} x {} layers, {}", ScopedId, InDesc.size.width, InDesc.size.height,
-            InDesc.layers, InDesc.srgb ? "sRGB" : "linear");
+            InDesc.layers, InDesc.EffectiveSrgb() ? "sRGB" : "linear");
     return TextureArrayHandle{ScopedId};
 }
 
@@ -694,6 +701,18 @@ void VulkanRHI::DestroyTextureArray(TextureArrayHandle InHandle)
         return;
     }
     WaitIdle();
+    for (auto ScopedIt = MLayerViews.begin(); ScopedIt != MLayerViews.end();)
+    {
+        if (static_cast<std::uint32_t>(ScopedIt->first >> 32u) == InHandle.id)
+        {
+            Vk::GetApi().vkDestroyImageView(MDevice, ScopedIt->second, nullptr);
+            ScopedIt = MLayerViews.erase(ScopedIt);
+        }
+        else
+        {
+            ++ScopedIt;
+        }
+    }
     DestroyTextureArrayResources(*ScopedArray);
     MTextureArrays[InHandle.id].reset();
     MFreeTextureArrayIds.push_back(InHandle.id);
@@ -1013,11 +1032,8 @@ void VulkanRHI::DestroySwapchain()
     {
         DestroyDepthImage(&MDrawDepthImages[ScopedI], &MDrawDepthMemories[ScopedI], &MDrawDepthViews[ScopedI]);
     }
-    if (MDepthSampler != VK_NULL_HANDLE)
-    {
-        ScopedApi.vkDestroySampler(MDevice, MDepthSampler, nullptr);
-        MDepthSampler = VK_NULL_HANDLE;
-    }
+    // MDepthSampler is device-lifetime state; DestroySwapchain must not
+    // invalidate the depth descriptors that sample it. Shutdown releases it.
     MDrawDepthImages.clear();
     MDrawDepthMemories.clear();
     MDrawDepthViews.clear();
@@ -1419,6 +1435,12 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
     const auto ScopedCleanup = [&]()
     {
         DestroyRenderTargetResources(*ScopedTarget);
+        if (ScopedId < MRenderTargets.size())
+        {
+            MRenderTargets[ScopedId].reset();
+        }
+        // A failed creation must not consume a target slot permanently.
+        MFreeRenderTargetIds.push_back(ScopedId);
     };
 
     VkImageCreateInfo ScopedImageInfo{};
@@ -1610,9 +1632,8 @@ RenderTargetHandle VulkanRHI::CreateRenderTarget(const RenderTargetDesc& InDesc)
             ScopedSceneView.subresourceRange.levelCount = 1;
             ScopedSceneView.subresourceRange.layerCount = 1;
             // The scene view must exist before the framebuffer names it, so the
-            // attachment array is built after the image view is created. The
-            // same ordering bug in the accessibility framebuffer faulted on the
-            // first vkCmdBeginRenderPass that used it.
+            // attachment array is built after the image view is created. This
+            // keeps the first vkCmdBeginRenderPass pointed at a valid attachment.
             const bool ScopedSceneResourcesOk =
                 ScopedSceneAllocate.memoryTypeIndex != std::numeric_limits<std::uint32_t>::max() &&
                 ScopedApi.vkAllocateMemory(MDevice, &ScopedSceneAllocate, nullptr, &ScopedTarget->sceneMemory) ==
@@ -2240,7 +2261,7 @@ bool VulkanRHI::RenderToTarget(RenderTargetHandle InHandle, const FramePacket& I
     {
         const bool ScopedTargetSrgb = IsSrgbFormat(ScopedTarget->format);
         MActiveRenderPass = ScopedTarget->renderPass;
-        DrawPacket(ScopedCommandBuffer, ScopedTarget->pipeline, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
+        DrawPacket(ScopedCommandBuffer, ScopedTarget->pipeline, VK_NULL_HANDLE, VK_NULL_HANDLE, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
         DrawMeshes(ScopedCommandBuffer, ScopedTarget->meshPipeline, InPacket, true, ScopedTargetSrgb, ScopedSdfSlot);
         RecordOitResolve(ScopedCommandBuffer, ScopedTarget->renderPass, InPacket);
         MActiveRenderPass = VK_NULL_HANDLE;
@@ -2387,6 +2408,7 @@ bool VulkanRHI::TextureArrayLayerView(TextureArrayHandle InHandle, std::uint32_t
     }
     MLayerViews.emplace_back(ScopedKey, ScopedView);
     InView.view = ScopedView;
+    InView.image = ScopedArray->image;
     InView.layout = static_cast<int>(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     return true;
 }
@@ -2547,7 +2569,7 @@ void VulkanRHI::RecordDepthPrepass(VkCommandBuffer InCommandBuffer, const FrameP
     }
     else if (MDepthPrepassRequested)
     {
-        DrawPacket(InCommandBuffer, MDepthPrepassPipeline, InPacket, false, false, 0, true);
+        DrawPacket(InCommandBuffer, MDepthPrepassPipeline, VK_NULL_HANDLE, VK_NULL_HANDLE, InPacket, false, false, 0, true);
     }
     ScopedApi.vkCmdEndRenderPass(InCommandBuffer);
     if (ScopedUseCull && InPacket.gpuOpaqueMain && !ScopedReuseCull)
@@ -2746,8 +2768,9 @@ void VulkanRHI::UploadGiProbes(VkCommandBuffer InCommandBuffer, const FramePacke
                                       nullptr);
 }
 
-void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, const FramePacket& InPacket,
-                           bool InOffscreen, bool InSrgb, std::uint32_t InSdfSlot, bool InDepthOnly)
+void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipeline, VkPipeline InBasePipeline,
+                           VkPipeline InSdfPipeline, const FramePacket& InPacket, bool InOffscreen, bool InSrgb,
+                           std::uint32_t InSdfSlot, bool InDepthOnly)
 {
     if (InPacket.items.empty())
     {
@@ -3023,7 +3046,28 @@ void VulkanRHI::DrawPacket(VkCommandBuffer InCommandBuffer, VkPipeline InPipelin
         {
             ScopedBatchPipeline = MPipelineOpaque;
         }
-        if (!InDepthOnly && ScopedBatch.pipeline != 0)
+        if (!InDepthOnly && InBasePipeline != VK_NULL_HANDLE && ScopedBatch.pipeline == 0)
+        {
+            const Rhi::RenderItem& ScopedFirst =
+                InPacket.items[std::min<std::size_t>(ScopedBatch.firstItem, InPacket.items.size() - 1u)];
+            if (Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline))
+            {
+                const Rhi::SpriteVariant ScopedVariant = Rhi::DecodeSpriteVariant(ScopedBatch.pipeline);
+                if (ScopedVariant == Rhi::SpriteVariant::Base)
+                {
+                    ScopedBatchPipeline = InBasePipeline != VK_NULL_HANDLE ? InBasePipeline : InPipeline;
+                }
+                else if (ScopedVariant != Rhi::SpriteVariant::Normal && InSdfPipeline != VK_NULL_HANDLE)
+                {
+                    ScopedBatchPipeline = InSdfPipeline;
+                }
+                else
+                {
+                    ScopedBatchPipeline = InPipeline;
+                }
+            }
+        }
+        if (!InDepthOnly && ScopedBatch.pipeline != 0 && !Rhi::IsSpriteVariantPipeline(ScopedBatch.pipeline))
         {
             const VkPipeline ScopedMaterial = ResolveMaterialPipeline(ScopedBatch.pipeline, InOffscreen, InSrgb);
             if (ScopedMaterial != VK_NULL_HANDLE)
@@ -3688,7 +3732,7 @@ void VulkanRHI::Submit(const FramePacket& InPacket)
     if (!MBlindFrame)
     {
         MActiveRenderPass = MRenderPass;
-        DrawPacket(ScopedCommandBuffer, MPipeline, InPacket, false, false, ScopedSdfSlot);
+        DrawPacket(ScopedCommandBuffer, MPipeline, MBasePipeline, MSdfPipeline, InPacket, false, false, ScopedSdfSlot);
         DrawMeshes(ScopedCommandBuffer, MMeshPipeline, InPacket, false, false, ScopedSdfSlot);
         RecordOitResolve(ScopedCommandBuffer, MRenderPass, InPacket);
         MActiveRenderPass = VK_NULL_HANDLE;
@@ -3701,7 +3745,7 @@ bool VulkanRHI::DrawOverlay(const FramePacket& InPacket)
     {
         return false;
     }
-    DrawPacket(MCommandBuffers[MFrameIndex], MPipeline, InPacket, false, false, 0);
+    DrawPacket(MCommandBuffers[MFrameIndex], MPipeline, MBasePipeline, MSdfPipeline, InPacket, false, false, 0);
     return true;
 }
 
@@ -3715,6 +3759,8 @@ bool VulkanRHI::UploadMotionVectors(std::span<const MotionVectorItem> InItems)
     Vk::Api& ScopedApi = Vk::GetApi();
     if (MMotionCapacity < InItems.size())
     {
+        // The old buffer may still be referenced by submitted frames.
+        WaitIdle();
         if (MMotionMapped != nullptr)
         {
             ScopedApi.vkUnmapMemory(MDevice, MMotionMemory);
@@ -4516,6 +4562,11 @@ void VulkanRHI::Shutdown()
 
     if (MDevice != VK_NULL_HANDLE)
     {
+        if (MDepthSampler != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroySampler(MDevice, MDepthSampler, nullptr);
+            MDepthSampler = VK_NULL_HANDLE;
+        }
         if (MInstanceMapped != nullptr)
         {
             ScopedApi.vkUnmapMemory(MDevice, MInstanceStagingMemory);
@@ -4650,6 +4701,14 @@ void VulkanRHI::Shutdown()
         if (MPipelineOpaque != VK_NULL_HANDLE)
         {
             ScopedApi.vkDestroyPipeline(MDevice, MPipelineOpaque, nullptr);
+        }
+        if (MBasePipeline != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipeline(MDevice, MBasePipeline, nullptr);
+        }
+        if (MSdfPipeline != VK_NULL_HANDLE)
+        {
+            ScopedApi.vkDestroyPipeline(MDevice, MSdfPipeline, nullptr);
         }
         if (MOitResolvePipeline != VK_NULL_HANDLE)
         {
@@ -4880,6 +4939,7 @@ void VulkanRHI::Shutdown()
     if (MInstance != VK_NULL_HANDLE)
     {
         ScopedApi.vkDestroyInstance(MInstance, nullptr);
+        ScopedApi.ReleaseBinding();
         MInstance = VK_NULL_HANDLE;
     }
 }

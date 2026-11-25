@@ -20,6 +20,8 @@ OUTPUT = SHADER_ROOT / "DxShaderBlobs.hpp"
 NAMES = {
     "d3d11_sprite_VSMain": "D3D11SpriteVsSm5",
     "d3d11_sprite_PSMain": "D3D11SpritePsSm5",
+    "d3d11_sprite_base_PSMain": "D3D11SpriteBasePsSm5",
+    "d3d11_sprite_sdf_PSMain": "D3D11SpriteSdfPsSm5",
     "d3d11_motion_VSMain": "D3D11MotionVsSm5",
     "d3d11_motion_PSMain": "D3D11MotionPsSm5",
     "d3d11_temporal_VSMain": "D3D11TemporalVsSm5",
@@ -38,6 +40,9 @@ NAMES = {
     "d3d11_accessibility_flash_CSMain": "D3D11AccessibilityFlashCsSm5",
     "d3d12_sprite_VSMain": "D3D12SpriteVsSm5",
     "d3d12_sprite_PSMain": "D3D12SpritePsSm5",
+    "d3d12_sprite_base_PSMain": "D3D12SpriteBasePsSm5",
+    "d3d12_sprite_sdf_PSMain": "D3D12SpriteSdfPsSm5",
+    "d3d12_sprite_sdf_VSMain": "D3D12SpriteSdfVsSm5",
     "d3d12_motion_VSMain": "D3D12MotionVsSm5",
     "d3d12_motion_PSMain": "D3D12MotionPsSm5",
     "d3d12_temporal_VSMain": "D3D12TemporalVsSm5",
@@ -72,7 +77,13 @@ def find_dxc() -> pathlib.Path:
         candidate = pathlib.Path(sdk) / "Bin" / "dxc.exe"
         if candidate.is_file():
             return candidate
-    raise SystemExit("dxc.exe not found; set FBY_DXC or VULKAN_SDK")
+    kits = pathlib.Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Windows Kits" / "10" / "bin"
+    if kits.is_dir():
+        for version in sorted((item for item in kits.iterdir() if item.is_dir()), reverse=True):
+            candidate = version / "x64" / "dxc.exe"
+            if candidate.is_file():
+                return candidate
+    raise SystemExit("dxc.exe not found; set FBY_DXC, VULKAN_SDK, or install the Windows SDK")
 
 
 def find_fxc() -> pathlib.Path:
@@ -115,10 +126,18 @@ def main() -> int:
             names = ("sprite", "motion", "temporal", "sharpen", "postfx_composite", "bloom_prefilter", "bloom_blur",
                      "color_grading", "blit", "hud_composite", "upscale", "accessibility_composite",
                      "accessibility_flash")
+            if backend == "d3d11":
+                names = names + ("sprite_base", "sprite_sdf")
+            if backend == "d3d12":
+                names = names + ("sprite_base", "sprite_sdf")
             if backend == "d3d12":
                 names = names + ("material_sprite",)
             for name in names:
                 entries = ("VSMain", "PSMain")
+                if name in ("sprite_base", "sprite_sdf"):
+                    entries = ("PSMain",)
+                if name == "sprite_sdf":
+                    entries = ("VSMain", "PSMain")
                 if backend == "d3d11" and name == "sharpen":
                     entries = ("PSMain",)
                 if name == "material_sprite":

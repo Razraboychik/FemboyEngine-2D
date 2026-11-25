@@ -3,6 +3,12 @@
 
 #include "Editor/Infrastructure/EditTransactions.hpp"
 #include "Editor/Infrastructure/ProjectConfig.hpp"
+#include "Editor/Panels/SettingsRegistryPanel.hpp"
+#include "Editor/Infrastructure/AccessibilitySettings.hpp"
+#include "Editor/Infrastructure/EditorSettingsRegistry.hpp"
+#include "Engine/Audio/AudioSettings.hpp"
+#include "Engine/Core/OutputPolicySettings.hpp"
+#include "Engine/Core/SettingsRegistry.hpp"
 #include "Engine/RHI/BackendCapabilities.hpp"
 #include "Engine/RHI/RHI.hpp"
 
@@ -65,11 +71,15 @@ public:
     }
     [[nodiscard]] ProjectSettings& Values() noexcept;
     [[nodiscard]] const ProjectSettings& Values() const noexcept;
+    // Tears down project-declared DSP buses before the next project is applied.
+    void ResetGeneratedState() noexcept;
 
 private:
     void CommitIfFinished(Ecs::SystemContext& InContext);
     void BeginOrRecord(Ecs::SystemContext& InContext,
                        const std::array<std::byte, sizeof(ProjectSettings)>& InBefore) noexcept;
+    void InitializeAudioSettings(Ecs::SystemContext& InContext);
+    void SyncAccessibilitySettings();
 
     CommandStack* MCommands = nullptr;
     ProjectConfigStore* MStore = nullptr;
@@ -85,8 +95,20 @@ private:
     std::array<char, 64> MTagSearch{};
     int MSelectedTag = -1;
     int MLastSelectedTag = -1;
+    std::string MOpsStatus;
     bool MAppliedValid = false;
     bool MDirty = false;
+    Settings::Registry MAudioSettings;
+    SettingsRegistryPanel MAudioPanel;
+    std::array<BusId, kMaxProjectAudioBuses> MProjectBusIds{};
+    AudioSystem* MAudioSystem = nullptr;
+    bool MAudioSettingsReady = false;
+    Settings::Registry MOutputPolicySettings;
+    SettingsRegistryPanel MOutputPolicyPanel;
+    bool MOutputPolicySettingsReady = false;
+    Settings::Registry MAccessibilityRegistry;
+    SettingsRegistryPanel MAccessibilityPanel;
+    bool MAccessibilityRegistryReady = false;
 };
 
 class EditorSettingsPanel
@@ -116,6 +138,7 @@ private:
     void CommitIfFinished(Ecs::SystemContext& InContext);
     void BeginOrRecord(Ecs::SystemContext& InContext,
                        const std::array<std::byte, sizeof(EditorSettings)>& InBefore) noexcept;
+    void SyncGeneratedEditorSettings();
 
     CommandStack* MCommands = nullptr;
     ProjectConfigStore* MStore = nullptr;
@@ -125,5 +148,8 @@ private:
     EditorSettings MApplied{};
     bool MAppliedValid = false;
     bool MDirty = false;
+    Settings::Registry MGeneratedRegistry;
+    SettingsRegistryPanel MGeneratedPanel;
+    bool MGeneratedReady = false;
 };
 }

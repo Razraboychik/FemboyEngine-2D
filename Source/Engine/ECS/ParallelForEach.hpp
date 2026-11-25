@@ -18,9 +18,11 @@ void ParallelForEach(JobSystem& InJobs, View& InView, std::uint32_t InGrain, Fun
     {
         return;
     }
+    // A zero grain would divide by zero and never advance the boundary loop.
+    const std::uint32_t ScopedGrain = InGrain != 0u ? InGrain : 1u;
 
     // Reentrant or tiny work stays on the calling thread: submitting one task
-    if (ScopedSize <= InGrain || JobSystem::IsWorkerThread())
+    if (ScopedSize <= ScopedGrain || JobSystem::IsWorkerThread())
     {
         for (auto ScopedIt = InView.begin(); ScopedIt != InView.end(); ++ScopedIt)
         {
@@ -30,13 +32,13 @@ void ParallelForEach(JobSystem& InJobs, View& InView, std::uint32_t InGrain, Fun
     }
 
     std::vector<typename View::iterator> ScopedBoundaries;
-    ScopedBoundaries.reserve(static_cast<std::size_t>(ScopedSize / InGrain) + 2);
+    ScopedBoundaries.reserve(static_cast<std::size_t>(ScopedSize / ScopedGrain) + 2);
 
     auto ScopedIt = InView.begin();
     while (ScopedIt != InView.end())
     {
         ScopedBoundaries.push_back(ScopedIt);
-        for (std::uint32_t ScopedStep = 0; ScopedStep < InGrain && ScopedIt != InView.end(); ++ScopedStep)
+        for (std::uint32_t ScopedStep = 0; ScopedStep < ScopedGrain && ScopedIt != InView.end(); ++ScopedStep)
         {
             ++ScopedIt;
         }

@@ -116,9 +116,13 @@ bool VoiceChannel::AddParticipant(std::uint8_t InPlayer) noexcept
         return true;
     }
     ResetPeer(ScopedPeer);
+    if (!ScopedPeer.Decoder.Initialize())
+    {
+        ScopedPeer.Present = false;
+        return false;
+    }
     ScopedPeer.Present = true;
     ScopedPeer.Ring.Configure(ScopedPeer.RingStorage.data(), kVoiceRingFrames, 1);
-    (void)ScopedPeer.Decoder.Initialize();
     return true;
 }
 
@@ -402,9 +406,13 @@ void VoiceChannel::DecodePeer(Peer& InPeer, VoiceSession* InSession) noexcept
         SequenceNewer(ScopedSlot->Sequence, static_cast<std::uint16_t>(InPeer.LastSequence + 1)))
     {
         // A hole: reconstruct the missing frame from the Opus FEC carried by the
-        // next packet before falling back to concealment.
-        JitterSlot* ScopedNext = FindNextSlot(InPeer);
-        if (ScopedNext != nullptr &&
+        // next packet before falling back to concealment. Opus FEC can only
+        // recover the frame immediately preceding the packet, so only a single
+        // missing frame is a valid FEC case.
+        JitterSlot* ScopedNext = ScopedSlot->Sequence == static_cast<std::uint16_t>(InPeer.LastSequence + 2)
+                                     ? FindNextSlot(InPeer)
+                                     : nullptr;
+        if (ScopedNext != nullptr && ScopedNext->Sequence == ScopedSlot->Sequence &&
             InPeer.Decoder.DecodeFec(std::span<const std::uint8_t>(ScopedNext->Data.data(), ScopedNext->Bytes),
                                      MDecodeScratch) > 0)
         {

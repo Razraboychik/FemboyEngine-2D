@@ -259,6 +259,7 @@ struct SnapshotView
     SnapshotHeader header{};
     std::span<const std::byte> payload;
     std::span<const std::byte> extension;
+    bool valid = false;
 
     [[nodiscard]] static SnapshotView Open(std::span<const std::byte> InBytes, std::string_view* InError = nullptr);
 };

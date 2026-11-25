@@ -71,9 +71,12 @@ void* FindSymbol(LibraryHandle handle, const char* name)
     try
     {
         const FbyPluginInfo* ScopedInfo = InEntry();
-        if (ScopedInfo == nullptr || ScopedInfo->struct_size < sizeof(FbyPluginInfo))
+        if (ScopedInfo == nullptr || ScopedInfo->struct_size < sizeof(FbyPluginInfo) ||
+            (ScopedInfo->component_count > 0 && ScopedInfo->components == nullptr) ||
+            (ScopedInfo->component_count == 0 && ScopedInfo->components != nullptr) ||
+            ScopedInfo->component_count > 256)
         {
-            return std::unexpected(Core::MakeError(Core::ErrorCode::InvalidState));
+            return std::unexpected(Core::MakeError(Core::ErrorCode::AbiViolation));
         }
         return ScopedInfo;
     }
@@ -95,7 +98,7 @@ void InvokePluginUnload(FbyPluginUnloadFn InUnload) noexcept
     }
     catch (...)
     {
-        LogWarn("plugin", "fby_plugin_unload threw");
+        std::fputs("plugin: fby_plugin_unload threw\n", stderr);
     }
 }
 }
@@ -159,11 +162,19 @@ PluginHost::PluginHost(ComponentRegistry& InComponents, void* InEcsRegistry)
     MApi.component_layout_hash = &PluginHost::HostLayoutHash;
     MApi.add_system = &PluginHost::HostAddSystem;
     MApi.voice = nullptr;
+    MApi.mod_api = MModApi;
 }
 
 PluginHost::~PluginHost()
 {
-    UnloadAll();
+    try
+    {
+        UnloadAll();
+    }
+    catch (...)
+    {
+        std::fputs("plugin: unload during host destruction failed\n", stderr);
+    }
 }
 
 bool PluginHost::RebuildGraph(std::string* InError)
@@ -363,7 +374,7 @@ bool PluginHost::Load(const std::string& InPath, std::string* InError)
     return true;
 }
 
-bool PluginHost::Unload(const std::string& InPath, std::string* InError)
+bool PluginHost::Unload(std::string InPath, std::string* InError)
 {
     for (auto ScopedIt = MPlugins.begin(); ScopedIt != MPlugins.end(); ++ScopedIt)
     {
@@ -430,7 +441,7 @@ std::uint32_t PluginHost::LoadDirectory(const std::filesystem::path& InDirectory
     return ScopedLoaded;
 }
 
-bool PluginHost::Reload(const std::string& InPath, std::string* InError)
+bool PluginHost::Reload(std::string InPath, std::string* InError)
 {
     for (auto ScopedIt = MPlugins.begin(); ScopedIt != MPlugins.end(); ++ScopedIt)
     {

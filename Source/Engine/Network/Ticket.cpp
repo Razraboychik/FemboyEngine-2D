@@ -287,6 +287,11 @@ bool DecodeInviteCode(std::string_view InCode, std::span<std::byte> OutSignedTic
     {
         return false;
     }
+    constexpr std::size_t kCanonicalDataChars = 4 * ((kTicketBytes + 2) / 3);
+    if (InCode.size() != kInvitePrefixBytes + kCanonicalDataChars)
+    {
+        return false;
+    }
 
     std::array<std::byte, kTicketBytes> ScopedBuffer{};
     std::size_t ScopedOut = 0;

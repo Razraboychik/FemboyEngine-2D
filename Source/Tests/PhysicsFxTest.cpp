@@ -661,8 +661,8 @@ int main()
     ScopedFluid.Update(ScopedRegistry, 1.0f / 60.0f);
     FBY_CHECK(ScopedRegistry.valid(ScopedDrop));
 
-    // JN-4 regression: destroying link entities while the joint system is alive
-    // must mark the connections broken instead of querying dead bodies.
+    // Destroying link entities while the joint system is alive must mark the
+    // connections broken instead of querying dead bodies.
     JointChainDesc ScopedDangling;
     ScopedDangling.Kind = JointChainKind::Rope;
     ScopedDangling.Flags = JointChainPinStart;

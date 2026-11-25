@@ -11,6 +11,11 @@ namespace Fby::Rhi
 class OitPass
 {
 public:
+    OitPass() = default;
+    OitPass(const OitPass&) = delete;
+    OitPass& operator=(const OitPass&) = delete;
+    OitPass(OitPass&&) = delete;
+    OitPass& operator=(OitPass&&) = delete;
     [[nodiscard]] bool Render(RHI& InGpu, const FramePacket& InPacket, Extent2D InExtent);
     void Release(RHI& InGpu) noexcept;
 

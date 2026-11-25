@@ -183,14 +183,14 @@ EXTRA_SECTIONS: list[dict] = [
                 "headers": [B("Region", "Область"), B("Contents", "Содержимое")],
                 "rows": [
                     [B("Header", "Заголовок"),
-                     B("48 bytes: magic FBYFNT01, version, glyph count, atlas size, format, "
+                     B("60 bytes: magic FBYFNT01, version, glyph count, atlas size, format, "
                        "offsets, line height, ascent/descent, font id.",
-                       "48 байт: magic FBYFNT01, версия, число глифов, размер атласа, формат, "
+                       "60 байт: magic FBYFNT01, версия, число глифов, размер атласа, формат, "
                        "смещения, высота строки, ascent/descent, id шрифта.")],
                     [B("Glyph table", "Таблица глифов"),
-                     B("40 bytes per glyph: codepoint, normalized UVs, advance, bearings, quad "
+                     B("44 bytes per glyph: codepoint, normalized UVs, advance, bearings, quad "
                        "size. Sorted ascending for the binary search in FontAtlas::Glyph().",
-                       "40 байт на глиф: кодовая точка, нормализованные UV, advance, bearings, "
+                       "44 байт на глиф: кодовая точка, нормализованные UV, advance, bearings, "
                        "размер квада. Отсортирована по возрастанию для бинарного поиска в "
                        "FontAtlas::Glyph().")],
                     [B("Pixels", "Пиксели"),
@@ -2303,11 +2303,11 @@ EXTRA_SECTIONS: list[dict] = [
             {
                 "type": "note",
                 "text": B(
-                    "The build orchestrator needs the fby_fempak executable in build/bin. If the editor was built "
+                    "The build orchestrator needs the fby_fempak executable in build/dev/bin. If the editor was built "
                     "with FBY_BUILD_TOOLS=OFF, Start() fails before spawning anything and the status bar names "
                     "the missing packer. The AOT stage is optional by construction: a project with no bound "
                     "LogicGraph still cooks and secures its assets, and the result reports keyBaked=false.",
-                    "Оркестратору сборки нужен исполняемый файл fby_fempak в build/bin. Если редактор собран с "
+                    "Оркестратору сборки нужен исполняемый файл fby_fempak в build/dev/bin. Если редактор собран с "
                     "FBY_BUILD_TOOLS=OFF, Start() завершается до запуска процессов, а статус-бар называет "
                     "отсутствующий упаковщик. Стадия AOT необязательна по конструкции: проект без привязанного "
                     "LogicGraph всё равно кукает и шифрует ассеты, а результат сообщает keyBaked=false.",
@@ -2952,7 +2952,7 @@ EXTRA_SECTIONS: list[dict] = [
                 "type": "code",
                 "lang": "bash",
                 "text": "# fby_matc <graph.fgraph> [-o <cooked.femmat>]\n"
-                        "build/bin/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat\n"
+                        "build/dev/bin/tools/fby_matc assets/materials/tinted.fgraph -o assets/materials/tinted.femmat\n"
                         "\n"
                         "# The tool refuses a graph that does not validate, prints the hash and the SPIR-V word\n"
                         "# counts, and never writes a payload the runtime would reject.\n",

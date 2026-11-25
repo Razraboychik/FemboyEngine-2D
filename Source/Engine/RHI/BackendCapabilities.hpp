@@ -60,10 +60,12 @@ namespace Fby::Rhi
     ScopedCaps.XeSs = false;
     ScopedCaps.CustomFrameGeneration =
         InInfo.upscalers.frameGeneration && InInfo.upscalers.motionVectors;
-    ScopedCaps.Fsr3FrameGeneration =
-        InFidelityFxRuntime.FrameGeneration && InInfo.upscalers.motionVectors;
-    ScopedCaps.DlssFrameGeneration = ScopedNvidiaWindows && InDlssRuntime.FrameGeneration &&
-                                     InInfo.upscalers.motionVectors;
+    // Both runtimes are Vulkan-only in this tree; do not advertise them on a
+    // backend that cannot load their artifacts.
+    ScopedCaps.Fsr3FrameGeneration = InInfo.backend == Backend::Vulkan &&
+                                     InFidelityFxRuntime.FrameGeneration && InInfo.upscalers.motionVectors;
+    ScopedCaps.DlssFrameGeneration = InInfo.backend == Backend::Vulkan && ScopedNvidiaWindows &&
+                                     InDlssRuntime.FrameGeneration && InInfo.upscalers.motionVectors;
     // XeSS FG in the vendored SDK exposes only the D3D12 swapchain API, which the
     // D3D12 backend does not wire to the XeSS runtime, so it stays unadvertised.
     ScopedCaps.XeSsFrameGeneration = false;

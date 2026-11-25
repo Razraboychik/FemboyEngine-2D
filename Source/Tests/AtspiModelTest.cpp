@@ -34,7 +34,7 @@ int main()
     FBY_CHECK(std::strcmp(AtspiRoleName(AccessibilityRole::Tab), "page tab") == 0);
     FBY_CHECK(std::strcmp(AtspiRoleName(AccessibilityRole::TextInput), "entry") == 0);
     FBY_CHECK(std::strcmp(AtspiRoleName(AccessibilityRole::Unknown), "filler") == 0);
-    FBY_CHECK(AtspiRoleId(AccessibilityRole::Button) == 132);
+    FBY_CHECK(AtspiRoleId(AccessibilityRole::Button) == 43);
     FBY_CHECK(AtspiRoleId(AccessibilityRole::CheckBox) == 7);
     FBY_CHECK(AtspiRoleId(AccessibilityRole::TextInput) == 79);
     FBY_CHECK(AtspiRoleId(AccessibilityRole::Text) == 29);

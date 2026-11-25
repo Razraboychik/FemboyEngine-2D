@@ -22,9 +22,10 @@ bool RelevanceGrid::Initialize(const RelevanceConfig& InConfig, std::string_view
         return false;
     };
 
-    if (InConfig.cellSize <= 0.0f)
+    if (!std::isfinite(InConfig.cellSize) || InConfig.cellSize <= 0.0f ||
+        !std::isfinite(InConfig.origin.X) || !std::isfinite(InConfig.origin.Y))
     {
-        return ScopedFail("relevance grid: cellSize must be positive");
+        return ScopedFail("relevance grid: cellSize and origin must be finite, cellSize positive");
     }
     if (InConfig.cellsX == 0 || InConfig.cellsY == 0)
     {
@@ -40,13 +41,21 @@ bool RelevanceGrid::Initialize(const RelevanceConfig& InConfig, std::string_view
     {
         return ScopedFail("relevance grid: radii must be neighbor <= near <= far");
     }
-    if (InConfig.nearInterval == 0 || InConfig.farInterval == 0)
+    if (InConfig.nearInterval == 0 || InConfig.farInterval == 0 || InConfig.nearInterval > 255 ||
+        InConfig.farInterval > 255)
     {
-        return ScopedFail("relevance grid: replication intervals must be non-zero");
+        return ScopedFail("relevance grid: replication intervals must be in 1..255");
+    }
+    const std::uint32_t ScopedMaxRadius =
+        static_cast<std::uint32_t>(std::max(InConfig.cellsX, InConfig.cellsY)) - 1u;
+    if (InConfig.farRadius > ScopedMaxRadius)
+    {
+        return ScopedFail("relevance grid: farRadius exceeds the grid extent");
     }
 
+    std::vector<RelevanceCell> ScopedCells(static_cast<std::size_t>(ScopedCellCount));
+    MCells = std::move(ScopedCells);
     MConfig = InConfig;
-    MCells.assign(static_cast<std::size_t>(ScopedCellCount), RelevanceCell{});
     MPlayerPositions.fill(Vector2D{});
     MHasPlayer.fill(false);
     MStats = RelevanceGridStats{};
@@ -57,7 +66,7 @@ bool RelevanceGrid::Initialize(const RelevanceConfig& InConfig, std::string_view
 RelevanceGrid::CellCoordinate RelevanceGrid::CellOf(Vector2D InPosition) const noexcept
 {
     CellCoordinate ScopedCoordinate;
-    if (!MInitialized)
+    if (!MInitialized || !std::isfinite(InPosition.X) || !std::isfinite(InPosition.Y))
     {
         return ScopedCoordinate;
     }

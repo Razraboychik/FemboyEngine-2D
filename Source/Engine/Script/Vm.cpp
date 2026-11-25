@@ -126,11 +126,11 @@ bool ScriptVm::Run(const BoundProgram& InProgram, ScriptEvent InEvent, Entity In
 }
 
 VmStopInfo ScriptVm::RunDebug(const BoundProgram& InProgram, ScriptEvent InEvent, Entity InSelf,
-                              VmContext& InContext, VmDebugState& InDebug) noexcept
+                              VmContext& InContext, VmDebugState& InDebug, VmSuspendState* InSuspend) noexcept
 {
     VmFault ScopedFault{};
     VmDebugState* ScopedDebug = InDebug.Enabled ? &InDebug : nullptr;
-    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, &ScopedFault, ScopedDebug, nullptr);
+    const VmStopInfo ScopedStop = Execute(InProgram, InEvent, InSelf, InContext, &ScopedFault, ScopedDebug, InSuspend);
     if (InDebug.Enabled && ScopedStop.Halt == VmHalt::Faulted)
     {
         InDebug.Paused = false;

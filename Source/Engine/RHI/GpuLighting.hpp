@@ -57,9 +57,9 @@ static_assert(sizeof(ClusterGridConstants) == 16);
 struct alignas(16) GpuGiVolumeHeader
 {
     // origin.xy, cellSize.xy
-    Vector4D OriginAndCell;
+    Vector4D OriginAndCell{0.0f, 0.0f, 0.0f, 0.0f};
     // width, height, maxDistance, strength
-    Vector4D Extent;
+    Vector4D Extent{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 static_assert(sizeof(GpuGiVolumeHeader) == 32);

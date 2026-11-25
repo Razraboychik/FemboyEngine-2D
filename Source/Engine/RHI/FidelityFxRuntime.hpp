@@ -14,12 +14,15 @@ namespace Fby::Rhi
 {
 #if defined(_WIN32)
     wchar_t ScopedPath[MAX_PATH]{};
-    if (GetModuleFileNameW(nullptr, ScopedPath, MAX_PATH) != 0)
+    const DWORD ScopedLength = GetModuleFileNameW(nullptr, ScopedPath, MAX_PATH);
+    if (ScopedLength != 0 && ScopedLength < MAX_PATH)
     {
         return std::filesystem::path(ScopedPath).parent_path();
     }
 #endif
-    return std::filesystem::current_path();
+    std::error_code ScopedError;
+    const std::filesystem::path ScopedCurrent = std::filesystem::current_path(ScopedError);
+    return ScopedError ? std::filesystem::path{} : ScopedCurrent;
 }
 
 struct FidelityFxRuntimeAvailability
@@ -33,10 +36,18 @@ struct FidelityFxRuntimeAvailability
 {
     FidelityFxRuntimeAvailability ScopedResult;
     std::error_code ScopedError;
-    ScopedResult.Upscaling = std::filesystem::exists(InDirectory / "amd_fidelityfx_upscaler_vk.dll", ScopedError);
-    ScopedError.clear();
-    ScopedResult.FrameGeneration =
-        std::filesystem::exists(InDirectory / "amd_fidelityfx_framegeneration_vk.dll", ScopedError);
+    try
+    {
+        ScopedResult.Upscaling =
+            std::filesystem::is_regular_file(InDirectory / "amd_fidelityfx_upscaler_vk.dll", ScopedError);
+        ScopedError.clear();
+        ScopedResult.FrameGeneration =
+            std::filesystem::is_regular_file(InDirectory / "amd_fidelityfx_framegeneration_vk.dll", ScopedError);
+    }
+    catch (...)
+    {
+        return {};
+    }
     return ScopedResult;
 }
 

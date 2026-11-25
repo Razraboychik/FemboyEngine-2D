@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <new>
 #include <tuple>
 #include <type_traits>
@@ -623,9 +624,11 @@ public:
         {
             return *static_cast<T*>(ScopedFound->second.Object);
         }
-        T* ScopedObject = new T(std::forward<Args>(InArgs)...);
-        MEntries.emplace(ScopedKey, Entry{ScopedObject, &DestroyEntry<T>});
-        return *ScopedObject;
+        std::unique_ptr<T> ScopedObject = std::make_unique<T>(std::forward<Args>(InArgs)...);
+        T* const ScopedRaw = ScopedObject.get();
+        MEntries.emplace(ScopedKey, Entry{ScopedRaw, &DestroyEntry<T>});
+        (void)ScopedObject.release();
+        return *ScopedRaw;
     }
 
     template <typename T> [[nodiscard]] T* find() noexcept
@@ -648,8 +651,24 @@ public:
             *static_cast<T*>(ScopedFound->second.Object) = std::move(InValue);
             return;
         }
-        T* ScopedObject = new T(std::move(InValue));
-        MEntries.emplace(ScopedKey, Entry{ScopedObject, &DestroyEntry<T>});
+        std::unique_ptr<T> ScopedObject = std::make_unique<T>(std::move(InValue));
+        T* const ScopedRaw = ScopedObject.get();
+        MEntries.emplace(ScopedKey, Entry{ScopedRaw, &DestroyEntry<T>});
+        (void)ScopedObject.release();
+    }
+
+    template <typename T> void erase() noexcept
+    {
+        const auto ScopedFound = MEntries.find(Key<T>());
+        if (ScopedFound == MEntries.end())
+        {
+            return;
+        }
+        if (ScopedFound->second.Destroy != nullptr)
+        {
+            ScopedFound->second.Destroy(ScopedFound->second.Object);
+        }
+        MEntries.erase(ScopedFound);
     }
 
     void Clear() noexcept
@@ -804,6 +823,16 @@ private:
 class Registry
 {
 public:
+    void Swap(Registry& InOther) noexcept
+    {
+        MWorld.Swap(InOther.MWorld);
+    }
+
+    void CloneFrom(const Registry& InOther)
+    {
+        MWorld.CloneFrom(InOther.MWorld);
+    }
+
     using entity_type = Fby::Entity;
     using EntityType = Fby::Entity;
 
@@ -856,6 +885,17 @@ public:
     [[nodiscard]] std::size_t size() const noexcept
     {
         return MWorld.EntityCount();
+    }
+
+    // Runtime iteration for the mod data ABI. Callers must not hold the handle
+    // across a structural change; ModApiHost validates the entity generation.
+    [[nodiscard]] std::size_t RecordCount() const noexcept
+    {
+        return MWorld.RecordCount();
+    }
+    [[nodiscard]] entity_type EntityAt(std::size_t InIndex) const noexcept
+    {
+        return ToEngineEntity(MWorld.EntityAt(InIndex));
     }
 
     [[nodiscard]] bool empty() const noexcept

@@ -91,7 +91,7 @@ void main()
     bool recycle = (state0.w <= 0.0) || (state0.z >= state0.w);
     if (recycle)
     {
-        uint emitterSeed = uint(eLifetime.w);
+        uint emitterSeed = floatBitsToUint(eLifetime.w);
         uint randomState = pcgHash(push.seed ^ (particleId * 747796405u) ^ (frame.frameIndex * 2891336453u) ^
                                    (emitterSeed + emitterIndex * 0x9E3779B9u));
         float spread = eDirection.z * (randomFloat(randomState) * 2.0 - 1.0);

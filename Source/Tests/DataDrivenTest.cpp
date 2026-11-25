@@ -171,6 +171,15 @@ primary = "#102030"
 )TOML",
                                   ScopedLoadedTheme));
     FBY_CHECK(ScopedLoadedTheme.Resolve(Ui::UiPaletteSlot::Primary) == Color32::FromBytes(16, 32, 48));
+    Ui::UiThemeAsset ScopedInvalidTheme{};
+    FBY_CHECK(Ui::LoadUiThemeToml(R"TOML([theme]
+name = "InvalidColour"
+[theme.palette]
+primary = "#10ZZ30"
+)TOML",
+                                  ScopedInvalidTheme));
+    FBY_CHECK(ScopedInvalidTheme.Resolve(Ui::UiPaletteSlot::Primary) ==
+              Ui::DefaultUiTheme().Resolve(Ui::UiPaletteSlot::Primary));
     Ui::WidgetCanvas ScopedCanvas;
     ScopedCanvas.SetCanvasSize(Vector2D{320.0f, 120.0f});
     ScopedCanvas.SetDisplayScale(2.0f);

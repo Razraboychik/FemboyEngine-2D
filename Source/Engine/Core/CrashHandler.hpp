@@ -23,6 +23,12 @@ void UninstallCrashHandler() noexcept;
 [[nodiscard]] bool WriteCrashReport(std::string_view InApplicationName, std::string_view InReason,
                                     std::string_view InDetails = {}) noexcept;
 
+// Optional crash hook. It runs after a report directory exists and receives the
+// directory plus the reason. Keep it async-signal-safe: the signal path may call
+// it while the process is already dying.
+using CrashIncidentHook = void (*)(const char* InDirectory, const char* InReason) noexcept;
+void SetCrashIncidentHook(CrashIncidentHook InHook) noexcept;
+
 // Directory of the last report written by this process, empty before the first.
 [[nodiscard]] std::string_view LastCrashDirectory() noexcept;
 }

@@ -118,16 +118,18 @@ float GerstnerField::Height(Vector2D InBase, float InTimeSeconds) const noexcept
 bool ShallowWaterGrid::Configure(const FluidDesc& InDesc) noexcept
 {
     if (InDesc.columns < 2 || InDesc.columns > kMaxWaterColumns || InDesc.rows < 2 || InDesc.rows > kMaxWaterRows ||
-        InDesc.cellSize.X <= 0.0f || InDesc.cellSize.Y <= 0.0f || InDesc.baseDepth <= 0.0f || InDesc.gravity <= 0.0f)
+        !std::isfinite(InDesc.cellSize.X) || !std::isfinite(InDesc.cellSize.Y) || InDesc.cellSize.X <= 0.0f ||
+        InDesc.cellSize.Y <= 0.0f || !std::isfinite(InDesc.baseDepth) || InDesc.baseDepth <= 0.0f ||
+        !std::isfinite(InDesc.gravity) || InDesc.gravity <= 0.0f)
     {
         MColumns = 0;
         MRows = 0;
         return false;
     }
     MDesc = InDesc;
-    MDesc.maxHeight = std::max(MDesc.maxHeight, 1.0f);
-    MDesc.dropRadius = std::max(MDesc.dropRadius, 0.5f);
-    MDesc.damping = std::clamp(MDesc.damping, 0.5f, 0.9999f);
+    MDesc.maxHeight = std::isfinite(MDesc.maxHeight) ? std::max(MDesc.maxHeight, 1.0f) : 1.0f;
+    MDesc.dropRadius = std::isfinite(MDesc.dropRadius) ? std::max(MDesc.dropRadius, 0.5f) : 0.5f;
+    MDesc.damping = std::isfinite(MDesc.damping) ? std::clamp(MDesc.damping, 0.5f, 0.9999f) : 0.999f;
     MColumns = InDesc.columns;
     MRows = InDesc.rows;
     Clear();
@@ -224,7 +226,8 @@ void ShallowWaterGrid::Step(float InDt) noexcept
 
 void ShallowWaterGrid::AddDrop(Vector2D InWorldPosition, float InRadiusCells, float InStrength) noexcept
 {
-    if (!IsConfigured() || !(InStrength > 0.0f))
+    if (!IsConfigured() || !(InStrength > 0.0f) || !std::isfinite(InWorldPosition.X) ||
+        !std::isfinite(InWorldPosition.Y) || !std::isfinite(InRadiusCells))
     {
         return;
     }
@@ -267,6 +270,10 @@ float ShallowWaterGrid::SampleHeight(Vector2D InWorldPosition) const noexcept
         return 0.0f;
     }
     const Vector2D ScopedCell = WorldToCell(InWorldPosition);
+    if (!std::isfinite(ScopedCell.X) || !std::isfinite(ScopedCell.Y))
+    {
+        return 0.0f;
+    }
     const float ScopedX = std::clamp(ScopedCell.X, 0.0f, static_cast<float>(MColumns - 1));
     const float ScopedY = std::clamp(ScopedCell.Y, 0.0f, static_cast<float>(MRows - 1));
     const std::uint32_t ScopedX0 = static_cast<std::uint32_t>(ScopedX);
@@ -289,6 +296,10 @@ float ShallowWaterGrid::SampleVelocityY(Vector2D InWorldPosition) const noexcept
         return 0.0f;
     }
     const Vector2D ScopedCell = WorldToCell(InWorldPosition);
+    if (!std::isfinite(ScopedCell.X) || !std::isfinite(ScopedCell.Y))
+    {
+        return 0.0f;
+    }
     const float ScopedX = std::clamp(ScopedCell.X, 0.0f, static_cast<float>(MColumns - 1));
     const float ScopedY = std::clamp(ScopedCell.Y, 0.0f, static_cast<float>(MRows - 1));
     const std::uint32_t ScopedX0 = static_cast<std::uint32_t>(ScopedX);

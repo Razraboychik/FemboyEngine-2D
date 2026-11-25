@@ -3,6 +3,8 @@
 #include "Engine/Core/Assert.hpp"
 #include "Engine/Core/Log.hpp"
 #include "Engine/ECS/SkeletonAssetRef.hpp"
+#include "Engine/ECS/StructPayloadComponent.hpp"
+#include "Engine/ECS/StateTree.hpp"
 #include "Engine/ECS/LightSource.hpp"
 #include "Engine/ECS/Presentation.hpp"
 #include "Engine/ECS/RegistryOps.hpp"
@@ -12,6 +14,7 @@
 #include "Engine/Gameplay/GameplaySnapshot.hpp"
 #include "Engine/Physics/Gravity.hpp"
 #include "Engine/Physics/PhysicsJoints.hpp"
+#include "Engine/Physics/SdfCharacter.hpp"
 #include "Engine/UI/Hypertext.hpp"
 #include "Engine/UI/PinkUI.hpp"
 
@@ -182,7 +185,7 @@ struct BaseView
                              std::string_view* InError) noexcept
 {
     const SnapshotView ScopedView = SnapshotView::Open(InBytes, InError);
-    if (ScopedView.header.version == 0)
+    if (!ScopedView.valid)
     {
         return false;
     }
@@ -540,9 +543,11 @@ bool CaptureRigidBody(const Registry& InRegistry, Entity InEntity, std::span<std
         return false;
     }
     RigidBodySnapshot ScopedSnapshot{};
-    // BodyType is narrower than its slot; zero the whole image so padding
-    // bytes cannot leak into the snapshot checksum.
-    std::memset(&ScopedSnapshot, 0, sizeof(ScopedSnapshot));
+    // BodyType is narrower than its slot; fill the image with zero bytes so
+    // padding cannot leak into the snapshot checksum. memset on the struct is
+    // undefined for its non-trivial initializer, so zero a byte image first.
+    std::byte ScopedZeroImage[sizeof(ScopedSnapshot)]{};
+    std::memcpy(&ScopedSnapshot, ScopedZeroImage, sizeof(ScopedSnapshot));
     ScopedSnapshot.position = ScopedBody->Position;
     ScopedSnapshot.linearVelocity = ScopedBody->LinearVelocity;
     ScopedSnapshot.rotation = ScopedBody->Rotation;
@@ -605,7 +610,8 @@ bool CaptureCollider(const Registry& InRegistry, Entity InEntity, std::span<std:
         return false;
     }
     ColliderSnapshot ScopedSnapshot{};
-    std::memset(&ScopedSnapshot, 0, sizeof(ScopedSnapshot));
+    std::byte ScopedZeroImage[sizeof(ScopedSnapshot)]{};
+    std::memcpy(&ScopedSnapshot, ScopedZeroImage, sizeof(ScopedSnapshot));
     ScopedSnapshot.halfExtents = ScopedCollider->HalfExtents;
     ScopedSnapshot.density = ScopedCollider->Density;
     ScopedSnapshot.friction = ScopedCollider->Friction;
@@ -645,6 +651,58 @@ bool RestoreCollider(Registry& InRegistry, Entity InEntity, std::span<const std:
 void RemoveCollider(Registry& InRegistry, Entity InEntity)
 {
     InRegistry.remove<Collider2D>(InEntity);
+}
+
+bool HasStructPayload(const Registry& InRegistry, Entity InEntity)
+{
+    return InRegistry.all_of<StructPayloadComponent>(InEntity);
+}
+
+bool CaptureStructPayload(const Registry& InRegistry, Entity InEntity, std::span<std::byte> InDestination)
+{
+    const auto* ScopedPayload = InRegistry.try_get<StructPayloadComponent>(InEntity);
+    if (ScopedPayload == nullptr || InDestination.size() < sizeof(StructPayloadComponent))
+    {
+        return false;
+    }
+    std::memcpy(InDestination.data(), ScopedPayload, sizeof(StructPayloadComponent));
+    return true;
+}
+
+bool RestoreStructPayload(Registry& InRegistry, Entity InEntity, std::span<const std::byte> InSource)
+{
+    if (InSource.size() != sizeof(StructPayloadComponent))
+    {
+        return false;
+    }
+    StructPayloadComponent ScopedPayload;
+    std::memcpy(&ScopedPayload, InSource.data(), sizeof(ScopedPayload));
+    auto* ScopedExisting = InRegistry.try_get<StructPayloadComponent>(InEntity);
+    if (ScopedExisting == nullptr)
+    {
+        ScopedExisting = &InRegistry.emplace<StructPayloadComponent>(InEntity);
+    }
+    *ScopedExisting = ScopedPayload;
+    return true;
+}
+
+void RemoveStructPayload(Registry& InRegistry, Entity InEntity)
+{
+    InRegistry.remove<StructPayloadComponent>(InEntity);
+}
+
+void AddStructPayloadCodec(SnapshotSchema& InSchema)
+{
+    SnapshotComponent ScopedCodec;
+    ScopedCodec.name = "StructPayloadComponent";
+    ScopedCodec.typeId = SnapshotTypeId(ScopedCodec.name);
+    ScopedCodec.layoutHash = SnapshotTypeId("StructPayloadComponent/v1");
+    ScopedCodec.size = sizeof(StructPayloadComponent);
+    ScopedCodec.has = &HasStructPayload;
+    ScopedCodec.capture = &CaptureStructPayload;
+    ScopedCodec.restore = &RestoreStructPayload;
+    ScopedCodec.remove = &RemoveStructPayload;
+    (void)InSchema.AddCodec(ScopedCodec);
 }
 
 void AddPhysicsCodecs(SnapshotSchema& InSchema)
@@ -868,7 +926,10 @@ SnapshotSchema SnapshotSchema::BuiltIns()
     (void)ScopedSchema.Add<LevelGravityComponent>();
     (void)ScopedSchema.Add<GravityBodyComponent>();
     Detail::AddPhysicsCodecs(ScopedSchema);
+    Detail::AddStructPayloadCodec(ScopedSchema);
     RegisterGameplaySnapshotCodecs(ScopedSchema);
+    (void)RegisterStateTreeSnapshotCodec(ScopedSchema);
+    (void)RegisterSdfCharacterSnapshotCodec(ScopedSchema);
     return ScopedSchema;
 }
 
@@ -952,6 +1013,7 @@ SnapshotView SnapshotView::Open(std::span<const std::byte> InBytes, std::string_
     ScopedView.header = ScopedHeader;
     ScopedView.payload = ScopedPayload;
     ScopedView.extension = ScopedExtension;
+    ScopedView.valid = true;
     return ScopedView;
 }
 
@@ -1290,7 +1352,7 @@ bool RestoreSnapshot(Registry& InRegistry, const SnapshotSchema& InSchema, std::
 {
     std::string_view ScopedError;
     const SnapshotView ScopedView = SnapshotView::Open(InSnapshot, &ScopedError);
-    if (ScopedView.header.version == 0)
+    if (!ScopedView.valid)
     {
         return false;
     }
@@ -1303,7 +1365,7 @@ bool RestoreSnapshot(Registry& InRegistry, const SnapshotSchema& InSchema, std::
     {
         return false;
     }
-    if (!InExtras.extension.empty() && InExtras.extension.size() < ScopedView.extension.size())
+    if (ScopedView.extension.size() > InExtras.extension.size())
     {
         return false;
     }
@@ -1372,7 +1434,7 @@ bool ValidateSnapshot(std::span<const std::byte> InSnapshot, const SnapshotSchem
                       std::string_view* InError) noexcept
 {
     const SnapshotView ScopedView = SnapshotView::Open(InSnapshot, InError);
-    if (ScopedView.header.version == 0)
+    if (!ScopedView.valid)
     {
         return false;
     }
@@ -1411,7 +1473,7 @@ bool RestoreDelta(Registry& InRegistry, const SnapshotSchema& InSchema, std::spa
 
     std::string_view ScopedDeltaError;
     const SnapshotView ScopedView = SnapshotView::Open(InDelta, &ScopedDeltaError);
-    if (ScopedView.header.version == 0 || (ScopedView.header.flags & SnapshotDelta) == 0)
+    if (!ScopedView.valid || (ScopedView.header.flags & SnapshotDelta) == 0)
     {
         return false;
     }
@@ -1497,7 +1559,7 @@ bool RestoreDelta(Registry& InRegistry, const SnapshotSchema& InSchema, std::spa
     {
         return false;
     }
-    if (!InExtras.extension.empty() && InExtras.extension.size() < ScopedView.extension.size())
+    if (ScopedView.extension.size() > InExtras.extension.size())
     {
         return false;
     }
@@ -1516,7 +1578,7 @@ bool ApplyDelta(Registry& InRegistry, const SnapshotSchema& InSchema, std::span<
 {
     std::string_view ScopedError;
     const SnapshotView ScopedView = SnapshotView::Open(InDelta, &ScopedError);
-    if (ScopedView.header.version == 0 || (ScopedView.header.flags & SnapshotDelta) == 0 ||
+    if (!ScopedView.valid || (ScopedView.header.flags & SnapshotDelta) == 0 ||
         ScopedView.header.schemaHash != InSchema.Hash())
     {
         return false;
@@ -1586,7 +1648,7 @@ bool RememberBaseline(SnapshotBaseline& OutBaseline, std::span<const std::byte> 
 {
     std::string_view ScopedError;
     const SnapshotView ScopedView = SnapshotView::Open(InFullSnapshot, &ScopedError);
-    if (ScopedView.header.version == 0 || (ScopedView.header.flags & SnapshotDelta) != 0)
+    if (!ScopedView.valid || (ScopedView.header.flags & SnapshotDelta) != 0)
     {
         return false;
     }
@@ -1605,7 +1667,7 @@ bool ApplyDeltaChecked(Registry& InRegistry, const SnapshotSchema& InSchema, std
     }
     std::string_view ScopedError;
     const SnapshotView ScopedView = SnapshotView::Open(InDelta, &ScopedError);
-    if (ScopedView.header.version == 0 || (ScopedView.header.flags & SnapshotDelta) == 0 ||
+    if (!ScopedView.valid || (ScopedView.header.flags & SnapshotDelta) == 0 ||
         ScopedView.header.baseTick != InBaseline.Tick || ScopedView.header.baseChecksum != InBaseline.PayloadChecksum)
     {
         return false;

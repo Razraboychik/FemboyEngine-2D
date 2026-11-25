@@ -5,7 +5,7 @@
 #include "Engine/Core/Types.hpp"
 
 #include <array>
-#include <cassert>
+#include "Engine/Core/Assert.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -233,14 +233,16 @@ template <typename To, typename From> [[nodiscard]] FORCEINLINE const To* Cast(c
 template <typename To, typename From> [[nodiscard]] FORCEINLINE To& Cast(From& InObject) noexcept
 {
     To* ScopedResult = Cast<To>(&InObject);
-    assert(ScopedResult != nullptr);
+    FBY_VERIFY(ScopedResult != nullptr);
     return *ScopedResult;
 }
+
+template <typename To, typename From> const To& Cast(const From&&) = delete;
 
 template <typename To, typename From> [[nodiscard]] FORCEINLINE const To& Cast(const From& InObject) noexcept
 {
     const To* ScopedResult = Cast<To>(&InObject);
-    assert(ScopedResult != nullptr);
+    FBY_VERIFY(ScopedResult != nullptr);
     return *ScopedResult;
 }
 

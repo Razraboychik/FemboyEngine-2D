@@ -69,6 +69,8 @@ struct GameplaySkillDef
     // Optional tag the animation/gameplay-cue layer listens for.
     GameplayTag AnimationTag{};
     std::uint32_t CueId = 0;
+    // Optional project/plugin data for animation, cues or game-owned actions.
+    Data::StructPayload Params;
 };
 
 static_assert(std::is_trivially_copyable_v<GameplaySkillDef>);

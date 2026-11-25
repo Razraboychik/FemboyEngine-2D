@@ -79,8 +79,7 @@ HypertextComponent HypertextPool::Intern(std::string_view InMarkup, std::uint32_
         {
             if (!AppendChar(InMarkup[ScopedCursor + 1]))
             {
-                ScopedRollback();
-                return {};
+                ScopedRollback(); ScopedComponent.Reserved = 0xFFFFFFFFu; return ScopedComponent;
             }
             ScopedCursor += 2;
             continue;
@@ -90,8 +89,7 @@ HypertextComponent HypertextPool::Intern(std::string_view InMarkup, std::uint32_
         {
             if (!AppendChar(ScopedCharacter))
             {
-                ScopedRollback();
-                return {};
+                ScopedRollback(); ScopedComponent.Reserved = 0xFFFFFFFFu; return ScopedComponent;
             }
             ++ScopedCursor;
             continue;
@@ -103,8 +101,7 @@ HypertextComponent HypertextPool::Intern(std::string_view InMarkup, std::uint32_
         {
             if (!AppendChar(ScopedCharacter))
             {
-                ScopedRollback();
-                return {};
+                ScopedRollback(); ScopedComponent.Reserved = 0xFFFFFFFFu; return ScopedComponent;
             }
             ++ScopedCursor;
             continue;
@@ -114,8 +111,7 @@ HypertextComponent HypertextPool::Intern(std::string_view InMarkup, std::uint32_
         {
             if (!AppendChar(ScopedCharacter))
             {
-                ScopedRollback();
-                return {};
+                ScopedRollback(); ScopedComponent.Reserved = 0xFFFFFFFFu; return ScopedComponent;
             }
             ++ScopedCursor;
             continue;
@@ -130,8 +126,7 @@ HypertextComponent HypertextPool::Intern(std::string_view InMarkup, std::uint32_
             {
                 if (!AppendChar(InMarkup[ScopedI]))
                 {
-                    ScopedRollback();
-                    return {};
+                    ScopedRollback(); ScopedComponent.Reserved = 0xFFFFFFFFu; return ScopedComponent;
                 }
             }
             ScopedCursor = ScopedTargetEnd + 1;
@@ -143,8 +138,7 @@ HypertextComponent HypertextPool::Intern(std::string_view InMarkup, std::uint32_
         {
             if (!AppendChar(ScopedGlyph))
             {
-                ScopedRollback();
-                return {};
+                ScopedRollback(); ScopedComponent.Reserved = 0xFFFFFFFFu; return ScopedComponent;
             }
         }
         const std::uint32_t ScopedEnd = MPlainUsed;
@@ -154,8 +148,7 @@ HypertextComponent HypertextPool::Intern(std::string_view InMarkup, std::uint32_
         ScopedLink.end = static_cast<std::uint16_t>(ScopedEnd);
         if (!AppendTarget(ScopedTarget, &ScopedLink.targetOffset, &ScopedLink.targetLength))
         {
-            ScopedRollback();
-            return {};
+            ScopedRollback(); ScopedComponent.Reserved = 0xFFFFFFFFu; return ScopedComponent;
         }
         ScopedLink.flags = InFlags;
         if (StartsWithUri(ScopedTarget))
@@ -174,8 +167,8 @@ HypertextComponent HypertextPool::Intern(std::string_view InMarkup, std::uint32_
 HypertextView HypertextPool::View(const HypertextComponent& InComponent) const noexcept
 {
     HypertextView ScopedView{};
-    if (InComponent.PlainOffset >= MPlainUsed || InComponent.PlainOffset + InComponent.PlainLength > MPlainUsed ||
-        InComponent.FirstLink + InComponent.LinkCount > MLinkUsed)
+    if (InComponent.PlainOffset > MPlainUsed || InComponent.PlainLength > MPlainUsed - InComponent.PlainOffset ||
+        InComponent.FirstLink > MLinkUsed || InComponent.LinkCount > MLinkUsed - InComponent.FirstLink)
     {
         return ScopedView;
     }

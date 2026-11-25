@@ -26,9 +26,9 @@ sys.dont_write_bytecode = True
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PRESETS = {
-    "windows": ("windows-release", "build-windows-release"),
-    "linux": ("linux-release", "build-linux-release"),
-    "macos": ("macos-release", "build-macos-release"),
+    "windows": ("windows-release", "build/windows-release"),
+    "linux": ("linux-release", "build/linux-release"),
+    "macos": ("macos-release", "build/macos-release"),
 }
 VERSION = (ROOT / "Version.txt").read_text(encoding="utf-8").strip()
 SOURCE_URL = "https://github.com/Razraboychik/FemboyEngine-2D"
@@ -95,7 +95,7 @@ def main() -> int:
         # The game only needs the runtime DLLs. Editor, tools and test binaries
         # stay out, which is the single largest packaging win.
         for source in sorted(binary_root.iterdir()):
-            if source.suffix == ".dll" and not source.name.startswith(
+            if source.suffix in (".dll", ".so", ".dylib") and not source.name.startswith(
                     ("amd_fidelityfx_", "nvngx_dlss", "libxess")):
                 artifacts["bin/" + source.name] = source
     else:
@@ -110,6 +110,10 @@ def main() -> int:
             "README.md": ROOT / "README.md",
             "Documentation/platform-support.md": ROOT / "Documentation" / "design" / "platform-support.md",
         }
+        for source in sorted(binary_root.iterdir()):
+            if source.suffix in (".dll", ".so", ".dylib") and not source.name.startswith(
+                    ("amd_fidelityfx_", "nvngx_dlss", "libxess")):
+                artifacts["bin/" + source.name] = source
 
     missing = [relative for relative, source in artifacts.items() if not source.is_file()]
     if missing:

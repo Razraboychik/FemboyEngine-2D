@@ -120,6 +120,10 @@ namespace Fby::Scene::Detail
 
 [[nodiscard]] inline bool WriteUnsigned(void* InComponent, const Reflect::FieldDesc& InField, std::uint64_t InValue)
 {
+    if (InField.size != 1 && InField.size != 2 && InField.size != 4 && InField.size != 8)
+    {
+        return false;
+    }
     const std::uint64_t ScopedMaximum =
         InField.size >= 8 ? std::numeric_limits<std::uint64_t>::max() : (std::uint64_t{1} << (InField.size * 8)) - 1;
     if (InValue > ScopedMaximum)
@@ -157,6 +161,12 @@ namespace Fby::Scene::Detail
 
 [[nodiscard]] inline bool WriteSigned(void* InComponent, const Reflect::FieldDesc& InField, std::int64_t InValue)
 {
+    if (InField.size != 1 && InField.size != 2 && InField.size != 4 && InField.size != 8)
+    {
+        // size 0 would shift by a negative count below; unsupported widths
+        // also cannot be written by the switch.
+        return false;
+    }
     const int ScopedBits = static_cast<int>(InField.size) * 8;
     if (ScopedBits < 64)
     {

@@ -26,14 +26,16 @@ struct MeshVertex
     float2 position;
     float2 uv;
     uint color;
-    uint padding; // range index
+    // Index into the frame skin-range table.
+    uint padding;
     uint2 bones;
     float2 weights;
 };
 
 struct SkinnedVertex
 {
-    float4 position; // homogeneous LBS result
+    // Homogeneous position produced by linear blend skinning.
+    float4 position;
     float2 uv;
     uint color;
     uint padding;
@@ -50,7 +52,8 @@ struct MeshDrawData
     float4x4 model;
     uint vertexBase;
     uint layer;
-    uint flags; // bit 0: static geometry
+    // Bit 0 marks static geometry.
+    uint flags;
     uint padding;
 };
 
@@ -91,11 +94,9 @@ struct SpriteVertexOut
     uint flags [[flat]];
 };
 
-// ---------------------------------------------------------------------------
 // Linear blend skinning. ONE dispatch covers every dynamic range in the frame:
 // the vertex's padding field selects its MeshSkinRange, exactly like the Vulkan
 // compute shader.
-// ---------------------------------------------------------------------------
 kernel void mesh_skinning(device const MeshVertex* bindVertices [[buffer(0)]],
                           device SkinnedVertex* skinnedVertices [[buffer(1)]],
                           constant float4x4* palette [[buffer(2)]],
@@ -183,7 +184,35 @@ fragment float4 mesh_fragment(MeshVertexOut in [[stage_in]],
                               sampler atlasSampler [[sampler(0)]])
 {
     const float4 texel = atlas.sample(atlasSampler, in.uv, in.layer);
-    const float4 color = texel * in.color;
+    float4 color = texel * in.color;
+    const uint normalLayer = (in.flags >> 16u) & 0xFFu;
+    const float normalStrength = float((in.flags >> 11u) & 0x1Fu) / 31.0f;
+    if (normalLayer >= 1u && normalStrength > 0.0f)
+    {
+        float3 normal = atlas.sample(atlasSampler, in.uv, normalLayer).xyz * 2.0f - 1.0f;
+        normal.xy *= normalStrength;
+        normal = normalize(float3(normal.xy, max(normal.z, 0.05f)));
+        float3 lit = float3(0.15f, 0.15f, 0.15f);
+        for (uint index = 0u; index < 4u; ++index)
+        {
+            const float radius = lights.positionRadius[index].z;
+            if (radius <= 0.0f)
+            {
+                continue;
+            }
+            const float2 delta = lights.positionRadius[index].xy - in.position.xy;
+            const float distance = length(delta);
+            if (distance >= radius)
+            {
+                continue;
+            }
+            const float2 direction = delta / max(distance, 0.0001f);
+            const float ndl = saturate(dot(normal.xy, direction));
+            const float falloff = 1.0f - distance / radius;
+            lit += lights.color[index].rgb * lights.color[index].a * falloff * falloff * (0.25f + 0.75f * ndl);
+        }
+        color.rgb *= lit;
+    }
     if (color.a < 0.002)
     {
         discard_fragment();
@@ -191,10 +220,8 @@ fragment float4 mesh_fragment(MeshVertexOut in [[stage_in]],
     return color;
 }
 
-// ---------------------------------------------------------------------------
 // Sprite path (the 48-byte RenderItem contract). Kept in the same library so a
 // Metal build has one compilation unit and one pipeline cache key space.
-// ---------------------------------------------------------------------------
 vertex SpriteVertexOut sprite_vertex(uint vertexId [[vertex_id]],
                                      uint instanceId [[instance_id]],
                                      constant RenderItem* items [[buffer(0)]],
@@ -236,9 +263,69 @@ vertex SpriteVertexOut sprite_vertex(uint vertexId [[vertex_id]],
     return out;
 }
 
+struct SpriteLights
+{
+    float4 positionRadius[4];
+    float4 color[4];
+};
+
+fragment float4 sprite_base_fragment(SpriteVertexOut in [[stage_in]],
+                                    texture2d_array<float> atlas [[texture(0)]],
+                                    sampler atlasSampler [[sampler(0)]])
+{
+    const float4 color = atlas.sample(atlasSampler, in.uv, in.layer) * in.color;
+    if (color.a < 0.002f)
+    {
+        discard_fragment();
+    }
+    return color;
+}
+
+fragment float4 sprite_normal_fragment(SpriteVertexOut in [[stage_in]],
+                                       texture2d_array<float> atlas [[texture(0)]],
+                                       sampler atlasSampler [[sampler(0)]],
+                                       constant SpriteLights& lights [[buffer(2)]])
+{
+    float4 color = atlas.sample(atlasSampler, in.uv, in.layer) * in.color;
+    const uint normalLayer = (in.flags >> 16u) & 0xFFu;
+    const float normalStrength = float((in.flags >> 11u) & 0x1Fu) / 31.0f;
+    if (normalLayer >= 1u && normalStrength > 0.0f)
+    {
+        float3 normal = atlas.sample(atlasSampler, in.uv, normalLayer).xyz * 2.0f - 1.0f;
+        normal.xy *= normalStrength;
+        normal = normalize(float3(normal.xy, max(normal.z, 0.05f)));
+        float3 lit = float3(0.15f, 0.15f, 0.15f);
+        for (uint index = 0u; index < 4u; ++index)
+        {
+            const float radius = lights.positionRadius[index].z;
+            if (radius <= 0.0f)
+            {
+                continue;
+            }
+            const float2 delta = lights.positionRadius[index].xy - in.position.xy;
+            const float distance = length(delta);
+            if (distance >= radius)
+            {
+                continue;
+            }
+            const float2 direction = delta / max(distance, 0.0001f);
+            const float ndl = saturate(dot(normal.xy, direction));
+            const float falloff = 1.0f - distance / radius;
+            lit += lights.color[index].rgb * lights.color[index].a * falloff * falloff * (0.25f + 0.75f * ndl);
+        }
+        color.rgb *= lit;
+    }
+    if (color.a < 0.002f)
+    {
+        discard_fragment();
+    }
+    return color;
+}
+
 fragment float4 sprite_fragment(SpriteVertexOut in [[stage_in]],
                                 texture2d_array<float> atlas [[texture(0)]],
-                                sampler atlasSampler [[sampler(0)]])
+                                sampler atlasSampler [[sampler(0)]],
+                                constant SpriteLights& lights [[buffer(2)]])
 {
     if ((in.flags & (1u << 6)) != 0u)
     {
@@ -285,10 +372,8 @@ fragment float4 sprite_fragment(SpriteVertexOut in [[stage_in]],
     return color;
 }
 
-// ---------------------------------------------------------------------------
 // Spatial upscale: one fullscreen triangle with nearest, bilinear or bicubic
 // filtering. FSR1 has no MSL port and uses the bicubic filter.
-// ---------------------------------------------------------------------------
 struct UpscaleVertexOut
 {
     float4 position [[position]];
@@ -361,10 +446,8 @@ fragment float4 upscale_fragment(UpscaleVertexOut in [[stage_in]],
     return weightSum > 0.0f ? accumulated / weightSum : source.sample(sourceSampler, in.uv);
 }
 
-// ---------------------------------------------------------------------------
 // Temporal resolve: current/history colour with motion reprojection and a
 // depth-based disocclusion reject, matching the HLSL and GLSL semantics.
-// ---------------------------------------------------------------------------
 struct TemporalParams
 {
     float historyWeight;
@@ -396,9 +479,7 @@ fragment float4 temporal_fragment(UpscaleVertexOut in [[stage_in]],
     return mix(current, history, saturate(historyWeight));
 }
 
-// ---------------------------------------------------------------------------
 // HUD composite: fullscreen blended overlay with nearest/linear upscaling.
-// ---------------------------------------------------------------------------
 struct HudParams
 {
     // 1 = nearest, 0 = linear.
@@ -420,10 +501,8 @@ fragment float4 hud_composite_fragment(UpscaleVertexOut in [[stage_in]],
     return hud.sample(linearSampler, in.uv);
 }
 
-// ---------------------------------------------------------------------------
 // Motion vectors: the CPU expands rotated quads into NDC positions with a
 // per-vertex UV delta, so the pass only forwards the delta.
-// ---------------------------------------------------------------------------
 struct MotionVertex
 {
     packed_float3 position;

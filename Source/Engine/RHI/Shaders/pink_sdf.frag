@@ -38,8 +38,8 @@ float sdRing(vec2 p, float radius, float thickness)
 
 void main()
 {
-    const uint flags = uint(vBorder.w) & 0xFFu;
-    const uint shape = (uint(vBorder.w) >> 8) & 0x0Fu;
+    const uint flags = uint(vParams.w) & 0xFFu;
+    const uint shape = (uint(vParams.w) >> 8) & 0x0Fu;
     const vec2 p = vLocal;
     const vec2 halfSize = vShape.zw * 0.5;
     float distance;

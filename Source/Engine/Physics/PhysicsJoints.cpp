@@ -1411,8 +1411,8 @@ JointConnectionHandle PhysicsJointSystem::CreateTie(std::uint64_t InBodyA, std::
         const b2Pos ScopedPositionA = b2Body_GetPosition(ScopedBoxBodyA);
         const b2Pos ScopedPositionB = b2Body_GetPosition(ScopedBoxBodyB);
         b2Pos ScopedMid{};
-        ScopedMid.x = (ScopedPositionA.x + ScopedPositionB.x) * 0.5;
-        ScopedMid.y = (ScopedPositionA.y + ScopedPositionB.y) * 0.5;
+        ScopedMid.x = (ScopedPositionA.x + ScopedPositionB.x) * 0.5f;
+        ScopedMid.y = (ScopedPositionA.y + ScopedPositionB.y) * 0.5f;
         const b2Vec2 ScopedLocalA = b2Body_GetLocalPoint(ScopedBoxBodyA, ScopedMid);
         const b2Vec2 ScopedLocalB = b2Body_GetLocalPoint(ScopedBoxBodyB, ScopedMid);
         ScopedConnection.Params.LocalA = Vector2D{ScopedLocalA.x, ScopedLocalA.y};

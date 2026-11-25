@@ -434,6 +434,10 @@ bool NavMesh::FindPath(Vector2D InStart, Vector2D InGoal, const NavPathOptions& 
             }
             else
             {
+                if (ScopedPointCount >= ScopedPoints.size())
+                {
+                    return false;
+                }
                 ScopedPoints[ScopedPointCount++] = ScopedLeft;
                 ScopedApex = ScopedLeft;
                 ScopedLeft = ScopedApex;
@@ -450,6 +454,10 @@ bool NavMesh::FindPath(Vector2D InStart, Vector2D InGoal, const NavPathOptions& 
             }
             else
             {
+                if (ScopedPointCount >= ScopedPoints.size())
+                {
+                    return false;
+                }
                 ScopedPoints[ScopedPointCount++] = ScopedRight;
                 ScopedApex = ScopedRight;
                 ScopedLeft = ScopedApex;
@@ -458,6 +466,10 @@ bool NavMesh::FindPath(Vector2D InStart, Vector2D InGoal, const NavPathOptions& 
             }
         }
         ++ScopedPortalIndex;
+    }
+    if (ScopedPointCount >= ScopedPoints.size())
+    {
+        return false;
     }
     ScopedPoints[ScopedPointCount++] = InGoal;
 

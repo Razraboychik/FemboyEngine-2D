@@ -78,8 +78,12 @@ struct DateTime
 [[nodiscard]] constexpr std::int32_t DaysFromCivil(std::int32_t InYear, std::uint32_t InMonth,
                                                    std::uint32_t InDay) noexcept
 {
-    const std::int32_t ScopedYear = InYear - (InMonth <= 2u ? 1 : 0);
-    const std::int32_t ScopedEra = (ScopedYear >= 0 ? ScopedYear : ScopedYear - 399) / 400;
+    if (InMonth < 1u || InMonth > 12u || InDay < 1u || InDay > 31u)
+    {
+        return 0;
+    }
+    const std::int64_t ScopedYear = static_cast<std::int64_t>(InYear) - (InMonth <= 2u ? 1 : 0);
+    const std::int64_t ScopedEra = (ScopedYear >= 0 ? ScopedYear : ScopedYear - 399) / 400;
     const std::uint32_t ScopedYearOfEra = static_cast<std::uint32_t>(ScopedYear - ScopedEra * 400);
     const std::int32_t ScopedMonthShift =
         InMonth > 2u ? static_cast<std::int32_t>(InMonth) - 3 : static_cast<std::int32_t>(InMonth) + 9;
@@ -87,13 +91,19 @@ struct DateTime
         static_cast<std::uint32_t>((153 * ScopedMonthShift + 2) / 5) + InDay - 1u;
     const std::uint32_t ScopedDayOfEra = ScopedYearOfEra * 365u + ScopedYearOfEra / 4u - ScopedYearOfEra / 100u +
                                          ScopedDayOfYear;
-    return ScopedEra * 146097 + static_cast<std::int32_t>(ScopedDayOfEra) - 719468;
+    const std::int64_t ScopedDays = ScopedEra * 146097 + static_cast<std::int64_t>(ScopedDayOfEra) - 719468;
+    if (ScopedDays < std::numeric_limits<std::int32_t>::min() ||
+        ScopedDays > std::numeric_limits<std::int32_t>::max())
+    {
+        return 0;
+    }
+    return static_cast<std::int32_t>(ScopedDays);
 }
 
 [[nodiscard]] constexpr CivilDate CivilFromDays(std::int32_t InDays) noexcept
 {
-    const std::int32_t ScopedShifted = InDays + 719468;
-    const std::int32_t ScopedEra = (ScopedShifted >= 0 ? ScopedShifted : ScopedShifted - 146096) / 146097;
+    const std::int64_t ScopedShifted = static_cast<std::int64_t>(InDays) + 719468;
+    const std::int64_t ScopedEra = (ScopedShifted >= 0 ? ScopedShifted : ScopedShifted - 146096) / 146097;
     const std::uint32_t ScopedDayOfEra = static_cast<std::uint32_t>(ScopedShifted - ScopedEra * 146097);
     const std::uint32_t ScopedYearOfEra =
         (ScopedDayOfEra - ScopedDayOfEra / 1460u + ScopedDayOfEra / 36524u - ScopedDayOfEra / 146096u) / 365u;
@@ -158,6 +168,13 @@ struct DateTime
         ScopedRemainder += 86400;
         --ScopedDays;
     }
+    if (ScopedDays < std::numeric_limits<std::int32_t>::min() ||
+        ScopedDays > std::numeric_limits<std::int32_t>::max())
+    {
+        // CivilFromDays/WeekdayFromDays take int32 day indices; an extreme
+        // timestamp cannot be represented as a civil date.
+        return {};
+    }
     DateTime ScopedResult;
     ScopedResult.Date = CivilFromDays(static_cast<std::int32_t>(ScopedDays));
     ScopedResult.Time.Hour = static_cast<std::uint8_t>(ScopedRemainder / 3600);
@@ -181,9 +198,12 @@ struct DateTime
     {
         return {};
     }
-    const double ScopedWhole = InUnixSeconds >= 0.0 ? static_cast<double>(static_cast<std::int64_t>(InUnixSeconds))
-                                                    : static_cast<double>(static_cast<std::int64_t>(InUnixSeconds) - 1);
-    const std::int64_t ScopedSeconds = static_cast<std::int64_t>(ScopedWhole);
+    const std::int64_t ScopedTruncated = static_cast<std::int64_t>(InUnixSeconds);
+    const std::int64_t ScopedSeconds =
+        InUnixSeconds >= 0.0 || ScopedTruncated == std::numeric_limits<std::int64_t>::min()
+            ? ScopedTruncated
+            : ScopedTruncated - 1;
+    const double ScopedWhole = static_cast<double>(ScopedSeconds);
     DateTime ScopedResult = DateTimeFromUnixSeconds(ScopedSeconds, InTimezoneOffsetMinutes);
     const double ScopedFraction = InUnixSeconds - ScopedWhole;
     if (ScopedFraction > 0.0)

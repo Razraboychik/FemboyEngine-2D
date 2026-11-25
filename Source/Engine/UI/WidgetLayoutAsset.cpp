@@ -241,13 +241,30 @@ bool WidgetLayoutAsset::Load(WidgetCanvas& InCanvas, std::string_view InToml, st
             ScopedDesc.flags = static_cast<std::uint32_t>(ScopedFlagsNode->value<int64_t>().value_or(0));
         }
         const std::int32_t ScopedWidget = InCanvas.AddWidget(ScopedDesc);
+        if (ScopedWidget == -1)
+        {
+            if (InError != nullptr)
+            {
+                *InError = "widget tree exceeds canvas capacity or has an invalid parent";
+            }
+            InCanvas.Clear();
+            return false;
+        }
         const toml::node* ScopedTextNode = ScopedTable.get("text");
         if (const std::optional<std::string_view> ScopedText = ScopedTextNode != nullptr
                                                                    ? ScopedTextNode->value<std::string_view>()
                                                                    : std::nullopt;
             ScopedText.has_value())
         {
-            (void)InCanvas.SetText(ScopedWidget, *ScopedText);
+            if (!InCanvas.SetText(ScopedWidget, *ScopedText))
+            {
+                if (InError != nullptr)
+                {
+                    *InError = "widget caption does not fit the text pool";
+                }
+                InCanvas.Clear();
+                return false;
+            }
         }
         const toml::node* ScopedKeyNode = ScopedTable.get("textKey");
         if (ScopedKeyNode != nullptr && ScopedKeyNode->is_integer())

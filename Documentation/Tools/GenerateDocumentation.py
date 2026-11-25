@@ -1378,7 +1378,7 @@ def configure_styles(document: Document) -> None:
             pass
 
     title = styles["Title"]
-    title.font.Size = Pt(34)
+    title.font.size = Pt(34)
     title.font.bold = True
     title.font.color.rgb = ACCENT
     title.paragraph_format.space_after = Pt(6)
@@ -1386,7 +1386,7 @@ def configure_styles(document: Document) -> None:
     set_style_language(title)
 
     subtitle = styles["Subtitle"]
-    subtitle.font.Size = Pt(15)
+    subtitle.font.size = Pt(15)
     subtitle.font.color.rgb = MUTED
     set_style_fonts(subtitle, "Arial")
     set_style_language(subtitle)
@@ -1394,7 +1394,7 @@ def configure_styles(document: Document) -> None:
     heading_sizes = {"Heading 1": 20, "Heading 2": 14, "Heading 3": 11.5}
     for name, size in heading_sizes.items():
         style = styles[name]
-        style.font.Size = Pt(size)
+        style.font.size = Pt(size)
         style.font.bold = True
         style.font.color.rgb = ACCENT if name == "Heading 2" else INK
         style.paragraph_format.space_before = Pt(16 if name == "Heading 1" else 10)
@@ -1404,7 +1404,7 @@ def configure_styles(document: Document) -> None:
         set_style_language(style)
 
     body = styles["Normal"]
-    body.font.Size = Pt(10.5)
+    body.font.size = Pt(10.5)
     body.font.color.rgb = INK
     body.paragraph_format.space_after = Pt(6)
     body.paragraph_format.line_spacing = 1.18
@@ -1422,7 +1422,7 @@ def configure_styles(document: Document) -> None:
 
     code = styles["FBY Code"]
     code.font.name = "Consolas"
-    code.font.Size = Pt(8.5)
+    code.font.size = Pt(8.5)
     code.font.color.rgb = RGBColor(0x24, 0x24, 0x2C)
     code.paragraph_format.space_before = Pt(4)
     code.paragraph_format.space_after = Pt(4)
@@ -1431,18 +1431,18 @@ def configure_styles(document: Document) -> None:
     set_style_fonts(code, "Consolas")
 
     caption = styles["FBY Caption"]
-    caption.font.Size = Pt(8.5)
+    caption.font.size = Pt(8.5)
     caption.font.italic = True
     caption.font.color.rgb = MUTED
     set_style_language(caption)
 
     header = styles["FBY Table Header"]
-    header.font.Size = Pt(9)
+    header.font.size = Pt(9)
     header.font.bold = True
     header.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
 
     table_body = styles["FBY Table Body"]
-    table_body.font.Size = Pt(9)
+    table_body.font.size = Pt(9)
     table_body.font.color.rgb = INK
 
 
@@ -1461,7 +1461,7 @@ def add_header_footer(section, language: str, label_en: str, label_ru: str) -> N
     header.text = ""
     header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     run = header.add_run(label_en if language == "en-US" else label_ru)
-    run.font.Size = Pt(8)
+    run.font.size = Pt(8)
     run.font.color.rgb = MUTED
     set_run_language(run, language)
     set_paragraph_border(header, "E85D9E", 6)
@@ -1470,7 +1470,7 @@ def add_header_footer(section, language: str, label_en: str, label_ru: str) -> N
     footer.text = ""
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
     prefix = footer.add_run("FemboyEngine2D  ·  FBY-ARCH-0.1  ·  ")
-    prefix.font.Size = Pt(8)
+    prefix.font.size = Pt(8)
     prefix.font.color.rgb = MUTED
     set_run_language(prefix, language)
     add_page_field(footer, language)
@@ -1561,6 +1561,9 @@ def add_cover(document: Document, language: str) -> None:
     section.right_margin = Cm(2.0)
 
     logo = ROOT / "Logo.png"
+    resolved_node = DEFAULT_NODE if pathlib.Path(DEFAULT_NODE).is_file() else shutil.which(DEFAULT_NODE)
+    if resolved_node is None:
+        print("node is not available on PATH")
     if logo.is_file():
         paragraph = document.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1591,7 +1594,7 @@ def add_cover(document: Document, language: str) -> None:
     )
     for label in labels:
         run = meta.add_run(label + "\n")
-        run.font.Size = Pt(10)
+        run.font.size = Pt(10)
         run.font.color.rgb = MUTED
         set_run_language(run, "en-US" if language == "en" else "ru-RU")
 
@@ -1601,7 +1604,7 @@ def add_cover(document: Document, language: str) -> None:
     run = note.add_run(
         "Data-Oriented Design · Vulkan MDI · Compute LBS · FCS · Box2D v3 · Rollback v3 · ImNodes · AOT"
     )
-    run.font.Size = Pt(9)
+    run.font.size = Pt(9)
     run.font.color.rgb = ACCENT
     set_run_language(run, "en-US")
 
@@ -1635,11 +1638,11 @@ def add_document_control(document: Document, language: str) -> None:
         paragraph = cells[0].paragraphs[0]
         run = paragraph.add_run(en if language == "en" else ru)
         run.bold = True
-        run.font.Size = Pt(9)
+        run.font.size = Pt(9)
         set_run_language(run, "en-US" if language == "en" else "ru-RU")
         paragraph = cells[1].paragraphs[0]
         run = paragraph.add_run(value)
-        run.font.Size = Pt(9)
+        run.font.size = Pt(9)
         set_run_language(run, "en-US" if language == "en" else "ru-RU")
     document.add_paragraph()
 
@@ -1728,7 +1731,8 @@ def build_docx(path: pathlib.Path, language: str) -> None:
 
 
 def export_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, node: str, lo_cli: str) -> bool:
-    if not node or not pathlib.Path(node).is_file():
+    resolved_node = node if node and pathlib.Path(node).is_file() else shutil.which(node or "")
+    if resolved_node is None:
         print("pdf: node executable not found; use --node or FBY_NODE", file=sys.stderr)
         return False
     if not lo_cli or not pathlib.Path(lo_cli).is_file():
@@ -1739,7 +1743,7 @@ def export_pdf(docx_path: pathlib.Path, pdf_path: pathlib.Path, node: str, lo_cl
     temporary.unlink(missing_ok=True)
     with log_path.open("w", encoding="utf-8") as log:
         completed = subprocess.run(
-            [node, lo_cli, "convert", "--input", str(docx_path), "--output", str(temporary)],
+            [resolved_node, lo_cli, "convert", "--input", str(docx_path), "--output", str(temporary)],
             stdout=log,
             stderr=log,
         )

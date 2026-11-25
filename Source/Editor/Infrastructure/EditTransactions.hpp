@@ -29,6 +29,14 @@ public:
     using Result = CommandStack::Result;
 
     InteractionTransaction() = default;
+    InteractionTransaction(const InteractionTransaction&) = delete;
+    InteractionTransaction& operator=(const InteractionTransaction&) = delete;
+    InteractionTransaction(InteractionTransaction&&) = delete;
+    InteractionTransaction& operator=(InteractionTransaction&&) = delete;
+    ~InteractionTransaction()
+    {
+        Cancel();
+    }
 
     [[nodiscard]] Result Begin(CommandStack& InStack, Entity InEntity, std::uint16_t InCodec, std::string_view InLabel,
                                Source InSource) noexcept
@@ -193,6 +201,14 @@ public:
     using Result = CommandStack::Result;
 
     SpawnTransaction() = default;
+    SpawnTransaction(const SpawnTransaction&) = delete;
+    SpawnTransaction& operator=(const SpawnTransaction&) = delete;
+    SpawnTransaction(SpawnTransaction&&) = delete;
+    SpawnTransaction& operator=(SpawnTransaction&&) = delete;
+    ~SpawnTransaction()
+    {
+        Cancel();
+    }
 
     [[nodiscard]] Result Begin(CommandStack& InStack, std::string_view InLabel) noexcept
     {

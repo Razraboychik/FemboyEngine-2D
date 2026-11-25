@@ -44,10 +44,27 @@ bool Save(const std::filesystem::path& InPath, const Animation::DirectionalBlend
         }
         return false;
     }
+    if (InDocument.AnchorCount > Animation::kMaxDirectionalAnchors ||
+        !Animation::ValidateDirectionalBlendSpace(InDocument))
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "document is not a valid directional blend space";
+        }
+        return false;
+    }
     std::error_code ScopedError;
     if (!InPath.parent_path().empty())
     {
         std::filesystem::create_directories(InPath.parent_path(), ScopedError);
+    }
+    if (ScopedError)
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "cannot create " + InPath.parent_path().string();
+        }
+        return false;
     }
     std::ofstream ScopedFile(InPath, std::ios::trunc);
     if (!ScopedFile)
@@ -70,11 +87,21 @@ bool Save(const std::filesystem::path& InPath, const Animation::DirectionalBlend
                    << ScopedAnchor.ClipId << ' ' << ScopedAnchor.WeightScale << ' ' << (ScopedAnchor.Enabled ? 1 : 0)
                    << ' ' << SingleLine(InPaths[ScopedIndex]) << "\n";
     }
+    ScopedFile.flush();
     if (!ScopedFile)
     {
         if (OutError != nullptr)
         {
             *OutError = "write failed";
+        }
+        return false;
+    }
+    ScopedFile.close();
+    if (ScopedFile.fail())
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = "close failed";
         }
         return false;
     }

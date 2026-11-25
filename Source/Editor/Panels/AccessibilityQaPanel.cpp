@@ -111,6 +111,11 @@ void AccessibilityQaPanel::RunAudit(const Ui::AccessibilityTree& InTree, const A
 
 void AccessibilityQaPanel::WriteReport(const AccessibilityProfile& InProfile)
 {
+    if (!MAudited)
+    {
+        MStatus = "run the audit before writing a report";
+        return;
+    }
     const std::filesystem::path ScopedDirectory =
         std::filesystem::current_path() / "Saved" / "Accessibility";
     std::error_code ScopedError;
@@ -146,7 +151,18 @@ void AccessibilityQaPanel::WriteReport(const AccessibilityProfile& InProfile)
                      << "] " << ScopedFinding.Text << "\n";
     }
     const std::string ScopedPathText = ScopedPath.generic_string();
+    ScopedStream.flush();
+    if (!ScopedStream)
+    {
+        MStatus = "cannot finish writing the QA report";
+        return;
+    }
     ScopedStream.close();
+    if (ScopedStream.fail())
+    {
+        MStatus = "cannot close the QA report";
+        return;
+    }
     MStatus = "report: " + ScopedPathText;
 }
 

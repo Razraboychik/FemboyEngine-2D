@@ -6,6 +6,7 @@
 #include <chrono>
 
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <cstdint>
 #include <semaphore>
@@ -104,7 +105,7 @@ bool SystemGraph::Build()
         {
             return false;
         }
-        ScopedDependencies[ScopedI] = MSystems[ScopedI].after & ScopedValidMask;
+        ScopedDependencies[ScopedI] = MSystems[ScopedI].enabled ? (MSystems[ScopedI].after & ScopedValidMask) : 0;
         if (ScopedDependencies[ScopedI] != 0)
         {
             const std::uint64_t ScopedMask = ScopedDependencies[ScopedI];
@@ -128,7 +129,8 @@ bool SystemGraph::Build()
     {
         for (std::uint32_t ScopedJ = 0; ScopedJ < MCount; ++ScopedJ)
         {
-            if ((MSystems[ScopedI].before & (1ull << ScopedJ)) != 0)
+            if (MSystems[ScopedI].enabled && MSystems[ScopedJ].enabled &&
+                (MSystems[ScopedI].before & (1ull << ScopedJ)) != 0)
             {
                 if (static_cast<std::uint32_t>(MSystems[ScopedJ].phase) <
                     static_cast<std::uint32_t>(MSystems[ScopedI].phase))
@@ -140,6 +142,28 @@ bool SystemGraph::Build()
         }
     }
 
+    const auto ScopedReaches = [&ScopedDependencies](std::uint32_t InFrom, std::uint32_t InTo)
+    {
+        std::uint64_t ScopedFrontier = 1ull << InFrom;
+        std::uint64_t ScopedVisited = 0;
+        while (ScopedFrontier != 0)
+        {
+            const std::uint32_t ScopedNode = static_cast<std::uint32_t>(std::countr_zero(ScopedFrontier));
+            ScopedFrontier &= ScopedFrontier - 1u;
+            if (ScopedNode >= kMaxGraphSystems || (ScopedVisited & (1ull << ScopedNode)) != 0)
+            {
+                continue;
+            }
+            ScopedVisited |= (1ull << ScopedNode);
+            if (ScopedNode == InTo)
+            {
+                return true;
+            }
+            ScopedFrontier |= ScopedDependencies[ScopedNode] & ~ScopedVisited;
+        }
+        return false;
+    };
+
     // Access conflicts: two same-phase systems that touch the same engine service
     // are ordered by registration instead of running in parallel on it. A zero
     // declaration keeps the previous behavior.
@@ -147,7 +171,8 @@ bool SystemGraph::Build()
     {
         for (std::uint32_t ScopedSecond = ScopedFirst + 1u; ScopedSecond < MCount; ++ScopedSecond)
         {
-            if (MSystems[ScopedFirst].phase != MSystems[ScopedSecond].phase)
+            if (!MSystems[ScopedFirst].enabled || !MSystems[ScopedSecond].enabled ||
+                MSystems[ScopedFirst].phase != MSystems[ScopedSecond].phase)
             {
                 continue;
             }
@@ -163,7 +188,11 @@ bool SystemGraph::Build()
             const bool ScopedNotParallelSafe = !ScopedLeft.ParallelSafe || !ScopedRight.ParallelSafe;
             if (ScopedServiceConflict || ScopedComponentConflict || ScopedNotParallelSafe)
             {
-                ScopedDependencies[ScopedSecond] |= (1ull << ScopedFirst);
+                // Do not add an edge that closes a cycle over an explicit ordering.
+                if (!ScopedReaches(ScopedFirst, ScopedSecond))
+                {
+                    ScopedDependencies[ScopedSecond] |= (1ull << ScopedFirst);
+                }
             }
         }
     }
@@ -306,7 +335,7 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
                 continue;
             }
             ScopedInvocations[ScopedWaveSize] =
-                GraphInvocation{ScopedSystem.run, ScopedSystem.user,    ScopedSystem.name, &InContext,
+                GraphInvocation{ScopedSystem.run, ScopedSystem.user,    ScopedSystem.name.c_str(), &InContext,
                                 nullptr,          &ScopedSystem.access, &ScopedSystem,     MTimingEnabled};
             ++ScopedWaveSize;
         }
@@ -354,55 +383,23 @@ void SystemGraph::Run(Phase InPhase, SystemContext& InContext) const
 
 bool SystemGraph::RemoveUser(void* InUser)
 {
-    std::array<std::uint32_t, kMaxGraphSystems> ScopedRemap{};
-    // Every slot outside the current range must map to "removed": a zero tail
-    // would make a high mask bit look like a dependency on node 0.
-    ScopedRemap.fill(kMaxGraphSystems);
-
-    std::uint32_t ScopedNewCount = 0;
+    // Disable in place. Shifting slots would invalidate every stored dependency
+    // mask and every BitFor() result held by other systems and tools.
     bool ScopedRemoved = false;
     for (std::uint32_t ScopedI = 0; ScopedI < MCount; ++ScopedI)
     {
         if (MSystems[ScopedI].user == InUser)
         {
+            MSystems[ScopedI].enabled = false;
+            MSystems[ScopedI].Faulted = false;
+            MSystems[ScopedI].user = nullptr;
             ScopedRemoved = true;
-            continue;
         }
-        ScopedRemap[ScopedI] = ScopedNewCount;
-        MSystems[ScopedNewCount] = MSystems[ScopedI];
-        ++ScopedNewCount;
     }
-    if (!ScopedRemoved)
+    if (ScopedRemoved)
     {
-        return false;
+        MBuilt = false;
     }
-
-    // Remap after/before masks so a dependency on a surviving node keeps
-    const auto ScopedRemapMask = [&ScopedRemap](std::uint64_t InMask) -> std::uint64_t
-    {
-        std::uint64_t ScopedResult = 0;
-        for (std::uint32_t ScopedI = 0; ScopedI < kMaxGraphSystems; ++ScopedI)
-        {
-            if ((InMask & (std::uint64_t{1} << ScopedI)) == 0)
-            {
-                continue;
-            }
-            if (ScopedRemap[ScopedI] != kMaxGraphSystems)
-            {
-                ScopedResult |= (std::uint64_t{1} << ScopedRemap[ScopedI]);
-            }
-        }
-        return ScopedResult;
-    };
-    for (std::uint32_t ScopedI = 0; ScopedI < ScopedNewCount; ++ScopedI)
-    {
-        MSystems[ScopedI].after = ScopedRemapMask(MSystems[ScopedI].after);
-        MSystems[ScopedI].before = ScopedRemapMask(MSystems[ScopedI].before);
-        MSystems[ScopedI].order = ScopedI;
-    }
-    MCount = ScopedNewCount;
-    MOrderCount = 0;
-    MBuilt = false;
-    return true;
+    return ScopedRemoved;
 }
 }

@@ -54,7 +54,9 @@ struct ResolvedHudSettings
     case UpscalerBackendSetting::Fsr1:
         return InCaps.Fsr1 ? UpscaleMode::Fsr1 : UpscaleMode::Bilinear;
     case UpscalerBackendSetting::Fsr2:
-        return InCaps.Fsr2 && InCaps.MotionVectors ? UpscaleMode::Fsr2 : UpscaleMode::Fsr1;
+        return InCaps.Fsr2 && InCaps.MotionVectors
+                   ? UpscaleMode::Fsr2
+                   : (InCaps.Fsr1 ? UpscaleMode::Fsr1 : UpscaleMode::Bilinear);
     case UpscalerBackendSetting::Dlss:
     case UpscalerBackendSetting::MetalFx:
     case UpscalerBackendSetting::XeSs:
@@ -123,8 +125,21 @@ struct ResolvedHudSettings
     else if (ScopedPolicy == UpscalePolicy::Universal)
     {
         const bool ScopedFsr2 = InBackendCaps->Fsr2 && InBackendCaps->MotionVectors;
-        ScopedResult.upscalerBackend = ScopedFsr2 ? UpscalerBackendSetting::Fsr2 : UpscalerBackendSetting::Fsr1;
-        ScopedResult.upscaleMode = ScopedFsr2 ? UpscaleMode::Fsr2 : UpscaleMode::Fsr1;
+        if (ScopedFsr2)
+        {
+            ScopedResult.upscalerBackend = UpscalerBackendSetting::Fsr2;
+            ScopedResult.upscaleMode = UpscaleMode::Fsr2;
+        }
+        else if (InBackendCaps->Fsr1)
+        {
+            ScopedResult.upscalerBackend = UpscalerBackendSetting::Fsr1;
+            ScopedResult.upscaleMode = UpscaleMode::Fsr1;
+        }
+        else
+        {
+            ScopedResult.upscalerBackend = UpscalerBackendSetting::Auto;
+            ScopedResult.upscaleMode = UpscaleMode::Bilinear;
+        }
     }
     else if (InUser.upscalerBackend != UpscalerBackendSetting::Auto)
     {
@@ -145,8 +160,21 @@ struct ResolvedHudSettings
         else
         {
             const bool ScopedFsr2 = InBackendCaps->Fsr2 && InBackendCaps->MotionVectors;
-            ScopedResult.upscalerBackend = ScopedFsr2 ? UpscalerBackendSetting::Fsr2 : UpscalerBackendSetting::Fsr1;
-            ScopedResult.upscaleMode = ScopedFsr2 ? UpscaleMode::Fsr2 : UpscaleMode::Fsr1;
+            if (ScopedFsr2)
+            {
+                ScopedResult.upscalerBackend = UpscalerBackendSetting::Fsr2;
+                ScopedResult.upscaleMode = UpscaleMode::Fsr2;
+            }
+            else if (InBackendCaps->Fsr1)
+            {
+                ScopedResult.upscalerBackend = UpscalerBackendSetting::Fsr1;
+                ScopedResult.upscaleMode = UpscaleMode::Fsr1;
+            }
+            else
+            {
+                ScopedResult.upscalerBackend = UpscalerBackendSetting::Auto;
+                ScopedResult.upscaleMode = UpscaleMode::Bilinear;
+            }
         }
     }
     if (InProject.allowTemporalUpscale && InProject.temporalUpscale != TemporalUpscaleMode::Off)

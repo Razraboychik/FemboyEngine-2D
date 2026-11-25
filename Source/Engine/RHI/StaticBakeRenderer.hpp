@@ -20,8 +20,9 @@ public:
     StaticBakeRenderer(const StaticBakeRenderer&) = delete;
     StaticBakeRenderer& operator=(const StaticBakeRenderer&) = delete;
 
-    // Records the bake into the current frame. Call after EndFrame, once the
-    // GPU has finished, then call Finalize to create the sampling descriptor.
+    // Records the bake into the currently open frame: call between BeginFrame
+    // and EndFrame, before the frame's main Submit. Finalize may be called
+    // after EndFrame (it waits for the device) and publishes the overlay.
     [[nodiscard]] bool Bake(RHI& InGpu, const FramePacket& InPacket, Extent2D InExtent);
     [[nodiscard]] bool Finalize(RHI& InGpu);
     void Release(RHI& InGpu) noexcept;

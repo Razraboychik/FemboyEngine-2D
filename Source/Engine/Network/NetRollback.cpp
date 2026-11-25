@@ -442,7 +442,8 @@ NetRollbackSession::Result NetRollbackSession::Initialize(Ecs::Registry& InRegis
     {
         return ScopedValidation;
     }
-    const std::size_t ScopedSlotBytes = DesiredSlotBytes(InRegistry, InSchema, InConfig.snapshotBytes);
+    const std::size_t ScopedSlotBytes =
+        DesiredSlotBytes(InRegistry, InSchema, InConfig.snapshotBytes) + InConfig.extensionBytes;
     const std::size_t ScopedTotal =
         ScopedSlotBytes * static_cast<std::size_t>(InConfig.rollbackTicks) + InConfig.extensionBytes;
     auto ScopedOwned = std::unique_ptr<std::byte[]>(new (std::nothrow) std::byte[ScopedTotal]);
@@ -698,6 +699,10 @@ NetEntityId NetRollbackSession::RegisterEntity(Entity InLocal, NetEntityId InPre
     }
     if (InPreferred.IsValid())
     {
+        if (InPreferred.value >= kMaxNetEntities)
+        {
+            return {};
+        }
         if (MEntities.Resolve(InPreferred) != Fby::kNullEntity)
         {
             return {};
@@ -707,11 +712,7 @@ NetEntityId NetRollbackSession::RegisterEntity(Entity InLocal, NetEntityId InPre
 
     for (std::uint32_t ScopedAttempt = 0; ScopedAttempt < kMaxNetEntities; ++ScopedAttempt)
     {
-        std::uint32_t ScopedRaw = MNextNetId++;
-        if (ScopedRaw == 0 || ScopedRaw == kInvalidNetEntityId || ScopedRaw == 0xFFFFFFFEu)
-        {
-            continue;
-        }
+        const std::uint32_t ScopedRaw = (MNextNetId++ % (kMaxNetEntities - 1u)) + 1u;
         const NetEntityId ScopedCandidate{ScopedRaw};
         if (MEntities.Resolve(ScopedCandidate) != Fby::kNullEntity)
         {
@@ -1112,7 +1113,9 @@ std::uint64_t NetRollbackSession::ComputeGameplayChecksum(const Ecs::Registry& I
             continue;
         }
         const GameplayEffectsComponent& ScopedEffects = ScopedEffectView.get<GameplayEffectsComponent>(ScopedEntity);
-        for (std::uint32_t ScopedI = 0; ScopedI < ScopedEffects.Count; ++ScopedI)
+        const std::uint32_t ScopedEffectCount =
+            std::min<std::uint32_t>(ScopedEffects.Count, kMaxActiveGameplayEffects);
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedEffectCount; ++ScopedI)
         {
             const ActiveGameplayEffect& ScopedActive = ScopedEffects.Active[ScopedI];
             ScopedFold(ScopedActive.DefId, ScopedIdentity + ScopedI);

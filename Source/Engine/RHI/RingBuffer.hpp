@@ -17,7 +17,8 @@ class TransientRing
 public:
     // `mapped` is persistent host-writable memory of at least
     TransientRing(std::byte* InMapped, std::size_t InSliceBytes, std::uint32_t InFramesInFlight) noexcept
-        : MMapped(InMapped), MSliceBytes(InSliceBytes), MFrames(InFramesInFlight)
+        : MMapped(InMapped), MSliceBytes(InSliceBytes),
+          MFrames(InFramesInFlight == 0 ? 1u : InFramesInFlight)
     {
         FBY_ASSERT(MMapped != nullptr || MSliceBytes == 0);
         FBY_ASSERT(MFrames > 0);
@@ -39,13 +40,13 @@ public:
     {
         // Zero would pass the power-of-two mask test and underflow the rounding
         // expression; reject it before the assert so a release build is safe too.
-        if (InAlignment == 0)
+        if (InAlignment == 0 || MMapped == nullptr || MSliceBytes == 0)
         {
             return {};
         }
         FBY_ASSERT((InAlignment & (InAlignment - 1)) == 0);
         const std::size_t ScopedAligned = (MOffset + InAlignment - 1) & ~(InAlignment - 1);
-        if (ScopedAligned + InBytes > MSliceBytes)
+        if (ScopedAligned > MSliceBytes || InBytes > MSliceBytes - ScopedAligned)
         {
             return {};
         }
@@ -59,8 +60,16 @@ public:
     {
         static_assert(std::is_trivially_copyable_v<T>);
         const std::size_t ScopedBytes = InValues.size_bytes();
+        if (ScopedBytes == 0)
+        {
+            return 0;
+        }
+        if (MMapped == nullptr || MSliceBytes == 0)
+        {
+            return kInvalidOffset;
+        }
         const std::size_t ScopedAligned = (MOffset + 15) & ~static_cast<std::size_t>(15);
-        if (ScopedAligned + ScopedBytes > MSliceBytes)
+        if (ScopedAligned > MSliceBytes || ScopedBytes > MSliceBytes - ScopedAligned)
         {
             return kInvalidOffset;
         }

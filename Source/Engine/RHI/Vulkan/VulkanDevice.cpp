@@ -18,7 +18,7 @@ bool VulkanRHI::Initialize(const DeviceDesc& InDesc)
     MCullRequested = InDesc.enableGpuCulling;
     MDeviceLost = false;
     MInfo.backend = Backend::Vulkan;
-    MFramesInFlight = std::clamp(InDesc.framesInFlight, 1u, kMaxFramesInFlight);
+    MFramesInFlight = std::clamp(InDesc.framesInFlight, 1u, std::min(kMaxFramesInFlight, kFeedbackSlots));
     MInfo.framesInFlight = MFramesInFlight;
     MInfo.maxItemsPerFrame = InDesc.maxItemsPerFrame;
     MInfo.maxTextureLayers = InDesc.maxTextureLayers;
@@ -675,9 +675,20 @@ bool VulkanRHI::CreateBuffer(VkDeviceSize InSize, VkBufferUsageFlags InUsage, Vk
         ScopedApi.vkAllocateMemory(MDevice, &ScopedAllocateInfo, nullptr, InMemory) != VK_SUCCESS)
     {
         LogError("vulkan", "buffer memory allocation failed ({} bytes)", InSize);
+        ScopedApi.vkDestroyBuffer(MDevice, *InBuffer, nullptr);
+        *InBuffer = VK_NULL_HANDLE;
+        *InMemory = VK_NULL_HANDLE;
         return false;
     }
-    return ScopedApi.vkBindBufferMemory(MDevice, *InBuffer, *InMemory, 0) == VK_SUCCESS;
+    if (ScopedApi.vkBindBufferMemory(MDevice, *InBuffer, *InMemory, 0) != VK_SUCCESS)
+    {
+        ScopedApi.vkDestroyBuffer(MDevice, *InBuffer, nullptr);
+        ScopedApi.vkFreeMemory(MDevice, *InMemory, nullptr);
+        *InBuffer = VK_NULL_HANDLE;
+        *InMemory = VK_NULL_HANDLE;
+        return false;
+    }
+    return true;
 }
 
 bool VulkanRHI::EnsureCaptureStaging(VkDeviceSize InBytes, VkBuffer* OutBuffer, VkDeviceMemory* OutMemory)
@@ -1004,7 +1015,9 @@ bool VulkanRHI::CreateRenderPass()
     VkAttachmentDescription ScopedOverlayColor = ScopedColor;
     ScopedOverlayColor.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     ScopedOverlayColor.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    ScopedOverlayColor.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    // The presenting barrier performs the final transition; leaving the image
+    // in PRESENT_SRC here would conflict with the caller's barrier.
+    ScopedOverlayColor.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentDescription ScopedOverlayDepth = ScopedDepth;
     ScopedOverlayDepth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     ScopedOverlayDepth.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
@@ -2507,16 +2520,19 @@ bool VulkanRHI::CreateSdfShadowResources()
 
     constexpr VkDeviceSize ScopedFieldBytes =
         static_cast<VkDeviceSize>(kSdfFieldSize) * kSdfFieldSize * sizeof(float);
+    constexpr VkDeviceSize ScopedAtlasBytes =
+        static_cast<VkDeviceSize>(kSdfAtlasSize) * kSdfAtlasSize * sizeof(float);
+    constexpr VkDeviceSize ScopedStagingBytes = ScopedFieldBytes + ScopedAtlasBytes;
     for (std::uint32_t ScopedFrame = 0; ScopedFrame < kMaxFramesInFlight; ++ScopedFrame)
     {
-        if (!CreateBuffer(ScopedFieldBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        if (!CreateBuffer(ScopedStagingBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                           &MSdfFieldStagingBuffers[ScopedFrame], &MSdfFieldStagingMemories[ScopedFrame]))
         {
             LogError("vulkan", "SDF field staging buffer failed");
             return false;
         }
-        if (ScopedApi.vkMapMemory(MDevice, MSdfFieldStagingMemories[ScopedFrame], 0, ScopedFieldBytes, 0,
+        if (ScopedApi.vkMapMemory(MDevice, MSdfFieldStagingMemories[ScopedFrame], 0, ScopedStagingBytes, 0,
                                   &MSdfFieldStagingMapped[ScopedFrame]) != VK_SUCCESS)
         {
             MSdfFieldStagingMapped[ScopedFrame] = nullptr;
@@ -2622,13 +2638,15 @@ bool VulkanRHI::CreateSdfShadowResources()
 
     // The compute set samples the atlas from the first dispatch, so bring the
     // image out of UNDEFINED and zero it before any frame can bind it.
-    std::memset(MSdfFieldStagingMapped[0], 0, static_cast<std::size_t>(kSdfAtlasSize) * kSdfAtlasSize * sizeof(float));
+    std::memset(static_cast<std::byte*>(MSdfFieldStagingMapped[0]) + ScopedFieldBytes, 0,
+                static_cast<std::size_t>(ScopedAtlasBytes));
     const VkCommandBuffer ScopedAtlasInit = BeginOneShot();
     TransitionImage(ScopedAtlasInit, MSdfAtlasImage, VK_IMAGE_LAYOUT_UNDEFINED,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkBufferImageCopy ScopedAtlasCopy{};
     ScopedAtlasCopy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     ScopedAtlasCopy.imageExtent = {kSdfAtlasSize, kSdfAtlasSize, 1};
+    ScopedAtlasCopy.bufferOffset = ScopedFieldBytes;
     ScopedApi.vkCmdCopyBufferToImage(ScopedAtlasInit, MSdfFieldStagingBuffers[0], MSdfAtlasImage,
                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedAtlasCopy);
     TransitionImage(ScopedAtlasInit, MSdfAtlasImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,

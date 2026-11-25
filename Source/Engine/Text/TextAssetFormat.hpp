@@ -139,6 +139,8 @@ enum class TextAssetStatus : std::uint8_t
                                                           std::uint32_t InBlockBytes = 4096,
                                                           std::string* InError = nullptr) noexcept
 {
+    try
+    {
     if (InBlockBytes == 0)
     {
         if (InError != nullptr)
@@ -214,5 +216,20 @@ enum class TextAssetStatus : std::uint8_t
         std::memcpy(ScopedBytes.data() + ScopedHeader.TextOffset, InText.data(), InText.size());
     }
     return ScopedBytes;
+    }
+    catch (...)
+    {
+        try
+        {
+            if (InError != nullptr)
+            {
+                *InError = "text asset cook ran out of memory";
+            }
+        }
+        catch (...)
+        {
+        }
+        return {};
+    }
 }
 }

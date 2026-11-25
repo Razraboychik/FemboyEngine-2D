@@ -91,13 +91,14 @@ DocumentHandle DocumentSystem::Open(std::string_view InPath, DocumentError* OutE
         SetError(OutError, DocumentError::Unsupported);
         return {};
     }
-    const auto ScopedBytes = MVfs->Read(InPath);
-    if (!ScopedBytes.has_value())
+    const auto ScopedPinned = MVfs->Pin(InPath);
+    if (!ScopedPinned)
     {
         SetError(OutError, DocumentError::NotFound);
         return {};
     }
-    if (ScopedBytes->size() > kMaxDocumentBytes)
+    const std::span<const std::byte> ScopedBytes = ScopedPinned->bytes;
+    if (ScopedBytes.size() > kMaxDocumentBytes)
     {
         SetError(OutError, DocumentError::TooLarge);
         return {};
@@ -120,21 +121,21 @@ DocumentHandle DocumentSystem::Open(std::string_view InPath, DocumentError* OutE
 
     Slot& ScopedSlot = MSlots[ScopedIndex];
     std::size_t ScopedStart = 0;
-    if (ScopedBytes->size() >= 3 && std::to_integer<unsigned char>((*ScopedBytes)[0]) == 0xEF &&
-        std::to_integer<unsigned char>((*ScopedBytes)[1]) == 0xBB &&
-        std::to_integer<unsigned char>((*ScopedBytes)[2]) == 0xBF)
+    if (ScopedBytes.size() >= 3 && std::to_integer<unsigned char>(ScopedBytes[0]) == 0xEF &&
+        std::to_integer<unsigned char>(ScopedBytes[1]) == 0xBB &&
+        std::to_integer<unsigned char>(ScopedBytes[2]) == 0xBF)
     {
         ScopedStart = 3;
     }
     ScopedSlot.Text.clear();
-    ScopedSlot.Text.reserve(ScopedBytes->size() - ScopedStart);
-    for (std::size_t ScopedI = ScopedStart; ScopedI < ScopedBytes->size(); ++ScopedI)
+    ScopedSlot.Text.reserve(ScopedBytes.size() - ScopedStart);
+    for (std::size_t ScopedI = ScopedStart; ScopedI < ScopedBytes.size(); ++ScopedI)
     {
-        const char ScopedChar = static_cast<char>((*ScopedBytes)[ScopedI]);
+        const char ScopedChar = static_cast<char>(ScopedBytes[ScopedI]);
         if (ScopedChar == '\r')
         {
             ScopedSlot.Text.push_back('\n');
-            if (ScopedI + 1 < ScopedBytes->size() && (*ScopedBytes)[ScopedI + 1] == std::byte{'\n'})
+            if (ScopedI + 1 < ScopedBytes.size() && ScopedBytes[ScopedI + 1] == std::byte{'\n'})
             {
                 ++ScopedI;
             }

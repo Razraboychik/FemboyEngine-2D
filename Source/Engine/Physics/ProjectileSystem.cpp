@@ -37,6 +37,10 @@ void ProjectileSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics,
             continue;
         }
 
+        if (ScopedProjectile.Spent)
+        {
+            continue;
+        }
         const Vector2D ScopedDirection = ScopedProjectile.Direction;
         const float ScopedDirectionLength = std::sqrt(ScopedDirection.Dot(ScopedDirection));
         if (!(ScopedDirectionLength > 0.0001f))
@@ -63,7 +67,7 @@ void ProjectileSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics,
             continue;
         }
 
-        const Vector2D ScopedFrom = ScopedTransform.Position;
+        const Vector2D ScopedFrom = ScopedBody->Position;
         const Vector2D ScopedTo = ScopedFrom + ScopedUnit * ScopedDisplacement;
         PhysicsRayHit ScopedHit;
         if (InPhysics.RayCast(InRegistry, ScopedFrom, ScopedTo, ScopedEntity, ScopedProjectile.CollisionMask, ScopedHit))
@@ -75,6 +79,7 @@ void ProjectileSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics,
             ScopedBody->Flags |= RigidBodyTeleport;
             ScopedBody->LinearVelocity = Vector2D{};
             InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, Vector2D{}, false);
+            ScopedProjectile.Spent = true;
             RecordHit(ScopedEntity, ScopedHit.EntityHandle, ScopedHit.Point, ScopedHit.Normal, ScopedSpeed);
             continue;
         }
@@ -82,8 +87,8 @@ void ProjectileSystem::Step(Ecs::Registry& InRegistry, PhysicsSystem& InPhysics,
         ScopedTransform.Position = ScopedTo;
         ScopedBody->Position = ScopedTo;
         ScopedBody->Flags |= RigidBodyTeleport;
-        ScopedBody->LinearVelocity = ScopedUnit * ScopedSpeed;
-        InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, ScopedBody->LinearVelocity, true);
+        ScopedBody->LinearVelocity = Vector2D{};
+        InPhysics.SetLinearVelocity(InRegistry, ScopedEntity, Vector2D{}, false);
     }
 }
 

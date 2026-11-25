@@ -92,7 +92,7 @@ private:
 
     static void PlayAudioTrigger(void* InUser, std::uint64_t InAssetId, float InVolume) noexcept;
     static void RunScriptTrigger(void* InUser, std::uint32_t InProgram, std::uint32_t InEntity) noexcept;
-    void Dispatch(float InPreviousTime, float InTime) noexcept;
+    void Dispatch(float InPreviousTime, float InTime, bool InLooped) noexcept;
     void DrawToolbar();
     void DrawTrailer();
     void DrawCurveEditor();

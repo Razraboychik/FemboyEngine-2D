@@ -3,6 +3,8 @@
 
 #include <imgui.h>
 
+#include "Editor/Infrastructure/EditorTheme.hpp"
+
 namespace Fby::Editor
 {
 
@@ -21,6 +23,10 @@ enum class PlaybackIcon
 // Returns true on the frame the button is released over it. InEngaged dims the
 // button, InDisabled draws it dimmer still and swallows clicks.
 bool PlaybackIconButton(const char* InId, PlaybackIcon InIcon, bool InEngaged, bool InDisabled, const char* InTooltip);
+
+// A round, theme-coloured text button. The label is also the accessibility
+// name, so a screen reader sees the same action as the drawn glyph.
+bool CircleTextButton(const char* InId, const char* InLabel, EditorSymbolRole InRole, const char* InTooltip);
 
 // Slim slider with a gray grab. The grab either fits inside the track or is taller
 // than it and spills over both sides, depending on InOverflow. InLogarithmic maps

@@ -129,6 +129,11 @@ void CrashDiagnosticsPanel::Draw(bool* InOpen)
         {
             continue;
         }
+        std::error_code ScopedReportError;
+        if (!std::filesystem::exists(ScopedEntry.path() / "report.txt", ScopedReportError) || ScopedReportError)
+        {
+            continue;
+        }
         ReportEntry ScopedReport;
         ScopedReport.Time = ScopedEntry.last_write_time(ScopedError);
         ScopedReport.Name = ScopedEntry.path().filename().string();

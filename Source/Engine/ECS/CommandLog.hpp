@@ -188,6 +188,7 @@ public:
     {
         CommandLogHeader header{};
         std::span<const std::byte> payload;
+        bool valid = false;
 
         [[nodiscard]] static View Open(std::span<const std::byte> InBytes, std::string_view* InError = nullptr);
     };
@@ -195,7 +196,7 @@ public:
 private:
     [[nodiscard]] bool BeginRecord(CommandType InType, Entity InEntity, std::uint32_t InPayloadBytes,
                                    std::uint64_t InTick) noexcept;
-    [[nodiscard]] bool CanAppend(std::uint32_t InTotalBytes) const noexcept;
+    [[nodiscard]] bool CanAppend(std::size_t InTotalBytes) const noexcept;
 
     mutable std::array<std::byte, kMaxCommandLogBytes> MStorage{};
     mutable std::uint32_t MWriteOffset = sizeof(CommandLogHeader);

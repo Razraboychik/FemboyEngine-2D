@@ -9,10 +9,10 @@ namespace Fby
 
 void VoiceSpatialSettings::Clamp() noexcept
 {
-    MinDistance = std::clamp(MinDistance, 0.01f, 1000.0f);
-    MaxDistance = std::clamp(MaxDistance, MinDistance, 10000.0f);
-    Rolloff = std::clamp(Rolloff, 0.0f, 8.0f);
-    PanWidth = std::clamp(PanWidth, 0.0f, 1.0f);
+    MinDistance = std::isfinite(MinDistance) ? std::clamp(MinDistance, 0.01f, 1000.0f) : 0.01f;
+    MaxDistance = std::isfinite(MaxDistance) ? std::clamp(MaxDistance, MinDistance, 10000.0f) : 10000.0f;
+    Rolloff = std::isfinite(Rolloff) ? std::clamp(Rolloff, 0.0f, 8.0f) : 0.0f;
+    PanWidth = std::isfinite(PanWidth) ? std::clamp(PanWidth, 0.0f, 1.0f) : 0.0f;
 }
 
 bool VoiceSession::AddParticipant(std::uint8_t InPlayerId) noexcept

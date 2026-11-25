@@ -51,21 +51,6 @@ void RenderTuningPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
         MConfigured = true;
     }
 
-    const float ScopedDeltaMs = ImGui::GetIO().DeltaTime * 1000.0f;
-    const float ScopedScale = MResolution.Update(ScopedDeltaMs);
-    ImGui::SeparatorText("Dynamic resolution");
-    ImGui::Text("frame %.2f ms   scale %.2f", static_cast<double>(ScopedDeltaMs), static_cast<double>(ScopedScale));
-    Fby::Rhi::DynamicResolutionSettings ScopedResolution = MResolution.Settings();
-    bool ScopedResolutionDirty = false;
-    ScopedResolutionDirty |= ImGui::SliderFloat("Target ms", &ScopedResolution.targetMilliseconds, 4.0f, 40.0f, "%.1f");
-    ScopedResolutionDirty |= ImGui::SliderFloat("Min scale", &ScopedResolution.minScale, 0.25f, 1.0f, "%.2f");
-    ScopedResolutionDirty |= ImGui::SliderFloat("Max scale", &ScopedResolution.maxScale, 0.25f, 1.0f, "%.2f");
-    ScopedResolutionDirty |= ImGui::SliderFloat("Step", &ScopedResolution.step, 0.01f, 0.25f, "%.2f");
-    if (ScopedResolutionDirty)
-    {
-        MResolution.Configure(ScopedResolution);
-    }
-
     ImGui::SeparatorText("Static bake tiles");
     ImGui::SliderFloat("Zoom", &MZoom, 0.1f, 4.0f, "%.2f");
     int ScopedLightVersion = static_cast<int>(MLightVersion);
@@ -98,35 +83,6 @@ void RenderTuningPanel::Draw(Ecs::SystemContext& InContext, bool* InOpen)
     ImGui::Text("zoom bucket %u   budget %s", static_cast<unsigned>(MBake.ZoomBucket()),
                 MBake.HasBudget() ? "available" : "spent");
 
-    ImGui::SeparatorText("Static layer GPU bake");
-    if (InContext.renderer == nullptr)
-    {
-        ImGui::TextDisabled("No renderer is bound.");
-    }
-    else if (ImGui::Button("Bake 256x256 static layer"))
-    {
-        MBakeItems[0] = Fby::Rhi::RenderItem::Quad(Fby::Vector2D{0.0f, 0.0f}, Fby::Vector2D{256.0f, 256.0f},
-                                                   Fby::Color32::FromBytes(40, 60, 90).rgba);
-        MBakeKeys[0] = Fby::Rhi::MakeRenderKey(0, 0.0f);
-        MBakeBatches[0] = Fby::Rhi::DrawBatch{0, 1, 0, 0};
-        Fby::Rhi::FramePacket ScopedPacket;
-        ScopedPacket.items = MBakeItems;
-        ScopedPacket.keys = MBakeKeys;
-        ScopedPacket.batches = MBakeBatches;
-        ScopedPacket.camera.viewport = Fby::Vector2D{256.0f, 256.0f};
-        ScopedPacket.clear = Fby::Color32::FromBytes(10, 12, 18);
-        if (MBakeRenderer.Bake(*InContext.renderer, ScopedPacket, Fby::Rhi::Extent2D{256, 256}) &&
-            MBakeRenderer.Finalize(*InContext.renderer))
-        {
-            MBakeStatus = "ready";
-        }
-        else
-        {
-            MBakeStatus = "bake failed";
-        }
-    }
-    ImGui::Text("bake %s   texture %u", MBakeStatus.empty() ? "not run" : MBakeStatus.c_str(),
-                MBakeRenderer.Texture().id);
     EndEditorPanel();
 }
 

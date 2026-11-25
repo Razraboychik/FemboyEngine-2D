@@ -21,6 +21,9 @@ namespace Fby
 struct PrefabInstanceComponent
 {
     Assets::AssetHandle Prefab{};
+    // Stable on-disk identity. `Prefab` is session-local and must be re-resolved
+    // from this GUID after load; scene files write both for backward compat.
+    Assets::AssetGuid PrefabGuid = Assets::kInvalidAssetGuid;
     Vector2D Origin{};
     std::uint32_t Flags = 0;
     std::uint32_t Reserved = 0;
@@ -34,8 +37,10 @@ struct PrefabInstanceComponent
     std::array<Vector2D, kPrefabMaxEntities> PositionOverrides{};
     std::array<Vector2D, kPrefabMaxEntities> ScaleOverrides{};
     std::array<Vector2D, kPrefabMaxEntities> RotationOverrides{};
-    // X = (r, g), Y = (b, a), each channel normalised to [0, 1].
+    // X = (r, g), each channel normalised to [0, 1].
     std::array<Vector2D, kPrefabMaxEntities> ColorOverrides{};
+    // X = b, Y = a, so all four channels round-trip independently.
+    std::array<Vector2D, kPrefabMaxEntities> ColorAlphaOverrides{};
 };
 
 // Marks a spawned child of a prefab instance. Not serialized on its own: the
@@ -53,7 +58,7 @@ public:
     // Spawns the children for InInstance and tags every child with its prefab
     // index. Components are queued in InCommands; the caller plays the buffer.
     [[nodiscard]] static bool Expand(Ecs::Registry& InRegistry, Ecs::CommandBuffer& InCommands, Entity InInstance,
-                                     const PrefabAsset& InAsset, std::span<Entity> OutChildren = {});
+                                     const PrefabAsset& InAsset, std::span<Entity> OutChildren);
 
     // Destroys the transient children linked to InInstance.
     static void ClearChildren(Ecs::Registry& InRegistry, Entity InInstance);
@@ -68,6 +73,7 @@ public:
 
 FBY_REFLECT_COMPONENT(Fby::PrefabInstanceComponent, "PrefabInstanceComponent",
                       FBY_FIELD(Fby::PrefabInstanceComponent, Prefab, UInt64),
+                      FBY_FIELD(Fby::PrefabInstanceComponent, PrefabGuid, UInt64),
                       FBY_FIELD(Fby::PrefabInstanceComponent, Origin, Vector2D),
                       FBY_FIELD(Fby::PrefabInstanceComponent, Flags, UInt32),
                       FBY_FIELD(Fby::PrefabInstanceComponent, Reserved, UInt32),
@@ -78,7 +84,8 @@ FBY_REFLECT_COMPONENT(Fby::PrefabInstanceComponent, "PrefabInstanceComponent",
                       FBY_FIELD(Fby::PrefabInstanceComponent, PositionOverrides, Vector2DArray),
                       FBY_FIELD(Fby::PrefabInstanceComponent, ScaleOverrides, Vector2DArray),
                       FBY_FIELD(Fby::PrefabInstanceComponent, RotationOverrides, Vector2DArray),
-                      FBY_FIELD(Fby::PrefabInstanceComponent, ColorOverrides, Vector2DArray))
+                      FBY_FIELD(Fby::PrefabInstanceComponent, ColorOverrides, Vector2DArray),
+                      FBY_FIELD(Fby::PrefabInstanceComponent, ColorAlphaOverrides, Vector2DArray))
 
 FBY_REFLECT_COMPONENT(Fby::PrefabInstanceMemberComponent, "PrefabInstanceMemberComponent",
                       FBY_FIELD(Fby::PrefabInstanceMemberComponent, Instance, Entity),

@@ -1,4 +1,4 @@
-# FemboyEngine 0.5.0 — начало работы
+# FemboyEngine 0.6.0-alpha.1 — как сделать игру
 
 Этот документ описывает, что нужно установить и какие файлы должны лежать рядом с движком, чтобы запустить редактор, рантайм и инструменты разработки на Windows, Linux и macOS.
 
@@ -87,7 +87,7 @@ FSR2 и собственная генерация кадров собирают�
 3. Установить CMake 3.31 и Ninja 1.12 (можно из поставки Build Tools).
 4. Установить Vulkan SDK 1.4 — он даёт `vulkan-1.dll` и `VULKAN_SDK`.
 5. Установить 7-Zip (по желанию).
-6. Скачать архивы, которые обычно качает скрипт: SDL3 `release-3.4.18`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.23`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3` и распаковать их в те же каталоги `third_party/`, что создаёт скрипт. HarfBuzz и SheenBidi скачивать не нужно: они уже лежат в репозитории.
+6. Скачать архивы, которые обычно качает скрипт: SDL3 `release-3.4.20`, Vulkan-Headers `v1.4.366`, glslang `15.3.0`, miniaudio `0.11.26`, Box2D `v3.2.0`, RNNoise `0.1.1`, Monocypher `4.0.3` и распаковать их в те же каталоги `third_party/`, что создаёт скрипт. HarfBuzz и SheenBidi скачивать не нужно: они уже лежат в репозитории.
 
 ### Linux
 
@@ -111,9 +111,9 @@ Xcode Command Line Tools обязательны: они дают `clang++`, Meta
 Из корня репозитория:
 
 ```
-cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
-cmake --build build-dev
-ctest --test-dir build-dev --output-on-failure
+cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFBY_BUILD_TESTS=ON
+cmake --build build/dev
+ctest --test-dir build/dev --output-on-failure
 ```
 
 На Windows те же команды выполняются в окружении `vcvars64`; зависимости и инструменты подготавливает `SetupScripts/Windows/SetupWindows.ps1`. Основные опции CMake: `FBY_BUILD_EDITOR`, `FBY_BUILD_TESTS`, `FBY_BUILD_TOOLS`, `FBY_BUILD_SANDBOX`, `FBY_BUILD_SERVER`, `FBY_BUILD_LOBBY`, `FBY_WITH_ASAN`, `FBY_RHI_BACKEND` (`auto`, `vulkan`, `metal`, `null`).
@@ -122,11 +122,11 @@ ctest --test-dir build-dev --output-on-failure
 
 | Каталог | Что внутри |
 |---|---|
-| `build-dev/bin` | приложения: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, плагины платформ и `plugins/` |
-| `build-dev/bin/tools` | консольные инструменты: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
-| `build-dev/bin/tests` | тестовые исполняемые файлы (`fby_*_test`), их запускает `ctest` |
-| `build-dev/bin/lib` | статические библиотеки |
-| `build-dev/bin/plugins` | нативные плагины движка |
+| `build/dev/bin` | приложения: `fby_editor`, `fby_sandbox`, `fby_server`, `fby_lobby`, плагины платформ и `plugins/` |
+| `build/dev/bin/tools` | консольные инструменты: `fby_fontc`, `fby_textc`, `fby_fempak`, `fby_scene_tool`, `fby_template_gen`, `fby_aotc`, `fby_loc_tool`, `fby_shaderc` |
+| `build/dev/bin/tests` | тестовые исполняемые файлы (`fby_*_test`), их запускает `ctest` |
+| `build/dev/bin/lib` | статические библиотеки |
+| `build/dev/bin/plugins` | нативные плагины движка |
 
 Файлы `*.pdb` рядом с исполняемыми файлами — это отладочные символы, которые создаёт компилятор. Они нужны только отладчику и не требуются для запуска; в релизной поставке их можно не распространять.
 
@@ -193,7 +193,7 @@ clangd должен использовать тот же Clang, которым �
 ```json
 {
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/build-audit",
+    "--compile-commands-dir=${workspaceFolder}/build/audit",
     "--query-driver=C:/Users/<user>/AppData/Local/Programs/LLVM/bin/clang++.exe"
   ]
 }
@@ -210,9 +210,9 @@ clangd должен использовать тот же Clang, которым �
 | `dev-clang` | `clang++` | Debug, тесты, `compile_commands.json` |
 | `release-clang` | `clang++` | RelWithDebInfo, тесты |
 | `dev-clangcl` | `clang-cl` | Debug через проверенный Windows-toolchain |
-| `audit-clang` | `clang++` | существующий `build-audit` для clangd |
+| `audit-clang` | `clang++` | существующий `build/audit` для clangd |
 
-Разные компиляторы должны использовать **разные build-каталоги**. Нельзя переконфигурировать `build-audit` с clang++ на clang-cl: CMakeCache останется от старого toolchain.
+Разные компиляторы должны использовать **разные build-каталоги**. Нельзя переконфигурировать `build/audit` с clang++ на clang-cl: CMakeCache останется от старого toolchain.
 
 ### Отладка
 
@@ -223,7 +223,7 @@ clangd должен использовать тот же Clang, которым �
   "name": "Editor (Debug)",
   "type": "cppdbg",
   "request": "launch",
-  "program": "${workspaceFolder}/build-dev/bin/fby_editor.exe",
+  "program": "${workspaceFolder}/build/dev/bin/fby_editor.exe",
   "cwd": "${workspaceFolder}",
   "MIMode": "gdb",
   "miDebuggerPath": "gdb.exe"
@@ -234,7 +234,7 @@ clangd должен использовать тот же Clang, которым �
 
 ## Выбор компилятора
 
-0.5.0 поддерживает **Clang 19.1+** (clang-cl на Windows, clang++ на Unix), **AppleClang 16+**, **GCC 14.1+** и **MSVC 19.40+**. clang-cl — эталонный тулчейн, остальные поддерживаются как альтернативы и никогда не обязательны. CI прогоняет clang-cl, clang, GCC и AppleClang полным набором тестов; MSVC 19.40+ собирает то же дерево в отдельной Windows CI-джобе.
+0.6.0-alpha.1 поддерживает **Clang 19.1+** (clang-cl на Windows, clang++ на Unix), **AppleClang 16+**, **GCC 14.1+** и **MSVC 19.40+**. clang-cl — эталонный тулчейн, остальные поддерживаются как альтернативы и никогда не обязательны. CI прогоняет clang-cl, clang, GCC и AppleClang полным набором тестов; MSVC 19.40+ собирает то же дерево в отдельной Windows CI-джобе.
 
 - **Windows, основной:** clang-cl. Это Clang с ABI MSVC, Windows SDK и стандартной библиотекой MSVC; работает с отладчиком Visual Studio и PDB.
 - **Windows, альтернатива:** MSVC (`cl.exe`). Выбирайте, если команда стандартизируется на Microsoft-тулчейне; CMake включает `/std:c++latest` и набор предупреждений MSVC. RNNoise переходит на spectral-tier, потому что его C-исходники используют variable-length arrays.
@@ -250,14 +250,14 @@ clangd должен использовать тот же Clang, которым �
 
 ```
 cd %USERPROFILE%\FemboyEngine
-build-dev\bin\fby_editor.exe
+build/dev\bin\fby_editor.exe
 ```
 
 Linux и macOS:
 
 ```
 cd /path/to/project
-./build-dev/bin/fby_editor
+./build/dev/bin/fby_editor
 ```
 
 Все изменяемые файлы движок складывает в `Saved/` в рабочем каталоге, поэтому каталог проекта остаётся чистым:
@@ -276,7 +276,7 @@ cd /path/to/project
 
 | Путь | Обязателен | Назначение |
 |---|---|---|
-| `build-dev/bin/fby_editor` | да | сам редактор |
+| `build/dev/bin/fby_editor` | да | сам редактор |
 | `assets/` | да | шрифты, локализация, сцены, атласы, конфиги проекта |
 | `assets/fonts/IBMPlexSans-Regular.ttf`, `...-Bold.ttf`, `...-Italic.ttf`, `...-BoldItalic.ttf`, `IBMPlexMono-Regular.ttf` | да | семейство шрифтов редактора и текста сцены |
 | `assets/fonts/IBMPlex.family.toml` | да | манифест семейства: пять слотов стилей |
@@ -284,11 +284,11 @@ cd /path/to/project
 | `assets/loc/ui.fbin` | да | таблица локализации интерфейса |
 | `assets/scenes/*.toml` | да | сцены проекта |
 | `project.femproj` | да | описание проекта: сцена по умолчанию, симуляция, рендер, доступность |
-| `build-dev/` | да | дерево сборки CMake: там лежат исполняемые файлы и результаты сборки |
-| `build-dev/bin/fby_sandbox` | нет | второй процесс для режима Play-in-Editor по сети |
+| `build/dev/` | да | дерево сборки CMake: там лежат исполняемые файлы и результаты сборки |
+| `build/dev/bin/fby_sandbox` | нет | второй процесс для режима Play-in-Editor по сети |
 | `Saved/` | создаётся | логи, отчёты о падениях, кэш и настройки редактора |
 | `Saved/Config/editor.ini` | создаётся | раскладка панелей и настройки редактора для этой машины |
-| `build-dev/bin/plugins/` | нет | нативные плагины движка |
+| `build/dev/bin/plugins/` | нет | нативные плагины движка |
 | Vulkan Loader в системе | да | окно и GPU-рендер на Windows и Linux |
 | `Projects/` | нет | каталог по умолчанию для новых проектов |
 
@@ -298,7 +298,7 @@ cd /path/to/project
 
 ## Инструменты разработки
 
-Кроме редактора в `build-dev/bin` собираются отдельные исполняемые файлы. Все они — обычные консольные программы, читают файлы и не требуют GUI.
+Кроме редактора в `build/dev/bin` собираются отдельные исполняемые файлы. Все они — обычные консольные программы, читают файлы и не требуют GUI.
 
 | Инструмент | Назначение | Что нужно из файлов |
 |---|---|---|
@@ -315,7 +315,7 @@ cd /path/to/project
 | `fby_loc_tool` | проверка и сборка таблиц локализации | `.toml` локализации |
 | `fby_shaderc` | компиляция шейдеров в SPIR-V | `.vert`/`.frag`; вызывается сборкой автоматически |
 
-Инструменты лежат в `build-dev/bin/tools`, тестовые исполняемые файлы — в `build-dev/bin/tests`.
+Инструменты лежат в `build/dev/bin/tools`, тестовые исполняемые файлы — в `build/dev/bin/tests`.
 
 Сборка и тесты запускаются через пресеты CMake; установка зависимостей — в `SetupScripts/<OS>/*`.
 
@@ -325,7 +325,7 @@ cd /path/to/project
 
 ### Windows
 
-1. Правый щелчок по `build-dev\bin\fby_editor.exe` → «Отправить» → «Рабочий стол (создать ярлык)».
+1. Правый щелчок по `build/dev\bin\fby_editor.exe` → «Отправить» → «Рабочий стол (создать ярлык)».
 2. Свойства ярлыка: «Рабочая папка» = корень проекта (например `%USERPROFILE%\FemboyEngine`), «Объект» = полный путь к `fby_editor.exe`.
 3. Переименовать ярлык в «FemboyEngine» и перетащить на панель задач или в меню «Пуск».
 4. Для отдельного проекта сделать второй ярлык с тем же «Объектом», но «Рабочей папкой» = папка проекта. Это и есть «выбор проекта» без диалога.
@@ -377,3 +377,209 @@ ninja --version
 | Нет шрифтов в редакторе | отсутствуют TTF или манифест семейства | вернуть `assets/fonts/` из репозитория |
 | Ошибка CMake про harfbuzz или SheenBidi | повреждён или удалён каталог `third_party/` | восстановить `third_party/harfbuzz-download/` и `third_party/sheenbidi-download/` из репозитория |
 | Windows-сборка падает на заголовках | нет Windows SDK | установить Build Tools с рабочей нагрузкой C++ |
+
+## От пустого проекта до играбельной сцены
+
+Новый проект содержит пустой `assets/scenes/main.toml`, профиль по умолчанию и никаких
+навязанных актёров. Редактор не решает за вас, какая это игра.
+
+1. Создайте проект в dashboard. Шаблон жанра не применяется.
+2. В **Project Settings → Physics** выберите профиль: Default, Side View, Top-Down,
+   Isometric или Hex Isometric.
+3. Откройте `scenes/main.toml` и добавьте только нужные сущности. Минимальный side-view
+   старт — камера, спрайт игрока и земля.
+
+```toml
+version = 2
+name = "main"
+author = "you"
+profile = "side-view"
+
+[[entity]]
+id = 0
+name = "camera"
+
+[[entity.components]]
+type = "Camera2D"
+Center = [640.0, 360.0]
+ViewSize = [1280.0, 720.0]
+Zoom = 1.0
+Rotation = 0.0
+
+[[entity]]
+id = 1
+name = "player"
+
+[[entity.components]]
+type = "Transform2D"
+Position = [320.0, 240.0]
+Scale = [1.0, 1.0]
+Rotation = 0.0
+
+[[entity.components]]
+type = "Sprite2D"
+Size = [48.0, 48.0]
+UVMin = [0.0, 0.0]
+UVMax = [1.0, 1.0]
+Layer = 1
+Color = "#4FC3F7FF"
+Flags = 0
+```
+
+4. Назначьте текстуру через инспектор; `UVMin`/`UVMax` выбирают ячейку.
+5. Добавляйте `RigidBody2D` и `Collider2D` только если сущность должна симулироваться.
+6. Нажмите Play (PIE). Профиль сцены применяется; если он `Default`, берётся профиль проекта.
+
+Для top-down поставьте `profile = "top-down"` — профиль обнуляет гравитацию. Для гексов —
+`profile = "hex"`; соседство и occupancy остаются в grid/tilemap слое, а свободные объекты
+могут использовать физику.
+
+### Тайлмапы и Tiled
+
+Добавьте `TilemapComponent` на сущность и откройте **Window → Tilemap**. Панель редактирует
+компонент напрямую. **Import Tiled** читает `.tmx` с CSV-слоями:
+
+- orthogonal → TopDown;
+- isometric → IsoRect;
+- hexagonal → IsoHex;
+- CSV и несжатый base64 поддерживаются; сжатые слои отвергаются с сообщением;
+- карты больше 64×64 нужно делить или стримить;
+- object groups дают name/type/позицию/размер и point-объекты для spawn-маркеров.
+
+Auto-tiling доступен через API:
+
+```cpp
+Fby::Tilemap::AutoTileRule rule;
+rule.Tiles[0] = 1;   // одиночный
+rule.Tiles[15] = 16; // окружённый
+Fby::Tilemap::AutoTileAll(map, rule);
+```
+
+### Анимация Aseprite
+
+Экспортируйте PNG и JSON из Aseprite. В инспекторе Sprite Animation укажите **Aseprite JSON**
+и нажмите **Import Aseprite**. Первый frame tag становится клипом; без тегов импортируются
+все кадры. Кадры должны иметь одинаковую ячейку, а лист — делиться на её размер. Импорт
+заполняет стартовую клетку, число кадров, длительность и сетку `SpriteSheetComponent`.
+Non-grid экспорт остаётся доступен инструментам, но не fixed-cell анимации.
+
+### Скрипты и отладка
+
+Откройте **Window → Script Debugger**. Он компилирует FemboyScript в bytecode и даёт:
+
+- breakpoints по строкам;
+- step/resume;
+- Locals и Self fields;
+- watch/eval для `rN`, чисел и именованных локальных переменных;
+- условия breakpoint’ов вида `r3 >= 12.5`;
+- call stack;
+- подсветку узла LogicGraph;
+- Compile + Nativize для релиза.
+
+Отладчик владеет отдельным runtime, поэтому пауза не останавливает игровой мир. Используйте
+тот же source и component registry, что и игра; ошибки компиляции видны в Status.
+
+### Build & Pack
+
+Нажмите **Build & Pack Game** в dashboard или `Ctrl+B`. Release cooker:
+
+1. валидирует проект;
+2. кукает текстуры/аудио/локализацию;
+3. собирает игру;
+4. пишет архивы в `archives/`;
+5. показывает путь в статусе редактора.
+
+Desktop-пайплайн доступен из UI, а не только из терминала. Android/iOS экспорта в этой
+сборке ещё нет.
+
+### Профилирование сцены
+
+Используйте **Render Tuning**, **Scene Diagnostics**, **Network Diagnostics** и LogBoy.
+Они читают те же компоненты, что игра; отдельная debug-сборка не нужна. При просадке
+сравнивайте `FrameStats` и тайминги систем в графе до изменения арта или физики.
+
+## UI-дизайнер
+
+Откройте **Window → UI Layout**. Панель редактирует `WidgetLayoutAsset` напрямую:
+
+- добавление Panel/Label/Button/Image;
+- выбор на preview-canvas;
+- drag для перемещения и нижний правый маркер для resize;
+- сетка и snapping;
+- anchors, offsets, текст, tint, fill/text цвета, opacity, focus policy, visible/enabled,
+  clip/read-only флаги, UV, NineSlice insets и значения ProgressBar/Slider;
+- смена parent через combo или drag в дереве;
+- duplicate и delete;
+- undo/redo через `Ctrl+Z` / `Ctrl+Y`;
+- сохранение в `assets/ui/*.toml` и загрузка обратно.
+
+Preview показывает прямоугольники и selection, а не живой PinkUI-рендер: это инструмент
+выравнивания геометрии до запуска игры.
+
+## Command palette
+
+Нажмите `Ctrl+P` и введите фильтр:
+
+- Save scene;
+- Build & Pack Game;
+- Content Browser;
+- Console;
+- Material Graph;
+- VisualScript;
+- Script Debugger;
+- Tilemap;
+- UI Layout;
+- Render Tuning.
+
+## Отладка PIE
+
+Редактор передаёт живой `ScriptRuntime` в Script Debugger. В PIE отладчик работает с
+`pie.World()`; если ничего не выбрано — берёт первую сущность с `ScriptComponent`. Пауза
+отладчика ставит PIE и граф на паузу; продолжение снимает только эту паузу, ручная пауза PIE
+не затрагивается.
+
+## Live-breakpoints и build target
+
+Script Debugger привязывается к live-программе выбранной сущности (`ScriptComponent`) во время
+PIE: breakpoints, условия, locals и call stack относятся к тому же bytecode, который исполняет
+игра. Coroutine-программы идут тем же debug-путём и сохраняют suspend state; AOT-модули на время
+отладки исполняются через bytecode VM; native stepping недоступен.
+
+Build & Pack показывает target `desktop` / `mobile`. `mobile` передаёт `--target mobile` в
+`fby_fempak` и кукает ASTC-ассеты; это asset-cook target, а не экспорт Android/iOS executable
+и не подпись.
+
+## Surface normals
+
+Освещаемый спрайт может иметь `SurfaceNormal2D`:
+
+```toml
+[[entity.components]]
+type = "SurfaceNormal2D"
+Normal = [0.0, 1.0]
+Strength = 1.0
+```
+
+Солвер 2D-света делает dot направления на свет с этой нормалью и смешивает вклад по `Strength`.
+Это per-sprite surface-normal освещение; texture normal maps используют per-pixel путь ниже.
+
+
+## Texture normal maps
+
+Normal map — обычная текстура с линейным импортом. Называйте файлы с `_n`, `_normal` или
+`.normal`; импортёр сам ставит `srgb = false`. Normal map должен лежать в том же texture array,
+что и спрайт. Добавьте `NormalMap2D`:
+
+```toml
+[[entity.components]]
+type = "NormalMap2D"
+Layer = 1
+Strength = 1.0
+```
+
+`Layer` — слой texture array; слой 0 отключает путь. Sprite shader восстанавливает нормаль из
+RGB, применяет `Strength` и считает свет по пикселям. D3D11 использует до 64 point lights,
+D3D12 и Metal — четыре, Vulkan — cluster-light путь с фиксированным directional fallback при
+выключенном cluster lighting. Inspector показывает выбранный normal layer как превью.
+
+`SurfaceNormal2D` остаётся дешёвым per-sprite fallback.

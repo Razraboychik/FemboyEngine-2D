@@ -1,0 +1,103 @@
+# Политики доступности вывода
+
+Игра может открыть независимые политики рендера и аудио для игроков, которым
+нужен один сенсорный канал без другого. Движок даёт границу политики и
+safe-mode восстановление; разработчик решает, показывать ли её и каким будет
+default.
+
+## 1. Политики
+
+```cpp
+Fby::Output::RenderPolicy
+    Full
+    NoWorld
+    Disabled
+    Headless
+
+Fby::Output::AudioPolicy
+    Full
+    CaptionsOnly
+    Disabled
+```
+
+`NoWorld` оставляет интерфейс, ввод и accessibility, пропуская world pass.
+`Disabled` полностью пропускает канал. `Headless` также убирает окно и swapchain.
+
+## 1a. Регистрация настроек
+
+`Settings::RegisterOutputPolicySettings` регистрирует `render.policy` и
+`audio.policy` как опасные user-настройки с safe-значением `full`, текстом
+восстановления и recovery hotkey. Игра может скрыть их, показать в своём
+accessibility-профиле или оставить только в developer-меню.
+
+## 1b. Отображение в редакторе
+
+Project Settings показывает сгенерированную accessibility-секцию и секцию
+`Output policies (safe mode)`. Обе используют одну registry-панель: опасные
+policy-значения открывают confirmation modal с recovery hotkey, обычные
+accessibility-значения применяются сразу. Editor Settings показывает свой
+сгенерированный набор так же.
+
+## 2. Режим без рендера
+
+При политике `Disabled` игра должна пропускать world composition, тени,
+постобработку, upscaling, frame generation и GPU readback. Нужно сохранить:
+
+- окно и ввод;
+- симуляцию и аудио;
+- accessibility narration;
+- recovery hotkey и safe-mode.
+
+Движок даёт политику и документирует точки вызова. Игра или редактор решает, где
+пропускать world pass; ни один скрытый проход движка не должен зависеть от
+отрисованного кадра.
+
+## 3. Режим без аудио
+
+`AudioSystem::SetProcessingEnabled(false)` — выключатель аудио-расчётов. Пока он
+выключен:
+
+- mixer и limiter не выполняются;
+- device callback получает тишину;
+- реверб, ducking, voice processing и декодирование не тратят ресурсы;
+- sound events, субтитры и gameplay-код продолжают работать.
+
+`SetProcessingEnabled(true)` возвращает обработку без пересоздания мира. Игра
+может использовать `CaptionsOnly`, чтобы оставить события и субтитры, но не
+выводить звук.
+
+## 4. Safe mode
+
+Опасная комбинация — оба канала выключены. Игра должна запретить её сохранение,
+держать в session scope или стартовать в safe mode.
+`Policy::IsPlayerVisible()` сообщает, доступен ли хотя бы один вывод.
+
+Путь восстановления:
+
+```text
+--safe-mode
+FBY_SAFE_MODE=1
+recovery hotkey
+crash-loop fallback
+```
+
+`Settings::Registry::RestoreSafeMode()` сбрасывает опасные дескрипторы к safe
+значениям и удаляет user overrides. `Output::Policy::RestoreSafeMode()`
+возвращает оба канала в `Full`.
+
+## 5. Ответственность разработчика
+
+- Дать audio-only путь в меню до включения режима без рендера.
+- Дать субтитры и визуальные cues до включения режима без аудио.
+- Не делать gameplay зависимым от отрисованного кадра или слышимого callback.
+- Помечать настройки dangerous, требовать подтверждение и документировать
+  recovery hotkey.
+- Проверять повторное включение после device loss, resize и долгого idle.
+- Не обещать производительность GPU-класса, если CPU-симуляция остаётся
+  бутылочным горлышком.
+
+## 6. Тесты
+
+Автотест покрывает независимые переходы политик, обнаружение обоих выключенных
+каналов, safe-mode restore и переключатель аудио с тихим mix. Игре нужен ручной
+проход по меню, субтитрам, TTS, hotplug и повторному включению.

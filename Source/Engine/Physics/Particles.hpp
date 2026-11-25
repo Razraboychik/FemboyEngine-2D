@@ -74,7 +74,8 @@ struct ParticleEmitterGpu
     float Direction[4]{};
     // Xy = gravity, z = speedMax, w = lifetimeMin
     float Gravity[4]{};
-    // X = lifetimeMax, y = maxParticles, z = flags, w = seed
+    // X = lifetimeMax, y = maxParticles, z = flags, w = seed bit-cast to float
+    // (producer must use std::bit_cast<float>(uint32); shader reads floatBitsToUint)
     float Lifetime[4]{};
     // Rgba
     float ColorStart[4]{};

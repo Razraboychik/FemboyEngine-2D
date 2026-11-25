@@ -31,6 +31,7 @@ public:
     {
         std::unique_ptr<WindowManager> Window;
         std::unique_ptr<Rhi::RHI> Gpu;
+        Rhi::Extent2D Size{};
     };
 
     [[nodiscard]] Handle Create(const WindowDesc& InWindow, const Rhi::DeviceDesc& InDevice);

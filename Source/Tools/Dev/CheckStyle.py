@@ -43,7 +43,7 @@ REQUIRED_DIRECTORIES = [
 # Extra first-class modules. They are not in the required list because a
 # platform-less or weather-less build is valid, but they are allowed to live
 # directly under Source/Engine.
-OPTIONAL_ENGINE_MODULES = {"Weather", "Platform", "Navigation", "Text", "AI", "Gameplay", "Input", "Documents", "Effects", "Animation"}
+OPTIONAL_ENGINE_MODULES = {"Weather", "Platform", "Navigation", "Text", "Legal", "Ops", "AI", "Gameplay", "Input", "Documents", "Effects", "Animation", "Data", "Modding"}
 EDITOR_MODULES = {"Panels", "Infrastructure"}
 # Weather state keys are the serialized scene schema and were shipped with
 # these lowercase names. Renaming the C++ members would break existing weather
@@ -358,9 +358,9 @@ def component_field_failures(text: str) -> list[tuple[int, str]]:
     failures: list[tuple[int, str]] = []
     masked = mask_non_code(text)
     registered = {
-        match.group(1)
+        match.group(1).split("::")[-1]
         for match in re.finditer(
-            r"FBY_REFLECT_COMPONENT(?:_EMPTY)?\(\s*(?:::)?(?:Fby::)?([A-Za-z_]\w*)", text
+            r"FBY_REFLECT_COMPONENT(?:_EMPTY)?\(\s*(?:::)?((?:[A-Za-z_]\w*::)*[A-Za-z_]\w*)", text
         )
     }
     if not registered:
@@ -518,8 +518,10 @@ def main() -> int:
         if CYRILLIC.search(text):
             failures.append(f"{relative}: contains Cyrillic text")
 
-        for number, message in type_declaration_failures(text):
-            failures.append(f"{relative}:{number}: {message}")
+        # The fuzzer ABI shim must define the exact MSVC sanitizer namespace.
+        if not relative.endswith("FuzzerWindowsStubs.cpp"):
+            for number, message in type_declaration_failures(text):
+                failures.append(f"{relative}:{number}: {message}")
         for number, message in reflected_field_failures(text, relative):
             failures.append(f"{relative}:{number}: {message}")
         for number, message in component_field_failures(text):

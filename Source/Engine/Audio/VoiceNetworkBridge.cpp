@@ -43,14 +43,21 @@ bool VoiceNetworkBridge::StartLoopback(VoiceSystem& InVoice, Net::NetSession& In
     MRemotePlayer = InRemotePlayer;
     MLoopback = true;
     MVoice->SetSendSink(&VoiceNetworkBridge::SendThunk, this);
-    if (MVoice->Channel().AddParticipant(InRemotePlayer))
+    if (!MVoice->Channel().AddParticipant(InRemotePlayer))
     {
-        (void)MVoiceSession->AddParticipant(InRemotePlayer);
-        MAdded[InRemotePlayer] = true;
+        Stop();
+        return false;
     }
+    (void)MVoiceSession->AddParticipant(InRemotePlayer);
+    MAdded[InRemotePlayer] = true;
     ResetRateBuckets();
     SyncParticipants();
     return true;
+}
+
+VoiceNetworkBridge::~VoiceNetworkBridge()
+{
+    Stop();
 }
 
 void VoiceNetworkBridge::Stop() noexcept
@@ -126,21 +133,41 @@ void VoiceNetworkBridge::SyncParticipants() noexcept
     {
         return;
     }
+    // Loopback has no roster; the peer is pre-added by StartLoopback and lives
+    // until Stop(). Applying roster sync here would remove it immediately.
+    if (MLoopback)
+    {
+        return;
+    }
+    std::array<bool, kVoiceMaxPeers> ScopedPresent{};
     for (std::uint32_t ScopedIndex = 0; ScopedIndex < Net::kSessionMaxPlayers; ++ScopedIndex)
     {
         const Net::NetPlayerSlot& ScopedSlot = MSession->Slot(ScopedIndex);
-        if (!ScopedSlot.Used || ScopedSlot.Id == MLocalPlayer || ScopedSlot.Id >= kVoiceMaxPeers)
+        if (ScopedSlot.Used && ScopedSlot.Id != MLocalPlayer && ScopedSlot.Id < kVoiceMaxPeers)
+        {
+            ScopedPresent[ScopedSlot.Id] = true;
+        }
+    }
+    for (std::uint32_t ScopedId = 0; ScopedId < kVoiceMaxPeers; ++ScopedId)
+    {
+        if (!MAdded[ScopedId] || ScopedPresent[ScopedId])
         {
             continue;
         }
-        if (MAdded[ScopedSlot.Id])
+        MVoice->Channel().RemoveParticipant(static_cast<std::uint8_t>(ScopedId));
+        MVoiceSession->RemoveParticipant(static_cast<std::uint8_t>(ScopedId));
+        MAdded[ScopedId] = false;
+    }
+    for (std::uint32_t ScopedId = 0; ScopedId < kVoiceMaxPeers; ++ScopedId)
+    {
+        if (!ScopedPresent[ScopedId] || MAdded[ScopedId])
         {
             continue;
         }
-        if (MVoice->Channel().AddParticipant(ScopedSlot.Id))
+        if (MVoice->Channel().AddParticipant(static_cast<std::uint8_t>(ScopedId)))
         {
-            (void)MVoiceSession->AddParticipant(ScopedSlot.Id);
-            MAdded[ScopedSlot.Id] = true;
+            (void)MVoiceSession->AddParticipant(static_cast<std::uint8_t>(ScopedId));
+            MAdded[ScopedId] = true;
         }
     }
 }

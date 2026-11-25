@@ -55,12 +55,20 @@ public:
     void Update(const Profiler& InProfiler, std::span<const std::string_view> InNames)
     {
         MRows.clear();
-        MHidden = 0;
-        for (std::uint32_t ScopedCategory = 0; ScopedCategory < InNames.size(); ++ScopedCategory)
+        MHidden = static_cast<std::uint32_t>(InNames.size() > kProfileMaxCategories
+                                                 ? InNames.size() - kProfileMaxCategories
+                                                 : 0);
+        const std::size_t ScopedLimit = std::min<std::size_t>(InNames.size(), kProfileMaxCategories);
+        for (std::uint32_t ScopedCategory = 0; ScopedCategory < ScopedLimit; ++ScopedCategory)
         {
             const ProfileStats ScopedStats = InProfiler.Stats(ScopedCategory);
-            if (ScopedStats.Count == 0 || InNames[ScopedCategory].empty())
+            if (ScopedStats.Count == 0)
             {
+                continue;
+            }
+            if (InNames[ScopedCategory].empty())
+            {
+                ++MHidden;
                 continue;
             }
             ProfileRow ScopedRow;
@@ -93,9 +101,13 @@ public:
             case ProfileSortMode::Total:
                 break;
             }
-            if (ScopedLeft != ScopedRight)
+            if (ScopedLeft < ScopedRight)
             {
-                return ScopedLeft > ScopedRight;
+                return false;
+            }
+            if (ScopedRight < ScopedLeft)
+            {
+                return true;
             }
             // Stable tie-break on the name keeps the panel from flickering.
             return InLeft.Name < InRight.Name;
@@ -103,14 +115,13 @@ public:
         std::sort(MRows.begin(), MRows.end(), ScopedLess);
         if (MRows.size() > MMaxRows)
         {
-            MHidden = MRows.size() - MMaxRows;
-            MRows.resize(MMaxRows);
+            MHidden += static_cast<std::uint32_t>(MRows.size() - MMaxRows);
         }
     }
 
     [[nodiscard]] std::span<const ProfileRow> Rows() const noexcept
     {
-        return MRows;
+        return std::span<const ProfileRow>(MRows.data(), std::min<std::size_t>(MRows.size(), MMaxRows));
     }
     [[nodiscard]] std::uint32_t HiddenCount() const noexcept
     {

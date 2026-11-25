@@ -326,7 +326,10 @@ void VulkanRHI::UploadSdfAtlas()
         MSdfAtlasUploadPending = false;
         return;
     }
-    std::memcpy(MSdfFieldStagingMapped[MFrameIndex], MSdfAtlasTexels.data(), MSdfAtlasTexels.size() * sizeof(float));
+    constexpr std::size_t ScopedFieldBytes =
+        static_cast<std::size_t>(kSdfFieldSize) * kSdfFieldSize * sizeof(float);
+    std::memcpy(static_cast<std::byte*>(MSdfFieldStagingMapped[MFrameIndex]) + ScopedFieldBytes,
+                MSdfAtlasTexels.data(), MSdfAtlasTexels.size() * sizeof(float));
     const VkCommandBuffer ScopedCommand = MCommandBuffers[MFrameIndex];
     TransitionImage(ScopedCommand, MSdfAtlasImage,
                     MSdfAtlasInitialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
@@ -334,6 +337,7 @@ void VulkanRHI::UploadSdfAtlas()
     VkBufferImageCopy ScopedCopy{};
     ScopedCopy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     ScopedCopy.imageExtent = {kSdfAtlasSize, kSdfAtlasSize, 1};
+    ScopedCopy.bufferOffset = ScopedFieldBytes;
     Vk::GetApi().vkCmdCopyBufferToImage(ScopedCommand, MSdfFieldStagingBuffers[MFrameIndex], MSdfAtlasImage,
                                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ScopedCopy);
     TransitionImage(ScopedCommand, MSdfAtlasImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -1386,7 +1390,11 @@ bool VulkanRHI::CreatePipeline()
         return false;
     }
 
-    if (!CreatePipelineForPass(MRenderPass, &MPipeline))
+    if (!CreatePipelineForPass(MRenderPass, &MPipeline) ||
+        !CreatePipelineForPass(MRenderPass, &MBasePipeline, false, false,
+                               Fby::Rhi::RenderBlendMode::Opaque, true, false) ||
+        !CreatePipelineForPass(MRenderPass, &MSdfPipeline, false, false,
+                               Fby::Rhi::RenderBlendMode::Opaque, false, true))
     {
         return false;
     }
@@ -1395,7 +1403,8 @@ bool VulkanRHI::CreatePipeline()
 
 // One sprite pipeline per render pass.
 bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* OutPipeline, bool InDepthTest,
-                                      bool InBlendless, Fby::Rhi::RenderBlendMode InBlend)
+                                      bool InBlendless, Fby::Rhi::RenderBlendMode InBlend, bool InBaseFragment,
+                                      bool InSdfFragment)
 {
     Vk::Api& ScopedApi = Vk::GetApi();
 
@@ -1415,7 +1424,10 @@ bool VulkanRHI::CreatePipelineForPass(VkRenderPass InRenderPass, VkPipeline* Out
     };
 
     VkShaderModule ScopedVertexModule = ScopedMakeModule(Shaders::quad_vert);
-    VkShaderModule ScopedFragmentModule = ScopedMakeModule(Shaders::quad_frag);
+    VkShaderModule ScopedFragmentModule = InBaseFragment
+                                              ? ScopedMakeModule(Shaders::quad_base_frag)
+                                              : (InSdfFragment ? ScopedMakeModule(Shaders::quad_sdf_frag)
+                                                               : ScopedMakeModule(Shaders::quad_frag));
     if (ScopedVertexModule == VK_NULL_HANDLE || ScopedFragmentModule == VK_NULL_HANDLE)
     {
         return false;
@@ -1572,7 +1584,17 @@ bool VulkanRHI::CreateGeometry()
 
 bool VulkanRHI::CreateInstanceRing()
 {
-    MInstanceCapacity = std::max(1u, MDesc.maxItemsPerFrame);
+    VkPhysicalDeviceProperties ScopedProperties{};
+    Vk::GetApi().vkGetPhysicalDeviceProperties(MPhysical, &ScopedProperties);
+    MInstanceCapacity = VulkanCapacity::ClampInstanceCapacity(
+        MDesc.maxItemsPerFrame, ScopedProperties.limits.maxStorageBufferRange, MFramesInFlight, sizeof(RenderItem));
+    if (MInstanceCapacity < MDesc.maxItemsPerFrame)
+    {
+        LogWarn("vulkan", "instance capacity clamped from {} to {} (storage range {} bytes, {} frames)",
+                MDesc.maxItemsPerFrame, MInstanceCapacity, ScopedProperties.limits.maxStorageBufferRange,
+                MFramesInFlight);
+    }
+    MInfo.maxItemsPerFrame = MInstanceCapacity;
     const VkDeviceSize ScopedSliceBytes = static_cast<VkDeviceSize>(MInstanceCapacity) * sizeof(RenderItem);
     const VkDeviceSize ScopedTotalBytes = ScopedSliceBytes * (MFramesInFlight * 2u);
 
@@ -1653,7 +1675,13 @@ bool VulkanRHI::CreateBuiltInAtlas()
     }
 
     void* ScopedMapped = nullptr;
-    ScopedApi.vkMapMemory(MDevice, ScopedStagingMemory, 0, ScopedImageBytes, 0, &ScopedMapped);
+    if (ScopedApi.vkMapMemory(MDevice, ScopedStagingMemory, 0, ScopedImageBytes, 0, &ScopedMapped) != VK_SUCCESS ||
+        ScopedMapped == nullptr)
+    {
+        ScopedApi.vkDestroyBuffer(MDevice, ScopedStaging, nullptr);
+        ScopedApi.vkFreeMemory(MDevice, ScopedStagingMemory, nullptr);
+        return false;
+    }
     std::memcpy(ScopedMapped, ScopedPixels.data(), ScopedPixels.size());
     ScopedApi.vkUnmapMemory(MDevice, ScopedStagingMemory);
 

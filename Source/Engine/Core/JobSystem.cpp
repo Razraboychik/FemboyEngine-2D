@@ -6,6 +6,7 @@
 #include "Engine/Core/ThreadAffinity.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <exception>
 #include <limits>
@@ -22,9 +23,19 @@ namespace
 
 // Every thread the engine creates is tagged once, so debug tooling and log
 thread_local bool ThreadLocalWorker = false;
-// The storage owns the characters; the view is only a cheap read handle.
-thread_local std::string ThreadLocalNameStorage = "main";
-thread_local std::string_view ThreadLocalName = ThreadLocalNameStorage;
+// Fixed storage keeps thread startup allocation-free: a throwing std::string
+// initializer would terminate a worker before it can report anything.
+constexpr std::size_t kThreadNameCapacity = 32;
+thread_local std::array<char, kThreadNameCapacity> ThreadLocalNameStorage = []() noexcept
+{
+    std::array<char, kThreadNameCapacity> ScopedName{};
+    ScopedName[0] = 'm';
+    ScopedName[1] = 'a';
+    ScopedName[2] = 'i';
+    ScopedName[3] = 'n';
+    return ScopedName;
+}();
+thread_local std::string_view ThreadLocalName{ThreadLocalNameStorage.data(), 4};
 
 // Shared state of one ParallelFor call. It lives on the caller's stack.
 struct ParallelShared
@@ -140,7 +151,8 @@ void JobSystem::ReportFault(std::string_view InOperation) noexcept
         catch (...)
         {
             // This is already the failure path; never let diagnostics terminate
-            // a noexcept fault latch.
+            // a noexcept fault latch. stderr does not allocate on this path.
+            std::fputs("jobs: fault reporting failed\n", stderr);
         }
     }
 }
@@ -165,8 +177,11 @@ void JobSystem::WorkerMain(std::stop_token InToken, std::uint32_t InIndex)
 {
     ThreadLocalWorker = true;
     BindThreadRole(ThreadRole::Worker);
-    ThreadLocalNameStorage = "worker-" + std::to_string(InIndex);
-    ThreadLocalName = ThreadLocalNameStorage;
+    const int ScopedWritten = std::snprintf(ThreadLocalNameStorage.data(), ThreadLocalNameStorage.size(),
+                                             "worker-%u", static_cast<unsigned>(InIndex));
+    ThreadLocalName = std::string_view(ThreadLocalNameStorage.data(),
+                                       static_cast<std::size_t>(std::clamp(ScopedWritten, 0,
+                                                                           static_cast<int>(ThreadLocalNameStorage.size()) - 1)));
 
     while (!InToken.stop_requested())
     {
@@ -219,8 +234,11 @@ void JobSystem::DispatchParallel(std::uint32_t InCount, std::uint32_t InGrain, v
 {
     FBY_ASSERT(InFunction != nullptr);
 
+    // A zero grain would divide by zero before the count check. Treat it as
+    // one element per chunk; the inline path below still handles Count <= 1.
+    const std::uint32_t ScopedGrain = InGrain != 0u ? InGrain : 1u;
     const std::uint64_t ScopedChunkCount =
-        (static_cast<std::uint64_t>(InCount) + InGrain - 1u) / static_cast<std::uint64_t>(InGrain);
+        (static_cast<std::uint64_t>(InCount) + ScopedGrain - 1u) / static_cast<std::uint64_t>(ScopedGrain);
     if (ScopedChunkCount <= 1u)
     {
         InFunction(InContext, 0, InCount);
@@ -231,7 +249,7 @@ void JobSystem::DispatchParallel(std::uint32_t InCount, std::uint32_t InGrain, v
 
     ParallelShared ScopedShared;
     ScopedShared.chunks = ScopedChunks;
-    ScopedShared.grain = InGrain;
+    ScopedShared.grain = ScopedGrain;
     ScopedShared.count = InCount;
     ScopedShared.context = InContext;
     ScopedShared.function = InFunction;

@@ -6,8 +6,9 @@ namespace Fby::Rhi
 
 bool CustomFrameGenerator::Initialize(RHI& InGpu, Extent2D InRenderExtent, Extent2D InOutputExtent)
 {
-    (void)InOutputExtent;
-    if (MHistory.IsValid() && MExtent.width == InRenderExtent.width && MExtent.height == InRenderExtent.height)
+    if (MHistory.IsValid() && MExtent.width == InRenderExtent.width &&
+        MExtent.height == InRenderExtent.height && MOutputExtent.width == InOutputExtent.width &&
+        MOutputExtent.height == InOutputExtent.height)
     {
         return true;
     }
@@ -23,14 +24,18 @@ bool CustomFrameGenerator::Initialize(RHI& InGpu, Extent2D InRenderExtent, Exten
         return false;
     }
     MExtent = InRenderExtent;
+    MOutputExtent = InOutputExtent;
     MHistoryValid = false;
+    MDepthHistoryValid = false;
     return true;
 }
 
 bool CustomFrameGenerator::Generate(RHI& InGpu, const FrameGenerationInput& InInput)
 {
     if (!MHistory.IsValid() || !InInput.Color.IsValid() || !InInput.Motion.IsValid() ||
-        !InInput.Output.IsValid() || !InInput.HudSeparated)
+        !InInput.Output.IsValid() || !InInput.HudSeparated ||
+        InInput.RenderExtent.width != MExtent.width || InInput.RenderExtent.height != MExtent.height ||
+        InInput.OutputExtent.width != MOutputExtent.width || InInput.OutputExtent.height != MOutputExtent.height)
     {
         return false;
     }
@@ -45,8 +50,9 @@ bool CustomFrameGenerator::Generate(RHI& InGpu, const FrameGenerationInput& InIn
     {
         return false;
     }
-    if (!InGpu.TemporalResolve(InInput.Color, MHistory, InInput.Motion, InInput.Color, MDepthHistory,
-                               InInput.Output, 0.5f, 1.0f, InInput.ResetHistory || !MHistoryValid))
+    const bool ScopedReset = InInput.ResetHistory || !MHistoryValid || !MDepthHistoryValid;
+    if (!InGpu.TemporalResolve(InInput.Color, MHistory, InInput.Motion, InInput.Depth, MDepthHistory,
+                               InInput.Output, 0.5f, 1.0f, ScopedReset))
     {
         return false;
     }
@@ -56,7 +62,17 @@ bool CustomFrameGenerator::Generate(RHI& InGpu, const FrameGenerationInput& InIn
     }
     if (InInput.Depth.IsValid())
     {
-        (void)InGpu.CopyDepth(InInput.Color, MDepthHistory);
+        if (!InGpu.CopyDepth(InInput.Depth, MDepthHistory))
+        {
+            MHistoryValid = false;
+            MDepthHistoryValid = false;
+            return false;
+        }
+        MDepthHistoryValid = true;
+    }
+    else
+    {
+        MDepthHistoryValid = false;
     }
     MHistoryValid = true;
     return true;

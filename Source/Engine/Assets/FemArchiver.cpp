@@ -90,7 +90,7 @@ void WriteEntry(std::span<std::byte> InBody, std::uint32_t InIndex, std::uint32_
                 std::uint32_t InPathSize, std::uint32_t InDataOffset, std::uint32_t InStoredSize,
                 std::uint64_t InRawSize, std::uint64_t InCrc, ArchiveCodec InCodec, std::span<const std::byte> InProps)
 {
-    std::byte* ScopedEntry = InBody.data() + InIndex * kFemArcEntryBytes;
+    std::byte* ScopedEntry = InBody.data() + static_cast<std::size_t>(InIndex) * kFemArcEntryBytes;
     std::memset(ScopedEntry, 0, kFemArcEntryBytes);
     Store32(ScopedEntry + 0, InPathOffset);
     Store32(ScopedEntry + 4, InPathSize);
@@ -331,8 +331,8 @@ bool FbyLzDecompress(std::span<const std::byte> InCompressed, std::span<std::byt
                 }
             }
         }
-        if (ScopedOutput + ScopedLiteralLength > OutPlain.size() ||
-            ScopedInput + ScopedLiteralLength > InCompressed.size())
+        if (ScopedLiteralLength > OutPlain.size() - ScopedOutput ||
+            ScopedLiteralLength > InCompressed.size() - ScopedInput)
         {
             return false;
         }
@@ -372,7 +372,7 @@ bool FbyLzDecompress(std::span<const std::byte> InCompressed, std::span<std::byt
             }
         }
         ScopedMatchLength += 4;
-        if (ScopedOutput + ScopedMatchLength > OutPlain.size())
+        if (ScopedMatchLength > OutPlain.size() - ScopedOutput)
         {
             return false;
         }

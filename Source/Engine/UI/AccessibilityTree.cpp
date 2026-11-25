@@ -250,7 +250,20 @@ void AccessibilityTree::SetFocusedId(std::uint32_t InId) noexcept
 {
     if (MFocusedId == InId)
     {
-        return;
+        // Reset() keeps the focused id for stable screen-reader focus, but it
+        // clears the rebuilt nodes. Re-apply the flag when the same id appears
+        // in a fresh tree; only skip when the existing node already carries it.
+        const std::uint32_t ScopedSame = InId == 0 ? kNoAccessibilityNode : FindIndexById(InId);
+        if (ScopedSame == kNoAccessibilityNode || (MStates[ScopedSame] & AccessibilityStateFocused) != 0)
+        {
+            return;
+        }
+    }
+    const std::uint32_t ScopedPrevious =
+        MFocusedId == 0 ? kNoAccessibilityNode : FindIndexById(MFocusedId);
+    if (ScopedPrevious != kNoAccessibilityNode)
+    {
+        MStates[ScopedPrevious] &= ~AccessibilityStateFocused;
     }
     MFocusedId = InId;
     const std::uint32_t ScopedIndex = InId == 0 ? kNoAccessibilityNode : FindIndexById(InId);

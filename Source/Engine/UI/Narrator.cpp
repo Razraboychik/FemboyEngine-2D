@@ -33,7 +33,7 @@ namespace
     }
     else
     {
-        ++ScopedCut;
+        ScopedCut = std::min(ScopedCut + 1, ScopedLimit);
     }
     return ScopedCut;
 }
@@ -175,13 +175,13 @@ std::string_view Narrator::RoleName(Ui::AccessibilityRole InRole) const noexcept
 std::uint32_t Narrator::ComposeFocus(const Ui::AccessibilityTree& InTree, std::uint32_t InIndex, char* OutText,
                                      std::size_t InCapacity) noexcept
 {
-    if (OutText == nullptr || InCapacity == 0)
+    if (OutText == nullptr || InCapacity == 0 || MSettings.Verbosity == 0)
     {
         return 0;
     }
     const Ui::AccessibilityNodeView ScopedNode = InTree.At(InIndex);
     char ScopedName[128]{};
-    InTree.NameOf(ScopedNode, ScopedName, sizeof(ScopedName));
+    (void)InTree.NameOf(ScopedNode, ScopedName, sizeof(ScopedName));
 
     char ScopedRoleBuffer[48]{};
     const char* ScopedRole = "";
@@ -206,8 +206,12 @@ std::uint32_t Narrator::ComposeFocus(const Ui::AccessibilityTree& InTree, std::u
             {
                 return;
             }
-            const std::size_t ScopedLength = std::strlen(InWord);
-            if (ScopedUsed + ScopedLength + 3 >= sizeof(ScopedState))
+            std::size_t ScopedLength = 0;
+            while (ScopedLength < sizeof(ScopedState) && InWord[ScopedLength] != '\0')
+            {
+                ++ScopedLength;
+            }
+            if (ScopedLength == sizeof(ScopedState) || ScopedUsed + ScopedLength + 3 >= sizeof(ScopedState))
             {
                 return;
             }

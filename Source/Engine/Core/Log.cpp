@@ -318,7 +318,14 @@ void SetLogCategory(std::string_view InCategory) noexcept
     GFilePath.clear();
     GLineCount = 0;
     GCompactionFailed = false;
-    GCategory.assign(InCategory);
+    try
+    {
+        GCategory.assign(InCategory);
+    }
+    catch (...)
+    {
+        GCategory.clear();
+    }
 }
 
 void CloseLogFile() noexcept

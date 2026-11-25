@@ -48,12 +48,17 @@ struct VoiceReactiveSfxPlayer
     bool LocallyMuted = false;
     Vector2D Position{};
     float Pan = 0.0f;
+    // Resolved mix gain of the downlink voice, so cues follow its attenuation.
+    float Gain = 1.0f;
 };
 
 struct VoiceReactiveSfxInput
 {
     std::array<VoiceReactiveSfxPlayer, kVoiceMaxPeers> Players{};
 };
+
+// Worst case per frame: submerge + mute + bubble for every peer.
+inline constexpr std::uint32_t kVoiceReactiveSfxMaxEvents = kVoiceMaxPeers * 3;
 
 struct VoiceReactiveSfxSettings
 {

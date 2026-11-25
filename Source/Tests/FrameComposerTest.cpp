@@ -112,6 +112,15 @@ int main()
     Check(ScopedComposer.Stats().PackedLights == 1u, "the stats count packed lights");
     Check(ScopedComposer.Stats().ExtractMilliseconds >= 0.0, "extract timing is recorded");
 
+    NormalMap2D ScopedNormal;
+    ScopedNormal.Layer = 5;
+    ScopedNormal.Strength = 0.5f;
+    ScopedRegistry.emplace<NormalMap2D>(ScopedUpper, ScopedNormal);
+    ScopedComposer.BuildFramePacket(ScopedRegistry, ScopedCamera, Color32::Black(), 0u);
+    Check(Rhi::NormalMapLayer(ScopedComposer.Packet().items[1].flags) == 5u, "normal layer reaches RenderItem flags");
+    Check(Rhi::NormalMapStrength(ScopedComposer.Packet().items[1].flags) > 0.45f,
+          "normal strength reaches RenderItem flags");
+
     // Change positions without touching the sort keys. The retained composer
     // must reuse the previous order instead of the extraction order.
     ScopedRegistry.get<Transform2D>(ScopedUpper).Position.X = 30.0f;
@@ -582,6 +591,101 @@ int main()
         ScopedBoundsComposer.BuildFramePacket(ScopedBoundsRegistry, ScopedBoundsCamera, Fby::Color32::Black(), 0u);
         Check(ScopedBoundsComposer.Packet().items.size() == 4096u, "covered world bounds keep every sprite");
         Check(ScopedBoundsComposer.Stats().CulledSprites == 0u, "covered world bounds skip per-sprite culling");
+    }
+
+    {
+        Fby::Ecs::Registry ScopedCameraRegistry;
+        for (std::uint32_t ScopedI = 0; ScopedI < 16u; ++ScopedI)
+        {
+            const Fby::Entity ScopedEntity = ScopedCameraRegistry.create();
+            ScopedCameraRegistry.emplace<Fby::Transform2D>(
+                ScopedEntity, Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedI) * 8.0f, 0.0f}});
+            ScopedCameraRegistry.emplace<Fby::Sprite2D>(ScopedEntity, Fby::Sprite2D{});
+            ScopedCameraRegistry.emplace<Fby::DrawOrder>(ScopedEntity, Fby::DrawOrder{0u, 0.0f});
+        }
+        Fby::Rhi::FrameComposer ScopedCameraComposer;
+        Fby::Rhi::CameraData ScopedCameraData{Fby::Vector2D{64.0f, 0.0f}, Fby::Vector2D{1920.0f, 1080.0f}, 1.0f};
+        ScopedCameraComposer.BuildFramePacket(ScopedCameraRegistry, ScopedCameraData, Fby::Color32::Black(), 0u);
+        Check(ScopedCameraComposer.Stats().CulledSprites == 0u, "camera reuse starts with a complete cull");
+        const Fby::Rhi::RenderItem* ScopedBeforeItems = ScopedCameraComposer.Packet().items.data();
+        const std::size_t ScopedBeforeCount = ScopedCameraComposer.Packet().items.size();
+        ScopedCameraData.center.X += 48.0f;
+        ScopedCameraComposer.BuildFramePacket(ScopedCameraRegistry, ScopedCameraData, Fby::Color32::Black(), 0u);
+        Check(ScopedCameraComposer.Packet().sceneStatic, "camera-only change reuses the complete item cache");
+        Check(ScopedCameraComposer.Packet().items.data() == ScopedBeforeItems &&
+                  ScopedCameraComposer.Packet().items.size() == ScopedBeforeCount,
+              "camera-only change keeps the packed item storage");
+    }
+
+    {
+        Fby::Ecs::Registry ScopedCulledRegistry;
+        const Fby::Entity ScopedNear = ScopedCulledRegistry.create();
+        ScopedCulledRegistry.emplace<Fby::Transform2D>(ScopedNear, Fby::Transform2D{Fby::Vector2D{0.0f, 0.0f}});
+        ScopedCulledRegistry.emplace<Fby::Sprite2D>(ScopedNear, Fby::Sprite2D{});
+        ScopedCulledRegistry.emplace<Fby::DrawOrder>(ScopedNear, Fby::DrawOrder{0u, 0.0f});
+        const Fby::Entity ScopedFar = ScopedCulledRegistry.create();
+        ScopedCulledRegistry.emplace<Fby::Transform2D>(ScopedFar, Fby::Transform2D{Fby::Vector2D{10000.0f, 0.0f}});
+        ScopedCulledRegistry.emplace<Fby::Sprite2D>(ScopedFar, Fby::Sprite2D{});
+        ScopedCulledRegistry.emplace<Fby::DrawOrder>(ScopedFar, Fby::DrawOrder{0u, 0.0f});
+        Fby::Rhi::FrameComposer ScopedCulledComposer;
+        Fby::Rhi::CameraData ScopedCulledCamera{Fby::Vector2D{0.0f, 0.0f}, Fby::Vector2D{640.0f, 360.0f}, 1.0f};
+        ScopedCulledComposer.BuildFramePacket(ScopedCulledRegistry, ScopedCulledCamera, Fby::Color32::Black(), 0u);
+        Check(ScopedCulledComposer.Stats().CulledSprites > 0u, "camera fallback test culls a sprite");
+        ScopedCulledCamera.center.X += 32.0f;
+        ScopedCulledComposer.BuildFramePacket(ScopedCulledRegistry, ScopedCulledCamera, Fby::Color32::Black(), 0u);
+        Check(!ScopedCulledComposer.Packet().sceneStatic, "incomplete cull forces a full camera extract");
+    }
+
+    {
+        Fby::Ecs::Registry ScopedDeltaRegistry;
+        std::array<Fby::Entity, 2> ScopedDeltaEntities{};
+        for (std::uint32_t ScopedI = 0; ScopedI < ScopedDeltaEntities.size(); ++ScopedI)
+        {
+            const Fby::Entity ScopedEntity = ScopedDeltaRegistry.create();
+            ScopedDeltaRegistry.emplace<Fby::Transform2D>(
+                ScopedEntity, Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedI) * 16.0f, 0.0f}});
+            ScopedDeltaRegistry.emplace<Fby::Sprite2D>(ScopedEntity, Fby::Sprite2D{});
+            ScopedDeltaRegistry.emplace<Fby::DrawOrder>(ScopedEntity, Fby::DrawOrder{0u, 0.0f});
+            ScopedDeltaEntities[ScopedI] = ScopedEntity;
+        }
+        Fby::Rhi::FrameComposer ScopedDeltaComposer;
+        ScopedDeltaComposer.SetInstanceDeltasEnabled(true);
+        Fby::Rhi::CameraData ScopedDeltaCamera{Fby::Vector2D{0.0f, 0.0f}, Fby::Vector2D{640.0f, 360.0f}, 1.0f};
+        ScopedDeltaComposer.BuildFramePacket(ScopedDeltaRegistry, ScopedDeltaCamera, Fby::Color32::Black(), 0u);
+        ScopedDeltaComposer.BuildFramePacket(ScopedDeltaRegistry, ScopedDeltaCamera, Fby::Color32::Black(), 0u);
+        Check(ScopedDeltaComposer.Packet().instanceRangesAreDeltas, "delta upload marks a reusable frame");
+        Check(ScopedDeltaComposer.Packet().instanceRanges.empty(), "unchanged frame has no dirty instance range");
+        ScopedDeltaRegistry.get<Fby::Transform2D>(ScopedDeltaEntities[1]).Position.X += 4.0f;
+        ScopedDeltaComposer.BuildFramePacket(ScopedDeltaRegistry, ScopedDeltaCamera, Fby::Color32::Black(), 0u);
+        bool ScopedCoversChanged = false;
+        for (const Fby::Rhi::DirtyRange& ScopedRange : ScopedDeltaComposer.Packet().instanceRanges)
+        {
+            if (ScopedRange.first <= 1u && ScopedRange.first + ScopedRange.count > 1u)
+            {
+                ScopedCoversChanged = true;
+            }
+        }
+        Check(ScopedCoversChanged, "delta upload includes the changed instance");
+    }
+
+    {
+        Fby::Ecs::Registry ScopedAllRegistry;
+        for (std::uint32_t ScopedI = 0; ScopedI < 8u; ++ScopedI)
+        {
+            const Fby::Entity ScopedEntity = ScopedAllRegistry.create();
+            ScopedAllRegistry.emplace<Fby::Transform2D>(
+                ScopedEntity, Fby::Transform2D{Fby::Vector2D{static_cast<float>(ScopedI) * 10000.0f, 0.0f}});
+            ScopedAllRegistry.emplace<Fby::Sprite2D>(ScopedEntity, Fby::Sprite2D{});
+            ScopedAllRegistry.emplace<Fby::DrawOrder>(ScopedEntity, Fby::DrawOrder{0u, 0.0f});
+        }
+        Fby::Rhi::FrameComposer ScopedAllComposer;
+        ScopedAllComposer.SetCameraReuseAllSprites(true);
+        Fby::Rhi::CameraData ScopedAllCamera{Fby::Vector2D{0.0f, 0.0f}, Fby::Vector2D{640.0f, 360.0f}, 1.0f};
+        ScopedAllComposer.BuildFramePacket(ScopedAllRegistry, ScopedAllCamera, Fby::Color32::Black(), 0u);
+        Check(ScopedAllComposer.Stats().CulledSprites == 0u, "reuse-all keeps off-screen sprites in the cache");
+        ScopedAllCamera.center.X += 500.0f;
+        ScopedAllComposer.BuildFramePacket(ScopedAllRegistry, ScopedAllCamera, Fby::Color32::Black(), 0u);
+        Check(ScopedAllComposer.Packet().items.empty(), "reuse-all recomputes culling from the world cache");
     }
 
     if (GFailures == 0)

@@ -1,10 +1,10 @@
 # Pink UI widget and HUD catalog
 
-FemboyEngine2D 0.5.0 has one retained-mode UI module: `Fby::Ui::WidgetCanvas` in
+FemboyEngine2D 0.6.0-alpha.1 has one retained-mode UI module: `Fby::Ui::WidgetCanvas` in
 [PinkUI.hpp](../../Source/Engine/UI/PinkUI.hpp). This page is the element catalog,
 the interaction and focus contracts, the visibility rules, the custom-widget
 extension point and the recommended next additions. The engine version stays
-0.5.0: everything listed as shipped is part of the existing API.
+0.6.0-alpha.1: everything listed as shipped is part of the existing API.
 
 ## Drawing model
 
@@ -59,7 +59,7 @@ supply `InlineSprites` to map atom ids to atlas slices. Long shaped blocks
 expose `SetTextLineRange` for a viewport window, and `SetTextBlock` pages between
 `TextStore` blocks.
 
-## Elements shipped in 0.5.0
+## Elements shipped in 0.6.0-alpha.1
 
 | Kind | Draws | Quads | State and interaction | Main colours |
 | --- | --- | --- | --- | --- |
@@ -358,9 +358,9 @@ a different `TextFontStack` should call `SetShaper(&Stack.Shaper())`, bind
 pointers live in `SystemContext`; no ECS component stores an address.
 
 Both apps resolve the asset mount instead of assuming `./assets`: `FBY_ASSET_DIR`
-wins, then `cwd/assets`, then `assets` beside the executable and up to three
+wins, then `cwd/assets`, then `assets` beside the executable and up to four
 parent directories. The resolved absolute path is logged. This means an IDE
-launch from `build/bin` or `build/bin/tests` still finds the repository assets;
+launch from `build/dev/bin` or `build/dev/bin/tests` still finds the repository assets;
 `FBY_ASSET_DIR` can point either at the repository root or directly at the
 `assets` directory.
 

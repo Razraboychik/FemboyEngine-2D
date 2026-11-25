@@ -1,6 +1,6 @@
 # FemboyEngine2D Application Guide
 
-*ECS in a production project, optimisation and the distribution SDK — 2026-11-15*
+*ECS in a production project, optimisation and the distribution SDK — 2026-11-24*
 
 ## 1. What this guide is for
 
@@ -43,7 +43,7 @@ SetupScripts\Windows\Setup.bat -WithVendorSdks -AcceptVendorLicenses
 
 The all-in-one entry points are SetupScripts/Windows/Setup.bat, SetupScripts/Linux/Setup.sh and SetupScripts/macOS/Setup.command.
 
-Pinned versions: SDL3 release-3.4.18, Vulkan-Headers v1.4.366, glslang 15.3.0, miniaudio 0.11.23, Box2D v3.2.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system (or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan loader.
+Pinned versions: SDL3 release-3.4.20, Vulkan-Headers v1.4.366, glslang 16.6.0, miniaudio 0.11.26, Box2D v3.2.0 and LZMA SDK 25.01. Setup installs system packages when possible; use --skip-system (or -SkipSystem on Windows) on a CI image that already has CMake, Ninja, Clang/GCC and the Vulkan loader.
 
 ```cpp
 cmake -S . -B build -G Ninja \
@@ -377,6 +377,183 @@ session.SubmitRemoteInput(0, frame);
 - Test PIE with two players, artificial latency, packet loss and a forced rollback before adding content.
 
 A useful project order is: one player + InputSystem; two local users; snapshot round trip; server-authoritative movement; then interaction, weapons and AI. Add replication fields with the feature that owns them, not in a single late 'networking pass'. If a system reads wall-clock time, frame delta or a render handle, it is not ready for rollback.
+
+### 5.2 Stable ids, tombstones and capacity
+
+Gameplay tags and SystemGraph deliberately never renumber a live slot. Removing a tag or a system leaves a tombstone, because scene tag masks and dependency bitmasks refer to ids, not names. That stability has a price: Count is a high-water mark, not a live count. Treat it as the allocated id range and use PathAt()/Find() or ActiveCount() when you need the live set.
+
+- Prefer Rename over Remove + Add for a tag that keeps its meaning; rename preserves the id and all scene masks.
+- Remove a tag only when it is retired. RemoveAt() clears the whole subtree, keeps later ids and leaves tombstones.
+- Never reuse a tombstone for a different path. A scene that still carries the old bit would silently change meaning.
+- Do not use Count as a live-tag counter and do not iterate it without skipping empty PathAt() slots.
+- Plan the taxonomy before shipping. A project has kCapacity stable tag slots for its lifetime; removals consume them until a deliberate schema migration.
+- If a project approaches the limit, migrate explicitly: export the tag paths, recreate the database, remap every GameplayTagsComponent mask and every saved scene in the same change. Clear() alone changes ids and is not a migration.
+- Runtime servers load the tag database once; tombstones cost only memory and are invisible to gameplay. Editor churn is the case that needs discipline.
+- SystemGraph.RemoveUser() disables a slot in place; use ActiveCount() for diagnostics and keep dependency masks alive until Clear().
+- Call SystemGraph.Clear() only at a full teardown where no system, tool or plugin still holds a BitFor() mask. Repeated plugin load/unload consumes slots until that teardown.
+
+```cpp
+const std::uint32_t retired = tags.Find("Character.State.Deprecated");
+if (retired >= 0)
+{
+    tags.RemoveAt(retired); // subtree becomes tombstones; later ids stay
+}
+for (std::uint32_t i = 0; i < tags.Count; ++i)
+{
+    const std::string_view path = tags.PathAt(i);
+    if (!path.empty())
+    {
+        DrawLiveTag(i, path); // Count is the id range, not the live count
+    }
+}
+
+graph.RemoveUser(pluginUser); // slot disabled in place; masks stay valid
+const std::uint32_t running = graph.ActiveCount();
+// At full teardown only:
+graph.Clear();
+```
+
+Scene and lobby files are format v2 in this release. The v2 scene carries GUID-based skeleton references and the current StateTree layout, and the v2 lobby carries the nonce-correlated ack. v1 files and v1 peers are rejected instead of being misread; re-save projects and upgrade both ends of a lobby session together.
+
+### 5.3 Bounded authoring payloads for existing systems
+
+Data::StructValue is the engine's FInstancedStruct-like layer. It carries a fixed-size, trivially copyable value plus a stable type id and schema hash. It is not a second ECS and not a second GAS: GameplayTags, GameplayEffects and GameplaySkills stay the owners of their rules. Existing definitions expose an optional Data::StructPayload Params field for project/plugin data; the systems copy it but never interpret it.
+
+- Hard limits: 64 bytes per value, 4 values per payload, 256 registered types. Plan around them instead of adding heap payloads to components.
+- Only trivially copyable, standard-layout types. No std::string, vector, pointers or virtual functions inside a value.
+- Register each type once during startup with a stable name. MakeStructTypeId() hashes the name, never typeid() or an address.
+- SchemaHash covers field names, kinds, offsets and sizes. A changed layout must be a new schema and old files must be rejected.
+- Use the component for rare per-entity authoring data, never for Transform2D, Velocity, physics or per-frame hot state.
+- Prefer typed components for core fields. Use the payload only for mods, project-specific parameters, cues and similar data.
+- TOML encode/decode is field-based and rejects unknown types, schema mismatches and out-of-range values.
+- Register the snapshot codec in the host schema; the payload is raw-copied only after schema validation.
+
+```cpp
+struct Durability
+{
+    float Current = 100.0f;
+    float Maximum = 100.0f;
+};
+
+constexpr std::array<Data::StructField, 2> kDurabilityFields{
+    {"current", Reflect::FieldKind::Float, offsetof(Durability, Current), sizeof(float)},
+    {"maximum", Reflect::FieldKind::Float, offsetof(Durability, Maximum), sizeof(float)},
+};
+
+Data::StructTypeRegistry types;
+Data::RegisterStructType<Durability>(types, "Item.Durability", kDurabilityFields);
+const Data::StructType* durability = types.Find("Item.Durability");
+
+GameplayEffectDef effect;
+effect.Id = 7;
+effect.Params.Add(*durability, Durability{12.0f, 20.0f});
+effects.AddDef(effect); // existing GAS-like effect system owns the rules
+
+StructPayloadComponent payload;
+payload.Payload.Add(*durability, Durability{3.0f, 4.0f});
+registry.emplace<StructPayloadComponent>(entity, payload);
+```
+
+### 5.4 Mod packages without gameplay interfaces
+
+A mod is data first: a manifest, a mounted package and optionally a trusted native plugin. It does not implement a C++ interface and it does not replace a gameplay class. Existing GameplayTags, GameplayEffects, GameplaySkills and StateTree definitions remain the rule owners; a mod adds rows, tags, systems and content, or carries project-specific values in StructPayload.
+
+```cpp
+# <mods>/hardcore/mod.toml
+id = "hardcore"
+name = "Hardcore"
+version = "1.2.0"
+engine_api = 6
+side = "both"
+priority = 100
+package = "hardcore.fempak"
+hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+# optional and only loaded when the host explicitly allows native code
+plugin = "hardcore.dll"
+scripts = ["scripts/hardcore.fbys"]
+dependencies = ["core"]
+```
+
+The host discovers mod.toml files, validates every path and hash, resolves dependencies and cycles, then mounts packages in deterministic order. Dependencies load first; equal-ready mods load by ascending priority and id. A later mount overrides a lower-priority path through the VFS shadow table. The whole load is transactional: a bad package unmounts everything loaded before it.
+
+```cpp
+Modding::ModHostConfig config;
+config.Vfs = &vfs;
+config.Plugins = &plugins;       // optional
+config.AllowNative = false;      // downloaded mods stay data-only
+config.RequireSignature = true;
+config.BasePriority = 100;
+config.HostSide = Modding::ModSide::Server;
+config.Scripts = &scripts; // optional ScriptRuntime
+
+Modding::ModHost mods(config);
+std::string error;
+if (!mods.LoadAll("mods", &error))
+{
+    LogError("mods", "{}", error);
+}
+// Server handshake: compare this with the peer before simulation starts.
+const std::string setHash = mods.ModSetHash();
+// ...
+mods.UnloadAll(&error);
+```
+
+- Never load native plugins from an untrusted download unless the user explicitly trusts them; native code is full process code.
+- Require the package SHA-256 for file packages and a trusted EdDSA key for signed manifests; v1 directory packages are a development path.
+- A mod must not depend on a private C++ layout. It uses stable IDs, tags, effect/skill rows, systems, commands and events.
+- Mod systems run in SystemGraph phases and obey the same fixed-step, CommandBuffer and determinism rules as first-party systems.
+- Server-authoritative games exchange ModSetHash and reject peers with a different simulation set; cosmetic-only sets need a separate policy.
+- Use Data::StructPayload for mod-specific per-entity values instead of inventing a component per mod.
+- Native mod data access is still a trusted-ABI surface: the current C ABI exposes system registration and layout probes, not a full safe entity/component SDK.
+
+### 5.5 Safe mod data ABI versus the trusted plugin ABI
+
+There are two different contracts. FbyHostApi is the trusted first-party plugin ABI: it may expose an opaque Registry pointer and native system registration. FbyModApi is the safe data ABI: opaque entity handles, numeric component ids, bounded reads, deferred commands and no pointers into chunks. A downloaded mod should only receive the second contract. A trusted native plugin may receive both through FbyHostApi::mod_api.
+
+```cpp
+/* Trusted plugin */
+if (FbyHostHasModApi(rawHost))
+{
+    const FbyModApi* mod = (const FbyModApi*)rawHost->mod_api;
+    FbyModComponentId health = 0;
+    if (mod->component_find(mod->user, "Health", &health) == FBY_MOD_OK)
+    {
+        FbyModEntity entity = mod->entity_create(mod->user);
+        Fby::Health value{100.0f};
+        mod->command_write(mod->user, entity, health, &value, sizeof(value));
+        mod->flush_commands(mod->user); /* safe point only */
+    }
+}
+```
+
+- Component ids are process-local numbers, never C++ typeid or addresses; verify size and layout hash before writing a value.
+- component_read copies into the caller's buffer. A short buffer returns FBY_MOD_WRONG_SIZE with the required size.
+- command_write and command_remove only queue work; flush_commands applies it at a safe point. Flush is rejected during a query.
+- Queries carry a structural revision. Creating, destroying or flushing during a query makes the query stale; end it and start again.
+- Entity handles are opaque index+generation values. A destroyed entity returns FBY_MOD_STALE_ENTITY, not a dangling pointer.
+- Events have stable host-assigned ids and a 256-byte payload limit. Publishing copies the payload before callbacks run.
+- register_tag/register_effect/register_skill bind to the existing tag, effect and skill systems; they add rows, not a second GAS.
+- Call ModApiHost::InstallFlushSystem() so queued writes flush in a graph phase; the host must outlive the graph.
+- A native plugin that receives FbyHostApi::registry is trusted code. Do not hand that pointer to an untrusted mod.
+- The safe ABI is append-only: check struct_size and FbyModApiHas() before using fields added in later engine versions.
+
+### 5.6 View profiles and scene policy
+
+A project selects a default view profile, and every scene may override it. The profile is simulation policy, not a render mode: side-view uses gravity and Box2D, top-down removes gravity, isometric keeps the same 2D plane with a projection layer, and hex uses grid movement with top-down physics for loose objects only. Scenes in one project may mix these profiles.
+
+```cpp
+view_profile = "side-view"   # project default
+
+# scenes/main.toml
+version = 2
+name = "main"
+profile = "hex"             # overrides the project for this scene
+```
+
+- New projects start with an empty scene and the default profile; choose the profile in Project Settings and override it per scene.
+- A scene profile is stored in both TOML and the binary scene and is applied when PIE starts.
+- Hex and isometric scenes still use world XY; hex adjacency, occupancy and pathfinding belong to the grid layer.
+- Use DOD for large top-down worlds and Box2D for joints, CCD and side-view stacking; the profile selects the default, the project can override the backend.
 
 ---
 

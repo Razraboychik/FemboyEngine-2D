@@ -16,6 +16,7 @@ namespace Fby::Ui
 inline constexpr std::size_t kAccessibilityExtensionColors = 80;
 inline constexpr std::size_t kMaxAccessibilityExtensions = 16;
 inline constexpr std::size_t kMaxAccessibilityEffects = 16;
+inline constexpr std::size_t kNoAccessibilityEffect = kMaxAccessibilityEffects;
 inline constexpr std::size_t kAccessibilityTemperatureBands = 5;
 inline constexpr std::size_t kAccessibilityEffectTags = 16;
 inline constexpr std::size_t kMaxAlcoholEffects = 10;
@@ -139,6 +140,6 @@ private:
     std::array<AccessibilityEffectProfile, kMaxAccessibilityEffects> MEffects{};
     std::array<const void*, kMaxAccessibilityEffects> MOwners{};
     std::size_t MCount = 0;
-    std::size_t MActive = 0;
+    std::size_t MActive = kNoAccessibilityEffect;
 };
 }

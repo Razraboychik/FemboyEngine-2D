@@ -325,6 +325,10 @@ int main(int argc, char** argv)
         FBY_CHECK(ParseArgs({"fby_sandbox", "2500"}, &ScopedOptions, &ScopedError));
         FBY_CHECK(!ScopedOptions.PieClient);
         FBY_CHECK(ScopedOptions.SpriteCount == 2500);
+        FBY_CHECK(!ParseArgs({"fby_sandbox", "--frames", "-1"}, &ScopedOptions, &ScopedError));
+        FBY_CHECK(!ParseArgs({"fby_sandbox", "--listen", "-1"}, &ScopedOptions, &ScopedError));
+        FBY_CHECK(!ParseArgs({"fby_sandbox", "--pie-client", "--connect", "127.0.0.1:0"}, &ScopedOptions,
+                             &ScopedError));
     }
 
     // 2. The headless client receives a baseline and a delta over loopback UDP.

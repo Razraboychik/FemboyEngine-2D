@@ -422,12 +422,23 @@ WebSocketClient& WebSocketClient::operator=(WebSocketClient&& InOther) noexcept
     return *this;
 }
 
-bool WebSocketClient::Fail(std::string InMessage, std::string* InError) noexcept
+bool WebSocketClient::Fail(std::string_view InMessage, std::string* InError) noexcept
 {
-    MLastError = std::move(InMessage);
-    if (InError != nullptr)
+    try
     {
-        *InError = MLastError;
+        MLastError.assign(InMessage);
+        if (InError != nullptr)
+        {
+            *InError = MLastError;
+        }
+    }
+    catch (...)
+    {
+        MLastError.clear();
+        if (InError != nullptr)
+        {
+            InError->clear();
+        }
     }
     MState = WebSocketState::Error;
     if (MHandle != kInvalidHandle)
@@ -575,7 +586,10 @@ bool WebSocketClient::Connect(std::string_view InUrl, std::string* InError, std:
         return Fail("WebSocket server rejected the upgrade", InError);
     }
     std::string ScopedExpectedAccept;
-    MakeWebSocketAccept(ScopedKey, &ScopedExpectedAccept);
+    if (!MakeWebSocketAccept(ScopedKey, &ScopedExpectedAccept))
+    {
+        return Fail("WebSocket handshake could not compute Sec-WebSocket-Accept", InError);
+    }
     const std::string ScopedLowerResponse = ToLowerAscii(ScopedResponse.substr(0, ScopedHeaderEnd));
     const std::size_t ScopedAccept = ScopedLowerResponse.find("sec-websocket-accept:");
     if (ScopedAccept == std::string::npos)
