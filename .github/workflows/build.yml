@@ -71,7 +71,7 @@ jobs:
         # Hardware smoke tests need a display and an adapter; they run in the
         # advisory step below and must not gate the headless compiler job.
         run: |
-          ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings|d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark" 2>&1 | Tee-Object -FilePath test.log
+          ctest --preset ci-clangcl --output-on-failure --timeout 60 -E "editor_app_smoke|editor_infrastructure|sdf_sprite_visual|instance_delta_visual|mesh_indirect_smoke|accessibility_composite|settings|d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark" 2>&1 | Tee-Object -FilePath test.log
           exit $LASTEXITCODE
       - name: Test errors
         if: failure()
@@ -110,7 +110,7 @@ jobs:
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log build/msvc.log
       - name: Test
-        run: ctest --test-dir build/msvc --output-on-failure --timeout 60 -E "mesh_indirect_smoke|accessibility_composite|settings|d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark" 2>&1 | Tee-Object -FilePath test-msvc.log
+        run: ctest --test-dir build/msvc --output-on-failure --timeout 60 -E "editor_app_smoke|editor_infrastructure|sdf_sprite_visual|instance_delta_visual|mesh_indirect_smoke|accessibility_composite|settings|d3d12_rhi|d3d11_rhi|d3d11_rhi_fl10|auto_backend|system_info|fsr2_dx|frame_composer_dx|custom_fg_dx|fby_fsr2_dx_d3d11|fby_custom_fg_d3d11|fby_frame_composer_dx_d3d11|material_dx12_e2e|vulkan_rhi|fby_vulkan_rhi_legacy_1_2|frame_composer_benchmark" 2>&1 | Tee-Object -FilePath test-msvc.log
       - name: Test errors
         if: failure()
         run: python Source/Tools/Dev/AnnotateBuildErrors.py --log test-msvc.log
