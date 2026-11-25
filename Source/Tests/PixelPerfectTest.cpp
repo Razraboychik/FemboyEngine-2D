@@ -1,6 +1,7 @@
 #include "Engine/RHI/PixelPerfect.hpp"
 
 #include <cmath>
+#include <limits>
 #include <cstdio>
 
 namespace
@@ -31,7 +32,7 @@ int main()
     ScopedCamera.Center = {1.25f, 2.75f};
     Fby::SnapCameraToPixelGrid(ScopedCamera, 0.0f);
     Check(ScopedCamera.Center.X == 1.25f && ScopedCamera.Center.Y == 2.75f, "invalid PPU leaves the camera");
-    Fby::SnapCameraToPixelGrid(ScopedCamera, 0.0f / 0.0f);
+    Fby::SnapCameraToPixelGrid(ScopedCamera, std::numeric_limits<float>::quiet_NaN());
     Check(ScopedCamera.Center.X == 1.25f && ScopedCamera.Center.Y == 2.75f, "NaN PPU leaves the camera");
 
     for (std::uint32_t ScopedIteration = 0; ScopedIteration < 1000000; ++ScopedIteration)

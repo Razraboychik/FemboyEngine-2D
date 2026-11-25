@@ -21,6 +21,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -497,10 +498,10 @@ void ScriptDebuggerPanel::EvaluateWatch()
             return;
         }
     }
-    float ScopedLiteral = 0.0f;
-    const auto ScopedLiteralResult =
-        std::from_chars(ScopedText.data(), ScopedText.data() + ScopedText.size(), ScopedLiteral);
-    if (ScopedLiteralResult.ec == std::errc{} && ScopedLiteralResult.ptr == ScopedText.data() + ScopedText.size())
+    const std::string ScopedNumber(ScopedText);
+    char* ScopedNumberEnd = nullptr;
+    const float ScopedLiteral = std::strtof(ScopedNumber.c_str(), &ScopedNumberEnd);
+    if (ScopedNumberEnd == ScopedNumber.c_str() + ScopedNumber.size())
     {
         MWatchResult = std::string(ScopedText);
         return;

@@ -5,8 +5,10 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <charconv>
 #include <cstring>
+#include <string>
 #include <string_view>
 
 namespace Fby::Assets
@@ -54,13 +56,14 @@ namespace
 
 [[nodiscard]] bool ParseFloat(std::string_view InText, float* OutValue) noexcept
 {
-    if (InText.empty())
+    if (InText.empty() || OutValue == nullptr)
     {
         return false;
     }
-    float ScopedValue = 0.0f;
-    const auto ScopedResult = std::from_chars(InText.data(), InText.data() + InText.size(), ScopedValue);
-    if (ScopedResult.ec != std::errc{} || ScopedResult.ptr != InText.data() + InText.size())
+    const std::string ScopedText(InText);
+    char* ScopedEnd = nullptr;
+    const float ScopedValue = std::strtof(ScopedText.c_str(), &ScopedEnd);
+    if (ScopedEnd != ScopedText.c_str() + ScopedText.size())
     {
         return false;
     }

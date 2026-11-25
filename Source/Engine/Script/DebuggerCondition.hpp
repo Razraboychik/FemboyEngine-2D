@@ -2,8 +2,10 @@
 #pragma once
 
 #include <cctype>
+#include <cstdlib>
 #include <charconv>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace Fby::Script
@@ -104,10 +106,10 @@ struct DebuggerCondition
     {
         return false;
     }
-    float ScopedValue = 0.0f;
-    const auto ScopedValueResult = std::from_chars(InText.data() + ScopedCursor, InText.data() + InText.size(),
-                                                   ScopedValue);
-    if (ScopedValueResult.ec != std::errc{} || ScopedValueResult.ptr != InText.data() + InText.size())
+    const std::string ScopedNumber(InText.substr(ScopedCursor));
+    char* ScopedEnd = nullptr;
+    const float ScopedValue = std::strtof(ScopedNumber.c_str(), &ScopedEnd);
+    if (ScopedEnd != ScopedNumber.c_str() + ScopedNumber.size())
     {
         return false;
     }

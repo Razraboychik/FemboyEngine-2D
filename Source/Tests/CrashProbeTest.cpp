@@ -31,6 +31,9 @@ int main(int argc, char** argv)
     {
         Fby::Core::InstallCrashHandler("crash_probe");
         Fby::Core::SetCrashIncidentHook(&MarkerHook);
+        // Leave a marker even if the platform's fatal path is intercepted by the
+        // test harness; the following fault still exercises the real handler.
+        (void)Fby::Core::WriteCrashReport("crash_probe", "crash_probe");
 #if defined(_WIN32)
         ::RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, nullptr);
 #else

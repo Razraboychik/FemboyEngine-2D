@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 namespace Fby
 {
@@ -289,8 +290,15 @@ namespace
     {
         return false;
     }
-    const auto ScopedResult = std::from_chars(InText.data(), InText.data() + InText.size(), *Out);
-    return ScopedResult.ec == std::errc{} && ScopedResult.ptr == InText.data() + InText.size();
+    const std::string ScopedText(InText);
+    char* ScopedEnd = nullptr;
+    const float ScopedValue = std::strtof(ScopedText.c_str(), &ScopedEnd);
+    if (ScopedEnd != ScopedText.c_str() + ScopedText.size())
+    {
+        return false;
+    }
+    *Out = ScopedValue;
+    return true;
 }
 
 [[nodiscard]] std::string_view NextToken(std::string_view* Cursor) noexcept
