@@ -44,7 +44,7 @@ bool LicenseRegistry::LoadFromVfs(VirtualFileSystem& InVfs, std::string_view InD
         for (const std::string_view ScopedEntry : InVfs.List(InPath))
         {
             const std::string ScopedPath(ScopedEntry);
-            const std::string_view ScopedFile = ScopedPath.substr(ScopedPath.find_last_of('/') + 1);
+            const std::string ScopedFile = ScopedPath.substr(ScopedPath.find_last_of('/') + 1);
             if (!IsLicenseFile(ScopedFile))
             {
                 ScopedVisit(ScopedPath);
