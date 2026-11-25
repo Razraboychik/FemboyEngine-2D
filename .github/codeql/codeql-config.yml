@@ -37,3 +37,9 @@ paths-ignore:
   # HarfBuzz's upstream test executables are not built or linked by the engine.
   - third_party/harfbuzz-download/**/src/test-*.cc
   - third_party/harfbuzz-download/**/src/graph/test-*.cc
+  # Vendored test-engine UI code is not linked into shipped binaries and its
+  # scanf diagnostics come from upstream UI tooling.
+  - third_party/imgui_test_engine/**
+  # Upstream miniz ZIP reader has a TOCTOU pattern that is not on our call path;
+  # the deflate writer used by the engine is separate code.
+  - third_party/miniz/miniz_zip.c
