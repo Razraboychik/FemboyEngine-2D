@@ -4623,14 +4623,9 @@ static int mz_stat64(const char *path, struct __stat64 *buffer)
             status = MZ_FALSE;
         }
 
-        if ((!status) && (created_new_archive))
-        {
-            /* It's a new archive and something went wrong, so just delete it. */
-            // codeql[cpp/toctou-race-condition]
-            int ignoredStatus = MZ_DELETE_FILE(pZip_filename);
-            (void)ignoredStatus;
-        }
-
+        /* Leave a failed new archive in place. Deleting it by path after the
+           stat() above would race with a replacement created under the same
+           name; the caller can remove it with a handle it owns. */
         if (pErr)
             *pErr = actual_err;
 
