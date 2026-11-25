@@ -2065,13 +2065,13 @@ static void PerflogSettingsHandler_ReadLine(ImGuiContext*, ImGuiSettingsHandler*
     ImGuiPerfTool* perftool = (ImGuiPerfTool*)ini_handler->UserData;
     char buf[128];
     int visible = -1, display_type = -1, report_type = -1;
-    /**/ if (sscanf(line, "DateFrom=%10s", perftool->_FilterDateFrom)) {}
-    else if (sscanf(line, "DateTo=%10s", perftool->_FilterDateTo)) {}
-    else if (sscanf(line, "DisplayType=%d", &display_type)) { perftool->_DisplayType = (ImGuiPerfToolDisplayType)display_type; }
-    else if (sscanf(line, "ReportType=%d", &report_type)) { perftool->_ReportType = (ImGuiPerfToolReportType)report_type; }
-    else if (sscanf(line, "BaselineBuildId=%llu", &perftool->_BaselineBuildId)) {}
-    else if (sscanf(line, "BaselineTimestamp=%llu", &perftool->_BaselineTimestamp)) {}
-    else if (sscanf(line, "BaselineTestName=%s", perftool->_BaselineTestName)) {}
+    /**/ if (sscanf(line, "DateFrom=%10s", perftool->_FilterDateFrom) > 0) {}
+    else if (sscanf(line, "DateTo=%10s", perftool->_FilterDateTo) > 0) {}
+    else if (sscanf(line, "DisplayType=%d", &display_type) > 0) { perftool->_DisplayType = (ImGuiPerfToolDisplayType)display_type; }
+    else if (sscanf(line, "ReportType=%d", &report_type) > 0) { perftool->_ReportType = (ImGuiPerfToolReportType)report_type; }
+    else if (sscanf(line, "BaselineBuildId=%llu", &perftool->_BaselineBuildId) > 0) {}
+    else if (sscanf(line, "BaselineTimestamp=%llu", &perftool->_BaselineTimestamp) > 0) {}
+    else if (sscanf(line, "BaselineTestName=%s", perftool->_BaselineTestName) > 0) {}
     else if (sscanf(line, "TestVisibility=%[^,],%d", buf, &visible) == 2) { perftool->_Visibility.SetBool(ImHashStr(buf), !!visible); }
     else if (sscanf(line, "BuildVisibility=%[^,],%d", buf, &visible) == 2) { perftool->_Visibility.SetBool(ImHashStr(buf), !!visible); }
 }
