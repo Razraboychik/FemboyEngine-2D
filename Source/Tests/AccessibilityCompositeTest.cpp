@@ -13,6 +13,17 @@
 
 #define REQUIRE_CAPTURE(expr) do { if (!(expr)) { std::fprintf(stderr, "capture failed\n"); return 1; } } while (0)
 
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+// The Vulkan ICD allocates process-lifetime driver objects that outlive the
+// smoke test. Engine leaks are still covered by the other ASan tests.
+extern "C" const char* __asan_default_options()
+{
+    return "detect_leaks=0";
+}
+#endif
+#endif
+
 namespace
 {
 
