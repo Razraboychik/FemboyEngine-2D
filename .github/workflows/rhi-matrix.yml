@@ -16,6 +16,9 @@ env:
 jobs:
   windows-rhi:
     name: Windows ${{ matrix.name }}
+    # Hosted Windows runners have no GPU adapter. Run this matrix on the
+    # self-hosted hardware schedule, not as a PR gate.
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     continue-on-error: true
     strategy:
@@ -58,9 +61,8 @@ jobs:
 
   macos-metal:
     name: macOS Metal
-    # Hosted macOS runners have no Metal device; the build still runs, the
-    # runtime smoke is advisory.
-    continue-on-error: true
+    # Hosted macOS runners have no Metal device; run this on hardware.
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
