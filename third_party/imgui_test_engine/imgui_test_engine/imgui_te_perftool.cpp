@@ -2071,9 +2071,9 @@ static void PerflogSettingsHandler_ReadLine(ImGuiContext*, ImGuiSettingsHandler*
     else if (sscanf(line, "ReportType=%d", &report_type) > 0) { perftool->_ReportType = (ImGuiPerfToolReportType)report_type; }
     else if (sscanf(line, "BaselineBuildId=%llu", &perftool->_BaselineBuildId) > 0) {}
     else if (sscanf(line, "BaselineTimestamp=%llu", &perftool->_BaselineTimestamp) > 0) {}
-    else if (sscanf(line, "BaselineTestName=%s", perftool->_BaselineTestName) > 0) {}
-    else if (sscanf(line, "TestVisibility=%[^,],%d", buf, &visible) == 2) { perftool->_Visibility.SetBool(ImHashStr(buf), !!visible); }
-    else if (sscanf(line, "BuildVisibility=%[^,],%d", buf, &visible) == 2) { perftool->_Visibility.SetBool(ImHashStr(buf), !!visible); }
+    else if (sscanf(line, "BaselineTestName=%127s", perftool->_BaselineTestName) > 0) {}
+    else if (sscanf(line, "TestVisibility=%127[^,],%d", buf, &visible) == 2) { perftool->_Visibility.SetBool(ImHashStr(buf), !!visible); }
+    else if (sscanf(line, "BuildVisibility=%127[^,],%d", buf, &visible) == 2) { perftool->_Visibility.SetBool(ImHashStr(buf), !!visible); }
 }
 
 static void PerflogSettingsHandler_ApplyAll(ImGuiContext*, ImGuiSettingsHandler* ini_handler)

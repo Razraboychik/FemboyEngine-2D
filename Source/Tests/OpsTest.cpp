@@ -9,6 +9,8 @@
 #include <array>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -96,6 +98,22 @@ int main()
         std::fprintf(stderr, "FAIL: load replay: %s\n", ScopedError.c_str());
         return 1;
     }
+    {
+        const std::filesystem::path ScopedBigReplay = "build/ops_replay_oversized.fbyrply";
+        {
+            std::ofstream ScopedBigFile(ScopedBigReplay, std::ios::binary | std::ios::trunc);
+            ScopedBigFile.seekp(static_cast<std::streamoff>(256ull * 1024ull * 1024ull));
+            ScopedBigFile.put('X');
+        }
+        Fby::Core::ReplaySession ScopedOversizedReplay;
+        std::string ScopedOversizedError;
+        if (Fby::Ops::ReplayArchive::Load(ScopedBigReplay.string(), &ScopedOversizedReplay, &ScopedOversizedError))
+        {
+            std::fprintf(stderr, "FAIL: oversized replay was accepted");
+            return 1;
+        }
+        std::filesystem::remove(ScopedBigReplay);
+    }
     if (!Fby::Ops::ReplayPolicy{2, 2, true}.ShouldStop(2) || Fby::Ops::ReplayPolicy{3, 2, true}.ShouldStop(2))
     {
         std::fprintf(stderr, "FAIL: replay frame budget\n");
@@ -105,10 +123,16 @@ int main()
     ScopedReplay.Save(&ScopedReplayBytes);
     Fby::Ops::IncidentRequest ScopedIncident;
     ScopedIncident.Directory = "build/ops_incident_test";
-    ScopedIncident.Reason = "test";
+    std::string ScopedRawReason = "test ";
+    ScopedRawReason.push_back(static_cast<char>(34));
+    ScopedRawReason += "quoted";
+    ScopedRawReason.push_back(static_cast<char>(34));
+    ScopedRawReason.push_back(static_cast<char>(10));
+    ScopedRawReason += "line";
+    ScopedIncident.Reason = ScopedRawReason;
     ScopedIncident.BuildInfo = "test build";
-    ScopedIncident.SettingsText = "x = 1\n";
-    ScopedIncident.LogText = "log line\n";
+    ScopedIncident.SettingsText = "x = 1";
+    ScopedIncident.LogText = "log line";
     ScopedIncident.ArchivePath = "build/ops_incident_test.zip";
     ScopedIncident.ReplayBytes = ScopedReplayBytes;
     ScopedIncident.Licenses = &ScopedLicenses;
@@ -119,8 +143,27 @@ int main()
         !std::filesystem::exists("build/ops_incident_test/Licenses") ||
         !std::filesystem::exists("build/ops_incident_test.zip"))
     {
-        std::fprintf(stderr, "FAIL: incident bundle: %s\n", ScopedError.c_str());
+        std::fprintf(stderr, "FAIL: incident bundle: %s", ScopedError.c_str());
         return 1;
+    }
+    {
+        std::ifstream ScopedManifestFile("build/ops_incident_test/manifest.toml", std::ios::binary);
+        const std::string ScopedManifestText((std::istreambuf_iterator<char>(ScopedManifestFile)),
+                                             std::istreambuf_iterator<char>());
+        if (ScopedManifestText.find(ScopedRawReason) != std::string::npos)
+        {
+            std::fprintf(stderr, "FAIL: manifest reason was not TOML-escaped");
+            return 1;
+        }
+        std::ifstream ScopedZipFile("build/ops_incident_test.zip", std::ios::binary);
+        const std::string ScopedZipText((std::istreambuf_iterator<char>(ScopedZipFile)),
+                                        std::istreambuf_iterator<char>());
+        if (ScopedZipText.find("README.txt") == std::string::npos ||
+            ScopedZipText.find("ops_incident_test") != std::string::npos)
+        {
+            std::fprintf(stderr, "FAIL: incident ZIP stores absolute paths");
+            return 1;
+        }
     }
     std::filesystem::create_directories("build/ops_crash_test/1000");
     Fby::Ops::WriteCrashMarker("build/ops_crash_test/1000", "fatal signal");
@@ -136,6 +179,21 @@ int main()
         std::fprintf(stderr, "FAIL: crash marker collection: %s\n", ScopedError.c_str());
         return 1;
     }
+#if !defined(_WIN32)
+    {
+        std::filesystem::create_directories("build/ops_crash_symlink_target");
+        Fby::Ops::WriteCrashMarker("build/ops_crash_symlink_target", "fatal signal");
+        std::filesystem::create_directories("build/ops_crash_symlink");
+        std::filesystem::create_directory_symlink("build/ops_crash_symlink_target", "build/ops_crash_symlink/link");
+        if (Fby::Ops::CollectPendingCrashIncidents("build/ops_crash_symlink", "test", "x", &ScopedError) != 0)
+        {
+            std::fprintf(stderr, "FAIL: crash collection followed a symlink");
+            return 1;
+        }
+        std::filesystem::remove_all("build/ops_crash_symlink");
+        std::filesystem::remove_all("build/ops_crash_symlink_target");
+    }
+#endif
     if (!Fby::Ops::MarkSessionActive("build/ops_session_test.lock", "test", &ScopedError) ||
         Fby::Ops::CollectUncleanShutdown("build/ops_session_test.lock", "build/ops_session_bundle", "test", "x",
                                          &ScopedError) != 1 ||

@@ -6,8 +6,11 @@
 #include "miniz.h"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <cstdio>
@@ -46,6 +49,103 @@ void AddIssue(DoctorReport& InReport, DoctorSeverity InSeverity, std::string InC
 {
     InReport.Issues.push_back({InSeverity, std::move(InCode), std::move(InPath), std::move(InMessage)});
 }
+
+
+std::string EscapeToml(std::string_view InText)
+{
+    std::string Scoped;
+    Scoped.reserve(InText.size());
+    for (const char ScopedChar : InText)
+    {
+        const int ScopedCode = static_cast<unsigned char>(ScopedChar);
+        if (ScopedCode == 92)
+        {
+            Scoped.push_back(static_cast<char>(92));
+            Scoped.push_back(static_cast<char>(92));
+        }
+        else if (ScopedChar == '"')
+        {
+            Scoped.push_back(static_cast<char>(92));
+            Scoped.push_back('"');
+        }
+        else if (ScopedCode == 10)
+        {
+            Scoped.push_back(static_cast<char>(92));
+            Scoped.push_back('n');
+        }
+        else if (ScopedCode == 13)
+        {
+            Scoped.push_back(static_cast<char>(92));
+            Scoped.push_back('r');
+        }
+        else if (ScopedCode == 9)
+        {
+            Scoped.push_back(static_cast<char>(92));
+            Scoped.push_back('t');
+        }
+        else if (ScopedCode < 0x20 || ScopedCode == 0x7F)
+        {
+            char ScopedEscape[8] = {};
+            std::snprintf(ScopedEscape, sizeof(ScopedEscape), "%c%04X", 92, ScopedCode);
+            Scoped += ScopedEscape;
+        }
+        else
+        {
+            Scoped.push_back(ScopedChar);
+        }
+    }
+    return Scoped;
+}
+
+bool MakeSafeRelative(std::string_view InPath, std::string* OutNormalized)
+{
+    if (InPath.empty() || InPath.find(static_cast<char>(0)) != std::string_view::npos)
+    {
+        return false;
+    }
+    std::string ScopedText(InPath);
+    std::replace(ScopedText.begin(), ScopedText.end(), static_cast<char>(92), '/');
+    if (ScopedText.empty() || ScopedText.front() == '/')
+    {
+        return false;
+    }
+    if (ScopedText.find(':') != std::string::npos)
+    {
+        return false;
+    }
+    std::filesystem::path ScopedPath(ScopedText);
+    if (ScopedPath.is_absolute() || ScopedPath.has_root_name() || ScopedPath.has_root_directory())
+    {
+        return false;
+    }
+    for (const std::filesystem::path& ScopedPart : ScopedPath)
+    {
+        if (ScopedPart == ".." || ScopedPart == ".")
+        {
+            return false;
+        }
+    }
+    if (OutNormalized != nullptr)
+    {
+        *OutNormalized = ScopedPath.generic_string();
+    }
+    return true;
+}
+
+std::string ReadMarkerReason(const std::filesystem::path& InPath)
+{
+    std::ifstream ScopedFile(InPath, std::ios::binary);
+    if (!ScopedFile)
+    {
+        return {};
+    }
+    std::array<char, 4096> ScopedBuffer{};
+    ScopedFile.read(ScopedBuffer.data(), static_cast<std::streamsize>(ScopedBuffer.size()));
+    const std::streamsize ScopedRead = ScopedFile.gcount();
+    return std::string(ScopedBuffer.data(), static_cast<std::size_t>(ScopedRead));
+}
+
+constexpr std::uintmax_t kMaxReplayBytes = 256ull * 1024ull * 1024ull;
 
 bool EndsWith(std::string_view InText, std::string_view InSuffix)
 {
@@ -111,7 +211,8 @@ bool DeflateRaw(const std::string& InData, std::string* OutData)
     return true;
 }
 
-bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFiles, std::string* InError)
+bool WriteStoreZip(std::string_view InPath, const std::filesystem::path& InRoot,
+                   const std::vector<std::string>& InFiles, std::string* InError)
 {
     struct Entry
     {
@@ -122,18 +223,40 @@ bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFi
         std::uint32_t Offset = 0;
         std::uint16_t Method = 0;
     };
+    constexpr std::uintmax_t kMax32 = std::numeric_limits<std::uint32_t>::max();
+    constexpr std::size_t kMax16 = std::numeric_limits<std::uint16_t>::max();
     std::vector<Entry> ScopedEntries;
+    std::uintmax_t ScopedZipEstimate = 22;
     for (const std::string& ScopedRelative : InFiles)
     {
-        std::ifstream ScopedFile(ScopedRelative, std::ios::binary);
+        std::string ScopedName;
+        if (!MakeSafeRelative(ScopedRelative, &ScopedName))
+        {
+            SetError(InError, "unsafe incident archive entry: " + ScopedRelative);
+            return false;
+        }
+        const std::filesystem::path ScopedSource = InRoot / std::filesystem::path(ScopedName);
+        std::error_code ScopedSizeError;
+        const std::uintmax_t ScopedSourceSize = std::filesystem::file_size(ScopedSource, ScopedSizeError);
+        if (!ScopedSizeError && ScopedSourceSize > kMax32)
+        {
+            SetError(InError, "incident archive entry is too large: " + ScopedName);
+            return false;
+        }
+        std::ifstream ScopedFile(ScopedSource, std::ios::binary);
         if (!ScopedFile)
         {
-            SetError(InError, "cannot read incident archive entry: " + ScopedRelative);
+            SetError(InError, "cannot read incident archive entry: " + ScopedName);
             return false;
         }
         Entry ScopedEntry;
-        ScopedEntry.Name = ScopedRelative;
+        ScopedEntry.Name = std::move(ScopedName);
         ScopedEntry.Data.assign(std::istreambuf_iterator<char>(ScopedFile), std::istreambuf_iterator<char>());
+        if (ScopedEntry.Data.size() > kMax32 || ScopedEntry.Name.size() > kMax16)
+        {
+            SetError(InError, "incident archive entry exceeds ZIP limits: " + ScopedEntry.Name);
+            return false;
+        }
         ScopedEntry.Crc = Crc32(ScopedEntry.Data);
         std::string ScopedDeflated;
         if (DeflateRaw(ScopedEntry.Data, &ScopedDeflated) && ScopedDeflated.size() < ScopedEntry.Data.size())
@@ -145,7 +268,23 @@ bool WriteStoreZip(std::string_view InPath, const std::vector<std::string>& InFi
         {
             ScopedEntry.Payload = ScopedEntry.Data;
         }
+        if (ScopedEntry.Payload.size() > kMax32)
+        {
+            SetError(InError, "incident archive payload exceeds ZIP limits: " + ScopedEntry.Name);
+            return false;
+        }
+        ScopedZipEstimate += 30 + ScopedEntry.Name.size() + ScopedEntry.Payload.size() + 46 + ScopedEntry.Name.size();
+        if (ScopedZipEstimate > kMax32)
+        {
+            SetError(InError, "incident archive exceeds the ZIP32 size limit");
+            return false;
+        }
         ScopedEntries.push_back(std::move(ScopedEntry));
+    }
+    if (ScopedEntries.size() > kMax16)
+    {
+        SetError(InError, "incident archive has too many entries");
+        return false;
     }
     std::vector<std::byte> ScopedZip;
     std::vector<std::byte> ScopedCentral;
@@ -342,28 +481,56 @@ IncidentResult WriteIncidentBundle(const IncidentRequest& InRequest, std::string
         SetError(InError, "incident directory is empty");
         return ScopedResult;
     }
+    const std::filesystem::path ScopedRoot(InRequest.Directory);
     std::error_code ScopedCode;
-    std::filesystem::create_directories(InRequest.Directory, ScopedCode);
+    const std::filesystem::file_status ScopedRootStatus = std::filesystem::symlink_status(ScopedRoot, ScopedCode);
+    if (!ScopedCode && std::filesystem::is_symlink(ScopedRootStatus))
+    {
+        SetError(InError, "incident directory must not be a symlink");
+        return ScopedResult;
+    }
+    ScopedCode.clear();
+    std::filesystem::create_directories(ScopedRoot, ScopedCode);
     if (ScopedCode)
     {
         SetError(InError, "cannot create incident directory: " + ScopedCode.message());
         return ScopedResult;
     }
-    const std::filesystem::path ScopedRoot(InRequest.Directory);
     const auto ScopedAdd = [&ScopedResult](std::string InPath)
     {
         ScopedResult.Files.push_back(std::move(InPath));
     };
     const auto ScopedWrite = [&ScopedRoot, &ScopedAdd, InError](std::string_view InRelative, std::string_view InText)
     {
-        const std::filesystem::path ScopedPath = ScopedRoot / std::filesystem::path(InRelative);
+        std::string ScopedNormalized;
+        if (!MakeSafeRelative(InRelative, &ScopedNormalized))
+        {
+            SetError(InError, "unsafe incident path: " + std::string(InRelative));
+            return false;
+        }
+        const std::filesystem::path ScopedPath = ScopedRoot / std::filesystem::path(ScopedNormalized);
+        std::error_code ScopedStatusError;
+        const std::filesystem::file_status ScopedStatus = std::filesystem::symlink_status(ScopedPath, ScopedStatusError);
+        if (!ScopedStatusError && std::filesystem::is_symlink(ScopedStatus))
+        {
+            SetError(InError, "incident file must not be a symlink: " + ScopedNormalized);
+            return false;
+        }
+        std::error_code ScopedParentError;
+        const std::filesystem::file_status ScopedParentStatus =
+            std::filesystem::symlink_status(ScopedPath.parent_path(), ScopedParentError);
+        if (!ScopedParentError && std::filesystem::is_symlink(ScopedParentStatus))
+        {
+            SetError(InError, "incident directory must not be a symlink: " + ScopedNormalized);
+            return false;
+        }
         std::error_code ScopedCreate;
         std::filesystem::create_directories(ScopedPath.parent_path(), ScopedCreate);
         if (!WriteText(ScopedPath, InText, InError))
         {
             return false;
         }
-        ScopedAdd(std::string(InRelative));
+        ScopedAdd(ScopedNormalized);
         return true;
     };
     std::string ScopedReason = InRequest.Reason;
@@ -429,7 +596,7 @@ IncidentResult WriteIncidentBundle(const IncidentRequest& InRequest, std::string
     }
     std::ostringstream ScopedManifest;
     ScopedManifest << "id = \"incident\"\n";
-    ScopedManifest << "reason = \"" << ScopedReason << "\"\n";
+    ScopedManifest << "reason = \"" << EscapeToml(ScopedReason) << "\"\n";
     ScopedManifest << "file_count = " << ScopedResult.Files.size() << "\n";
     if (!ScopedWrite("manifest.toml", ScopedManifest.str()))
     {
@@ -437,13 +604,7 @@ IncidentResult WriteIncidentBundle(const IncidentRequest& InRequest, std::string
     }
     if (!InRequest.ArchivePath.empty())
     {
-        std::vector<std::string> ScopedArchiveFiles;
-        ScopedArchiveFiles.reserve(ScopedResult.Files.size());
-        for (const std::string& ScopedRelative : ScopedResult.Files)
-        {
-            ScopedArchiveFiles.push_back((ScopedRoot / ScopedRelative).string());
-        }
-        if (!WriteStoreZip(InRequest.ArchivePath, ScopedArchiveFiles, InError))
+        if (!WriteStoreZip(InRequest.ArchivePath, ScopedRoot, ScopedResult.Files, InError))
         {
             return ScopedResult;
         }
@@ -588,18 +749,25 @@ std::uint32_t CollectPendingCrashIncidents(std::string_view InCrashRoot, std::st
     {
         const std::filesystem::directory_entry ScopedEntry = *ScopedIterator;
         std::error_code ScopedEntryError;
-        if (ScopedEntry.is_directory(ScopedEntryError) && !ScopedEntryError)
+        const std::filesystem::file_status ScopedEntryStatus = ScopedEntry.symlink_status(ScopedEntryError);
+        if (!ScopedEntryError && std::filesystem::is_directory(ScopedEntryStatus) &&
+            !std::filesystem::is_symlink(ScopedEntryStatus))
         {
             const std::filesystem::path ScopedMarker = ScopedEntry.path() / "incident-request.txt";
-            if (std::filesystem::exists(ScopedMarker))
+            std::error_code ScopedMarkerError;
+            const std::filesystem::file_status ScopedMarkerStatus =
+                std::filesystem::symlink_status(ScopedMarker, ScopedMarkerError);
+            if (!ScopedMarkerError && std::filesystem::is_regular_file(ScopedMarkerStatus) &&
+                !std::filesystem::is_symlink(ScopedMarkerStatus))
             {
-                std::ifstream ScopedFile(ScopedMarker, std::ios::binary);
-                std::string ScopedReason((std::istreambuf_iterator<char>(ScopedFile)),
-                                         std::istreambuf_iterator<char>());
-                ScopedFile.close();
+                std::string ScopedReason = ReadMarkerReason(ScopedMarker);
                 if (ScopedReason.empty())
                 {
                     ScopedReason = "crash";
+                }
+                if (ScopedReason.size() > 512)
+                {
+                    ScopedReason.resize(512);
                 }
                 IncidentRequest ScopedRequest;
                 ScopedRequest.Directory = (ScopedEntry.path() / "incident").string();
@@ -634,6 +802,11 @@ bool ReplayArchive::Save(std::string_view InPath, const Core::ReplaySession& InS
         SetError(InError, "cannot serialize replay");
         return false;
     }
+    if (ScopedBytes.size() > kMaxReplayBytes)
+    {
+        SetError(InError, "replay is too large to write");
+        return false;
+    }
     std::ofstream ScopedFile(std::string(InPath), std::ios::binary | std::ios::trunc);
     if (!ScopedFile)
     {
@@ -652,14 +825,40 @@ bool ReplayArchive::Load(std::string_view InPath, Core::ReplaySession* OutSessio
         SetError(InError, "replay output is null");
         return false;
     }
-    std::ifstream ScopedFile(std::string(InPath), std::ios::binary);
+    const std::filesystem::path ScopedPath{std::string(InPath)};
+    std::error_code ScopedSizeError;
+    const std::uintmax_t ScopedFileSize = std::filesystem::file_size(ScopedPath, ScopedSizeError);
+    if (ScopedSizeError)
+    {
+        SetError(InError, "cannot stat replay for reading");
+        return false;
+    }
+    if (ScopedFileSize > kMaxReplayBytes)
+    {
+        SetError(InError, "replay is too large to read");
+        return false;
+    }
+    std::ifstream ScopedFile(ScopedPath, std::ios::binary);
     if (!ScopedFile)
     {
         SetError(InError, "cannot open replay for reading");
         return false;
     }
-    const std::vector<char> ScopedChars((std::istreambuf_iterator<char>(ScopedFile)),
-                                        std::istreambuf_iterator<char>());
+    std::vector<char> ScopedChars(static_cast<std::size_t>(ScopedFileSize));
+    if (!ScopedChars.empty())
+    {
+        ScopedFile.read(ScopedChars.data(), static_cast<std::streamsize>(ScopedChars.size()));
+        if (ScopedFile.gcount() != static_cast<std::streamsize>(ScopedChars.size()))
+        {
+            SetError(InError, "cannot read replay");
+            return false;
+        }
+    }
+    if (ScopedFile.peek() != std::char_traits<char>::eof())
+    {
+        SetError(InError, "replay changed while reading");
+        return false;
+    }
     std::vector<std::byte> ScopedBytes(ScopedChars.size());
     std::transform(ScopedChars.begin(), ScopedChars.end(), ScopedBytes.begin(),
                    [](char InByte) { return static_cast<std::byte>(static_cast<unsigned char>(InByte)); });
